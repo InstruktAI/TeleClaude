@@ -6,14 +6,19 @@ scope: project
 visibility: public
 status: target
 delivered_by: [v2-memory, v2-memory-cutover]
-description: Memory bounded context — durable observations the platform accumulates about humans and projects. Triple-shaped, tiered, dedup-disciplined; the substrate of cross-session continuity. Scraper-only writes; pattern-matcher jobs read.
+description: Memory bounded context — durable observations the platform accumulates about humans and projects. Triple-shaped, event-store-semantic, dedup-disciplined; the substrate of cross-session continuity. Scraper-only writes; pattern-matcher jobs read.
 ---
 
 # Memory Domain Spec — Spec
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/software-development/spec/domain-spec.md
+
 ## What it is
 
-The `memory` bounded context owns durable observations the platform accumulates over time about (a) specific humans and (b) specific projects. Observations are stored as **triples** — `(subject, predicate, object)` — tagged by tier and provenance. Memory is authored exclusively by the **session memory extraction agent** (the scraper), invoked via `/extract-memory <session_id>`. No other agent writes to memory.
+The `memory` bounded context owns durable observations the platform accumulates over time about (a) specific humans and (b) specific projects. Observations are stored as **triples** — `(subject, predicate, object)` — tagged by category and provenance. Memory is authored exclusively by the **memory extraction agents** (the scrapers), invoked via `/extract-memory-human <session_id>` and `/extract-memory-project <session_id>`. No other agent writes to memory.
 
 Memory is the substrate of cross-session continuity. A returning human is recognized by their accumulated triples. A project's evolving conventions, decisions, and frictions are recorded so downstream pattern-matchers can consume them and produce actual project artifacts (doc-snippet drafts, todos).
 
@@ -21,123 +26,73 @@ Memory is distinct from:
 
 - **Context** (doc snippets, skills, agents) — codified, schema-validated, deployed reference content. Authored. Authoritative.
 - **Session mirrors** — eternal full-text session transcripts. Per-session, unextracted.
-- **Memory** — extracted, atomic, tiered observations. Per-fact, scraper-authored, dynamic.
+- **Memory** — extracted, atomic, classified observations. Per-fact, scraper-authored, dynamic.
 
 The dedup discipline (below) is what keeps memory from becoming a duplicate junk drawer next to the codified library.
-
-## Tiers
-
-Memory has **two tiers**. A third — "general" / population-wide — is deferred. It is added once a concrete use case appears that fits neither human nor project.
-
-### Human tier — about this person
-
-**Why it exists:**
-
-- **Continuity.** Without per-human memory, every session starts cold. A returning help-desk customer should land on a system that already recognizes them and what they've said before.
-- **Calibration without surveying.** Knowing the human's expertise, preferences, and constraints lets the agent set register correctly from the first message — no round-trip to ask "what's your background."
-- **Salience weighting.** Recording which topics this human surfaces repeatedly tells downstream consumers what to attend to.
-
-**Subject:** the human's durable identifier.
-
-- **Primary form: email.** Resolvable for most internal humans (admins, members, contributors) via the person config.
-- **Fallback form: identity-context string** (e.g., `whatsapp:31612345678`) when no email exists — anonymous help-desk customers entering via platform connectors.
-- Both shapes are opaque strings; dedup works by exact equality.
-
-**Predicate vocabulary** (closed, controlled):
-
-| Predicate      | Multi-valued | Captures                                                |
-| -------------- | ------------ | ------------------------------------------------------- |
-| `role`         | no           | The human's role (admin, member, customer, contributor) |
-| `expertise`    | yes          | Domains and depth they hold expertise in                |
-| `working-on`   | yes          | What they're currently engaged with                     |
-| `prefers`      | yes          | Positive preferences (style, format, approach)          |
-| `dislikes`     | yes          | Negative preferences                                    |
-| `goal`         | yes          | Articulated goals                                       |
-| `constraint`   | yes          | Hard constraints they've stated                         |
-| `decided`      | yes          | Choices they made (rationale baked into object)         |
-| `mentioned`    | yes          | Topics surfaced — frequency in object or accumulated    |
-| `relationship` | yes          | Other humans in their orbit                             |
-
-Single-valued predicates replace on update; multi-valued accumulate distinct objects.
-
-**Critical boundary:** human-tier triples are about the human *as a human*. The moment an observation is about the human *in relation to a specific project* (e.g., "Maurice's feedback on the TeleClaude memory subsystem"), it belongs in **project tier** with that project as subject. Human tier never references a project.
-
-### Project tier — about this project
-
-**Why it exists:**
-
-- **Capture transient system insight.** Conventions, decisions, frictions, and requirements surface in conversations and would otherwise die at session-end. Memory is the upstream feed for project artifacts.
-- **Cross-project routing.** A session in the help-desk project can produce an observation about TeleClaude itself. The scraper, primed with required reads for known projects, routes to the right project's memory regardless of which project the session is running in.
-- **Decoupling sensing from acting.** The scraper just records. Pattern-matcher jobs read accumulated project memories and produce actual artifacts (doc-snippet drafts, todos). The scraper has no cross-session visibility and is not authorized to draft artifacts.
-
-**Subject:** the project slug (e.g., `teleclaude`, `help-desk`).
-
-**Predicate vocabulary** (closed, controlled):
-
-| Predicate            | Multi-valued | Captures                                              |
-| -------------------- | ------------ | ----------------------------------------------------- |
-| `convention`         | yes          | A way-of-working that emerged or was affirmed         |
-| `decided`            | yes          | A decision made (rationale baked into object)         |
-| `friction`           | yes          | Something that broke, rubbed, or surprised painfully  |
-| `requirement`        | yes          | An explicit ask — upstream of a future todo           |
-| `gotcha`             | yes          | Counter-intuitive behavior, quiet trap                |
-| `architectural-fact` | yes          | Design state of the system                            |
-| `constraint`         | yes          | A limit the project enforces                          |
-| `deferral`           | yes          | An explicit postponement (reason in object)           |
-| `dependency`         | yes          | What this project relies on                           |
-| `pattern`            | yes          | A recurring approach that works                       |
-| `anti-pattern`       | yes          | A recurring approach that doesn't work                |
-| `mentioned`          | yes          | Topic salience for this project                       |
-| `open-question`      | yes          | Unresolved items, capture-and-revisit                 |
 
 ## Canonical fields
 
 ### Ubiquitous language
 
 **Observation (triple)**
-: The atomic unit of memory. `(subject, predicate, object)`, tagged by `tier` and `source_session_id`. Identified by its own UUID.
+: The atomic unit of memory. `(subject, predicate, object)`, tagged by `category` and `source_mirror_id`. Identified by its own UUID. The store is append-only: multiple rows with the same `(subject, predicate, object)` are allowed and meaningful (each represents a distinct observed occurrence).
 
-**Tier**
-: `human` or `project`. Determines which predicate vocabulary applies and how the subject is interpreted.
+**Category**
+: `human` or `project`. Determines which predicate vocabulary applies and how the subject is interpreted. Categories are the classification axis of memory; they are NOT tiers in the memory-tiers concept (which describes the agent's memory gradient).
 
 **Subject**
-: For `human` tier: email or identity-context string. For `project` tier: project slug. Opaque string; matched by exact equality for dedup.
+: For `human` category: the human's durable identifier — email when resolvable, identity-context string otherwise. For `project` category: the project slug. Opaque string; matched by exact equality.
 
 **Predicate**
-: A token from the per-tier controlled vocabulary. Free-form predicates are rejected at save.
+: A token from the per-category controlled vocabulary. Free-form predicates are rejected at save.
 
 **Object**
 : The value the predicate carries. Free-form text. Search-indexed.
 
-**Source session id**
-: The session this observation was extracted from. Provenance for audit and re-extraction safety.
+**Source mirror id**
+: The `mirror_id` of the session mirror this observation was extracted from. Provenance handle. Durable: mirrors are eternal, so this pointer never goes stale.
 
 **Saved at**
 : When the observation was persisted. Immutable.
+
+### Storage shape
+
+The store is **append-only event semantics**. Every save inserts a new row. Dedup happens at *processing* time downstream, not at write time. The Tier-2 pattern-matcher reading the store aggregates by `(subject, predicate, object)` and uses `COUNT(*)` for salience. The scraper's only write-time obligation is the dedup-against-doc-snippets rule (below).
+
+Row shape:
+
+```
+observation_id      UUID            generated at save
+category            text            'human' | 'project'
+subject             text            email | identity-context-string | project-slug
+predicate           text            from per-category vocabulary
+object              text            free-form, search-indexed
+source_mirror_id    UUID            FK to session_mirrors
+saved_at            timestamp       immutable
+```
 
 ### Aggregates
 
 #### Observation
 
 - **Root:** `Observation` (the triple).
-- **Contains:** `observation_id` (UUID), `tier`, `subject`, `predicate`, `object`, `source_session_id`, `saved_at`.
+- **Contains:** the fields above.
 - **Invariants:**
-  - `tier` ∈ {`human`, `project`}.
-  - `predicate` is in the per-tier controlled vocabulary; free-form predicates are rejected.
-  - `subject` is non-empty; format depends on tier (email/identity-context for human; project slug for project).
-  - `source_session_id` references an existing session record.
-  - For single-valued predicates: `(subject, predicate)` is unique — saving a new object replaces the prior.
-  - For multi-valued predicates: `(subject, predicate, object)` is unique — exact duplicates are skipped.
+  - `category` ∈ {`human`, `project`}.
+  - `predicate` is in the per-category controlled vocabulary; free-form predicates are rejected at save.
+  - `subject` is non-empty; format depends on category.
+  - `source_mirror_id` references an existing mirror row.
+  - The store is append-only. Duplicates at `(subject, predicate, object)` are allowed; each represents a distinct observed occurrence with its own provenance.
 - **Identifier:** `observation_id`.
-- **Lifecycle:** Created via `telec memories save` (scraper only). Mutated via the same save path with replace semantics for single-valued predicates. Hard-deleted via `telec memories delete`. No automatic retention; observations persist until explicit delete.
+- **Lifecycle:** Created via `telec memories save` (scraper-only). Never updated. Hard-deleted only via explicit operator cleanup. No automatic retention; rows persist until explicit delete. Project-category rows MAY be pruned by downstream pattern-matcher jobs once promoted to a project artifact (todo or doc-snippet draft); human-category rows persist indefinitely.
 
 ### Domain events emitted
 
 #### `memory.observation.saved`
 
-- **Emitted when:** a triple is persisted (created or single-valued replaced).
-- **Payload:** `observation_id`, `tier`, `subject`, `predicate`, `source_session_id`, `saved_at`.
-- **Consumers:** project-tier pattern-matcher jobs; audit log.
+- **Emitted when:** a triple is persisted.
+- **Payload:** `observation_id`, `category`, `subject`, `predicate`, `source_mirror_id`, `saved_at`.
+- **Consumers:** project-category pattern-matcher jobs; audit log.
 - **Idempotency key:** `observation_id`.
 
 #### `memory.observation.deleted`
@@ -151,13 +106,12 @@ Single-valued predicates replace on update; multi-valued accumulate distinct obj
 #### UC-MEM-1: Scraper saves a triple
 
 ```
-Given a /extract-memory session has identified a candidate observation,
-      classified its tier and predicate, dedup'd against doc snippets and existing triples
+Given a memory extraction session has identified a candidate observation,
+      classified its category and predicate, dedup'd against doc snippets
 When the scraper runs:
-     telec memories save --tier <h|p> --subject <s> --predicate <p> --object <o> --source-session <id>
-Then memory validates the predicate against the tier's vocabulary
-And applies single-valued (replace) or multi-valued (skip-if-duplicate) semantics
-And persists the triple
+     telec memories save --category <h|p> --subject <s> --predicate <p> --object <o> --source-mirror <id>
+Then memory validates the predicate against the category's vocabulary
+And persists the triple as a new row (append-only; no dedup at write time)
 And emits memory.observation.saved
 ```
 
@@ -165,8 +119,8 @@ And emits memory.observation.saved
 
 ```
 Given an agent wants "what does this human prefer?"
-When they run:  telec memories search --tier human --subject <email> --predicate prefers
-Then memory returns all triples matching subject + predicate (multi-valued accumulation)
+When they run:  telec memories search --category human --subject <email> --predicate prefers
+Then memory returns all matching rows (multi-row results give weight by frequency)
 ```
 
 #### UC-MEM-3: Session-start context injection
@@ -174,7 +128,7 @@ Then memory returns all triples matching subject + predicate (multi-valued accum
 ```
 Given a session is starting for a human with a known email
 When the context layer queries memory for that subject
-Then memory returns all triples for the human's subject (full tier-h corpus for them)
+Then memory returns the human's full corpus of triples (grouped or ranked by recency/frequency)
 And the context layer renders them compactly for injection
 ```
 
@@ -182,33 +136,26 @@ And the context layer renders them compactly for injection
 
 ```
 Given the project memory pattern-matcher job runs on schedule
-When it queries:  telec memories search --tier project --subject <slug> --predicate requirement
-Then memory returns all `requirement` triples for that project
-And the pattern-matcher decides which to promote to todos via telec todo create
+When it queries:  telec memories search --category project --subject <slug> --predicate requirement
+Then memory returns all `requirement` rows for that project
+And the pattern-matcher aggregates by (subject, predicate, object), uses COUNT(*) for salience
+And promotes salient items to todos via `telec todo create`
 ```
 
-#### UC-MEM-5: Re-extraction safety via provenance
-
-```
-Given the scraper re-runs on a session whose transcript was previously partially processed
-When it attempts to save a triple already extracted from this session
-Then dedup catches the (subject, predicate, object) match
-And the duplicate is skipped — no double-save
-```
-
-### Dedup discipline (mandatory)
+### Dedup discipline (mandatory, write-time)
 
 Before saving any triple, the scraper MUST:
 
 1. **Search doc snippets** (`telec docs index` + `telec docs get`). If the candidate is substantively covered there — even with different wording — **discard**. Codified knowledge does not get re-encoded as memory.
-2. **Search existing triples** (`telec memories search`). If an equivalent triple is already saved, **discard** (multi-valued) or **update** (single-valued).
-3. **Save** the survivor.
+2. **Save** the survivor.
 
-Without step 1, memory becomes a duplicate junk drawer next to the codified library and the system loses the ability to know what's authoritative. This is the single most important rule in this spec.
+The store does NOT dedup at write time across existing memory rows — repeated observations are meaningful (frequency signals salience). The dedup discipline is solely against the *codified* library (doc snippets), to keep memory from duplicating authoritative knowledge.
+
+This is the single most important rule in this spec. Without it, memory becomes a duplicate junk drawer next to the codified library and the system loses the ability to know what's authoritative.
 
 ### Scraper boundary (mandatory)
 
-The session memory extraction agent (the scraper) is the **only** authorized writer to memory. It produces triples from a session transcript. It does **NOT**:
+The memory extraction agents (the scrapers — one for human-category, one for project-category) are the **only** authorized writers to memory. They produce triples from a session mirror. They do **NOT**:
 
 - Create todos.
 - Create or modify doc snippets.
@@ -216,27 +163,37 @@ The session memory extraction agent (the scraper) is the **only** authorized wri
 - Interpret human emotion or intent.
 - Synthesize beyond what was demonstrated in the transcript.
 
-Pattern recognition, artifact creation, and aggregation across sessions are downstream concerns owned by separate jobs that read accumulated memories. Direct `telec memories save` calls from any agent other than the scraper are prohibited by policy.
+Pattern recognition, artifact creation, and aggregation across sessions are downstream concerns owned by separate jobs that read accumulated memories. Direct `telec memories save` calls from any agent other than the scrapers are prohibited by policy.
+
+### Cadence and trigger semantics
+
+Extraction is triggered by one of two conditions on a session:
+
+- **Idle threshold reached** — the session has been idle for ≥ 30 minutes since `last_activity`.
+- **Session close** — the session has transitioned to closed/stopped.
+
+Both triggers invoke the scrapers over the *whole session* delta (no per-turn windowing). Each scraper reads the session's mirror (`session_mirrors.text_content`) and extracts the new content since its category's last-extraction marker for this mirror.
+
+The trigger handler is the daemon's maintenance loop; no separate scheduler entry. Each scraper runs once per eligible session per trigger; concurrent dispatch for the same `(category, mirror_id)` is prevented by sidecar bookkeeping (operational concern, not a memory-domain detail).
 
 ### Context map position
 
-- **Customer-Supplier downstream of `identity`** — subject resolution depends on identity (email lookup, identity-context fallback).
-- **Customer-Supplier downstream of `agent_runtime`** — observations carry `source_session_id`; the scraper reads sessions via the session record.
-- **Open Host Service to pattern-matchers** — read access for downstream pattern-matcher jobs.
-- **No partnership with `session_mirrors`** — mirrors and memory operate independently. The scraper bridges them per session; the architectures stay separate.
+- **Customer-Supplier downstream of `identity`** — human-category subject resolution depends on identity (email lookup, identity-context fallback).
+- **Customer-Supplier downstream of `session_mirrors`** — observations carry `source_mirror_id`; the scrapers read mirror text content.
+- **Open Host Service to pattern-matchers** — read access for downstream pattern-matcher jobs that produce project artifacts (todos, doc-snippet drafts).
 
 ## Allowed values
 
-- `tier`: `human`, `project`.
-- `predicate` (human tier): `role`, `expertise`, `working-on`, `prefers`, `dislikes`, `goal`, `constraint`, `decided`, `mentioned`, `relationship`.
-- `predicate` (project tier): `convention`, `decided`, `friction`, `requirement`, `gotcha`, `architectural-fact`, `constraint`, `deferral`, `dependency`, `pattern`, `anti-pattern`, `mentioned`, `open-question`.
+- `category`: `human`, `project`.
+- `predicate` (human category) — see `docs/project/spec/feature/memory/extraction-human.md` for the controlled vocabulary.
+- `predicate` (project category) — see `docs/project/spec/feature/memory/extraction-project.md` for the controlled vocabulary.
 
 ## Known caveats
 
-- **Scraper-only writer.** Direct `telec memories save` calls from any agent other than the scraper are policy violations and should be flagged.
-- **Predicate vocabulary is closed.** Free-form predicates are rejected at save. Vocabulary changes require a spec update.
-- **No automatic retention.** Triples persist until explicit delete. Pattern-matchers may flag stale or contradicted triples for human review.
-- **No interpretation.** The scraper records demonstrated facts. Synthesis is downstream.
-- **General tier deferred.** Population-wide observations are not modeled in v1.
+- **Scraper-only writer.** Direct `telec memories save` calls from any agent other than the scrapers are policy violations and should be flagged.
+- **Predicate vocabulary is closed per category.** Free-form predicates are rejected at save. Vocabulary changes require a feature-spec update.
+- **Append-only.** No write-time dedup across existing memory rows. Frequency signals salience to downstream consumers.
+- **No automatic retention for human-category rows.** They persist indefinitely. Pattern-matchers may flag stale or contradicted triples for human review.
+- **Project-category rows MAY be pruned by downstream promoters** after being aggregated into project artifacts (todos, doc-snippet drafts). The promoter owns its own retention.
+- **No interpretation.** The scrapers record demonstrated facts. Synthesis is downstream.
 - **Doc-snippet dedup is mandatory.** Skipping it is the failure mode that turns memory into duplicate noise.
-- **v1 storage shape may transition.** The existing `memory_observations` table carries `title`, `narrative`, `type`, `identity_key`, `project`, `facts`. v1 may map this to the triple model by convention (`subject ← identity_key | project`, `predicate ← title` or `type`, `object ← narrative`) until a schema migration adds explicit `tier`, `subject`, `predicate`, `object`, `source_session_id` columns. The externally visible scraper behavior is unchanged across the transition.

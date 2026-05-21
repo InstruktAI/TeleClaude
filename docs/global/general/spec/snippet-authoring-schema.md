@@ -30,6 +30,10 @@ Frontmatter (optional):
 - `delivered_by` — list of todo slugs that will materialize this snippet's intended state. REQUIRED when `status` is `target` or `mixed`. FORBIDDEN when `status` is `actual`. Lifecycle code owns roadmap relationship checks and flips snippets to `actual` when the relevant delivery state changes; `telec sync` validates frontmatter shape and indexes the source state it receives.
 - `applies_to` — for projects with a v1 → v2 migration boundary (TeleClaude specifically). One of `v1`, `v2`, or `both`. Marks which implementation version the snippet describes. `v1` = describes v1 behavior (authoritative until cutover, then historical). `v2` = describes v2 behavior. `both` = shared contract honored by both implementations — the **default for cleaned platform specs**. Required on snippets under `docs/project/design/architecture/` (path → `v1`), `docs/project/design/architecture-v2/` (path → `v2`), and on per-feature snippets under `docs/project/spec/feature/`. Optional elsewhere. Path-vs-frontmatter mismatch is a lint error. Queryable via `telec docs index --applies-to <v1|v2|both>`.
 - `diff_of` — `spec-diff` snippets ONLY (required for that type, forbidden on every other type). Snippet id of the parent spec this diff modifies. Validated to point at an existing snippet of `type: spec`. The diff is read alongside the parent; together they describe v2 behavior for the concept.
+- `date` — `adr` snippets ONLY (required). ISO-8601 date the decision was recorded.
+- `adr_status` — `adr` snippets ONLY (required). One of `proposed`, `accepted`, `deprecated`, `superseded`. Distinct from snippet `status` (which describes implementation lifecycle); `adr_status` captures the decision's standing.
+- `number` — `adr` snippets ONLY (required). Integer matching the filename prefix (e.g., `0007` for `0007-provenance-via-mirror-id.md`).
+- `supersedes` — `adr` snippets ONLY (optional). List of ADR IDs this decision replaces.
 
 Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They still require `id`, `type`, `scope`, and `description`, but use `type: third-party`, `scope: project` or `scope: global`, and IDs derived from their path below the third-party root.
 
@@ -53,6 +57,7 @@ Document structure:
 | design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes      |
 | spec      | What it is, Canonical fields (optional: Allowed values, Known caveats) |
 | spec-diff | Replaces, Adds, Removes, Why                                           |
+| adr       | Context, Decision, Consequences (optional: Alternatives Considered)    |
 
 Procedure sections may also include optional: `Pre-completion checklist`, `Report format`, `Required tools`, `Discipline`.
 
@@ -71,13 +76,25 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
 - `docs/project/spec/**/{stem}-v2-diff.md` — `type: spec-diff` companion living as a sibling to its parent spec (`{stem}.md`). Captures how v2 diverges from the parent. Implicit `applies_to: v2`. Migration-window-only: deleted (merged into the parent) when the relevant v2 cutover delivers. See `software-development/principle/documentation-first-development` for the three-state architecture.
+- `docs/project/adr/{NNNN}-{kebab-case-title}.md` — `type: adr`. Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date`, `adr_status`, and `number` are required additional frontmatter fields. Optional: `supersedes` (list of ADR IDs this one replaces). ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`.
 - `docs/project/baseline.md` — project baseline manifest (curated required reads).
 
 Global snippets are distributed to `~/.teleclaude/docs/` and available to all projects. Project snippets stay local to their repository.
 
+### Grouped snippets — folder convention
+
+When multiple snippets share a topic (e.g., a general procedure plus thin-wrapper variants, or a design family with several facets), they live together in a folder named for the topic. The folder contains:
+
+- `overview.md` — the top-level or shared snippet for the group (e.g., the general procedure that variants build on).
+- Sibling files for specialized variants or facets, named for what they cover (e.g., `human.md`, `project.md`, `prepare.md`, `work.md`).
+
+The folder name becomes part of every member snippet's id (e.g., `general/procedure/memory-extraction/overview`, `general/procedure/memory-extraction/human`). Variants reference the overview as a required read. All members share the same taxonomy type — a folder under `procedure/` contains only `procedure` snippets.
+
+Apply this convention whenever a group of related snippets would otherwise produce a flat sibling list with shared-prefix filenames (e.g., `foo-overview.md`, `foo-human.md`, `foo-project.md` becomes `foo/overview.md`, `foo/human.md`, `foo/project.md`). The flat-prefix anti-pattern is rejected at review.
+
 ## Allowed values
 
-- `type`: principle, concept, policy, procedure, design, spec, spec-diff (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
+- `type`: principle, concept, policy, procedure, design, spec, spec-diff, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - Third-party `type`: third-party.
 - `scope`: global, domain, project.
 - Third-party `scope`: global, project.

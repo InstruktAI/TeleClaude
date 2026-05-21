@@ -59,7 +59,7 @@ graph TD
     integration ==>|integration.inbox.received<br/>external messaging| agent_runtime
 
     %% Extract-window: source-side cursor primitive in agent_runtime
-    %% Multiple consumers (session_history, skill-miner, memory-miner) call extract-window via CLI
+    %% Multiple consumers (session_history, memory-miner) call extract-window via CLI
     %% session_history is shown explicitly because it's part of session_mirrors
     agent_runtime -.->|extract-window CLI<br/>session_history consumer| session_mirrors
 
@@ -115,8 +115,7 @@ The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which ent
 | Upstream        | Downstream              | Relationship                               | Purpose                                                                                                                                                                                                                                                                                               |
 | --------------- | ----------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `agent_runtime` | `session_mirrors`       | Customer-Supplier (via extract-window CLI) | session_mirrors hosts a `session_history` consumer that registers against `agent_runtime.extract-window`, builds mirrors incrementally from rich windows (filtering to user_text + assistant_text). NOT subscribed to `session.ended` for mirror creation — mirror builds up over the session's life. |
-| `agent_runtime` | `context` (skill-miner) | Customer-Supplier (via extract-window CLI) | A future intelligence-driven skill miner consumes extract-window, detects patterns, writes via `telec context skills create`. No event subscription; CLI-only.                                                                                                                                        |
-| `agent_runtime` | `memory` (memory-miner) | Customer-Supplier (via extract-window CLI) | Same pattern — intelligence-driven miner consumes extract-window, writes via `telec memory save`. CLI-only.                                                                                                                                                                                           |
+| `agent_runtime` | `memory` (memory-miner) | Customer-Supplier (via extract-window CLI) | Intelligence-driven miner consumes extract-window, writes via `telec memories save`. CLI-only.                                                                                                                                                                                                        |
 | `agent_runtime` | `workflow`              | Customer-Supplier                          | Long-running operations on sessions (file syncs, builds) emit `operation.completed` events; workflow consumes when an operation completes a todo lifecycle step.                                                                                                                                      |
 
 #### Workflow → outbound notifications

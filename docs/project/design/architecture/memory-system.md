@@ -220,6 +220,6 @@ sequenceDiagram
 ## See Also
 
 - ~/.teleclaude/docs/general/spec/tools/telec-cli.md — telec CLI spec (includes `telec memories` commands)
-- ~/.teleclaude/docs/general/procedure/memory-management.md — What to store and the Gem standard
 - ~/.teleclaude/docs/general/concept/memory-tiers.md — Where memory fits in the agent knowledge gradient
+- docs/project/spec/domain/memory.md — Target memory bounded context (v2)
 - docs/project/design/architecture/database.md — Parent database architecture

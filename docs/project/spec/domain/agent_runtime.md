@@ -172,7 +172,7 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 #### ExtractorCursor (aggregate, source-owned cursor bookkeeping)
 
 - **Root:** `ExtractorCursor` (one row per `(consumer_id, session_id)` pair)
-- **Contains:** `consumer_id` (the registered subscriber identifier, e.g., `skill-miner`, `memory-miner`, `session-history`), `session_id` (the session being tracked), `last_processed_position` (turn count or block index — natural unit per session), `last_processed_at`.
+- **Contains:** `consumer_id` (the registered subscriber identifier, e.g., `memory-miner`, `session-history`), `session_id` (the session being tracked), `last_processed_position` (turn count or block index — natural unit per session), `last_processed_at`.
 - **Invariants:**
   - One row per `(consumer_id, session_id)` pair.
   - Cursor advances on explicit consumer ack via `telec sessions ack` — never auto-advances on read.
@@ -184,7 +184,7 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 
 ### Extract-window mechanism (source-side primitive)
 
-agent_runtime exposes a single source primitive for downstream consumers (session_history, skill-miner, memory-miner, future consumers):
+agent_runtime exposes a single source primitive for downstream consumers (session_history, memory-miner, future consumers):
 
 - `telec sessions extract-window --consumer <id> [--session <id>]` — returns new content since the consumer's cursor, per session, with rich content (all block types: user_text, assistant_text, thinking, tool_use, tool_result). Cursor is NOT auto-advanced.
 - `telec sessions ack --consumer <id> --position <X> [--session <id>]` — advances the cursor after the consumer has safely processed.
@@ -193,7 +193,7 @@ agent_runtime exposes a single source primitive for downstream consumers (sessio
 
 The runtime can coalesce reads when multiple consumers want overlapping windows (one DB read per snapshot, fanned out to each consumer's filtered result). Implementation optimization; not an API concern.
 
-**Trigger model.** Per-session turn-trigger is the primary signal: when a session crosses N new turns since any consumer's last cursor, an in-process listener wakes the relevant consumers. Scheduler tick (see `scheduler.tick.*` events) acts as the backstop for low-activity periods. Default optimal window per Hermes evidence: ~10 turns.
+**Trigger model.** Scheduler tick (see `scheduler.tick.*` events) is the trigger; per-pillar consumers subscribe and decide for themselves when to act based on their own cadence policy (e.g., the memory-miner acts on sessions idle ≥30 minutes or just-closed).
 
 ### Domain events emitted
 

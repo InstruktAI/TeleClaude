@@ -82,3 +82,13 @@ sections:
     required:
       - What it is
       - Canonical fields
+  adr:
+    allowed:
+      - Context
+      - Decision
+      - Consequences
+      - Alternatives Considered
+    required:
+      - Context
+      - Decision
+      - Consequences

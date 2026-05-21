@@ -34,7 +34,8 @@ Create or update agent artifacts that follow the schema and compile correctly fo
    agent-artifacts spec for the full schema.
 5. Add the artifact title (`# ...`) for all artifacts.
 6. Apply the artifact-specific rules below.
-7. After any doc change, run `telec sync`.
+7. **ADR discipline (decision capture).** If your artifact change embeds a non-trivial decision — one a future agent might reasonably ask "why was it done this way?" about — author an accompanying ADR per `general/policy/adr-discipline`, following `general/procedure/adr-authoring`. Artifacts describe the *current behavior*; ADRs preserve the *reasoning*. Do not embed reasoning logs in primary artifacts.
+8. After any doc change, run `telec sync`.
 
 ## Outputs
 

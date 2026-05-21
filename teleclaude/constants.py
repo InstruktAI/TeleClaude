@@ -12,7 +12,7 @@ DOMAIN_SCOPES = ["software-development", "creative", "marketing", "customer-rela
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
-TAXONOMY_TYPES = ["principle", "concept", "policy", "procedure", "design", "spec"]
+TAXONOMY_TYPES = ["principle", "concept", "policy", "procedure", "design", "spec", "adr"]
 
 # Display suffix mapping for snippet types
 TYPE_SUFFIX = {
@@ -22,6 +22,7 @@ TYPE_SUFFIX = {
     "concept": "Concept",
     "design": "Design",
     "spec": "Spec",
+    "adr": "ADR",
 }
 
 # API socket configuration

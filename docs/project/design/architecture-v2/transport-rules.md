@@ -482,8 +482,6 @@ Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 3. If due → runs its work (invoke CLI, spawn sub-workers, etc.)
 4. Updates its cursor on success
 
-**Per-session turn-trigger** complements the tick: a long-running consumer can also be woken when a tracked session crosses N new turns since its last cursor. This is more responsive than tick-only; the tick is a backstop for low-activity periods. Default optimal window per Hermes evidence: ~10 turns.
-
 **Source-owned cursors.** Cursors live with the source being scanned, not with the consumer doing the scanning. The pillar producing the stream owns:
 
 - A `<pillar>.extractor_cursors` table (per consumer, per stream subject — e.g., per session)
@@ -502,7 +500,7 @@ Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 
 | Source                            | Cursor table                               | Consumers                                                                                                                      |
 | --------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `agent_runtime` (sessions stream) | `agent_runtime.extractor_cursors`          | `session-history` (writes mirrors), `skill-miner` (writes skills via context), `memory-miner` (writes observations via memory) |
+| `agent_runtime` (sessions stream) | `agent_runtime.extractor_cursors`          | `session-history` (writes mirrors), `memory-miner` (writes observations via memory)                                            |
 | Other pillars                     | Add only when a real consumer materializes |
 
 **Where job state (other than cursor) lives:**
