@@ -10,8 +10,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/failure-modes.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
+- @~/.teleclaude/docs/general/principle/failure-modes.md
 
 ## What
 
