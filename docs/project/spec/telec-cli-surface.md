@@ -440,18 +440,18 @@ subcommands:
           --thinking: 'Include thinking blocks.'
           --tail: 'Limit output to last N chars.'
   memories:
-    description: 'Search and manage memory observations.'
+    description: 'Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the memory scraper; agents must never create them.'
     subcommands:
       search:
-        description: 'Search memory observations.'
+        description: 'Search personal-preference observations about the human.'
         args:
           - query: 'string'
         flags:
           --limit: 'Max results (default: 20).'
-          --type: 'Filter by type.'
+          --type: 'Filter by observation type stored in the schema.'
           --project: 'Filter by project name.'
       save:
-        description: 'Save a memory observation.'
+        description: 'Persist a memory observation. Reserved for the memory scraper — agents must never call this. Hidden from the baseline surface (omitted from subcommand listings, flag-group sections, and shell completion); reachable only by explicit name, e.g. `telec memories save -h`.'
         args:
           - text: 'string'
         flags:
@@ -459,11 +459,11 @@ subcommands:
           --type: 'Observation type.'
           --project: 'Project name.'
       delete:
-        description: 'Delete a memory observation by ID.'
+        description: 'Delete a personal-preference observation by ID (typically run by the human while pruning).'
         args:
           - id: 'integer'
       timeline:
-        description: 'Show observations around an anchor ID.'
+        description: 'Show personal-preference observations around an anchor ID.'
         args:
           - id: 'integer'
         flags:

@@ -1015,7 +1015,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "Memories capture meta-level things about who the human is — their relational stance, "
             "values, communication style, vision — never coding norms, architectural decisions, "
             "or operational gotchas (those live in policies, principles, and addenda). "
-            "Memories are written exclusively by the memory scraper; agents must never create them."
+            "Memories are written exclusively by the session memory extraction agent (the memory "
+            "scraper, invoked via /extract-memory); other agents must never create them."
         ),
         subcommands={
             "list": CommandDef(
@@ -1056,8 +1057,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "save": CommandDef(
                 desc=(
-                    "Persist a memory observation. Reserved for the memory scraper — "
-                    "agents must never call this. Hidden from the baseline surface."
+                    "Persist a memory observation. Reserved for the session memory extraction "
+                    "agent (the memory scraper, invoked via /extract-memory). Other agents must "
+                    "never call this."
                 ),
                 args="<text> [--title <title>] [--type <type>] [--project <name>]",
                 flags=[

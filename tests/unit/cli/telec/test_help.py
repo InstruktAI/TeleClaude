@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from teleclaude.cli.telec.surface_types import _FLAG_DETACH, CommandDef
+from teleclaude.cli.telec.surface_types import _FLAG_DETACH, CommandDef, Flag
 
 help_mod = importlib.import_module("teleclaude.cli.telec.help")
 surface_mod = importlib.import_module("teleclaude.cli.telec.surface")
@@ -148,6 +148,82 @@ def test_usage_subcmd_todo_dump_renders_without_hidden_flags(
     dump_line = "\n".join(line for line in todo_help.splitlines() if "telec todo dump" in line)
 
     assert dump_line == snapshot
+
+
+def _fixture_surface_with_hidden_sub() -> CommandDef:
+    """Minimal CommandDef tree with one visible and one hidden subcommand.
+
+    Used to pin the hidden-subcommand filter independently at each renderer
+    site, so future iteration sites that forget to honor ``sub.hidden``
+    surface as targeted test failures instead of hiding behind a global
+    snapshot."""
+    return CommandDef(
+        desc="root",
+        subcommands={
+            "vis": CommandDef(desc="visible sub", args="<x>", flags=[Flag("--alpha", desc="a")]),
+            "hid": CommandDef(
+                desc="hidden sub",
+                args="<y>",
+                flags=[Flag("--beta", desc="b")],
+                hidden=True,
+            ),
+        },
+    )
+
+
+def test_memories_save_subcommand_is_hidden() -> None:
+    """Schema anchor: ``memories save`` is reserved for the memory scraper
+    and must not surface in any subcommand-list renderer or completion."""
+    assert surface_mod.CLI_SURFACE["memories"].subcommands["save"].hidden is True
+
+
+def test_todo_dump_subcommand_is_hidden() -> None:
+    """Schema anchor: the deprecated ``todo dump`` alias is hidden from listings."""
+    assert surface_mod.CLI_SURFACE["todo"].subcommands["dump"].hidden is True
+
+
+def _visible_subcommand_count(fixture: CommandDef) -> int:
+    return sum(1 for sub in fixture.subcommands.values() if not sub.hidden)
+
+
+def test_iter_subcommand_entries_skips_hidden_subcommand() -> None:
+    """Per-entry count equals the visible-sub count — adding/removing visible
+    or hidden subs to the fixture moves the assertion correctly without any
+    substring comparison against rendered output."""
+    fixture = _fixture_surface_with_hidden_sub()
+    entries = help_mod._iter_subcommand_entries("fake", fixture, col=40)
+    assert len(entries) == _visible_subcommand_count(fixture)
+
+
+def test_iter_subcommand_entries_for_skips_hidden_subcommand() -> None:
+    fixture = _fixture_surface_with_hidden_sub()
+    entries = help_mod._iter_subcommand_entries_for("fake", fixture, col=40)
+    assert len(entries) == _visible_subcommand_count(fixture)
+
+
+def test_usage_main_subcommand_entries_skips_hidden_subcommand() -> None:
+    fixture = _fixture_surface_with_hidden_sub()
+    hidden_entries = help_mod._usage_main_subcommand_entries("fake", "hid", fixture.subcommands["hid"], col=40)
+    visible_entries = help_mod._usage_main_subcommand_entries("fake", "vis", fixture.subcommands["vis"], col=40)
+    assert hidden_entries == []
+    assert len(visible_entries) == 1
+
+
+def test_group_subcommand_flags_skips_hidden_subcommand() -> None:
+    """Identifier-level set equality (flag long-names are identifiers, not
+    human-facing text) pins that only the visible sub's flags reach the
+    grouped section, without inspecting any rendered string."""
+    fixture = _fixture_surface_with_hidden_sub()
+    sections = help_mod._group_subcommand_flags(fixture)
+    flag_longs = {flag.long for _, flags in sections for flag in flags}
+    assert flag_longs == {"--alpha"}
+
+
+def test_subcmd_tuples_excludes_hidden_subcommand() -> None:
+    """surface_types: ``CommandDef.subcmd_tuples`` powers shell completion."""
+    fixture = _fixture_surface_with_hidden_sub()
+    names = {name for name, _ in fixture.subcmd_tuples}
+    assert names == {"vis"}
 
 
 def test_usage_leaf_sessions_run_renders_full_output(snapshot: SnapshotAssertion) -> None:

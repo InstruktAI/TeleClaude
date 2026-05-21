@@ -833,53 +833,41 @@
   
   ## `telec memories`
   
-  Search and manage memory observations
+  Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — their relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the memory scraper; agents must never create them.
   
   ### `telec memories list`
   
-  List memory observations
+  List personal-preference observations about the human.
   
   **Usage:** `telec memories list [--limit <n>] [--type <type>] [--project <name>]`
   
   **Flags:**
   
   - `--limit`: Max results (default: 50)
-  - `--type`: Filter by type: preference, decision, discovery, gotcha, pattern, friction, context
+  - `--type`: Filter by observation type stored in the schema
   - `--project`: Filter by project name
   
   ### `telec memories search`
   
-  Search memory observations
+  Search personal-preference observations about the human.
   
   **Usage:** `telec memories search <query> [--limit <n>] [--type <type>] [--project <name>]`
   
   **Flags:**
   
   - `--limit`: Max results (default: 20)
-  - `--type`: Filter by type: preference, decision, discovery, gotcha, pattern, friction, context
+  - `--type`: Filter by observation type stored in the schema
   - `--project`: Filter by project name
-  
-  ### `telec memories save`
-  
-  Save a memory observation
-  
-  **Usage:** `telec memories save <text> [--title <title>] [--type <type>] [--project <name>]`
-  
-  **Flags:**
-  
-  - `--title`: Observation title
-  - `--type`: Type: preference, decision, discovery, gotcha, pattern, friction, context
-  - `--project`: Project name
   
   ### `telec memories delete`
   
-  Delete a memory observation by ID
+  Delete a personal-preference observation by ID (typically run by the human while pruning).
   
   **Usage:** `telec memories delete <id>`
   
   ### `telec memories timeline`
   
-  Show observations around an anchor ID
+  Show personal-preference observations around an anchor ID.
   
   **Usage:** `telec memories timeline <id> [--before <n>] [--after <n>] [--project <name>]`
   
