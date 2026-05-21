@@ -7,6 +7,8 @@ visibility: public
 status: target
 delivered_by:
   - v2-config-cutover
+  - simplify-install-flow-cleanup
+  - install-wizard-enrichment
 description: Config bounded context — effective configuration resolved from layered
   YAML overlays. Owns the model, validation, and overlay computation. Consumed by
   every service.
@@ -76,7 +78,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - Computer identity fields are immutable per machine; changing them requires re-running `make install` / wizard.
   - Release channel + pinned_minor obey the stable-channel rule (above).
 - **Identifier:** the machine itself (one runtime config per machine, no further sub-identity).
-- **Lifecycle:** authored once during initial install via the TUI wizard; mutated via `telec config patch` (which validates against schema before persisting).
+- **Lifecycle:** authored and mutated through the TUI setup wizard (`telec config wizard`), which is the canonical single human-facing surface for every persisted TeleClaude setup value — initial install and idempotent re-runs alike. Non-interactive mutation is available via `telec config patch`, which validates against schema before persisting. Behavioural contract for the wizard surface (single setup surface, idempotent re-runs, secret hygiene, partial-resume, at-a-glance status, permissions/preflight) lives in `project/spec/feature/config/setup-wizard`.
 
 ### Domain events emitted
 
@@ -124,6 +126,8 @@ be added as `v2-config-cutover` lands the cutover work.
 - **Subscription Routing** — `docs/project/spec/feature/config/subscription-routing.md` — Subscriptions are a `type`-discriminated union of `JobSubscription` and `YoutubeSubscription`; each carries a `SubscriptionNotification` with `preferred_channel` (default `telegram`).
 - **Person Identity Schema** — `docs/project/spec/feature/config/person-identity-schema.md` — `PersonEntry` declares per-person identity in the global `people` list with a required non-empty stripped email, role enum, and nested expertise mapping; `proficiency` is the deprecated single-level form.
 - **Runtime TTS Toggle** — `docs/project/spec/feature/config/runtime-tts-toggle.md` — `RuntimeSettings` is a separate mutable layer persisted as JSON with debounced (0.5s) writes; only `tts.enabled` is mutable today; `parse_patch` strictly rejects unknown keys and non-bool values.
+- **Setup Wizard** — `docs/project/spec/feature/config/setup-wizard.md` — `telec config wizard` is the canonical single TeleClaude-owned interactive surface for every persisted setup value. Guarantees: single setup surface, idempotent re-runs, secret hygiene, partial-resume, at-a-glance status, release-channel + permissions/preflight coverage. `status: target` until `simplify-install-flow-cleanup` + `install-wizard-enrichment` both deliver.
+- **Machine Config Write** — `docs/project/spec/feature/config/machine-config-write.md` — `save_machine_config` mirrors `save_project_config`'s atomic-replace contract for the dataclass-backed machine `config.yml`. Sanctioned write path for machine-level config; v1 does not emit `config.effective.updated` from this writer. `status: target` until `install-wizard-enrichment` delivers the helper alongside its first consumer (the wizard's system-identity step).
 
 ### Context map position
 

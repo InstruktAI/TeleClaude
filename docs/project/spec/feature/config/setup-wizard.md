@@ -7,6 +7,7 @@ visibility: 'public'
 applies_to: 'v1'
 status: 'target'
 delivered_by:
+  - 'simplify-install-flow-cleanup'
   - 'install-wizard-enrichment'
 description: 'Interactive, idempotent guided walkthrough that is the single TeleClaude-owned surface for completing machine-wide setup — covers every persisted configuration value, resumes from partial state, and shows at-a-glance status before and after each pass.'
 ---
@@ -67,9 +68,14 @@ The user experience holds five guarantees:
 
 The wizard delegates to the existing TUI in guided mode and reuses the
 established adapter-tab, env-var-registry, guidance-registry, and
-atomic-config-write infrastructure. Every persisted field the wizard
-writes is part of the typed config schema documented in
-`project/spec/teleclaude-config`.
+atomic-config-write infrastructure. Persistence flows through five
+distinct surfaces (see "Persistence surfaces and writers" below):
+YAML overlays are typed via Pydantic (`GlobalConfig`, `ProjectConfig`,
+`PersonConfig`), the machine `config.yml` is typed via the dataclass
+tree loaded by `teleclaude/config/__init__.py`, and adapter / API
+credentials persist through the documented env-var registry and
+env-file writer. Every persisted surface the wizard writes is documented
+in `project/spec/teleclaude-config`.
 
 ## Canonical fields
 
@@ -226,18 +232,160 @@ And every previously-passing validation continues to pass
 And no existing adapter, person, notification, or environment behavior regresses
 ```
 
+### Persistence surfaces and writers
+
+The wizard writes through five distinct persistence surfaces. The
+wizard does not introduce a parallel store; every persisted value
+lands in one of the five surfaces below.
+
+| Wizard scope                                          | Persistence file                              | Typed surface                          | Writer (v1)                                                  |
+| ----------------------------------------------------- | --------------------------------------------- | -------------------------------------- | ------------------------------------------------------------ |
+| People, subscriptions, interests, event domains       | `~/.teleclaude/teleclaude.yml` (global YAML)  | `GlobalConfig` (Pydantic)              | `cli/config_handlers.py:save_global_config`                  |
+| Per-person creds, subscriptions, interests            | `~/.teleclaude/people/<name>/teleclaude.yml`  | `PersonConfig` (Pydantic)              | `cli/config_handlers.py:save_person_config`                  |
+| Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)     | `ProjectConfig` (Pydantic)             | `config/loader.py:save_project_config` (atomic, per `atomic-project-config-write`) |
+| Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                   | env-var registry (untyped)             | `cli/config_handlers.py:set_env_var`                         |
+| Computer identity, agents inventory, daemon settings  | `config.yml` (machine config)                 | `Config` dataclass tree (no Pydantic)  | `save_machine_config` (target — per `machine-config-write`)  |
+
+YAML overlays and machine config are typed and validated; the `.env`
+file path holds adapter and provider credentials and is intentionally
+untyped, with semantics carried by the documented env-var registry and
+`_ADAPTER_ENV_VARS`. UC-WIZ-4's secret-hygiene contract applies
+uniformly across both typed and env-file persistence.
+
+The machine-config writer (`save_machine_config`) does not exist in
+v1 today — `bin/init.sh` historically used `sed` against `config.yml`.
+This delivery introduces the atomic-replace helper documented in
+`machine-config-write`. Module placement is `config/loader.py` for
+symmetry with `save_project_config`. The plan task that adds the
+computer-name wizard step is the task that adds the helper.
+
+### v1 reload semantics
+
+v1 wizard writes do **not** publish `config.effective.updated`. That
+event is part of the v2 `config` domain contract (per
+`project/spec/domain/config`) and the v1 `applies_to: v1`
+`machine-config-load` and `layered-overlay-resolution` specs state v1
+has no filesystem watcher and no cluster-visible config event.
+
+Consumer reload in v1 happens through the existing semantics:
+
+- **Daemon** — reads `config.yml` and overlay files at startup.
+  Operators run `make start` / `make restart` after the wizard. The
+  canonical `make install → telec config wizard → make start` path
+  IS the v1 reload story.
+- **CLI invocations** — re-load config at module import on each
+  invocation (per `machine-config-load`). The next `telec` command
+  sees the new values.
+- **TUI / wizard view itself** — write-then-read for the wizard's
+  rendering. Each step writes through the surface's writer; the next
+  render re-derives status from the persisted file (UC-WIZ-5
+  mandates this).
+
+UX consequence: after a write that affects a running daemon (e.g.,
+`config.yml: computer.name`, `config.yml: agents`, `teleclaude.yml:
+notifications`), the wizard surfaces a reminder that `make restart`
+is required for the daemon to pick up the change. The reminder is a
+display detail; the persistent contract is that v1 reload is
+restart-driven, not event-driven.
+
+### Wizard step inventory and placement
+
+The wizard reuses the existing `_SUBTABS = ("adapters", "people",
+"notifications", "environment")` set; no new subtab is added. The
+`environment` subtab is broadened in scope from "env-vars-only" to
+"machine-level config" so it can host machine-config fields
+(computer identity, release channel) alongside env vars.
+
+Permissions/preflight is **not** a subtab and **not** a guided step.
+It is rendered as an at-a-glance status section on the entry/summary
+view alongside the existing completion summary (UC-WIZ-6 is the
+behavioural anchor).
+
+`_GUIDED_STEPS` is extended with two new entries relative to the
+existing seven (Configure Telegram → Configure Discord → Configure
+AI + Voice → Configure WhatsApp → Review People → Review
+Notifications → Review Environment):
+
+| New guided step                | Position                                | Subtab        | Persistence                                                                                |
+| ------------------------------ | --------------------------------------- | ------------- | ------------------------------------------------------------------------------------------ |
+| Configure System Identity      | First (before Configure Telegram)       | `environment` | `config.yml: computer.name` via `save_machine_config` (per `machine-config-write`)         |
+| Configure Release Channel      | After Review Environment (last)         | `environment` | `<project>/teleclaude.yml: deployment.{channel,pinned_minor}` via `save_project_config`    |
+
+Rationale for placement: system identity is foundational (later steps
+may reference it in guidance text), so it leads. Release channel is
+deployment policy and follows the environment review, framing the
+"what daemon channel does this machine run" question after the
+machine-level pass.
+
+### Permissions / preflight check inventory
+
+The permissions/preflight section runs **local checks only**. It does
+not cross bounded-context boundaries through direct service calls. The
+check inventory below uses local reads (file presence, env-var
+presence, schema validation, local subprocess probes) with a
+deterministic verdict per row.
+
+| Check                                          | Mechanism                                                                              | Verdict tier                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------- |
+| Telegram required env vars set                 | env-var presence: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_IDS`, `TELEGRAM_SUPERGROUP_ID`   | Required daemon-start blocker |
+| `config.yml` exists and parses                 | File presence + existing dataclass loader (per `machine-config-load`)                  | Required daemon-start blocker |
+| Project `teleclaude.yml` exists and validates  | File presence + existing `ProjectConfig` Pydantic validation                           | Required daemon-start blocker (when run inside a project) |
+| Global `~/.teleclaude/teleclaude.yml` valid    | File presence + existing `GlobalConfig` Pydantic validation                            | Optional gap                  |
+| Enabled agent CLI binaries on `PATH`           | `shutil.which(<binary>)` per agent declared `enabled: true` in `config.yml: agents`    | Required daemon-start blocker |
+| `TELECLAUDE_HOME` resolves and is writable     | Path resolution via `teleclaude.paths` + `os.access(path, os.W_OK)`                    | Required daemon-start blocker |
+| AI/Voice keys present (when adapter enabled)   | env-var presence: `OPENAI_API_KEY` etc.                                                | Optional adapter gap          |
+| WhatsApp credentials present (when enabled)    | env-var presence (per `whatsapp-env-var-override`)                                     | Optional adapter gap          |
+| Discord credentials present (when enabled)    | env-var presence: Discord env vars                                                     | Optional adapter gap          |
+
+For each non-OK row, the section renders guidance text pointing the
+human at the external system that owns the prompt (OS settings, OAuth
+flow, WhatsApp QR pairing, etc.). The wizard never grants, escalates,
+or modifies a host-level permission itself — UC-WIZ-8 mandates this.
+
+Cross-context status that would require a service call (e.g., "is the
+daemon currently running and healthy?") is **excluded**. The wizard's
+job is preflight, not health-checking.
+
+### Section status taxonomy
+
+The existing `classify_adapter_status` returns `configured` /
+`partial` / `unconfigured`. UC-WIZ-6 extends the taxonomy with a
+fourth value:
+
+- `invalid` — schema validation fails against the typed config
+  (Pydantic for YAML overlays; dataclass-parse for `config.yml`).
+  Example: release channel = `stable` with empty pinned-minor (per
+  `stable-channel-pinning-rule`).
+
+The required-vs-optional distinction surfaced in the permissions
+inventory above is **computed at render time** from each section's
+classification (`Required daemon-start blocker` vs `Optional gap`).
+No new persisted field is introduced for this distinction; it is a
+rendering concern, not a state concern.
+
 ### Implementation pointers (v1)
 
-- `teleclaude/cli/telec/handlers/config.py` — `telec config` dispatcher;
-  the `wizard` subcommand opens the TUI in guided mode.
-- `teleclaude/cli/tui/views/_config_constants.py` — guided-step
-  definitions, adapter-tab inventory, status classification helper.
-- `teleclaude/cli/tui/config_components/guidance.py` — env-var guidance
-  registry (the per-field human-facing copy surface the wizard reuses).
-- `teleclaude/config/loader.py` — atomic config-write path
-  (`save_project_config`) and matching load helper.
-- `teleclaude/config/schema.py` — typed `GlobalConfig`, `ProjectConfig`,
-  `PersonConfig` Pydantic models the wizard writes into.
+- `teleclaude/cli/telec/handlers/config.py` — `telec config`
+  dispatcher; the `wizard` subcommand opens the TUI in guided mode.
+- `teleclaude/cli/tui/views/_config_constants.py` — `_SUBTABS`,
+  `_GUIDED_STEPS`, adapter-tab inventory, `classify_adapter_status`
+  helper.
+- `teleclaude/cli/tui/views/config_editing.py` — existing TUI editing
+  flows the new guided steps reuse.
+- `teleclaude/cli/tui/config_components/guidance.py` —
+  `GuidanceRegistry` for per-field human-facing copy.
+- `teleclaude/cli/config_handlers.py` — `save_global_config`,
+  `save_person_config`, `set_env_var`, `resolve_env_file_path`,
+  `_ADAPTER_ENV_VARS`.
+- `teleclaude/cli/config_cli.py` — `_write_env_var` (env-file
+  writer); existing patterns for non-interactive env mutation.
+- `teleclaude/config/loader.py` — `save_project_config` (existing
+  atomic-write helper) and the location of the new
+  `save_machine_config` introduced by this delivery.
+- `teleclaude/config/__init__.py` — machine config loader; the
+  `Config` dataclass tree the new writer targets.
+- `teleclaude/config/schema.py` — Pydantic models for the YAML
+  overlay surfaces (`GlobalConfig`, `ProjectConfig`, `PersonConfig`).
 
 ### Cross-context references
 
