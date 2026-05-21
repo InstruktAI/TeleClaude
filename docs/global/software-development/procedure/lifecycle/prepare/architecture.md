@@ -11,11 +11,8 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/principle/stewardship.md
-- @~/.teleclaude/docs/general/principle/calibration.md
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
-- @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
-- @~/.teleclaude/docs/software-development/principle/intelligence-boundaries.md
+- @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal

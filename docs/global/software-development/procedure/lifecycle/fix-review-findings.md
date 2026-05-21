@@ -9,10 +9,6 @@ visibility: 'public'
 
 # Fix Review Findings — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/commits.md
-
 ## Goal
 
 Address review findings for a todo and bring the verdict to `APPROVE`. This procedure

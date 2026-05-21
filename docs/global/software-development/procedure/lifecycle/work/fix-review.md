@@ -9,10 +9,6 @@ visibility: 'public'
 
 # Fix Review — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/commits.md
-
 ## Goal
 
 Read `telec todo artifacts read {slug} review-findings`.

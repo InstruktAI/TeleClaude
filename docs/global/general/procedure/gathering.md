@@ -13,7 +13,6 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/general/principle/breath.md
 - @~/.teleclaude/docs/general/principle/proprioception.md
-- @~/.teleclaude/docs/general/principle/attunement.md
 
 ## Goal
 

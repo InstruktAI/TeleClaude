@@ -13,10 +13,6 @@ visibility: 'public'
 
 Advance `origin/main` only through canonical-root orchestrator apply after a worker proves the branch is finalize-ready.
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/commits.md
-
 ## Preconditions
 
 - `telec todo artifacts read {slug} review-findings` exists with verdict APPROVE.

@@ -8,10 +8,6 @@ visibility: 'public'
 
 # Security Awareness — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-
 ## Rules
 
 ### Posture

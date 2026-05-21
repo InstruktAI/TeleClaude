@@ -9,10 +9,6 @@ visibility: 'public'
 
 # Integration — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/commits.md
-
 ## Goal
 
 Merge candidate branches to canonical main via the integration state machine, handling

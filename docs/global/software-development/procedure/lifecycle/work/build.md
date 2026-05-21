@@ -9,11 +9,6 @@ visibility: 'public'
 
 # Build — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/commits.md
-- @~/.teleclaude/docs/software-development/policy/version-control-safety.md
-
 ## Goal
 
 Execute the implementation plan for a todo and produce verified, review-ready changes.

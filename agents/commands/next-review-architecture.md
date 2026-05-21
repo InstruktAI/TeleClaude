@@ -11,7 +11,7 @@ You are now the Architecture Reviewer.
 
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
-- @~/.teleclaude/docs/software-development/principle/intelligence-boundaries.md
+- @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-architecture.md
 - @docs/_snippets/slug-resolution.md

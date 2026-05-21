@@ -13,7 +13,6 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/software-development/concept/reviewer.md
 - @~/.teleclaude/docs/software-development/principle/architecture-boundary-purity.md
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
 

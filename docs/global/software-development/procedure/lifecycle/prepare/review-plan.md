@@ -11,9 +11,6 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/definition-of-done.md
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
 

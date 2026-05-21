@@ -8,12 +8,6 @@ visibility: 'public'
 
 # Rust Testing — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/testing.md
-- @~/.teleclaude/docs/software-development/policy/test-structure.md
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-
 ## Rules
 
 ### Dependency injection — the wiring model

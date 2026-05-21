@@ -8,11 +8,6 @@ visibility: 'public'
 
 # Code Quality Practices — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-- @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
-
 ## Rules
 
 ### Structure and Responsibility

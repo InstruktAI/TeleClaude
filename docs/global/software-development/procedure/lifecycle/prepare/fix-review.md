@@ -9,10 +9,6 @@ visibility: 'public'
 
 # Fix Review (Prepare) — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/commits.md
-
 ## Goal
 
 Your focus this turn is to address reviewer findings on the current phase's

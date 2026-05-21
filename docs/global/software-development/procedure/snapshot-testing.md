@@ -9,10 +9,6 @@ visibility: 'public'
 
 # Snapshot Testing — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/testing.md
-
 ## Goal
 
 Use the three permitted test moves for string content: snapshot the emitted

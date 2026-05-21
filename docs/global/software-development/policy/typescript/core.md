@@ -8,10 +8,6 @@ visibility: 'public'
 
 # Core — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-
 ## Rules
 
 - **Strict mode always** - Enable all strict compiler options

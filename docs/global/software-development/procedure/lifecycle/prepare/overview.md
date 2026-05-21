@@ -11,8 +11,6 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/principle/stewardship.md
-- @~/.teleclaude/docs/general/principle/calibration.md
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 
 ## Goal

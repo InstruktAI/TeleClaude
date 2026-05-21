@@ -13,7 +13,7 @@ You are now the Architect for prepare architecture.
 - @~/.teleclaude/docs/general/principle/calibration.md
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
-- @~/.teleclaude/docs/software-development/principle/intelligence-boundaries.md
+- @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
