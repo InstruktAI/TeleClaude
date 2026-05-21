@@ -51,6 +51,15 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             **kwargs: object,
         ) -> object: ...
 
+    @staticmethod
+    def _message_ids_from_result(result: object) -> list[str]:
+        """Normalize adapter message-send results into concrete message IDs."""
+        if result is None:
+            return []
+        if isinstance(result, (list, tuple)):
+            return [str(item) for item in result if item]
+        return [str(result)] if result else []
+
     def _resolve_origin_ui_adapter(self, session: "Session") -> str | None:
         """Return the session's origin adapter when it is a registered UI adapter."""
         origin_adapter = (session.last_input_origin or "").strip()
@@ -239,26 +248,36 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return None
 
+        delivery_method = (
+            "send_overflow_message" if metadata is not None and metadata.is_transcription else "send_message"
+        )
+
         # Route to chosen UI adapters (entry point result preferred)
         result = await self._route_to_ui(
             session_to_use,
-            "send_message",
+            delivery_method,
             text,
             metadata=metadata,
             multi_message=multi_message,
             include_adapters=include_adapters,
         )
-        message_id = str(result) if result else None
+        message_ids = self._message_ids_from_result(result)
+        message_id = message_ids[-1] if message_ids else None
 
         # Track for deletion if ephemeral
-        if ephemeral and message_id:
+        if ephemeral and message_ids:
             deletion_type: Literal["user_input", "feedback"] = "feedback" if feedback else "user_input"
-            await db.add_pending_deletion(session.session_id, message_id, deletion_type=deletion_type)
+            for tracked_message_id in message_ids:
+                await db.add_pending_deletion(
+                    session.session_id,
+                    tracked_message_id,
+                    deletion_type=deletion_type,
+                )
             if feedback:
                 logger.debug(
-                    "Feedback tracked for deletion: session=%s message_id=%s",
+                    "Feedback tracked for deletion: session=%s message_ids=%s",
                     session.session_id,
-                    message_id,
+                    message_ids,
                 )
 
         return message_id
@@ -313,7 +332,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         await self._route_to_ui(
             session_to_use,
-            "send_message",
+            "send_overflow_message",
             text,
             metadata=reflection_metadata,
             include_adapters={"discord"},

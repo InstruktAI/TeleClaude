@@ -53,7 +53,7 @@ class _ThreadedHost(UiAdapter):
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         return ""
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
+    async def update_channel_title(self, session: Session) -> bool:
         return True
 
     async def close_channel(self, session: Session) -> bool:
@@ -92,6 +92,7 @@ class _ThreadedHost(UiAdapter):
 
     async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
         raise NotImplementedError
+        yield
 
     # --- Override output message tracking to use simple instance attrs ---
 
@@ -216,6 +217,22 @@ class TestOverflowPagination:
             result = await host.send_threaded_output(session, short_text)
 
         assert result is not None
+
+    @pytest.mark.unit
+    async def test_overflow_message_splits_without_thread_state(self, host: _ThreadedHost) -> None:
+        """Standalone UI messages reuse overflow splitting without touching threaded output state."""
+        host.max_message_size = 20
+        session = _make_session()
+        long_text = "alpha " * 20
+
+        result = await host.send_overflow_message(session, long_text, metadata=MessageMetadata())
+
+        assert len(result) > 1
+        assert host._char_offset == 0
+        assert host._output_message_id is None
+        sent_chunks = [call.args[1] for call in host._send_message_mock.await_args_list]
+        assert len(sent_chunks) == len(result)
+        assert all(len(chunk) <= host.max_message_size for chunk in sent_chunks)
 
 
 # ---------------------------------------------------------------------------

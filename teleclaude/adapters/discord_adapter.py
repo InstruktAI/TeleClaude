@@ -110,7 +110,7 @@ class DiscordAdapter(
         source_limit = max(1, overflow_context.available_for_content - len(overflow_context.continuation_prefix))
         source_chunk = self._pack_complete_lines(active_text, source_limit)[0]
         consumed = len(source_chunk)
-        if active_text[consumed : consumed + 1] == "\n":
+        if active_text[consumed : consumed + 1] in {"\n", " "}:
             consumed += 1
         display_chunk = f"{overflow_context.continuation_prefix}{source_chunk}"
         return consumed, self._balance_intermediate_chunk(display_chunk)

@@ -184,16 +184,18 @@ def test_finalize_overflow_split_starts_new_message_for_next_full_line() -> None
     assert chunk == "1234\n5678"
 
 
-def test_finalize_overflow_split_raises_when_no_newline_exists_before_limit() -> None:
+def test_finalize_overflow_split_uses_space_when_no_newline_exists_before_limit() -> None:
     adapter = _make_adapter()
 
-    with pytest.raises(ValueError, match="line packing"):
-        adapter._finalize_overflow_split(
-            "single very long line without separators",
-            OverflowContext(continuation_prefix="", available_for_content=20),
-            20,
-            "unused",
-        )
+    split_idx, chunk = adapter._finalize_overflow_split(
+        "single very long line without separators",
+        OverflowContext(continuation_prefix="", available_for_content=20),
+        20,
+        "unused",
+    )
+
+    assert split_idx > 0
+    assert len(chunk) <= 20
 
 
 @pytest.mark.asyncio

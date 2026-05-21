@@ -43,6 +43,7 @@ ROUTE_KWARG_DELIVERY_TS = "delivery_ts"
 ROUTE_KWARG_INCLUDE_ADAPTERS = "include_adapters"
 ROUTE_KWARG_METADATA = "metadata"
 SEND_MESSAGE_METHOD = "send_message"
+SEND_OVERFLOW_MESSAGE_METHOD = "send_overflow_message"
 SEND_OUTPUT_UPDATE_METHOD = "send_output_update"
 SESSION_ID = "sess-1"
 SESSION_TITLE = "Session"
@@ -50,6 +51,7 @@ TELEGRAM_ADAPTER = InputOrigin.TELEGRAM.value
 TELEGRAM_FILE_MESSAGE_ID = "telegram-file"
 TELEGRAM_MESSAGE_ID = "telegram-msg"
 TRANSCRIPT_MESSAGE_ID = "transcript-msg"
+TRANSCRIPT_MESSAGE_ID_2 = "transcript-msg-2"
 TRANSCRIPT_TEXT = "transcript"
 UPDATED_TEXT = "updated"
 WHATSAPP_ADAPTER = InputOrigin.WHATSAPP.value
@@ -83,6 +85,7 @@ def _make_ui_adapter() -> MagicMock:
     adapter.edit_message = AsyncMock(return_value=True)
     adapter.send_file = AsyncMock(return_value="file-msg")
     adapter.send_output_update = AsyncMock(return_value="output-msg")
+    adapter.send_overflow_message = AsyncMock(return_value=[MESSAGE_ID])
     adapter.send_threaded_output = AsyncMock(return_value="thread-msg")
     adapter.update_channel_title = AsyncMock(return_value=True)
     adapter.delete_channel = AsyncMock(return_value=True)
@@ -275,7 +278,7 @@ class TestSendMessage:
         session = _make_session(last_input_origin=TELEGRAM_ADAPTER)
         telegram = _make_ui_adapter()
         discord = _make_ui_adapter()
-        telegram.send_message = AsyncMock(return_value=TRANSCRIPT_MESSAGE_ID)
+        telegram.send_overflow_message = AsyncMock(return_value=[TRANSCRIPT_MESSAGE_ID, TRANSCRIPT_MESSAGE_ID_2])
         client.register_adapter(TELEGRAM_ADAPTER, telegram)
         client.register_adapter(DISCORD_ADAPTER, discord)
 
@@ -294,16 +297,17 @@ class TestSendMessage:
                 cleanup_trigger=CleanupTrigger.NEXT_TURN,
             )
 
-        assert result == TRANSCRIPT_MESSAGE_ID
+        assert result == TRANSCRIPT_MESSAGE_ID_2
         telegram.ensure_channel.assert_awaited_once_with(session)
         discord.ensure_channel.assert_not_awaited()
-        telegram.send_message.assert_awaited_once()
+        telegram.send_message.assert_not_awaited()
+        telegram.send_overflow_message.assert_awaited_once()
         assert discord.send_message.await_count == 0
-        mock_db.add_pending_deletion.assert_awaited_once_with(
-            session.session_id,
-            TRANSCRIPT_MESSAGE_ID,
-            deletion_type=DELETION_TYPE_USER_INPUT,
-        )
+        tracked_deletions = [(args.args, args.kwargs) for args in mock_db.add_pending_deletion.await_args_list]
+        assert tracked_deletions == [
+            ((session.session_id, TRANSCRIPT_MESSAGE_ID), {"deletion_type": DELETION_TYPE_USER_INPUT}),
+            ((session.session_id, TRANSCRIPT_MESSAGE_ID_2), {"deletion_type": DELETION_TYPE_USER_INPUT}),
+        ]
 
 
 class TestBroadcastUserInput:
@@ -329,7 +333,7 @@ class TestBroadcastUserInput:
         mock_route.assert_awaited_once()
         assert mock_route.await_args.args == (
             session,
-            SEND_MESSAGE_METHOD,
+            SEND_OVERFLOW_MESSAGE_METHOD,
             HELLO_TEXT,
         )
         assert mock_route.await_args.kwargs[ROUTE_KWARG_INCLUDE_ADAPTERS] == {DISCORD_ADAPTER}

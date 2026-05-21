@@ -119,6 +119,14 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Close any open markers for a live intermediate render."""
         return text
 
+    def _prepare_overflow_message(
+        self,
+        text: str,
+        metadata: MessageMetadata | None,
+    ) -> tuple[str, MessageMetadata | None]:
+        """Prepare standalone UI message text before overflow splitting."""
+        return text, metadata
+
     # -------------------------------------------------------------------------
     # Threaded output delivery (was ThreadedOutputMixin)
     # -------------------------------------------------------------------------
@@ -163,6 +171,63 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             )
             return result
 
+    def _overflow_display_at_offset(self, text: str, offset: int) -> tuple[str, str]:
+        continuation_state = self._scan_markdown_state(text[:offset], self._markdown_initial_state())
+        continuation_prefix = self._continuation_prefix_for_state(continuation_state)
+        return continuation_prefix, f"{continuation_prefix}{text[offset:]}"
+
+    def _split_overflow_message(self, text: str) -> list[str]:
+        """Split a standalone UI message with the same overflow engine as threaded output."""
+        limit = max(self.max_message_size - 10, 1)
+        if len(text) <= limit:
+            return [self._balance_intermediate_chunk(text)] if text else [text]
+
+        chunks: list[str] = []
+        offset = 0
+        while offset < len(text):
+            continuation_prefix, display_text = self._overflow_display_at_offset(text, offset)
+            if len(display_text) <= limit:
+                final_chunk = self._balance_intermediate_chunk(display_text)
+                if final_chunk:
+                    chunks.append(final_chunk)
+                break
+
+            overflow_context = OverflowContext(
+                continuation_prefix=continuation_prefix,
+                available_for_content=limit,
+            )
+            overflow_plan = self._plan_overflow(text[offset:], overflow_context)
+            if overflow_plan.chunk:
+                chunks.append(overflow_plan.chunk)
+            offset += overflow_plan.split_idx
+
+        return chunks or [text]
+
+    async def send_overflow_message(
+        self,
+        session: Session,
+        text: str,
+        *,
+        metadata: MessageMetadata | None = None,
+        multi_message: bool = False,
+    ) -> list[str]:
+        """Send a standalone UI message, overflowing into continuation messages when needed."""
+        prepared_text, prepared_metadata = self._prepare_overflow_message(text, metadata)
+        chunks = self._split_overflow_message(prepared_text)
+        lock = self._get_output_delivery_lock(session.session_id)
+        async with lock:
+            message_ids: list[str] = []
+            for chunk in chunks:
+                message_id = await self.send_message(
+                    session,
+                    chunk,
+                    metadata=prepared_metadata,
+                    multi_message=multi_message,
+                )
+                if message_id:
+                    message_ids.append(str(message_id))
+            return message_ids
+
     async def _send_threaded_output_unlocked(
         self,
         session: Session,
@@ -194,9 +259,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         #    chunk, the reopen prefix (e.g. ```\n for an open code fence) is
         #    reapplied — even across separate top-level renders where any
         #    in-memory parameter would have been lost.
-        continuation_state = self._scan_markdown_state(text[:char_offset], self._markdown_initial_state())
-        continuation_prefix = self._continuation_prefix_for_state(continuation_state)
-        display_text = f"{continuation_prefix}{active_text}"
+        continuation_prefix, display_text = self._overflow_display_at_offset(text, char_offset)
 
         # 4. Check for overflow.
         limit = self.max_message_size - 10

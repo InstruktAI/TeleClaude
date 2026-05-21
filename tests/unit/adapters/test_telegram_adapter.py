@@ -10,6 +10,8 @@ from syrupy.assertion import SnapshotAssertion
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.core.models import MessageMetadata, Session
 
+TELEGRAM_MARKDOWN_V2_PARSE_MODE = "MarkdownV2"
+
 
 @pytest.fixture()
 def adapter(monkeypatch: pytest.MonkeyPatch) -> TelegramAdapter:
@@ -93,6 +95,17 @@ def test_format_output_wraps_text_in_code_block(adapter: TelegramAdapter, snapsh
 
 def test_format_output_shortens_long_separator_lines(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
     assert adapter.format_output("─" * 118) == snapshot
+
+
+def test_prepare_overflow_message_escapes_transcription_once(adapter: TelegramAdapter) -> None:
+    metadata = MessageMetadata(is_transcription=True)
+
+    prepared_text, prepared_metadata = adapter._prepare_overflow_message("hello_world", metadata)
+
+    assert prepared_text != "hello_world"
+    assert prepared_metadata is not None
+    assert prepared_metadata.is_transcription is False
+    assert prepared_metadata.parse_mode == TELEGRAM_MARKDOWN_V2_PARSE_MODE
 
 
 # ---------------------------------------------------------------------------

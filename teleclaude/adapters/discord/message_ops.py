@@ -79,13 +79,17 @@ class MessageOperationsMixin:
                 chunks.append(remaining)
                 break
             split_at = remaining.rfind("\n", 0, limit + 1)
+            separator_len = 1
             if split_at < 0:
-                raise ValueError("Discord line packing requires a prior newline within the message limit")
+                split_at = remaining.rfind(" ", 0, limit + 1)
+            if split_at < 0:
+                split_at = limit
+                separator_len = 0
             if split_at == 0:
                 remaining = remaining[1:]
                 continue
             chunks.append(remaining[:split_at])
-            remaining = remaining[split_at + 1 :]
+            remaining = remaining[split_at + separator_len :]
         return chunks
 
     def _split_message_chunks(self, text: str) -> list[str]:
