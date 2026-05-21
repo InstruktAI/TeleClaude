@@ -114,7 +114,13 @@ that applies to it. Per-artifact provenance:
 - `owned_snippet_digests` — map of `{snippet_id: digest}` for every snippet
   the Todo owns via its `delivered_by` membership at write time.
 - `referenced_snippet_digests` — map of `{snippet_id: digest}` for every
-  snippet the artifact references by id (extracted from `@snippet/id`
+  snippet the artifact references by id (extracted from the
+  validator-accepted inline reference forms — `@<HOME>/.teleclaude/docs/<id-path>.md`
+  for global snippets and `@docs/<id-path>.md` for project snippets,
+  per `teleclaude/resource_validation/_snippet.py:124`. The extractor
+  maps each accepted reference to its canonical snippet ID and the
+  ID is the key into the digest map. Forms outside the validator's
+  accepted set
   references in the body, not by literal path substring).
 - `dependency_set_at_write` — list of `{dep_slug, roadmap_status}` tuples
   for the Todo's **immediate** `after` set at write time. Shallow only;
@@ -359,7 +365,7 @@ Scenario: owned-snippet drift on a target architecture snippet
 
 ```gherkin
 Scenario: upstream-snippet drift on a referenced domain spec
-  Given a Todo whose implementation-plan references "@snippet/project/spec/domain/context"
+  Given a Todo whose implementation-plan references "@docs/project/spec/domain/context.md" (validator-accepted project reference resolving to canonical snippet ID "project/spec/domain/context")
   And the plan recorded referenced_snippet_digests["project/spec/domain/context"] = "<digest-A>"
   And docs/project/spec/domain/context.md has since been edited, producing "<digest-B>"
   When the orchestrator calls "telec todo prepare my-feature"
@@ -474,8 +480,11 @@ Scenario: re-writing an artifact clears its drift stamps
   orchestrator's own work or a sibling delivery.
 - `knowledge` — snippet digests are captured against the canonical doc
   layer (`docs/`), the same source `telec docs get` reads. Snippet
-  reference extraction uses snippet IDs (`@snippet/<id>` or
-  `@<frontmatter-id>` forms), not file paths.
+  reference extraction recognizes the validator-accepted inline forms
+  (`@<HOME>/.teleclaude/docs/<id-path>.md` for global and
+  `@docs/<id-path>.md` for project, per
+  `teleclaude/resource_validation/_snippet.py:124`) and maps each
+  to its canonical snippet ID. The ID is the key into the digest map.
 - `session_ledger` — the resolved session principal for each
   `--drift-reviewed` stamp is recorded so the analyzer's verdict can be
   audited and so a non-analyzer session cannot author a drift verdict.
@@ -635,8 +644,9 @@ Scenario: re-writing an artifact clears its drift stamps
 - **Reference extraction has two distinct mechanisms.** `referenced_paths`
   uses literal path-substring matching against `git ls-files` (current
   behavior, preserved). `referenced_snippet_digests` uses
-  `@<snippet-id>` / `@<frontmatter-id>` reference extraction against the
-  doc snippet index (new). The two surfaces do not overlap.
+  reference extraction against the doc snippet index recognizes the
+  validator-accepted inline forms (`@<HOME>/.teleclaude/docs/...` and
+  `@docs/...`) and resolves them to canonical snippet IDs (new). The two surfaces do not overlap.
 
 ## See Also
 

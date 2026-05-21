@@ -23,7 +23,7 @@ description: 'Multi-version storage of workflow Artifacts in todos.db — every 
 
 The Artifact aggregate inside the `workflow` bounded context persists every Artifact write (PRD, architecture, test-specs, implementation-plan, etc.) as a content-addressed version row in `todos.db`. Each write computes the SHA256 digest of the content, appends a row to `todo_artifact_versions`, and updates the `todo_artifacts` current-version pointer in place. Previous versions remain addressable by digest so the system can render unified diffs between any two versions on demand.
 
-Artifact provenance — the `origin/main` SHA at write time (captured via `get_origin_main_sha(cwd)`, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's state (the `ArtifactEntry` lifecycle stamp), not on the artifact rows themselves. The artifact tables stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp itself is the carrier of the extended drift-evidence fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `dependency_set_at_write`, `produced_at`) — see `@spec/feature/workflow/drift-detection` for their per-class semantics and the single `_sync_artifact_digest_state` boundary that populates them.
+Artifact provenance — the `origin/main` SHA at write time (captured via `get_origin_main_sha(cwd)`, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's state (the `ArtifactEntry` lifecycle stamp), not on the artifact rows themselves. The artifact tables stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp itself is the carrier of the extended drift-evidence fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `dependency_set_at_write`, `produced_at`) — see `@spec/feature/workflow/drift-detection` for their per-class semantics and the single `teleclaude/core/next_machine/provenance.py:sync_artifact_provenance` core boundary that populates them. API routes are thin callers; the legacy `_sync_artifact_digest_state` in `todo_routes.py` is migrated to call the core boundary and deleted after migration.
 
 Removal of an artifact deletes both the current row and the full version history in a single transaction. Artifact kinds are enumerated; the canonical list is enforced at the CLI boundary before any DB write. Each artifact kind is unique per Todo (one `prd` per slug, one `implementation-plan` per slug, etc.).
 
@@ -96,7 +96,7 @@ Then `_ensure_artifact_id` raises ValueError("…is delivered (read-only)") and 
 - `teleclaude/cli/telec/handlers/todo.py:467` — `_validate_artifact_name` enforces the canonical kinds list
 - `teleclaude/cli/telec/handlers/todo.py:475` — `_handle_todo_artifacts` dispatcher (list/read/write/diff/remove)
 - `teleclaude/api/todo_routes.py:329` — `/todos/artifacts/{slug}/{name}` REST surface (read/write/remove)
-- `teleclaude/api/todo_routes.py:284` — `_sync_artifact_digest_state` stamps codebase_sha + referenced_paths onto todo state
+- `teleclaude/core/next_machine/provenance.py:sync_artifact_provenance` — core provenance boundary; stamps `codebase_sha_at_write` (via `get_origin_main_sha`), `referenced_paths`, and the extended drift-evidence fields onto todo state. The legacy `teleclaude/api/todo_routes.py:_sync_artifact_digest_state` migrates to call this core function and is deleted.
 
 ### Cross-context references
 
@@ -105,7 +105,7 @@ Then `_ensure_artifact_id` raises ValueError("…is delivered (read-only)") and 
 
 ## Known caveats
 
-- The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's state (`ArtifactEntry` in `teleclaude/types/todos.py:156`), not on the artifact rows themselves. The artifact tables intentionally stay narrow (content + digest + audit columns); provenance is a Todo-state concern refreshed by `_sync_artifact_digest_state` only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `test-specs`, `implementation-plan`).
+- The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's state (`ArtifactEntry` in `teleclaude/types/todos.py:156`), not on the artifact rows themselves. The artifact tables intentionally stay narrow (content + digest + audit columns); provenance is a Todo-state concern refreshed by the core `sync_artifact_provenance` boundary (`provenance.py`) only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `test-specs`, `implementation-plan`).
 - The `input` artifact has special status: once `requirements` exists, the write route rejects further `input` writes with HTTP 409 ("input artifact is frozen"), and `telec todo artifacts remove input` is unconditionally rejected.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The `artifact_versions` listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost in the same transaction. There is no undo.

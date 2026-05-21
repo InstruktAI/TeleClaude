@@ -49,8 +49,11 @@ The six drift classes:
 - **owned-snippet** — `owned_snippet_digests` vs current digest of each
   snippet the Todo owns via its `delivered_by` membership at write time.
 - **upstream-snippet** — `referenced_snippet_digests` vs current digest
-  of each non-owned snippet the artifact references by `@snippet/<id>`
-  extraction.
+  of each non-owned snippet the artifact references by validator-
+  accepted inline reference extraction (`@<HOME>/.teleclaude/docs/...`
+  for global snippets, `@docs/...` for project snippets — per
+  `teleclaude/resource_validation/_snippet.py:124`), mapped to
+  canonical snippet IDs.
 - **dependency-graph** — `dependency_set_at_write` vs the Todo's current
   **immediate** `after` set and each direct dep's roadmap status.
   Shallow only — not transitive.
