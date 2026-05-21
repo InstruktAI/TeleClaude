@@ -23,7 +23,6 @@ class TestPeopleRoutes:
                     email="alice@example.com",
                     role="admin",
                     expertise={"python": "expert"},
-                    proficiency="expert",
                     api_key="secret",
                 )
             ]
@@ -38,7 +37,6 @@ class TestPeopleRoutes:
                 "email": "alice@example.com",
                 "role": "admin",
                 "expertise": {"python": "expert"},
-                "proficiency": "expert",
             }
         ]
 

@@ -153,7 +153,6 @@ class PersonEntry(BaseModel):
     username: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
     expertise: dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]] | None = None
-    proficiency: ProficiencyLevel | None = None  # deprecated — use expertise
 
     @field_validator("email")
     @classmethod

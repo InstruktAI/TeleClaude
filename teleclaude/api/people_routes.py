@@ -24,7 +24,6 @@ async def list_people() -> list[PersonDTO]:
                 email=p.email,
                 role=p.role,
                 expertise=p.expertise,
-                proficiency=p.proficiency,
             )
             for p in global_cfg.people
         ]

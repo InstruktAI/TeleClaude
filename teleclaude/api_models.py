@@ -174,7 +174,6 @@ class PersonDTO(BaseModel):
     email: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
     expertise: dict[str, str | dict[str, str]] | None = None
-    proficiency: Literal["novice", "intermediate", "advanced", "expert"] | None = None  # deprecated
 
 
 class ComputerDTO(BaseModel):

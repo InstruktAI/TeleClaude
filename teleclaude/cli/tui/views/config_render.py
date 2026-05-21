@@ -183,7 +183,6 @@ class ConfigContentRenderMixin:
             result.append(f" ({person.role})", style=_DIM)
             if person.email:
                 result.append(f" <{person.email}>", style=_DIM)
-            result.append(f" [{getattr(person, 'proficiency', 'intermediate')}]", style=_DIM)
             result.append("\n")
 
             if selected and self._expanded_person == person.name:  # type: ignore[attr-defined]

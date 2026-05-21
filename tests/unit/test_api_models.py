@@ -698,7 +698,6 @@ class TestPersonDTO:
         assert dto.email is None
         assert dto.role == "member"
         assert dto.expertise is None
-        assert dto.proficiency is None
 
     @pytest.mark.unit
     def test_invalid_role_raises(self):

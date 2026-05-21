@@ -28,7 +28,6 @@ def test_person_info_optional_fields_default_to_none() -> None:
     assert info.email is None
     assert info.username is None
     assert info.expertise is None
-    assert info.proficiency is None
     assert info.telegram is None
     assert info.telegram_id is None
 
