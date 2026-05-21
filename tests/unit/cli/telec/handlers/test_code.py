@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,7 @@ from teleclaude.cli.telec.handlers.code import (
     _get_untracked_files,
     _stage_files,
     _with_trailer,
+    _WorkingTreeSnapshot,
     handle_code_add,
     handle_code_changed,
     handle_code_commit,
@@ -25,6 +27,24 @@ from teleclaude.git import GitCommandError
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
+
+
+def _snap(
+    *,
+    untracked: Iterable[str] = (),
+    staged: Iterable[str] = (),
+    modified_unstaged: Iterable[str] = (),
+    partial_staged: Iterable[str] = (),
+    unmerged: Iterable[str] = (),
+) -> _WorkingTreeSnapshot:
+    """Build a snapshot for tests that previously patched probe functions."""
+    return _WorkingTreeSnapshot(
+        untracked=frozenset(untracked),
+        staged=frozenset(staged),
+        modified_unstaged=frozenset(modified_unstaged),
+        partial_staged=frozenset(partial_staged),
+        unmerged=frozenset(unmerged),
+    )
 
 
 class TestGitHelpers:
@@ -128,12 +148,9 @@ class TestCommitWorkspaceScope:
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
             patch(
-                "teleclaude.cli.telec.handlers.code._get_untracked_files",
-                return_value=["teleclaude/brand_new.py"],
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(untracked=["teleclaude/brand_new.py"]),
             ),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -177,15 +194,12 @@ class TestCommitWorkspaceScope:
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
             patch(
-                "teleclaude.cli.telec.handlers.code._get_untracked_files",
-                return_value=["teleclaude/added.py"],
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(
+                    untracked=["teleclaude/added.py"],
+                    staged=["teleclaude/added.py"],  # agent already ran telec code add
+                ),
             ),
-            patch(
-                "teleclaude.cli.telec.handlers.code._get_staged_files",
-                return_value=["teleclaude/added.py"],  # agent already ran telec code add
-            ),
-            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -224,10 +238,7 @@ class TestCommitWorkspaceScope:
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch("teleclaude.cli.telec.handlers.code._working_tree_snapshot", return_value=_snap()),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -265,10 +276,10 @@ class TestCommitWorkspaceScope:
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=["foreign.py"]),
-            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch(
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(staged=["foreign.py"]),
+            ),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -305,11 +316,9 @@ class TestCommitWorkspaceScope:
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
             patch(
-                "teleclaude.cli.telec.handlers.code._get_unmerged_files",
-                return_value=["teleclaude/resolved.py"],
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(unmerged=["teleclaude/resolved.py"]),
             ),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -359,12 +368,11 @@ class TestIncludeFlag:
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
             patch(
-                "teleclaude.cli.telec.handlers.code._get_untracked_files",
-                return_value=["teleclaude/extra.py"],
-            ),
-            patch(
-                "teleclaude.cli.telec.handlers.code._dirty_paths",
-                return_value={"teleclaude/mine.py", "teleclaude/extra.py"},
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(
+                    untracked=["teleclaude/extra.py"],
+                    modified_unstaged=["teleclaude/mine.py"],
+                ),
             ),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -392,10 +400,9 @@ class TestIncludeFlag:
         repo.git.commit.return_value = (0, "", "")
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch(
-                "teleclaude.cli.telec.handlers.code._dirty_paths",
-                return_value={"teleclaude/mine.py", "teleclaude/extra.py"},
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(modified_unstaged=["teleclaude/mine.py", "teleclaude/extra.py"]),
             ),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -420,10 +427,9 @@ class TestIncludeFlag:
         repo = MagicMock()
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch(
-                "teleclaude.cli.telec.handlers.code._dirty_paths",
-                return_value={"teleclaude/mine.py"},  # clean.py is NOT dirty
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(modified_unstaged=["teleclaude/mine.py"]),  # clean.py NOT dirty
             ),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
@@ -447,10 +453,9 @@ class TestIncludeFlag:
         repo.git.commit.return_value = (0, "", "")
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch(
-                "teleclaude.cli.telec.handlers.code._dirty_paths",
-                return_value={"teleclaude/mine.py"},
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(modified_unstaged=["teleclaude/mine.py"]),
             ),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
@@ -547,15 +552,17 @@ class TestPartialStagingGuard:
             scoped_existing_paths=("teleclaude/mine.py",),
         )
         repo = MagicMock()
-        # diff(--cached --name-only) and diff(--name-only) both list mine.py
-        # → it's both staged AND has unstaged delta → partial staging.
-        repo.git.diff.return_value = "teleclaude/mine.py"
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                return_value=_snap(
+                    staged=["teleclaude/mine.py"],
+                    modified_unstaged=["teleclaude/mine.py"],
+                    partial_staged=["teleclaude/mine.py"],
+                ),
+            ),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
@@ -582,16 +589,20 @@ class TestPartialStagingGuard:
             scoped_existing_paths=("teleclaude/mine.py",),
         )
         repo = MagicMock()
-        # foreign.py is both staged and unstaged (partial), mine.py is clean
-        # in the index (modified-tracked, rides pathspec).
-        repo.git.diff.return_value = "foreign.py"
         repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=["foreign.py"]),
-            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
+                # foreign.py is partial-staged (outside our pathspec); mine.py is
+                # modified-only (rides pathspec, not partial-staged).
+                return_value=_snap(
+                    staged=["foreign.py"],
+                    modified_unstaged=["foreign.py", "teleclaude/mine.py"],
+                    partial_staged=["foreign.py"],
+                ),
+            ),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
@@ -880,7 +891,7 @@ class TestChangedWorkspaceScope:
         assert capsys.readouterr().out.splitlines() == ["teleclaude/touched.py"]
 
 
-def _assert_pathspec_commit(repo, expected_files: list[str]) -> None:
+def _assert_pathspec_commit(repo: MagicMock, expected_files: list[str]) -> None:
     """Assert the commit ran as a pathspec commit via a message file (-F)."""
     repo.git.commit.assert_called_once()
     args, kwargs = repo.git.commit.call_args

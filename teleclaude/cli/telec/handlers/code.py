@@ -5,12 +5,13 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.git import GitCommandError, Repo
-from teleclaude.git_lock import main_branch_lock
+from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
@@ -334,8 +335,20 @@ def _commit_under_lock(
     for its owner. The pre-commit hook owns format + lint inside git's own
     atomicity.
     """
+    # Resolve any stale .git/index.lock before any git work. The check is
+    # essentially free when no lock exists; when one does, it surfaces the
+    # waiting state via the daemon log and self-heals orphan locks once
+    # lsof confirms no holder (or the age ceiling is reached).
+    wait_for_index_lock_clear(project_root)
+
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     scope_paths = _commit_stage_paths(scope_resolution)
+
+    # Single read-only status snapshot replaces five separate gitpython
+    # probes. Shorter window between flock acquisition and the actual
+    # commit means fewer chances for the Python parent to die holding
+    # the index lock.
+    snapshot = _working_tree_snapshot(project_root)
 
     # Untracked-NEW files in scope are NOT auto-included. The agent must
     # declare them explicitly via `telec code add` (which stages them) or
@@ -343,11 +356,9 @@ def _commit_under_lock(
     # mode: an agent's tool calls touch incidental files that happen to land
     # in scope; the autodiscover model would commit them silently. Explicit
     # declaration is the safety net.
-    untracked = set(_get_untracked_files(project_root))
-    staged = set(_get_staged_files(project_root, include_deletions=True))
-    untracked_unstaged_in_scope = sorted(p for p in scope_paths if p in untracked and p not in staged)
+    untracked_unstaged_in_scope = sorted(p for p in scope_paths if p in snapshot.untracked and p not in snapshot.staged)
 
-    auto_scope_paths = [p for p in scope_paths if not (p in untracked and p not in staged)]
+    auto_scope_paths = [p for p in scope_paths if not (p in snapshot.untracked and p not in snapshot.staged)]
 
     # Merge auto-scope plus includes, preserving order, deduped.
     seen: set[str] = set()
@@ -393,8 +404,11 @@ def _commit_under_lock(
     #  - unmerged files in our pathspec (must be marked resolved)
     # Modified-tracked files are committed straight from the working tree by
     # pathspec and need no staging.
-    unmerged = set(_get_unmerged_files(project_root))
-    to_stage = [path for path in pathspec if (path in untracked or path in unmerged) and path not in staged]
+    to_stage = [
+        path
+        for path in pathspec
+        if (path in snapshot.untracked or path in snapshot.unmerged) and path not in snapshot.staged
+    ]
     if to_stage:
         _stage_files(to_stage, project_root)
 
@@ -402,7 +416,9 @@ def _commit_under_lock(
     # include is either currently dirty (modified-tracked) or now staged
     # (was-untracked, just added). A clean path is an agent error.
     if includes:
-        dirty_set = _dirty_paths(project_root)
+        # Include the just-staged paths in the dirty set so the
+        # was-untracked + --include path is recognized as dirty.
+        dirty_set = snapshot.dirty | set(to_stage)
         missing_inc = [path for path in includes if path not in dirty_set]
         if missing_inc:
             print(
@@ -418,7 +434,20 @@ def _commit_under_lock(
     # changes the agent never declared. The pre-commit hook's stash/restore
     # cycle also corrupts these files. Block the commit; the agent must
     # fully (re)stage the partial-staged file before retrying.
-    _check_partial_staging(project_root, pathspec=pathspec)
+    overlap = snapshot.partial_staged & set(pathspec)
+    if overlap:
+        print("ERROR: partially staged files in commit pathspec:", file=sys.stderr)
+        for path in sorted(overlap):
+            print(f"  {path}", file=sys.stderr)
+        print(
+            "\n`git commit -- <path>` would commit the working-tree version, sweeping\n"
+            "in unstaged hunks you did not declare. Fully (re)stage each file via the\n"
+            "sealed recovery path (`telec code add` accepts partial-staged tracked\n"
+            "files for exactly this case), then re-run telec code commit:\n"
+            "  telec code add " + " ".join(sorted(overlap)),
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
     # Auto-append the mandated trailer (idempotent) and commit via a message
     # file — robust against multi-line content, no shell arg-splitting.
@@ -536,12 +565,13 @@ def _get_untracked_files(project_root: Path) -> list[str]:
     return [f.strip() for f in output.strip().splitlines() if f.strip()]
 
 
-def _get_staged_files(project_root: Path, *, include_deletions: bool = False) -> list[str]:
+def _get_staged_files(project_root: Path, *, include_deletions: bool = False) -> list[str]:  # pyright: ignore[reportUnusedFunction]
     """Return list of staged file paths (those currently in the index).
 
     Used to distinguish "agent explicitly staged this via `telec code add`"
-    from "untouched-untracked, drop from pathspec." Resurrected after the
-    earlier deletion now that the explicit-add model needs the distinction.
+    from "untouched-untracked, drop from pathspec." Not currently called
+    from the commit hot path (replaced by ``_working_tree_snapshot``);
+    retained for test suites and external callers.
     """
     repo = Repo(str(project_root))
     diff_filter = "ACMRD" if include_deletions else "ACMR"
@@ -587,7 +617,86 @@ def _dirty_paths(project_root: Path) -> set[str]:
     return parts
 
 
-def _check_partial_staging(project_root: Path, *, pathspec: list[str]) -> None:
+@dataclass(frozen=True)
+class _WorkingTreeSnapshot:
+    """Single-shot view of the working tree + index.
+
+    Replaces five separate gitpython calls in the commit hot path
+    (`ls-files --others`, two `diff --cached`, `ls-files -u`, `diff
+    --name-only`). One `git status --porcelain=v1 -uall -z` produces
+    everything the commit path needs to decide pathspec, staging, and
+    partial-staging guard. Single call → shorter window between flock
+    acquisition and the actual commit → fewer chances for the Python
+    parent to die mid-sequence and orphan .git/index.lock.
+    """
+
+    untracked: frozenset[str] = field(default_factory=frozenset)
+    staged: frozenset[str] = field(default_factory=frozenset)
+    modified_unstaged: frozenset[str] = field(default_factory=frozenset)
+    partial_staged: frozenset[str] = field(default_factory=frozenset)
+    unmerged: frozenset[str] = field(default_factory=frozenset)
+
+    @property
+    def dirty(self) -> frozenset[str]:
+        """Any pending change — staged, unstaged, untracked, or unmerged."""
+        return self.untracked | self.staged | self.modified_unstaged | self.unmerged
+
+
+_UNMERGED_CODES = frozenset({"DD", "AU", "UD", "UA", "DU", "AA", "UU"})
+
+
+def _working_tree_snapshot(project_root: Path) -> _WorkingTreeSnapshot:
+    """Capture the working tree + index state in one git invocation.
+
+    `git status --porcelain=v1 -uall -z` is read-only on the index (no
+    `.git/index.lock` taken) and produces every status bit the commit
+    path needs. Format: each entry is `XY<space><path>\\0`, where X is
+    the index status and Y is the worktree status. Rename/copy entries
+    consume two NUL-separated tokens (`R  newpath\\0oldpath\\0`); the
+    parser skips the old-path token.
+    """
+    repo = Repo(str(project_root))
+    raw: str = repo.git.status("--porcelain=v1", "-uall", "-z")
+    tokens = raw.split("\x00")
+    untracked: set[str] = set()
+    staged: set[str] = set()
+    modified_unstaged: set[str] = set()
+    partial_staged: set[str] = set()
+    unmerged: set[str] = set()
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        i += 1
+        if not token or len(token) < 3:
+            continue
+        xy = token[:2]
+        path = token[3:]
+        # Rename/copy consumes the next token (old path) — skip it.
+        if xy[0] in ("R", "C"):
+            i += 1
+        if xy == "??":
+            untracked.add(path)
+        elif xy == "!!":
+            continue  # ignored
+        elif xy in _UNMERGED_CODES:
+            unmerged.add(path)
+        else:
+            if xy[0] != " ":
+                staged.add(path)
+            if xy[1] != " ":
+                modified_unstaged.add(path)
+                if xy[0] != " ":
+                    partial_staged.add(path)
+    return _WorkingTreeSnapshot(
+        untracked=frozenset(untracked),
+        staged=frozenset(staged),
+        modified_unstaged=frozenset(modified_unstaged),
+        partial_staged=frozenset(partial_staged),
+        unmerged=frozenset(unmerged),
+    )
+
+
+def _check_partial_staging(project_root: Path, *, pathspec: list[str]) -> None:  # pyright: ignore[reportUnusedFunction]
     """Block commits when a file in our pathspec is partially staged.
 
     `git commit -- <path>` records the working-tree version of <path>, not
@@ -595,6 +704,10 @@ def _check_partial_staging(project_root: Path, *, pathspec: list[str]) -> None:
     later working-tree edit), the commit captures BOTH — silently sweeping
     in unstaged content the agent never declared. Foreign partial-staging
     (outside our pathspec) is not our concern.
+
+    Not currently called from the commit hot path (the guard is inlined
+    against ``_working_tree_snapshot``); retained for test suites and
+    external callers.
     """
     repo = Repo(str(project_root))
     staged = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
