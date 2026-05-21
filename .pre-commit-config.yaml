@@ -13,8 +13,8 @@ repos:
     pass_filenames: true
     require_serial: true
   - id: guardrails
-    name: Guardrail enforcement (telec code lint --step guardrails)
-    entry: uv run python -m teleclaude.cli.telec code lint --step guardrails
+    name: Guardrail enforcement (tools/lint/guardrails.py)
+    entry: uv run python tools/lint/guardrails.py
     language: system
     pass_filenames: true
   - id: snapshot-testing
@@ -36,14 +36,14 @@ repos:
     types: [python]
     pass_filenames: true
   - id: markdown-validate
-    name: Markdown validation (telec code lint --step markdown)
-    entry: uv run python -m teleclaude.cli.telec code lint --step markdown
+    name: Markdown validation (tools/lint/markdown.py)
+    entry: uv run python tools/lint/markdown.py
     language: system
     files: \.(md|yaml)$
     pass_filenames: false
   - id: home-paths
-    name: Reject hardcoded HOME paths in docs (telec code lint --step home_paths)
-    entry: uv run python -m teleclaude.cli.telec code lint --step home_paths
+    name: Reject hardcoded HOME paths in docs (tools/lint/home_paths.py)
+    entry: uv run python tools/lint/home_paths.py --project-root .
     language: system
     files: \.md$
     pass_filenames: false

@@ -139,6 +139,7 @@ max-complexity = 20
 "teleclaude/helpers/agent_cli.py" = ["E402"]  # Needs sys.path for standalone execution
 # guard: ratchet-down — B904 (raise from), B023 (loop vars), E402 (import order), RUF001-003 (unicode)
 "teleclaude/cli/telec/**" = ["B904", "E402"]
+"teleclaude/cli/telec/__init__.py" = ["B904", "E402", "PLC0415"]  # Lazy handler imports keep CLI startup fast
 "teleclaude/cli/tui/animations/base.py" = ["RUF001", "RUF002", "RUF003"]
 "teleclaude/hooks/receiver/__main__.py" = ["E402"]
 # Startup-boundary and guarded imports — allowlisted for PLC0415

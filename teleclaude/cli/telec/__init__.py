@@ -24,80 +24,8 @@ from teleclaude.cli.telec._shared import (
 
 # Re-export auth helpers
 from teleclaude.cli.telec.auth import _resolve_command_auth, is_command_allowed
-from teleclaude.cli.telec.handlers.auth_cmds import (
-    _handle_auth,
-    _handle_login,
-    _handle_logout,
-    _handle_whoami,
-    _requires_tui_login,
-    _role_for_email,
-)
-from teleclaude.cli.telec.handlers.bugs import (
-    _handle_bugs,
-    _handle_bugs_create,
-    _handle_bugs_list,
-    _handle_bugs_report,
-)
-from teleclaude.cli.telec.handlers.code import handle_code
-from teleclaude.cli.telec.handlers.config import _handle_config
-from teleclaude.cli.telec.handlers.content import _handle_content, _handle_content_dump
-from teleclaude.cli.telec.handlers.docs import _handle_docs, _handle_docs_get, _handle_docs_index
-from teleclaude.cli.telec.handlers.events_signals import (
-    _handle_events,
-    _handle_events_list,
-    _handle_signals,
-    _handle_signals_status,
-)
-from teleclaude.cli.telec.handlers.history import (
-    _handle_history,
-    _handle_history_search,
-    _handle_history_show,
-)
-from teleclaude.cli.telec.handlers.memories import (
-    _VALID_OBS_TYPES,
-    _handle_memories,
-    _handle_memories_delete,
-    _handle_memories_save,
-    _handle_memories_search,
-    _handle_memories_timeline,
-)
 
-# Re-export handlers
-from teleclaude.cli.telec.handlers.misc import (
-    _attach_tmux_session,
-    _ensure_tmux_mouse_on,
-    _ensure_tmux_status_hidden_for_tui,
-    _git_short_commit_hash,
-    _handle_computers,
-    _handle_projects,
-    _handle_revive,
-    _handle_sync,
-    _handle_version,
-    _maybe_kill_tui_session,
-    _revive_session,
-    _revive_session_via_api,
-    _send_revive_enter_via_api,
-)
-from teleclaude.cli.telec.handlers.roadmap import (
-    _handle_roadmap,
-    _handle_roadmap_add,
-    _handle_roadmap_deliver,
-    _handle_roadmap_deps,
-    _handle_roadmap_freeze,
-    _handle_roadmap_migrate_icebox,
-    _handle_roadmap_move,
-    _handle_roadmap_remove,
-    _handle_roadmap_show,
-    _handle_roadmap_unfreeze,
-)
-from teleclaude.cli.telec.handlers.todo import (
-    _handle_todo,
-    _handle_todo_dump,
-    _handle_todo_remove,
-    _handle_todo_split,
-)
-
-# Re-export help functions
+# Re-export help functions (light — kept top-level for completion + help fast paths)
 from teleclaude.cli.telec.help import (
     _complete_flags,
     _complete_subcmd,
@@ -124,14 +52,14 @@ from teleclaude.cli.telec.surface import (  # type: ignore[attr-defined]
     TelecCommand,
 )
 from teleclaude.cli.tool_client import ToolAPIError
-from teleclaude.cli.tool_commands import (
-    handle_agents,
-    handle_channels,
-    handle_operations,
-    handle_sessions,
-)
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
+
+# Handler modules (handlers.{auth_cmds,bugs,code,config,content,docs,events_signals,
+# history,memories,misc,roadmap,todo}) and tool_commands are lazy-loaded inside
+# the dispatch path. Eager loading drags in the OpenAI/Anthropic SDKs, the
+# summarizer, the mirrors DB, and the todos DB — ~800ms — for every CLI call,
+# including pre-commit lint steps that touch none of them.
 
 _BOOT = _t.monotonic()
 _CLI_RUNTIME_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
@@ -143,84 +71,29 @@ __all__ = [
     "TUI_ENV_KEY",
     "TUI_SESSION_NAME",
     "_H",
-    "_VALID_OBS_TYPES",
     "CommandAuth",
     "CommandDef",
     "Flag",
     "TelecCommand",
     "_ConfigProxy",
-    "_attach_tmux_session",
     "_complete_flags",
     "_complete_subcmd",
-    "_ensure_tmux_mouse_on",
-    "_ensure_tmux_status_hidden_for_tui",
     "_flag_matches",
     "_flag_used",
-    "_git_short_commit_hash",
-    "_handle_auth",
-    "_handle_bugs",
-    "_handle_bugs_create",
-    "_handle_bugs_list",
-    "_handle_bugs_report",
     "_handle_completion",
-    "_handle_computers",
-    "_handle_config",
-    "_handle_content",
-    "_handle_content_dump",
-    "_handle_docs",
-    "_handle_docs_get",
-    "_handle_docs_index",
-    "_handle_events",
-    "_handle_events_list",
-    "_handle_history",
-    "_handle_history_search",
-    "_handle_history_show",
-    "_handle_login",
-    "_handle_logout",
-    "_handle_memories",
-    "_handle_memories_delete",
-    "_handle_memories_save",
-    "_handle_memories_search",
-    "_handle_memories_timeline",
-    "_handle_projects",
-    "_handle_revive",
-    "_handle_roadmap",
-    "_handle_roadmap_add",
-    "_handle_roadmap_deliver",
-    "_handle_roadmap_deps",
-    "_handle_roadmap_freeze",
-    "_handle_roadmap_migrate_icebox",
-    "_handle_roadmap_move",
-    "_handle_roadmap_remove",
-    "_handle_roadmap_show",
-    "_handle_roadmap_unfreeze",
-    "_handle_signals",
-    "_handle_signals_status",
-    "_handle_sync",
-    "_handle_todo",
-    "_handle_todo_dump",
-    "_handle_todo_remove",
-    "_handle_todo_split",
-    "_handle_version",
-    "_handle_whoami",
-    "_maybe_kill_tui_session",
     "_maybe_show_help",
     "_print_completion",
     "_print_flag",
-    "_requires_tui_login",
     "_resolve_command_auth",
-    "_revive_session",
-    "_revive_session_via_api",
-    "_role_for_email",
     "_run_tui",
     "_run_tui_config_mode",
-    "_send_revive_enter_via_api",
     "_usage",
     "_usage_leaf",
     "_usage_main",
     "_usage_subcmd",
     "config",
     "is_command_allowed",
+    "main",
 ]
 
 
@@ -307,6 +180,8 @@ def _start_tui(logger: InstruktAILogger) -> None:
 
 
 def _exec_tmux_tui() -> None:
+    from teleclaude.cli.telec.handlers.auth_cmds import _requires_tui_login
+
     terminal_email = read_current_session_email()
     if _requires_tui_login() and not terminal_email:
         print("Error: telec auth login is required before starting the TUI in multi-user mode.")
@@ -336,34 +211,49 @@ def _exec_tmux_tui() -> None:
 
 
 def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Callable[[], None] | None:
+    def _lazy(module: str, attr: str, *, pass_args: bool = True) -> Callable[[], None]:
+        def _call() -> None:
+            from importlib import import_module
+
+            fn = getattr(import_module(module), attr)
+            fn(args) if pass_args else fn()
+
+        return _call
+
     def handle_sessions_command() -> None:
         if args and args[0] == "revive":
+            from teleclaude.cli.telec.handlers.misc import _handle_revive
+
             _handle_revive(args[1:])
             return
+        from teleclaude.cli.tool_commands import handle_sessions
+
         handle_sessions(args)
 
-    handlers = {
+    handlers: dict[TelecCommand, Callable[[], None]] = {
         TelecCommand.SESSIONS: handle_sessions_command,
-        TelecCommand.COMPUTERS: lambda: _handle_computers(args),
-        TelecCommand.PROJECTS: lambda: _handle_projects(args),
-        TelecCommand.AGENTS: lambda: handle_agents(args),
-        TelecCommand.CHANNELS: lambda: handle_channels(args),
-        TelecCommand.OPERATIONS: lambda: handle_operations(args),
-        TelecCommand.VERSION: _handle_version,
-        TelecCommand.SYNC: lambda: _handle_sync(args),
-        TelecCommand.DOCS: lambda: _handle_docs(args),
-        TelecCommand.TODO: lambda: _handle_todo(args),
-        TelecCommand.ROADMAP: lambda: _handle_roadmap(args),
-        TelecCommand.BUGS: lambda: _handle_bugs(args),
-        TelecCommand.EVENTS: lambda: _handle_events(args),
-        TelecCommand.AUTH: lambda: _handle_auth(args),
-        TelecCommand.CONFIG: lambda: _handle_config(args),
-        TelecCommand.CONTENT: lambda: _handle_content(args),
-        TelecCommand.HISTORY: lambda: _handle_history(args),
-        TelecCommand.MEMORIES: lambda: _handle_memories(args),
-        TelecCommand.SIGNALS: lambda: _handle_signals(args),
-        TelecCommand.CODE: lambda: handle_code(args),
+        TelecCommand.COMPUTERS: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_computers"),
+        TelecCommand.PROJECTS: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_projects"),
+        TelecCommand.AGENTS: _lazy("teleclaude.cli.tool_commands", "handle_agents"),
+        TelecCommand.CHANNELS: _lazy("teleclaude.cli.tool_commands", "handle_channels"),
+        TelecCommand.OPERATIONS: _lazy("teleclaude.cli.tool_commands", "handle_operations"),
+        TelecCommand.VERSION: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_version", pass_args=False),
+        TelecCommand.SYNC: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_sync"),
+        TelecCommand.DOCS: _lazy("teleclaude.cli.telec.handlers.docs", "_handle_docs"),
+        TelecCommand.TODO: _lazy("teleclaude.cli.telec.handlers.todo", "_handle_todo"),
+        TelecCommand.ROADMAP: _lazy("teleclaude.cli.telec.handlers.roadmap", "_handle_roadmap"),
+        TelecCommand.BUGS: _lazy("teleclaude.cli.telec.handlers.bugs", "_handle_bugs"),
+        TelecCommand.EVENTS: _lazy("teleclaude.cli.telec.handlers.events_signals", "_handle_events"),
+        TelecCommand.AUTH: _lazy("teleclaude.cli.telec.handlers.auth_cmds", "_handle_auth"),
+        TelecCommand.CONFIG: _lazy("teleclaude.cli.telec.handlers.config", "_handle_config"),
+        TelecCommand.CONTENT: _lazy("teleclaude.cli.telec.handlers.content", "_handle_content"),
+        TelecCommand.HISTORY: _lazy("teleclaude.cli.telec.handlers.history", "_handle_history"),
+        TelecCommand.MEMORIES: _lazy("teleclaude.cli.telec.handlers.memories", "_handle_memories"),
+        TelecCommand.SIGNALS: _lazy("teleclaude.cli.telec.handlers.events_signals", "_handle_signals"),
+        TelecCommand.CODE: _lazy("teleclaude.cli.telec.handlers.code", "handle_code"),
     }
+    if cmd_enum is None:
+        return None
     return handlers.get(cmd_enum)
 
 
