@@ -43,8 +43,9 @@ The six drift classes:
 
 - **code** — `codebase_sha_at_write` vs current `origin/main` HEAD,
   scoped to `referenced_paths`.
-- **upstream-artifact** — `upstream_artifact_digests` vs current digest
-  of each named upstream artifact.
+- **upstream-artifact** — `upstream_digests` (persisted-state field
+  name; aka `upstream_artifact_digests` in spec/documentation) vs
+  current digest of each named upstream artifact.
 - **owned-snippet** — `owned_snippet_digests` vs current digest of each
   snippet the Todo owns via its `delivered_by` membership at write time.
 - **upstream-snippet** — `referenced_snippet_digests` vs current digest
@@ -61,8 +62,12 @@ The six drift classes:
 - Read the artifact: `telec todo artifacts read {slug} <artifact>`.
 - Read the recorded provenance for the class from `telec todo show {slug}`.
 - Inspect the evidence change scoped to the artifact:
-  - **code** — `git log <codebase_sha_at_write>..HEAD -- <referenced-paths>`
-    and `git diff <codebase_sha_at_write>..HEAD -- <referenced-paths>`.
+  - **code** — `git fetch origin main` then
+    `git log <codebase_sha_at_write>..origin/main -- <referenced-paths>`
+    and `git diff <codebase_sha_at_write>..origin/main -- <referenced-paths>`.
+    Always compare against `origin/main`, never local HEAD, so the
+    derivation matches the write-time anchor captured by
+    `get_origin_main_sha(cwd)`.
   - **upstream-artifact** — read the named upstream artifact at its
     current digest (`telec todo artifacts read {slug} <upstream>`) and
     compare to the recorded digest's content. The state machine has

@@ -5,7 +5,9 @@ domain: 'software-development'
 scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
-status: 'actual'
+status: 'target'
+delivered_by:
+  - drift-detection-consolidation
 description: 'Multi-version storage of workflow Artifacts in todos.db — every write appends a new version row keyed by SHA256 digest, current pointer updates in place, diffs are computed between digests, and remove cascades version history.'
 ---
 
@@ -21,7 +23,7 @@ description: 'Multi-version storage of workflow Artifacts in todos.db — every 
 
 The Artifact aggregate inside the `workflow` bounded context persists every Artifact write (PRD, architecture, test-specs, implementation-plan, etc.) as a content-addressed version row in `todos.db`. Each write computes the SHA256 digest of the content, appends a row to `todo_artifact_versions`, and updates the `todo_artifacts` current-version pointer in place. Previous versions remain addressable by digest so the system can render unified diffs between any two versions on demand.
 
-Artifact provenance — the codebase HEAD at write time and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's state (the `ArtifactEntry` lifecycle stamp), not on the artifact rows themselves. The artifact tables stay narrow: id, slug, name, content, digest, updated_by, timestamps.
+Artifact provenance — the `origin/main` SHA at write time (captured via `get_origin_main_sha(cwd)`, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's state (the `ArtifactEntry` lifecycle stamp), not on the artifact rows themselves. The artifact tables stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp itself is the carrier of the extended drift-evidence fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `dependency_set_at_write`, `produced_at`) — see `@spec/feature/workflow/drift-detection` for their per-class semantics and the single `_sync_artifact_digest_state` boundary that populates them.
 
 Removal of an artifact deletes both the current row and the full version history in a single transaction. Artifact kinds are enumerated; the canonical list is enforced at the CLI boundary before any DB write. Each artifact kind is unique per Todo (one `prd` per slug, one `implementation-plan` per slug, etc.).
 
@@ -108,5 +110,5 @@ Then `_ensure_artifact_id` raises ValueError("…is delivered (read-only)") and 
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The `artifact_versions` listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost in the same transaction. There is no undo.
 - Artifact writes against a delivered todo are blocked at `_ensure_artifact_id` to keep delivered todos read-only.
-- The CLI write path constructs the `codebase_sha_at_write` and `referenced_paths` request body by calling `get_head_commit` and `extract_referenced_paths` against the invocation cwd; the API uses those if supplied, otherwise recomputes them server-side.
+- The CLI write path constructs the `codebase_sha_at_write` and `referenced_paths` request body by calling `get_origin_main_sha` (the canonical drift anchor per `@spec/feature/workflow/drift-detection`, replacing the prior `get_head_commit` call) and `extract_referenced_paths` against the invocation cwd; the API uses those if supplied, otherwise recomputes them server-side via the same `get_origin_main_sha` helper.
 - `list_artifacts` returns names only; version metadata (digest, timestamps) requires a follow-up `artifact_versions` call.

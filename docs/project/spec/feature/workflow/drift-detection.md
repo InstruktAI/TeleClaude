@@ -515,10 +515,10 @@ Scenario: re-writing an artifact clears its drift stamps
     and line 600 (non-bug kind, input artifact), today with EMPTY
     SHA + EMPTY paths. The implementation plan must either populate
     these from the dumped content (extract referenced paths from the
-    artifact body; use repo-root HEAD as SHA) or document that dump-
-    seeded artifacts are evaluated as `pending` on first prepare,
-    relying on the fail-safe path to establish a fresh anchor through
-    the analyzer.
+    artifact body; use `get_origin_main_sha(cwd)` for the SHA — never
+    local HEAD) or document that dump-seeded artifacts are evaluated
+    as `pending` on first prepare, relying on the fail-safe path to
+    establish a fresh anchor through the analyzer.
   - `_sync_artifact_state` at `state_io.py:90` — synchronous sibling
     used by the internal `sync_artifact_digest` entry point. The
     implementation plan must either fold this into the same boundary
@@ -548,6 +548,16 @@ Scenario: re-writing an artifact clears its drift stamps
     + produced_at directly. Routes through the same provenance boundary
     so fast-tracked artifacts carry the same extended provenance as
     organically prepared ones.
+  - **Legacy auto-import** at `teleclaude/core/todos_db/_base.py:307`
+    and `teleclaude/core/todos_db/_legacy_import.py:29` / `:351` /
+    `:360` — runs during TodosDb bootstrap and writes drift-tracked
+    artifact state. **Out-of-scope for the boundary**: this is a
+    legacy/bootstrap path whose imported state intentionally arrives
+    without the new provenance fields. The fail-safe contract covers
+    it — imported artifacts derive to `pending` on first prepare/work
+    and the analyzer establishes a fresh anchor through the normal
+    derivation path. Plan documents this legacy carve-out in its
+    out-of-scope section; no provenance hydration is added here.
 
   The Should-tier scope item "no parallel provenance write paths"
   makes this consolidation a build-time deliverable; the analyzer's
