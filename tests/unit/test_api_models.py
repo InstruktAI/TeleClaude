@@ -62,6 +62,7 @@ from teleclaude.api_models import (
     UserPromptSubmitActivityEventDTO,
     VoiceInputRequest,
 )
+from teleclaude.core.operations.service import _COMPLETION_EVENTS
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -491,8 +492,6 @@ class TestOperationCompletedEventDTO:
         through this DTO. Iterates the actual service constant so adding a new
         operation kind without extending the Literal fails this single test.
         """
-        from teleclaude.core.operations.service import _COMPLETION_EVENTS
-
         accepted: list[str] = []
         for completion_event in _COMPLETION_EVENTS.values():
             dto = OperationCompletedEventDTO(
