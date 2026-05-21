@@ -9,7 +9,6 @@ You are now the Work orchestrator.
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/principle/communication-compression.md
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/general/concept/orchestrator.md
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
