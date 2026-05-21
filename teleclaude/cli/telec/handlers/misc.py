@@ -92,7 +92,9 @@ def _handle_version() -> None:
 
 def _handle_sync(args: list[str]) -> None:
     """Handle telec sync command."""
-    project_root = resolve_invocation_cwd()
+    from teleclaude.project_root import resolve_state_root
+
+    project_root = resolve_state_root(resolve_invocation_cwd())
     warn_only = False
     validate_only = False
 
