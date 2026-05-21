@@ -1223,6 +1223,15 @@ def main() -> None:  # noqa: C901
 
         deploy_docs_root.mkdir(parents=True, exist_ok=True)
 
+        # Remove any previously-deployed raw baseline manifest at the global root.
+        # Domain baselines are inflated and deployed separately by
+        # `_deploy_domain_baselines`; the global root manifest is a build-time
+        # input only and must not be exposed at the deploy path because agents
+        # that read it directly mistake the @-ref list for missing inflation.
+        legacy_global_baseline = deploy_docs_root / "baseline.md"
+        if os.path.lexists(legacy_global_baseline):
+            legacy_global_baseline.unlink(missing_ok=True)
+
         for entry in os.listdir(source_dir):
             if entry.startswith("."):
                 continue
@@ -1230,8 +1239,11 @@ def main() -> None:  # noqa: C901
             src_path = source_docs_root / entry
             dst_path = deploy_docs_root / entry
 
-            # Skip creating links for things that shouldn't be linked (only dirs and selected files)
-            if not src_path.is_dir() and entry not in {"index.yaml", "baseline.md"}:
+            # Skip creating links for things that shouldn't be linked (only dirs and selected files).
+            # baseline.md is deliberately excluded: domain baselines are deployed
+            # inflated by `_deploy_domain_baselines`, and the global root manifest
+            # is build-time-only.
+            if not src_path.is_dir() and entry not in {"index.yaml"}:
                 continue
 
             # Robust cleanup using lexists (detects broken symlinks)
