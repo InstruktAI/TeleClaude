@@ -368,6 +368,7 @@ def _load_baseline_ids(
     snippets_by_path: dict[str, SnippetMeta],
     *,
     project_root: Path,
+    required: bool = False,
 ) -> set[str]:
     """Load baseline manifest and return referenced snippet IDs.
 
@@ -375,17 +376,27 @@ def _load_baseline_ids(
         baseline_path: Path to baseline.md manifest file
         snippets_by_path: Mapping of resolved paths to snippets
         project_root: Project root for resolving relative paths
+        required: When True, the manifest is part of a contract invariant
+            (e.g. the global baseline at ``REPO_ROOT/docs/global/baseline.md``).
+            Absence or read failure raises rather than degrading to an empty
+            set, so silent context drop becomes a hard error.
 
     Returns:
         Set of snippet IDs referenced in the baseline manifest
     """
     if not baseline_path.exists():
+        if required:
+            raise FileNotFoundError(f"Required baseline manifest missing: {baseline_path}")
         return set()
 
-    try:
+    if required:
+        # Let OSError propagate — contract violation, not optional condition.
         content = baseline_path.read_text(encoding="utf-8")
-    except Exception:
-        return set()
+    else:
+        try:
+            content = baseline_path.read_text(encoding="utf-8")
+        except Exception:
+            return set()
 
     baseline_ids: set[str] = set()
     for match in _INLINE_REF_RE.finditer(content):
@@ -654,7 +665,12 @@ def _apply_baseline_filter(
     # Read it from `REPO_ROOT` rather than the deployed snippets dir; the
     # latter intentionally does not carry the raw @-ref manifest.
     baseline_ids.update(
-        _load_baseline_ids(REPO_ROOT / "docs" / "global" / "baseline.md", snippets_by_path, project_root=global_root)
+        _load_baseline_ids(
+            REPO_ROOT / "docs" / "global" / "baseline.md",
+            snippets_by_path,
+            project_root=global_root,
+            required=True,
+        )
     )
     baseline_ids.update(
         _load_baseline_ids(
