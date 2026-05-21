@@ -6,7 +6,7 @@ scope: project
 visibility: public
 status: target
 delivered_by:
-- v2-agent-runtime
+  - v2-agent-runtime
 description: Agent Runtime bounded context — live agent sessions, tmux orchestration,
   agent CLI supervision, three-lane signal architecture. The heart of v2 — the genuine
   daemon-shaped part of the platform.
@@ -85,7 +85,7 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 : One of three signal lanes. Authoritative for events where native agent hooks exist (Claude's pre-tool-use, post-tool-use, etc.). Never replaced by other lanes.
 
 **Render lane**
-: One of three signal lanes. Authoritative for Codex live semantic inference from tmux `capture-pane` snapshots. Codex's native `SessionStart` hook does not fire on cold `thread_spawn` (it arrives combined with the first `user_prompt_submit`), so rendered terminal state is the only reliable live source at session bootstrap.
+: One of three signal lanes. Authoritative for Codex live semantic inference from tmux `capture-pane` snapshots. Codex emits no native hooks, so rendered terminal state is the only live source.
 
 **Transcript lane**
 : One of three signal lanes. Durable reconciliation/backfill only. NOT live authority. Used for post-turn access, restart recovery, safety-net backfill.
@@ -257,27 +257,6 @@ Hook kind → reaction:
 - `session_end` → **urgent flush** — emit `session.ended` with the full payload (carries native_file_path for session_mirrors extraction)
 
 Failure handling: if `telec-hook` cannot deliver within its retry window (~10s), the hook is lost. Acceptable per the design trade-off — agent CLIs do not replay hooks. Render lane and transcript lane act as safety nets for live observability; periodic reconciliation catches drift.
-
-### Readiness arbitration (hook + pane race)
-
-The launcher needs to know when an agent CLI is ready to receive its first input — both on cold launch (`agent_then_message`) and after a restart (`agent_restart --self`). The signal must be reliable: if the launcher gives up, the queued user message never submits.
-
-Two independent detectors race, applied uniformly across **Claude, Gemini, and Codex**:
-
-- **Hook detector.** Subscribes to the `AGENT_READY` event bus topic before the agent process is launched (event_bus has no replay; late subscription would miss the event). Resolves when the agent CLI's native `SessionStart` hook fires and the daemon processes it through the outbox.
-- **Pane detector.** Polls `tmux capture-pane` for a visible prompt marker (per-adapter `AgentReadinessProfile`) and waits for the pre-prompt stability view to digest-stabilize across a `quiet_s` window (default 1.0s for every adapter). Independent of daemon health — captures OS-level tmux state directly.
-
-First-to-fire wins. The loser is cancelled cleanly. `ready_future` is shielded so cancelling the hook wrapper does not cancel the underlying future — required when the pane wins for Codex and the synthetic-event flow re-awaits the future.
-
-**Why the race.** Hook delivery is fragile against daemon restarts, SQLite contention, asyncio loop lag, and Redis churn. Pane snapshots are independent — they continue to be captured regardless of daemon-internal pressure. The combination gives defense in depth: hook typically wins (sub-second) under healthy load; pane wins when the hook path is starved.
-
-**Hook lane is not demoted.** The hook remains the richer signal — it carries native session id, event type, and per-hook payload that downstream consumers (session_mirrors, observability, lifecycle gating) still need. The race only arbitrates the readiness gate; once any AGENT_READY event flows through the bus, every subscriber receives the same enriched payload.
-
-**Codex-specific synthesis.** Codex CLI v0.130+ does not fire its native `SessionStart` hook on cold `thread_spawn` (the hook arrives combined with the first `user_prompt_submit`). When Codex's pane wins the cold-launch race, the launcher synthesizes a `session_start` `AgentEventContext` and dispatches it through the agent coordinator so downstream subscribers stay consistent. `native_session_id` and `native_log_file` back-fill idempotently when the real hook eventually arrives. Other adapters need no synthesis: their hook may arrive late but it does arrive, and the pane-winning launcher simply proceeds to inject the user message.
-
-**Outbox lag is observable, not correctness-critical.** The hook outbox surfaces a `lag_warn_count` counter alongside p95/p99 lag samples in its periodic summary log — used to chase hook-path bugs after this delivery, not for arbitration. The race removes the outbox's correctness-critical status: a late hook is no longer a stuck dispatch, because the pane has already unblocked the launcher.
-
-**Race resolution logs.** Every race emits a structured `readiness_winner` log line carrying `adapter`, `session`, and either `hook_lag_ms` (hook wins) or `elapsed_ms` (pane wins) — sufficient to dashboard race outcomes and per-adapter hook-lag distribution.
 
 ### Domain events consumed
 
@@ -459,8 +438,7 @@ And the corpus is the binding parity test against v1's Python parser behavior
 - **Tmux sessions survive daemon restart.** Long-running music, builds, and active conversations don't die when the daemon does. Reconciliation rebuilds SessionRuntime actors on daemon restart.
 - **Pipe-pane is wake signal ONLY.** It's not a substitute for `capture-pane` output. Pipe-pane is corrupted by command echo, prompt redraws, bracketed-paste toggles, and CR-in-place updates. The semantic parser needs rendered-screen snapshots.
 - **`capture-pane` budget vs lookback are different concepts.** v1 regression conflated them. v2 keeps `CAPTURE_PANE_LOOKBACK_LINES` (default 500) separate from char-budget constants.
-- **Codex's native `SessionStart` hook does not fire on cold `thread_spawn`.** It arrives combined with the first `user_prompt_submit`, so at session bootstrap the render lane is the primary live source. Other Codex hook kinds (`agent_stop`, etc.) do fire normally; this caveat is scoped to the `SessionStart` cold-launch case that drove the readiness arbitration design.
-- **Readiness arbitration races hook against pane for every adapter.** First-to-fire wins; loser is cancelled cleanly. The hook is not demoted — it remains the richer signal — but it is no longer a single point of failure for the launcher. See `Readiness arbitration` above.
+- **Codex emits no native hooks** — the render lane is its primary live source. Other agents (Claude with hooks) get hook-lane authority and use the render lane for cross-agent unified behavior only.
 - **`agent_stop` is HOOK-AUTHORITATIVE always.** Even when other lanes have signals about stop, agent_stop hook wins.
 - **No retries on a single operation_id.** Retries are fresh operations with new IDs; the consumer must handle multiple operations resolving the same logical task (use semantic dedupe on the consumer side if needed).
 - **Per-session tmp directory cleanup is integrated with teardown.** No second cleanup system. Orphan-tmp-dir sweep follows the orphan-workspace pattern.
