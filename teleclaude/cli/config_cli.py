@@ -323,10 +323,7 @@ def _people_edit(args: list[str], use_json: bool) -> None:
         changed = True
 
     if not changed:
-        msg = (
-            "No changes specified. Use --role, --email, --username, "
-            "--expertise, --telegram-user, --telegram-id"
-        )
+        msg = "No changes specified. Use --role, --email, --username, --expertise, --telegram-user, --telegram-id"
         if use_json:
             print(json.dumps({"error": msg}))
         else:

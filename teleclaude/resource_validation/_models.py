@@ -71,6 +71,7 @@ def _first_out_of_order_ref(refs: Iterable[str]) -> str | None:
         last_index = index
     return None
 
+
 # ---------------------------------------------------------------------------
 # Finding collection
 # ---------------------------------------------------------------------------
