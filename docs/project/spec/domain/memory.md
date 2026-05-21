@@ -6,204 +6,237 @@ scope: project
 visibility: public
 status: target
 delivered_by: [v2-memory, v2-memory-cutover]
-description: Memory bounded context — durable observations agents store and query. Per-principal, per-project, full-text searchable. Foundation for cross-session continuity.
+description: Memory bounded context — durable observations the platform accumulates about humans and projects. Triple-shaped, tiered, dedup-disciplined; the substrate of cross-session continuity. Scraper-only writes; pattern-matcher jobs read.
 ---
 
 # Memory Domain Spec — Spec
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
-- @~/.teleclaude/docs/software-development/spec/domain-spec.md
-- @docs/project/spec/domain/glossary.md
-- @docs/project/spec/domain/context-map.md
-
 ## What it is
 
-The `memory` bounded context owns durable observations the platform accumulates — facts, gotchas, decisions, patterns worth remembering across sessions and projects. Each observation is authored by an agent (or human via CLI) at runtime, persists in Postgres, and is queryable by full-text search + filters.
+The `memory` bounded context owns durable observations the platform accumulates over time about (a) specific humans and (b) specific projects. Observations are stored as **triples** — `(subject, predicate, object)` — tagged by tier and provenance. Memory is authored exclusively by the **session memory extraction agent** (the scraper), invoked via `/extract-memory <session_id>`. No other agent writes to memory.
+
+Memory is the substrate of cross-session continuity. A returning human is recognized by their accumulated triples. A project's evolving conventions, decisions, and frictions are recorded so downstream pattern-matchers can consume them and produce actual project artifacts (doc-snippet drafts, todos).
 
 Memory is distinct from:
 
-- **Context** (docs/skills/agents) — authored, schema-validated, deployed reference content. Static.
-- **Session_mirrors** — eternal session transcripts. Per-session, full text.
-- **Memory** — curated observations. Per-fact, agent-authored, dynamic.
+- **Context** (doc snippets, skills, agents) — codified, schema-validated, deployed reference content. Authored. Authoritative.
+- **Session mirrors** — eternal full-text session transcripts. Per-session, unextracted.
+- **Memory** — extracted, atomic, tiered observations. Per-fact, scraper-authored, dynamic.
 
-Both `agent_runtime.session.ended` consumers and the mining-via-CLI pattern (see `transport-rules.md`) can produce memories — the latter via `telec memory save`.
+The dedup discipline (below) is what keeps memory from becoming a duplicate junk drawer next to the codified library.
 
-This context does NOT own: docs/skills/agents (`context`), session transcripts (`session_mirrors`), workflow state (`workflow`), live agent sessions (`agent_runtime`).
+## Tiers
+
+Memory has **two tiers**. A third — "general" / population-wide — is deferred. It is added once a concrete use case appears that fits neither human nor project.
+
+### Human tier — about this person
+
+**Why it exists:**
+
+- **Continuity.** Without per-human memory, every session starts cold. A returning help-desk customer should land on a system that already recognizes them and what they've said before.
+- **Calibration without surveying.** Knowing the human's expertise, preferences, and constraints lets the agent set register correctly from the first message — no round-trip to ask "what's your background."
+- **Salience weighting.** Recording which topics this human surfaces repeatedly tells downstream consumers what to attend to.
+
+**Subject:** the human's durable identifier.
+
+- **Primary form: email.** Resolvable for most internal humans (admins, members, contributors) via the person config.
+- **Fallback form: identity-context string** (e.g., `whatsapp:31612345678`) when no email exists — anonymous help-desk customers entering via platform connectors.
+- Both shapes are opaque strings; dedup works by exact equality.
+
+**Predicate vocabulary** (closed, controlled):
+
+| Predicate      | Multi-valued | Captures                                                |
+| -------------- | ------------ | ------------------------------------------------------- |
+| `role`         | no           | The human's role (admin, member, customer, contributor) |
+| `expertise`    | yes          | Domains and depth they hold expertise in                |
+| `working-on`   | yes          | What they're currently engaged with                     |
+| `prefers`      | yes          | Positive preferences (style, format, approach)          |
+| `dislikes`     | yes          | Negative preferences                                    |
+| `goal`         | yes          | Articulated goals                                       |
+| `constraint`   | yes          | Hard constraints they've stated                         |
+| `decided`      | yes          | Choices they made (rationale baked into object)         |
+| `mentioned`    | yes          | Topics surfaced — frequency in object or accumulated    |
+| `relationship` | yes          | Other humans in their orbit                             |
+
+Single-valued predicates replace on update; multi-valued accumulate distinct objects.
+
+**Critical boundary:** human-tier triples are about the human *as a human*. The moment an observation is about the human *in relation to a specific project* (e.g., "Maurice's feedback on the TeleClaude memory subsystem"), it belongs in **project tier** with that project as subject. Human tier never references a project.
+
+### Project tier — about this project
+
+**Why it exists:**
+
+- **Capture transient system insight.** Conventions, decisions, frictions, and requirements surface in conversations and would otherwise die at session-end. Memory is the upstream feed for project artifacts.
+- **Cross-project routing.** A session in the help-desk project can produce an observation about TeleClaude itself. The scraper, primed with required reads for known projects, routes to the right project's memory regardless of which project the session is running in.
+- **Decoupling sensing from acting.** The scraper just records. Pattern-matcher jobs read accumulated project memories and produce actual artifacts (doc-snippet drafts, todos). The scraper has no cross-session visibility and is not authorized to draft artifacts.
+
+**Subject:** the project slug (e.g., `teleclaude`, `help-desk`).
+
+**Predicate vocabulary** (closed, controlled):
+
+| Predicate            | Multi-valued | Captures                                              |
+| -------------------- | ------------ | ----------------------------------------------------- |
+| `convention`         | yes          | A way-of-working that emerged or was affirmed         |
+| `decided`            | yes          | A decision made (rationale baked into object)         |
+| `friction`           | yes          | Something that broke, rubbed, or surprised painfully  |
+| `requirement`        | yes          | An explicit ask — upstream of a future todo           |
+| `gotcha`             | yes          | Counter-intuitive behavior, quiet trap                |
+| `architectural-fact` | yes          | Design state of the system                            |
+| `constraint`         | yes          | A limit the project enforces                          |
+| `deferral`           | yes          | An explicit postponement (reason in object)           |
+| `dependency`         | yes          | What this project relies on                           |
+| `pattern`            | yes          | A recurring approach that works                       |
+| `anti-pattern`       | yes          | A recurring approach that doesn't work                |
+| `mentioned`          | yes          | Topic salience for this project                       |
+| `open-question`      | yes          | Unresolved items, capture-and-revisit                 |
 
 ## Canonical fields
 
 ### Ubiquitous language
 
-**Observation**
-: The atomic unit of memory. A discrete fact, gotcha, decision, or pattern worth remembering. Identified by its own UUID. Persisted in Postgres.
+**Observation (triple)**
+: The atomic unit of memory. `(subject, predicate, object)`, tagged by `tier` and `source_session_id`. Identified by its own UUID.
 
-**Observation type**
-: Categorical tag for the observation: `gotcha`, `decision`, `pattern`, `preference`, `relationship`, `fact`. Free-form extensible per project conventions.
+**Tier**
+: `human` or `project`. Determines which predicate vocabulary applies and how the subject is interpreted.
 
-**Title**
-: Short human-readable label (typical: under 80 chars). Used in list/search rendering.
+**Subject**
+: For `human` tier: email or identity-context string. For `project` tier: project slug. Opaque string; matched by exact equality for dedup.
 
-**Body**
-: The observation content. Free-form text. Search-indexed.
+**Predicate**
+: A token from the per-tier controlled vocabulary. Free-form predicates are rejected at save.
 
-**Author principal**
-: The principal that authored the observation. Resolved by `identity`. Used for filtering ("show me observations I made") and audit.
+**Object**
+: The value the predicate carries. Free-form text. Search-indexed.
 
-**Project scope**
-: Optional project the observation pertains to. Per `project_slug`. Cross-project observations leave this null.
+**Source session id**
+: The session this observation was extracted from. Provenance for audit and re-extraction safety.
 
-**Anchor**
-: Optional reference to another observation that this observation relates to. Enables timeline queries ("show observations around anchor X").
-
-**Saved_at, updated_at**
-: Timestamps. Saved_at is immutable; updated_at advances on edits.
-
-**Timeline**
-: Query returning observations chronologically before/after an anchor observation. Used for "what was happening around this decision."
+**Saved at**
+: When the observation was persisted. Immutable.
 
 ### Aggregates
 
-#### Observation (aggregate)
+#### Observation
 
-- **Root:** `Observation`
-- **Contains:** `observation_id` (UUID, own identity); `type`; `title`; `body`; `author_principal` (email for human, id for machine, session_id for session principal); `project_slug` (nullable); `anchor_id` (nullable, references another observation); `saved_at`; `updated_at`.
+- **Root:** `Observation` (the triple).
+- **Contains:** `observation_id` (UUID), `tier`, `subject`, `predicate`, `object`, `source_session_id`, `saved_at`.
 - **Invariants:**
-  - `observation_id` is a UUID generated at creation; never reused.
-  - `body` is search-indexed; full-text search returns matches against it + title.
-  - `author_principal` is set at creation by `identity` resolution; never mutated.
-  - `saved_at` is immutable.
-  - `anchor_id`, if set, references an existing observation in this schema (FK enforced).
-  - Observations are mutable (`updated_at`, `title`, `body`, `type`, `project_slug`) but the author cannot be changed.
+  - `tier` ∈ {`human`, `project`}.
+  - `predicate` is in the per-tier controlled vocabulary; free-form predicates are rejected.
+  - `subject` is non-empty; format depends on tier (email/identity-context for human; project slug for project).
+  - `source_session_id` references an existing session record.
+  - For single-valued predicates: `(subject, predicate)` is unique — saving a new object replaces the prior.
+  - For multi-valued predicates: `(subject, predicate, object)` is unique — exact duplicates are skipped.
 - **Identifier:** `observation_id`.
-- **Lifecycle:** Created via `telec memory save`. Mutated via `telec memory update`. Removed via `telec memory delete`. Persists in Postgres indefinitely until explicit delete.
+- **Lifecycle:** Created via `telec memories save` (scraper only). Mutated via the same save path with replace semantics for single-valued predicates. Hard-deleted via `telec memories delete`. No automatic retention; observations persist until explicit delete.
 
 ### Domain events emitted
 
 #### `memory.observation.saved`
 
-- **Producer:** `memory`
-- **Emitted when:** a new observation is persisted.
-- **Payload:** `observation_id`, `type`, `title`, `author_principal`, `project_slug`, `saved_at`.
-- **Visibility:** CLUSTER
-- **Known consumers:** audit log consumers; future "memory miner" that observes patterns in observations.
+- **Emitted when:** a triple is persisted (created or single-valued replaced).
+- **Payload:** `observation_id`, `tier`, `subject`, `predicate`, `source_session_id`, `saved_at`.
+- **Consumers:** project-tier pattern-matcher jobs; audit log.
 - **Idempotency key:** `observation_id`.
-- **Posture:** `commit-then-emit`.
 
 #### `memory.observation.deleted`
 
-- **Producer:** `memory`
-- **Emitted when:** an observation is removed via `telec memory delete`.
+- **Emitted when:** a triple is removed.
 - **Payload:** `observation_id`, `deleted_at`, `deleted_by_principal`.
-- **Visibility:** CLUSTER
-- **Known consumers:** audit log consumers.
 - **Idempotency key:** `observation_id`.
-- **Posture:** `commit-then-emit`.
-
-### Domain events consumed
-
-#### `config.effective.updated`
-
-- **Producer:** `config`
-- **Reaction:** invalidate cached configuration values used by memory (retention policies if added, per-project scoping defaults).
-- **Failure handling:** stale config tolerated for one request.
 
 ### Use cases
 
-#### UC-MEM-1: Save an observation
+#### UC-MEM-1: Scraper saves a triple
 
 ```
-Given an agent (or human) wants to remember a fact
-When they run `telec memory save "<text>" [--type gotcha] [--title "<short>"] [--project <slug>]`
-Then memory resolves the caller's principal via identity
-And creates a new Observation row with own UUID
+Given a /extract-memory session has identified a candidate observation,
+      classified its tier and predicate, dedup'd against doc snippets and existing triples
+When the scraper runs:
+     telec memories save --tier <h|p> --subject <s> --predicate <p> --object <o> --source-session <id>
+Then memory validates the predicate against the tier's vocabulary
+And applies single-valued (replace) or multi-valued (skip-if-duplicate) semantics
+And persists the triple
 And emits memory.observation.saved
-And returns the observation_id
 ```
 
-#### UC-MEM-2: Full-text search
+#### UC-MEM-2: Query triples for a subject
 
 ```
-Given an agent needs to recall observations matching a query
-When they run `telec memory search "<query>" [--type <t>] [--project <slug>] [--author <principal>] [--limit N]`
-Then memory runs full-text search against title + body
-And filters by type/project/author as specified
-And returns matching observations with snippet excerpts (query-centered)
+Given an agent wants "what does this human prefer?"
+When they run:  telec memories search --tier human --subject <email> --predicate prefers
+Then memory returns all triples matching subject + predicate (multi-valued accumulation)
 ```
 
-#### UC-MEM-3: List recent observations
+#### UC-MEM-3: Session-start context injection
 
 ```
-Given an agent wants context on recent observations
-When they run `telec memory list [--limit N] [--type <t>] [--project <slug>]`
-Then memory returns the N most recent observations matching filters
-And ordered by saved_at descending
+Given a session is starting for a human with a known email
+When the context layer queries memory for that subject
+Then memory returns all triples for the human's subject (full tier-h corpus for them)
+And the context layer renders them compactly for injection
 ```
 
-#### UC-MEM-4: Timeline around an anchor
+#### UC-MEM-4: Pattern-matcher consumes project memories
 
 ```
-Given an agent has an observation_id of interest
-When they run `telec memory timeline <id> [--before N] [--after N] [--project <slug>]`
-Then memory returns the N observations saved before and after the anchor
-And ordered chronologically
-And bounded by the project_slug filter if given
+Given the project memory pattern-matcher job runs on schedule
+When it queries:  telec memories search --tier project --subject <slug> --predicate requirement
+Then memory returns all `requirement` triples for that project
+And the pattern-matcher decides which to promote to todos via telec todo create
 ```
 
-#### UC-MEM-5: Update or delete
+#### UC-MEM-5: Re-extraction safety via provenance
 
 ```
-Given an observation exists
-When the author (or an authorized operator) runs `telec memory update <id> --title <t>` or `--body <text>`
-Then memory updates the fields, advances updated_at
-And emits memory.observation.saved (treated as a revision)
-
-When delete is invoked:
-Then memory removes the row, emits memory.observation.deleted
+Given the scraper re-runs on a session whose transcript was previously partially processed
+When it attempts to save a triple already extracted from this session
+Then dedup catches the (subject, predicate, object) match
+And the duplicate is skipped — no double-save
 ```
 
-#### UC-MEM-6: Mining-driven memory (consumer-of-agent_runtime pattern)
+### Dedup discipline (mandatory)
 
-```
-Given an intelligence agent (the memory miner) is running on scheduler ticks
-When the miner reads new agent_runtime windows via `telec sessions extract-window --consumer memory-miner`
-Then the miner reasons about the window content
-And for each pattern worth remembering, the miner calls `telec memory save "<observation>" --type pattern`
-And the miner calls `telec sessions ack --consumer memory-miner --position <X>` to advance its cursor
-And memory accumulates observations without knowing the miner exists — the miner is just another CLI caller
-```
+Before saving any triple, the scraper MUST:
 
-### v1 inventory (applies_to: v1, status: actual)
+1. **Search doc snippets** (`telec docs index` + `telec docs get`). If the candidate is substantively covered there — even with different wording — **discard**. Codified knowledge does not get re-encoded as memory.
+2. **Search existing triples** (`telec memories search`). If an equivalent triple is already saved, **discard** (multi-valued) or **update** (single-valued).
+3. **Save** the survivor.
 
-- `docs/project/spec/feature/memory/observation-save.md` — Save a memory observation: default-project fallback, auto-title derivation, per-project manual-session reuse, identity tagging.
-- `docs/project/spec/feature/memory/observation-recent-list.md` — `telec memories list` — CLI-only verb implemented as an empty-query search that lands in the LIKE fallback.
-- `docs/project/spec/feature/memory/observation-full-text-search.md` — `GET /api/memory/search` — FTS5 primary path with LIKE fallback; project, type, and identity filters.
-- `docs/project/spec/feature/memory/observation-timeline.md` — `GET /api/memory/timeline` — chronological window of observations around an anchor id.
-- `docs/project/spec/feature/memory/observation-delete.md` — `DELETE /api/memory/{id}` — hard delete; FTS5 trigger keeps the index in sync.
-- `docs/project/spec/feature/memory/observation-bulk-fetch.md` — `POST /api/memory/batch` — HTTP-only convenience over `SELECT … IN (…)`.
-- `docs/project/spec/feature/memory/memory-context-injection.md` — Render recent observations as Markdown for agent context injection (async HTTP `/inject` and sync in-process via the hook receiver).
-- `docs/project/spec/feature/memory/observation-type-taxonomy.md` — The closed seven-value v1 type set (`preference, decision, discovery, gotcha, pattern, friction, context`) with `discovery` as default.
-- `docs/project/spec/feature/memory/identity-key-ownership.md` — v1's per-row identity ownership: opaque string at save, inclusion-of-unscoped semantic at query, HTTP-only access surface.
+Without step 1, memory becomes a duplicate junk drawer next to the codified library and the system loses the ability to know what's authoritative. This is the single most important rule in this spec.
+
+### Scraper boundary (mandatory)
+
+The session memory extraction agent (the scraper) is the **only** authorized writer to memory. It produces triples from a session transcript. It does **NOT**:
+
+- Create todos.
+- Create or modify doc snippets.
+- Make cross-session pattern claims ("X happens repeatedly").
+- Interpret human emotion or intent.
+- Synthesize beyond what was demonstrated in the transcript.
+
+Pattern recognition, artifact creation, and aggregation across sessions are downstream concerns owned by separate jobs that read accumulated memories. Direct `telec memories save` calls from any agent other than the scraper are prohibited by policy.
 
 ### Context map position
 
-- **Customer-Supplier downstream of `identity`** — every save/update/delete resolves and records the author principal; queries filter by author.
-- **Customer-Supplier downstream of `config`** — reads retention policy (if any), per-project defaults.
-- **Open Host Service to any caller** — agents save and query memory throughout their work; humans via CLI.
-- **NO partnership with `session_mirrors`** — they're related (both about historical knowledge) but operate independently. Memory is per-fact; mirrors are per-session. The mining-via-CLI pattern (intelligence + scheduler bridge + extract-window) is what bridges them when bridging is wanted, but the architectures stay separate.
-- **Anti-corruption layer with v1 (during migration)** — v1 `teleclaude/memory/` module. The v2 ACL preserves the public CLI surface (`telec memories list/search/save/delete/timeline`) during the parallel-capable phase.
+- **Customer-Supplier downstream of `identity`** — subject resolution depends on identity (email lookup, identity-context fallback).
+- **Customer-Supplier downstream of `agent_runtime`** — observations carry `source_session_id`; the scraper reads sessions via the session record.
+- **Open Host Service to pattern-matchers** — read access for downstream pattern-matcher jobs.
+- **No partnership with `session_mirrors`** — mirrors and memory operate independently. The scraper bridges them per session; the architectures stay separate.
 
 ## Allowed values
 
-- `type`: `gotcha`, `decision`, `pattern`, `preference`, `relationship`, `fact` (extensible; project conventions add more).
+- `tier`: `human`, `project`.
+- `predicate` (human tier): `role`, `expertise`, `working-on`, `prefers`, `dislikes`, `goal`, `constraint`, `decided`, `mentioned`, `relationship`.
+- `predicate` (project tier): `convention`, `decided`, `friction`, `requirement`, `gotcha`, `architectural-fact`, `constraint`, `deferral`, `dependency`, `pattern`, `anti-pattern`, `mentioned`, `open-question`.
 
 ## Known caveats
 
-- **Postgres-backed.** Schema: `memory.observations` with full-text index on (title || body). TOAST handles large body content transparently.
-- **Per-principal authoring; per-project optional scoping.** Memory is multi-tenant by principal; project scoping is opt-in per observation.
-- **No retention policy by default.** Observations persist indefinitely. Operators can add a retention policy via config if needed; default is forever.
-- **Mining is OUTSIDE this context.** The memory miner is an intelligence agent that uses `telec sessions extract-window` and writes via `telec memory save`. No code in memory's crate concerns mining.
-- **No vector search.** Full-text search over title + body is the primary retrieval. If semantic search becomes a need, it goes through a separate adapter, not memory's primary surface.
-- **`anchor_id` enables timeline traversal.** Not required for normal operation; useful for connecting related observations.
-- **Authoring authorization is principal-based.** Any principal can save observations as themselves. Updating/deleting requires being the author OR an authorized operator (admin role).
+- **Scraper-only writer.** Direct `telec memories save` calls from any agent other than the scraper are policy violations and should be flagged.
+- **Predicate vocabulary is closed.** Free-form predicates are rejected at save. Vocabulary changes require a spec update.
+- **No automatic retention.** Triples persist until explicit delete. Pattern-matchers may flag stale or contradicted triples for human review.
+- **No interpretation.** The scraper records demonstrated facts. Synthesis is downstream.
+- **General tier deferred.** Population-wide observations are not modeled in v1.
+- **Doc-snippet dedup is mandatory.** Skipping it is the failure mode that turns memory into duplicate noise.
+- **v1 storage shape may transition.** The existing `memory_observations` table carries `title`, `narrative`, `type`, `identity_key`, `project`, `facts`. v1 may map this to the triple model by convention (`subject ← identity_key | project`, `predicate ← title` or `type`, `object ← narrative`) until a schema migration adds explicit `tier`, `subject`, `predicate`, `object`, `source_session_id` columns. The externally visible scraper behavior is unchanged across the transition.
