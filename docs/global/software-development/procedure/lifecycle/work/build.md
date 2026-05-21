@@ -9,6 +9,10 @@ visibility: 'public'
 
 # Build — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/policy/no-semantic-validators.md
+
 ## Goal
 
 Execute the implementation plan for a todo and produce verified, review-ready changes.

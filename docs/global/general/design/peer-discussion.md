@@ -12,6 +12,7 @@ visibility: 'public'
 ## Required reads
 
 - @~/.teleclaude/docs/general/principle/breath.md
+- @~/.teleclaude/docs/general/principle/communication-compression.md
 - @~/.teleclaude/docs/general/spec/agent-shorthand.md
 
 ## Purpose

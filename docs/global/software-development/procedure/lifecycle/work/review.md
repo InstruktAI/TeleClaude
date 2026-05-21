@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## Required reads
 
+- @~/.teleclaude/docs/general/policy/no-semantic-validators.md
 - @~/.teleclaude/docs/software-development/concept/reviewer.md
 - @~/.teleclaude/docs/software-development/principle/architecture-boundary-purity.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md

@@ -8,6 +8,10 @@ visibility: 'public'
 
 # AI-to-AI Troubleshooting — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/principle/communication-compression.md
+
 ## Goal
 
 Diagnose and resolve failures in AI-to-AI session dispatch and notifications.

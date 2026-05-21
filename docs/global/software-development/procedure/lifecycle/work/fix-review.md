@@ -9,6 +9,11 @@ visibility: 'public'
 
 # Fix Review — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/principle/communication-compression.md
+- @~/.teleclaude/docs/general/policy/no-semantic-validators.md
+
 ## Goal
 
 Read `telec todo artifacts read {slug} review-findings`.

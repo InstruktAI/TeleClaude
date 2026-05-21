@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## Required reads
 
+@~/.teleclaude/docs/general/principle/communication-compression.md
 @~/.teleclaude/docs/creative/design/creative-machine.md
 @~/.teleclaude/docs/creative/procedure/design-discovery.md
 @~/.teleclaude/docs/creative/procedure/visual-drafting.md

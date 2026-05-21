@@ -77,7 +77,7 @@ Load when you sense the trigger condition. If the condition applies, the load is
 
 | When you encounter...                 | Load                                                                                      |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| A bug or unexpected behavior          | `telec docs get software-development/procedure/debugging general/principle/failure-modes` |
+| A bug or unexpected behavior          | `telec docs get software-development/procedure/debugging general/concept/failure-modes` |
 | Architectural or structural decisions | `telec docs get software-development/principle/design-fundamentals`                       |
 | Changes to existing behavior          | `telec docs get software-development/policy/regression-zero-tolerance`                    |
 | Security-sensitive code paths         | `telec docs get software-development/policy/security-awareness`                           |

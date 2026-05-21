@@ -1,12 +1,9 @@
 @~/.teleclaude/docs/general/principle/evolution.md
-@~/.teleclaude/docs/general/principle/explicit-inference.md
 @~/.teleclaude/docs/general/principle/continuity.md
-@~/.teleclaude/docs/general/principle/parallel-work.md
-@~/.teleclaude/docs/general/principle/communication-compression.md
-@~/.teleclaude/docs/general/principle/failure-modes.md
 @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/general/policy/ai-agent-security.md
+@~/.teleclaude/docs/general/policy/adr-discipline.md
 @~/.teleclaude/docs/general/spec/agent-artifacts.md
 @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md
