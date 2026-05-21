@@ -86,10 +86,11 @@ that applies to it. Per-artifact provenance:
   `teleclaude/core/next_machine/git_ops.py` (sibling to `get_head_commit`).
   This is the canonical drift anchor. ALL artifact-provenance write paths
   (HTTP `write_artifact`, CLI `_handle_artifacts_write`, dump-route
-  `_sync_artifact_digest_state` calls, `stamp_artifact`, prepare-handoff
-  adoption hydration, reconcile/mark-phase hydration, the fast-track
-  `apply_prepared_state` path) read from this helper rather than
-  `get_head_commit(cwd)`. The drift derivation (`derive_lifecycle_drift`
+  `sync_artifact_provenance` (the new core boundary), the legacy
+  `_sync_artifact_digest_state` callers being migrated, `stamp_artifact`,
+  prepare-handoff adoption hydration, reconcile/mark-phase hydration,
+  the fast-track `apply_prepared_state` path) read from this helper
+  rather than `get_head_commit(cwd)`. The drift derivation (`derive_lifecycle_drift`
   and its per-class helpers) compares against the same helper, so the
   write-time anchor and the derivation-time comparison agree on what
   "current main" means even when the local repo's HEAD diverges from
@@ -204,10 +205,11 @@ worktree. Concretely, the call order in `next_work` becomes:
    a worktree (stash debt check, etc.).
 3. **Read state from `todos_db`** (moved earlier — currently this happens
    inside the dispatch loop).
-4. **`derive_lifecycle_drift(state, repo_root=cwd)`** — drift pre-check
-   against repo-root state, NOT against any worktree (drift derivation
-   compares against `origin/main` HEAD and persisted provenance; no
-   worktree is required).
+4. **`derive_lifecycle_drift(slug, state, repo_root=cwd, todos_db=todos_db, snippet_digest_fn=snippet_body_digest)`**
+   — drift pre-check against repo-root state, NOT against any worktree
+   (drift derivation compares against `origin/main` HEAD and persisted
+   provenance; no worktree is required). The expanded signature is the
+   shared contract for prepare and work callers.
 5. If any artifact's collapsed drift status is `pending` or
    `substantive`: return the bounce-to-prepare script. **No worktree
    created. No state mutated. No worker dispatched.**
@@ -224,10 +226,13 @@ drift pre-check ahead of `_ensure_worktree_ready`.
 
 Detail of the call itself:
 
-- The shared function is `derive_lifecycle_drift(model, *, repo_root)` in
+- The shared function is `derive_lifecycle_drift(slug, model, *, repo_root, todos_db, snippet_digest_fn)` in
   `teleclaude/core/next_machine/lifecycle.py` (renamed from
-  `derive_prepare_drift`; signature unchanged). Both the prepare BLOCKED
-  branch and the work entry path call it with the same evidence-loading
+  `derive_prepare_drift`; signature **expanded** to carry the dependencies
+  per-class helpers need: `slug` for dep-graph lookup, `todos_db` for
+  roadmap reads, `snippet_digest_fn` for snippet body hashing —
+  explicit injection rather than hidden imports). Both the prepare
+  BLOCKED branch and the work entry path call it with the same evidence-loading
   rules so there is one source of truth for drift status.
 - When `derive_lifecycle_drift` reports any tracked artifact's collapsed
   status as `pending` or `substantive`, work does NOT advance
@@ -483,7 +488,11 @@ Scenario: re-writing an artifact clears its drift stamps
 - `teleclaude/core/next_machine/lifecycle.py:derive_lifecycle_drift` —
   renamed from `derive_prepare_drift`; computes per-(artifact, class)
   status; collapses to the per-artifact overall status via the priority
-  rule. Called from BOTH `prepare_steps.py` and `work.py` so the two
+  rule. Signature: `derive_lifecycle_drift(slug, model, *, repo_root,
+  todos_db, snippet_digest_fn)` — explicit injection of slug,
+  `TodosDb`, and snippet-digest callable so the function has no hidden
+  dependencies and per-class helpers receive exactly what they need.
+  Called from BOTH `prepare_steps.py` and `work.py` so the two
   lifecycle entry points share one source of truth for drift derivation.
 - `teleclaude/core/next_machine/work.py:next_work` — calls
   `derive_lifecycle_drift` before the `_advance_prepared_to_build_started`
@@ -500,13 +509,16 @@ Scenario: re-writing an artifact clears its drift stamps
   evidence-anchor fields. Existing fields preserved.
 - `teleclaude/core/next_machine/state_mutation.py:ApprovalsManager.drift_reviewed`
   — accepts the evidence anchor from the analyzer and persists it.
-- `teleclaude/api/todo_routes.py:_sync_artifact_digest_state` — extended
-  to capture the new provenance fields at every drift-tracked artifact
-  write. **This is the single provenance boundary every write path
-  must enter.** Today, the following code paths touch artifact provenance
-  fields and must be consolidated under one boundary (any path that is
-  NOT a drift-tracked artifact write must be explicitly documented in
-  the implementation plan as out-of-scope for provenance hydration):
+- `teleclaude/core/next_machine/provenance.py:sync_artifact_provenance`
+  (NEW core module) — **the single provenance boundary every drift-
+  tracked artifact write path enters.** Lives in core, not in the API
+  layer (per `project/policy/adapter-boundaries`); API routes call into
+  it. Accepts an active `StateWriter` from the caller so there is no
+  nested-commit problem. Today, the following code paths touch artifact
+  provenance fields and must be consolidated under this core boundary
+  (any path that is NOT a drift-tracked artifact write must be
+  explicitly documented in the implementation plan as out-of-scope for
+  provenance hydration):
   - `_sync_artifact_digest_state` at `todo_routes.py:322` — async,
     invoked from the `write_artifact` HTTP route at line 428 with
     SHA + referenced_paths supplied.
