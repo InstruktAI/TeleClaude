@@ -239,3 +239,76 @@ def test_initialize_adds_roadmap_tombstone_and_pending_purge_columns_to_preexist
 
     assert {"removed_at", "prev_status", "removed_deps", "pending_purge_paths"} <= columns
     assert preserved == ("kept-slug", "active", None, None, None, None)
+
+
+def test_initialize_purges_holder_state_and_non_input_artifacts(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "todos.db")
+    now = "2026-01-01T00:00:00"
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT NOT NULL, "
+        "position INTEGER NOT NULL, group_slug TEXT, description TEXT, "
+        "status TEXT NOT NULL DEFAULT 'active', delivered_at TEXT, "
+        "delivered_commit TEXT, children TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE todo_state ("
+        "id TEXT PRIMARY KEY, slug TEXT NOT NULL, state TEXT NOT NULL, "
+        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE todo_artifacts ("
+        "id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT NOT NULL, "
+        "content TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', "
+        "updated_by TEXT, updated_at TEXT, PRIMARY KEY (id, name))"
+    )
+    conn.execute(
+        "CREATE TABLE todo_artifact_versions ("
+        "version_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT NOT NULL, "
+        "content TEXT NOT NULL, digest TEXT NOT NULL, updated_by TEXT, "
+        "created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO roadmap VALUES ('holder-id', 'holder', 0, NULL, NULL, 'active', NULL, NULL, NULL, ?, ?)",
+        (now, now),
+    )
+    conn.execute(
+        "INSERT INTO roadmap VALUES ('child-id', 'child', 1, 'holder', NULL, 'active', NULL, NULL, NULL, ?, ?)",
+        (now, now),
+    )
+    conn.execute("INSERT INTO todo_state VALUES ('holder-id', 'holder', '{}', ?, ?)", (now, now))
+    conn.execute(
+        "INSERT INTO todo_artifacts VALUES ('holder-id', 'holder', 'input', 'input', 'digest-input', NULL, ?)", (now,)
+    )
+    conn.execute(
+        "INSERT INTO todo_artifacts VALUES ('holder-id', 'holder', 'requirements', 'reqs', 'digest-reqs', NULL, ?)",
+        (now,),
+    )
+    conn.execute(
+        "INSERT INTO todo_artifact_versions (id, slug, name, content, digest, updated_by, created_at) "
+        "VALUES ('holder-id', 'holder', 'requirements', 'reqs', 'digest-reqs', NULL, ?)",
+        (now,),
+    )
+    conn.commit()
+    conn.close()
+
+    TodosDb(db_path).initialize_sync()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        state_row = conn.execute("SELECT 1 FROM todo_state WHERE id = 'holder-id'").fetchone()
+        artifact_names = [
+            row[0] for row in conn.execute("SELECT name FROM todo_artifacts WHERE id = 'holder-id' ORDER BY name")
+        ]
+        version_names = [
+            row[0]
+            for row in conn.execute("SELECT name FROM todo_artifact_versions WHERE id = 'holder-id' ORDER BY name")
+        ]
+    finally:
+        conn.close()
+
+    assert state_row is None
+    assert artifact_names == ["input"]
+    assert version_names == []

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.core.todos_db._rows import RoadmapRow
 
 
 class HolderResolutionMode(StrEnum):
@@ -92,6 +93,9 @@ async def resolve_slug_async(
 
     entries = await todos_db.list_roadmap()
     delivered = await todos_db.delivered_slugs()
+    dependency_delivered = (
+        await effective_delivered_slugs_for_dependencies(todos_db, delivered) if dependencies is not None else delivered
+    )
 
     for entry in entries:
         found_slug = entry["slug"]
@@ -107,7 +111,7 @@ async def resolve_slug_async(
 
         if ready_only and dependencies is not None:
             slug_deps = dependencies.get(found_slug, [])
-            if slug_deps and not all(d in delivered for d in slug_deps):
+            if slug_deps and not all(d in dependency_delivered for d in slug_deps):
                 continue
 
         return found_slug, is_ready, entry.get("description") or ""
@@ -167,6 +171,52 @@ def _deps_satisfied(dependencies: dict[str, list[str]], delivered: set[str], slu
     return not slug_deps or all(dep in delivered for dep in slug_deps)
 
 
+def _children_by_group(entries: list[RoadmapRow]) -> dict[str, list[str]]:
+    """Index group_slug children from roadmap rows."""
+    children: dict[str, list[str]] = {}
+    for entry in entries:
+        group_slug = entry.get("group_slug")
+        if group_slug:
+            children.setdefault(group_slug, []).append(entry["slug"])
+    return children
+
+
+async def _resolve_holder_children_from_entries(
+    _todos_db: TodosDb,
+    holder_slug: str,
+    grouped_children: dict[str, list[str]],
+) -> list[str]:
+    """Resolve holder children from preloaded roadmap grouping rows."""
+    return list(grouped_children.get(holder_slug, []))
+
+
+async def effective_delivered_slugs_for_dependencies(
+    todos_db: TodosDb,
+    delivered: set[str] | None = None,
+) -> set[str]:
+    """Return raw delivered slugs plus holders whose children are all delivered.
+
+    Holder rows do not carry their own lifecycle status. For dependency gating,
+    a holder dependency is satisfied when every direct child has delivered; this
+    mirrors the roadmap projection without mutating the holder row itself.
+    """
+    effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
+    entries = await todos_db.list_roadmap(include_delivered=True)
+    grouped_children = _children_by_group(entries)
+    candidates = {entry["slug"] for entry in entries}
+
+    changed = True
+    while changed:
+        changed = False
+        for slug in candidates - effective:
+            children = await _resolve_holder_children_from_entries(todos_db, slug, grouped_children)
+            if children and all(child in effective for child in children):
+                effective.add(slug)
+                changed = True
+
+    return effective
+
+
 def _is_prepare_runnable_lifecycle(state: dict[str, StateValue] | None) -> bool:
     """Return True when a child still needs prepare and can be targeted by prepare."""
     if state is None:
@@ -187,29 +237,9 @@ async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
 
 
 async def resolve_holder_children_db(todos_db: TodosDb, holder_slug: str) -> list[str]:
-    """Resolve container/holder child slugs from DB roadmap and state."""
-    entries = await todos_db.list_roadmap()
-    grouped_children = [e["slug"] for e in entries if e.get("group_slug") == holder_slug]
-
-    state = await todos_db.read_state(holder_slug)
-    breakdown_children: list[str] = []
-    if state:
-        breakdown = state.get("breakdown")
-        if isinstance(breakdown, dict):
-            raw_children = breakdown.get("todos")
-            if isinstance(raw_children, list):
-                breakdown_children = [str(child) for child in raw_children if child]
-
-    if not grouped_children and not breakdown_children:
-        return []
-
-    ordered = list(grouped_children)
-    seen = set(ordered)
-    for child in breakdown_children:
-        if child not in seen:
-            ordered.append(child)
-            seen.add(child)
-    return ordered
+    """Resolve container/holder child slugs from DB roadmap grouping."""
+    entries = await todos_db.list_roadmap(include_delivered=True)
+    return await _resolve_holder_children_from_entries(todos_db, holder_slug, _children_by_group(entries))
 
 
 async def resolve_runnable_holder_children_db(
@@ -227,6 +257,7 @@ async def resolve_runnable_holder_children_db(
     entries = await todos_db.list_roadmap()
     active_slugs = {entry["slug"] for entry in entries}
     delivered = await todos_db.delivered_slugs()
+    dependency_delivered = await effective_delivered_slugs_for_dependencies(todos_db, delivered)
     runnable: list[str] = []
     has_children_in_roadmap = False
     has_incomplete_children = False
@@ -257,7 +288,7 @@ async def resolve_runnable_holder_children_db(
                 has_not_ready = True
                 continue
 
-        if not _deps_satisfied(dependencies, delivered, child):
+        if not _deps_satisfied(dependencies, dependency_delivered, child):
             has_deps_blocked = True
             continue
 
@@ -289,6 +320,7 @@ async def resolve_next_work_queue_db(
     """Resolve the next runnable work item, skipping blocked holders."""
     entries = await todos_db.list_roadmap()
     delivered = await todos_db.delivered_slugs()
+    dependency_delivered = await effective_delivered_slugs_for_dependencies(todos_db, delivered)
     saw_deps_blocked = False
 
     for entry in entries:
@@ -319,7 +351,7 @@ async def resolve_next_work_queue_db(
         if not is_ready:
             continue
 
-        if not _deps_satisfied(dependencies, delivered, found_slug):
+        if not _deps_satisfied(dependencies, dependency_delivered, found_slug):
             saw_deps_blocked = True
             continue
 
@@ -383,6 +415,7 @@ __all__ = [
     "WorkQueueResolutionReason",
     "_get_item_phase_db",
     "_is_ready_for_work_db",
+    "effective_delivered_slugs_for_dependencies",
     "get_item_phase",
     "resolve_holder_children_db",
     "resolve_next_work_queue_db",

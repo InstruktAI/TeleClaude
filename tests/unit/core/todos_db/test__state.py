@@ -132,6 +132,31 @@ async def test_write_state_updates_existing_row(todos_db: TodosDb) -> None:
     assert result["schema_version"] == LATEST_TODO_STATE_SCHEMA_VERSION
 
 
+async def test_roadmap_grouping_removes_parent_state(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.write_state("holder", {"lifecycle_phase": "prepared"})
+
+    await todos_db.add_to_roadmap("child", group_slug="holder")
+
+    assert await todos_db.read_state("holder") is None
+
+
+async def test_write_state_refuses_holder_slug(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.add_to_roadmap("child", group_slug="holder")
+
+    with pytest.raises(ValueError):
+        await todos_db.write_state("holder", {"lifecycle_phase": "prepared"})
+
+
+async def test_write_state_sync_refuses_holder_slug(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.add_to_roadmap("child", group_slug="holder")
+
+    with pytest.raises(ValueError):
+        todos_db.write_state_sync("holder", {"lifecycle_phase": "prepared"})
+
+
 async def test_write_state_fires_phase_transition_after_owned_commit(todos_db: TodosDb) -> None:
     await todos_db.add_to_roadmap(_SLUG)
     await todos_db.write_state(_SLUG, {"lifecycle_phase": _PRIOR_PHASE})

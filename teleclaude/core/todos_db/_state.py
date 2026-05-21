@@ -123,9 +123,34 @@ class TodosDbStateMixin:
         row_id = result.one_or_none()
         return str(row_id) if row_id is not None else None
 
+    async def _is_state_holder_slug(self, session: SqlAsyncSession, slug: str) -> bool:
+        """Return whether any live child group-references ``slug``."""
+        result = await session.exec(
+            select(TodoRoadmap.id)
+            .where(ROADMAP_TABLE.c.group_slug == slug)
+            .where(ROADMAP_TABLE.c.slug != slug)
+            .where(ROADMAP_TABLE.c.status != "removed")
+            .limit(1)
+        )
+        return result.first() is not None
+
+    def _is_state_holder_slug_sync(self, slug: str) -> bool:
+        """Sync counterpart of :meth:`_is_state_holder_slug`."""
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            result = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.group_slug == slug)
+                .where(ROADMAP_TABLE.c.slug != slug)
+                .where(ROADMAP_TABLE.c.status != "removed")
+                .limit(1)
+            )
+            return result.first() is not None
+
     async def read_state(self, slug: str) -> dict[str, StateValue] | None:
         """Read state JSON for a slug (active/icebox). Returns None if not found."""
         async with self._session() as session:  # type: ignore[attr-defined]
+            if await self._is_state_holder_slug(session, slug):
+                return None
             row_id = await self._resolve_active_row_id(session, slug)
             if row_id is None:
                 return None
@@ -161,6 +186,9 @@ class TodosDbStateMixin:
             row_id = await self._resolve_active_row_id(db_session, slug)
             if row_id is None:
                 msg = f"write_state: no active/icebox roadmap entry for slug {slug!r}"
+                raise ValueError(msg)
+            if await self._is_state_holder_slug(db_session, slug):
+                msg = f"write_state: holder slug {slug!r} cannot have todo_state"
                 raise ValueError(msg)
 
             now = datetime.now(UTC).isoformat()
@@ -314,6 +342,15 @@ class TodosDbStateMixin:
     def read_state_sync(self, slug: str) -> dict[str, StateValue] | None:
         """Sync version of read_state for use from worker threads."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
+            holder = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.group_slug == slug)
+                .where(ROADMAP_TABLE.c.slug != slug)
+                .where(ROADMAP_TABLE.c.status != "removed")
+                .limit(1)
+            ).first()
+            if holder is not None:
+                return None
             row_id = session.exec(
                 select(TodoRoadmap.id)
                 .where(ROADMAP_TABLE.c.slug == slug)
@@ -347,6 +384,16 @@ class TodosDbStateMixin:
             ).one_or_none()
             if row_id is None:
                 msg = f"write_state_sync: no active/icebox roadmap entry for slug {slug!r}"
+                raise ValueError(msg)
+            holder = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.group_slug == slug)
+                .where(ROADMAP_TABLE.c.slug != slug)
+                .where(ROADMAP_TABLE.c.status != "removed")
+                .limit(1)
+            ).first()
+            if holder is not None:
+                msg = f"write_state_sync: holder slug {slug!r} cannot have todo_state"
                 raise ValueError(msg)
 
             now = datetime.now(UTC).isoformat()

@@ -61,6 +61,9 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 **Roadmap entry**
 : One row in the roadmap, addressed by its own durable row identity (v1: `roadmap.id`). Carries: slug (the active alias), the **persisted** `status` (`active` | `icebox` | `delivered` | `removed`), `removed_at` (tombstone timestamp, set only when `status=removed`), `prev_status` and `removed_deps` (the Removal tombstone — pre-removal status and the outgoing-`after`-edge snapshot, set only when `status=removed`), `after` (live dependency slugs), `before` (insertion anchor), optional `group` and `description`. Persisted `status` is distinct from the roadmap **display state**: the roadmap view derives `pending` / `ready` / `in_progress` from a live (`active`) entry plus its lifecycle phase, while `delivered`/`icebox` surface directly and `removed` is hidden from the default view (visible only via the recovery surface). The soft-delete invariants below operate on the persisted vocabulary.
 
+**Holder**
+: A structural roadmap row that groups child Todos. A row becomes a holder when at least one live child row sets `group_slug` to the holder slug. A holder is not an implementation Todo: it MUST NOT have a `todo_state` row, MUST NOT carry lifecycle phase, approvals, verdicts, or non-input artifacts, and MUST retain at most the original `input` artifact that seeded the split. That retained input is frozen - readable and cloneable into children, but not writable or removable through artifact mutation paths. Holder status is display-only, derived from child rows; holder dependency satisfaction is likewise computed from child delivery without mutating the holder row.
+
 **Dependency**
 : An `after` relationship between roadmap entries. Todo A is `after: [B, C]` means A cannot start until B and C are `delivered`.
 
@@ -791,7 +794,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`roadmap-management`](../feature/workflow/roadmap-management.md) — Per-project Roadmap CRUD via `telec roadmap {list,add,remove,move,deliver}`; explicit operator-controlled ordering; delivery transition.
 - [`roadmap-icebox`](../feature/workflow/roadmap-icebox.md) — Frozen-but-recoverable state for Roadmap entries; iceboxed entries do not participate in dependency resolution. In v1, the icebox is fully DB-resident — `migrate-icebox` is a deprecated no-op.
 - [`todo-creation`](../feature/workflow/todo-creation.md) — `create`, `dump`, and `design` paths to scaffold a Todo, with `--draft` and `--prepped` modes plus bug-kind helpers that route to `/next-work`.
-- [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, the parent's `kind` is unchanged and children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The holder role is derived from `roadmap.group_slug` + `state.breakdown.todos`, not an enum value.
+- [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
 - [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
 
 ### Context map position

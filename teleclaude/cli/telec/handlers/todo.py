@@ -279,7 +279,7 @@ def _handle_todo_dump(args: list[str]) -> None:
 def _handle_todo_split(args: list[str]) -> None:
     """Handle telec todo split <slug> --into <child1> [<child2> ...].
 
-    Creates children in todos.db, updates parent breakdown state.
+    Creates children in todos.db; parent becomes a stateless holder.
     No filesystem writes. No git commits.
     """
     if not args:

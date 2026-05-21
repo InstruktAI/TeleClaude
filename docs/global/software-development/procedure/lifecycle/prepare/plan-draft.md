@@ -178,7 +178,7 @@ metadata and current worktree state.
 If the todo is split instead:
 
 - Call `telec todo split <slug> --into <child1> --into <child2> ...`
-- Preserve the parent artifacts as source material while child scope is being plucked and transferred.
+- Treat the parent as a stateless holder after the split. Its retained input artifact is frozen source material; do not plan follow-up writes against the holder.
 - Seed each child's `input` with the relevant subset of parent PRD and reviewer-approved architecture-snippet context.
 - Treat only the children as prepare/work targets. The parent is a holder and must not be prepared or worked as an implementation item.
 
@@ -211,7 +211,7 @@ implementation-plan to resolve each finding, then advance again.
    `telec todo artifacts read {slug} implementation-plan` and updated
    `todos.db` state.
 2. Split case:
-   child todos, dependency links, and updated holder `breakdown`.
+   child todos, dependency links, and a stateless holder row with frozen input only.
 
 ## Recovery
 

@@ -56,6 +56,17 @@ class TodosDbArtifactsMixin:
         roadmap_id = result.first()
         return str(roadmap_id) if roadmap_id is not None else None
 
+    async def _is_artifact_holder_slug(self, session: SqlAsyncSession, slug: str) -> bool:
+        """Return whether any live child group-references ``slug``."""
+        result = await session.exec(
+            select(TodoRoadmap.id)
+            .where(ROADMAP_TABLE.c.group_slug == slug)
+            .where(ROADMAP_TABLE.c.slug != slug)
+            .where(ROADMAP_TABLE.c.status != "removed")
+            .limit(1)
+        )
+        return result.first() is not None
+
     async def _ensure_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
         """Resolve slug to roadmap id for artifact writes. Raises for unknown or delivered slugs.
 
@@ -70,6 +81,8 @@ class TodosDbArtifactsMixin:
         )
         entry = result.first()
         if entry is not None:
+            if await self._is_artifact_holder_slug(session, slug):
+                raise ValueError(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
             return entry.id
 
         delivered = await session.exec(
@@ -208,6 +221,15 @@ class TodosDbArtifactsMixin:
                 if delivered is not None:
                     raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
                 raise ValueError(f"Cannot write artifact: unknown todo {slug!r}")
+            holder = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.group_slug == slug)
+                .where(ROADMAP_TABLE.c.slug != slug)
+                .where(ROADMAP_TABLE.c.status != "removed")
+                .limit(1)
+            ).first()
+            if holder is not None:
+                raise ValueError(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
 
             now = datetime.now(UTC).isoformat()
             digest = _sha256(content)
@@ -362,6 +384,8 @@ class TodosDbArtifactsMixin:
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
+            if await self._is_artifact_holder_slug(db_session, slug):
+                raise ValueError(f"Cannot delete artifact: holder todo {slug!r} has frozen artifacts")
             row_id = await self._ensure_artifact_id(slug, db_session)
 
             artifact = await db_session.get(TodoArtifact, (row_id, name))
@@ -446,6 +470,8 @@ class TodosDbArtifactsMixin:
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
+            if await self._is_artifact_holder_slug(db_session, slug):
+                raise ValueError(f"Cannot delete artifacts: holder todo {slug!r} has frozen artifacts")
             row_id = await self._resolve_artifact_id(slug, db_session)
             if row_id is None:
                 return  # unknown slug → nothing to delete

@@ -69,7 +69,7 @@ And the operation reports completed
 ```
 
 ```
-Given a holder Todo "parent" whose breakdown lists children ["child-a", "child-b"]
+Given a holder roadmap row "parent" with child rows whose group_slug is "parent"
 When `telec todo remove parent` is run
 Then only the "parent" row is soft-removed and inbound deps pointing at "parent" are scrubbed
 And "child-a" and "child-b" stay in todos.db and on the roadmap untouched

@@ -106,7 +106,7 @@ Then `_ensure_artifact_id` raises ValueError("…is delivered (read-only)") and 
 ## Known caveats
 
 - The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's state (`ArtifactEntry` in `teleclaude/types/todos.py:156`), not on the artifact rows themselves. The artifact tables intentionally stay narrow (content + digest + audit columns); provenance is a Todo-state concern refreshed by the core `sync_artifact_provenance` boundary (`provenance.py`) only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `test-specs`, `implementation-plan`).
-- The `input` artifact has special status: once `requirements` exists, the write route rejects further `input` writes with HTTP 409 ("input artifact is frozen"), and `telec todo artifacts remove input` is unconditionally rejected.
+- The `input` artifact has special status: once `requirements` exists, the write route rejects further `input` writes with HTTP 409 ("input artifact is frozen"), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The `artifact_versions` listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost in the same transaction. There is no undo.
 - Artifact writes against a delivered todo are blocked at `_ensure_artifact_id` to keep delivered todos read-only.

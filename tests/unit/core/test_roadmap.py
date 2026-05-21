@@ -511,8 +511,7 @@ async def test_holder_and_children_survive_delivered_window_together(tmp_path: P
 
     The holder has no own ``delivered_at`` — its delivered status is derived
     from its children. Filtering the children out by age would orphan the
-    holder row from the work that produced its derived status and expose its
-    stale lifecycle phase in the UI. The cutoff applies to standalone
+    holder row from the work that produced its derived status. The cutoff applies to standalone
     delivered leaves only; children of a still-visible holder are exempt.
     """
     project = tmp_path / "project"
@@ -526,9 +525,6 @@ async def test_holder_and_children_survive_delivered_window_together(tmp_path: P
     await database.initialize()
     try:
         await database.add_to_roadmap("old-holder", description="Container, children long delivered")
-        await database.write_state(
-            "old-holder", {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "prepared"}
-        )
         for child in ("old-child-a", "old-child-b"):
             await database.add_to_roadmap(child, description=child, group_slug="old-holder")
             await database.write_state(
@@ -584,8 +580,8 @@ async def test_delivered_wins_over_never_advanced_draft_lifecycle(tmp_path: Path
 @pytest.mark.asyncio
 async def test_holder_status_is_derived_from_leaf_children(tmp_path: Path) -> None:
     """A holder has no status of its own — it is the aggregate of its leaf
-    children. All children delivered ⇒ the holder projects 'delivered' even
-    when its own roadmap/lifecycle row is stale ('active'/'prepared').
+    children. All children delivered ⇒ the holder projects 'delivered' without
+    any lifecycle state row on the holder.
     """
     project = tmp_path / "project"
     project.mkdir()
@@ -596,9 +592,6 @@ async def test_holder_status_is_derived_from_leaf_children(tmp_path: Path) -> No
     await database.initialize()
     try:
         await database.add_to_roadmap("holder", description="Container")
-        await database.write_state(
-            "holder", {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "prepared"}
-        )
         for child in ("child-a", "child-b"):
             await database.add_to_roadmap(child, description=child, group_slug="holder")
             await database.write_state(

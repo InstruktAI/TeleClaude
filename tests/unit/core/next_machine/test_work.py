@@ -69,10 +69,6 @@ async def test_resolve_explicit_holder_emits_child_work_commands(
 ) -> None:
     """Explicit holder work resolves to child commands instead of working the holder."""
     await todos_db.add_to_roadmap("holder")
-    await todos_db.write_state(
-        "holder",
-        {"schema_version": 3, "lifecycle_phase": "prepared", "breakdown": {"assessed": True, "todos": ["child-a"]}},
-    )
     await todos_db.add_to_roadmap("child-a", group_slug="holder")
     await todos_db.write_state("child-a", {"schema_version": 3, "lifecycle_phase": "prepared"})
 
@@ -86,10 +82,6 @@ async def test_resolve_explicit_holder_emits_child_work_commands(
 async def test_no_slug_work_skips_holder_without_runnable_children(todos_db: TodosDb) -> None:
     """Automatic work pickup must not starve later ready work behind a blocked holder."""
     await todos_db.add_to_roadmap("holder")
-    await todos_db.write_state(
-        "holder",
-        {"schema_version": 3, "lifecycle_phase": "prepared", "breakdown": {"assessed": True, "todos": ["child-a"]}},
-    )
     await todos_db.add_to_roadmap("child-a", group_slug="holder")
     await todos_db.write_state("child-a", {"schema_version": 3, "lifecycle_phase": "draft"})
     await todos_db.add_to_roadmap("later-ready")
@@ -99,6 +91,23 @@ async def test_no_slug_work_skips_holder_without_runnable_children(todos_db: Tod
 
     assert resolved == "later-ready"
     assert instruction is None
+
+
+@pytest.mark.asyncio
+async def test_explicit_work_accepts_complete_holder_dependency(todos_db: TodosDb) -> None:
+    """A dependency on a holder is satisfied once every holder child has delivered."""
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.add_to_roadmap("child-a", group_slug="holder")
+    await todos_db.write_state("child-a", {"schema_version": 3, "lifecycle_phase": "finalize_ready"})
+    await todos_db.deliver("child-a")
+    await todos_db.add_to_roadmap("ready-after-holder")
+    await todos_db.write_state("ready-after-holder", {"schema_version": 3, "lifecycle_phase": "prepared"})
+    await todos_db.set_deps("ready-after-holder", after=["holder"])
+
+    resolved, error = await _resolve_explicit_work_slug(todos_db, "ready-after-holder", "ready-after-holder", 0.0)
+
+    assert resolved == "ready-after-holder"
+    assert error is None
 
 
 @pytest.mark.asyncio

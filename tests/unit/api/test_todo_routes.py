@@ -35,6 +35,9 @@ _STATUS_OK = "ok"
 _DRAFT_KIND = "draft"
 _PLAN_DRAFTING = "plan_drafting"
 _PREPARED = "prepared"
+_SPLIT_INPUT_CONTENT = "split input"
+_STALE_REQUIREMENTS_CONTENT = "stale requirements"
+_REJECTED_HOLDER_INPUT_CONTENT = "changed input"
 _CREATE_OPERATION_ID = "op-1"
 _REMOVE_OPERATION_ID = "op-123"
 _RENAME_OPERATION_ID = "op-rename-123"
@@ -724,25 +727,45 @@ class TestTodoRoutes:
         session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(begin=MagicMock(return_value=_async_ctx(None))))
         session_ctx.__aexit__ = AsyncMock(return_value=None)
         mock_db._session = MagicMock(return_value=session_ctx)
-        # First call: parent lookup returns existing state; subsequent calls return None (child doesn't exist)
-        mock_db.read_state = AsyncMock(side_effect=[{"current": "pending", "breakdown": None}, None])
+        mock_db.slug_in_roadmap = AsyncMock(return_value=True)
+        mock_db.slug_conflicts_non_removed = AsyncMock(return_value=False)
         mock_db.read_artifact = AsyncMock(return_value=None)
         mock_db.add_to_roadmap = AsyncMock()
         mock_db.write_state = AsyncMock()
         mock_db.on_committed = MagicMock()
 
-        with (
-            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
-            patch("teleclaude.api.todo_routes.StateWriter") as mock_sw,
-        ):
-            mock_writer = MagicMock()
-            mock_writer.state = MagicMock(breakdown=None)
-            mock_writer.commit = AsyncMock()
-            mock_sw.return_value = mock_writer
-
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
             await todo_routes.todo_split(slug="parent", children=["child-1"], cwd="/repo")
 
         mock_db.on_committed.assert_called()
+        mock_db.write_state.assert_awaited_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_split_leaves_parent_stateless_with_frozen_input(self, tmp_path: Path) -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        db_dir = project / ".teleclaude"
+        db_dir.mkdir()
+        todos_db = TodosDb(str(db_dir / "todos.db"))
+        await todos_db.initialize()
+        try:
+            await todos_db.add_to_roadmap("parent")
+            await todos_db.write_state("parent", {"lifecycle_phase": "prepared"})
+            await todos_db.write_artifact("parent", ARTIFACT_INPUT, _SPLIT_INPUT_CONTENT)
+            await todos_db.write_artifact("parent", ARTIFACT_REQUIREMENTS, _STALE_REQUIREMENTS_CONTENT)
+
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=todos_db):
+                await todo_routes.todo_split(slug="parent", children=["child-1"], cwd=str(project))
+
+            assert await todos_db.read_state("parent") is None
+            assert await todos_db.list_artifacts("parent") == [ARTIFACT_INPUT]
+            assert await todos_db.read_artifact("parent", ARTIFACT_INPUT) == _SPLIT_INPUT_CONTENT
+            assert await todos_db.read_artifact("child-1", ARTIFACT_INPUT) == _SPLIT_INPUT_CONTENT
+            with pytest.raises(ValueError):
+                await todos_db.write_artifact("parent", ARTIFACT_INPUT, _REJECTED_HOLDER_INPUT_CONTENT)
+        finally:
+            await todos_db.close()
 
     @pytest.mark.unit
     @pytest.mark.asyncio

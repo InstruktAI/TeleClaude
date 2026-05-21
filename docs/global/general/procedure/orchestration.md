@@ -41,8 +41,8 @@ The state machine owns every concrete decision: dispatch, session ending, phase 
 ### Container Slug Handling
 
 - Treat holder/container slugs as child-resolution entrypoints only. The holder itself is never a direct prepare/work target.
-- Resolve direct children from roadmap `group_slug` and parent `breakdown.todos`. Never infer holder membership from slug prefixes, and never treat `after` dependencies as holder membership.
-- Parent holder artifacts are source material for child seeding. They are not executable prepare/work artifacts.
+- Resolve direct children from roadmap `group_slug`. Never infer holder membership from slug prefixes, holder state, or `after` dependencies.
+- Parent holder input is frozen source material for child seeding. The holder has no lifecycle state and no executable prepare/work artifacts.
 - `telec todo prepare <holder>` emits `telec todo prepare <child>` only for dependency-satisfied direct children that still need preparation.
 - `telec todo work <holder>` emits `telec todo work <child>` only for dependency-satisfied direct children that are ready for work or already in progress.
 - `telec todo work` with no slug scans the roadmap until it finds runnable work. A holder with no work-runnable direct child is skipped; it must not block unrelated ready work later in the roadmap. Only after the full roadmap is exhausted may the machine report `NO_READY_ITEMS` or a dependency blocker.

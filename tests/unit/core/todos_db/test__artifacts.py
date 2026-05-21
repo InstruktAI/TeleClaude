@@ -19,6 +19,7 @@ _SLUG = "my-slug"
 _OLD_SLUG = "old-slug"
 _NEW_SLUG = "new-slug"
 _DELIVERED_INPUT = "delivered input"
+_HOLDER_INPUT = "holder input"
 _ACTIVE_REQUIREMENTS_V1 = "active requirements v1"
 _ACTIVE_REQUIREMENTS_V2 = "active requirements v2"
 _RenameArtifactsSlug = Callable[[str, str], Awaitable[bool]]
@@ -100,6 +101,44 @@ async def test_list_artifacts_returns_names(todos_db: TodosDb) -> None:
     await todos_db.write_artifact(_SLUG, ARTIFACT_REQUIREMENTS, "b")
     names = await todos_db.list_artifacts(_SLUG)
     assert set(names) == {ARTIFACT_INPUT, ARTIFACT_REQUIREMENTS}
+
+
+async def test_roadmap_grouping_leaves_parent_input_artifact_only(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db, "holder")
+    await todos_db.write_artifact("holder", ARTIFACT_INPUT, "input")
+    await todos_db.write_artifact("holder", ARTIFACT_REQUIREMENTS, "requirements")
+
+    await todos_db.add_to_roadmap("child", group_slug="holder")
+
+    assert await todos_db.list_artifacts("holder") == [ARTIFACT_INPUT]
+    assert await todos_db.artifact_versions("holder", ARTIFACT_REQUIREMENTS) == []
+
+
+async def test_write_artifact_refuses_holder_non_input_artifact(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db, "holder")
+    await todos_db.add_to_roadmap("child", group_slug="holder")
+
+    with pytest.raises(ValueError):
+        await todos_db.write_artifact("holder", ARTIFACT_REQUIREMENTS, "requirements")
+
+
+async def test_write_artifact_refuses_holder_input_artifact(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db, "holder")
+    await todos_db.add_to_roadmap("child", group_slug="holder")
+
+    with pytest.raises(ValueError):
+        await todos_db.write_artifact("holder", ARTIFACT_INPUT, "input")
+
+
+async def test_delete_artifact_refuses_holder_input_artifact(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db, "holder")
+    await todos_db.write_artifact("holder", ARTIFACT_INPUT, _HOLDER_INPUT)
+    await todos_db.add_to_roadmap("child", group_slug="holder")
+
+    with pytest.raises(ValueError):
+        await todos_db.delete_artifact("holder", ARTIFACT_INPUT)
+
+    assert await todos_db.read_artifact("holder", ARTIFACT_INPUT) == _HOLDER_INPUT
 
 
 async def test_list_artifacts_returns_empty_for_unknown_slug(todos_db: TodosDb) -> None:

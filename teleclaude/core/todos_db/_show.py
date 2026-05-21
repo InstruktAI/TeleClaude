@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypedDict
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
+from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -270,7 +271,7 @@ async def assemble_show_payload(
     worktree_cwd = _worktree_cwd_for(project_root, slug)
     current_value = await _derive_phase_value(state, todos_db, slug, worktree_cwd)
 
-    delivered_slugs = await todos_db.delivered_slugs()
+    delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
 
     roadmap_entries = await todos_db.list_roadmap(include_icebox=True, include_delivered=True)
     description: str | None = None

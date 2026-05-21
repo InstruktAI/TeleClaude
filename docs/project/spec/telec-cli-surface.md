@@ -166,7 +166,7 @@ subcommands:
         flags:
           --project-root: 'Project root (default: cwd).'
       split:
-        description: 'Split a todo into child items. Marks the parent as a holder/container while preserving parent artifacts as source material for child seeding. Children inherit the parent reviewed prepare phase: requirements-reviewed → children start at plan_drafting; plan-reviewed → children start at prepared (ready for build).'
+        description: 'Split a todo into child items. The parent roadmap row becomes a stateless holder derived from child group_slug rows: no todo_state row, no lifecycle phase, no non-input artifacts. The original parent input artifact is retained as frozen source material and cloned to each child at split time; it cannot be edited or removed afterward. Children bootstrap with fresh default_state() at lifecycle_phase=draft.'
         args:
           - slug: 'string'
         flags:

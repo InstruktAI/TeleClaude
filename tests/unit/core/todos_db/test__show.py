@@ -35,3 +35,19 @@ async def test_show_payload_pending_draft_todo_reports_pending_current_state(tod
 
     assert payload is not None
     assert payload["current"]["state"] == state.phase
+
+
+async def test_show_payload_omits_complete_holder_from_blocked_by(todos_db: TodosDb) -> None:
+    """A holder dependency stops blocking once its children have delivered."""
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.add_to_roadmap("child-a", group_slug="holder")
+    await todos_db.write_state("child-a", {"schema_version": 3, "lifecycle_phase": "finalize_ready"})
+    await todos_db.deliver("child-a")
+    await todos_db.add_to_roadmap("ready-after-holder")
+    await todos_db.write_state("ready-after-holder", {"schema_version": 3, "lifecycle_phase": "prepared"})
+    await todos_db.set_deps("ready-after-holder", after=["holder"])
+
+    payload = await assemble_show_payload(todos_db, "ready-after-holder")
+
+    assert payload is not None
+    assert "blocked_by" not in payload

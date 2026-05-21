@@ -282,6 +282,29 @@ def _migrate_roadmap_pending_purge_paths(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _purge_holder_payload(conn: sqlite3.Connection) -> None:
+    """Enforce holder rows as structure only: no state, input artifact only."""
+    if not _table_exists(conn, "roadmap"):
+        return
+
+    holder_ids = (
+        "SELECT DISTINCT parent.id FROM roadmap parent "
+        "JOIN roadmap child ON child.group_slug = parent.slug "
+        "WHERE parent.status != 'removed' "
+        "AND child.status != 'removed' "
+        "AND child.slug != parent.slug"
+    )
+    if _table_exists(conn, "todo_state"):
+        conn.execute(f"DELETE FROM todo_state WHERE id IN ({holder_ids})")  # guard: raw-sql
+    if _table_exists(conn, "todo_artifacts"):
+        conn.execute(f"DELETE FROM todo_artifacts WHERE name != 'input' AND id IN ({holder_ids})")  # guard: raw-sql
+    if _table_exists(conn, "todo_artifact_versions"):
+        conn.execute(
+            f"DELETE FROM todo_artifact_versions WHERE name != 'input' AND id IN ({holder_ids})"  # guard: raw-sql
+        )
+    conn.commit()
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -294,6 +317,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
             _migrate_foreign_key_schema(conn)
             _migrate_roadmap_tombstone_columns(conn)
             _migrate_roadmap_pending_purge_paths(conn)
+            _purge_holder_payload(conn)
         conn.commit()
     finally:
         conn.close()

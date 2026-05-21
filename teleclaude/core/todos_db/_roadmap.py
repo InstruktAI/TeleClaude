@@ -13,10 +13,22 @@ from sqlalchemy import delete, func, update
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from teleclaude.constants import ARTIFACT_INPUT
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._exceptions import RemoveRefused
-from teleclaude.core.todos_db._models import ROADMAP_DEPS_TABLE, ROADMAP_TABLE, RoadmapDep, TodoRoadmap, TodoStateModel
+from teleclaude.core.todos_db._models import (
+    ROADMAP_DEPS_TABLE,
+    ROADMAP_TABLE,
+    TODO_ARTIFACT_TABLE,
+    TODO_ARTIFACT_VERSION_TABLE,
+    TODO_STATE_TABLE,
+    RoadmapDep,
+    TodoArtifact,
+    TodoArtifactVersion,
+    TodoRoadmap,
+    TodoStateModel,
+)
 from teleclaude.core.todos_db._rows import RoadmapRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.docs_reconcile import scan_remove_orphans
@@ -147,6 +159,29 @@ class TodosDbRoadmapMixin:
         )
         return result.first()
 
+    async def _purge_holder_payload(self, session: SqlAsyncSession, holder_slug: str) -> None:
+        """Strip a holder row to structure plus its frozen input artifact."""
+        if not holder_slug:
+            return
+        result = await session.exec(
+            select(TodoRoadmap.id).where(ROADMAP_TABLE.c.slug == holder_slug).where(ROADMAP_TABLE.c.status != "removed")
+        )
+        row_ids = [str(row_id) for row_id in result.all()]
+        if not row_ids:
+            return
+
+        await session.exec(delete(TodoStateModel).where(TODO_STATE_TABLE.c.id.in_(row_ids)))
+        await session.exec(
+            delete(TodoArtifact)
+            .where(TODO_ARTIFACT_TABLE.c.id.in_(row_ids))
+            .where(TODO_ARTIFACT_TABLE.c.name != ARTIFACT_INPUT)
+        )
+        await session.exec(
+            delete(TodoArtifactVersion)
+            .where(TODO_ARTIFACT_VERSION_TABLE.c.id.in_(row_ids))
+            .where(TODO_ARTIFACT_VERSION_TABLE.c.name != ARTIFACT_INPUT)
+        )
+
     async def _roadmap_status_map(self, session: SqlAsyncSession) -> dict[str, str]:
         """Return a slug-status map where any non-removed row outranks removed history."""
         rows = await session.exec(select(ROADMAP_TABLE.c.slug, ROADMAP_TABLE.c.status))
@@ -235,6 +270,8 @@ class TodosDbRoadmapMixin:
                         .where(ROADMAP_TABLE.c.slug == slug, ROADMAP_TABLE.c.status.in_(("active", "icebox")))
                         .values(**values)
                     )
+                if group_slug and group_slug != slug:
+                    await self._purge_holder_payload(db_session, group_slug)
                 if owns_session:
                     await db_session.commit()
                     self._on_mutation("todo_updated", None)
@@ -278,6 +315,9 @@ class TodosDbRoadmapMixin:
 
             for dep in after or []:
                 db_session.add(RoadmapDep(slug=slug, depends_on=dep))
+
+            if group_slug and group_slug != slug:
+                await self._purge_holder_payload(db_session, group_slug)
 
             if owns_session:
                 await db_session.commit()

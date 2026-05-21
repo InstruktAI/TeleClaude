@@ -36,6 +36,7 @@ from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionReason,
     WorkQueueResolutionReason,
     _get_item_phase_db,
+    effective_delivered_slugs_for_dependencies,
     resolve_next_work_queue_db,
     resolve_runnable_holder_children_db,
     set_item_phase_db,
@@ -365,8 +366,9 @@ async def _validate_explicit_slug_readiness(
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "item_done")
         return f"COMPLETE: Item '{slug}' is already done."
     delivered = await todos_db.delivered_slugs()
+    dependency_delivered = await effective_delivered_slugs_for_dependencies(todos_db, delivered)
     slug_deps = deps.get(slug, [])
-    if slug_deps and not all(d in delivered for d in slug_deps):
+    if slug_deps and not all(dep in dependency_delivered for dep in slug_deps):
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "deps_unsatisfied")
         return format_error(
             "DEPS_UNSATISFIED",

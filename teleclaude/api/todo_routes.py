@@ -57,7 +57,6 @@ from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.todos import BreakdownState
 
 if TYPE_CHECKING:
     from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -647,28 +646,21 @@ async def todo_split(
     children: Annotated[list[str], Body()],
     cwd: Annotated[str | None, Body()] = None,
 ) -> _SplitResponse:
-    """Split a todo into children: create child state + roadmap entries, update parent breakdown."""
+    """Split a todo into children and turn the parent into a stateless holder."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
-    # Verify parent exists and route the parent mutation through the validated
-    # StateWriter boundary so the breakdown update is type-checked before the
-    # transaction commits. Child state creation below is bootstrap of a fresh
-    # record — not mutation of existing persisted state — and stays on the raw
-    # default_state() path.
-    parent_state = await todos_db.read_state(slug)
-    if parent_state is None:
+    if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
 
     parent_input = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
-    parent_writer = StateWriter(parent_state)
-    parent_writer.state.breakdown = BreakdownState(assessed=True, todos=list(children))
 
     async with todos_db._session() as session:  # pylint: disable=protected-access
         async with session.begin():
             for child_slug in children:
-                existing = await todos_db.read_state(child_slug)
-                if existing is not None:
+                if child_slug == slug:
+                    raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
+                if await todos_db.slug_conflicts_non_removed(child_slug, session=session):
                     raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
                 await todos_db.add_to_roadmap(child_slug, group_slug=slug, session=session)
                 await todos_db.write_state(child_slug, default_state(), session=session)
@@ -680,8 +672,6 @@ async def todo_split(
                         updated_by="api.todo.split.clone_input",
                         session=session,
                     )
-
-            await parent_writer.commit(todos_db, slug, session=session)
 
     todos_db.on_committed("todo_updated")
     logger.info(
