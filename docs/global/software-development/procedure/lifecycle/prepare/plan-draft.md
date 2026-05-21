@@ -11,9 +11,6 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/definition-of-done.md
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
@@ -55,7 +52,8 @@ Read the full context before writing anything:
   snippets it points at for the actual design content.
 - `telec todo artifacts read {slug} input` — the original human thinking (for intent).
 - The codebase: files that will be affected, adjacent patterns, existing implementations
-  of similar functionality. Use `telec docs index` for relevant policies and specs.
+  of similar functionality. Use a filtered `telec docs index --areas policy,spec` (add
+  `--domains <domain>` to narrow) to surface relevant policies and specs.
 - Definition of Done — every plan task must produce output that satisfies DoD gates.
 
 Apply the domain-context loading rule from the preparation artifact quality

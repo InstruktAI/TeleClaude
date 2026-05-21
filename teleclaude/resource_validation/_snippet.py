@@ -339,7 +339,9 @@ def validate_snippet(
         validate_third_party_doc(path, content, project_root)
         return
     if (path.name == "index.md" and "baseline" in path.parts) or (
-        path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name in ("global", "project")
+        path.name.startswith("baseline")
+        and path.name.endswith(".md")
+        and (path.parent.name in ("global", "project") or path.parent.parent.name in ("global", "project"))
     ):
         _validate_baseline_index(path, content, project_root, domains=domains)
         return

@@ -1,0 +1,12 @@
+@~/.teleclaude/docs/software-development/principle/design-fundamentals.md
+@~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+@~/.teleclaude/docs/software-development/principle/documentation-first-development.md
+@~/.teleclaude/docs/software-development/policy/code-quality.md
+@~/.teleclaude/docs/software-development/policy/testing.md
+@~/.teleclaude/docs/software-development/policy/code-quality-practices.md
+@~/.teleclaude/docs/software-development/policy/test-structure.md
+@~/.teleclaude/docs/software-development/policy/linting-requirements.md
+@~/.teleclaude/docs/software-development/policy/definition-of-done.md
+@~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
+@~/.teleclaude/docs/software-development/policy/security-awareness.md
+@~/.teleclaude/docs/software-development/policy/backward-compatibility-hygiene.md

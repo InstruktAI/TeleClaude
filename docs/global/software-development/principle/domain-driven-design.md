@@ -49,7 +49,7 @@ The trade-off DDD asks for is upfront design effort. You must identify the conte
 
 ### 1. Every service is a bounded context
 
-In this platform, the unit of bounded context is the **service**. Each service in `services.md` (workflow, identity, config, knowledge, agent_runtime, agent_artifacts, session_ledger, integration) is one bounded context with one model and one vocabulary. Service boundaries are domain boundaries. State ownership is single — no service reaches into another's storage.
+In this platform, the unit of bounded context is the **service**. Each service registered in the project's services map is one bounded context with one model and one vocabulary. Service boundaries are domain boundaries. State ownership is single — no service reaches into another's storage.
 
 This is already codified in `architectural-defaults` ("Services are organized as bounded contexts representing a domain"). DDD names the discipline that backs that default.
 
@@ -79,11 +79,11 @@ The platform's event taxonomy (see `architectural-defaults` rule 4) is a DDD art
 
 ### 6. The context map is maintained as a snippet
 
-The relationships between contexts — partnership, customer/supplier, conformist, anti-corruption layer, shared kernel — are explicit and documented. `services.md` is the current platform-level context map; per-context specs reference their upstream and downstream contexts. When a relationship changes (e.g., an anti-corruption layer is removed because the upstream context migrated), the map updates.
+The relationships between contexts — partnership, customer/supplier, conformist, anti-corruption layer, shared kernel — are explicit and documented. The project's services map holds the context map; per-context specs reference their upstream and downstream contexts. When a relationship changes (e.g., an anti-corruption layer is removed because the upstream context migrated), the map updates.
 
 ### 7. Anti-corruption layers wrap legacy or external concepts
 
-When a bounded context needs to consume from a context with a different (or older) model, an anti-corruption layer translates. v1 → v2 migration is the current and largest example: v2 contexts may temporarily wrap v1 modules with ACLs that translate v1 concepts into v2 vocabulary. The ACL keeps v2's model clean even when v1 is still authoritative for the data.
+When a bounded context needs to consume from a context with a different (or older) model, an anti-corruption layer translates. A major-version migration (vN → vN+1) is a typical example: vN+1 contexts may temporarily wrap legacy vN modules with ACLs that translate old concepts into new vocabulary. The ACL keeps the new model clean even when the legacy implementation is still authoritative for the data.
 
 ### 8. Domain-first migration
 

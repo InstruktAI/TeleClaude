@@ -20,9 +20,13 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec -h -->
 
-### `telec bugs report`
+The surface table above shows every command's full argument signature. For
+commands not detailed below, run `telec <subcommand> --help` on demand — the
+full surface is already in your context.
 
-<!-- @exec: telec bugs report -h -->
+The blocks below are the few subcommands whose `--help` carries behavioral
+information (footguns, gate semantics, multi-step flow) you cannot infer from
+the signature alone.
 
 ### `telec sessions run`
 
@@ -32,17 +36,9 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec sessions send -h -->
 
-### `telec sessions revive`
-
-<!-- @exec: telec sessions revive -h -->
-
 ### `telec docs`
 
 <!-- @exec: telec docs -h -->
-
-### `telec history`
-
-<!-- @exec: telec history -h -->
 
 ### `telec code`
 
@@ -58,7 +54,3 @@ root Cargo metadata changes, and `--all` use workspace scope.
 Rust gates are owned by the existing pre-commit cargo hooks. The current Rust
 test hook is library-only (`cargo test --workspace --lib --quiet`) unless a
 future task changes the hook.
-
-### `telec todo artifacts`
-
-<!-- @exec: telec todo artifacts -h -->

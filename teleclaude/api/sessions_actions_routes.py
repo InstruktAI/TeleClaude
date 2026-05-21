@@ -10,6 +10,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+import frontmatter
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
@@ -90,6 +91,32 @@ def configure(client: AdapterClient | None = None) -> None:
 def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
     """Build API boundary metadata with explicit origin."""
     return MessageMetadata(origin=origin, **kwargs)
+
+
+def _resolve_command_domain_field(normalized_cmd: str) -> str | None:
+    """Return the `domain:` frontmatter of a slash command, if any.
+
+    Used to mark the session at creation time so the SessionStart hook can
+    prepend a domain-baseline read-line BEFORE the agent processes the
+    command's own Required reads. Commands without a `domain:` field
+    (orchestrators, process-only roles) return None and trigger no injection.
+    """
+    name = normalized_cmd.strip()
+    if not name:
+        return None
+    candidate = COMMANDS_DIR / f"{name}.md"
+    if not candidate.exists():
+        return None
+    try:
+        text = candidate.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        post = frontmatter.loads(text)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None
+    domain = post.metadata.get("domain")
+    return domain if isinstance(domain, str) and domain else None
 
 
 def _native_session_exists_for_agent(native_session_id: str, agent: str) -> bool:
@@ -334,7 +361,10 @@ def _prepare_run_session(
         if not normalized_args:
             raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
 
-    origin_metadata = WebOriginMetadata(email=identity.email) if identity.email else None
+    command_domain = _resolve_command_domain_field(normalized_cmd)
+    origin_metadata: WebOriginMetadata | None = None
+    if identity.email or command_domain:
+        origin_metadata = WebOriginMetadata(email=identity.email, command_domain=command_domain)
 
     try:
         slash_cmd = SlashCommand(normalized_cmd)

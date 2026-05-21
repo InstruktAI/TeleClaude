@@ -43,7 +43,8 @@ specs the artifact touches and load them.
 - Read the artifact (or input, if creating) and identify the domains it
   affects: documentation system, CLI surface, config surface, messaging,
   session infrastructure, etc.
-- Run `telec docs index` and load the relevant specs via `telec docs get`.
+- Run a filtered `telec docs index --areas spec` (add `--domains <domain>` to narrow further)
+  and load the relevant specs via `telec docs get`.
 - Examples: work involving doc snippets → load the snippet authoring schema.
   Work involving CLI changes → load the CLI surface spec. Work involving
   config → load the teleclaude-config spec.
@@ -204,7 +205,7 @@ Plans must provide enough detail for a builder to execute without guessing:
 - **Every task begins with references to the upstream items it delivers** —
   by artifact path and section header, e.g.
   `Delivers: prd#criterion-a, prd#criterion-b, architecture#event-naming,
-  test-specs#case-rename-conflict`. The task body then describes the work
+test-specs#case-rename-conflict`. The task body then describes the work
   and must name each referenced item in its delivery description — showing
   which change satisfies which reference. A task that references items it
   does not deliver, or delivers work not traceable to any referenced upstream

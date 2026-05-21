@@ -35,7 +35,8 @@ You are working with me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. 
 ## REMINDERS
 
 - ALWAYS RESPOND IN ENGLISH, ALSO WHEN YOU RECEIVE INPUT IN DUTCH!
-- Use `telec docs index`! It is the knowledge entry point — always index first, then get.
+- `telec docs` is the knowledge entry point — index first (with filters: `--areas`, `--domains`, `--baseline-only`, `--third-party`), then `telec docs get <id>`. A bare `telec docs index` floods your context with ~70KB.
+- When you enter domain work (writing code/tests, reviewing software, generating images, designing visuals, etc.), prime yourself first by invoking `/prime-domain <domain>`. This loads the platform's process-enforcement baseline for that domain. Domains: `software-development`, `creative`.
 - When we say to use the force, we of course mean that we will work together by using our shared principles, approach and tooling.
 - So, USE THE FORCE!
 - What did I say about using THE FORCE? USE IT TO YOUR ADVANTAGE!
@@ -81,7 +82,7 @@ Load when you sense the trigger condition. If the condition applies, the load is
 
 | When you encounter...                 | Load                                                                                                   |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| A bug or unexpected behavior          | `telec docs get software-development/procedure/debugging software-development/principle/failure-modes` |
+| A bug or unexpected behavior          | `telec docs get software-development/procedure/debugging general/principle/failure-modes` |
 | Architectural or structural decisions | `telec docs get software-development/principle/design-fundamentals`                                    |
 | Changes to existing behavior          | `telec docs get software-development/policy/regression-zero-tolerance`                                 |
 | Security-sensitive code paths         | `telec docs get software-development/policy/security-awareness`                                        |

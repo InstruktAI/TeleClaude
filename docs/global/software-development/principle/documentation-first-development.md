@@ -145,7 +145,7 @@ capability, NEVER from the todo slug.
 - RIGHT: `docs/project/spec/feature/agent_runtime/session-revival.md`
 - RIGHT: `docs/project/spec/feature/workflow/multi-pillar-split.md`
 - RIGHT: `docs/project/spec/feature/identity/principal-invitation.md`
-- WRONG: `docs/project/spec/feature/workflow/v2-workflow-cli-refinement-commands.md` (todo slug verbatim)
+- WRONG: `docs/project/spec/feature/<context>/<v2-cutover-slug>.md` (todo slug verbatim)
 - WRONG: `docs/project/spec/feature/identity/add-invite-flow.md` (verb-led and ephemeral; the durable noun is "principal invitation")
 
 **Smell test.** If the proposed concept name equals, contains, or is an
@@ -223,9 +223,9 @@ Frontmatter:
 
 ```yaml
 type: spec-diff
-diff_of: project/spec/feature/workflow/todo-creation   # parent id, validated
+diff_of: project/spec/feature/<context>/<concept>       # parent id, validated
 applies_to: v2                                          # implicit; schema-enforced
-delivered_by: [v2-workflow-cli-refinement-commands]    # the v2 todo that ships the divergence
+delivered_by: [<v2-cutover-slug>]                       # the v2 todo that ships the divergence
 status: target                                          # target until that todo delivers
 ```
 
@@ -284,14 +284,12 @@ The human reviewer confirms the split decomposition before child todos are dispa
 
 ## Tensions
 
-- **`target` snippets that never deliver.** The slug they point to may be deferred, frozen, or abandoned. The system flags this: a `target` snippet whose `delivered_by` contains only frozen / removed slugs is invalid. The author must either revive the delivery (unfreeze the slug) or convert the snippet back to `actual` (reverting the target content to reflect current state) — design that nobody is actually committing to deliver doesn't belong in the doc layer.
+- **`target` snippets that never deliver.** When a slug in `delivered_by` is deferred, frozen, or abandoned, the system flags the snippet as invalid. The author either revives the delivery or converts the snippet back to `actual` (reverting the target content). Design nobody commits to deliver doesn't belong in the doc layer.
 
-- **Design churn during prepare.** Target snippets may go through multiple revisions as the PRD iterates. Each revision is a commit on main. The history of how the target evolved is visible but adds noise. The discipline: only commit the snippet update when the prepare phase has converged on a stable design (typically: after spec/plan review), not on every intermediate draft.
+- **Design churn during prepare.** Target snippets may go through revisions as the PRD iterates; only commit the snippet update when prepare converges on a stable design (typically after spec/plan review), not on every intermediate draft.
 
-- **Cross-context target snippets.** Some snippets describe intentions that span multiple bounded contexts (e.g., a new event taxonomy used by three services). The `delivered_by` list captures the slugs that deliver each part; the snippet may stay `target` until all parts deliver, or may flip to `mixed` with section-level marks as parts land.
+- **Cross-context target snippets.** Snippets describing intent spanning multiple bounded contexts use `delivered_by` to capture every delivering slug; the snippet stays `target` until all parts deliver, or flips to `mixed` with section-level marks as parts land.
 
-- **The product owner's anchor vs. the agent's ground.** A product owner reading `target` snippets to track their own design intent sees forward state. An agent reading the same snippets to make a code decision needs current state. The inline status prefix in `telec docs index` keeps the distinction visible at the listing level — but the human-vs-agent reading style still needs to match the situation. When a human writes "in our system, X works like Y" as a target snippet, the human is asserting design; an agent reading later must check the status and not assume X works that way today.
+- **Product owner anchor vs. agent ground.** Product owners reading `target` snippets see forward state; agents making code decisions need current state. The status prefix in `telec docs index` keeps the distinction visible. When a human writes "in our system, X works like Y" as `target`, the human asserts design; an agent reading later must check status and not assume X works that way today.
 
-- **Doc-first vs. discovery.** Some design only becomes clear after touching the code (the agent discovers the actual aggregate boundary by trying to model it). The discipline: it's fine to draft a `target` snippet, attempt the work, learn from the discovery, revise the `target` snippet, then deliver. The doc-first principle doesn't require you to be omniscient at design time; it requires you to write down what you learn AS you learn it, in the doc layer, with status honesty.
-
-- **Doc-first vs. velocity for trivial changes.** A one-line bug fix doesn't need a target snippet authored before the fix lands. The discipline scales with the size and reach of the change. Changes to public surfaces, domain models, events, or contracts get doc-first treatment. Implementation-internal fixes update `actual` snippets as part of the fix if anything documented changed, and otherwise don't touch the doc layer.
+- **Doc-first vs. velocity.** Design that only becomes clear by touching the code: draft a `target` snippet, attempt the work, revise the `target` as you learn, then deliver. The principle does not require omniscience at design time — it requires writing down what you learn AS you learn it, with status honesty. For trivial implementation-internal changes (a one-line bug fix with no contract change), the doc layer is not touched; doc-first scales with the size and reach of the change.

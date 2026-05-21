@@ -29,9 +29,9 @@ This policy is framework-agnostic. Mirror conventions, test file patterns, exemp
 format, and CI enforcement tooling are project concerns — discover them from the codebase
 (package config, Makefile, existing tests).
 
-You MUST use `telec docs index | grep '{language}'` to surface language-specific doc snippets,
-and use `telec docs get {snippet_id}` to read them ALL — they contain mandatory language idioms
-for any code-producing work.
+You MUST run `telec docs index --areas policy --domains software-development` to surface
+language-specific policy snippets, then `telec docs get <snippet_id>` to read them ALL —
+they contain mandatory language idioms for any code-producing work.
 
 ## Rationale
 

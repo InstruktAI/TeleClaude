@@ -8,12 +8,6 @@ visibility: 'public'
 
 # Definition Of Done — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/linting-requirements.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
-- @~/.teleclaude/docs/software-development/policy/commits.md
-
 ## Rules
 
 Work is not done when code is written. Work is done when it meets all quality gates and is ready for production.
@@ -89,7 +83,6 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Commit message follows format
 - [ ] Attribution footer present
 - [ ] Pre-commit hooks verified
-- [ ] No `--no-verify` used
 
 ### 8. Observability
 

@@ -8,11 +8,6 @@ visibility: 'public'
 
 # Linting Requirements — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-- @~/.teleclaude/docs/software-development/policy/python/tooling.md
-
 ## Rules
 
 1. **Fix all lint violations before commit**

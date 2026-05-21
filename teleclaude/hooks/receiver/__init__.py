@@ -333,6 +333,39 @@ def _render_person_header(person: PersonEntry) -> str:
     return "\n".join(lines)
 
 
+def _resolve_command_domain_for_session(session_id: str) -> str | None:
+    """Return the `command_domain` recorded on a session's origin_metadata.
+
+    The CLI's `/sessions/run` endpoint resolves the dispatched slash command's
+    `domain:` frontmatter and persists it on `origin_metadata.command_domain`.
+    This helper lets the SessionStart hook discover that value so the
+    domain-baseline read-line is prepended BEFORE the agent processes the
+    command's own Required reads.
+    """
+    try:
+        row = _load_session_row(session_id)
+    except SQLAlchemyError:
+        return None
+    if not row or not row.origin_metadata:
+        return None
+    try:
+        origin = json.loads(row.origin_metadata)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(origin, dict):
+        return None
+    domain = origin.get("command_domain")
+    return domain if isinstance(domain, str) and domain else None
+
+
+def _domain_baseline_read_line(domain: str) -> str:
+    """Return the SessionStart instruction telling the agent to load the domain baseline."""
+    return (
+        "Read mandatory domain baseline knowledge first before doing anything else: "
+        f"@~/.teleclaude/docs/{domain}/baseline.md"
+    )
+
+
 def _print_additional_context(
     hook_event_name: str,
     cwd: str | None,
@@ -352,12 +385,24 @@ def _print_additional_context(
         except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
             logger.debug("Identity/person resolution failed for session %s", (session_id or ""))
 
+    domain_line: str | None = None
+    if session_id:
+        domain = _resolve_command_domain_for_session(session_id)
+        if domain:
+            domain_line = _domain_baseline_read_line(domain)
+
     context = _get_memory_context(project_name, identity_key=identity_key)
-    if not context and not person_header:
+    if not context and not person_header and not domain_line:
         return
 
+    parts: list[str] = []
+    if domain_line:
+        parts.append(domain_line)
     if person_header:
-        context = f"{person_header}\n{context}" if context else person_header
+        parts.append(person_header)
+    if context:
+        parts.append(context)
+    context = "\n\n".join(parts)
 
     logger.debug(
         "Additional context fetched", project=project_name, length=len(context), identity_key=identity_key or ""

@@ -113,11 +113,16 @@ def _expected_from_global(
     if len(parts) < 3:
         return None, "missing_global_scope"
     scope_segment = parts[2]
+    # Global root baseline: docs/global/baseline.md / baseline-progressive.md
     if path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name == "global":
         return None, None
+    # Domain-level baseline: docs/global/<domain>/baseline.md (e.g.
+    # software-development, creative). Treated as a manifest — no frontmatter
+    # required. The deploy pipeline inflates it into a real file at
+    # ~/.teleclaude/docs/<domain>/baseline.md for codex-readable consumption.
+    if path.name in {"baseline.md", "baseline-progressive.md"} and path.parent.name == scope_segment:
+        return None, None
     if scope_segment == "baseline":
-        if path.name == "index.md" and len(parts) == 4:
-            return None, None
         if len(parts) < 5:
             return None, "baseline_missing_taxonomy"
         taxonomy = parts[3]
@@ -133,8 +138,6 @@ def _expected_from_global(
     taxonomy = parts[3]
     if taxonomy not in ALLOWED_TAXONOMIES:
         return None, "invalid_taxonomy"
-    if path.name == "index.md":
-        return None, "index_not_allowed"
     rest = _tail(parts, 4, path)
     if not rest:
         return None, "missing_slug"
@@ -150,14 +153,10 @@ def _expected_from_project(
     if path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name == "project":
         return None, None
     if parts[2] == "baseline":
-        if path.name == "index.md" and len(parts) == 4:
-            return None, None
         return None, "project_baseline_only_index"
     taxonomy = parts[2]
     if taxonomy not in ALLOWED_TAXONOMIES:
         return None, "invalid_taxonomy"
-    if path.name == "index.md":
-        return None, "index_not_allowed"
     rest = _tail(parts, 3, path)
     if not rest:
         return None, "missing_slug"

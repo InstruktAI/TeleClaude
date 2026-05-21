@@ -8,12 +8,6 @@ visibility: 'public'
 
 # Testing — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-- @~/.teleclaude/docs/software-development/policy/linting-requirements.md
-- @~/.teleclaude/docs/software-development/policy/python/tooling.md
-
 ## Rules
 
 1. **Use pre-commit hooks as the primary verification path**
@@ -76,17 +70,12 @@ the sanctioned approach for systematically covering existing untested code.
 A characterization test pins what the code _actually does_ at a meaningful boundary. It is a safety
 net, not a specification. Its job is to detect unintended changes when the code is later modified.
 
-**When characterization testing applies:**
-
-- Systematic coverage campaigns for existing untested code.
-- Covering a module before modifying it (characterize first, then TDD the change).
-- Establishing regression guards for critical paths that lack tests.
-
-**When characterization testing does NOT apply:**
-
-- New features — use TDD.
-- Bug fixes — use reproduction test delivery (RED first).
-- Modifying existing behavior — characterize the current state, then TDD the change.
+**Scope.** Characterization testing applies to existing untested code: systematic
+coverage campaigns, covering a module before modifying it (characterize first, then
+TDD the change), and regression guards for critical paths that lack tests. It does
+NOT apply to new features (use TDD) or bug fixes (use reproduction test delivery —
+RED first). For modifying existing behavior: characterize the current state, then
+TDD the change.
 
 **OBSERVE-ASSERT-VERIFY cycle:**
 
@@ -144,6 +133,27 @@ This applies uniformly to human-facing copy, contract-shaped strings (protocol
 markers, schema keys, command tokens), and artifact/documentation strings. If
 you find yourself writing `assert s == "some-literal"` against a protocol
 identifier, the fix is a named constant — not a carve-out.
+
+**Forbidden forms under this rule** (each is a defect — fix by routing to one of
+the three permitted moves above):
+
+- **Prose-lock assertions** — asserting on rendered text by literal, substring,
+  prefix, suffix, or regex against inline copy. Snapshot the full output instead.
+- **String fragment / substring / pattern assertions** — `assert "x" in s`,
+  `s.startswith(...)`, `s.endswith(...)`, regex matches, partial-string
+  `expect(s).toContain(...)`. Asserting on a fragment is the same prose-lock as
+  asserting on the whole — just hidden behind a smaller surface area. Snapshot
+  the full output or assert on the structured field that drives the fragment.
+- **Error-message text assertions** — asserting on exception `.message`,
+  `.args[0]`, or rendered error prose. Test the exception _type_ (e.g.
+  `pytest.raises(SessionNotFoundError)`, `expect(...).toThrow(SessionNotFoundError)`)
+  and the structured fields on it. Rendered prose is snapshot-covered separately,
+  at the renderer's boundary.
+- **Truthy-check assertions used as content proxies** — `assert value` standing
+  in for "the right thing was produced" is forbidden. The sanctioned use of
+  `assert s` is the narrow non-empty boundary guard against accidental erasure
+  (move #2 above) — never a content proxy. Snapshot the output or assert on the
+  structured field that drives it.
 
 **Behavior stays structural.** Snapshots cover _presentation_. Errors are asserted
 by exception type, states by enum/typed fields, diagnostics by their structured
@@ -226,24 +236,21 @@ Every test must survive one question: **"What real bug in OUR code would this ca
 11. **Mega tests** — one test that validates many behaviors; split into focused assertions
 12. **No assertions** — tests that execute code but don't verify outcomes
 13. **Commented-out tests** — either fix or delete them
-14. **Prose-lock tests** — asserting on rendered text by literal, substring, prefix, suffix, or regex against inline copy. Snapshots are the only sanctioned path for any rendered text, human-facing or contract-shaped. See "String Assertions — One Paradigm"
+14. **String-content assertions of every shape** — prose-locks, substring/fragment/pattern matches, error-message text, truthy-checks as content proxies. ALL routed through "String Assertions — One Paradigm" above. No carve-outs.
 15. **Testing third-party code** — never test that a library works. YAML round-trips, JSON serialization, `hashlib` output, ORM queries returning rows — these are the library's responsibility
 16. **Testing informational side-effects** — audit timestamps, event emissions, log entries, metrics. If the system behaves identically when the side-effect is absent, the test has no value. Test the observability system, not every callsite that emits into it
 17. **Tautological assertions** — asserting that a data literal contains keys visible in the source. The code that consumes the structure catches missing keys — that is the real test
-18. **Truthy-check assertions used as content proxies** — `assert value` standing in for "the right thing was produced" is forbidden. The sanctioned use of `assert s` is the narrow non-empty boundary guard against accidental erasure (one canonical helper, one purpose). Anywhere else, snapshot the output or assert on the structured field that drives it
-19. **Redundant coverage across files** — a function has one test home. Do not test the same function from multiple test files. Redundant tests multiply maintenance without adding safety
-20. **Literal-echo tests** — reconstructing an expected literal from source-visible values and asserting equality without proving semantics, branching, validation, or failure handling
-21. **Primitive side-effect tests** — only proving that a file/path/object/record was created or copied after a direct library call, without exercising application-owned logic
-22. **Passthrough-only tests** — proving data flowed through unchanged when the forwarding itself is not the real behavior or decision under test
-23. **Parametrized / table-driven tests** — multiple input rows stuffed into one test body via `@pytest.mark.parametrize`, fixture `params=`, or any equivalent mechanism. The deeper sin parametrize commits is **redundant coverage masquerading as more tests**: most parametrize tables are N inputs that all flow through the same code-coverage path. The unit of testing is the path, not the input. One representative input pins the path; additional inputs through the same path are waste. When inputs do exercise different paths, give each path its own named test that documents which path it pins. There is no legitimate use of parametrize — by construction it either packages redundant runs (delete the duplicates) or smuggles distinct paths under one body (split into named tests)
-24. **String fragment / substring / pattern assertions** — `assert "x" in s`, `s.startswith(...)`, `s.endswith(...)`, regex matches against string content, partial-string `expect(s).toContain(...)`. Snapshot the full output, or assert on the structured field that drives the relevant fragment. Asserting on a fragment is the same prose-lock as asserting on the whole — it just hides the brittleness behind a smaller surface area
-25. **Error-message text assertions** — asserting on exception `.message`, `.args[0]`, or rendered error prose. Test the exception _type_ (`pytest.raises(SessionNotFoundError)`, `expect(...).toThrow(SessionNotFoundError)`) and the structured fields on it. The rendered prose is snapshot-covered separately, at the renderer's boundary
+18. **Redundant coverage across files** — a function has one test home. Do not test the same function from multiple test files. Redundant tests multiply maintenance without adding safety
+19. **Literal-echo tests** — reconstructing an expected literal from source-visible values and asserting equality without proving semantics, branching, validation, or failure handling
+20. **Primitive side-effect tests** — only proving that a file/path/object/record was created or copied after a direct library call, without exercising application-owned logic
+21. **Passthrough-only tests** — proving data flowed through unchanged when the forwarding itself is not the real behavior or decision under test
+22. **Parametrized / table-driven tests** — multiple input rows stuffed into one test body via `@pytest.mark.parametrize`, fixture `params=`, or any equivalent mechanism. The deeper sin parametrize commits is **redundant coverage masquerading as more tests**: most parametrize tables are N inputs that all flow through the same code-coverage path. The unit of testing is the path, not the input. One representative input pins the path; additional inputs through the same path are waste. When inputs do exercise different paths, give each path its own named test that documents which path it pins. There is no legitimate use of parametrize — by construction it either packages redundant runs (delete the duplicates) or smuggles distinct paths under one body (split into named tests)
 
-26. All tests run on every commit
-27. Tests must pass before merging to main branch
-28. Linting, type checking, and unit tests run automatically
-29. No commits with `--no-verify` to bypass hooks unless explicitly approved
-30. Keep test suite fast (< 10s for unit tests)
+23. All tests run on every commit
+24. Tests must pass before merging to main branch
+25. Linting, type checking, and unit tests run automatically
+26. No commits with `--no-verify` to bypass hooks unless explicitly approved
+27. Keep test suite fast (< 10s for unit tests)
 
 ### Test Specification Delivery
 
@@ -289,9 +296,9 @@ existing tests).
 
 The choice is canonical per runner — do not introduce alternative snapshot libraries.
 
-You MUST use `telec docs index | grep '{language}'` to surface language-specific doc snippets,
-and use `telec docs get {snippet_id}` to read them ALL — they contain mandatory language idioms
-for any code-producing work.
+You MUST run `telec docs index --areas policy --domains software-development` to surface
+language-specific policy snippets, then `telec docs get <snippet_id>` to read them ALL —
+they contain mandatory language idioms for any code-producing work.
 
 ## Rationale
 

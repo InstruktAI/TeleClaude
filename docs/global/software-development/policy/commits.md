@@ -8,15 +8,9 @@ visibility: 'public'
 
 # Commits — Policy
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-
 ## Rules
 
 This is the canonical source of commit behavior. Other docs may reference it, but must not redefine commit policy.
-
-Pre-commit hooks enforce tests, linting, and formatting. Only commit atomic, complete changes with no debug/temp code.
 
 Use commitizen format:
 
@@ -38,13 +32,9 @@ All Committizen types are allowed.
 
 - One logical change per commit
 - Keep commits small and focused
-- **Inspect before committing.** Run `git diff --staged` (or `git status`) and review the changeset. In a worktree, all files belong to the task — commit everything. On repo root main, verify every file belongs to the current task before staging. Generated artifacts produced by tools run during the task (index files from `telec sync`, `AGENTS.md` from inflation) are part of the task — commit them as-is even when they contain content beyond the task's direct scope.
 - Commit message explains WHY, not WHAT (code shows what)
-- Never commit broken code
-- Never use `--no-verify` to bypass hooks unless asked to do so
 - Update or add tests when behavior changes.
 - Include migration notes when schema or data shape changes.
-- Avoid committing generated artifacts (compiled binaries, bundled assets) unless explicitly required. Doc indexes, `AGENTS.md`, and other toolchain outputs from `telec sync` are explicitly required — always commit them.
 - Squash noisy fixups before merge to keep history readable.
 - **`[skip ci]` for automation bookkeeping.** Any commit pushed to origin/main that contains only scaffolding, roadmap updates, or other non-code bookkeeping MUST include `[skip ci]` in the commit subject line. CI runs are reserved for actual code delivery. The integration push from `trees/_integration/` is the only push that should trigger CI.
 
@@ -59,8 +49,7 @@ All Committizen types are allowed.
 
 ## Enforcement
 
-- Pre-commit hooks and CI validate format, tests, and linting.
-- Reviews reject commits that violate the format or atomicity.
+`telec code commit` is the canonical commit interface. The wrapper handles workspace scoping, staging, and pre-commit hooks automatically; direct git operations are blocked and self-document at the error path.
 
 ## Exceptions
 

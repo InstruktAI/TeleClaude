@@ -10,10 +10,13 @@ description: 'Guidelines for AI agents to retrieve relevant documentation snippe
 
 ## Rules
 
-- Use `telec docs index --areas <area> --scope <scope>` as the default entry point for information discovery.
+- Use `telec docs` as the entry point for information discovery. **Always pass filters** —
+  a bare `telec docs index` floods ~70KB into your context. Use
+  `--areas <type>` and/or `--domains <domain>` and/or `--baseline-only` to scope the listing
+  to what you actually need.
 - Use it before any task where missing context could alter decisions.
-- Use the three‑phase flow: index first, then selected snippet IDs, then fetch any IDs listed in
-  the `# Required reads (not loaded)` header of the previous response.
+- Use the three‑phase flow: filtered index first, then `telec docs get <id>` for selected IDs,
+  then fetch any IDs listed in the `# Required reads (not loaded)` header of the previous response.
 - Dependencies are NOT auto-expanded inline. The `# Required reads (not loaded)` header lists
   their IDs — fetch them explicitly with a follow-up `telec docs get` call if needed.
 - **Third-party library docs: check consolidated docs first.** Before web searching or using
@@ -33,7 +36,8 @@ description: 'Guidelines for AI agents to retrieve relevant documentation snippe
 
 ## Enforcement
 
-- If unsure about policies, procedures, roles, or constraints, run `telec docs index` before editing or executing.
+- If unsure about policies, procedures, roles, or constraints, run a filtered
+  `telec docs index --areas <type>` (or `--baseline-only`) before editing or executing.
 
 ## Exceptions
 
