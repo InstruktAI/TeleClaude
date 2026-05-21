@@ -32,7 +32,7 @@ visibility: 'public'
 
 ## Enforcement
 
-Use `telec code commit` for all commits. The wrapper handles workspace scoping, staging, and hooks automatically; direct git operations (`commit`, `stash`, `checkout`, `restore`, `clean`, `reset --hard`, `revert`) are blocked at the shell level and self-document the right next step on the error path.
+`telec code commit` is the canonical commit interface. The wrapper handles workspace scoping, staging, and hooks automatically. Direct git operations that would conflict with these guarantees are blocked at the shell level and self-document the right next step on the error path.
 
 ## Exceptions
 

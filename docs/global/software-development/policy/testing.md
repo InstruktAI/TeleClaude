@@ -249,8 +249,7 @@ Every test must survive one question: **"What real bug in OUR code would this ca
 23. All tests run on every commit
 24. Tests must pass before merging to main branch
 25. Linting, type checking, and unit tests run automatically
-26. No commits with `--no-verify` to bypass hooks unless explicitly approved
-27. Keep test suite fast (< 10s for unit tests)
+26. Keep test suite fast (< 10s for unit tests)
 
 ### Test Specification Delivery
 

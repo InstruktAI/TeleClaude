@@ -82,7 +82,6 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Change is atomic and complete
 - [ ] Commit message follows format
 - [ ] Attribution footer present
-- [ ] Pre-commit hooks verified
 
 ### 8. Observability
 

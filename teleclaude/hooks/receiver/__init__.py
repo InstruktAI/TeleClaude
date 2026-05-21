@@ -339,7 +339,7 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     The CLI's `/sessions/run` endpoint resolves the dispatched slash command's
     `domain:` frontmatter and persists it on `origin_metadata.command_domain`.
     This helper lets the SessionStart hook discover that value so the
-    domain-baseline read-line is prepended BEFORE the agent processes the
+    domain-baseline content is injected BEFORE the agent processes the
     command's own Required reads.
     """
     try:
@@ -358,12 +358,23 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     return domain if isinstance(domain, str) and domain else None
 
 
-def _domain_baseline_read_line(domain: str) -> str:
-    """Return the SessionStart instruction telling the agent to load the domain baseline."""
-    return (
-        "Read mandatory domain baseline knowledge first before doing anything else: "
-        f"@~/.teleclaude/docs/{domain}/baseline.md"
-    )
+def _load_domain_baseline_content(domain: str) -> str | None:
+    """Return the inflated content of the named domain baseline, or None if unavailable.
+
+    The deploy pipeline writes a single fully-expanded baseline file at
+    ``~/.teleclaude/docs/<domain>/baseline.md`` per source manifest. This
+    helper reads it for injection at SessionStart so the agent — including
+    runtimes that do not auto-follow ``@`` refs — has the full domain
+    process-enforcement baseline loaded before the first user message.
+    """
+    baseline_path = Path.home() / ".teleclaude" / "docs" / domain / "baseline.md"
+    if not baseline_path.is_file():
+        return None
+    try:
+        text = baseline_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return text if text.strip() else None
 
 
 def _print_additional_context(
@@ -385,19 +396,19 @@ def _print_additional_context(
         except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
             logger.debug("Identity/person resolution failed for session %s", (session_id or ""))
 
-    domain_line: str | None = None
+    domain_baseline: str | None = None
     if session_id:
         domain = _resolve_command_domain_for_session(session_id)
         if domain:
-            domain_line = _domain_baseline_read_line(domain)
+            domain_baseline = _load_domain_baseline_content(domain)
 
     context = _get_memory_context(project_name, identity_key=identity_key)
-    if not context and not person_header and not domain_line:
+    if not context and not person_header and not domain_baseline:
         return
 
     parts: list[str] = []
-    if domain_line:
-        parts.append(domain_line)
+    if domain_baseline:
+        parts.append(domain_baseline)
     if person_header:
         parts.append(person_header)
     if context:

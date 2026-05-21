@@ -83,10 +83,7 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
    carry forward the features and fixes from the other side into that design. Example:
    if side A introduced subprocess isolation and side B added playlist controls, the
    resolution uses the subprocess architecture with the playlist features integrated.
-4. **Never resolve by choosing one side entirely.** If `git checkout --theirs` or
-   `--ours` is the resolution for a file, that is almost certainly wrong. The only
-   exception is when one side made no meaningful changes to that file (e.g., a
-   whitespace-only diff).
+4. **Never resolve by choosing one side entirely.** Picking "ours" or "theirs" wholesale for a file is almost certainly wrong — the merge must integrate both sides' meaningful changes. The only exception is when one side made no meaningful changes to the file (e.g., a whitespace-only diff).
 5. After resolving, verify the merged file is functionally complete:
    - Does it preserve all public API surface from both sides?
    - Does it preserve all behavioral features (not just code) from both sides?

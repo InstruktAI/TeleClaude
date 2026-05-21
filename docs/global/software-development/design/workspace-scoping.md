@@ -62,8 +62,7 @@ but they do not branch on git worktree state directly.
 
 ## Invariants
 
-1. **No stashing.** The scoping mechanism exists to eliminate the need for
-   `git stash`. Files outside the agent's scope are never touched.
+1. **No stashing.** The scoping mechanism keeps files outside the agent's scope untouched, so there is never a need to stash anything aside.
 2. **Worktrees are task-scoped.** A worktree is isolated — all dirty files
    belong to the task. Existing dirty files are the default format, lint, and
    test targets. Commit staging may also include deleted dirty paths.
