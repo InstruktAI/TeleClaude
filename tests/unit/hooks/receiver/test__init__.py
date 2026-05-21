@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import Session as SqlSession
 from sqlmodel import SQLModel, select
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.constants import DOMAIN_SCOPES
 from teleclaude.core import db_models
@@ -534,12 +535,18 @@ class TestDomainBaselineInjection:
         assert payload[CODEX_OUTPUT_SYSTEM_MESSAGE] == expected
 
     def test_print_additional_context_falls_back_when_baseline_missing(
-        self, tmp_path: Path
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion
     ) -> None:
-        """When the deployed baseline is missing, the SessionStart hook MUST
-        surface the failure as a structured error event (named-constant
-        identity), rather than silently dropping mandatory context. The
-        session still starts.
+        """When the deployed baseline is missing, the SessionStart hook MUST:
+
+        1. Surface a structured error event (named-constant identity) — proves
+           the failure is observable to operators/monitors.
+        2. Still emit a visible Codex stdout payload — proves the agent
+           receives a recovery notice rather than silently starting with
+           missing mandatory context.
+
+        Both contracts are asserted; refactoring away either would fail this
+        test.
         """
         # docs_root exists but the domain-specific baseline is absent.
         (tmp_path / ".teleclaude" / "docs").mkdir(parents=True)
@@ -574,14 +581,23 @@ class TestDomainBaselineInjection:
                 session_id="sess-missing",
             )
 
-        # Visible-failure contract: the structured error event fired with the
-        # named event constant and structured fields (session_id, domain).
-        # Identity assertion on the event constant, not on prose.
+        # (1) Structured error-event contract — named-constant identity on
+        # the event name and structured kwargs (session_id, domain). No prose.
         logger_mock.error.assert_called_once()
         call = logger_mock.error.call_args
         assert call.args[0] == EVENT_DOMAIN_BASELINE_UNAVAILABLE
         assert call.kwargs["session_id"] == "sess-missing"
         assert call.kwargs["domain"] == domain
+
+        # (2) Stdout-boundary contract — the Codex payload IS emitted with the
+        # named protocol key. The fallback prose itself is snapshot-governed:
+        # the snapshot is the contract for the agent-facing notice. The
+        # tmp_path is redacted so the snapshot is stable across runs.
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert CODEX_OUTPUT_SYSTEM_MESSAGE in payload
+        redacted = payload[CODEX_OUTPUT_SYSTEM_MESSAGE].replace(str(tmp_path), "<TMP>")
+        assert redacted == snapshot
 
     def test_print_additional_context_no_domain_emits_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

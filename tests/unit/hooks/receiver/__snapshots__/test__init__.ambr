@@ -1,0 +1,4 @@
+# serializer version: 1
+# name: TestDomainBaselineInjection.test_print_additional_context_falls_back_when_baseline_missing
+  "WARNING: mandatory 'software-development' domain baseline could not be loaded (deployed baseline missing at <TMP>/.teleclaude/docs/software-development/baseline.md). Run `telec sync` to regenerate `~/.teleclaude/docs/software-development/baseline.md`, then continue."
+# ---
