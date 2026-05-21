@@ -21,6 +21,7 @@ from teleclaude.constants import (
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.project_root import resolve_state_root
 from teleclaude.resource_validation._models import (
+    _ARTIFACT_REF_ORDER,
     _CODE_FENCE_LINE,
     _H1_LINE,
     _H2_LINE,
@@ -388,6 +389,26 @@ def _validate_baseline_index(path: Path, content: str, project_root: Path, *, do
             # A pure-instruction baseline file (no @ lines) is intentionally prose-only.
             if ref_lines:
                 _error("snippet_baseline_index_invalid_line", path=str(path), line=line)
+    # Enforce taxonomy ordering across the manifest using the same primitive that
+    # governs agent-artifact Required reads ordering (see
+    # `_validate_required_reads_order` in `__init__.py`). The expected order is
+    # `_ARTIFACT_REF_ORDER` (== TAXONOMY_TYPES): principle → concept → policy →
+    # procedure → design → spec.
+    last_taxonomy_index = -1
+    for line in ref_lines:
+        taxonomy = next((t for t in _ARTIFACT_REF_ORDER if f"/{t}/" in line), None)
+        if taxonomy is None:
+            continue
+        index = _ARTIFACT_REF_ORDER.index(taxonomy)
+        if index < last_taxonomy_index:
+            _error(
+                "snippet_baseline_index_out_of_order",
+                path=str(path),
+                line=line,
+                expected_order=" → ".join(_ARTIFACT_REF_ORDER),
+            )
+            break
+        last_taxonomy_index = index
     for error in collect_inline_ref_errors(project_root, path, lines, domains=domains):
         _error(error["code"], **{k: v for k, v in error.items() if k != "code"})
 

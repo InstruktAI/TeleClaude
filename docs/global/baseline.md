@@ -1,3 +1,8 @@
+@~/.teleclaude/docs/general/principle/autonomy.md
+@~/.teleclaude/docs/general/principle/attunement.md
+@~/.teleclaude/docs/general/principle/calibration.md
+@~/.teleclaude/docs/general/principle/stewardship.md
+@~/.teleclaude/docs/general/principle/grounding.md
 @~/.teleclaude/docs/general/policy/leadership.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
@@ -5,8 +10,3 @@
 @~/.teleclaude/docs/software-development/policy/commits.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 @~/.teleclaude/docs/general/spec/tools/telec-cli.md
-@~/.teleclaude/docs/general/principle/autonomy.md
-@~/.teleclaude/docs/general/principle/attunement.md
-@~/.teleclaude/docs/general/principle/calibration.md
-@~/.teleclaude/docs/general/principle/stewardship.md
-@~/.teleclaude/docs/general/principle/grounding.md
