@@ -306,11 +306,7 @@ Payload normalization done by `teleclaude/hooks/adapters/codex.py`:
   adapter path; no positional event argument is required for Codex.
 - TeleClaude uses native `Stop` continuation JSON for checkpointing.
 - TeleClaude emits Codex `SessionStart` additional context via the
-  `systemMessage` field on stdout JSON (the shared output channel documented in
-  `Common output fields` above). This delivers domain-baseline content and
-  memory context into the Codex agent's startup, matching Claude / Gemini.
-- TeleClaude does not currently emit Codex `UserPromptSubmit` additional-context
-  output.
+  `systemMessage` field on stdout JSON.
 - Subagent detection in TeleClaude reads the transcript's `session_meta` line
   via `teleclaude.core.codex_transcript.read_codex_transcript_meta` — required
   because the hook payload does not expose parent linkage.
