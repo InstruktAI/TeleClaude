@@ -7,7 +7,7 @@ import hashlib
 import time
 from dataclasses import dataclass, field
 from re import Pattern
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from instrukt_ai_logging import get_logger
 
@@ -22,11 +22,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Unified pane-quiet window applied to all adapter profiles. The digest-stability
-# loop handles false-positive defense; 1.0s is enough headroom for typical
-# render churn after a prompt first becomes visible.
-DEFAULT_READINESS_QUIET_S: float = 1.0
-
 
 @dataclass(frozen=True)
 class PromptMatch:
@@ -37,11 +32,6 @@ class PromptMatch:
 
 class AgentReadinessProfile(Protocol):
     """Agent-owned readiness semantics used by the shared settle engine."""
-
-    @property
-    def quiet_s(self) -> float:
-        """How long the stability view must stay digest-identical before ready."""
-        raise NotImplementedError
 
     def locate_prompt(self, output: str) -> PromptMatch | None:
         """Return the visible prompt location when the agent prompt is available."""
@@ -85,7 +75,6 @@ class MarkerLineReadinessProfile:
     marker: str
     match_mode: str = "startswith"
     ignored_above_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
-    quiet_s: float = DEFAULT_READINESS_QUIET_S
 
     def locate_prompt(self, output: str) -> PromptMatch | None:
         """Locate the last visible prompt line for a marker-based CLI."""
@@ -116,7 +105,6 @@ class CodexReadinessProfile:
     """Codex readiness profile using Codex-owned prompt detection."""
 
     ignored_above_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
-    quiet_s: float = DEFAULT_READINESS_QUIET_S
 
     def locate_prompt(self, output: str) -> PromptMatch | None:
         """Locate the last live Codex prompt line within the visible pane."""
@@ -163,19 +151,12 @@ async def wait_for_agent_ready(
     agent_name: str,
     session: Session,
     timeout_s: float,
-    quiet_s: float | None = None,
+    quiet_s: float,
     poll_interval_s: float = 0.2,
 ) -> tuple[bool, str]:
-    """Wait for a visible prompt and for the pre-prompt pane region to settle.
-
-    When ``quiet_s`` is ``None`` the value is taken from the agent's readiness
-    profile, which is the canonical source. Explicit overrides are accepted for
-    backward compatibility but are no longer required.
-    """
+    """Wait for a visible prompt and for the pre-prompt pane region to settle."""
     agent = AgentName.from_str(agent_name)
     profile = _get_readiness_profile(agent)
-    if quiet_s is None:
-        quiet_s = profile.quiet_s
     deadline = time.monotonic() + timeout_s
     last_tail = await _capture_snapshot(session.tmux_session_name)
     last_digest: str | None = None
@@ -229,100 +210,3 @@ async def wait_for_agent_ready(
         elapsed,
     )
     return False, last_tail
-
-
-ReadinessWinner = Literal["hook", "pane"]
-
-# Sentinel values for ``ReadinessRaceResult.winner``. Tests and downstream
-# consumers should compare against these constants rather than literal strings
-# so the wire identity is centrally governed.
-WINNER_HOOK: ReadinessWinner = "hook"
-WINNER_PANE: ReadinessWinner = "pane"
-
-
-@dataclass(frozen=True)
-class ReadinessRaceResult:
-    """Outcome of a hook-vs-pane readiness race.
-
-    ``winner`` identifies which detector resolved first. ``elapsed_s`` is the
-    monotonic time from race start to the winning signal — useful for hook
-    lag diagnostics when the pane wins. ``tail`` is the last pane snapshot
-    captured by the pane detector (empty when the hook wins before any pane
-    capture has been recorded).
-    """
-
-    winner: ReadinessWinner
-    elapsed_s: float
-    tail: str = ""
-
-
-async def race_for_readiness(
-    *,
-    agent_name: str,
-    session: Session,
-    timeout_s: float,
-    ready_future: asyncio.Future[None],
-    pane_task_name: str | None = None,
-    hook_task_name: str | None = None,
-) -> ReadinessRaceResult:
-    """Race the hook-event readiness future against the pane-quiet detector.
-
-    Both detectors run concurrently. The first to resolve wins; the loser is
-    cancelled cleanly. ``ready_future`` is shielded so that cancelling the
-    hook wrapper does not propagate to the underlying future — callers that
-    re-await the future after a pane win (e.g. Codex synthetic-event flow)
-    rely on this guarantee.
-
-    Raises ``TimeoutError`` when neither detector resolves within
-    ``timeout_s``. The caller is responsible for unsubscribing the hook
-    handler regardless of outcome.
-    """
-    started = time.monotonic()
-    pane_name = pane_task_name or f"readiness-pane:{session.session_id}"
-    hook_name = hook_task_name or f"readiness-hook:{session.session_id}"
-
-    pane_task = asyncio.create_task(
-        wait_for_agent_ready(agent_name, session, timeout_s),
-        name=pane_name,
-    )
-    hook_task = asyncio.create_task(
-        asyncio.wait_for(asyncio.shield(ready_future), timeout=timeout_s),
-        name=hook_name,
-    )
-
-    try:
-        done, _pending = await asyncio.wait(
-            {pane_task, hook_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-    finally:
-        for task in (pane_task, hook_task):
-            if not task.done():
-                task.cancel()
-
-    elapsed = time.monotonic() - started
-    hook_exc = hook_task.exception() if hook_task in done and not hook_task.cancelled() else None
-    pane_exc = pane_task.exception() if pane_task in done and not pane_task.cancelled() else None
-
-    if hook_exc is None and hook_task in done and not hook_task.cancelled():
-        return ReadinessRaceResult(winner=WINNER_HOOK, elapsed_s=elapsed, tail="")
-
-    if pane_exc is None and pane_task in done and not pane_task.cancelled():
-        ready, tail = pane_task.result()
-        if ready:
-            return ReadinessRaceResult(winner=WINNER_PANE, elapsed_s=elapsed, tail=tail)
-
-    # Surface a non-timeout root cause when one of the detectors crashed —
-    # masking it under a generic TimeoutError loses the original traceback
-    # and makes the race appear to be a benign deadline expiry. Asyncio's
-    # own ``wait_for`` raises TimeoutError on timeout, so genuine timeouts
-    # fall through to the bottom path with no chained cause.
-    root_cause: BaseException | None = None
-    for exc in (hook_exc, pane_exc):
-        if exc is not None and not isinstance(exc, TimeoutError):
-            root_cause = exc
-            break
-    raised = TimeoutError(f"readiness race: pane and hook both failed within {timeout_s:.1f}s (agent={agent_name})")
-    if root_cause is not None:
-        raise raised from root_cause
-    raise raised

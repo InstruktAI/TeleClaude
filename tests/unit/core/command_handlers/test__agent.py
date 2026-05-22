@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from teleclaude.constants import HUMAN_ROLE_ADMIN
-from teleclaude.core.agent_readiness import WINNER_HOOK, WINNER_PANE, ReadinessRaceResult
-from teleclaude.core.agents import AgentName
 from teleclaude.core.command_handlers import _agent
 from teleclaude.core.command_handlers import _utils as command_utils
 from teleclaude.core.events import TeleClaudeEvents
@@ -246,97 +243,3 @@ class TestRunAgentCommand:
         assert update_call.kwargs["last_message_sent"] == "/status --json"
         assert update_call.kwargs["last_input_origin"] == "discord"
         execute_terminal_command.assert_awaited_once_with(session.session_id, "/status --json", None, True)
-
-
-class TestAwaitRestartReadiness:
-    """Verify the restart-path wrapper delegates to race_for_readiness and
-    emits structured readiness_winner logs."""
-
-    @pytest.mark.unit
-    async def test_wrapper_delegates_to_race_with_agent_name_passthrough(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        # The wrapper must NOT branch on agent — it must forward the agent
-        # name to race_for_readiness as-is. Codex's prior special-case branch
-        # is gone; every adapter follows the same delegation. The peer-
-        # observable contract is the kwargs handed to race_for_readiness.
-        session = make_session(active_agent=AgentName.GEMINI.value)
-        loop = asyncio.get_event_loop()
-        ready_future: asyncio.Future[None] = loop.create_future()
-        ready_future.set_result(None)
-
-        race_mock = AsyncMock(return_value=ReadinessRaceResult(winner=WINNER_HOOK, elapsed_s=0.001))
-        monkeypatch.setattr(_agent, "race_for_readiness", race_mock)
-        monkeypatch.setattr(_agent.logger, "info", MagicMock())
-
-        await _agent._await_restart_readiness(
-            agent=AgentName.GEMINI.value,
-            session=session,
-            ready_future=ready_future,
-        )
-
-        race_mock.assert_awaited_once()
-        call_kwargs = race_mock.await_args.kwargs
-        assert call_kwargs["agent_name"] == AgentName.GEMINI.value
-        assert call_kwargs["session"] is session
-        assert call_kwargs["ready_future"] is ready_future
-        assert call_kwargs["pane_task_name"]
-        assert call_kwargs["hook_task_name"]
-
-    @pytest.mark.unit
-    async def test_hook_win_emits_structured_winner_log(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        session = make_session(active_agent=AgentName.CLAUDE.value)
-        loop = asyncio.get_event_loop()
-        ready_future: asyncio.Future[None] = loop.create_future()
-        ready_future.set_result(None)
-
-        race_mock = AsyncMock(return_value=ReadinessRaceResult(winner=WINNER_HOOK, elapsed_s=0.012))
-        monkeypatch.setattr(_agent, "race_for_readiness", race_mock)
-        info_mock = MagicMock()
-        monkeypatch.setattr(_agent.logger, "info", info_mock)
-
-        await _agent._await_restart_readiness(
-            agent=AgentName.CLAUDE.value,
-            session=session,
-            ready_future=ready_future,
-        )
-
-        info_mock.assert_called_once()
-        assert info_mock.call_args.args[0]
-        log_kwargs = info_mock.call_args.kwargs
-        assert log_kwargs["winner"] == WINNER_HOOK
-        assert log_kwargs["adapter"] == AgentName.CLAUDE.value
-        assert log_kwargs["session_id"] == session.session_id
-        assert log_kwargs["phase"]
-        assert log_kwargs["hook_lag_ms"] == 12
-
-    @pytest.mark.unit
-    async def test_pane_win_emits_structured_winner_log(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        session = make_session(active_agent=AgentName.CLAUDE.value)
-        loop = asyncio.get_event_loop()
-        ready_future: asyncio.Future[None] = loop.create_future()
-
-        race_mock = AsyncMock(
-            return_value=ReadinessRaceResult(winner=WINNER_PANE, elapsed_s=1.234, tail="snapshot"),
-        )
-        monkeypatch.setattr(_agent, "race_for_readiness", race_mock)
-        info_mock = MagicMock()
-        monkeypatch.setattr(_agent.logger, "info", info_mock)
-
-        await _agent._await_restart_readiness(
-            agent=AgentName.CLAUDE.value,
-            session=session,
-            ready_future=ready_future,
-        )
-
-        log_kwargs = info_mock.call_args.kwargs
-        assert log_kwargs["winner"] == WINNER_PANE
-        assert log_kwargs["phase"]
-        assert log_kwargs["elapsed_ms"] == 1234
