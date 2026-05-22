@@ -127,6 +127,31 @@ In non-interactive mode, `ask_user` is treated as `deny`.
 | `tools.allowed: ["X"]` (settings)   | a policy file with `toolName = "X"`, `decision = "allow"`                 |
 | `tools.exclude: ["X"]` (settings)   | a policy rule with `toolName = "X"`, `decision = "deny"`                  |
 | `--allowed-tools X` (CLI flag)      | a policy file passed via `--policy <path>` (file or dir)                  |
+| `--yolo` (CLI flag)                 | `--approval-mode=yolo` (the legacy `--yolo` spelling is deprecated)       |
+
+`--yolo` is a deprecated alias for `--approval-mode=yolo`. Approval modes:
+`default` (prompt), `auto_edit` (auto-approve edits), `plan` (read-only),
+`yolo` (auto-approve all). Under `yolo`, the Policy Engine auto-approves all
+tool calls via a high-priority rule, so a redundant allow-all policy is
+belt-and-suspenders rather than required for the yolo case.
+
+### Current — NOT deprecated (do not migrate)
+
+Confirmed current in the CLI reference; agents auditing for 1.0 breakage should
+**not** flag these:
+
+- `--sandbox` / `-s` — "Run in a sandboxed environment for safer execution."
+- `--include-directories` — "Additional directories to include in the workspace."
+- `--allowed-mcp-server-names` — MCP server allowlist (the sentinel `_none_` is a
+  caller convention meaning "no servers", not a CLI feature).
+- `--approval-mode` (`default` | `auto_edit` | `yolo` | `plan`) — the surviving
+  approval surface; `--yolo` is the only deprecated spelling.
+- `tools.sandbox`, `context.includeDirectories`, `context.fileName`,
+  `tools.enableHooks`, `mcpServers` — current settings keys.
+
+Sandbox + mounted directories + MCP-server allowlisting are how a session is
+*jailed*; none of that machinery is deprecated. Only the `tools.allowed` /
+`--allowed-tools` *tool-confirmation* surface and the `--yolo` spelling move.
 
 ## Known caveats
 
