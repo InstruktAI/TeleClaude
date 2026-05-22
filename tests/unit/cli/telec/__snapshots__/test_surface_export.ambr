@@ -312,13 +312,13 @@
   
   List snippet IDs and metadata (phase 1)
   
-  **Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec>] [--domains <software-development|creative|marketing|customer-relations>] [--target <slug>]`
+  **Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|customer-relations>] [--target <slug>]`
   
   **Flags:**
   
   - `--baseline-only` (`-b`): Show only baseline snippets
   - `--third-party` (`-t`): Include third-party docs
-  - `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec); omit for all
+  - `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec|adr); omit for all
   - `--domains` (`-d`): Filter by domain (software-development|creative|marketing|customer-relations); omit for all
   - `--target`: Filter to snippets delivered by slug
   
@@ -833,7 +833,7 @@
   
   ## `telec memories`
   
-  Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — their relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the memory scraper; agents must never create them.
+  Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — their relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the session memory extraction agent (the memory scraper, invoked via /extract-memory); other agents must never create them.
   
   ### `telec memories list`
   
