@@ -5,7 +5,8 @@ domain: 'software-development'
 scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
-status: 'actual'
+status: 'target'
+delivered_by: ['voice-transcription-survives-restart']
 description: 'The long-running daemon process lifecycle — single-instance lock, staged startup (DB → operations → session cache warm → adapters → event platform → API server → projects cache warm), shutdown ordering, and the API-server restart loop that keeps the in-process HTTP surface alive across crashes.'
 ---
 
@@ -62,6 +63,7 @@ When `_complete_startup_after_adapters` runs
 Then `client.reconcile_outstanding_final_outputs(config.computer.name)` replays final agent output to UI adapters that missed it
 And the `DaemonCache` is wired into the Redis transport adapter when present (`redis_transport_cache.cache = self.cache`)
 And `init_voice_handler()` initializes the voice handler
+And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in `pending|in_progress|interrupted` (see `database#voice-transcription-durability-and-recovery`) are resubmitted when their audio still exists — editing the original placeholder — or marked failed with an audio-lost notice when it does not; orphaned temp audio with no live row is swept
 And `inbound_queue_manager.startup()` brings up the per-session inbound queue
 And `reconcile_outstanding_conversation_deliveries` re-sends bounded peer bundles for any conversation link with an orphaned `pending_through_ts`
 And the API server starts AFTER these tasks have completed
@@ -139,6 +141,7 @@ And `daemon.stop()` proceeds in this order:
   10. `lifecycle.shutdown()` — inbound_queue shutdown → api_server.stop() → for each adapter `adapter.stop()` → `db.close()`
   11. `_release_lock()`
 And every step is best-effort: a hiccup in one step is logged and the next step still runs
+And because step 9 (task registry) precedes step 10 (adapter stop), a voice transcription that runs as a tracked task is cancelled while the adapters are still alive, so its cancellation handler can mark the persisted row `interrupted` and edit the user's placeholder in place before the adapter that owns that message is torn down
 ```
 
 #### API server exit detection

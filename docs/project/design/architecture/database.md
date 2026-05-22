@@ -4,6 +4,8 @@ id: 'project/design/architecture/database'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+status: 'target'
+delivered_by: ['voice-transcription-survives-restart']
 ---
 
 # Database — Design
@@ -101,11 +103,34 @@ erDiagram
         int created_at_epoch
     }
 
+    VOICE_TRANSCRIPTIONS {
+        text id PK
+        text session_id
+        text audio_path "absolute path on disk"
+        text origin "discord|telegram"
+        text notice_message_id "adapter-side id of the Transcribing notice, for edit-in-place"
+        text state "pending|in_progress|succeeded|failed|interrupted"
+        int attempts
+        text last_error "nullable"
+        timestamp created_at
+        timestamp updated_at
+    }
+
     SESSIONS ||--o{ HOOK_OUTBOX : "hook events"
     SESSIONS ||--o{ PENDING_MESSAGE_DELETIONS : "cleanup state"
+    SESSIONS ||--o{ VOICE_TRANSCRIPTIONS : "in-flight transcriptions"
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_OBSERVATIONS : "project memory"
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_SUMMARIES : "project summaries"
 ```
+
+The daemon owns `voice_transcriptions`; it is the single source of truth for
+the durability requirement in `@prd#scope` (a transcription in progress at
+shutdown is not lost) and the recovery contract in `@prd#success-criteria`.
+Adapter-side identity (`notice_message_id`, `origin`) is persisted so recovery
+edits the *existing* placeholder rather than emitting a duplicate, satisfying
+`@prd#success-criteria` (edited in place, not a new duplicate message). The
+`state` column carries the lifecycle the recovery flow keys off of; `audio_path`
+lets recovery verify the captured audio still exists before resubmitting.
 
 ## Inputs/Outputs
 
@@ -146,14 +171,35 @@ erDiagram
 2. FTS virtual table/trigger path indexes observation text when available.
 3. Context builder reads `memory_observations` + `memory_summaries` to render startup context.
 
-### 4. Runtime maintenance
+### 4. Voice transcription durability and recovery
+
+1. Before the "🎤 Transcribing…" placeholder is sent, a `voice_transcriptions`
+   row is written `state=pending` with the adapter-side notice identity and
+   `audio_path`.
+2. The row transitions `in_progress` when the speech-to-text call starts and
+   `succeeded` once the transcription is fed to the session.
+3. If the owning task is cancelled during shutdown (the voice flow runs as a
+   tracked task, cancelled at shutdown step 9 before adapters stop at step 10 —
+   see `daemon-lifecycle#shutdown-ordering`), the cancellation handler marks the
+   row `interrupted` and edits the placeholder in place.
+4. On the next boot, a recovery pass (see
+   `daemon-lifecycle#post-adapter-completion-tasks`) reads rows in
+   `pending|in_progress|interrupted`. If `audio_path` still exists, it resubmits
+   using the persisted notice identity so the original placeholder is edited; if
+   the audio is gone, it marks the row `failed` and edits the placeholder to an
+   audio-lost notice.
+5. Terminal rows (`succeeded|failed`) and orphaned temp audio with no live row
+   are pruned by runtime maintenance.
+
+### 5. Runtime maintenance
 
 1. Closed sessions older than the runtime retention window are purged.
 2. Session TMPDIRs and session-owned workspace directories are reconciled against live DB session truth.
 3. `session_map.json` is pruned as a cache; mappings survive only when the matching DB row is open or recoverable.
 4. Operational DB tables prune terminal or orphan rows after the retention window:
    `operations`, `inbound_queue`, `webhook_outbox`, `hook_outbox.db`, `session_tokens`,
-   `session_listeners`, and `voice_assignments`.
+   `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
+   `succeeded`/`failed` rows; orphaned temp audio with no live row is swept alongside).
 5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
 6. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
 
