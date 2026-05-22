@@ -93,22 +93,19 @@ _real_git() {
     local _inv_id="$$.$(date +%s).$RANDOM"
     _log_wrapper "$_inv_id" "$@"
 
-    # Save original stdout/stderr so the process-substitution children can
-    # pass git output through to the caller while also appending it to
-    # WRAPPER_LOG, line-prefixed and timestamped in the same format as the
-    # start/end lines.
-    exec 3>&1 4>&2
+    # Save original stderr so the process-substitution child can pass git
+    # error output through to the caller while also appending it to
+    # WRAPPER_LOG. stdout is passed through unchanged — logging every line
+    # of `git log`/`git status` produced too much noise; the start/end
+    # lines plus stderr+rc are the audit trail we actually use.
+    exec 4>&2
     "$_real_git_bin" "$@" \
-        > >(while IFS= read -r _line || [ -n "$_line" ]; do
-                echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id stream=stdout msg=$_line" >> "$WRAPPER_LOG"
-                printf '%s\n' "$_line" >&3
-            done) \
         2> >(while IFS= read -r _line || [ -n "$_line" ]; do
                 echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
                 printf '%s\n' "$_line" >&4
             done)
     local _rc=$?
-    exec 3>&- 4>&-
+    exec 4>&-
 
     _log_wrapper_end "$_inv_id" "$_rc"
     return $_rc
@@ -126,6 +123,18 @@ _log_wrapper_end() {
     local _level=INFO
     [ "$_rc" -ne 0 ] && _level=ERROR
     { echo "$(_ts_cmd) level=$_level logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+}
+
+# Block-event logger. Emitted from every wrapper-side block path so the
+# WRAPPER_LOG carries a queryable record of expected-friction events.
+# Grep frequency by reason to find where agent instructions need tuning:
+#   grep 'event=blocked' WRAPPER_LOG | sed 's/.*reason=\([^ ]*\).*/\1/' \
+#     | sort | uniq -c | sort -rn
+# Level is DEBUG because blocks are expected outcomes, not alarms — actual
+# git-binary errors keep their level=ERROR via _log_wrapper_end.
+_log_block() {
+    local _reason="$1"
+    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=blocked reason=$_reason subcmd=${_subcmd:-} role=${_role:-} cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
 }
 
 # ── Read identity from JSON file ─────────────────────────────────────────────
@@ -146,6 +155,7 @@ fi
 
 # No identity file or empty — fail fast (broken session).
 if [ -z "$_system_role" ] && [ -z "$_human_role" ]; then
+    _log_block identity_missing
     echo "ERROR: No system_role or human_role in ${_identity_file}. Session identity is broken." >&2
     exit 1
 fi
@@ -205,6 +215,7 @@ fi
 # ── DESTRUCTIVE: blocked for all roles, no override ──────────────────────────
 case "$_subcmd" in
     clean|switch)
+        _log_block "destructive_${_subcmd}"
         echo "ERROR: 'git $_subcmd' is a destructive operation and is prohibited." >&2
         exit 1
         ;;
@@ -214,6 +225,7 @@ case "$_subcmd" in
             [ "$_rarg" = "--confirmed" ] && _has_confirmed=1
         done
         if [ "$_has_confirmed" -eq 0 ]; then
+            _log_block revert_no_confirmed
             cat >&2 <<'MSG'
 WARNING: 'git revert' blocked — inspection required.
 
@@ -252,6 +264,7 @@ if [ "$_subcmd" = "reset" ]; then
         fi
         case "$_arg" in
             --hard|--merge|--keep)
+                _log_block "destructive_reset_${_arg#--}"
                 echo "ERROR: 'git reset $_arg' is prohibited in agent sessions. Do not discard commits." >&2
                 exit 1
                 ;;
@@ -279,6 +292,7 @@ if [ "$_subcmd" = "reset" ]; then
         # foreign content into the index and can update the working tree.
         # Require --confirmed (same friction as checkout <ref> -- <path>).
         if [ "$_has_reset_confirmed" = "0" ]; then
+            _log_block reset_treeish_no_confirmed
             cat >&2 <<'MSG'
 WARNING: 'git reset <tree-ish> <path>' — inspection required.
 
@@ -306,6 +320,7 @@ MSG
         _real_git "${_reset_args[@]}"
         exit $?
     else
+        _log_block reset_no_pathspec
         cat >&2 <<'MSG'
 ERROR: 'git reset' without explicit pathspecs is prohibited.
 
@@ -347,6 +362,7 @@ esac
 # recovery). The integrator's documented recovery path when repo-root sync
 # finds dirty files is to surface to the human, NOT to stash.
 if [ "$_subcmd" = "stash" ]; then
+    _log_block stash_unconditional
     cat >&2 <<'MSG'
 ERROR: 'git stash' is prohibited in agent sessions, no override.
 
@@ -369,6 +385,7 @@ if [ "$_subcmd" = "checkout" ]; then
         [ "$_carg" = "--" ] && _has_separator=1
     done
     if [ "$_has_separator" -eq 0 ]; then
+        _log_block checkout_branch_switch
         echo "ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed." >&2
         exit 1
     fi
@@ -387,6 +404,7 @@ if [ "$_subcmd" = "checkout" ]; then
         done
         if [ "$_has_co_confirmed" -eq 0 ]; then
             if [ "$_in_integration_wt" = "1" ]; then
+                _log_block checkout_in_integration_no_confirmed
                 cat >&2 <<'MSG'
 WARNING: 'git checkout <ref> -- <files>' inside the integration worktree — inspection required.
 
@@ -400,6 +418,7 @@ Before proceeding:
   3. Rerun with: git checkout --confirmed <ref> -- <files>
 MSG
             else
+                _log_block checkout_in_merge_no_confirmed
                 cat >&2 <<'MSG'
 WARNING: 'git checkout <ref> -- <files>' during active merge — inspection required.
 
@@ -458,6 +477,7 @@ if [ "$_subcmd" = "restore" ]; then
             done
             if [ "$_has_restore_confirmed" = "0" ]; then
                 if [ "$_in_integration_wt" = "1" ]; then
+                    _log_block restore_in_integration_no_confirmed
                     cat >&2 <<'MSG'
 WARNING: 'git restore' inside the integration worktree — inspection required.
 
@@ -471,6 +491,7 @@ Before proceeding:
   3. Rerun with: git restore --confirmed [--source <ref>] <path>...
 MSG
                 else
+                    _log_block restore_in_merge_no_confirmed
                     cat >&2 <<'MSG'
 WARNING: 'git restore' during active merge — inspection required.
 
@@ -499,6 +520,7 @@ fi
 
 # Block 'git add' for agents — staging is owned by telec.
 if [ "$_subcmd" = "add" ]; then
+    _log_block add_redirect
     cat >&2 <<'MSG'
 ERROR: 'git add' is not used by agents. Staging is owned by telec.
 
@@ -521,6 +543,7 @@ MSG
 fi
 
 if [ "$_subcmd" = "commit" ]; then
+    _log_block commit_redirect
     cat >&2 <<'MSG'
 ERROR: Use 'telec code commit' instead of 'git commit'. There is no bypass.
 
@@ -556,6 +579,7 @@ case "$_subcmd" in
         if [ "$_produces_commit" -eq 1 ] && [ "${TELECLAUDE_OVERRIDE_APPROVED:-}" != "1" ] && [ "$_role" != "integrator" ]; then
             _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
             if [ "$_current_branch" = "main" ]; then
+                _log_block "replay_main_unauthorized_${_subcmd}"
                 cat >&2 <<MSG
 ERROR: 'git $_subcmd' on main produces commits without going through the approval gate.
 
@@ -573,6 +597,7 @@ esac
 if [ "$_subcmd" = "push" ]; then
     _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
+        _log_block push_main_non_integrator
         echo "ERROR: Push from main is a protected operation. Only the integrator role may push from main." >&2
         exit 1
     fi
