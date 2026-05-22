@@ -114,7 +114,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         _hook_outbox_processed_count: int
         _hook_outbox_coalesced_count: int
         _hook_outbox_lag_samples_s: list[float]
-        _hook_outbox_lag_warn_count: int
         _hook_outbox_last_summary_at: float
         _hook_outbox_last_backlog_warn_at: dict[str, float]
         _hook_outbox_last_lag_warn_at: dict[str, float]
@@ -301,10 +300,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         session_id = str(row.get("session_id") or "")
         if not session_id or lag_s < HOOK_OUTBOX_LAG_WARN_THRESHOLD_S:
             return
-        # Counter advances on every threshold exceed (no rate limit) so the
-        # periodic summary log carries a dashboardable signal of hook-path
-        # health independent of the per-session warning cadence.
-        self._hook_outbox_lag_warn_count += 1
         now = time.monotonic()
         last_warn = self._hook_outbox_last_lag_warn_at.get(session_id, 0.0)
         if (now - last_warn) < HOOK_OUTBOX_WARN_LOG_INTERVAL_S:
@@ -350,8 +345,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             lag_sample_count=len(self._hook_outbox_lag_samples_s),
             p95_lag_s=round(p95_lag, 3) if p95_lag is not None else None,
             p99_lag_s=round(p99_lag, 3) if p99_lag is not None else None,
-            lag_warn_count=self._hook_outbox_lag_warn_count,
-            lag_warn_threshold_s=HOOK_OUTBOX_LAG_WARN_THRESHOLD_S,
         )
         self._hook_outbox_last_summary_at = now
 

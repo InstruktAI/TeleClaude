@@ -54,12 +54,6 @@ from teleclaude.config import config  # config.py loads .env at import time
 _record_import_timing("teleclaude.config", _t)
 
 _t = time.perf_counter()
-from teleclaude.api_models import TodoRenamedDataDTO, TodoRenamedEventDTO
-from teleclaude.constants import CacheEvent
-
-_record_import_timing("teleclaude.api_models", _t)
-
-_t = time.perf_counter()
 from teleclaude.config.runtime_settings import RuntimeSettings
 
 _record_import_timing("teleclaude.config.runtime_settings", _t)
@@ -369,7 +363,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._hook_outbox_coalesced_count = 0
         self._hook_outbox_stale_dropped_count = 0
         self._hook_outbox_lag_samples_s: list[float] = []
-        self._hook_outbox_lag_warn_count = 0
         self._hook_outbox_last_summary_at = time.monotonic()
         self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}
         self._hook_outbox_last_lag_warn_at: dict[str, float] = {}
@@ -1000,49 +993,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         project_path_raw = payload.get("project_path")
         project_path = project_path_raw if isinstance(project_path_raw, str) and project_path_raw else None
 
-        if envelope.channel == "workflow.todo.renamed":
-            self.cache.publish_workflow_change("todos", computer=computer, project_path=project_path)
-            self._broadcast_workflow_todo_renamed(payload, project_path)
-            return
-
         if category == "todo":
             self.cache.publish_workflow_change("todos", computer=computer, project_path=project_path)
         elif category == "artifact":
             self.cache.publish_workflow_change("artifacts", computer=computer, project_path=project_path)
         elif category == "roadmap":
             self.cache.publish_workflow_change("roadmap", computer=computer)
-
-    def _broadcast_workflow_todo_renamed(
-        self,
-        payload: Mapping[str, object],
-        project_path: str | None,
-    ) -> None:
-        """Broadcast a typed websocket frame for workflow.todo.renamed."""
-        old_slug = payload.get("old_slug")
-        new_slug = payload.get("new_slug")
-        if not isinstance(old_slug, str) or not old_slug:
-            logger.warning("workflow.todo.renamed missing old_slug; websocket frame skipped")
-            return
-        if not isinstance(new_slug, str) or not new_slug:
-            logger.warning("workflow.todo.renamed missing new_slug; websocket frame skipped")
-            return
-        if project_path is None:
-            logger.warning("workflow.todo.renamed missing project_path; websocket frame skipped")
-            return
-
-        lifecycle = getattr(self, "lifecycle", None)
-        api_server = getattr(lifecycle, "api_server", None)
-        if api_server is None:
-            return
-
-        frame = TodoRenamedEventDTO(
-            data=TodoRenamedDataDTO(
-                old_slug=old_slug,
-                new_slug=new_slug,
-                project_path=project_path,
-            )
-        ).model_dump(exclude_none=True)
-        api_server._broadcast_payload(CacheEvent.TODO_RENAMED.value, frame)
 
     async def _start_identity_bridge(self) -> None:
         """Attach the v2 ``identity.*`` Redis subscriber to the daemon loop.

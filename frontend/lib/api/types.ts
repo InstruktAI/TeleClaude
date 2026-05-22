@@ -22,18 +22,6 @@ import type {
 
 export type PaneThemingMode = 'off' | 'highlight' | 'highlight2' | 'agent' | 'agent_plus' | 'full' | 'semi';
 
-export interface TodoRenamedData {
-  old_slug: string;
-  new_slug: string;
-  computer?: string | null;
-  project_path?: string | null;
-}
-
-export interface TodoRenamedEvent {
-  event: 'todo_renamed';
-  data: TodoRenamedData;
-}
-
 /** Discriminated union of all WebSocket events. Discriminator: `event` field. */
 export type WsEvent =
   | SessionsInitialEvent
@@ -45,8 +33,7 @@ export type WsEvent =
   | AgentAvailabilityEvent
   | RefreshEvent
   | ErrorEvent
-  | AgentActivityEvent
-  | TodoRenamedEvent;
+  | AgentActivityEvent;
 
 /** All possible values for the `event` discriminator field. */
 export type WsEventType = WsEvent['event'];
