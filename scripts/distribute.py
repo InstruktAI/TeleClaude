@@ -334,36 +334,9 @@ def _prepare_post(
             project_root=project_root,
             current_path=current_path,
             warn_only=warn_only,
-            skip_ids=_artifact_domain_skip_ids(post, project_root=project_root),
         )
     metadata = _filter_frontmatter(post.metadata, agent_name)
     return Post(content, **metadata)
-
-
-# Per-(project_root, domain) cache of baseline skip-sets. The same domain
-# baseline is consulted for every domain-tagged artifact in a build run, so
-# resolving each manifest once keeps the inline expansion cheap.
-_DOMAIN_SKIP_IDS_CACHE: dict[tuple[str, str], set[str]] = {}
-
-
-def _artifact_domain_skip_ids(post: Post, *, project_root: Path) -> set[str]:
-    """Return the baseline skip-set for an artifact's declared ``domain``.
-
-    A `domain:`-tagged artifact receives its domain baseline injected at
-    SessionStart, so any baseline snippet must be stripped from the build
-    output to prevent duplicate injection. Artifacts without a `domain:` skip
-    nothing.
-    """
-    domain = post.metadata.get("domain")
-    if not isinstance(domain, str) or not domain:
-        return set()
-    cache_key = (str(project_root), domain)
-    cached = _DOMAIN_SKIP_IDS_CACHE.get(cache_key)
-    if cached is None:
-        baseline_path = project_root / "docs" / "global" / domain / "baseline.md"
-        cached = _baseline_snippet_ids(baseline_path, project_root=project_root)
-        _DOMAIN_SKIP_IDS_CACHE[cache_key] = cached
-    return cached
 
 
 def resolve_skill_name(post: Post, dirname: str) -> str:
@@ -549,28 +522,6 @@ def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool 
     return EXEC_DIRECTIVE_RE.sub(_run, content)
 
 
-def _baseline_snippet_ids(baseline_path: Path, *, project_root: Path) -> set[str]:
-    """Resolve a baseline manifest's `@`-refs to their frontmatter snippet ids.
-
-    Used as the build-time dedup skip-set: any artifact that declares a
-    `domain:` whose baseline is injected at SessionStart must not also inline
-    those snippets. Returns an empty set when the manifest is absent so callers
-    can treat "no baseline for this domain" as "skip nothing".
-    """
-    if not baseline_path.exists():
-        return set()
-    ids: set[str] = set()
-    content = baseline_path.read_text(encoding="utf-8")
-    for match in INLINE_REF_RE.finditer(content):
-        resolved = resolve_ref_path(match.group(1), root_path=project_root, current_path=baseline_path)
-        if not resolved or not resolved.exists():
-            continue
-        snippet_id = frontmatter.loads(resolved.read_text(encoding="utf-8")).metadata.get("id")
-        if isinstance(snippet_id, str) and snippet_id:
-            ids.add(snippet_id)
-    return ids
-
-
 def _progressive_block(resolved: Path, *, project_root: Path, warn_only: bool) -> str | None:
     """Render a baseline-progressive ref as its index + activatable list.
 
@@ -587,16 +538,9 @@ def _progressive_block(resolved: Path, *, project_root: Path, warn_only: bool) -
     return "\n\n".join(rendered) if rendered else ""
 
 
-def _snippet_body(resolved: Path, *, skip: set[str], expand: Callable[[str, Path], str]) -> str | None:
-    """Recursively-expanded body of a resolved snippet, or None when skipped.
-
-    Returns None when the snippet's id is in ``skip`` (already injected via the
-    artifact's domain baseline), so callers drop it instead of inlining
-    duplicate content.
-    """
+def _snippet_body(resolved: Path, *, expand: Callable[[str, Path], str]) -> str | None:
+    """Recursively-expanded body of a resolved snippet."""
     post = frontmatter.loads(resolved.read_text(encoding="utf-8"))
-    if post.metadata.get("id") in skip:
-        return None
     return expand(post.content, resolved).strip()
 
 
@@ -606,18 +550,9 @@ def expand_inline_refs(
     project_root: Path,
     current_path: Path,
     warn_only: bool = False,
-    skip_ids: set[str] | None = None,
 ) -> str:
-    """Inline @path.md references into the content (Codex speedup).
-
-    When ``skip_ids`` is provided, any referenced snippet whose frontmatter
-    ``id`` is in the set is dropped instead of inlined — direct or transitive
-    through procedure bodies. This deduplicates content the caller knows will
-    already be injected at SessionStart (the artifact's domain baseline), so a
-    domain-tagged worker never receives the same policy twice.
-    """
+    """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
-    skip = skip_ids or set()
 
     def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
         if depth <= 0:
@@ -646,7 +581,6 @@ def expand_inline_refs(
 
             body = _snippet_body(
                 resolved,
-                skip=skip,
                 expand=lambda text, cur: _expand_document(text, current_path=cur, depth=depth - 1),
             )
             if body is None:
@@ -670,7 +604,6 @@ def expand_inline_refs(
 
             body = _snippet_body(
                 resolved,
-                skip=skip,
                 expand=lambda text, cur: _expand_document(text, current_path=cur, depth=depth - 1),
             )
             if body is None:

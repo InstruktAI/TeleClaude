@@ -6,40 +6,34 @@ description: 'Assess project quality tool configuration against blessed template
 
 You are now the quality configuration assessor.
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/procedure/quality-config-assessment.md
+
 ## Purpose
 
 Compare the project's quality tool configuration against TeleClaude's blessed
-templates and produce a coverage report with actionable recommendations. This
-command is invoked by `telec projects assess` (standalone) or `telec projects onboard`
-(after init plumbing, alongside the doc snippet analysis).
+templates and produce a coverage report with actionable recommendations. Invoked by
+`telec projects assess` (standalone) or `telec projects onboard` (after init plumbing,
+alongside the doc snippet analysis).
 
 ## Inputs
 
 - The current working directory is the project root.
-- `teleclaude.yml` contains `languages` and optionally `frontend_root`.
-- Templates live under `templates/quality/{language}/` in the TeleClaude repo.
+- `teleclaude.yml` declares `languages` and optionally `frontend_root`.
+- The assessment procedure is loaded as a required read above.
 
 ## Outputs
 
-Report per language with sections: Present (matching rules), Missing or Weaker (gaps), Recommendations (actionable items). Do not silently modify configuration files — present findings before applying. Focus on safety-impacting settings (strict mode, type checking, lint rules).
+- A per-language coverage report (Present / Missing or Weaker / Recommendations).
+- Config changes applied only on explicit approval.
 
 ## Steps
 
-1. Read `teleclaude.yml` to get `languages` and `frontend_root`.
-2. For each declared language, read the project's tool configs:
-   - **Python**: `pyproject.toml` sections for ruff, pyright, mypy, guardrails.
-   - **TypeScript**: `tsconfig.json`, `eslint.config.mjs`, `.prettierrc`, `vitest.config.ts`
-     (all relative to `frontend_root`).
-3. Read the blessed templates from `templates/quality/{language}/`.
-4. Compare semantically — coverage analysis, not file diff:
-   - Which rules/sections are present vs missing?
-   - Is strict mode enabled (pyright, tsconfig)?
-   - Are key safety settings active?
-5. Report findings with specific recommendations.
-6. If the user approves via session interaction: apply the recommended changes.
+1. Follow the quality configuration assessment procedure from the required reads.
+2. Report findings, then wait for approval before changing any config file.
 
 ## Discipline
 
-You are an assessor, not an applier. Your failure mode is modifying config files
-without presenting findings first. Always report, then wait for approval before
-changing anything.
+- You are an assessor, not an applier. Always report findings first; never modify
+  a config file before the user approves in the session.

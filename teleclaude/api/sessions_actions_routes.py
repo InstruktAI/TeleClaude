@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -93,13 +95,17 @@ def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: objec
     return MessageMetadata(origin=origin, **kwargs)
 
 
-def _resolve_command_domain_field(normalized_cmd: str) -> str | None:
-    """Return the `domain:` frontmatter of a slash command, if any.
+_INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 
-    Used to mark the session at creation time so the SessionStart hook can
-    prepend a domain-baseline read-line BEFORE the agent processes the
-    command's own Required reads. Commands without a `domain:` field
-    (orchestrators, process-only roles) return None and trigger no injection.
+
+def _resolve_command_domain_field(normalized_cmd: str) -> str | None:
+    """Return the domain whose baseline a dispatched command's role procedure requests.
+
+    A thin command wrapper points at its role procedure via a required read.
+    When that procedure declares ``needs_domain_baseline: true``, the procedure's
+    ``domain`` names the baseline the SessionStart hook injects. Commands whose
+    procedures make no such request (orchestrators, prose-only roles) return None
+    and trigger no injection.
     """
     name = normalized_cmd.strip()
     if not name:
@@ -111,12 +117,19 @@ def _resolve_command_domain_field(normalized_cmd: str) -> str | None:
         text = candidate.read_text(encoding="utf-8")
     except OSError:
         return None
-    try:
-        post = frontmatter.loads(text)
-    except Exception:  # pylint: disable=broad-exception-caught
-        return None
-    domain = post.metadata.get("domain")
-    return domain if isinstance(domain, str) and domain else None
+    for ref in _INLINE_REF_RE.findall(text):
+        ref_path = Path(ref).expanduser()
+        if not ref_path.is_file():
+            continue
+        try:
+            metadata = frontmatter.loads(ref_path.read_text(encoding="utf-8")).metadata
+        except Exception:  # pylint: disable=broad-exception-caught
+            continue
+        if metadata.get("needs_domain_baseline") is True:
+            domain = metadata.get("domain")
+            if isinstance(domain, str) and domain:
+                return domain
+    return None
 
 
 def _native_session_exists_for_agent(native_session_id: str, agent: str) -> bool:

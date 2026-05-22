@@ -9,6 +9,14 @@ visibility: 'public'
 
 # Work Overview — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/principle/session-lifecycle.md
+- @~/.teleclaude/docs/general/concept/orchestrator.md
+- @~/.teleclaude/docs/general/concept/agent-characteristics.md
+- @~/.teleclaude/docs/general/procedure/orchestration.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
+
 ## Goal
 
 Drive the work state machine (`telec todo work`) through the build-review-fix-finalize
@@ -27,6 +35,16 @@ instructed by the state machine and supervises their progress.
 ### 1. Enter the state machine
 
 Call `telec todo work [slug]`. Read the returned instruction block and execute it.
+Let the state machine resolve holders and queue selection before reading execution
+artifacts; read the resolved child's `implementation-plan` (with `prd`, optional
+`architecture`, and optional `test-specs` as context) before dispatching. Never read
+holder artifacts as executable work input.
+
+When the state machine instructs a dispatch, select `--mode`:
+
+- **Reviewers**: always `slow`.
+- **Builders and fixers**: `med` for straightforward work (few tasks, well-defined scope, no architectural decisions); `slow` for complex work (many tasks, cross-cutting changes, architectural decisions).
+- **Finalizers**: always `fast`.
 
 ### 2. Build
 
@@ -74,6 +92,14 @@ finalizer integrates latest main into the worktree, resolves conflicts, pushes
 the branch, and reports FINALIZE_READY. The state machine then drives the finalize
 handoff, emitting end commands for the slug's workers. The work orchestrator advances
 to the next ready slug (or self-ends if the queue is empty).
+
+**Integration is not the work orchestrator's scope — authority ends at finalize.**
+After a finalizer reports FINALIZE_READY, re-enter `telec todo work [slug]` to trigger
+the handoff; the state machine records durable finalize state and emits the next action.
+Never dispatch `next-integrate`, call `telec todo integrate`, or work around permission
+denials to reach integration. Integration is a separate singleton role with its own
+lease, worktree, and dispatch path. If the machine does not advance past finalize,
+record the blocker and stop — do not escalate scope.
 
 ### 6. Deferrals
 

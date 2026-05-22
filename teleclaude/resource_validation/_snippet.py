@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 import frontmatter
@@ -759,6 +759,72 @@ def _iter_snippet_roots(project_root: Path) -> list[Path]:
     return iter_snippet_roots(project_root)
 
 
+_BASELINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
+
+
+def _domain_baseline_ids(domain: str, project_root: Path) -> set[str]:
+    """Snippet ids inflated by a domain's resident baseline manifest."""
+    baseline = project_root / "docs" / "global" / domain / "baseline.md"
+    if not baseline.exists():
+        return set()
+    ids: set[str] = set()
+    for ref in _BASELINE_REF_RE.findall(baseline.read_text(encoding="utf-8")):
+        resolved = resolve_ref_path(ref, root_path=project_root, current_path=baseline)
+        if resolved and resolved.exists():
+            snippet_id = frontmatter.loads(resolved.read_text(encoding="utf-8")).metadata.get("id")
+            if isinstance(snippet_id, str) and snippet_id:
+                ids.add(snippet_id)
+    return ids
+
+
+def _iter_reachable_refs(start: Path, project_root: Path, seen: set[Path]) -> Iterator[tuple[str, Path]]:
+    """Yield (snippet_id, containing_file) for every snippet transitively @-referenced from start."""
+    try:
+        text = start.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for ref in _BASELINE_REF_RE.findall(text):
+        resolved = resolve_ref_path(ref, root_path=project_root, current_path=start)
+        if not resolved or not resolved.exists() or resolved in seen:
+            continue
+        seen.add(resolved)
+        try:
+            snippet_id = frontmatter.loads(resolved.read_text(encoding="utf-8")).metadata.get("id")
+        except OSError:
+            continue
+        if isinstance(snippet_id, str) and snippet_id:
+            yield snippet_id, start
+        yield from _iter_reachable_refs(resolved, project_root, seen)
+
+
+def _validate_baseline_dedup(project_root: Path) -> None:
+    """Fail when a procedure that injects its domain baseline also re-includes baseline content.
+
+    A procedure declaring ``needs_domain_baseline: true`` has its domain baseline
+    injected at SessionStart. If that procedure — directly or transitively through
+    its required reads — re-includes a snippet already in that baseline, the content
+    is delivered twice. The fix is to drop the redundant required read, not to rely
+    on silent build-time deduplication.
+    """
+    for snippets_root in _iter_snippet_roots(project_root):
+        for path in sorted(snippets_root.rglob("*.md")):
+            if path.name == "index.yaml" or is_excluded_snippet_path(path, snippets_root):
+                continue
+            try:
+                meta = frontmatter.loads(path.read_text(encoding="utf-8")).metadata
+            except OSError:
+                continue
+            if meta.get("needs_domain_baseline") is not True:
+                continue
+            domain = meta.get("domain")
+            if not isinstance(domain, str) or not domain:
+                continue
+            baseline_ids = _domain_baseline_ids(domain, project_root)
+            for snippet_id, container in _iter_reachable_refs(path, project_root, set()):
+                if snippet_id in baseline_ids:
+                    _error("baseline_dedup_violation", path=str(container), snippet_id=snippet_id, domain=domain)
+
+
 def validate_all_snippets(project_root: Path) -> None:
     """Validate all doc snippets under the project. Collects validation findings."""
     domains = load_domains(project_root)
@@ -782,4 +848,5 @@ def validate_all_snippets(project_root: Path) -> None:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
             validate_snippet(path, text, project_root, domains=domains)
+    _validate_baseline_dedup(project_root)
     validate_third_party_docs(project_root)

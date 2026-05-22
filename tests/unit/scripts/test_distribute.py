@@ -24,13 +24,27 @@ if str(_REPO_ROOT) not in sys.path:
 
 from scripts import distribute
 from scripts.distribute import (
+    _inflate_domain_baseline,
     expand_exec_directives,
+    expand_inline_refs,
     transform_to_codex,
     transform_to_gemini,
     wrap_with_context_markers,
 )
 
 pytestmark = pytest.mark.unit
+
+# Snippet ids used by the inline-expansion fixtures. Named constants stand in for
+# protocol identity rather than inlining the strings at assertion sites.
+_POLICY_A_ID = "test/policy/a"
+_POLICY_B_ID = "test/policy/b"
+
+
+def _write_snippet(root: Path, rel: str, snippet_id: str, body: str) -> None:
+    """Write a frontmatter snippet with an ``id`` under ``root``."""
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"---\nid: {snippet_id}\ntype: policy\n---\n{body}\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -95,3 +109,48 @@ def test_expand_exec_directives_prepends_repo_venv_to_path(
     rendered = expand_exec_directives("<!-- @exec: telec -h -->", project_root=tmp_path)
 
     assert rendered == snapshot
+
+
+# ---------------------------------------------------------------------------
+# Inline expansion + domain baseline inflation
+# ---------------------------------------------------------------------------
+
+
+def test_expand_inline_refs_inlines_referenced_snippet_transitively(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    """A required-read procedure and the snippet it transitively @-refs are both inlined."""
+    _write_snippet(tmp_path, "docs/policy-a.md", _POLICY_A_ID, "# Policy A\n\nAlpha rule.")
+    (tmp_path / "docs" / "proc.md").write_text(
+        "---\nid: test/procedure/proc\ntype: procedure\n---\n# Proc\n\nProcedure body.\n\n@docs/policy-a.md\n",
+        encoding="utf-8",
+    )
+    content = "# Command\n\n## Required reads\n\n- @docs/proc.md\n\n## Body\n\nCommand body.\n"
+
+    result = expand_inline_refs(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
+
+    assert result == snapshot
+
+
+def test_inflate_domain_baseline_appends_progressive_index(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+    """The baseline inflation appends the sibling progressive catalogue when present."""
+    domain_src = tmp_path / "docs" / "global" / "widgets"
+    _write_snippet(tmp_path, "docs/global/widgets/policy-a.md", _POLICY_A_ID, "# Policy A\n\nAlpha rule.")
+    _write_snippet(tmp_path, "docs/global/widgets/policy-b.md", _POLICY_B_ID, "# Policy B\n\nBeta rule.")
+    (domain_src / "baseline.md").write_text("@docs/global/widgets/policy-a.md\n", encoding="utf-8")
+    (domain_src / "baseline-progressive.md").write_text("@docs/global/widgets/policy-b.md\n", encoding="utf-8")
+
+    result = _inflate_domain_baseline(domain_src / "baseline.md", domain_src, project_root=tmp_path)
+
+    assert result == snapshot
+
+
+def test_inflate_domain_baseline_without_progressive_sibling(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+    """With no progressive sibling, the inflation is the baseline content alone."""
+    domain_src = tmp_path / "docs" / "global" / "widgets"
+    _write_snippet(tmp_path, "docs/global/widgets/policy-a.md", _POLICY_A_ID, "# Policy A\n\nAlpha rule.")
+    (domain_src / "baseline.md").write_text("@docs/global/widgets/policy-a.md\n", encoding="utf-8")
+
+    result = _inflate_domain_baseline(domain_src / "baseline.md", domain_src, project_root=tmp_path)
+
+    assert result == snapshot

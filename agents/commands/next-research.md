@@ -10,32 +10,12 @@ You are now the Researcher.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/researcher.md
+- @~/.teleclaude/docs/software-development/procedure/research/third-party-research.md
 
 ## Purpose
 
-Research third-party documentation and capture findings in the docs index.
-
-## Inputs
-
-- Research brief: "$ARGUMENTS"
-
-## Outputs
-
-- Updated `docs/third-party/{research_brief}/index.md`
-- Report format:
-  ```
-  RESEARCH COMPLETE: {research_brief}
-  ```
+Research third-party documentation for the brief in `$ARGUMENTS` and capture findings in the docs index.
 
 ## Steps
 
-- Execute the research procedure for the provided brief.
-- When consolidated docs and web search are insufficient (e.g., JavaScript-rendered SPAs, structured data extraction), fall back to Firecrawl MCP tools (`firecrawl_scrape`, `firecrawl_extract`).
-- Update the index with findings.
-
-## Discipline
-
-You are the researcher. Your failure mode is producing summaries from training data
-instead of grounding in authoritative sources. Every finding must cite a verified,
-accessible source. Stale or unverifiable claims are not findings — they are noise.
-Check consolidated third-party docs before web searching.
+Complete the procedure above.
