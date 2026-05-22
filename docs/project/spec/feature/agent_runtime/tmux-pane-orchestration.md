@@ -46,6 +46,7 @@ Then a per-session TMPDIR is materialized under TMP_SESSIONS_DIR / safe_session_
 And the directory is recreated empty with mode 0700 to drop any stray unix sockets
 And the TeleClaude-controlled env dict injects TELECLAUDE_HOME, SHELL=teleclaude-shell, ZDOTDIR, BASH_ENV, ENV, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, ZSH_LAST_WORKING_DIRECTORY=1, TMPDIR/TMP/TEMP all pointing at the per-session TMPDIR
 And authorized agent env vars are resolved from `GlobalConfig.env_allow_list` plus `ProjectConfig.env_allow_list`
+And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance (`APPEARANCE_MODE`, `TERMINAL_BG`), locale (`LANG`, `LC_*`), and voice selectors
 And agent env vars are written to a 0600 file under the per-session TMPDIR
 And each env var name is validated against ^[A-Za-z_][A-Za-z0-9_]*$ — invalid names raise ValueError
 And tmux is invoked as `tmux new-session -d -s <name> -c <working_dir> [-e VAR=VAL ...] <shell_command>` with only TeleClaude-controlled values in `-e`
@@ -211,7 +212,7 @@ And the call returns True on returncode==0
 
 `agent_runtime` owns tmux orchestration end-to-end; no other bounded context calls into `tmux_bridge` directly. Adjacent dependencies:
 
-- **config** — `config.computer.tmux_binary` selects the tmux binary path; `GlobalConfig.env_allow_list` and `ProjectConfig.env_allow_list` name ambient env vars that may enter agent sessions; the env override `TELECLAUDE_SESSION_TMPDIR_BASE` overrides the per-session TMPDIR root from `paths.TMP_SESSIONS_DIR`. Subprocess timeout constants are module-level (`SUBPROCESS_TIMEOUT_QUICK`, `..._DEFAULT`, `..._LONG`), not currently sourced from config.
+- **config** — `config.computer.tmux_binary` selects the tmux binary path; `GlobalConfig.env_allow_list` and `ProjectConfig.env_allow_list` name ambient env vars that may enter agent sessions; TeleClaude-owned runtime env preserves appearance, locale, and voice selector keys while stripping `NO_COLOR` after session creation; the env override `TELECLAUDE_SESSION_TMPDIR_BASE` overrides the per-session TMPDIR root from `paths.TMP_SESSIONS_DIR`. Subprocess timeout constants are module-level (`SUBPROCESS_TIMEOUT_QUICK`, `..._DEFAULT`, `..._LONG`), not currently sourced from config.
 - **Internal `agent_runtime` consumers** — session_lifecycle (session start, end, kill), session_cleanup (orphan tmux sweeps), the polling cadence loop (snapshot-driven cadence transitions), agent_coordinator (signal escalation, control queue).
 - No identity, integration, workflow, knowledge, or session_mirrors call this surface.
 
