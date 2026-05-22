@@ -493,7 +493,7 @@
   **Notes:**
   
   - Scaffolds children and marks the parent as a holder/container. Parent artifacts are preserved as source material for plucking and seeding child todos.
-  - Children inherit parent's approved prepare phase: if requirements were approved, children start at plan_drafting; if the plan was approved, children start at prepared (ready for build).
+  - Children start fresh at the beginning of prepare with the parent's input artifact cloned into each; narrow each child's input to its own scope after the split.
   
   ### `telec todo artifacts`
   
