@@ -6,6 +6,7 @@ import pytest
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import RoadmapStatus
+from teleclaude.core.roadmap import IN_PREP_BAND, READY_BAND
 from teleclaude.core.roadmap_tree import build_roadmap_sections, flatten
 
 pytestmark = pytest.mark.unit
@@ -40,6 +41,7 @@ def _todo(
     updated_at: str | None = None,
     delivered_at: str | None = None,
     created_at: str | None = None,
+    band: str | None = None,
 ) -> TodoDTO:
     return TodoDTO(
         slug=slug,
@@ -52,6 +54,7 @@ def _todo(
         updated_at=updated_at,
         delivered_at=delivered_at,
         created_at=created_at,
+        band=band,
     )
 
 
@@ -164,23 +167,35 @@ def test_flatten_yields_depth_and_last_flags() -> None:
     ]
 
 
-def test_active_holder_children_sort_newest_first() -> None:
-    """Grouped active children sort newest-first by ready_since, fallback created_at."""
+def test_active_holder_children_group_ready_then_newest_first() -> None:
+    """Grouped active children put the Ready band above In-prep, newest-first within each."""
     sections = build_roadmap_sections(
         [
             _todo(_HOLDER, RoadmapStatus.IN_PROGRESS),
-            _todo(_PREP_NEWER, RoadmapStatus.IN_PROGRESS, group=_HOLDER, created_at=_PREP_NEWER_CREATED),
-            _todo(_READY_NEWER, RoadmapStatus.READY, group=_HOLDER, ready_since=_READY_NEWER_SINCE),
-            _todo(_PREP_OLDER, RoadmapStatus.IN_PROGRESS, group=_HOLDER, created_at=_PREP_OLDER_CREATED),
-            _todo(_READY_OLDER, RoadmapStatus.READY, group=_HOLDER, ready_since=_READY_OLDER_SINCE),
+            _todo(
+                _PREP_NEWER,
+                RoadmapStatus.IN_PROGRESS,
+                group=_HOLDER,
+                created_at=_PREP_NEWER_CREATED,
+                band=IN_PREP_BAND,
+            ),
+            _todo(_READY_NEWER, RoadmapStatus.READY, group=_HOLDER, ready_since=_READY_NEWER_SINCE, band=READY_BAND),
+            _todo(
+                _PREP_OLDER,
+                RoadmapStatus.IN_PROGRESS,
+                group=_HOLDER,
+                created_at=_PREP_OLDER_CREATED,
+                band=IN_PREP_BAND,
+            ),
+            _todo(_READY_OLDER, RoadmapStatus.READY, group=_HOLDER, ready_since=_READY_OLDER_SINCE, band=READY_BAND),
         ]
     )
 
-    # Anchors: PREP_NEWER 05-22, READY_NEWER 05-21, READY_OLDER 05-20, PREP_OLDER 05-18.
+    # Ready band first (newest ready_since), then In-prep band (newest created_at).
     assert [child.todo.slug for child in sections.active[0].children] == [
-        _PREP_NEWER,
         _READY_NEWER,
         _READY_OLDER,
+        _PREP_NEWER,
         _PREP_OLDER,
     ]
 
