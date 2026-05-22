@@ -4,6 +4,8 @@ id: 'project/design/architecture/ui-adapter'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+status: 'target'
+delivered_by: ['voice-transcription-survives-restart']
 ---
 
 # Ui Adapter — Design
@@ -201,15 +203,30 @@ Typing is naturally replaced by output from the polling cadence (`send_output_up
 
 ### 8. Voice Message Processing
 
-| Step | Actor     | Action                                          |
-| ---- | --------- | ----------------------------------------------- |
-| 1    | User      | Sends voice message                             |
-| 2    | Platform  | Downloads audio file to /tmp                    |
-| 3    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only) |
-| 4    | TTS       | Transcribes audio via Whisper API               |
-| 5    | UiAdapter | Sends transcribed text to session               |
-| 6    | UiAdapter | Sends "🎤 Sent: {text}" feedback                |
-| 7    | UiAdapter | Deletes voice message per cleanup rules         |
+Voice transcription is durable across daemon restart and bounded against a hung
+backend. The transcription runs as a tracked task (not awaited inline on the
+adapter event loop) and its lifecycle is persisted in the daemon-owned
+`voice_transcriptions` table. The durability and recovery contract is
+authoritative in `database#voice-transcription-durability-and-recovery` and
+`daemon-lifecycle#post-adapter-completion-tasks`; this table is the happy-path
+view.
+
+| Step | Actor     | Action                                                                    |
+| ---- | --------- | ------------------------------------------------------------------------- |
+| 1    | User      | Sends voice message                                                       |
+| 2    | Platform  | Downloads audio file to /tmp                                              |
+| 3    | Platform  | Writes `voice_transcriptions` row `state=pending` (notice id NULL)        |
+| 4    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only); persists its message id  |
+| 5    | TTS       | Transcribes audio via Whisper API, bounded by a wall-clock timeout        |
+| 6    | UiAdapter | Edits the notice in place with the transcribed text; row → `succeeded`    |
+| 7    | UiAdapter | Deletes voice message per cleanup rules; temp audio cleaned up            |
+
+Non-happy paths edit the **same** notice in place rather than emitting a
+duplicate: a wall-clock timeout or terminal STT failure resolves the notice to
+an explicit failure; a daemon restart marks the row `interrupted` and (when a
+notice id was persisted) edits the notice, and the next boot's recovery pass
+either completes the transcription or reports an audio-lost failure. See the
+authoritative snippets above for the bounded-retry and notice-ordering contract.
 
 ### 9. File Upload Flow
 

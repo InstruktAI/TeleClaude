@@ -63,7 +63,7 @@ When `_complete_startup_after_adapters` runs
 Then `client.reconcile_outstanding_final_outputs(config.computer.name)` replays final agent output to UI adapters that missed it
 And the `DaemonCache` is wired into the Redis transport adapter when present (`redis_transport_cache.cache = self.cache`)
 And `init_voice_handler()` initializes the voice handler
-And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in `pending|in_progress|interrupted` (see `database#voice-transcription-durability-and-recovery`) are resubmitted when their audio still exists — editing the original placeholder — or marked failed with an audio-lost notice when it does not; orphaned temp audio with no live row is swept
+And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in `pending|in_progress|interrupted` (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice id was persisted — or transitioned to terminal `failed` with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
 And `inbound_queue_manager.startup()` brings up the per-session inbound queue
 And `reconcile_outstanding_conversation_deliveries` re-sends bounded peer bundles for any conversation link with an orphaned `pending_through_ts`
 And the API server starts AFTER these tasks have completed

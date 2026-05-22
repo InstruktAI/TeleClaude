@@ -108,9 +108,9 @@ erDiagram
         text session_id
         text audio_path "absolute path on disk"
         text origin "discord|telegram"
-        text notice_message_id "adapter-side id of the Transcribing notice, for edit-in-place"
+        text notice_message_id "nullable; set post-send (the platform id only exists after the notice send returns)"
         text state "pending|in_progress|succeeded|failed|interrupted"
-        int attempts
+        int attempts "recovery resubmission count; capped"
         text last_error "nullable"
         timestamp created_at
         timestamp updated_at
@@ -173,23 +173,35 @@ lets recovery verify the captured audio still exists before resubmitting.
 
 ### 4. Voice transcription durability and recovery
 
-1. Before the "🎤 Transcribing…" placeholder is sent, a `voice_transcriptions`
-   row is written `state=pending` with the adapter-side notice identity and
-   `audio_path`.
+1. The row is written in two grounded steps so the original placeholder is
+   editable after a crash. First, **before** the speech-to-text call, a row is
+   written `state=pending` with `audio_path` and `notice_message_id=NULL`.
+   Second, the "🎤 Transcribing…" placeholder is sent, and the platform message
+   id it returns is written back as `notice_message_id` (a single follow-up
+   update). The crash window between these two steps is bounded by the recovery
+   contract below: a row recovered with `notice_message_id=NULL` is resubmitted
+   with a fresh placeholder rather than an edit, since no original placeholder is
+   known to exist.
 2. The row transitions `in_progress` when the speech-to-text call starts and
    `succeeded` once the transcription is fed to the session.
 3. If the owning task is cancelled during shutdown (the voice flow runs as a
    tracked task, cancelled at shutdown step 9 before adapters stop at step 10 —
    see `daemon-lifecycle#shutdown-ordering`), the cancellation handler marks the
-   row `interrupted` and edits the placeholder in place.
+   row `interrupted` and, when `notice_message_id` is set, edits the placeholder
+   in place.
 4. On the next boot, a recovery pass (see
    `daemon-lifecycle#post-adapter-completion-tasks`) reads rows in
-   `pending|in_progress|interrupted`. If `audio_path` still exists, it resubmits
-   using the persisted notice identity so the original placeholder is edited; if
-   the audio is gone, it marks the row `failed` and edits the placeholder to an
+   `pending|in_progress|interrupted` and processes each **idempotently, keyed by
+   row id**: it increments `attempts` and, if `attempts` exceeds the recovery
+   cap (a small named bound), transitions the row to terminal `failed` with
+   `last_error` recorded and edits the placeholder to a failure notice — so a
+   repeatedly-failing transcription cannot loop on every boot. Within the cap, if
+   `audio_path` still exists it resubmits (editing the original placeholder when
+   `notice_message_id` is set, otherwise sending a fresh one); if the audio is
+   gone it transitions to terminal `failed` and edits the placeholder to an
    audio-lost notice.
 5. Terminal rows (`succeeded|failed`) and orphaned temp audio with no live row
-   are pruned by runtime maintenance.
+   are pruned by runtime maintenance (step 5 below) — not by startup.
 
 ### 5. Runtime maintenance
 
