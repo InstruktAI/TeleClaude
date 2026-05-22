@@ -16,12 +16,13 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import RoadmapStatus
 from teleclaude.core.roadmap import section_sort_key
 
-SiblingKey = Callable[[TodoDTO], object]
+SiblingKey = Callable[[TodoDTO], Any]
 
 
 @dataclass
@@ -98,7 +99,7 @@ def _topo_sort_siblings(
     sibling_set = set(slugs)
     input_order = {slug: index for index, slug in enumerate(slugs)}
 
-    def _sort_key(slug: str) -> object:
+    def _sort_key(slug: str) -> Any:
         if sibling_key is not None and by_slug is not None:
             todo = by_slug.get(slug)
             if todo is not None:
