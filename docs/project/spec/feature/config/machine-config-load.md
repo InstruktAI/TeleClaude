@@ -63,7 +63,7 @@ And the file at the resolved path is loaded as the machine config
 Given _config_path resolves to a file that does NOT exist on disk
 When the teleclaude.config module is imported
 Then a FileNotFoundError is raised with the message:
-  "Config file not found: <path>. Set TELECLAUDE_CONFIG_PATH to a valid config (e.g., tests/integration/config.yml) or run 'make init' to create it."
+  "Config file not found: <path>. Set TELECLAUDE_CONFIG_PATH to a valid config (e.g., tests/integration/config.yml) or run 'telec config wizard' to create it."
 And no Config object is bound (import fails for every consumer)
 ```
 

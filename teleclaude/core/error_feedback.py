@@ -5,9 +5,9 @@ from __future__ import annotations
 from teleclaude.core.events import ErrorEventContext
 
 _HOOK_ERROR_MESSAGES: dict[str, str] = {
-    "HOOK_INVALID_JSON": "Hook payload was invalid JSON. Re-run `telec projects init` and retry.",
-    "HOOK_PAYLOAD_NOT_OBJECT": "Hook payload format was invalid. Re-run `telec projects init` and retry.",
-    "HOOK_EVENT_DEPRECATED": "Hook event name is outdated. Re-run `telec projects init` to migrate hooks.",
+    "HOOK_INVALID_JSON": "Hook payload was invalid JSON. Re-run `make install` and retry.",
+    "HOOK_PAYLOAD_NOT_OBJECT": "Hook payload format was invalid. Re-run `make install` and retry.",
+    "HOOK_EVENT_DEPRECATED": "Hook event name is outdated. Re-run `make install` to migrate hooks.",
 }
 
 

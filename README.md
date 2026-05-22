@@ -113,12 +113,13 @@ TeleClaude is not a bot. It is a high-integrity operating system for the agentic
 git clone https://github.com/morriz/teleclaude.git
 cd teleclaude
 make install
-make init
+telec config wizard
+make start
 ```
 
-`make install` and `make init` are for this TeleClaude repo itself. They set up the development checkout, tooling, and local repo wiring.
+`make install`, `telec config wizard`, and `make start` are for this TeleClaude repo itself. They install machine-global tooling, collect interactive configuration, and bring the daemon up.
 
-`telec projects init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up docs sync, todo watcher services, hooks, and local runtime integration. It is project setup, not repo installation.
+`telec projects init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up docs sync, hooks, registry state, and project-local config. It is project setup, not repo installation.
 
 For AI-driven project analysis and quality-config assessment, run `telec projects onboard` (or `telec projects analyze` / `telec projects assess` individually) after `telec projects init`.
 

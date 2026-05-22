@@ -1,4 +1,4 @@
-.PHONY: help install init link certs format lint check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
+.PHONY: help install link certs format lint check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -9,8 +9,9 @@ help:
 	@echo ""
 	@echo "Repo Setup:"
 	@echo "  make install      Set up this TeleClaude checkout and install repo dependencies"
-	@echo "  make init         Initialize this TeleClaude repo for development (ARGS=-y for unattended)"
-	@echo "  make bootstrap    Non-interactive install AND init (for CI)"
+	@echo "  telec config wizard  Configure this TeleClaude checkout interactively"
+	@echo "  make start        Start daemon via launchd/systemd"
+	@echo "  make bootstrap    Non-interactive machine-global bootstrap"
 	@echo "  make bootstrap-ci Lean non-interactive bootstrap for CI environments"
 	@echo "  make generate-types  Generate TypeScript types from Pydantic API models"
 	@echo "  make build-artifacts  Generate and deploy agent artifacts (docs, skills, prompts)"
@@ -43,9 +44,6 @@ help:
 
 install:
 	@./bin/install.sh
-
-init:
-	@./bin/init.sh $(ARGS)
 
 link:
 	@echo "Linking shared scripts/docs..."

@@ -3,7 +3,7 @@
 Covers:
   R1 — Module rename: configure_agent_cli is importable at the new path, and all
        internal references (guardrails.py, init_flow.py) are updated.
-  R2 — Shell wrapper inlining: setup_agent_hooks.sh removed; bin/init.sh updated.
+  R2 — Shell wrapper inlining: setup_agent_hooks.sh removed; install.sh owns setup.
   R3 — Repo-owned compaction prompt source file exists with correct content.
   R4 — Compaction prompt deployment: file written, TOML key set, idempotent,
        and delivered via the settings/codex.toml override mechanism.
@@ -25,6 +25,7 @@ import pytest
 from teleclaude.install import configure_agent_cli
 from teleclaude.install.codex_hook_trust import build_codex_managed_hook_state
 from teleclaude.install.configure_agent_cli import configure_claude, configure_codex, configure_gemini
+from teleclaude.project_setup import init_flow
 
 pytestmark = pytest.mark.unit
 
@@ -863,12 +864,9 @@ def test_guardrails_exclusion_list_references_renamed_module() -> None:
     )
 
 
-def test_init_flow_imports_renamed_module() -> None:
-    """init_flow.py must import the agent CLI configurator under its new module identity."""
-    content = (_REPO_ROOT / "teleclaude" / "project_setup" / "init_flow.py").read_text(encoding="utf-8")
-    assert "configure_agent_cli" in content, (
-        "teleclaude/project_setup/init_flow.py must import from configure_agent_cli, not install_hooks"
-    )
+def test_init_flow_does_not_configure_agent_cli() -> None:
+    """init_flow.py must no longer own machine-global agent CLI configuration."""
+    assert not hasattr(init_flow, "configure_agent_cli")
 
 
 # ---------------------------------------------------------------------------
@@ -877,26 +875,20 @@ def test_init_flow_imports_renamed_module() -> None:
 
 
 def test_setup_agent_hooks_shell_script_removed() -> None:
-    """bin/init/setup_agent_hooks.sh must no longer exist after its behavior is inlined into bin/init.sh."""
+    """bin/init/setup_agent_hooks.sh must no longer exist after install.sh owns setup."""
     assert not (_REPO_ROOT / "bin" / "init" / "setup_agent_hooks.sh").exists(), (
-        "bin/init/setup_agent_hooks.sh must be removed — its invocation is inlined into bin/init.sh"
+        "bin/init/setup_agent_hooks.sh must be removed — its invocation is inlined into bin/install.sh"
     )
 
 
 def test_bin_init_does_not_source_removed_script() -> None:
-    """bin/init.sh must not source setup_agent_hooks.sh after the standalone script is removed."""
-    content = (_REPO_ROOT / "bin" / "init.sh").read_text(encoding="utf-8")
-    assert "setup_agent_hooks.sh" not in content, (
-        "bin/init.sh must not source setup_agent_hooks.sh — the script no longer exists"
-    )
+    """bin/init.sh must be removed after setup ownership moves to install/start."""
+    assert not (_REPO_ROOT / "bin" / "init.sh").exists()
 
 
-def test_bin_init_invokes_renamed_python_entry_point() -> None:
-    """bin/init.sh must invoke the renamed Python entry point for agent CLI configuration."""
-    content = (_REPO_ROOT / "bin" / "init.sh").read_text(encoding="utf-8")
-    assert "configure_agent_cli.py" in content, (
-        "bin/init.sh must invoke bin/init/configure_agent_cli.py using PYTHONPATH + venv python"
-    )
+def test_agent_cli_configurator_entry_point_is_callable() -> None:
+    """The agent CLI configurator remains importable from its module home."""
+    assert callable(configure_agent_cli.main)
 
 
 # ---------------------------------------------------------------------------

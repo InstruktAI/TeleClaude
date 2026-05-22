@@ -207,6 +207,8 @@ Then the corresponding status indicator reflects the new state
 
 #### UC-WIZ-9: Single-setup-surface contract holds across `make install` → `make start`
 
+Note: `simplify-install-flow-cleanup` delivers the shell-side half of this contract; `install-wizard-enrichment` still owns wizard-side coverage for legacy setup prompts.
+
 ```
 Given a delivery where this feature spec is `actual`
 When a human runs `make install`
@@ -430,10 +432,10 @@ rendering concern, not a state concern.
   promoted from `target.write_text(...)` to the atomic-replace
   pattern by this delivery so UC-WIZ-3 and UC-WIZ-5 hold uniformly
   across every persistence surface.
-- The cleanup todo `simplify-install-flow-cleanup` retires the
-  shell-layer interactive prompts so the single-setup-surface contract
-  in UC-WIZ-9 holds. That todo's "owed-to-wizard" list seeds this
-  spec's UC-WIZ-2 coverage and is locked once the cleanup delivers.
+- The cleanup todo `simplify-install-flow-cleanup` retires the shell-layer
+  interactive prompts and points missing config at the wizard so the shell-side
+  half of UC-WIZ-9 holds. The wizard-side prompt coverage remains owed by
+  `install-wizard-enrichment`.
 
 ## Allowed values
 
@@ -451,10 +453,10 @@ rendering concern, not a state concern.
 
 - **Owed-to-wizard list is sourced from the cleanup delivery.** The full
   list of legacy `bin/init.sh` questions that UC-WIZ-2 enumerates is
-  closed only after `simplify-install-flow-cleanup` delivers. Until
-  then, the list above (computer name, Telegram bot token, Telegram
-  user ID, Telegram supergroup ID, optional OpenAI key) reflects the
-  current `bin/init.sh` interactive prompts.
+  closed only after `install-wizard-enrichment` delivers wizard-side
+  coverage. Until then, the list above (computer name, Telegram bot
+  token, Telegram user ID, Telegram supergroup ID, optional OpenAI key)
+  reflects the retired shell prompts.
 - **Status reflects persisted config, not live external state.** A
   section flagged `configured` means the persisted values are valid;
   it does not certify that an external service (e.g., a Telegram bot,

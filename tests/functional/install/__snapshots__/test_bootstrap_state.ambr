@@ -1,0 +1,348 @@
+# serializer version: 1
+# name: test_bootstrap_ci_target_preserves_current_tooling_state
+  dict({
+    'home': dict({
+      '.claude': list([
+        tuple(
+          'file',
+          'settings.json',
+          'file',
+        ),
+      ]),
+      '.codex': list([
+        tuple(
+          'file',
+          'CODEX.compaction.md',
+          'file',
+        ),
+        tuple(
+          'file',
+          'config.toml',
+          'file',
+        ),
+        tuple(
+          'file',
+          'hooks.json',
+          'file',
+        ),
+      ]),
+      '.gemini': list([
+        tuple(
+          'file',
+          'settings.json',
+          'file',
+        ),
+      ]),
+      '.local/bin': list([
+      ]),
+      '.teleclaude': list([
+        tuple(
+          'dir',
+          '.vscode',
+          0,
+        ),
+        tuple(
+          'file',
+          '.vscode/settings.json',
+          'file',
+        ),
+        tuple(
+          'dir',
+          'bin',
+          0,
+        ),
+        tuple(
+          'symlink',
+          'bin/git',
+          'TMP/project_root/teleclaude/install/wrappers/git',
+        ),
+        tuple(
+          'symlink',
+          'bin/teleclaude-shell',
+          'TMP/project_root/teleclaude/install/wrappers/teleclaude-shell',
+        ),
+        tuple(
+          'dir',
+          'docs',
+          0,
+        ),
+        tuple(
+          'symlink',
+          'docs/creative',
+          'TMP/project_root/docs/global/creative',
+        ),
+        tuple(
+          'symlink',
+          'docs/general',
+          'TMP/project_root/docs/global/general',
+        ),
+        tuple(
+          'symlink',
+          'docs/software-development',
+          'TMP/project_root/docs/global/software-development',
+        ),
+        tuple(
+          'symlink',
+          'scripts',
+          'TMP/project_root/scripts',
+        ),
+        tuple(
+          'dir',
+          'shell',
+          0,
+        ),
+        tuple(
+          'symlink',
+          'shell/.bashenv',
+          'TMP/project_root/teleclaude/install/shell/bashenv',
+        ),
+        tuple(
+          'symlink',
+          'shell/.bashrc',
+          'TMP/project_root/teleclaude/install/shell/bashrc',
+        ),
+        tuple(
+          'symlink',
+          'shell/.profile',
+          'TMP/project_root/teleclaude/install/shell/profile',
+        ),
+        tuple(
+          'symlink',
+          'shell/.zshenv',
+          'TMP/project_root/teleclaude/install/shell/zshenv',
+        ),
+        tuple(
+          'symlink',
+          'shell/.zshrc',
+          'TMP/project_root/teleclaude/install/shell/zshrc',
+        ),
+      ]),
+      'Applications': list([
+      ]),
+    }),
+    'project_outputs': dict({
+      '.env': False,
+      'bin/teleclaude-wrapper.sh': True,
+      'config.yml': False,
+      'teleclaude.yml': True,
+    }),
+    'returncode': 0,
+    'stub_logs': dict({
+      'claude.log': list([
+        'claude --version',
+      ]),
+      'git.log': list([
+        'git rev-parse --git-dir',
+        'git rev-parse --git-dir',
+        'git rev-parse --git-common-dir',
+      ]),
+      'node.log': list([
+        'node --version',
+      ]),
+      'npm.log': list([
+        'npm --version',
+      ]),
+      'tmux.log': list([
+        'tmux -V',
+      ]),
+      'uv.log': list([
+        'uv sync --frozen',
+      ]),
+    }),
+    'venv': dict({
+      'project_venv': list([
+        tuple(
+          'dir',
+          'bin',
+          0,
+        ),
+        tuple(
+          'file',
+          'bin/activate',
+          'file',
+        ),
+        tuple(
+          'file',
+          'bin/python',
+          'file',
+        ),
+      ]),
+    }),
+  })
+# ---
+# name: test_bootstrap_target_creates_expected_state
+  dict({
+    'home': dict({
+      '.claude': list([
+        tuple(
+          'file',
+          'settings.json',
+          'file',
+        ),
+      ]),
+      '.codex': list([
+        tuple(
+          'file',
+          'CODEX.compaction.md',
+          'file',
+        ),
+        tuple(
+          'file',
+          'config.toml',
+          'file',
+        ),
+        tuple(
+          'file',
+          'hooks.json',
+          'file',
+        ),
+      ]),
+      '.gemini': list([
+        tuple(
+          'file',
+          'settings.json',
+          'file',
+        ),
+      ]),
+      '.local/bin': list([
+        tuple(
+          'symlink',
+          'telec',
+          'TMP/project_root/bin/telec',
+        ),
+      ]),
+      '.teleclaude': list([
+        tuple(
+          'dir',
+          '.vscode',
+          0,
+        ),
+        tuple(
+          'file',
+          '.vscode/settings.json',
+          'file',
+        ),
+        tuple(
+          'dir',
+          'bin',
+          0,
+        ),
+        tuple(
+          'symlink',
+          'bin/git',
+          'TMP/project_root/teleclaude/install/wrappers/git',
+        ),
+        tuple(
+          'symlink',
+          'bin/teleclaude-shell',
+          'TMP/project_root/teleclaude/install/wrappers/teleclaude-shell',
+        ),
+        tuple(
+          'dir',
+          'docs',
+          0,
+        ),
+        tuple(
+          'symlink',
+          'docs/creative',
+          'TMP/project_root/docs/global/creative',
+        ),
+        tuple(
+          'symlink',
+          'docs/general',
+          'TMP/project_root/docs/global/general',
+        ),
+        tuple(
+          'symlink',
+          'docs/software-development',
+          'TMP/project_root/docs/global/software-development',
+        ),
+        tuple(
+          'symlink',
+          'scripts',
+          'TMP/project_root/scripts',
+        ),
+        tuple(
+          'dir',
+          'shell',
+          0,
+        ),
+        tuple(
+          'symlink',
+          'shell/.bashenv',
+          'TMP/project_root/teleclaude/install/shell/bashenv',
+        ),
+        tuple(
+          'symlink',
+          'shell/.bashrc',
+          'TMP/project_root/teleclaude/install/shell/bashrc',
+        ),
+        tuple(
+          'symlink',
+          'shell/.profile',
+          'TMP/project_root/teleclaude/install/shell/profile',
+        ),
+        tuple(
+          'symlink',
+          'shell/.zshenv',
+          'TMP/project_root/teleclaude/install/shell/zshenv',
+        ),
+        tuple(
+          'symlink',
+          'shell/.zshrc',
+          'TMP/project_root/teleclaude/install/shell/zshrc',
+        ),
+      ]),
+      'Applications': list([
+      ]),
+    }),
+    'project_outputs': dict({
+      '.env': False,
+      'bin/teleclaude-wrapper.sh': True,
+      'config.yml': False,
+      'teleclaude.yml': True,
+    }),
+    'returncode': 0,
+    'stub_logs': dict({
+      'claude.log': list([
+        'claude --version',
+      ]),
+      'git.log': list([
+        'git rev-parse --git-dir',
+        'git rev-parse --git-dir',
+        'git rev-parse --git-common-dir',
+      ]),
+      'node.log': list([
+        'node --version',
+      ]),
+      'npm.log': list([
+        'npm --version',
+      ]),
+      'tmux.log': list([
+        'tmux -V',
+      ]),
+      'uv.log': list([
+        'uv sync',
+      ]),
+    }),
+    'venv': dict({
+      'project_venv': list([
+        tuple(
+          'dir',
+          'bin',
+          0,
+        ),
+        tuple(
+          'file',
+          'bin/activate',
+          'file',
+        ),
+        tuple(
+          'file',
+          'bin/python',
+          'file',
+        ),
+      ]),
+    }),
+  })
+# ---

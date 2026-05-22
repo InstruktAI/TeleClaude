@@ -14,7 +14,6 @@ set -e
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$PROJECT_ROOT"
 
 # Configuration
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
@@ -57,8 +56,288 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+normalize_required_config_path() {
+    local raw_path="$1"
+    case "$raw_path" in
+        "~")
+            printf '%s\n' "$HOME"
+            ;;
+        "~/"*)
+            printf '%s/%s\n' "$HOME" "${raw_path#~/}"
+            ;;
+        /*)
+            printf '%s\n' "$raw_path"
+            ;;
+        *)
+            printf '%s/%s\n' "$PROJECT_ROOT" "$raw_path"
+            ;;
+    esac
+}
+
+require_config_files() {
+    local env_path="${TELECLAUDE_ENV_PATH:-$PROJECT_ROOT/.env}"
+    local config_path="${TELECLAUDE_CONFIG_PATH:-$PROJECT_ROOT/config.yml}"
+    local normalized_env_path
+    local normalized_config_path
+    normalized_env_path="$(normalize_required_config_path "$env_path")"
+    normalized_config_path="$(normalize_required_config_path "$config_path")"
+
+    if [ ! -f "$normalized_env_path" ] || [ ! -f "$normalized_config_path" ]; then
+        echo 'run `telec config wizard`'
+        exit 1
+    fi
+}
+
 extract_log_message() {
     printf '%s\n' "$1" | sed -n 's/.*msg="\([^"]*\)".*/\1/p'
+}
+
+install_systemd_service() {
+    local service_name="teleclaude"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    local path_file="/etc/systemd/system/${service_name}-config.path"
+
+    # Create wrapper script for SSH agent support
+    log_info "Creating daemon wrapper script..."
+    cat > "$PROJECT_ROOT/bin/teleclaude-wrapper.sh" <<'EOF'
+#!/bin/bash
+# Resolve project root from this script location so it works under systemd.
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Source keychain SSH agent environment
+if [ -f ~/.keychain/$(hostname)-sh ]; then
+    source ~/.keychain/$(hostname)-sh
+fi
+# Execute daemon
+exec $PROJECT_ROOT/.venv/bin/python -m teleclaude.daemon
+EOF
+    chmod +x "$PROJECT_ROOT/bin/teleclaude-wrapper.sh"
+    log_info "Created daemon wrapper script"
+
+    # Create service file
+    log_info "Creating systemd service..."
+
+    sudo tee "$service_file" > /dev/null <<EOF
+[Unit]
+Description=TeleClaude Terminal Bridge Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$PROJECT_ROOT
+Environment="PATH=$PROJECT_ROOT/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+# SSH_AUTH_SOCK sourced from keychain in wrapper
+ExecStart=$PROJECT_ROOT/bin/teleclaude-wrapper.sh
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=4096
+StandardOutput=null
+StandardError=null
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    log_info "Created systemd service file"
+
+    # Create path unit to watch config.yml and restart on changes
+    log_info "Creating config watcher..."
+
+    sudo tee "$path_file" > /dev/null <<EOF
+[Unit]
+Description=TeleClaude Config File Watcher
+
+[Path]
+PathModified=$PROJECT_ROOT/config.yml
+Unit=${service_name}.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    log_info "Created config watcher"
+
+    # Reload systemd
+    sudo systemctl daemon-reload
+
+    # Enable service and path watcher
+    log_info "Enabling service to start on boot..."
+    sudo systemctl enable "$service_name"
+    sudo systemctl enable "${service_name}-config.path"
+    log_info "Service enabled"
+
+    # Start service and path watcher
+    log_info "Starting service..."
+    sudo systemctl start "$service_name"
+    sudo systemctl start "${service_name}-config.path"
+
+    sleep 2
+
+    # Check status
+    if sudo systemctl is-active --quiet "$service_name"; then
+        log_info "Service started successfully"
+        log_info "Service commands:"
+        log_info "  Status:  sudo systemctl status $service_name"
+        log_info "  Stop:    sudo systemctl stop $service_name"
+        log_info "  Restart: sudo systemctl restart $service_name"
+        log_info "  Logs:    sudo journalctl -u $service_name -f"
+    else
+        log_error "Service failed to start"
+        log_info "Check logs: sudo journalctl -u $service_name -n 50"
+        exit 1
+    fi
+}
+
+install_systemd_docs_watch_service() {
+    local service_name="teleclaude-docs-watch"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    local template_file="$PROJECT_ROOT/templates/teleclaude-docs-watch.service"
+    local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
+    local service_path="$PROJECT_ROOT/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+    log_info "Creating global docs watcher systemd service..."
+
+    if [ ! -f "$template_file" ]; then
+        log_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    local service_content
+    service_content=$(sed \
+        -e "s|{{COMMAND}}|$command|g" \
+        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
+        -e "s|{{USER}}|$USER|g" \
+        -e "s|{{PATH}}|$service_path|g" \
+        "$template_file")
+
+    printf '%s\n' "$service_content" | sudo tee "$service_file" > /dev/null
+    log_info "Created docs watcher systemd service file"
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$service_name"
+    sudo systemctl restart "$service_name"
+}
+
+install_launchd_service() {
+    local service_name="ai.instrukt.teleclaude.daemon"
+    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
+    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.daemon.plist"
+
+    # Create LaunchAgents directory if needed
+    mkdir -p "$HOME/Library/LaunchAgents"
+
+    # Create plist file from template
+    log_info "Creating launchd service from template..."
+
+    if [ ! -f "$template_file" ]; then
+        log_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    # Detect current PATH to ensure brew and other tools are accessible
+    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+    if [ -d "/opt/homebrew/bin" ]; then
+        launchd_path="/opt/homebrew/bin:$launchd_path"
+    fi
+    if [ -d "/usr/local/bin" ]; then
+        launchd_path="/usr/local/bin:$launchd_path"
+    fi
+
+    # Remove duplicates from PATH
+    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
+
+    # Generate plist from template
+    sed -e "s|{{PYTHON_PATH}}|$PROJECT_ROOT/.venv/bin/python|g" \
+        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
+        -e "s|{{PATH}}|$launchd_path|g" \
+        "$template_file" > "$plist_file"
+
+    log_info "Created launchd plist file"
+
+    # Load service
+    log_info "Loading service..."
+    local domain="gui/$(id -u)"
+    # Prefer modern launchctl bootstrap; fall back to legacy load for older macOS.
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
+        launchctl load "$plist_file"
+    fi
+
+    sleep 2
+
+    # Check if running
+    if launchctl print "$domain/$service_name" >/dev/null 2>&1; then
+        log_info "Service loaded successfully"
+        log_info "Service commands:"
+        log_info "  Status:  launchctl print $domain/$service_name"
+        log_info "  Stop:    launchctl bootout $domain $plist_file"
+        log_info "  Start:   launchctl bootstrap $domain $plist_file"
+        log_info "  Logs:    instrukt-ai-logs teleclaude --since 5m"
+    else
+        log_error "Service failed to load"
+        log_info "Check logs: instrukt-ai-logs teleclaude --since 5m"
+        exit 1
+    fi
+}
+
+install_launchd_docs_watch_service() {
+    local service_name="ai.instrukt.teleclaude.docs-watch"
+    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
+    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.docs-watch.plist"
+
+    mkdir -p "$HOME/Library/LaunchAgents"
+
+    log_info "Creating global docs watcher launchd service from template..."
+
+    if [ ! -f "$template_file" ]; then
+        log_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+    if [ -d "/opt/homebrew/bin" ]; then
+        launchd_path="/opt/homebrew/bin:$launchd_path"
+    fi
+    if [ -d "/usr/local/bin" ]; then
+        launchd_path="/usr/local/bin:$launchd_path"
+    fi
+
+    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
+
+    local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
+
+    sed -e "s|{{LABEL}}|$service_name|g" \
+        -e "s|{{COMMAND}}|$command|g" \
+        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
+        -e "s|{{PATH}}|$launchd_path|g" \
+        "$template_file" > "$plist_file"
+
+    log_info "Created docs watcher plist file"
+
+    log_info "Loading docs watcher service..."
+    local domain="gui/$(id -u)"
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
+        launchctl load "$plist_file"
+    fi
+}
+
+install_service() {
+    log_info "Installing System Service"
+
+    case "$PLATFORM" in
+        linux)
+            install_systemd_service
+            install_systemd_docs_watch_service
+            ;;
+        macos)
+            install_launchd_service
+            install_launchd_docs_watch_service
+            ;;
+    esac
 }
 
 start_startup_log_stream() {
@@ -167,13 +446,12 @@ is_service_loaded() {
 
 # Start daemon via service manager
 start_daemon() {
+    require_config_files
+
     log_info "Starting TeleClaude daemon via $PLATFORM service manager..."
 
-    # Verify service file exists
     if [ ! -f "$SERVICE_PATH" ]; then
-        log_error "Service file not found at $SERVICE_PATH"
-        log_error "Run 'make init' first to set up the service"
-        exit 1
+        install_service
     fi
 
     start_startup_log_stream
@@ -509,32 +787,39 @@ kill_daemon() {
     return 1
 }
 
-# Main command dispatcher
-case "${1:-}" in
-    start)
-        start_daemon
-        ;;
-    stop)
-        stop_daemon
-        ;;
-    restart)
-        restart_daemon
-        ;;
-    kill)
-        kill_daemon
-        ;;
-    status)
-        status_daemon
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart|kill|status}"
-        echo ""
-        echo "Commands:"
-        echo "  start   - Start the daemon"
-        echo "  stop    - Stop the daemon (disables service)"
-        echo "  restart - Restart the daemon"
-        echo "  kill    - Kill daemon (service auto-restarts)"
-        echo "  status  - Check daemon status"
-        exit 1
-        ;;
-esac
+main() {
+    cd "$PROJECT_ROOT"
+
+    case "${1:-}" in
+        start)
+            start_daemon
+            ;;
+        stop)
+            stop_daemon
+            ;;
+        restart)
+            restart_daemon
+            ;;
+        kill)
+            kill_daemon
+            ;;
+        status)
+            status_daemon
+            ;;
+        *)
+            echo "Usage: $0 {start|stop|restart|kill|status}"
+            echo ""
+            echo "Commands:"
+            echo "  start   - Start the daemon"
+            echo "  stop    - Stop the daemon (disables service)"
+            echo "  restart - Restart the daemon"
+            echo "  kill    - Kill daemon (service auto-restarts)"
+            echo "  status  - Check daemon status"
+            exit 1
+            ;;
+    esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

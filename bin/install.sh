@@ -1,29 +1,10 @@
 #!/usr/bin/env bash
 #
 # TeleClaude Install Script
-# Installs system binaries and Python dependencies.
-# Then runs init for first-time setup when safe.
+# Installs machine-global binaries, Python dependencies, and agent tooling.
 #
 
 set -e
-
-# CRITICAL: Refuse to run from a git worktree
-if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
-    GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
-    COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null)
-    if [ "$GIT_DIR" != "$COMMON_DIR" ]; then
-        echo "ERROR: Cannot run 'make install' from a git worktree!"
-        echo ""
-        echo "Running install from a worktree would:"
-        echo "  - Repoint the global CLI symlink to the worktree"
-        echo "  - Reconfigure the system service to use worktree paths"
-        echo "  - Break the main TeleClaude daemon"
-        echo ""
-        echo "Install must only run from the main repository."
-        echo "Worktrees are prepared by install conventions (make install or npm/pnpm install)."
-        exit 1
-    fi
-fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,7 +13,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_FILE="${INSTALL_DIR}/install.log"
 
 PYTHON_MIN_VERSION="3.11"
@@ -40,24 +21,45 @@ PYTHON_MIN_VERSION="3.11"
 NON_INTERACTIVE=false
 CI_MODE=false
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -y|--yes)
-            NON_INTERACTIVE=true
-            shift
-            ;;
-        --ci)
-            CI_MODE=true
-            NON_INTERACTIVE=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
+refuse_git_worktree() {
+    # CRITICAL: Refuse to run from a git worktree
+    if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
+        GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+        COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null)
+        if [ "$GIT_DIR" != "$COMMON_DIR" ]; then
+            echo "ERROR: Cannot run 'make install' from a git worktree!"
+            echo ""
+            echo "Running install from a worktree would:"
+            echo "  - Repoint the global CLI symlink to the worktree"
+            echo "  - Reconfigure the system service to use worktree paths"
+            echo "  - Break the main TeleClaude daemon"
+            echo ""
+            echo "Install must only run from the main repository."
+            echo "Worktrees are prepared by install conventions (make install or npm/pnpm install)."
             exit 1
-            ;;
-    esac
-done
+        fi
+    fi
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -y|--yes)
+                NON_INTERACTIVE=true
+                shift
+                ;;
+            --ci)
+                CI_MODE=true
+                NON_INTERACTIVE=true
+                shift
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+}
 
 # Logging function
 log() {
@@ -392,7 +394,7 @@ provision_logs() {
         return 0
     fi
     print_info "Provisioning log directory..."
-    "$INSTALL_DIR/bin/provision-logs.sh" teleclaude
+    "$INSTALL_DIR/bin/provision-logs.sh" teleclaude --non-interactive
     print_success "Log directory provisioned"
 }
 
@@ -430,8 +432,58 @@ install_global_cli() {
     print_success "Installed telec at $target"
 }
 
+run_macos_setup_action() {
+    local action="$1"
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+
+    local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR" "--skip-build")
+    cmd+=("$action")
+
+    "${cmd[@]}"
+}
+
+install_macos_launchers() {
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+    print_header "Deploying macOS Launcher Apps"
+    if run_macos_setup_action "install-launchers"; then
+        print_success "Launcher apps installed"
+    else
+        print_error "Failed to install launcher apps"
+        exit 1
+    fi
+}
+
+run_macos_permissions_probe() {
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+    run_macos_setup_action "permissions-probe" || true
+}
+
+configure_agent_cli() {
+    print_header "Configuring Agent CLI"
+    print_info "Running bin/init/configure_agent_cli.py..."
+
+    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/bin/init/configure_agent_cli.py"; then
+        print_success "Agent CLI configured"
+    else
+        print_error "Failed to configure agent CLI"
+    fi
+}
+
+# Load modular install steps
+source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
+source "$INSTALL_DIR/bin/init/link_shared_scripts.sh"
+
 # Main
 main() {
+    refuse_git_worktree
+    parse_args "$@"
+
     print_header "TeleClaude Install"
     log "Install started in $INSTALL_DIR"
 
@@ -445,16 +497,24 @@ main() {
     install_global_cli
     ensure_teleclaude_yaml
 
-    print_header "Install Complete"
-    print_success "Binaries and Python dependencies installed"
-    echo ""
-    init_args="--yes"
-    if [ "$CI_MODE" = true ]; then
-        init_args="--ci"
+    if [ "$CI_MODE" = false ]; then
+        install_macos_launchers
     fi
-    "$INSTALL_DIR/bin/init.sh" $init_args
+
+    setup_mcp_config
+    configure_agent_cli
+    link_shared_scripts
+
+    print_header "Install Complete"
+    print_success "Binaries, Python dependencies, and machine-global tooling installed"
+
+    if [ "$CI_MODE" = false ]; then
+        run_macos_permissions_probe
+    fi
 
     log "Install completed"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

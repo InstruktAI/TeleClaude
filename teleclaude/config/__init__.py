@@ -955,7 +955,7 @@ if not _config_path.exists():
     raise FileNotFoundError(
         f"Config file not found: {_config_path}. "
         "Set TELECLAUDE_CONFIG_PATH to a valid config "
-        "(e.g., tests/integration/config.yml) or run 'make init' to create it."
+        "(e.g., tests/integration/config.yml) or run 'telec config wizard' to create it."
     )
 
 with open(_config_path, encoding="utf-8") as f:

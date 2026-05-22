@@ -14,14 +14,12 @@ from ruamel.yaml import YAML
 
 from teleclaude.config import config
 from teleclaude.git import Repo
-from teleclaude.install.configure_agent_cli import main as configure_agent_cli
 from teleclaude.project_manifest import register_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.hooks import ensure_precommit_safety_guards
-from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
 from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.project_setup.sync import sync_project_artifacts
 from teleclaude.slug import normalize_slug, validate_slug
@@ -293,9 +291,9 @@ def _ensure_project_slug(project_root: Path) -> None:
 def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude — plumbing only.
 
-    Configures agent CLIs, git filters, pre-commit hooks, syncs artifacts,
-    registers the project root, and prompts for release-channel enrollment.
-    Idempotent and CI-safe; spawns no agent sessions.
+    Configures git filters and pre-commit hooks, syncs artifacts, registers
+    the project root, and prompts for release-channel enrollment. Idempotent
+    and CI-safe; spawns no agent sessions.
 
     Mother-aware: when invoked inside the TeleClaude repo itself, site-project
     bootstrap steps (skeleton deployment, release-channel prompt) are skipped
@@ -307,7 +305,6 @@ def init_project(project_root: Path) -> None:
     """
     is_mother = _is_teleclaude_project(project_root)
 
-    configure_agent_cli()
     ensure_git_repo(project_root)
     ensure_hooks_path(project_root)
     setup_git_filters(project_root)
@@ -324,10 +321,6 @@ def init_project(project_root: Path) -> None:
     _ensure_project_slug(project_root)
     register_root(project_root=project_root)
     seed_event_domains(project_root)
-
-    if is_macos():
-        install_launchers(project_root)
-        run_permissions_probe(project_root)
 
     # Bootstrap help desk workspace if running from the TeleClaude project
     if is_mother:

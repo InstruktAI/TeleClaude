@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This directory contains standalone scripts and helpers that are invoked by AI agent skills, cron jobs, and CLI tools. The directory is symlinked into `~/.teleclaude/scripts` at install time (`make init`), so every file here IS the deployed version.
+This directory contains standalone scripts and helpers that are invoked by AI agent skills, cron jobs, and CLI tools. The directory is symlinked into `~/.teleclaude/scripts` at install time (`make install`), so every file here IS the deployed version.
 
 ## Public Surface Rule
 
@@ -73,7 +73,7 @@ scripts/
 
 ## Deployment
 
-`make init` creates a symlink: `~/.teleclaude/scripts -> <repo>/scripts/`. This means:
+`make install` creates a symlink: `~/.teleclaude/scripts -> <repo>/scripts/`. This means:
 
 - Changes to files in this directory take effect immediately — no copy or deploy step.
 - The source file IS the deployed file. There is no separate "wrapper" or "deployed copy".

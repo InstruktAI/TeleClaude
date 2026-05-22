@@ -36,10 +36,10 @@ adds the intelligence layer.
 
 Runs in three stages:
 
-1. **Init plumbing** (synchronous, blocking): executes `init_project` — agent CLIs,
-   git filters, pre-commit hooks, artifact sync, slug derivation, project registration,
-   release-channel prompt, event-domain seeding. See the project-initialization
-   procedure for the per-step contract.
+1. **Init plumbing** (synchronous, blocking): executes `init_project` — project
+   artifact sync, slug derivation, project registration, release-channel prompt,
+   and event-domain seeding. See the project-initialization procedure for the
+   per-step contract.
 2. **Config assessment dispatch** (fire-and-forget): spawns a `/projects-assess-config`
    agent session that compares the project's quality tooling against
    `templates/quality/{language}/`.

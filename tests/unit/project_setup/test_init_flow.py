@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+from syrupy.assertion import SnapshotAssertion
 
 import teleclaude.project_setup.domain_seeds as domain_seeds
 import teleclaude.project_setup.init_flow as init_flow
@@ -62,14 +63,12 @@ def test_init_project_writes_project_slug_and_registers_root(tmp_path: Path, mon
 
     # Stub every I/O-heavy init side effect so the test stays unit-scoped and
     # the only remaining behavior we observe is the registration step.
-    monkeypatch.setattr(init_flow, "configure_agent_cli", lambda: None)
     monkeypatch.setattr(init_flow, "ensure_git_repo", lambda _p: None)
     monkeypatch.setattr(init_flow, "ensure_hooks_path", lambda _p: None)
     monkeypatch.setattr(init_flow, "setup_git_filters", lambda _p: None)
     monkeypatch.setattr(init_flow, "update_gitattributes", lambda _p: None)
     monkeypatch.setattr(init_flow, "ensure_precommit_safety_guards", lambda _p: None)
     monkeypatch.setattr(init_flow, "sync_project_artifacts", lambda _p: None)
-    monkeypatch.setattr(init_flow, "is_macos", lambda: False)
     monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
     # seed_event_domains is imported lazily; patch at source.
     monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
@@ -114,14 +113,12 @@ def test_init_project_writes_project_slug_for_fresh_project(tmp_path: Path, monk
                 encoding="utf-8",
             )
 
-    monkeypatch.setattr(init_flow, "configure_agent_cli", lambda: None)
     monkeypatch.setattr(init_flow, "ensure_git_repo", lambda _p: None)
     monkeypatch.setattr(init_flow, "ensure_hooks_path", lambda _p: None)
     monkeypatch.setattr(init_flow, "setup_git_filters", lambda _p: None)
     monkeypatch.setattr(init_flow, "update_gitattributes", lambda _p: None)
     monkeypatch.setattr(init_flow, "ensure_precommit_safety_guards", lambda _p: None)
     monkeypatch.setattr(init_flow, "sync_project_artifacts", fake_sync_project_artifacts)
-    monkeypatch.setattr(init_flow, "is_macos", lambda: False)
     monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
     monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
 
@@ -258,14 +255,12 @@ def test_init_project_does_not_spawn_subprocesses(tmp_path: Path, monkeypatch: p
     manifest_path = tmp_path / "state" / "projects.yaml"
 
     # Stub every plumbing helper so we observe init_project's own behavior in isolation.
-    monkeypatch.setattr(init_flow, "configure_agent_cli", lambda: None)
     monkeypatch.setattr(init_flow, "ensure_git_repo", lambda _p: None)
     monkeypatch.setattr(init_flow, "ensure_hooks_path", lambda _p: None)
     monkeypatch.setattr(init_flow, "setup_git_filters", lambda _p: None)
     monkeypatch.setattr(init_flow, "update_gitattributes", lambda _p: None)
     monkeypatch.setattr(init_flow, "ensure_precommit_safety_guards", lambda _p: None)
     monkeypatch.setattr(init_flow, "sync_project_artifacts", lambda _p: None)
-    monkeypatch.setattr(init_flow, "is_macos", lambda: False)
     monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
     monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
     monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
@@ -275,3 +270,52 @@ def test_init_project_does_not_spawn_subprocesses(tmp_path: Path, monkeypatch: p
     init_flow.init_project(project_root)
 
     assert spy_calls == [], f"init_project leaked subprocess calls: {spy_calls}"
+
+
+def test_init_project_writes_no_global_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+) -> None:
+    """Project init must not write machine-global agent or launcher state."""
+    fake_home = tmp_path / "fakehome"
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (project_root / "teleclaude.yml").write_text("project_name: Project\n", encoding="utf-8")
+
+    global_roots = (
+        fake_home / ".claude",
+        fake_home / ".codex",
+        fake_home / ".gemini",
+        fake_home / "Applications",
+    )
+    for root in global_roots:
+        root.mkdir(parents=True)
+
+    manifest_path = tmp_path / "state" / "projects.yaml"
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+    monkeypatch.setattr(init_flow, "ensure_git_repo", lambda _p: None)
+    monkeypatch.setattr(init_flow, "ensure_hooks_path", lambda _p: None)
+    monkeypatch.setattr(init_flow, "setup_git_filters", lambda _p: None)
+    monkeypatch.setattr(init_flow, "update_gitattributes", lambda _p: None)
+    monkeypatch.setattr(init_flow, "ensure_precommit_safety_guards", lambda _p: None)
+    monkeypatch.setattr(init_flow, "sync_project_artifacts", lambda _p: None)
+    monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
+    monkeypatch.setattr(init_flow, "seed_event_domains", lambda _p: None)
+    monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
+
+    init_flow.init_project(project_root)
+
+    inventory = []
+    for root in global_roots:
+        inventory.append(
+            {
+                "root": root.relative_to(fake_home).as_posix(),
+                "files": [
+                    (path.relative_to(root).as_posix(), path.stat().st_size)
+                    for path in sorted(root.rglob("*"))
+                    if path.is_file()
+                ],
+            }
+        )
+
+    assert inventory == snapshot

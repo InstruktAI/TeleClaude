@@ -1,5 +1,5 @@
 ---
-description: 'TeleClaude-specific init extensions — help desk bootstrap and macOS launcher installation with permissions probe.'
+description: 'TeleClaude-specific init extensions — help desk bootstrap and machine-global macOS install steps.'
 domain: 'software-development'
 id: 'project/procedure/init-extensions'
 scope: 'project'
@@ -11,14 +11,15 @@ visibility: 'public'
 
 ## Goal
 
-Document the `telec projects init` steps that apply only to the TeleClaude project itself,
-beyond the universal project initialization pipeline.
+Document the TeleClaude-specific setup split: `telec projects init` owns project-local
+plumbing and help desk bootstrap, while `make install` owns machine-global macOS
+launcher installation and permission probing.
 
 ## Preconditions
 
-- Running `telec projects init` from the TeleClaude project root (detected by the presence
-  of `teleclaude/project_setup/init_flow.py`).
-- For macOS steps: running on macOS (`sys.platform == "darwin"`).
+- Running `telec projects init` from the TeleClaude project root for help desk bootstrap.
+- Running `make install` from the TeleClaude project root for macOS machine-global steps.
+- For macOS machine-global steps: running on macOS (`sys.platform == "darwin"`).
 
 ## Steps
 
@@ -35,7 +36,7 @@ plumbing.
 
 Source: `teleclaude/project_setup/help_desk_bootstrap.py:bootstrap_help_desk()`
 
-### 2. macOS launcher installation
+### 2. macOS launcher installation (`make install`)
 
 Copies launcher `.app` bundles from `bin/` into `~/Applications/`:
 
@@ -47,9 +48,9 @@ Existing bundles in `~/Applications/` are replaced. Build step is skipped by def
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()`
 
-### 3. macOS permissions probe
+### 3. macOS permissions probe (`make install`)
 
-After launcher installation, runs an end-of-init permission probe via the tmux
+After launcher installation, `make install` runs a permission probe via the tmux
 launcher to trigger macOS permission dialogs for protected paths:
 
 - `~/Library/Messages/chat.db`
@@ -70,12 +71,12 @@ Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 ## Outputs
 
 - Help desk workspace scaffolded (TeleClaude project only).
-- Launcher apps installed to `~/Applications/` (macOS only).
-- Permission probe results reported to the user (macOS only).
+- Launcher apps installed to `~/Applications/` by `make install` (macOS only).
+- Permission probe results reported to the user by `make install` (macOS only).
 
 ## Recovery
 
-- All steps are idempotent. Re-running `telec projects init` repeats the probe safely.
+- All steps are idempotent. Re-running `telec projects init` repeats help desk bootstrap safely; re-running `make install` repeats macOS launcher/probe setup safely.
 - If the help desk bootstrap fails, the main init continues unaffected.
-- Permission denials require manual System Settings changes; re-running init
+- Permission denials require manual System Settings changes; re-running `make install`
   after granting access will show a passing probe.

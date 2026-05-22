@@ -32,6 +32,7 @@ from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.constants import ARTIFACT_REQUIREMENTS, LOCAL_COMPUTER
 from teleclaude.core.cache import DaemonCache
+from teleclaude.core.next_machine import provenance as provenance_module
 from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db, set_todos_mutation_hook
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio, pytest.mark.timeout(45)]
@@ -159,14 +160,14 @@ async def test_editor_artifact_persist_refreshes_cached_todo_without_stale_ttl(
                 loop.create_task(cache.refresh_local_todos(LOCAL_COMPUTER, hook_project_root, event_hint))
             )
 
-        instance._on_mutation = _on_mutation  # type: ignore[attr-defined] # mirrors daemon hook wiring
+        instance._on_mutation = _on_mutation
 
     def _extract_referenced_paths(_content: str, _cwd: str) -> list[str]:
         return []
 
     set_todos_mutation_hook(_register_refresh_hook)
-    monkeypatch.setattr(todo_routes, "get_head_commit", lambda _cwd: _CACHE_REFLECTION_SHA)
-    monkeypatch.setattr(todo_routes, "extract_referenced_paths", _extract_referenced_paths)
+    monkeypatch.setattr(provenance_module, "get_origin_main_sha", lambda _cwd: _CACHE_REFLECTION_SHA)
+    monkeypatch.setattr(provenance_module, "extract_referenced_paths", _extract_referenced_paths)
 
     database = await get_todos_db(project_root)
     materialized: MaterializedArtifact | None = None
