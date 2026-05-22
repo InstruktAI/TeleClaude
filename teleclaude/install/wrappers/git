@@ -236,10 +236,13 @@ MSG
         ;;
 esac
 
-# Destructive reset variants blocked; pathspec reset allowed.
+# Destructive reset variants blocked; HEAD/pathspec unstage allowed;
+# foreign tree-ish pathspec reset gated behind --confirmed.
 if [ "$_subcmd" = "reset" ]; then
     _has_separator=0
+    _has_reset_confirmed=0
     _non_flag_args=0
+    _first_nonflag=""
     _is_subcmd=0
     for _arg in "$@"; do
         if [ "$_is_subcmd" -eq 0 ]; then
@@ -251,21 +254,56 @@ if [ "$_subcmd" = "reset" ]; then
                 echo "ERROR: 'git reset $_arg' is prohibited in agent sessions. Do not discard commits." >&2
                 exit 1
                 ;;
+            --confirmed)
+                _has_reset_confirmed=1
+                ;;
             --)
                 _has_separator=1
                 ;;
             -*)
                 ;;
             *)
+                [ -z "$_first_nonflag" ] && _first_nonflag="$_arg"
                 _non_flag_args=$((_non_flag_args + 1))
                 ;;
         esac
     done
 
     if [ "$_has_separator" -eq 1 ] && [ "$_non_flag_args" -ge 1 ]; then
-        : # allowed — pathspec reset
+        : # allowed — explicit pathspec reset (git reset -- <path>)
+    elif [ "$_non_flag_args" -ge 2 ] && [ "$_first_nonflag" = "HEAD" ]; then
+        : # allowed — HEAD-anchored unstage (git reset HEAD <path>)
     elif [ "$_non_flag_args" -ge 2 ]; then
-        : # allowed — likely 'git reset <tree-ish> <pathspec>...'
+        # Foreign tree-ish pathspec reset (git reset <ref> <path>): pulls
+        # foreign content into the index and can update the working tree.
+        # Require --confirmed (same friction as checkout <ref> -- <path>).
+        if [ "$_has_reset_confirmed" = "0" ]; then
+            cat >&2 <<'MSG'
+WARNING: 'git reset <tree-ish> <path>' — inspection required.
+
+This rewrites the index entry from a foreign ref and (depending on mode)
+can update the working tree. In a multi-agent environment, blind reset
+from a non-HEAD ref can destroy intentional state.
+
+Before proceeding:
+  1. Run: git diff HEAD -- <file>   (see what local has)
+  2. Run: git diff <ref> -- <file>  (see what the ref carries)
+  3. Verify the local version has no unique work worth preserving.
+  4. Rerun with: git reset --confirmed <ref> <path>...
+
+To unstage from HEAD only, use:
+  git reset HEAD <path>
+  git reset -- <path>
+MSG
+            exit 1
+        fi
+        _reset_args=()
+        for _arg in "$@"; do
+            [ "$_arg" = "--confirmed" ] && continue
+            _reset_args+=("$_arg")
+        done
+        _real_git "${_reset_args[@]}"
+        exit $?
     else
         cat >&2 <<'MSG'
 ERROR: 'git reset' without explicit pathspecs is prohibited.
@@ -278,12 +316,18 @@ MSG
     fi
 fi
 
-# ── Detect integration worktree by cwd ───────────────────────────────────────
+# ── Detect integration worktree by effective git working tree ───────────────
 # The integration worktree's index and working tree are owned by the
 # integration state machine. Its DELIVERY_BOOKKEEPING step commits whatever
 # is staged with no path filter, so any mutation introduced from outside the
 # state machine can produce a delivery-reverting commit on origin/main.
-case "$PWD" in
+#
+# Resolve the effective working tree from any `-C <dir>` args first so
+# `git -C trees/_integration restore ...` invoked from outside cannot bypass
+# the integration gate. Fall back to $PWD only if git can't resolve a tree.
+_effective_wt="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --show-toplevel 2>/dev/null || true)"
+[ -z "$_effective_wt" ] && _effective_wt="$PWD"
+case "$_effective_wt" in
     */trees/_integration|*/trees/_integration/*)
         _in_integration_wt=1
         ;;
@@ -375,15 +419,18 @@ fi
 # git checkout <ref> -- <path>, so gating follows the same matrix.
 if [ "$_subcmd" = "restore" ]; then
     _has_staged=0
+    _has_worktree=0
     _has_source=0
     for _rarg in "$@"; do
         case "$_rarg" in
             --staged|-S|--staged=*) _has_staged=1 ;;
+            --worktree|-W|--worktree=*) _has_worktree=1 ;;
             --source|-s|--source=*) _has_source=1 ;;
         esac
     done
-    # --staged: index-only effect. Allowed for all roles.
-    if [ "$_has_staged" = "1" ] && [ "$_has_source" = "0" ]; then
+    # Pure --staged (no --worktree, no --source): index-only effect, allowed.
+    # --staged --worktree touches the working tree → gated like a plain restore.
+    if [ "$_has_staged" = "1" ] && [ "$_has_worktree" = "0" ] && [ "$_has_source" = "0" ]; then
         : # allowed
     else
         # Working-tree restore (default) or --source <ref>: same friction surface as

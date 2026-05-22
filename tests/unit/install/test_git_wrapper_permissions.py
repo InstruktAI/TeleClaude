@@ -29,9 +29,31 @@ WRAPPER_PATH = Path(__file__).resolve().parents[3] / "teleclaude" / "install" / 
 _FAKE_GIT_SCRIPT = """\
 #!/usr/bin/env bash
 # Fake git for wrapper permission tests.
-# Returns FAKE_BRANCH for branch detection; exits 0 for everything else.
+# - rev-parse --abbrev-ref returns FAKE_BRANCH (default: feature).
+# - rev-parse --show-toplevel returns FAKE_TOPLEVEL (default: $PWD).
+#   Tests set this to simulate being inside the integration worktree.
+# - rev-parse --git-dir returns FAKE_GIT_DIR (default: empty → MERGE_HEAD
+#   probes evaluate to "not in merge").
+# Everything else exits 0.
+# Honor -C / -c / --git-dir / --work-tree / --namespace by stripping them.
+while :; do
+    case "${1:-}" in
+        -C) shift 2 ;;
+        -c|--git-dir|--work-tree|--namespace) shift 2 ;;
+        --git-dir=*|--work-tree=*|--namespace=*|-c*) shift 1 ;;
+        *) break ;;
+    esac
+done
 if [ "${1:-}" = "rev-parse" ] && [ "${2:-}" = "--abbrev-ref" ]; then
     echo "${FAKE_BRANCH:-feature}"
+    exit 0
+fi
+if [ "${1:-}" = "rev-parse" ] && [ "${2:-}" = "--show-toplevel" ]; then
+    echo "${FAKE_TOPLEVEL:-$PWD}"
+    exit 0
+fi
+if [ "${1:-}" = "rev-parse" ] && [ "${2:-}" = "--git-dir" ]; then
+    echo "${FAKE_GIT_DIR:-/dev/null}"
     exit 0
 fi
 exit 0
@@ -46,6 +68,7 @@ def _run(
     branch: str = "feature",
     no_identity_file: bool = False,
     override_approved: bool = False,
+    fake_toplevel: str | None = None,
 ) -> tuple[int, str]:
     """Run the bash wrapper via subprocess with mocked identity and fake git.
 
@@ -77,6 +100,8 @@ def _run(
         "PATH": f"{fake_bin_dir}:{os.environ.get('PATH', '')}",
         "FAKE_BRANCH": branch,
     }
+    if fake_toplevel is not None:
+        env["FAKE_TOPLEVEL"] = fake_toplevel
 
     result = subprocess.run(
         ["bash", str(WRAPPER_PATH)] + args,
@@ -122,13 +147,6 @@ class TestHumanSession:
 
 
 class TestDestructive:
-    # guard: parametrize-cleanup-pending
-    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
-    def test_restore_blocked(self, role: str) -> None:
-        code, stderr = _run(["restore", "file.txt"], role=role)
-        assert code != 0
-        assert "destructive" in stderr.lower()
-
     # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_clean_blocked(self, role: str) -> None:
@@ -201,6 +219,136 @@ class TestCheckoutPermissions:
     def test_file_scoped_checkout_allowed_for_all(self, role: str) -> None:
         _, stderr = _run(["checkout", "HEAD", "--", "f.txt"], role=role)
         assert "protected" not in stderr.lower()
+
+    def test_file_scoped_checkout_inside_integration_requires_confirmed(self) -> None:
+        code, stderr = _run(
+            ["checkout", "HEAD", "--", "f.txt"],
+            role="integrator",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code != 0
+        assert "inspection required" in stderr.lower()
+
+    def test_file_scoped_checkout_inside_integration_with_confirmed_allowed(self) -> None:
+        code, _ = _run(
+            ["checkout", "--confirmed", "HEAD", "--", "f.txt"],
+            role="integrator",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code == 0
+
+
+# ── CONFIRMED: git restore matrix ─────────────────────────────────────────────
+
+
+class TestRestorePermissions:
+    """`git restore` is no longer blanket-DESTRUCTIVE. Risk surface mirrors
+    `git checkout -- <path>` / `git reset -- <path>` / `git checkout <ref>
+    -- <path>` and gating follows the same matrix:
+      - Pure --staged (index-only): always allowed.
+      - Working-tree forms (default, --worktree, --source): allowed outside
+        the integration worktree; require --confirmed inside it or during
+        an active merge.
+    """
+
+    def test_staged_index_only_allowed(self) -> None:
+        code, stderr = _run(["restore", "--staged", "f.txt"], role="worker")
+        assert code == 0
+        assert "destructive" not in stderr.lower()
+
+    def test_worktree_default_allowed_outside_integration(self) -> None:
+        code, stderr = _run(["restore", "f.txt"], role="worker")
+        assert code == 0
+        assert "destructive" not in stderr.lower()
+
+    def test_staged_plus_worktree_outside_integration_allowed(self) -> None:
+        code, _ = _run(["restore", "--staged", "--worktree", "f.txt"], role="worker")
+        assert code == 0
+
+    def test_source_outside_integration_allowed(self) -> None:
+        code, _ = _run(["restore", "--source", "HEAD~1", "f.txt"], role="worker")
+        assert code == 0
+
+    def test_default_inside_integration_requires_confirmed(self) -> None:
+        code, stderr = _run(
+            ["restore", "f.txt"],
+            role="integrator",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code != 0
+        assert "inspection required" in stderr.lower()
+
+    def test_default_inside_integration_with_confirmed_allowed(self) -> None:
+        code, _ = _run(
+            ["restore", "--confirmed", "f.txt"],
+            role="integrator",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code == 0
+
+    def test_staged_plus_worktree_inside_integration_requires_confirmed(self) -> None:
+        # --staged --worktree still mutates the worktree; same gate as plain restore.
+        code, stderr = _run(
+            ["restore", "--staged", "--worktree", "f.txt"],
+            role="integrator",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code != 0
+        assert "inspection required" in stderr.lower()
+
+    def test_pure_staged_inside_integration_allowed(self) -> None:
+        # Pure --staged is index-only; no working-tree mutation; no gate.
+        code, _ = _run(
+            ["restore", "--staged", "f.txt"],
+            role="integrator",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code == 0
+
+    def test_source_inside_integration_requires_confirmed(self) -> None:
+        code, stderr = _run(
+            ["restore", "--source", "HEAD~1", "f.txt"],
+            role="worker",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code != 0
+        assert "inspection required" in stderr.lower()
+
+    def test_minus_C_into_integration_does_not_bypass_gate(self) -> None:
+        # The wrapper resolves the effective working tree via `-C`, not $PWD.
+        code, stderr = _run(
+            ["-C", "/tmp/repo/trees/_integration", "restore", "f.txt"],
+            role="worker",
+            fake_toplevel="/tmp/repo/trees/_integration",
+        )
+        assert code != 0
+        assert "inspection required" in stderr.lower()
+
+
+# ── CONFIRMED: git reset tree-ish pathspec ────────────────────────────────────
+
+
+class TestResetTreeishPathspec:
+    """`git reset HEAD <path>` is canonical unstage and stays allowed.
+    `git reset <foreign-ref> <path>` pulls from a foreign tree-ish — same
+    risk surface as `git checkout <ref> -- <path>` — and now requires
+    --confirmed."""
+
+    def test_reset_head_pathspec_allowed(self) -> None:
+        code, _ = _run(["reset", "HEAD", "f.txt"], role="worker")
+        assert code == 0
+
+    def test_reset_foreign_treeish_pathspec_requires_confirmed(self) -> None:
+        code, stderr = _run(["reset", "origin/main", "f.txt"], role="worker")
+        assert code != 0
+        assert "inspection required" in stderr.lower()
+
+    def test_reset_foreign_treeish_with_confirmed_allowed(self) -> None:
+        code, _ = _run(
+            ["reset", "--confirmed", "origin/main", "f.txt"],
+            role="worker",
+        )
+        assert code == 0
 
 
 # ── GIT ADD: blocked for all agent roles ──────────────────────────────────────

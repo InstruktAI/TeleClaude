@@ -95,7 +95,12 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
    - Does it preserve all public API surface from both sides?
    - Does it preserve all behavioral features (not just code) from both sides?
    - Are tests from both sides still valid against the merged implementation?
-6. Stage resolved files with `git add <files>`.
+6. Declare resolved files via `telec code add <files>`. The sealed equivalent
+   of `git add` for unmerged-index recovery — `git add` itself is blocked for
+   agents per the wrapper matrix. NEW (untracked) resolution files (e.g. a
+   file added on one side that the other side deleted) also go through this
+   command; modified-tracked resolutions ride the pathspec via `telec code
+   commit` directly.
 7. Compose a commit message (same quality standard as squash commit). In the body,
    note which conflicts were resolved and how both sides' contributions were preserved.
 8. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
