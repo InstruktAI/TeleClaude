@@ -270,7 +270,7 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
     if not entry.upstream_digests:
         return DRIFT_PENDING
     current = {key: getattr(model.artifacts, key).digest for key in upstream_keys}
-    if not all(current.values()):
+    if _has_missing_required_upstream(model, state_key, current):
         return DRIFT_PENDING
     if entry.upstream_digests == current:
         return DRIFT_FRESH
@@ -291,6 +291,25 @@ def _has_intentional_plan_only_upstreams(
         return False
     current_digests = [getattr(model.artifacts, upstream_key).digest for upstream_key in upstream_keys]
     return not any(current_digests) and not any(recorded_digests.values())
+
+
+def _has_missing_required_upstream(
+    model: TodoState,
+    state_key: str,
+    current_digests: dict[str, str],
+) -> bool:
+    return any(
+        not digest and not _is_intentionally_absent_upstream(model, state_key, upstream_key)
+        for upstream_key, digest in current_digests.items()
+    )
+
+
+def _is_intentionally_absent_upstream(model: TodoState, state_key: str, upstream_key: str) -> bool:
+    return (
+        state_key == STATE_KEY_IMPLEMENTATION_PLAN
+        and upstream_key == STATE_KEY_ARCHITECTURE
+        and model.approvals.architecture_skipped is not None
+    )
 
 
 def derive_owned_snippet_drift(

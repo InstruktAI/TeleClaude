@@ -32,7 +32,7 @@ from teleclaude.core.next_machine.git_ops import (
     has_uncommitted_changes,
     review_surface_overlap_files,
 )
-from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
+from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, SkipStamp, TodoState
 
 _ORIGIN_MAIN_SHA = "origin-main-sha"
 _LOCAL_MAIN_SHA = "local-main-sha"
@@ -376,6 +376,35 @@ def test_upstream_artifact_drift_ignores_absent_upstreams_for_plan_only_work() -
         reason="missing upstreams",
         upstream_digests_at_review={_PRD: "", _ARCHITECTURE: ""},
     )
+
+    status = derive_upstream_artifact_drift(state, _IMPLEMENTATION_PLAN)
+
+    assert status == DRIFT_FRESH
+
+
+def test_upstream_artifact_drift_uses_anchor_when_architecture_is_skipped() -> None:
+    state = TodoState.defaults()
+    state.approvals.architecture_skipped = SkipStamp(reason="projection-only")
+    state.artifacts.prd.digest = _CURRENT_DIGEST
+    state.artifacts.implementation_plan.digest = "plan-digest"
+    state.artifacts.implementation_plan.upstream_digests = {_PRD: _STALE_DIGEST, _ARCHITECTURE: ""}
+    state.approvals.drift_reviewed[_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
+        verdict=DRIFT_COSMETIC,
+        reason=_COSMETIC_REASON,
+        upstream_digests_at_review={_PRD: _CURRENT_DIGEST, _ARCHITECTURE: ""},
+    )
+
+    status = derive_upstream_artifact_drift(state, _IMPLEMENTATION_PLAN)
+
+    assert status == DRIFT_COSMETIC
+
+
+def test_upstream_artifact_drift_is_fresh_when_skipped_architecture_stays_absent() -> None:
+    state = TodoState.defaults()
+    state.approvals.architecture_skipped = SkipStamp(reason="projection-only")
+    state.artifacts.prd.digest = _CURRENT_DIGEST
+    state.artifacts.implementation_plan.digest = "plan-digest"
+    state.artifacts.implementation_plan.upstream_digests = {_PRD: _CURRENT_DIGEST, _ARCHITECTURE: ""}
 
     status = derive_upstream_artifact_drift(state, _IMPLEMENTATION_PLAN)
 
