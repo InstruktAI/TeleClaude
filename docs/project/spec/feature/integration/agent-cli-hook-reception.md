@@ -69,6 +69,8 @@ Then the receiver maps "Stop" to AgentHookEvents.AGENT_STOP
 And calls _maybe_checkpoint_output which loads the session row and gathers evidence
 And get_checkpoint_content returns a non-empty checkpoint reason string
 And when HEAD advanced on main, the checkpoint reason includes the post-commit review-gate surfacing action even if no dirty files remain
+And that action instructs the agent to set a conditional 5-minute heartbeat when it recommends review
+And if the heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review and waits for REVIEW COMPLETE
 And repeated Stop hooks for the same HEAD do not include that action again
 And enqueue_checkpoint_seen writes a CHECKPOINT_SEEN row to the outbox
 And ClaudeAdapter.format_checkpoint_response serializes {"decision":"block","reason":<reason>} to stdout

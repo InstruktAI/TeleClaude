@@ -105,6 +105,9 @@ And the current HEAD differs from the turn-start anchor SHA
 And no post-commit review flag exists for the current HEAD
 When get_checkpoint_content runs
 Then the heuristic engine includes the post-commit review-gate surfacing action
+And that action instructs the agent to set a non-blocking 5-minute heartbeat when it recommends review
+And if that heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review
+And waits for REVIEW COMPLETE before reporting completion
 And records a post-commit review flag for the current HEAD under the session flag directory
 And removes older post-commit review flags for the same session
 

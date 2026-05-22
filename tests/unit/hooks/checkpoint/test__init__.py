@@ -8,6 +8,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.agents import AgentName
 from teleclaude.hooks.checkpoint import (
@@ -605,6 +606,12 @@ class TestCommitInstruction:
     def test_off_main_references_telec_code_commit(self) -> None:
         instruction = _commit_instruction(on_main=False)
         assert "telec code commit" in instruction
+
+
+class TestPostCommitReviewInstruction:
+    @pytest.mark.unit
+    def test_post_commit_review_instruction_copy(self, snapshot: SnapshotAssertion) -> None:
+        assert _post_commit_review_instruction() == snapshot
 
 
 class TestComposeBranchAware:

@@ -260,7 +260,10 @@ def _post_commit_review_instruction() -> str:
     """Instruction emitted when a main-branch commit occurred in the turn."""
     return (
         "A main-branch commit occurred this turn. Surface the `telec code commit` "
-        "review gate to the user with your recommendation before reporting completion."
+        "review gate to the user with your recommendation before reporting completion. "
+        "If you recommend review, set a non-blocking 5-minute heartbeat after that "
+        "message; if the heartbeat fires without a user response approving or declining "
+        "review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE."
     )
 
 
