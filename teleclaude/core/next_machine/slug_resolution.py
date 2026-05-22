@@ -178,6 +178,8 @@ def _children_by_group(entries: list[RoadmapRow]) -> dict[str, list[str]]:
         group_slug = entry.get("group_slug")
         if group_slug:
             children.setdefault(group_slug, []).append(entry["slug"])
+    for grouped in children.values():
+        grouped.sort()
     return children
 
 

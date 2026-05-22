@@ -30,7 +30,7 @@ Memory uses exactly two categories:
 
 The "general" category is **not** modeled in v2. If a concrete use case emerges that fits neither human nor project, we'll add it then — adding a category later is cheap; over-designing the taxonomy now is expensive.
 
-The two categories have distinct predicate vocabularies (per the feature specs) and distinct downstream consumers (human → context injection at session start; project → pattern matchers producing todos/doc drafts).
+The two categories have distinct predicate vocabularies (per the feature specs) and distinct downstream consumers (human → context injection at session start; project → pattern matchers producing todo drafts and doc drafts).
 
 ## Consequences
 

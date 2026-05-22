@@ -423,7 +423,6 @@ async def _seed_project_with_removed_rows(
                     TodoRoadmap(
                         id=row_id,
                         slug=slug,
-                        position=idx,
                         status=status,
                         removed_at=removed_at.isoformat() if removed_at else None,
                         created_at="2026-04-01T00:00:00+00:00",
@@ -612,7 +611,6 @@ async def test_cleanup_removed_todos_purges_removed_row_while_preserving_same_sl
                 TodoRoadmap(
                     id="row-removed",
                     slug="reused",
-                    position=0,
                     status="removed",
                     removed_at=outside.isoformat(),
                     prev_status="active",

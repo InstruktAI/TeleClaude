@@ -11,11 +11,15 @@ from textual.app import App, ComposeResult
 from teleclaude.api_models import ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.views.preparation import PreparationView
+from teleclaude.cli.tui.widgets.todo_band_separator import TodoBandSeparator
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
+from teleclaude.core.roadmap import IN_PREP_BAND, READY_BAND
 
 _FINGERPRINT_SLUG = "todo-1"
 _VERSION_BEFORE = 1
 _VERSION_AFTER = 2
+_READY_SLUG = "ready-todo"
+_PREP_SLUG = "prep-todo"
 
 
 class _PreparationHarness(App[None]):
@@ -79,6 +83,32 @@ def _fingerprint_project(version_total: int) -> ProjectWithTodosDTO:
     )
 
 
+def _band_project() -> ProjectWithTodosDTO:
+    return ProjectWithTodosDTO(
+        computer="local",
+        name="Test Project",
+        path="/tmp/project",
+        todos=[
+            TodoDTO(
+                slug=_READY_SLUG,
+                status="ready",
+                has_requirements=True,
+                has_impl_plan=True,
+                band=READY_BAND,
+                ready_since="2026-05-20T00:00:00+00:00",
+            ),
+            TodoDTO(
+                slug=_PREP_SLUG,
+                status="in_progress",
+                has_requirements=True,
+                has_impl_plan=False,
+                band=IN_PREP_BAND,
+                updated_at="2026-05-21T00:00:00+00:00",
+            ),
+        ],
+    )
+
+
 @pytest.mark.unit
 def test_preparation_view_is_importable() -> None:
     assert PreparationView is not None
@@ -90,6 +120,31 @@ def test_todo_fingerprint_changes_when_only_artifact_version_total_changes() -> 
     after = PreparationView._todo_fingerprint([_fingerprint_project(_VERSION_AFTER)])
 
     assert before != after
+
+
+@pytest.mark.unit
+def test_todo_fingerprint_changes_when_band_changes() -> None:
+    before = PreparationView._todo_fingerprint([_band_project()])
+    project = _band_project()
+    project.todos[0] = project.todos[0].model_copy(update={"band": IN_PREP_BAND})
+    after = PreparationView._todo_fingerprint([project])
+
+    assert before != after
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(60)
+async def test_preparation_view_renders_active_band_separators() -> None:
+    app = _PreparationHarness()
+
+    async with app.run_test() as pilot:
+        prep = app.query_one("#preparation-view", PreparationView)
+        prep.update_data([_band_project()])
+        await pilot.pause()
+
+        separators = list(prep.query(TodoBandSeparator))
+
+    assert [separator.band for separator in separators] == [READY_BAND, IN_PREP_BAND]
 
 
 @pytest.mark.unit

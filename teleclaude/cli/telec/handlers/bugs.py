@@ -217,7 +217,7 @@ def _handle_bugs_list(args: list[str]) -> None:
             "JOIN todo_state s ON r.id = s.id "
             "WHERE r.status = 'active' "
             "AND json_extract(s.state, '$.kind') = 'bug' "
-            "ORDER BY r.position",
+            "ORDER BY r.updated_at DESC",
         ).fetchall()
     finally:
         conn.close()

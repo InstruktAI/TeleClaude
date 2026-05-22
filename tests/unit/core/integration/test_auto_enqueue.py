@@ -36,8 +36,8 @@ def _ensure_roadmap(todos_db: TodosDb, slug: str) -> str:
     conn = todos_db._sync_conn()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
-            "VALUES (?, ?, 0, 'active', '', '')",
+            "INSERT OR IGNORE INTO roadmap (id, slug, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 'active', '', '')",
             (row_id, slug),
         )
         row = conn.execute(

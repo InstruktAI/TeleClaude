@@ -24,8 +24,8 @@ def _ensure_roadmap_sync(db: TodosDb, slug: str) -> None:
     conn = db._sync_conn()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
-            "VALUES (?, ?, 0, 'active', '', '')",
+            "INSERT OR IGNORE INTO roadmap (id, slug, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 'active', '', '')",
             (str(uuid.uuid4()), slug),
         )
         conn.commit()
@@ -190,16 +190,6 @@ async def test_clean_dep_references_fires_mutation_callback(db: TodosDb) -> None
     cb = MagicMock()
     db._on_mutation = cb
     await db.clean_dep_references("dep-slug")
-    cb.assert_called_once()
-
-
-async def test_move_in_roadmap_fires_mutation_callback(db: TodosDb) -> None:
-    """move_in_roadmap calls _on_mutation after committing."""
-    await db.add_to_roadmap("slug-a")
-    await db.add_to_roadmap("slug-b")
-    cb = MagicMock()
-    db._on_mutation = cb
-    await db.move_in_roadmap("slug-a", after="slug-b")
     cb.assert_called_once()
 
 

@@ -10,7 +10,7 @@ class RoadmapRow(TypedDict):
 
     id: str
     slug: str
-    position: int
+    ready_since: str | None
     group_slug: str | None
     description: str | None
     status: str

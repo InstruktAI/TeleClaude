@@ -18,13 +18,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+from teleclaude.git import GIT_EXECUTABLE
+
 _HOME_PATH_RE = re.compile(r"(@?)(/Users/[^/\s]+|/home/[^/\s]+)/\.teleclaude")
 
 
 def _staged_markdown_files(project_root: Path) -> list[Path]:
     """Return staged ACM markdown files, relative to project root."""
     result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--", "*.md"],
+        [GIT_EXECUTABLE, "diff", "--cached", "--name-only", "--diff-filter=ACM", "-z", "--", "*.md"],
         cwd=project_root,
         capture_output=True,
         text=True,
@@ -39,7 +41,7 @@ def _file_has_home_path(path: Path, project_root: Path) -> bool:
     """Check the staged blob (not the worktree) so partial stages match what will commit."""
     rel = path.relative_to(project_root).as_posix()
     result = subprocess.run(
-        ["git", "show", f":{rel}"],
+        [GIT_EXECUTABLE, "show", f":{rel}"],
         cwd=project_root,
         capture_output=True,
         text=True,

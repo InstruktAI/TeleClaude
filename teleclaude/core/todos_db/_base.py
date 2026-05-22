@@ -79,16 +79,19 @@ def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:
 
     conn.execute(
         "CREATE TABLE roadmap_new ("
-        "id TEXT PRIMARY KEY, slug TEXT NOT NULL, position INTEGER NOT NULL, "
+        "id TEXT PRIMARY KEY, slug TEXT NOT NULL, ready_since TEXT, "
         "group_slug TEXT, description TEXT, status TEXT NOT NULL DEFAULT 'active', "
         "delivered_at TEXT, delivered_commit TEXT, children TEXT, "
         "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
     )
-    for row in conn.execute("SELECT * FROM roadmap").fetchall():
+    for row in conn.execute(
+        "SELECT slug, group_slug, description, status, delivered_at, delivered_commit, children, created_at, updated_at "
+        "FROM roadmap"
+    ).fetchall():
         new_id = _generate_id()
         conn.execute(
             "INSERT INTO roadmap_new VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (new_id, *row),
+            (new_id, row[0], None, *row[1:]),
         )
     conn.execute("DROP TABLE roadmap")
     conn.execute("ALTER TABLE roadmap_new RENAME TO roadmap")
@@ -282,6 +285,53 @@ def _migrate_roadmap_pending_purge_paths(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_roadmap_ordering_columns(conn: sqlite3.Connection) -> None:
+    """Ensure derived-ordering metadata and remove legacy manual position."""
+    columns = _table_columns(conn, "roadmap")
+    if "ready_since" not in columns:
+        conn.execute("ALTER TABLE roadmap ADD COLUMN ready_since TEXT")  # guard: raw-sql
+        columns = _table_columns(conn, "roadmap")
+
+    if "position" in columns:
+        keep_columns = [
+            "id",
+            "slug",
+            "ready_since",
+            "group_slug",
+            "description",
+            "status",
+            "delivered_at",
+            "delivered_commit",
+            "children",
+            "created_at",
+            "updated_at",
+            "removed_at",
+            "prev_status",
+            "removed_deps",
+            "pending_purge_paths",
+        ]
+        conn.execute(
+            "CREATE TABLE roadmap_new ("
+            "id TEXT PRIMARY KEY, slug TEXT NOT NULL, ready_since TEXT, "
+            "group_slug TEXT, description TEXT, status TEXT NOT NULL DEFAULT 'active', "
+            "delivered_at TEXT, delivered_commit TEXT, children TEXT, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+            "removed_at TEXT, prev_status TEXT, removed_deps TEXT, pending_purge_paths TEXT)"
+        )
+        column_list = ", ".join(keep_columns)
+        conn.execute(
+            f"INSERT INTO roadmap_new ({column_list}) SELECT {column_list} FROM roadmap"  # guard: raw-sql
+        )
+        conn.execute("DROP TABLE roadmap")
+        conn.execute("ALTER TABLE roadmap_new RENAME TO roadmap")
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_roadmap_slug_active "
+        "ON roadmap(slug) WHERE status IN ('active', 'icebox')"
+    )
+    conn.commit()
+
+
 def _purge_holder_payload(conn: sqlite3.Connection) -> None:
     """Enforce holder rows as structure only: no state, input artifact only."""
     if not _table_exists(conn, "roadmap"):
@@ -317,6 +367,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
             _migrate_foreign_key_schema(conn)
             _migrate_roadmap_tombstone_columns(conn)
             _migrate_roadmap_pending_purge_paths(conn)
+            _migrate_roadmap_ordering_columns(conn)
             _purge_holder_payload(conn)
         conn.commit()
     finally:

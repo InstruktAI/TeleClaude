@@ -294,7 +294,9 @@ def rewrite_delivered_by_slug(
             continue
 
         next_metadata = cast(SnippetFrontmatter, dict(metadata))
-        next_metadata["delivered_by"] = [new_slug if slug == old_slug else slug for slug in delivered_by]
+        next_metadata["delivered_by"] = list(
+            dict.fromkeys(new_slug if slug == old_slug else slug for slug in delivered_by)
+        )
         rendered = _render_frontmatter(next_metadata, body)
         if rendered == content:
             continue

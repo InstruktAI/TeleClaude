@@ -1,13 +1,14 @@
 ---
-description: 'Per-command authorization matrix for telec CLI across all system and human roles.'
-id: 'project/design/cli-authorization-matrix'
-scope: 'project'
-type: 'design'
-visibility: 'public'
-applies_to: 'v1'
-status: 'mixed'
+description: Per-command authorization matrix for telec CLI across all system and
+  human roles.
+id: project/design/cli-authorization-matrix
+scope: project
+type: design
+visibility: public
+applies_to: v1
+status: mixed
 delivered_by:
-  - 'roadmap-trash-reveal-ui'
+- roadmap-trash-reveal-ui
 ---
 
 # CLI Authorization Matrix — Design
@@ -114,13 +115,10 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 | Command                 | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                      |
 | ----------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `telec roadmap list`    | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the roadmap is useful for orientation. Workers don't need roadmap context. Customers should not see internal planning. |
-| `telec roadmap add`     | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Adding roadmap entries is planning. Only admins and members.                                                                   |
-| `telec roadmap remove`  | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing entries is destructive planning. Only admins and members.                                                             |
-| `telec roadmap move`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Reordering is planning management. Only admins and members.                                                                    |
-| `telec roadmap deps`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is planning management. Only admins and members.                                                          |
-| `telec roadmap freeze`  | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                             |
-| `telec roadmap deliver` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                    |
+| `telec todo list`       | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the roadmap is useful for orientation. Workers don't need roadmap context. Customers should not see internal planning. |
+| `telec todo freeze`     | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                             |
+| `telec todo unfreeze`   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring an iceboxed entry is planning management. Only admins and members.                                                   |
+| `telec todo deliver`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                    |
 
 ### Bug Management
 
@@ -208,13 +206,10 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo reactivate`       | Contributors, newcomers, customers          |
 | `telec todo verify-artifacts` | Customers                                   |
 | `telec todo dump`             | Newcomers, customers (**deprecated** alias)  |
-| `telec roadmap list`          | Customers                                   |
-| `telec roadmap add`           | Contributors, newcomers, customers          |
-| `telec roadmap remove`        | Contributors, newcomers, customers          |
-| `telec roadmap move`          | Contributors, newcomers, customers          |
-| `telec roadmap deps`          | Contributors, newcomers, customers          |
-| `telec roadmap freeze`        | Contributors, newcomers, customers          |
-| `telec roadmap deliver`       | Contributors, newcomers, customers          |
+| `telec todo list`             | Customers                                   |
+| `telec todo freeze`           | Contributors, newcomers, customers          |
+| `telec todo unfreeze`         | Contributors, newcomers, customers          |
+| `telec todo deliver`          | Contributors, newcomers, customers          |
 | `telec bugs report`           | Customers                                   |
 | `telec bugs create`           | Newcomers, customers                        |
 | `telec bugs list`             | Customers                                   |
@@ -237,8 +232,8 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 
 ### 5. `CUSTOMER_EXCLUDED_TOOLS` — missing many commands
 
-**Current code**: Customer exclusions are built from `UNAUTHORIZED_EXCLUDED_TOOLS` plus `sessions list`, `roadmap list`, `channels publish`, and `channels list`, minus `sessions escalate`.
-**Matrix**: Customers should also be excluded from: `sessions tail`, `sessions revive`, `sessions restart`, `sessions result`, `sessions widget`, `computers list`, `projects list`, `agents availability`, `agents status`, all `todo *`, all `roadmap *` (not just list), all `bugs *`, `content dump`, `events list`, all `config *` commands (except auth is universal).
+**Current code**: Customer exclusions are built from `UNAUTHORIZED_EXCLUDED_TOOLS` plus `sessions list`, `todo list`, `channels publish`, and `channels list`, minus `sessions escalate`.
+**Matrix**: Customers should also be excluded from: `sessions tail`, `sessions revive`, `sessions restart`, `sessions result`, `sessions widget`, `computers list`, `projects list`, `agents availability`, `agents status`, all `todo *` (including list), all `bugs *`, `content dump`, `events list`, all `config *` commands (except auth is universal).
 **Action**: Switch to an allow-list approach for customers (simpler: allow only `version`, `docs *`, `auth *`, `sessions escalate`).
 
 ### 6. `UNAUTHORIZED_EXCLUDED_TOOLS` — inconsistent with newcomer

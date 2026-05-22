@@ -189,14 +189,11 @@ class BlockedFollowUpStore:
             conn = db._sync_conn()
             try:
                 now = datetime.now(tz=UTC).isoformat()
-                max_pos = conn.execute(
-                    "SELECT COALESCE(MAX(position), 0) + 1 FROM roadmap",  # guard: raw-sql
-                ).fetchone()[0]
                 conn.execute(
                     "INSERT INTO roadmap "  # guard: raw-sql
-                    "(id, slug, position, status, created_at, updated_at) "
-                    "VALUES (?, ?, ?, 'active', ?, ?)",
-                    (str(uuid.uuid4()), slug, max_pos, now, now),
+                    "(id, slug, status, created_at, updated_at) "
+                    "VALUES (?, ?, 'active', ?, ?)",
+                    (str(uuid.uuid4()), slug, now, now),
                 )
                 conn.commit()
             finally:

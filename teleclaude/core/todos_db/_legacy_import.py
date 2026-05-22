@@ -140,19 +140,17 @@ def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> 
     now = datetime.now(UTC).isoformat()
     summary = LegacyImportSummary(roadmap_rows=0, state_rows=0, artifact_rows=0, version_rows=0)
     artifact_targets: dict[str, str] = {}
-    position = 1
 
     for entry in entries:
         row_id = str(uuid.uuid4())
         conn.execute(
             "INSERT INTO roadmap "
-            "(id, slug, position, group_slug, description, status, "
+            "(id, slug, group_slug, description, status, "
             "delivered_at, delivered_commit, children, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 row_id,
                 entry.slug,
-                position,
                 None,
                 entry.description or None,
                 entry.status,
@@ -169,7 +167,6 @@ def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> 
             artifact_rows=summary.artifact_rows,
             version_rows=summary.version_rows,
         )
-        position += 1
 
         if entry.status != "delivered":
             state = _build_state(

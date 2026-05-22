@@ -31,7 +31,7 @@ def _rename_artifacts_slug(todos_db: TodosDb) -> _RenameArtifactsSlug:
 
 async def _ensure_roadmap_entry(db: TodosDb, slug: str = _SLUG) -> None:
     """Create the roadmap entry that artifact writes require."""
-    await db.add_entry(slug=slug, position=0, description="test entry")
+    await db.add_entry(slug=slug, description="test entry")
 
 
 async def test_read_artifact_returns_empty_for_unknown_slug(

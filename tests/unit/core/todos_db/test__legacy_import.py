@@ -22,6 +22,15 @@ def _roadmap_statuses(db_path: Path) -> dict[str, str]:
     return {str(slug): str(status) for slug, status in rows}
 
 
+def _roadmap_columns(db_path: Path) -> set[str]:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute("PRAGMA table_info(roadmap)").fetchall()
+    finally:
+        conn.close()
+    return {str(row[1]) for row in rows}
+
+
 def _scaffold_legacy_markdown_todos(project_root: Path) -> None:
     todos_dir = project_root / "todos"
     _write(
@@ -108,6 +117,16 @@ def test_initialize_sync_auto_imports_legacy_markdown_todos_into_empty_db(tmp_pa
         "fix-resolved-wrong-id": "delivered",
     }
     assert db.read_artifact_sync("alpha", "requirements") == "# Alpha requirements\n"
+
+
+def test_legacy_import_does_not_write_position(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    db_path = project_root / ".teleclaude" / "todos.db"
+    _scaffold_legacy_markdown_todos(project_root)
+
+    TodosDb(str(db_path)).initialize_sync()
+
+    assert "position" not in _roadmap_columns(db_path)
 
 
 async def test_initialize_skips_auto_import_when_db_already_has_todo_data(tmp_path: Path) -> None:

@@ -65,7 +65,7 @@ scope catch from MVP.
   `telec-cli`).
 - Postgres-backed `WorkflowService` with full CRUD, roadmap operations,
   artifact versioning, lifecycle state machine, and event emission.
-- `telec-cli` binary mirroring v1's `telec todo` / `telec roadmap` CRUD
+- `telec-cli` binary mirroring v1's `telec todo` CRUD
   against the v2 schema. Orchestrator-level subcommands (`design`,
   `prepare`, `work`, `integrate`, `mark-phase`, `reconcile`, `dump`,
   `split`, `stamp`, `migrate-icebox`) exit with code 2 so a future shim

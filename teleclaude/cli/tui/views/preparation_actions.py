@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -14,7 +13,6 @@ from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
-from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.modals import (
     ConfirmModal,
     ContentInputModal,
@@ -66,103 +64,16 @@ class PreparationViewActionsMixin:
         item = self._current_item()  # type: ignore[attr-defined]
         return item if isinstance(item, ComputerHeader) else None
 
-    def _find_root_todo_neighbors(self) -> tuple[str | None, str | None]:
-        """Return (prev_root_slug, next_root_slug) relative to the current cursor.
-
-        Search stops at ProjectHeader or ComputerHeader boundaries so reordering
-        is scoped to the current project's roadmap.
-        """
-        current_idx = self.cursor_index  # type: ignore[attr-defined]
-        prev_slug: str | None = None
-        next_slug: str | None = None
-
-        for i in range(current_idx - 1, -1, -1):
-            widget = self._nav_items[i]  # type: ignore[attr-defined]
-            if isinstance(widget, ProjectHeader | ComputerHeader | GroupSeparator):
-                break
-            if isinstance(widget, TodoRow) and not widget._tree_lines:
-                prev_slug = widget.slug
-                break
-
-        for i in range(current_idx + 1, len(self._nav_items)):  # type: ignore[attr-defined]
-            widget = self._nav_items[i]  # type: ignore[attr-defined]
-            if isinstance(widget, ProjectHeader | ComputerHeader | GroupSeparator):
-                break
-            if isinstance(widget, TodoRow) and not widget._tree_lines:
-                next_slug = widget.slug
-                break
-
-        return prev_slug, next_slug
-
     def action_move_todo_up(self) -> None:
-        """Shift+Up: move current root todo one position up in the roadmap."""
-        current = self._current_todo_row()  # type: ignore[attr-defined]
-        if not current or current._tree_lines:
-            return
-
-        slug = current.slug
-        prev_slug, _ = self._find_root_todo_neighbors()
-        if prev_slug is None:
-            return
-
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
-        if not project_path:
-            return
-
-        try:
-            # Justification: roadmap reordering has no sync Python service entrypoint
-            # safe to call from the TUI event loop; `telec roadmap move` owns the
-            # main-branch lock + position recompute. Shelling the CLI reuses that
-            # serialization rather than duplicating it here.
-            subprocess.run(
-                ["telec", "roadmap", "move", slug, "--before", prev_slug],
-                check=True,
-                cwd=project_path,
-                capture_output=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            self.app.notify(
-                f"Reorder failed: {exc.stderr.decode()[:80]}",
-                severity="error",
-            )  # type: ignore[attr-defined]
-            return
-
-        self.cursor_index -= 1  # type: ignore[attr-defined]
-        self.app._refresh_data()  # type: ignore[attr-defined]
+        """Shift+Up: manual reorder is unsupported for derived roadmap ordering."""
+        self.app.notify(
+            "Manual reorder is not supported; ordering is derived from todo state.",
+            severity="warning",
+        )  # type: ignore[attr-defined]
 
     def action_move_todo_down(self) -> None:
-        """Shift+Down: move current root todo one position down in the roadmap."""
-        current = self._current_todo_row()  # type: ignore[attr-defined]
-        if not current or current._tree_lines:
-            return
-
-        slug = current.slug
-        _, next_slug = self._find_root_todo_neighbors()
-        if next_slug is None:
-            return
-
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
-        if not project_path:
-            return
-
-        try:
-            # Justification: see action_move_todo_up — `telec roadmap move` owns the
-            # main-branch lock + position recompute; shelling reuses that serialization.
-            subprocess.run(
-                ["telec", "roadmap", "move", slug, "--after", next_slug],
-                check=True,
-                cwd=project_path,
-                capture_output=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            self.app.notify(
-                f"Reorder failed: {exc.stderr.decode()[:80]}",
-                severity="error",
-            )  # type: ignore[attr-defined]
-            return
-
-        self.cursor_index += 1  # type: ignore[attr-defined]
-        self.app._refresh_data()  # type: ignore[attr-defined]
+        """Shift+Down: manual reorder is unsupported for derived roadmap ordering."""
+        self.action_move_todo_up()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Enable/hide actions based on current tree node type."""
@@ -227,7 +138,7 @@ class PreparationViewActionsMixin:
             return item.todo.status == TodoStatus.ICEBOX
         if action == "freeze":
             return item.todo.status != TodoStatus.ICEBOX
-        return action not in {"move_todo_up", "move_todo_down"} or not item._tree_lines
+        return action not in {"move_todo_up", "move_todo_down"}
 
     def watch_cursor_index(self, _index: int) -> None:
         """Refresh key bindings when node context changes."""

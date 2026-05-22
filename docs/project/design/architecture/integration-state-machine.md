@@ -5,6 +5,7 @@ id: 'project/design/architecture/integration-state-machine'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+applies_to: 'v1'
 ---
 
 # Integration State Machine — Design
@@ -167,7 +168,7 @@ flowchart TD
 
     CommitCheck{"HEAD advanced?<br/>(new commit detected)"}
 
-    Bookkeeping["DELIVERY_BOOKKEEPING<br/>- roadmap deliver slug<br/>- commit bookkeeping"]
+    Bookkeeping["DELIVERY_BOOKKEEPING<br/>- core.todos_db.deliver_sync slug<br/>- commit bookkeeping"]
 
     Push["git push origin HEAD:main"]
 
@@ -278,7 +279,7 @@ sequenceDiagram
 
     SM->>SM: Detect HEAD advanced - COMMITTED
     SM->>SM: DELIVERY_BOOKKEEPING
-    Note over SM: roadmap deliver my-feature
+    Note over SM: core.todos_db.deliver_sync(my-feature)
     SM->>WT: git push origin HEAD:main
     Note over Origin: Push succeeds
 
@@ -453,7 +454,7 @@ flowchart TD
 
     IsBug{"Is bug slug?"}
 
-    Deliver["telec roadmap deliver slug<br/>(roadmap (todos.db) - delivered.yaml)"]
+    Deliver["core.todos_db.deliver_sync(slug)<br/>(todos.db delivery stamp)"]
 
     Stage["git add<br/>todos.db<br/>(roadmap + delivered)"]
     Commit["git commit<br/>'chore: deliver slug'"]

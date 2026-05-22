@@ -14,7 +14,7 @@ class TodoRoadmap(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     slug: str
-    position: int
+    ready_since: str | None = Field(default=None)
     group_slug: str | None = None
     description: str | None = None
     status: str = "active"

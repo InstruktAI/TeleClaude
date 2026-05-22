@@ -29,7 +29,7 @@ in scope.
 - The BA's questions during the conversation
   [OPTIONAL: only when slug was provided]:
 - `telec todo artifacts read {slug} input` (the user's stated wish, when present)
-- `telec roadmap list --include-icebox` (the landscape glance)
+- `telec todo list --include-icebox` (the landscape glance)
 
 ## Outputs
 

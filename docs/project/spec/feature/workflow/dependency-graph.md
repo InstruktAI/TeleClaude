@@ -6,7 +6,7 @@ scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
 status: 'actual'
-description: 'Directed acyclic graph of `after` edges between roadmap entries; cycle detection at the API boundary refuses bad mutations before persistence; unmet dependencies block dispatch during prepare/work slug resolution.'
+description: 'Directed acyclic graph of `after` edges between todo roadmap entries; cycle detection at the API boundary refuses bad mutations before persistence; unmet dependencies block dispatch during prepare/work slug resolution.'
 ---
 
 # Dependency Graph — Spec
@@ -26,7 +26,7 @@ The graph has two responsibilities:
 1. **Refuse cycles at the boundary.** Mutations that would introduce a cycle are rejected before they reach the database. The `/todos/set-deps` HTTP endpoint runs cycle detection as part of request validation; the CLI handlers route through the same persistence path. Cycle detection is pure DFS over an in-memory snapshot of the current graph plus the proposed edge set — no DB writes happen on the failure path.
 2. **Gate dispatch by readiness.** The prepare and work orchestrators consult the graph when resolving the next runnable slug. A candidate whose `after` list contains any slug that is not in `delivered_slugs` is skipped. Pending, in-progress, and iceboxed dependencies all leave the candidate blocked; only delivery clears the gate.
 
-Mutations land via three surfaces — `telec roadmap deps`, `telec todo set-deps`, and the `POST /todos/set-deps` API endpoint — all of which converge on `TodosDb.set_deps` after passing validation.
+Mutations land via `telec todo set-deps` and the `POST /todos/set-deps` API endpoint, both of which converge on `TodosDb.set_deps` after passing validation.
 
 ## Canonical fields
 
@@ -34,7 +34,7 @@ Mutations land via three surfaces — `telec roadmap deps`, `telec todo set-deps
 
 ```
 Given an empty dependency graph
-When the operator runs "telec roadmap deps feature-a --after feature-b,feature-c"
+When the operator runs "telec todo set-deps feature-a --after feature-b --after feature-c"
 Then both "feature-b" and "feature-c" are validated as existing roadmap slugs
 And cycle detection runs over the current graph plus the proposed edges
 And the deps are persisted via TodosDb.set_deps, replacing any prior edges for "feature-a"
@@ -91,7 +91,7 @@ And the API responds with "dependencies cleared for '<slug>'"
 - `teleclaude/core/next_machine/dep_graph.py:9` — `detect_circular_dependency(deps, slug, new_deps)` pure DFS implementation; no DB or filesystem access
 - `teleclaude/api/todo_routes.py:211` — `POST /todos/set-deps` validates slug format, target existence, self-edge, runs cycle detection, then calls `set_deps`
 - `teleclaude/api/todo_routes.py:249` — `load_deps()` + `detect_circular_dependency` boundary check before write
-- `teleclaude/cli/telec/handlers/roadmap.py:349` — `_handle_roadmap_deps` CLI entrypoint (requires `--after`, clears or replaces)
+- `teleclaude/cli/tool_commands/todo.py` — `handle_todo_set_deps` CLI entrypoint used by `telec todo set-deps`
 - `teleclaude/core/todos_db/_roadmap.py:329` — `set_deps` replaces edges in a single transaction (delete all, insert new)
 - `teleclaude/core/todos_db/_roadmap.py:358` — `load_deps` returns `{slug: [depends_on, ...]}` for graph snapshots
 - `teleclaude/core/todos_db/_roadmap.py:367` — `clean_dep_references` removes a slug from all `depends_on` lists, used during slug retirement
@@ -107,7 +107,7 @@ And the API responds with "dependencies cleared for '<slug>'"
 ## Known caveats
 
 - `dep_graph.py` is pure logic — no DB access. Persistence lives in `TodosDb.set_deps`; the API route is the only place that pairs cycle detection with persistence.
-- Cycle detection runs BEFORE persistence at the API boundary, so the database is never observed in a cyclic state. The CLI handlers do NOT re-run cycle detection — they trust the same code path because they delegate to `set_deps` after their own slug validation (a future tightening would push cycle detection into `set_deps` itself).
+- Cycle detection runs BEFORE persistence at the API boundary, so the database is never observed in a cyclic state. CLI invocation uses the same todo dependency surface rather than a separate roadmap-specific command.
 - The graph is per-project: one roadmap, one `roadmap_deps` table, one `.teleclaude/todos.db`. There is no cross-project dependency.
 - Only `delivered` clears a dependency. `icebox`, `pending`, and `in_progress` all leave the gate closed. Removing a dep edge (or marking the parent delivered) is the only way to unblock a candidate whose dep is iceboxed.
 - `set_deps` is a full replacement: passing `after=[]` clears all edges for the slug; there is no incremental add/remove API. To merge edges, the caller must `load_deps` first and submit the union.

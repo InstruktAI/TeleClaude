@@ -6,9 +6,10 @@ import asyncio
 import json as _json
 import sys
 import uuid
-from typing import Literal
+from pathlib import Path
+from typing import Literal, TypedDict
 
-from teleclaude.api_models import TodoDumpRequest
+from teleclaude.api_models import TodoDTO, TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
 from teleclaude.cli.tool_commands import (
@@ -21,23 +22,31 @@ from teleclaude.cli.tool_commands import (
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES, ARTIFACT_NAMES_RETIRED, ARTIFACT_NAMES_WRITABLE
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError
-from teleclaude.core.todos_db import close_todos_db_instances
+from teleclaude.core.roadmap import parse_since_to_cutoff
+from teleclaude.core.roadmap_tree import RoadmapNode, build_roadmap_sections, flatten
+from teleclaude.core.todos_db import TodosDb, close_todos_db_instances
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.git import GitCommandError
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_cwd, resolve_state_root
+from teleclaude.services.work import get_work_service
 from teleclaude.session_identity import get_session_id
+from teleclaude.slug import validate_slug
 
 __all__ = [
     "_handle_todo",
     "_handle_todo_artifacts",
     "_handle_todo_create",
+    "_handle_todo_deliver",
     "_handle_todo_design",
     "_handle_todo_dump",
+    "_handle_todo_freeze",
+    "_handle_todo_list",
     "_handle_todo_mark_phase",
     "_handle_todo_reconcile",
     "_handle_todo_remove",
@@ -45,6 +54,7 @@ __all__ = [
     "_handle_todo_show",
     "_handle_todo_split",
     "_handle_todo_stamp",
+    "_handle_todo_unfreeze",
     "handle_mark_phase",
 ]
 
@@ -160,40 +170,318 @@ def _handle_todo(args: list[str]) -> None:
         return
 
     subcommand = args[0]
-    if subcommand == "create":
-        _handle_todo_create(args[1:])
-    elif subcommand in ("design", "co-create"):
-        _handle_todo_design(args[1:])
-    elif subcommand == "remove":
-        _handle_todo_remove(args[1:])
-    elif subcommand == "rename":
-        _handle_todo_rename(args[1:])
-    elif subcommand == "prepare":
-        handle_todo_prepare(args[1:])
-    elif subcommand == "work":
-        handle_todo_work(args[1:])
-    elif subcommand == "integrate":
-        handle_todo_integrate(args[1:])
-    elif subcommand == "set-deps":
-        handle_todo_set_deps(args[1:])
-    elif subcommand == "dump":
-        _handle_todo_dump(args[1:])
-    elif subcommand == "split":
-        _handle_todo_split(args[1:])
-    elif subcommand == "mark-phase":
-        _handle_todo_mark_phase(args[1:])
-    elif subcommand == "reconcile":
-        _handle_todo_reconcile(args[1:])
-    elif subcommand == "artifacts":
-        _handle_todo_artifacts(args[1:])
-    elif subcommand == "stamp":
-        _handle_todo_stamp(args[1:])
-    elif subcommand == "show":
-        _handle_todo_show(args[1:])
-    else:
+    handlers = {
+        "artifacts": _handle_todo_artifacts,
+        "co-create": _handle_todo_design,
+        "create": _handle_todo_create,
+        "deliver": _handle_todo_deliver,
+        "design": _handle_todo_design,
+        "dump": _handle_todo_dump,
+        "freeze": _handle_todo_freeze,
+        "integrate": handle_todo_integrate,
+        "list": _handle_todo_list,
+        "mark-phase": _handle_todo_mark_phase,
+        "prepare": handle_todo_prepare,
+        "reconcile": _handle_todo_reconcile,
+        "remove": _handle_todo_remove,
+        "rename": _handle_todo_rename,
+        "set-deps": handle_todo_set_deps,
+        "show": _handle_todo_show,
+        "split": _handle_todo_split,
+        "stamp": _handle_todo_stamp,
+        "unfreeze": _handle_todo_unfreeze,
+        "work": handle_todo_work,
+    }
+    handler = handlers.get(subcommand)
+    if handler is None:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
         raise SystemExit(1)
+    handler(args[1:])
+
+
+class _TodoListArgs(TypedDict):
+    include_icebox: bool
+    icebox_only: bool
+    include_delivered: bool
+    delivered_only: bool
+    json_output: bool
+    since_cutoff: str
+
+
+def _handle_todo_list(args: list[str]) -> None:
+    """Display todos as sectioned active/delivered/icebox dependency trees."""
+    parsed = _parse_todo_list_args(args)
+    project_root = _resolve_todo_project_root()
+
+    since_cutoff = parsed["since_cutoff"]
+    show_delivered = parsed["include_delivered"] or parsed["delivered_only"] or bool(since_cutoff)
+    show_icebox = parsed["include_icebox"] or parsed["icebox_only"]
+
+    svc = get_work_service(str(project_root))
+    todos = svc.roadmap.entries(
+        include_icebox=True,
+        include_delivered=True,
+        delivered_since=since_cutoff or None,
+    )
+
+    if not todos:
+        if parsed["json_output"]:
+            print("{}")
+        else:
+            print("Todo list is empty.")
+        return
+
+    sections = build_roadmap_sections(todos)
+    if parsed["delivered_only"]:
+        section_items = [("delivered", sections.delivered)]
+    elif parsed["icebox_only"]:
+        section_items = [("icebox", sections.icebox)]
+    else:
+        section_items = [("active", sections.active)]
+        if show_delivered:
+            section_items.append(("delivered", sections.delivered))
+        if show_icebox:
+            section_items.append(("icebox", sections.icebox))
+
+    if parsed["json_output"]:
+        payload = {name: [_node_to_dict(n) for n in nodes] for name, nodes in section_items if nodes}
+        print(_json.dumps(payload, indent=2))
+        return
+
+    _print_sectioned_todo_list(section_items)
+
+
+def _parse_todo_list_args(args: list[str]) -> _TodoListArgs:
+    options = {
+        "--include-icebox": "include_icebox",
+        "-i": "include_icebox",
+        "--icebox-only": "icebox_only",
+        "-o": "icebox_only",
+        "--include-delivered": "include_delivered",
+        "-d": "include_delivered",
+        "--delivered-only": "delivered_only",
+        "--json": "json_output",
+    }
+    parsed: _TodoListArgs = {
+        "include_icebox": False,
+        "icebox_only": False,
+        "include_delivered": False,
+        "delivered_only": False,
+        "json_output": False,
+        "since_cutoff": "",
+    }
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--since":
+            if i + 1 >= len(args):
+                print("--since requires a value (e.g. 7d, 72h, 2w, or 2026-05-01)")
+                print(_usage("todo", "list"))
+                raise SystemExit(1)
+            try:
+                parsed["since_cutoff"] = parse_since_to_cutoff(args[i + 1])
+            except ValueError as exc:
+                print(str(exc))
+                print(_usage("todo", "list"))
+                raise SystemExit(1) from exc
+            i += 2
+            continue
+        option = options.get(arg)
+        if option:
+            parsed[option] = True  # type: ignore[literal-required]
+            i += 1
+            continue
+        error_kind = "option" if arg.startswith("-") else "argument"
+        print(f"Unknown {error_kind}: {arg}")
+        print(_usage("todo", "list"))
+        raise SystemExit(1)
+    return parsed
+
+
+def _print_sectioned_todo_list(sections: list[tuple[str, list[RoadmapNode]]]) -> None:
+    first = True
+    for name, nodes in sections:
+        if not nodes:
+            continue
+        if not first:
+            print()
+        first = False
+        print(f"{name}:")
+        for row in flatten(nodes):
+            parts = [f"    {'  ' * row.depth}{row.todo.slug}"]
+            if row.todo.description:
+                parts.append(f" {row.todo.description}")
+            if row.todo.after:
+                parts.append(f" (after: {', '.join(row.todo.after)})")
+            print("".join(parts))
+
+
+class _TrimmedTodoDict(TypedDict, total=False):
+    """Minimal todo list entry for JSON output."""
+
+    slug: str
+    status: str
+    description: str
+    after: list[str]
+    group: str
+    delivered_at: str
+    children: list[_TrimmedTodoDict]
+
+
+def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
+    result = _TrimmedTodoDict(slug=todo.slug, status=todo.status)
+    if todo.description:
+        result["description"] = todo.description
+    if todo.after:
+        result["after"] = todo.after
+    if todo.group:
+        result["group"] = todo.group
+    if todo.delivered_at:
+        result["delivered_at"] = todo.delivered_at
+    return result
+
+
+def _node_to_dict(node: RoadmapNode) -> _TrimmedTodoDict:
+    result = _todo_to_trimmed_dict(node.todo)
+    if node.children:
+        result["children"] = [_node_to_dict(child) for child in node.children]
+    return result
+
+
+def _validate_slugs(*slugs: str | None) -> None:
+    try:
+        for slug in slugs:
+            if slug is not None:
+                validate_slug(slug)
+    except ValueError as exc:
+        print(str(exc))
+        raise SystemExit(1) from exc
+
+
+def _resolve_todo_project_root() -> Path:
+    return resolve_state_root(resolve_invocation_cwd())
+
+
+def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:
+    async def _execute() -> object:
+        db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
+        await db.initialize()
+        try:
+            fn = getattr(db, method)
+            return await fn(slug, **kwargs)
+        finally:
+            await db.close()
+
+    return asyncio.run(_execute())
+
+
+def _handle_todo_freeze(args: list[str]) -> None:
+    """Handle telec todo freeze <slug>."""
+    if not args:
+        print(_usage("todo", "freeze"))
+        return
+
+    slug: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "freeze"))
+            raise SystemExit(1)
+        if slug is not None:
+            print("Only one slug is allowed.")
+            raise SystemExit(1)
+        slug = arg
+        i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_usage("todo", "freeze"))
+        raise SystemExit(1)
+
+    _validate_slugs(slug)
+    project_root = _resolve_todo_project_root()
+    if _run_db(project_root, slug, "freeze"):
+        print(f"Froze {slug} → icebox")
+        return
+    print(f"Slug not found in todo list: {slug}")
+    raise SystemExit(1)
+
+
+def _handle_todo_unfreeze(args: list[str]) -> None:
+    """Handle telec todo unfreeze <slug>."""
+    if not args:
+        print(_usage("todo", "unfreeze"))
+        return
+
+    slug: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "unfreeze"))
+            raise SystemExit(1)
+        if slug is not None:
+            print("Only one slug is allowed.")
+            raise SystemExit(1)
+        slug = arg
+        i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_usage("todo", "unfreeze"))
+        raise SystemExit(1)
+
+    _validate_slugs(slug)
+    project_root = _resolve_todo_project_root()
+    if _run_db(project_root, slug, "unfreeze"):
+        print(f"Unfroze {slug} → todo list")
+        return
+    print(f"Slug not found in icebox: {slug}")
+    raise SystemExit(1)
+
+
+def _handle_todo_deliver(args: list[str]) -> None:
+    """Handle telec todo deliver <slug> [--commit SHA]."""
+    if not args:
+        print(_usage("todo", "deliver"))
+        return
+
+    slug: str | None = None
+    commit: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--commit" and i + 1 < len(args):
+            commit = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "deliver"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_usage("todo", "deliver"))
+        raise SystemExit(1)
+
+    _validate_slugs(slug)
+    project_root = _resolve_todo_project_root()
+    if not _run_db(project_root, slug, "deliver", commit=commit):
+        print(f"Slug not found in todo list: {slug}")
+        raise SystemExit(1)
+
+    cleanup_delivered_slug(str(project_root), slug)
+    print(f"Delivered {slug} (cleanup complete)")
 
 
 def _handle_todo_create(args: list[str]) -> None:

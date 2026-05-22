@@ -187,13 +187,12 @@ sessions doing migration work re-derive architecture from priors and drift.
    - State machine (lifecycle phases) for the workflow domain
    - Event emission on every mutation
 8. `crates/telec/` — CLI binary:
-   - `telec todo list/show/create/update`
-   - `telec roadmap list/add/move/remove`
+   - `telec todo list/show/create/update/remove/freeze/unfreeze/deliver`
    - Embeds workflow + identity + observability
 9. Postgres setup: `docker-compose.yml`, `make pg-up`/`make pg-down`.
 10. Data migration tool: read v1 SQLite `todos.db` → write to v2 Postgres
     `workflow` schema. Run once.
-11. Cutover: `telec todo` and `telec roadmap` route to v2 binary; v1 todo
+11. Cutover: `telec todo` routes to v2 binary; v1 todo
     code paths deprecated.
 
 **Result:** v1 TUI still works, sessions still work, Telegram still works.

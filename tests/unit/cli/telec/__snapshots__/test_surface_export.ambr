@@ -354,6 +354,29 @@
   - Creates the roadmap entry, canonical state, and stores content as the input artifact.
   - Emits workflow.todo.created for autonomous pickup unless --silent is set.
   
+  ### `telec todo list`
+  
+  List todo entries (source of truth for todo status)
+  
+  **Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]`
+  
+  **Flags:**
+  
+  - `--include-icebox` (`-i`): Include icebox items
+  - `--icebox-only` (`-o`): Show only icebox items
+  - `--include-delivered` (`-d`): Include delivered items
+  - `--delivered-only`: Show only delivered items
+  - `--since`: Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.
+  - `--json`: Output as a sectioned JSON object (active/delivered/icebox trees)
+  
+  **Notes:**
+  
+  - Output is sectioned into active/delivered/icebox dependency trees.
+  - CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
+  - --include-delivered returns the full delivery history; scope it with --since.
+  - --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
+  - --since alone implies --include-delivered; combine with --delivered-only to exclude active items.
+  
   ### `telec todo design`
   
   Run the creative state machine
@@ -365,6 +388,28 @@
   Soft-remove a todo: the durable record (roadmap entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
   
   **Usage:** `telec todo remove <slug>`
+  
+  ### `telec todo freeze`
+  
+  Move todo to icebox
+  
+  **Usage:** `telec todo freeze <slug>`
+  
+  ### `telec todo unfreeze`
+  
+  Promote todo from icebox
+  
+  **Usage:** `telec todo unfreeze <slug>`
+  
+  ### `telec todo deliver`
+  
+  Move todo to delivered
+  
+  **Usage:** `telec todo deliver <slug> [--commit <hash>]`
+  
+  **Flags:**
+  
+  - `--commit`: Commit hash (auto-detects HEAD if omitted)
   
   ### `telec todo rename`
   
@@ -518,99 +563,6 @@
   - `--architecture-skipped`: Skip architecture phase with a reason
   - `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
   - `--finalize-ready`: Mark worktree as ready for finalize handoff
-  
-  ## `telec roadmap`
-  
-  Manage the work item roadmap
-  
-  ### `telec roadmap list`
-  
-  List roadmap entries (source of truth for todo status)
-  
-  **Usage:** `telec roadmap list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]`
-  
-  **Flags:**
-  
-  - `--include-icebox` (`-i`): Include icebox items
-  - `--icebox-only` (`-o`): Show only icebox items
-  - `--include-delivered` (`-d`): Include delivered items
-  - `--delivered-only`: Show only delivered items
-  - `--since`: Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.
-  - `--json`: Output as a sectioned JSON object (active/delivered/icebox trees)
-  
-  **Notes:**
-  
-  - Output is sectioned into active/delivered/icebox dependency trees.
-  - CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox), each a tree with `children`; previously a flat list. Empty roadmap emits `{}`. Text output no longer appends a [status] suffix.
-  - --include-delivered returns the full delivery history; scope it with --since.
-  - --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
-  - --since alone implies --include-delivered; combine with --delivered-only to exclude active items.
-  
-  ### `telec roadmap add`
-  
-  Add entry to the roadmap
-  
-  **Usage:** `telec roadmap add <slug> [--group <holder-slug>] [--after <slugs>] [--before <slug>] [--description <text>]`
-  
-  **Flags:**
-  
-  - `--group`: Nest under an existing roadmap entry (holder slug)
-  - `--after`: Comma-separated dependency slugs
-  - `--before`: Insert before this slug (default: append)
-  - `--description`: Summary description
-  
-  ### `telec roadmap remove`
-  
-  Soft-remove a roadmap entry: identical semantics to `telec todo remove`. The durable record and full history survive removal for a fixed grace window before background maintenance hard-purges by row id. Reactivation is row-id-addressed and fail-closed on live same-slug twins.
-  
-  **Usage:** `telec roadmap remove <slug>`
-  
-  ### `telec roadmap move`
-  
-  Reorder an entry in the roadmap
-  
-  **Usage:** `telec roadmap move <slug> [--before <slug>] [--after <slug>]`
-  
-  **Flags:**
-  
-  - `--before`: Move before this slug
-  - `--after`: Move after this slug
-  
-  ### `telec roadmap deps`
-  
-  Set dependencies for an entry
-  
-  **Usage:** `telec roadmap deps <slug> [--after <slugs>]`
-  
-  **Flags:**
-  
-  - `--after`: Comma-separated dependency slugs
-  
-  ### `telec roadmap freeze`
-  
-  Move entry to icebox
-  
-  **Usage:** `telec roadmap freeze <slug>`
-  
-  ### `telec roadmap unfreeze`
-  
-  Promote entry from icebox to roadmap
-  
-  **Usage:** `telec roadmap unfreeze <slug>`
-  
-  ### `telec roadmap migrate-icebox`
-  
-  One-time migration: move icebox folders into todos/_icebox/
-  
-  ### `telec roadmap deliver`
-  
-  Move entry to delivered
-  
-  **Usage:** `telec roadmap deliver <slug> [--commit <hash>]`
-  
-  **Flags:**
-  
-  - `--commit`: Commit hash (auto-detects HEAD if omitted)
   
   ## `telec bugs`
   
@@ -952,17 +904,6 @@
   
   '''
 # ---
-# name: TestExportSurfaceMarkdown.test_roadmap_remove_block_documents_recoverable_soft_removal
-  '''
-  ### `telec roadmap remove`
-  
-  Soft-remove a roadmap entry: identical semantics to `telec todo remove`. The durable record and full history survive removal for a fixed grace window before background maintenance hard-purges by row id. Reactivation is row-id-addressed and fail-closed on live same-slug twins.
-  
-  **Usage:** `telec roadmap remove <slug>`
-  
-  
-  '''
-# ---
 # name: TestExportSurfaceMarkdown.test_sessions_run_block_renders_completely
   '''
   ### `telec sessions run`
@@ -1023,6 +964,28 @@
   Soft-remove a todo: the durable record (roadmap entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
   
   **Usage:** `telec todo remove <slug>`
+  
+  ### `telec todo freeze`
+  
+  Move todo to icebox
+  
+  **Usage:** `telec todo freeze <slug>`
+  
+  ### `telec todo unfreeze`
+  
+  Promote todo from icebox
+  
+  **Usage:** `telec todo unfreeze <slug>`
+  
+  ### `telec todo deliver`
+  
+  Move todo to delivered
+  
+  **Usage:** `telec todo deliver <slug> [--commit <hash>]`
+  
+  **Flags:**
+  
+  - `--commit`: Commit hash (auto-detects HEAD if omitted)
   
   ### `telec todo rename`
   

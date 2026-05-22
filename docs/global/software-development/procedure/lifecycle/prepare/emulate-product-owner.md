@@ -45,7 +45,7 @@ When the real human's input contradicts a standing wish, the human's input wins.
 
 ### 2. Glance the roadmap and icebox
 
-Run `telec roadmap list --include-icebox` and read the titles. The emulator stands in for a PO who carries the landscape in their head — what's in flight, what's queued, what was deferred and why. The glance is shallow (titles, not bodies) and forms the mental map for three downstream moves:
+Run `telec todo list --include-icebox` and read the titles. The emulator stands in for a PO who carries the landscape in their head — what's in flight, what's queued, what was deferred and why. The glance is shallow (titles, not bodies) and forms the mental map for three downstream moves:
 
 - **Adjacency.** "This overlaps with in-flight `<slug>`." Surface so the work can be consolidated or split rather than duplicated.
 - **Deferred-similar.** "Iceboxed `<slug>` was a related idea." Note for the real human so they can decide whether the prior reason for deferral still applies.

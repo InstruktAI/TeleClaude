@@ -9,12 +9,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict, cast
 
-from sqlalchemy import delete, func, update
+from sqlalchemy import delete, update
+from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import ARTIFACT_INPUT
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.next_machine.lifecycle import is_ready_band_eligible
 from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
@@ -73,7 +75,7 @@ def _roadmap_row(model: TodoRoadmap) -> RoadmapRow:
     return RoadmapRow(
         id=model.id,
         slug=model.slug,
-        position=model.position,
+        ready_since=model.ready_since,
         group_slug=model.group_slug,
         description=model.description,
         status=model.status,
@@ -136,15 +138,27 @@ def _decode_pending_purge_paths(value: str | None, *, roadmap_id: str) -> list[s
     return decoded
 
 
+def _readiness_state_fields(state_model: TodoStateModel | None) -> tuple[str | None, str | None]:
+    if state_model is None:
+        return None, None
+    try:
+        state = json.loads(state_model.state)
+    except (TypeError, ValueError):
+        return None, None
+    if not isinstance(state, dict):
+        return None, None
+    kind = state.get("kind")
+    lifecycle_phase = state.get("lifecycle_phase")
+    return (
+        kind if isinstance(kind, str) else None,
+        lifecycle_phase if isinstance(lifecycle_phase, str) else None,
+    )
+
+
 class TodosDbRoadmapMixin:
     """Roadmap CRUD, ordering, deps, delivery, icebox (replaces roadmap.yaml)."""
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
-
-    async def _next_position(self, session: SqlAsyncSession) -> int:
-        """Return the next available position value."""
-        result = await session.exec(select(func.coalesce(func.max(ROADMAP_TABLE.c.position), -1) + 1))
-        return int(result.one())
 
     async def _active_entry(self, session: SqlAsyncSession, slug: str) -> TodoRoadmap | None:
         """Return the live (active or icebox) roadmap entry for a slug.
@@ -216,7 +230,7 @@ class TodosDbRoadmapMixin:
                     allowed.append("icebox")
                 if include_delivered:
                     allowed.append("delivered")
-                stmt = stmt.where(ROADMAP_TABLE.c.status.in_(allowed)).order_by(ROADMAP_TABLE.c.position)
+                stmt = stmt.where(ROADMAP_TABLE.c.status.in_(allowed)).order_by(ROADMAP_TABLE.c.id)
             result = await db_session.exec(stmt)
             return list(result.all())
         finally:
@@ -230,7 +244,7 @@ class TodosDbRoadmapMixin:
         include_delivered: bool = False,
         delivered_only: bool = False,
     ) -> list[RoadmapRow]:
-        """List roadmap entries ordered by position (active) or delivery date (delivered)."""
+        """List roadmap entries ordered by stable row id or delivery date."""
         models = await self._list_roadmap_models(
             include_icebox=include_icebox,
             include_delivered=include_delivered,
@@ -242,9 +256,9 @@ class TodosDbRoadmapMixin:
         """Return active roadmap entries as ORM models."""
         return await self._list_roadmap_models()
 
-    async def add_entry(self, *, slug: str, position: int, description: str | None = None) -> bool:
+    async def add_entry(self, *, slug: str, description: str | None = None) -> bool:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
-        return await self.add_to_roadmap(slug, description=description, position=position)
+        return await self.add_to_roadmap(slug, description=description)
 
     async def add_to_roadmap(
         self,
@@ -253,8 +267,6 @@ class TodosDbRoadmapMixin:
         group_slug: str | None = None,
         after: list[str] | None = None,
         description: str | None = None,
-        before: str | None = None,
-        position: int | None = None,
         session: SqlAsyncSession | None = None,
     ) -> bool:
         """Add or update a slug in the roadmap. Idempotent — returns True on success."""
@@ -280,32 +292,10 @@ class TodosDbRoadmapMixin:
 
             now = datetime.now(UTC).isoformat()
             new_id = _generate_id()
-            resolved_position = await self._next_position(db_session)
-            if before:
-                target = await self._active_entry(db_session, before)
-                if target is not None:
-                    resolved_position = target.position
-                    await db_session.exec(
-                        update(TodoRoadmap)
-                        .where(ROADMAP_TABLE.c.position >= resolved_position)
-                        .values(position=ROADMAP_TABLE.c.position + 1)
-                    )
-            elif position is not None:
-                requested_position = max(position - 1, 0)
-                next_position = await self._next_position(db_session)
-                resolved_position = min(requested_position, next_position)
-                if resolved_position < next_position:
-                    await db_session.exec(
-                        update(TodoRoadmap)
-                        .where(ROADMAP_TABLE.c.position >= resolved_position)
-                        .values(position=ROADMAP_TABLE.c.position + 1)
-                    )
-
             db_session.add(
                 TodoRoadmap(
                     id=new_id,
                     slug=slug,
-                    position=resolved_position,
                     group_slug=group_slug,
                     description=description,
                     status="active",
@@ -659,6 +649,7 @@ class TodosDbRoadmapMixin:
             entry.delivered_at = now
             entry.delivered_commit = commit
             entry.children = json.dumps(children) if children else None
+            entry.ready_since = None
             entry.updated_at = now
             db_session.add(entry)
 
@@ -670,6 +661,21 @@ class TodosDbRoadmapMixin:
                 state_model.state = json.dumps(canonicalize_state_for_storage(state))
                 state_model.updated_at = now
                 db_session.add(state_model)
+
+            delivered_result = await db_session.exec(
+                select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered")
+            )
+            delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
+            delivered_slugs.add(slug)
+            dependent_result = await db_session.exec(
+                select(RoadmapDep.slug).where(ROADMAP_DEPS_TABLE.c.depends_on == slug).order_by(RoadmapDep.slug)
+            )
+            for dependent_slug in [str(dependent) for dependent in dependent_result.all()]:
+                await self._stamp_ready_since_for_slug_if_eligible(
+                    db_session,
+                    dependent_slug,
+                    delivered_slugs=delivered_slugs,
+                )
 
             if owns_session:
                 await db_session.commit()
@@ -685,6 +691,166 @@ class TodosDbRoadmapMixin:
             result = await session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
             return {str(slug) for slug in result.all()}
 
+    async def _stamp_ready_since_for_slug_if_eligible(
+        self,
+        session: SqlAsyncSession,
+        slug: str,
+        *,
+        delivered_slugs: set[str],
+    ) -> None:
+        entry = await self._active_entry(session, slug)
+        if entry is None:
+            return
+        state_model = await session.get(TodoStateModel, entry.id)
+        kind, lifecycle_phase = _readiness_state_fields(state_model)
+        deps_result = await session.exec(select(RoadmapDep.depends_on).where(ROADMAP_DEPS_TABLE.c.slug == slug))
+        after_deps = [str(dep) for dep in deps_result.all()]
+        if is_ready_band_eligible(
+            kind=kind,
+            lifecycle_phase=lifecycle_phase,
+            after_deps=after_deps,
+            delivered_slugs=delivered_slugs,
+        ):
+            await self.stamp_ready_since_if_null(slug, session=session)
+
+    def _stamp_ready_since_for_slug_if_eligible_sync(
+        self,
+        session: SqlSession,
+        slug: str,
+        *,
+        delivered_slugs: set[str],
+    ) -> None:
+        entry = session.exec(
+            select(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+            .limit(1)
+        ).first()
+        if entry is None:
+            return
+        state_model = session.get(TodoStateModel, entry.id)
+        kind, lifecycle_phase = _readiness_state_fields(state_model)
+        deps_result = session.exec(select(RoadmapDep.depends_on).where(ROADMAP_DEPS_TABLE.c.slug == slug))
+        after_deps = [str(dep) for dep in deps_result.all()]
+        if is_ready_band_eligible(
+            kind=kind,
+            lifecycle_phase=lifecycle_phase,
+            after_deps=after_deps,
+            delivered_slugs=delivered_slugs,
+        ):
+            self.stamp_ready_since_if_null_sync(slug, session=session)
+
+    async def stamp_ready_since_if_null(
+        self,
+        slug: str,
+        when: str | None = None,
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> bool:
+        """Stamp the ready-band entry timestamp once."""
+        timestamp = when or datetime.now(UTC).isoformat()
+        if session is None:
+            async with self._session() as owned_session:  # type: ignore[attr-defined]
+                changed = await self.stamp_ready_since_if_null(slug, timestamp, session=owned_session)
+                await owned_session.commit()
+            if changed:
+                self._on_mutation("todo_updated", None)
+            return changed
+
+        result = await session.exec(
+            select(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+            .limit(1)
+        )
+        entry = result.first()
+        if entry is None or entry.ready_since is not None:
+            return False
+        entry.ready_since = timestamp
+        session.add(entry)
+        return True
+
+    def stamp_ready_since_if_null_sync(
+        self,
+        slug: str,
+        when: str | None = None,
+        *,
+        session: SqlSession | None = None,
+    ) -> bool:
+        """Sync sibling for stamping the ready-band entry timestamp once."""
+        timestamp = when or datetime.now(UTC).isoformat()
+        if session is None:
+            with self._sync_session() as owned_session:  # type: ignore[attr-defined]
+                changed = self.stamp_ready_since_if_null_sync(slug, timestamp, session=owned_session)
+                owned_session.commit()
+            if changed:
+                self._on_mutation("todo_updated", None)
+            return changed
+
+        result = session.exec(
+            select(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+            .limit(1)
+        )
+        entry = result.first()
+        if entry is None or entry.ready_since is not None:
+            return False
+        entry.ready_since = timestamp
+        session.add(entry)
+        return True
+
+    async def clear_ready_since(
+        self,
+        slug: str,
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> None:
+        """Clear the ready-band entry timestamp."""
+        if session is None:
+            async with self._session() as owned_session:  # type: ignore[attr-defined]
+                await self.clear_ready_since(slug, session=owned_session)
+                await owned_session.commit()
+            self._on_mutation("todo_updated", None)
+            return
+
+        result = await session.exec(
+            select(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+            .limit(1)
+        )
+        entry = result.first()
+        if entry is None:
+            return
+        entry.ready_since = None
+        session.add(entry)
+
+    def clear_ready_since_sync(
+        self,
+        slug: str,
+        *,
+        session: SqlSession | None = None,
+    ) -> None:
+        """Sync sibling for clearing the ready-band entry timestamp."""
+        if session is None:
+            with self._sync_session() as owned_session:  # type: ignore[attr-defined]
+                self.clear_ready_since_sync(slug, session=owned_session)
+                owned_session.commit()
+            self._on_mutation("todo_updated", None)
+            return
+
+        entry = session.exec(
+            select(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+            .limit(1)
+        ).first()
+        if entry is None:
+            return
+        entry.ready_since = None
+        session.add(entry)
+
     async def freeze(self, slug: str) -> bool:
         """Move a slug to icebox. Returns False if not found."""
         async with self._session() as session:  # type: ignore[attr-defined]
@@ -692,6 +858,7 @@ class TodosDbRoadmapMixin:
             if entry is None:
                 return False
             entry.status = "icebox"
+            entry.ready_since = None
             entry.updated_at = datetime.now(UTC).isoformat()
             session.add(entry)
             await session.commit()
@@ -713,6 +880,9 @@ class TodosDbRoadmapMixin:
             entry.status = "active"
             entry.updated_at = datetime.now(UTC).isoformat()
             session.add(entry)
+            delivered_result = await session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+            delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
+            await self._stamp_ready_since_for_slug_if_eligible(session, slug, delivered_slugs=delivered_slugs)
             await session.commit()
         self._on_mutation("todo_updated", None)
         return True
@@ -877,55 +1047,6 @@ class TodosDbRoadmapMixin:
             if owns_session:
                 await db_session.close()
 
-    async def move_in_roadmap(
-        self,
-        slug: str,
-        *,
-        before: str | None = None,
-        after: str | None = None,
-    ) -> bool:
-        """Reorder a slug in the roadmap. Returns False if slug or target not found."""
-        target_slug = before or after
-        if target_slug is None:
-            return False
-
-        async with self._session() as session:  # type: ignore[attr-defined]
-            source = await self._active_entry(session, slug)
-            target = await self._active_entry(session, target_slug)
-            if source is None or target is None:
-                return False
-
-            old_position = source.position
-            await session.exec(
-                update(TodoRoadmap)
-                .where(ROADMAP_TABLE.c.position > old_position)
-                .values(position=ROADMAP_TABLE.c.position - 1)
-            )
-
-            refreshed_target = await self._active_entry(session, target_slug)
-            if refreshed_target is None:
-                return False
-            new_position = refreshed_target.position if before else refreshed_target.position + 1
-
-            await session.exec(
-                update(TodoRoadmap)
-                .where(ROADMAP_TABLE.c.position >= new_position)
-                .where(ROADMAP_TABLE.c.slug != slug)
-                .values(position=ROADMAP_TABLE.c.position + 1)
-            )
-
-            source.position = new_position
-            source.updated_at = datetime.now(UTC).isoformat()
-            session.add(source)
-            await session.commit()
-
-        self._on_mutation("todo_updated", None)
-        return True
-
-    async def move_entry(self, slug: str, *, before: str | None = None, after: str | None = None) -> bool:
-        """Compatibility wrapper used by the SQLAlchemy migration spec."""
-        return await self.move_in_roadmap(slug, before=before, after=after)
-
     def delivered_slugs_sync(self) -> set[str]:
         """Sync version of delivered_slugs for use from worker threads."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
@@ -955,6 +1076,7 @@ class TodosDbRoadmapMixin:
             entry.delivered_at = now
             entry.delivered_commit = commit
             entry.children = json.dumps(children) if children else None
+            entry.ready_since = None
             entry.updated_at = now
             session.add(entry)
 
@@ -966,6 +1088,19 @@ class TodosDbRoadmapMixin:
                 state_model.state = json.dumps(canonicalize_state_for_storage(state))
                 state_model.updated_at = now
                 session.add(state_model)
+
+            delivered_result = session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+            delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
+            delivered_slugs.add(slug)
+            dependent_result = session.exec(
+                select(RoadmapDep.slug).where(ROADMAP_DEPS_TABLE.c.depends_on == slug).order_by(RoadmapDep.slug)
+            )
+            for dependent_slug in [str(dependent) for dependent in dependent_result.all()]:
+                self._stamp_ready_since_for_slug_if_eligible_sync(
+                    session,
+                    dependent_slug,
+                    delivered_slugs=delivered_slugs,
+                )
 
             session.commit()
 

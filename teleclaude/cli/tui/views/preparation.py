@@ -25,10 +25,17 @@ from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
+from teleclaude.cli.tui.widgets.todo_band_separator import TodoBandSeparator
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow, row_content_width
+from teleclaude.core.roadmap import IN_PREP_BAND, READY_BAND
 from teleclaude.core.roadmap_tree import FlatRow, build_roadmap_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
+
+_ACTIVE_BAND_LABELS = {
+    READY_BAND: "Ready",
+    IN_PREP_BAND: "In prep",
+}
 
 
 class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
@@ -117,6 +124,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 getattr(t, "lifecycle_phase", None) or "",
                 getattr(t, "integration_phase", None) or "",
                 getattr(t, "finalize_status", None) or "",
+                getattr(t, "band", None) or "",
+                getattr(t, "ready_since", None) or "",
+                getattr(t, "updated_at", None) or "",
             )
             for p in projects
             for t in (p.todos or [])
@@ -291,7 +301,15 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 sections = project_sections[project.path]
                 rendered_any = False
 
+                last_band: str | None = None
                 for flat_row in flatten(sections.active, force_root_branch=True):
+                    band = flat_row.todo.band
+                    label = _ACTIVE_BAND_LABELS.get(band or "")
+                    if label and band != last_band:
+                        widgets_to_mount.append(
+                            TodoBandSeparator(band=band or "", label=label, line_width=_sep_width())
+                        )
+                        last_band = band
                     _emit_row(flat_row, project.path)
                     rendered_any = True
 

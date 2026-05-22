@@ -454,6 +454,35 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
+            "list": CommandDef(
+                desc="List todo entries (source of truth for todo status)",
+                args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]",
+                flags=[
+                    Flag("--include-icebox", "-i", "Include icebox items"),
+                    Flag("--icebox-only", "-o", "Show only icebox items"),
+                    Flag("--include-delivered", "-d", "Include delivered items"),
+                    Flag("--delivered-only", desc="Show only delivered items"),
+                    Flag(
+                        "--since",
+                        desc="Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.",
+                    ),
+                    Flag("--json", desc="Output as a sectioned JSON object (active/delivered/icebox trees)"),
+                ],
+                notes=[
+                    "Output is sectioned into active/delivered/icebox dependency trees.",
+                    "CONTRACT CHANGE: --json now emits a nested object keyed by section "
+                    "(active/delivered/icebox), each a tree with `children`; previously a flat "
+                    "list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.",
+                    "--include-delivered returns the full delivery history; scope it with --since.",
+                    "--since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.",
+                    "--since alone implies --include-delivered; combine with --delivered-only to exclude active items.",
+                ],
+                examples=[
+                    "telec todo list --include-delivered --since 7d",
+                    "telec todo list --delivered-only --since 2026-05-01",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
             "design": CommandDef(
                 desc="Run the creative state machine",
                 args="[<slug>]",
@@ -478,6 +507,26 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
                 args="<slug>",
                 flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "freeze": CommandDef(
+                desc="Move todo to icebox",
+                args="<slug>",
+                flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "unfreeze": CommandDef(
+                desc="Promote todo from icebox",
+                args="<slug>",
+                flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "deliver": CommandDef(
+                desc="Move todo to delivered",
+                args="<slug> [--commit <hash>]",
+                flags=[
+                    Flag("--commit", desc="Commit hash (auto-detects HEAD if omitted)"),
+                ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "rename": CommandDef(
@@ -664,105 +713,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo stamp my-slug --finalize-ready",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
-            ),
-        },
-    ),
-    "roadmap": CommandDef(
-        desc="Manage the work item roadmap",
-        subcommands={
-            "list": CommandDef(
-                desc="List roadmap entries (source of truth for todo status)",
-                args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]",
-                flags=[
-                    Flag("--include-icebox", "-i", "Include icebox items"),
-                    Flag("--icebox-only", "-o", "Show only icebox items"),
-                    Flag("--include-delivered", "-d", "Include delivered items"),
-                    Flag("--delivered-only", desc="Show only delivered items"),
-                    Flag(
-                        "--since",
-                        desc="Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.",
-                    ),
-                    Flag("--json", desc="Output as a sectioned JSON object (active/delivered/icebox trees)"),
-                ],
-                notes=[
-                    "Output is sectioned into active/delivered/icebox dependency trees.",
-                    "CONTRACT CHANGE: --json now emits a nested object keyed by section "
-                    "(active/delivered/icebox), each a tree with `children`; previously a flat "
-                    "list. Empty roadmap emits `{}`. Text output no longer appends a [status] suffix.",
-                    "--include-delivered returns the full delivery history; scope it with --since.",
-                    "--since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.",
-                    "--since alone implies --include-delivered; combine with --delivered-only to exclude active items.",
-                ],
-                examples=[
-                    "telec roadmap list --include-delivered --since 7d",
-                    "telec roadmap list --delivered-only --since 2026-05-01",
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
-            "add": CommandDef(
-                desc="Add entry to the roadmap",
-                args="<slug> [--group <holder-slug>] [--after <slugs>] [--before <slug>] [--description <text>]",
-                flags=[
-                    Flag("--group", desc="Nest under an existing roadmap entry (holder slug)"),
-                    _FLAG_AFTER_DEPS,
-                    Flag("--before", desc="Insert before this slug (default: append)"),
-                    Flag("--description", desc="Summary description"),
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "remove": CommandDef(
-                desc=(
-                    "Soft-remove a roadmap entry: identical semantics to `telec todo remove`. "
-                    "The durable record and full history survive removal for a fixed grace "
-                    "window before background maintenance hard-purges by row id. "
-                    "Reactivation is row-id-addressed and fail-closed on live same-slug twins."
-                ),
-                args="<slug>",
-                flags=[],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "move": CommandDef(
-                desc="Reorder an entry in the roadmap",
-                args="<slug> [--before <slug>] [--after <slug>]",
-                flags=[
-                    Flag("--before", desc="Move before this slug"),
-                    Flag("--after", desc="Move after this slug"),
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "deps": CommandDef(
-                desc="Set dependencies for an entry",
-                args="<slug> [--after <slugs>]",
-                flags=[
-                    _FLAG_AFTER_DEPS,
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "freeze": CommandDef(
-                desc="Move entry to icebox",
-                args="<slug>",
-                flags=[],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "unfreeze": CommandDef(
-                desc="Promote entry from icebox to roadmap",
-                args="<slug>",
-                flags=[],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "migrate-icebox": CommandDef(
-                desc="One-time migration: move icebox folders into todos/_icebox/",
-                args="",
-                flags=[],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "deliver": CommandDef(
-                desc="Move entry to delivered",
-                args="<slug> [--commit <hash>]",
-                flags=[
-                    Flag("--commit", desc="Commit hash (auto-detects HEAD if omitted)"),
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
         },
     ),

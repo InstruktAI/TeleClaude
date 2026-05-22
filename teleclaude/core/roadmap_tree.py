@@ -2,7 +2,7 @@
 
 Single owner of roadmap shape: takes the flat ``list[TodoDTO]`` from
 ``assemble_roadmap_from_db`` and returns ``active``/``delivered``/``icebox``
-sections, each a dependency tree. Every consumer (TUI, ``telec roadmap list``)
+sections, each a dependency tree. Every consumer (TUI, ``telec todo list``)
 renders these — no consumer re-derives hierarchy.
 
 Re-root rule falls out of per-section visibility: a section's tree is built
@@ -14,10 +14,14 @@ mechanism keeps the delivered hierarchy intact among delivered items.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import RoadmapStatus
+from teleclaude.core.roadmap import section_sort_key
+
+SiblingKey = Callable[[TodoDTO], object]
 
 
 @dataclass
@@ -83,9 +87,24 @@ def _resolve_parent(
     return None
 
 
-def _topo_sort_siblings(slugs: list[str], after_map: dict[str, list[str]]) -> list[str]:
+def _topo_sort_siblings(
+    slugs: list[str],
+    after_map: dict[str, list[str]],
+    *,
+    by_slug: dict[str, TodoDTO] | None = None,
+    sibling_key: SiblingKey | None = None,
+) -> list[str]:
     """Stable topological sort of a sibling set by after-deps; input order breaks ties."""
     sibling_set = set(slugs)
+    input_order = {slug: index for index, slug in enumerate(slugs)}
+
+    def _sort_key(slug: str) -> object:
+        if sibling_key is not None and by_slug is not None:
+            todo = by_slug.get(slug)
+            if todo is not None:
+                return sibling_key(todo)
+        return input_order[slug]
+
     in_degree: dict[str, int] = {s: 0 for s in slugs}
     dependents: dict[str, list[str]] = {s: [] for s in slugs}
     for slug in slugs:
@@ -93,22 +112,23 @@ def _topo_sort_siblings(slugs: list[str], after_map: dict[str, list[str]]) -> li
             if dep in sibling_set:
                 in_degree[slug] += 1
                 dependents[dep].append(slug)
-    queue: deque[str] = deque(s for s in slugs if in_degree[s] == 0)
+    queue: deque[str] = deque(sorted((s for s in slugs if in_degree[s] == 0), key=_sort_key))
     order: list[str] = []
     while queue:
         current = queue.popleft()
         order.append(current)
-        for dep in sorted(dependents[current], key=slugs.index):
+        for dep in sorted(dependents[current], key=_sort_key):
             in_degree[dep] -= 1
             if in_degree[dep] == 0:
                 queue.append(dep)
+        queue = deque(sorted(queue, key=_sort_key))
     if len(order) < len(slugs):
         seen = set(order)
-        order.extend(s for s in slugs if s not in seen)
+        order.extend(sorted((s for s in slugs if s not in seen), key=_sort_key))
     return order
 
 
-def _build_tree(todos: list[TodoDTO]) -> list[RoadmapNode]:
+def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) -> list[RoadmapNode]:
     """Build one section's dependency forest. Hierarchy is restricted to ``todos``."""
     if not todos:
         return []
@@ -141,7 +161,7 @@ def _build_tree(todos: list[TodoDTO]) -> list[RoadmapNode]:
         return current
 
     for parent_slug, kids in children_map.items():
-        children_map[parent_slug] = _topo_sort_siblings(kids, after_map)
+        children_map[parent_slug] = _topo_sort_siblings(kids, after_map, by_slug=by_slug, sibling_key=sibling_key)
 
     root_after: dict[str, list[str]] = {r: [] for r in roots}
     for todo in todos:
@@ -151,7 +171,7 @@ def _build_tree(todos: list[TodoDTO]) -> list[RoadmapNode]:
                 dep_root = _root_of(dep)
                 if dep_root != todo_root and dep_root in root_after and todo_root in root_after:
                     root_after[todo_root].append(dep_root)
-    ordered_roots = _topo_sort_siblings(roots, root_after)
+    ordered_roots = _topo_sort_siblings(roots, root_after, by_slug=by_slug, sibling_key=sibling_key)
 
     def _node(slug: str) -> RoadmapNode:
         return RoadmapNode(
@@ -180,9 +200,15 @@ def build_roadmap_sections(todos: list[TodoDTO]) -> RoadmapSections:
         else:
             active.append(todo)
     return RoadmapSections(
-        active=_build_tree(active),
-        delivered=_build_tree(delivered),
-        icebox=_build_tree(icebox),
+        active=_build_tree(active, sibling_key=section_sort_key),
+        delivered=_build_tree(
+            delivered,
+            sibling_key=lambda todo: section_sort_key(todo, raw_status=RoadmapStatus.DELIVERED),
+        ),
+        icebox=_build_tree(
+            icebox,
+            sibling_key=lambda todo: section_sort_key(todo, raw_status=RoadmapStatus.ICEBOX),
+        ),
     )
 
 

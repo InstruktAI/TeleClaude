@@ -34,10 +34,10 @@ def _seed_artifact_project(
     try:
         conn.execute(
             "INSERT INTO roadmap "  # guard: raw-sql
-            "(id, slug, position, group_slug, description, status, delivered_at, "
+            "(id, slug, group_slug, description, status, delivered_at, "
             "delivered_commit, children, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (row_id, slug, 0, None, None, "active", None, None, None, now, now),
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (row_id, slug, None, None, "active", None, None, None, now, now),
         )
         conn.commit()
     finally:

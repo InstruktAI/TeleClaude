@@ -55,6 +55,7 @@ __all__ = [
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
     "LifecycleStage",
+    "READY_BAND_PHASES",
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
     "coerce_lifecycle_phase",
@@ -65,6 +66,7 @@ __all__ = [
     "is_in_prepare_lane",
     "is_prepare_lifecycle_phase",
     "is_ready_for_work",
+    "is_ready_band_eligible",
     "is_settled_ok_phase",
     "is_work_lifecycle_phase",
     "lifecycle_phase_index",
@@ -78,6 +80,15 @@ __all__ = [
 _ArtifactPresence = Mapping[str, bool]
 _FEATURE_KINDS = {"", "todo", "feature", "draft"}
 _PLAN_ONLY_KINDS = {"refactor", "migration"}
+READY_BAND_PHASES: frozenset[LifecyclePhase] = frozenset(
+    {
+        LifecyclePhase.PREPARED,
+        LifecyclePhase.BUILD_STARTED,
+        LifecyclePhase.BUILD_COMPLETE,
+        LifecyclePhase.REVIEW_CHANGES_REQUESTED,
+        LifecyclePhase.REVIEW_APPROVED,
+    }
+)
 _DRIFT_CLASS_CODE = "code"
 _DRIFT_CLASS_UPSTREAM_ARTIFACT = "upstream-artifact"
 _DRIFT_CLASS_OWNED_SNIPPET = "owned-snippet"
@@ -158,6 +169,20 @@ def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple
     if lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED):
         return False, f"lifecycle_phase {phase.value!r} is before 'prepared'"
     return True, ""
+
+
+def is_ready_band_eligible(
+    *,
+    kind: str | None,
+    lifecycle_phase: str | None,
+    after_deps: list[str],
+    delivered_slugs: set[str],
+) -> bool:
+    """Return whether a todo belongs in the active Ready band."""
+    all_deps_delivered = all(dep in delivered_slugs for dep in after_deps)
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    phase_ok = kind in {"bug", "prepped"} or phase in READY_BAND_PHASES
+    return all_deps_delivered and phase_ok
 
 
 def is_in_prepare_lane(lifecycle_phase: str | None) -> bool:

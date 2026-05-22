@@ -87,7 +87,6 @@ This doc is the contract the MVP todo's PRD/plan/build is built against.
   - Integration tests against public API via `sqlx::test`
 - `crates/telec-cli/` — CLI binary:
   - `telec todo list|show|create|update|delete|move|freeze|unfreeze`
-  - `telec roadmap list|add|remove|move`
   - `telec migrate-workflow-v1` — one-shot data migration command
   - Embeds workflow + identity + observability crates
   - Constructor-injected services in `main()`
@@ -122,7 +121,7 @@ This doc is the contract the MVP todo's PRD/plan/build is built against.
 - Delete v1 Python paths: `teleclaude/core/next_machine/`,
   `teleclaude/core/todos_db/`, `teleclaude/cli/telec/handlers/todo.py`,
   `teleclaude/cli/telec/handlers/roadmap.py`.
-- Replace v1 `telec todo *` and `telec roadmap *` dispatch with
+- Replace v1 `telec todo *` dispatch with
   invocation of the Rust `telec-cli` binary (shim in v1 CLI, or
   install-time symlink replacement).
 - v1 daemon's todo-related cache code paths deprecated; cache fed by
@@ -224,7 +223,7 @@ Wave F — CLI binary (1 agent, depends on E)
       - main.rs: observability::init, config load, workflow service
         construction, clap-derive dispatch
       - Subcommand modules: todo.rs, roadmap.rs
-      - All operations from v1 `telec todo` and `telec roadmap` commands
+      - All operations from v1 `telec todo` commands
       - Acceptance: full CLI smoke test against docker-compose Postgres;
         all commands work, events fire to Redis
 
@@ -248,10 +247,10 @@ Wave I — Cutover (1 agent, sequential, depends on ALL above)
       - Run telec migrate-workflow-v1 for each project
       - Delete v1 paths: teleclaude/core/next_machine/, todos_db/,
         cli/telec/handlers/todo.py, cli/telec/handlers/roadmap.py
-      - Replace v1 telec todo/roadmap dispatch with telec-cli invocation
+      - Replace v1 telec todo dispatch with telec-cli invocation
       - Verify: v1 TUI displays v2-managed todos via Redis bridge
-      - Verify: all v1 todo/roadmap surfaces still work end-to-end
-      - Acceptance: full smoke test of telec todo/roadmap commands;
+      - Verify: all v1 todo surfaces still work end-to-end
+      - Acceptance: full smoke test of telec todo commands;
         TUI updates live; no regressions in v1 features
 ```
 
@@ -286,7 +285,7 @@ The MVP is done when ALL of these hold:
    receives the Redis event.
 7. `telec migrate-workflow-v1` migrates a real v1 `todos.db` for a
    project; all rows visible via `telec todo list`.
-8. After cutover PR merges: v1's `telec todo` and `telec roadmap`
+8. After cutover PR merges: v1's `telec todo`
    commands route to v2; all behaviors preserved; v1 TUI continues
    working unchanged for non-workflow concerns.
 9. No regression in v1 features (sessions, hooks, webhooks, Telegram,

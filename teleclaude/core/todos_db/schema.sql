@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS roadmap (
     id              TEXT PRIMARY KEY,       -- UUID, stable identifier
     slug            TEXT NOT NULL,
-    position        INTEGER NOT NULL,
+    ready_since     TEXT,
     group_slug      TEXT,
     description     TEXT,
     status          TEXT NOT NULL DEFAULT 'active',

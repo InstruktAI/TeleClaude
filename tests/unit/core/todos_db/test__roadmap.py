@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlmodel import select
 
+from teleclaude.constants import RoadmapStatus
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
@@ -22,8 +23,8 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._roadmap import ReactivateRefused
-from teleclaude.types.todos import DependencyEntry
 from teleclaude.docs_reconcile import scan_remove_orphans
+from teleclaude.types.todos import DependencyEntry
 
 pytestmark = pytest.mark.asyncio
 
@@ -31,6 +32,8 @@ _RenameRoadmapSlug = Callable[[str, str], Awaitable[bool]]
 _ACTIVE_STATUS = "active"
 _ICEBOX_STATUS = "icebox"
 _DELIVERED_STATUS = "delivered"
+_READY_SINCE = "2026-01-01T00:00:00+00:00"
+_NEXT_READY_SINCE = "2026-01-02T00:00:00+00:00"
 
 
 def _rename_roadmap_slug(todos_db: TodosDb) -> _RenameRoadmapSlug:
@@ -47,6 +50,18 @@ def _set_roadmap_children(todos_db: TodosDb, slug: str, children: list[str]) -> 
         conn.commit()
     finally:
         conn.close()
+
+
+def _ready_since(todos_db: TodosDb, slug: str) -> str | None:
+    with todos_db._sync_session() as session:
+        return session.exec(select(TodoRoadmap.ready_since).where(TodoRoadmap.slug == slug).limit(1)).first()
+
+
+def _ready_since_by_status(todos_db: TodosDb, slug: str, status: RoadmapStatus) -> str | None:
+    with todos_db._sync_session() as session:
+        return session.exec(
+            select(TodoRoadmap.ready_since).where(TodoRoadmap.slug == slug).where(TodoRoadmap.status == status).limit(1)
+        ).first()
 
 
 def _project_root(todos_db: TodosDb) -> Path:
@@ -113,14 +128,6 @@ async def test_add_duplicate_slug_updates_description(todos_db: TodosDb) -> None
     items = await todos_db.list_roadmap()
     assert len(items) == 1
     assert items[0]["description"] == "new"
-
-
-async def test_roadmap_preserves_insertion_order(todos_db: TodosDb) -> None:
-    await todos_db.add_to_roadmap("alpha")
-    await todos_db.add_to_roadmap("beta")
-    await todos_db.add_to_roadmap("gamma")
-    items = await todos_db.list_roadmap()
-    assert [i["slug"] for i in items] == ["alpha", "beta", "gamma"]
 
 
 async def test_soft_remove_hides_entry_from_default_listings(todos_db: TodosDb, patched_cleanup: MagicMock) -> None:
@@ -253,6 +260,176 @@ async def test_delivered_slugs_returns_set(todos_db: TodosDb) -> None:
     assert slugs == {"done-1", "done-2"}
 
 
+async def test_stamp_ready_since_if_null_is_idempotent(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("ready-work")
+
+    stamped = await todos_db.stamp_ready_since_if_null("ready-work", _READY_SINCE)
+    repeated = await todos_db.stamp_ready_since_if_null("ready-work", _NEXT_READY_SINCE)
+
+    assert stamped is True
+    assert repeated is False
+    assert _ready_since(todos_db, "ready-work") == _READY_SINCE
+
+
+async def test_stamp_ready_since_if_null_targets_only_live_row_for_reused_slug(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("same")
+    assert await todos_db.deliver("same") is True
+    await todos_db.add_to_roadmap("same")
+
+    stamped = await todos_db.stamp_ready_since_if_null("same", _READY_SINCE)
+
+    assert stamped is True
+    assert _ready_since_by_status(todos_db, "same", RoadmapStatus.ACTIVE) == _READY_SINCE
+    assert _ready_since_by_status(todos_db, "same", RoadmapStatus.DELIVERED) is None
+
+
+async def test_stamp_ready_since_sync_participates_in_caller_session(todos_db: TodosDb) -> None:
+    todos_db.initialize_sync()
+    with todos_db._sync_session() as session:
+        session.add(
+            TodoRoadmap(
+                id="ready-row",
+                slug="ready-work",
+                status="active",
+                created_at=_READY_SINCE,
+                updated_at=_READY_SINCE,
+            )
+        )
+        session.commit()
+
+    with todos_db._sync_session() as session:
+        stamped = todos_db.stamp_ready_since_if_null_sync("ready-work", _READY_SINCE, session=session)
+        visible_inside_transaction = session.exec(
+            select(TodoRoadmap.ready_since).where(TodoRoadmap.slug == "ready-work").limit(1)
+        ).first()
+        session.rollback()
+
+    assert stamped is True
+    assert visible_inside_transaction == _READY_SINCE
+    assert _ready_since(todos_db, "ready-work") is None
+
+
+async def test_clear_ready_since_sync_targets_only_live_row_for_reused_slug(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("same")
+    assert await todos_db.deliver("same") is True
+    await todos_db.add_to_roadmap("same")
+    with todos_db._sync_session() as session:
+        rows = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "same")).all()
+        for row in rows:
+            row.ready_since = _READY_SINCE
+            session.add(row)
+        session.commit()
+
+    todos_db.clear_ready_since_sync("same")
+
+    assert _ready_since_by_status(todos_db, "same", RoadmapStatus.ACTIVE) is None
+    assert _ready_since_by_status(todos_db, "same", RoadmapStatus.DELIVERED) == _READY_SINCE
+
+
+async def test_deliver_clears_ready_since(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("ready-work")
+    await todos_db.stamp_ready_since_if_null("ready-work", _READY_SINCE)
+
+    delivered = await todos_db.deliver("ready-work")
+
+    assert delivered is True
+    assert _ready_since(todos_db, "ready-work") is None
+
+
+async def test_deliver_sync_clears_ready_since(todos_db: TodosDb) -> None:
+    todos_db.initialize_sync()
+    with todos_db._sync_session() as session:
+        session.add(
+            TodoRoadmap(
+                id="ready-row",
+                slug="ready-work",
+                status="active",
+                ready_since=_READY_SINCE,
+                created_at=_READY_SINCE,
+                updated_at=_READY_SINCE,
+            )
+        )
+        session.commit()
+
+    delivered = todos_db.deliver_sync("ready-work")
+
+    assert delivered is True
+    assert _ready_since(todos_db, "ready-work") is None
+
+
+async def test_freeze_clears_ready_since(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("ready-work")
+    await todos_db.stamp_ready_since_if_null("ready-work", _READY_SINCE)
+
+    frozen = await todos_db.freeze("ready-work")
+
+    assert frozen is True
+    assert _ready_since(todos_db, "ready-work") is None
+
+
+async def test_unfreeze_stamps_ready_since_when_eligible(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("ready-work")
+    await todos_db.write_state("ready-work", {"kind": "todo", "lifecycle_phase": "prepared"})
+    await todos_db.freeze("ready-work")
+
+    unfrozen = await todos_db.unfreeze("ready-work")
+
+    assert unfrozen is True
+    assert _ready_since(todos_db, "ready-work") is not None
+
+
+async def test_unfreeze_does_not_stamp_when_deps_unsatisfied(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("upstream")
+    await todos_db.add_to_roadmap("blocked-work", after=["upstream"])
+    await todos_db.write_state("blocked-work", {"kind": "todo", "lifecycle_phase": "prepared"})
+    await todos_db.freeze("blocked-work")
+
+    unfrozen = await todos_db.unfreeze("blocked-work")
+
+    assert unfrozen is True
+    assert _ready_since(todos_db, "blocked-work") is None
+
+
+async def test_deliver_sync_propagates_ready_since_to_dependents(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("upstream")
+    await todos_db.add_to_roadmap("dependent", after=["upstream"])
+    await todos_db.write_state("dependent", {"kind": "todo", "lifecycle_phase": "prepared"})
+
+    delivered = todos_db.deliver_sync("upstream")
+
+    assert delivered is True
+    assert _ready_since(todos_db, "dependent") is not None
+
+
+async def test_async_deliver_propagates_in_caller_session(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("upstream")
+    await todos_db.add_to_roadmap("dependent", after=["upstream"])
+    await todos_db.write_state("dependent", {"kind": "todo", "lifecycle_phase": "prepared"})
+
+    async with todos_db._session() as session:
+        delivered = await todos_db.deliver("upstream", session=session)
+        visible = (
+            await session.exec(select(TodoRoadmap.ready_since).where(TodoRoadmap.slug == "dependent").limit(1))
+        ).first()
+        await session.commit()
+
+    assert delivered is True
+    assert visible is not None
+    assert _ready_since(todos_db, "dependent") is not None
+
+
+async def test_deliver_does_not_stamp_if_dependent_still_blocked(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("first-upstream")
+    await todos_db.add_to_roadmap("second-upstream")
+    await todos_db.add_to_roadmap("dependent", after=["first-upstream", "second-upstream"])
+    await todos_db.write_state("dependent", {"kind": "todo", "lifecycle_phase": "prepared"})
+
+    delivered = todos_db.deliver_sync("first-upstream")
+
+    assert delivered is True
+    assert _ready_since(todos_db, "dependent") is None
+
+
 async def test_freeze_moves_to_icebox(todos_db: TodosDb) -> None:
     await todos_db.add_to_roadmap("freezable")
     await todos_db.freeze("freezable")
@@ -360,15 +537,6 @@ async def test_clean_dep_references_removes_slug_from_deps(todos_db: TodosDb) ->
     await todos_db.clean_dep_references("a")
     deps = await todos_db.load_deps()
     assert "a" not in deps.get("b", [])
-
-
-async def test_move_in_roadmap_reorders(todos_db: TodosDb) -> None:
-    await todos_db.add_to_roadmap("first")
-    await todos_db.add_to_roadmap("second")
-    await todos_db.add_to_roadmap("third")
-    await todos_db.move_in_roadmap("third", before="first")
-    items = await todos_db.list_roadmap()
-    assert [i["slug"] for i in items] == ["third", "first", "second"]
 
 
 def _mark_removed(todos_db: TodosDb, slug: str) -> str:

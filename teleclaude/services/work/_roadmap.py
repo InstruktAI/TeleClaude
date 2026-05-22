@@ -1,4 +1,4 @@
-"""Roadmap operations — list, add, move, freeze, deliver, deps."""
+"""Roadmap operations — list, add, freeze, deliver, deps."""
 
 from __future__ import annotations
 
@@ -80,7 +80,6 @@ class RoadmapOps:
         *,
         description: str = "",
         group: str | None = None,
-        before: str | None = None,
         after: str | list[str] | None = None,
     ) -> str:
         """Add a new roadmap entry."""
@@ -95,23 +94,12 @@ class RoadmapOps:
             group_slug=group,
             after=after_list,
             description=description,
-            before=before,
         )
         return slug
 
     async def remove(self, slug: str) -> bool:
         db = await self._base._ensure_db()
         return await db.soft_remove_from_roadmap(slug, cwd=self._base.project_root)
-
-    async def move(
-        self,
-        slug: str,
-        *,
-        before: str | None = None,
-        after: str | None = None,
-    ) -> bool:
-        db = await self._base._ensure_db()
-        return await db.move_in_roadmap(slug, before=before, after=after)
 
     async def set_dependencies(self, slug: str, *, after: list[str]) -> None:
         db = await self._base._ensure_db()

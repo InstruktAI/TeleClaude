@@ -11,6 +11,9 @@ import pytest
 
 bugs = importlib.import_module("teleclaude.cli.telec.handlers.bugs")
 
+_OLDER_BUG_SLUG = "fix-older-bug"
+_NEWER_BUG_SLUG = "fix-newer-bug"
+
 
 def test_handle_bugs_dispatches_create(monkeypatch: pytest.MonkeyPatch) -> None:
     received: list[list[str]] = []
@@ -134,7 +137,7 @@ def test_handle_bugs_list_queries_db_for_bug_kind_todos(
     db_path = db_dir / "todos.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute(
-        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT, position INT, "
+        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT, "
         "group_slug TEXT, description TEXT, status TEXT, delivered_at TEXT, "
         "delivered_commit TEXT, children TEXT, created_at TEXT, updated_at TEXT)"
     )
@@ -142,8 +145,8 @@ def test_handle_bugs_list_queries_db_for_bug_kind_todos(
         "CREATE TABLE todo_state (id TEXT PRIMARY KEY, slug TEXT, state TEXT, created_at TEXT, updated_at TEXT)"
     )
     conn.execute(
-        "INSERT INTO roadmap (id, slug, position, status, created_at, updated_at) "
-        "VALUES ('id1', 'fix-crash', 1, 'active', '', '')"
+        "INSERT INTO roadmap (id, slug, status, created_at, updated_at) "
+        "VALUES ('id1', 'fix-crash', 'active', '', '')"
     )
     state = json.dumps({"kind": "bug", "phase": "review_pending", "build_review": {"verdict": "changes_requested"}})
     conn.execute(
@@ -167,6 +170,54 @@ def test_handle_bugs_list_queries_db_for_bug_kind_todos(
     output = capsys.readouterr().out
     assert "fix-crash" in output
     assert "fixing" in output
+
+
+def test_bug_list_orders_by_updated_at_desc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    db_dir = tmp_path / ".teleclaude"
+    db_dir.mkdir()
+    db_path = db_dir / "todos.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT, group_slug TEXT, description TEXT, "
+        "status TEXT, delivered_at TEXT, delivered_commit TEXT, children TEXT, created_at TEXT, updated_at TEXT, "
+        "ready_since TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE todo_state (id TEXT PRIMARY KEY, slug TEXT, state TEXT, created_at TEXT, updated_at TEXT)"
+    )
+    bug_state = json.dumps({"kind": "bug", "phase": "build_started"})
+    conn.execute(
+        "INSERT INTO roadmap (id, slug, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)",
+        ("older-id", _OLDER_BUG_SLUG, "2026-01-01T00:00:00", "2026-01-01T00:00:00"),
+    )
+    conn.execute(
+        "INSERT INTO roadmap (id, slug, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)",
+        ("newer-id", _NEWER_BUG_SLUG, "2026-01-01T00:00:00", "2026-01-02T00:00:00"),
+    )
+    conn.execute(
+        "INSERT INTO todo_state (id, slug, state, created_at, updated_at) VALUES (?, ?, ?, '', '')",
+        ("older-id", _OLDER_BUG_SLUG, bug_state),
+    )
+    conn.execute(
+        "INSERT INTO todo_state (id, slug, state, created_at, updated_at) VALUES (?, ?, ?, '', '')",
+        ("newer-id", _NEWER_BUG_SLUG, bug_state),
+    )
+    conn.commit()
+    conn.close()
+
+    mock_db = MagicMock()
+    mock_db._sync_conn.return_value = sqlite3.connect(str(db_path))
+    monkeypatch.setattr("teleclaude.cli.telec.handlers.bugs.get_todos_db_sync", lambda _cwd: mock_db)
+
+    bugs._handle_bugs_list([])
+
+    rows = capsys.readouterr().out.splitlines()[4:]
+    slugs = [row.split()[0] for row in rows]
+    assert slugs == [_NEWER_BUG_SLUG, _OLDER_BUG_SLUG]
 
 
 def test_bugs_create_without_description_fails_clearly_and_writes_nothing(

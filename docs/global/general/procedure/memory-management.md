@@ -23,7 +23,7 @@ Before saving, route the information to its proper home:
 | Item Type                 | Destination       | Why?                                                                              |
 | :------------------------ | :---------------- | :-------------------------------------------------------------------------------- |
 | **Defect / Error**        | **Fix inline**    | Fix it now, right where you are. If too large, promote to the roadmap.            |
-| **Work Item / Task**      | **Roadmap**       | It's a unit of work to be executed. Use `telec roadmap add` or `telec todo create`. |
+| **Work Item / Task**      | **Roadmap**       | It's a unit of work to be executed. Use `telec todo create`.                       |
 | **System Rule / How-To**  | **Documentation** | It's a formal instruction for _all_ agents. Update global doc snippet(s).         |
 | **Project Context**       | **Documentation** | It's a formal instruction for project agents. Update project doc snippets(s).     |
 | **User Preference**       | **Memory**        | It's a fact about the user (e.g., "Don't use filler words").                      |

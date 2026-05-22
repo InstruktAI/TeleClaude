@@ -57,13 +57,13 @@ from teleclaude.logging_config import setup_logging
 from teleclaude.runtime.environment import filter_tui_tmux_environment
 
 # Handler modules (handlers.{auth_cmds,bugs,code,config,content,docs,events_signals,
-# history,memories,misc,roadmap,todo}) and tool_commands are lazy-loaded inside
+# history,memories,misc,todo}) and tool_commands are lazy-loaded inside
 # the dispatch path. Eager loading drags in the OpenAI/Anthropic SDKs, the
 # summarizer, the mirrors DB, and the todos DB — ~800ms — for every CLI call,
 # including pre-commit lint steps that touch none of them.
 
 # Handler modules (handlers.{auth_cmds,bugs,code,config,content,docs,events_signals,
-# history,memories,misc,roadmap,todo}) and tool_commands are lazy-loaded inside
+# history,memories,misc,todo}) and tool_commands are lazy-loaded inside
 # the dispatch path. Eager loading drags in the OpenAI/Anthropic SDKs, the
 # summarizer, the mirrors DB, and the todos DB — ~800ms — for every CLI call,
 # including pre-commit lint steps that touch none of them.
@@ -248,7 +248,6 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.SYNC: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_sync"),
         TelecCommand.DOCS: _lazy("teleclaude.cli.telec.handlers.docs", "_handle_docs"),
         TelecCommand.TODO: _lazy("teleclaude.cli.telec.handlers.todo", "_handle_todo"),
-        TelecCommand.ROADMAP: _lazy("teleclaude.cli.telec.handlers.roadmap", "_handle_roadmap"),
         TelecCommand.BUGS: _lazy("teleclaude.cli.telec.handlers.bugs", "_handle_bugs"),
         TelecCommand.EVENTS: _lazy("teleclaude.cli.telec.handlers.events_signals", "_handle_events"),
         TelecCommand.AUTH: _lazy("teleclaude.cli.telec.handlers.auth_cmds", "_handle_auth"),

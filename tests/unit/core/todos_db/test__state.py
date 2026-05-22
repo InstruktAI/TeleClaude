@@ -10,6 +10,7 @@ from typing import cast
 import pytest
 from sqlmodel import select
 
+from teleclaude.constants import RoadmapStatus
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.todos_db._models import TodoRoadmap
 from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION
@@ -20,6 +21,19 @@ _RenameStateSlug = Callable[[str, str], Awaitable[bool]]
 _SLUG = "phase-hook-slug"
 _PRIOR_PHASE = "review_approved"
 _NEW_PHASE = "finalize_ready"
+_READY_SINCE = "2026-01-01T00:00:00+00:00"
+
+
+def _ready_since(todos_db: TodosDb, slug: str) -> str | None:
+    with todos_db._sync_session() as session:
+        return session.exec(select(TodoRoadmap.ready_since).where(TodoRoadmap.slug == slug).limit(1)).first()
+
+
+def _ready_since_by_status(todos_db: TodosDb, slug: str, status: RoadmapStatus) -> str | None:
+    with todos_db._sync_session() as session:
+        return session.exec(
+            select(TodoRoadmap.ready_since).where(TodoRoadmap.slug == slug).where(TodoRoadmap.status == status).limit(1)
+        ).first()
 
 
 def _rename_state_slug(todos_db: TodosDb) -> _RenameStateSlug:
@@ -130,6 +144,92 @@ async def test_write_state_updates_existing_row(todos_db: TodosDb) -> None:
     assert result is not None
     assert result["lifecycle_phase"] == "prepared"
     assert result["schema_version"] == LATEST_TODO_STATE_SCHEMA_VERSION
+
+
+async def test_write_state_sync_stamps_ready_since_when_eligible(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("upstream")
+    todos_db.write_state_sync("upstream", {"lifecycle_phase": "prepared"})
+    assert todos_db.deliver_sync("upstream") is True
+    await todos_db.add_to_roadmap("ready-work", after=["upstream"])
+
+    todos_db.write_state_sync("ready-work", {"kind": "todo", "lifecycle_phase": "prepared"})
+
+    assert _ready_since(todos_db, "ready-work") is not None
+
+
+async def test_write_state_sync_stamps_only_live_row_for_reused_slug(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("same")
+    todos_db.write_state_sync("same", {"kind": "todo", "lifecycle_phase": "prepared"})
+    assert todos_db.deliver_sync("same") is True
+    await todos_db.add_to_roadmap("same")
+
+    todos_db.write_state_sync("same", {"kind": "todo", "lifecycle_phase": "prepared"})
+
+    assert _ready_since_by_status(todos_db, "same", RoadmapStatus.ACTIVE) is not None
+    assert _ready_since_by_status(todos_db, "same", RoadmapStatus.DELIVERED) is None
+
+
+async def test_write_state_sync_does_not_stamp_when_deps_unsatisfied(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("upstream")
+    await todos_db.add_to_roadmap("blocked-work", after=["upstream"])
+
+    todos_db.write_state_sync("blocked-work", {"kind": "todo", "lifecycle_phase": "prepared"})
+
+    assert _ready_since(todos_db, "blocked-work") is None
+
+
+async def test_write_state_sync_does_not_stamp_when_phase_not_ready(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("drafting-work")
+
+    todos_db.write_state_sync("drafting-work", {"kind": "todo", "lifecycle_phase": "prd_drafting"})
+
+    assert _ready_since(todos_db, "drafting-work") is None
+
+
+async def test_write_state_sync_stamps_for_bug_kind_with_deps_satisfied(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("upstream")
+    assert todos_db.deliver_sync("upstream") is True
+    await todos_db.add_to_roadmap("bug-work", after=["upstream"])
+
+    todos_db.write_state_sync("bug-work", {"kind": "bug", "lifecycle_phase": "prd_drafting"})
+
+    assert _ready_since(todos_db, "bug-work") is not None
+
+
+async def test_write_state_sync_does_not_stamp_bug_kind_with_unsatisfied_deps(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("upstream")
+    await todos_db.add_to_roadmap("bug-work", after=["upstream"])
+
+    todos_db.write_state_sync("bug-work", {"kind": "bug", "lifecycle_phase": "prd_drafting"})
+
+    assert _ready_since(todos_db, "bug-work") is None
+
+
+async def test_write_state_sync_preserves_ready_since_on_in_band_transition(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("ready-work")
+    todos_db.stamp_ready_since_if_null_sync("ready-work", _READY_SINCE)
+
+    todos_db.write_state_sync("ready-work", {"kind": "todo", "lifecycle_phase": "build_started"})
+
+    assert _ready_since(todos_db, "ready-work") == _READY_SINCE
+
+
+async def test_async_write_state_stamps_in_caller_session(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("ready-work")
+
+    async with todos_db._session() as session:
+        await todos_db.write_state(
+            "ready-work",
+            {"kind": "todo", "lifecycle_phase": "prepared"},
+            session=session,
+        )
+        visible = (
+            await session.exec(select(TodoRoadmap.ready_since).where(TodoRoadmap.slug == "ready-work").limit(1))
+        ).first()
+        await session.commit()
+
+    assert visible is not None
+    assert _ready_since(todos_db, "ready-work") is not None
 
 
 async def test_roadmap_grouping_removes_parent_state(todos_db: TodosDb) -> None:

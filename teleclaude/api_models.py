@@ -221,6 +221,10 @@ class TodoDTO(BaseModel):
     after: list[str] = Field(default_factory=list)
     group: str | None = None
     delivered_at: str | None = None
+    kind: str | None = None
+    ready_since: str | None = None
+    updated_at: str | None = None
+    band: str | None = None
     lifecycle_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None

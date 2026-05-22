@@ -44,9 +44,3 @@ class TestExportSurfaceMarkdown:
         reviewable snapshot delta — the wording is the contract operators read."""
         result = export_surface_markdown()
         assert _command_block(result, "todo remove", "todo prepare") == snapshot
-
-    def test_roadmap_remove_block_documents_recoverable_soft_removal(self, snapshot: SnapshotAssertion) -> None:
-        """The exported `telec roadmap remove` block must match the todo-side
-        wording in spirit (identical semantics) and snapshot-pin its prose."""
-        result = export_surface_markdown()
-        assert _command_block(result, "roadmap remove", "roadmap move") == snapshot

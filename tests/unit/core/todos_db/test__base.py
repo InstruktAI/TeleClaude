@@ -12,6 +12,9 @@ from teleclaude.core.todos_db import TodosDb
 _SLUG = "phase-hook-slug"
 _PRIOR_PHASE = "review_approved"
 _NEW_PHASE = "finalize_ready"
+_ROADMAP_POSITION_COLUMN = "position"
+_ROADMAP_READY_SINCE_COLUMN = "ready_since"
+_ROADMAP_ACTIVE_INDEX = "idx_roadmap_slug_active"
 
 
 def _old_artifact_versions_schema_ddl() -> str:
@@ -30,6 +33,22 @@ def _artifact_versions_col_types(db_path: str) -> dict[str, str]:
     cols = {r[1]: r[2] for r in conn.execute("PRAGMA table_info(todo_artifact_versions)").fetchall()}
     conn.close()
     return cols
+
+
+def _roadmap_columns(db_path: str) -> set[str]:
+    """Return the current roadmap column names."""
+    conn = sqlite3.connect(db_path)
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(roadmap)").fetchall()}
+    conn.close()
+    return columns
+
+
+def _roadmap_index_names(db_path: str) -> set[str]:
+    """Return the current roadmap index names."""
+    conn = sqlite3.connect(db_path)
+    indexes = {str(row[1]) for row in conn.execute("PRAGMA index_list(roadmap)").fetchall()}
+    conn.close()
+    return indexes
 
 
 async def test_initialize_creates_database_file(tmp_path: Path) -> None:
@@ -239,6 +258,81 @@ def test_initialize_adds_roadmap_tombstone_and_pending_purge_columns_to_preexist
 
     assert {"removed_at", "prev_status", "removed_deps", "pending_purge_paths"} <= columns
     assert preserved == ("kept-slug", "active", None, None, None, None)
+
+
+def test_roadmap_ordering_columns_drops_legacy_position_and_creates_ready_since(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "todos.db")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT NOT NULL, "
+        "position INTEGER NOT NULL DEFAULT 0, group_slug TEXT, description TEXT, "
+        "status TEXT NOT NULL DEFAULT 'active', delivered_at TEXT, "
+        "delivered_commit TEXT, children TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    conn.execute("CREATE UNIQUE INDEX idx_roadmap_slug_active ON roadmap(slug) WHERE status IN ('active', 'icebox')")
+    conn.execute(
+        "INSERT INTO roadmap (id, slug, position, status, created_at, updated_at) "
+        "VALUES ('row-1', 'kept-slug', 3, 'active', '2026-01-01T00:00:00', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    TodosDb(db_path).initialize_sync()
+    TodosDb(db_path).initialize_sync()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        preserved = conn.execute("SELECT slug, status, ready_since FROM roadmap WHERE id = 'row-1'").fetchone()
+    finally:
+        conn.close()
+
+    columns = _roadmap_columns(db_path)
+    assert _ROADMAP_POSITION_COLUMN not in columns
+    assert _ROADMAP_READY_SINCE_COLUMN in columns
+    assert _ROADMAP_ACTIVE_INDEX in _roadmap_index_names(db_path)
+    assert preserved == ("kept-slug", "active", None)
+
+
+async def test_initialize_keeps_positionless_roadmap_usable(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "todos.db")
+    now = "2026-01-01T00:00:00"
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT NOT NULL, "
+        "group_slug TEXT, description TEXT, status TEXT NOT NULL DEFAULT 'active', "
+        "delivered_at TEXT, delivered_commit TEXT, children TEXT, "
+        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, removed_at TEXT, "
+        "prev_status TEXT, removed_deps TEXT, pending_purge_paths TEXT, ready_since TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO roadmap (id, slug, status, created_at, updated_at) VALUES ('row-2', 'later-slug', 'active', ?, ?)",
+        (now.replace("00:00:00", "00:00:01"), now),
+    )
+    conn.execute(
+        "INSERT INTO roadmap (id, slug, status, created_at, updated_at) "
+        "VALUES ('row-1', 'earlier-slug', 'active', ?, ?)",
+        (now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    db = TodosDb(db_path)
+    db.initialize_sync()
+    db.initialize_sync()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = _roadmap_columns(db_path)
+    finally:
+        conn.close()
+
+    roadmap = await db.list_roadmap()
+    await db.close()
+
+    assert _ROADMAP_POSITION_COLUMN not in columns
+    assert [row["slug"] for row in roadmap] == ["earlier-slug", "later-slug"]
 
 
 def test_initialize_purges_holder_state_and_non_input_artifacts(tmp_path: Path) -> None:

@@ -69,7 +69,7 @@ class TestTodosDbAsyncAccess:
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
-            await db.add_entry(slug="test-item", position=1, description="Test")
+            await db.add_entry(slug="test-item", description="Test")
             entries = await db.list_entries()
             slugs = [getattr(e, "slug", None) for e in entries]
             assert "test-item" in slugs
@@ -81,7 +81,7 @@ class TestTodosDbAsyncAccess:
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
-            await db.add_entry(slug="state-test", position=1, description="State test")
+            await db.add_entry(slug="state-test", description="State test")
             state = {"phase": "draft"}
             await db.set_state("state-test", json.dumps(state))
             result = await db.get_state("state-test")
@@ -96,7 +96,7 @@ class TestTodosDbAsyncAccess:
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
-            await db.add_entry(slug="art-test", position=1, description="Artifact test")
+            await db.add_entry(slug="art-test", description="Artifact test")
             await db.write_artifact("art-test", "spec.md", "# Spec content", updated_by="test")
             content = await db.read_artifact("art-test", "spec.md")
             assert content is not None
@@ -154,7 +154,7 @@ class TestMutationHookPreserved:
         mutations: list[str] = []
         db._on_mutation = lambda _event, _event_data=None: mutations.append("fired")
         try:
-            await db.add_entry(slug="hook-test", position=1, description="Hook test")
+            await db.add_entry(slug="hook-test", description="Hook test")
             assert len(mutations) > 0, "Mutation callback did not fire"
         finally:
             await db.close()
@@ -168,26 +168,11 @@ class TestRoadmapOperationsPreserved:
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
-            await db.add_entry(slug="dep-a", position=1, description="Dep A")
-            await db.add_entry(slug="dep-b", position=2, description="Dep B")
+            await db.add_entry(slug="dep-a", description="Dep A")
+            await db.add_entry(slug="dep-b", description="Dep B")
             await db.set_deps("dep-b", after=["dep-a"])
             deps = await db.get_deps("dep-b")
             assert "dep-a" in deps
-        finally:
-            await db.close()
-
-    async def test_move_entry_reorders_correctly(self, tmp_path: Path) -> None:
-        """Moving a roadmap entry updates position ordering."""
-        db = TodosDb(str(tmp_path / "todos.db"))
-        await db.initialize()
-        try:
-            await db.add_entry(slug="move-a", position=1, description="A")
-            await db.add_entry(slug="move-b", position=2, description="B")
-            await db.add_entry(slug="move-c", position=3, description="C")
-            await db.move_entry("move-c", before="move-a")
-            entries = await db.list_entries()
-            slugs = [getattr(e, "slug", None) for e in entries]
-            assert slugs.index("move-c") < slugs.index("move-a")
         finally:
             await db.close()
 
@@ -201,7 +186,7 @@ class TestArtifactVersioningPreserved:
         await db.initialize()
         try:
             slug = "ver-test"
-            await db.add_entry(slug=slug, position=1, description="Version test")
+            await db.add_entry(slug=slug, description="Version test")
             await db.write_artifact(slug, "doc.md", "v1 content", updated_by="agent-a")
             await db.write_artifact(slug, "doc.md", "v2 content", updated_by="agent-b")
             # After two writes, there must be at least 2 version entries

@@ -96,15 +96,12 @@ def create_draft_skeleton(
             raise ValueError(f"Todo '{slug}' already exists")
 
         now = datetime.now(UTC).isoformat()
-        position = conn.execute(
-            "SELECT COALESCE(MAX(position), -1) + 1 FROM roadmap",  # guard: raw-sql
-        ).fetchone()[0]
         row_id = str(_uuid.uuid4())
         conn.execute(
             "INSERT INTO roadmap "  # guard: raw-sql
-            "(id, slug, position, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, 'active', ?, ?)",
-            (row_id, slug, position, now, now),
+            "(id, slug, status, created_at, updated_at) "
+            "VALUES (?, ?, 'active', ?, ?)",
+            (row_id, slug, now, now),
         )
         for dep in after or []:
             conn.execute(

@@ -17,6 +17,21 @@
   
   '''
 # ---
+# name: test_todo_deliver_help_output
+  '''
+  Usage:
+    telec todo deliver <slug> [--commit <hash>]
+  
+    Move todo to delivered
+  
+  Options:
+    --commit               Commit hash (auto-detects HEAD if omitted)
+  
+  Notes:
+    Use this command to move todo to delivered.
+  
+  '''
+# ---
 # name: test_todo_dump_help_output
   '''
   Usage:
@@ -30,6 +45,58 @@
   
   Notes:
     This command is deprecated. Use `telec todo create` instead.
+  
+  '''
+# ---
+# name: test_todo_freeze_help_output
+  '''
+  Usage:
+    telec todo freeze <slug>
+  
+    Move todo to icebox
+  
+  Notes:
+    Use this command to move todo to icebox.
+  
+  '''
+# ---
+# name: test_todo_list_help_output
+  '''
+  Usage:
+    telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]
+  
+    List todo entries (source of truth for todo status)
+  
+  Options:
+    -i, --include-icebox   Include icebox items
+    -o, --icebox-only      Show only icebox items
+    -d, --include-deliveredInclude delivered items
+    --delivered-only       Show only delivered items
+    --since                Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.
+    --json                 Output as a sectioned JSON object (active/delivered/icebox trees)
+  
+  Notes:
+    Output is sectioned into active/delivered/icebox dependency trees.
+    CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
+    --include-delivered returns the full delivery history; scope it with --since.
+    --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
+    --since alone implies --include-delivered; combine with --delivered-only to exclude active items.
+  
+  Examples:
+    telec todo list --include-delivered --since 7d
+    telec todo list --delivered-only --since 2026-05-01
+  
+  '''
+# ---
+# name: test_todo_unfreeze_help_output
+  '''
+  Usage:
+    telec todo unfreeze <slug>
+  
+    Promote todo from icebox
+  
+  Notes:
+    Use this command to promote todo from icebox.
   
   '''
 # ---

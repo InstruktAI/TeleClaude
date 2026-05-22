@@ -9,14 +9,17 @@ from pathlib import Path
 from typing import cast
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import update
+from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR
+from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.types.state_value import StateValue
 
 from ._migration_logs import record_v2_to_v3_migration
-from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateModel
+from ._models import ROADMAP_DEPS_TABLE, ROADMAP_TABLE, TODO_STATE_TABLE, RoadmapDep, TodoRoadmap, TodoStateModel
 from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
 
 logger = get_logger(__name__)
@@ -78,6 +81,15 @@ class TodosDbStateMixin:
         phase = payload.get("lifecycle_phase")
         return phase if isinstance(phase, str) else ""
 
+    def _payload_kind(self, payload: Mapping[str, StateValue]) -> str | None:
+        kind = payload.get("kind")
+        return kind if isinstance(kind, str) else None
+
+    def _payload_is_ready_candidate(self, payload: Mapping[str, StateValue]) -> bool:
+        kind = self._payload_kind(payload)
+        phase = coerce_lifecycle_phase(payload.get("lifecycle_phase"))
+        return kind in {"bug", "prepped"} or phase in READY_BAND_PHASES
+
     def _project_root(self) -> Path:
         db_path = cast(Path, self._db_path)  # type: ignore[attr-defined]
         return db_path.parent.parent if db_path.parent.name == ".teleclaude" else db_path.parent
@@ -133,6 +145,64 @@ class TodosDbStateMixin:
             .limit(1)
         )
         return result.first() is not None
+
+    async def _stamp_ready_since_for_payload(
+        self,
+        session: SqlAsyncSession,
+        *,
+        slug: str,
+        row_id: str,
+        payload: Mapping[str, StateValue],
+        when: str,
+    ) -> None:
+        if not self._payload_is_ready_candidate(payload):
+            return
+        deps_result = await session.exec(select(RoadmapDep.depends_on).where(ROADMAP_DEPS_TABLE.c.slug == slug))
+        delivered_result = await session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+        after_deps = [str(dep) for dep in deps_result.all()]
+        delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
+        if not is_ready_band_eligible(
+            kind=self._payload_kind(payload),
+            lifecycle_phase=self._payload_lifecycle_phase(payload),
+            after_deps=after_deps,
+            delivered_slugs=delivered_slugs,
+        ):
+            return
+        await session.exec(
+            update(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.id == row_id)
+            .where(ROADMAP_TABLE.c.ready_since.is_(None))
+            .values(ready_since=when)
+        )
+
+    def _stamp_ready_since_for_payload_sync(
+        self,
+        session: SqlSession,
+        *,
+        slug: str,
+        row_id: str,
+        payload: Mapping[str, StateValue],
+        when: str,
+    ) -> None:
+        if not self._payload_is_ready_candidate(payload):
+            return
+        deps_result = session.exec(select(RoadmapDep.depends_on).where(ROADMAP_DEPS_TABLE.c.slug == slug))
+        delivered_result = session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+        after_deps = [str(dep) for dep in deps_result.all()]
+        delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
+        if not is_ready_band_eligible(
+            kind=self._payload_kind(payload),
+            lifecycle_phase=self._payload_lifecycle_phase(payload),
+            after_deps=after_deps,
+            delivered_slugs=delivered_slugs,
+        ):
+            return
+        session.exec(
+            update(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.id == row_id)
+            .where(ROADMAP_TABLE.c.ready_since.is_(None))
+            .values(ready_since=when)
+        )
 
     def _is_state_holder_slug_sync(self, slug: str) -> bool:
         """Sync counterpart of :meth:`_is_state_holder_slug`."""
@@ -207,6 +277,7 @@ class TodosDbStateMixin:
                 state_model.state = json.dumps(payload, default=str)
                 state_model.updated_at = now
             db_session.add(state_model)
+            await self._stamp_ready_since_for_payload(db_session, slug=slug, row_id=row_id, payload=payload, when=now)
             if not owns_session:
                 # Caller-owned sessions commit outside this boundary, so the post-commit hook cannot fire here.
                 return
@@ -412,6 +483,7 @@ class TodosDbStateMixin:
                 state_model.state = json.dumps(payload, default=str)
                 state_model.updated_at = now
             session.add(state_model)
+            self._stamp_ready_since_for_payload_sync(session, slug=slug, row_id=str(row_id), payload=payload, when=now)
             session.commit()
         logger.info(
             "todo state written",

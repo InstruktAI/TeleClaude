@@ -48,7 +48,6 @@ async def test_removed_and_live_rows_share_a_slug(todos_db: TodosDb) -> None:
             TodoRoadmap(
                 id="fresh-live-row",
                 slug="recycled",
-                position=1,
                 status="active",
                 created_at="2026-05-19T00:00:00+00:00",
                 updated_at="2026-05-19T00:00:00+00:00",
@@ -71,7 +70,6 @@ async def test_two_live_entries_same_slug_still_rejected(todos_db: TodosDb) -> N
             TodoRoadmap(
                 id="forced-duplicate",
                 slug="unique-slug",
-                position=99,
                 status="active",
                 created_at="2026-05-19T00:00:00+00:00",
                 updated_at="2026-05-19T00:00:00+00:00",

@@ -1,0 +1,98 @@
+---
+id: project/spec/feature/workflow/todo-icebox
+type: spec
+domain: software-development
+scope: project
+visibility: public
+applies_to: v1
+description: Frozen-but-recoverable state for todos that are not being actively pursued;
+  iceboxed rows are hidden from default list output and ignored by active dispatch
+  until unfrozen.
+---
+
+# Todo Icebox — Spec
+
+## Required reads
+
+- docs/global/software-development/principle/domain-driven-design.md
+- docs/global/software-development/spec/domain-spec.md
+- @docs/project/spec/domain/workflow.md
+
+## What it is
+
+The icebox is the parking lot for todos the project does not want to lose but does not want to act on. Freezing a todo flips its roadmap status from `active` to `icebox`; its associated state, artifacts, dependency edges, and timestamps remain in `todos.db`.
+
+Iceboxed entries are excluded from the default `telec todo list` view and from prepare/work candidate search. They neither get dispatched nor satisfy another todo's dependencies. Unfreezing flips the row back to `active`, returning it to the default list and to the orchestrators' attention without losing history.
+
+The icebox is distinct from soft removal. Freeze preserves the live row in a recoverable inactive band; remove marks the row `removed`, hides it from every default resolver, scrubs live dependency edges, and starts the retention window.
+
+## Canonical fields
+
+### Use cases
+
+```
+Given an active todo "deferred-feature"
+When the operator runs "telec todo freeze deferred-feature"
+Then the entry's status changes to "icebox"
+And the entry is no longer returned by the default "telec todo list"
+And the entry's todo_state, artifacts, and roadmap_deps rows are preserved unchanged
+And the _on_mutation("todo_updated") hook fires so cached views refresh
+```
+
+```
+Given an iceboxed todo "deferred-feature"
+When the operator runs "telec todo list --include-icebox"
+Then "deferred-feature" appears in the icebox section
+And its rendered status is "icebox"
+```
+
+```
+Given an iceboxed todo "deferred-feature"
+When the operator runs "telec todo list --icebox-only"
+Then only entries with status="icebox" are shown
+And active and delivered entries are hidden regardless of other flags
+```
+
+```
+Given an iceboxed todo "deferred-feature"
+When the operator runs "telec todo unfreeze deferred-feature"
+Then the entry's status flips back to "active"
+And it reappears in the default "telec todo list" view
+And its dependency edges and artifacts remain intact
+And the next prepare/work pickup may consider it again
+```
+
+```
+Given an active todo "alpha" depending on iceboxed todo "beta"
+When the work orchestrator searches for the next runnable slug
+Then "alpha" is skipped because "beta" is not delivered
+And the resolver reports the candidate as dependency-blocked
+And the iceboxed "beta" is not itself dispatched, regardless of its own readiness
+```
+
+```
+Given the operator runs "telec todo freeze missing-slug" for a slug that is not in the todo list
+When the freeze handler resolves the active entry
+Then no row is mutated
+And the command prints "Slug not found in todo list: missing-slug" and exits non-zero
+```
+
+### Implementation pointers (v1)
+
+- `teleclaude/cli/telec/handlers/todo.py` — `_handle_todo_freeze`, `_handle_todo_unfreeze`, and `_handle_todo_list`.
+- `teleclaude/cli/telec/surface.py` — `telec todo freeze`, `telec todo unfreeze`, and `telec todo list` help surface.
+- `teleclaude/core/todos_db/_roadmap.py` — `freeze`, `unfreeze`, and list filtering over persisted roadmap status.
+- `teleclaude/core/roadmap.py` — section ordering for active, delivered, and icebox rows.
+- `teleclaude/core/next_machine/slug_resolution.py` — prepare/work candidate resolution over the active roadmap projection.
+
+### Cross-context references
+
+- `agent_runtime` / daemon cache — `freeze` and `unfreeze` invoke `_on_mutation("todo_updated")`, invalidating the daemon cache and refreshing TUI/frontend subscribers.
+- `workflow` orchestration internals — prepare/work resolvers consume the active roadmap projection; iceboxed entries are out of band because they are filtered upstream.
+
+## Known caveats
+
+- Freezing keeps the todo recoverable and live-row-addressable; it is fundamentally different from soft removal.
+- Iceboxed entries retain artifacts, lifecycle state, and dependency edges. The edges remain in `roadmap_deps` but never gate dispatch while the source slug is iceboxed.
+- An active entry that depends on an iceboxed entry is blocked because iceboxed is not delivered. To unblock, the operator unfreezes the dependency, delivers it, or rewrites the dependency edge with `telec todo set-deps`.
+- Slug uniqueness still applies across `active` and `icebox`: an iceboxed slug cannot be re-created until it is unfrozen, removed, or delivered.

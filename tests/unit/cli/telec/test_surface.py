@@ -10,8 +10,9 @@ surface = importlib.import_module("teleclaude.cli.telec.surface")
 
 
 def test_cli_surface_exposes_expected_top_level_commands() -> None:
-    for command in ("sessions", "todo", "docs", "roadmap", "auth", "signals"):
+    for command in ("sessions", "todo", "docs", "auth", "signals"):
         assert command in surface.CLI_SURFACE
+    assert "roadmap" not in surface.CLI_SURFACE
 
 
 def test_sessions_revive_metadata_includes_attach_flag() -> None:

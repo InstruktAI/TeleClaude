@@ -11,6 +11,7 @@ Sends identity headers with each call:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 
@@ -21,6 +22,7 @@ from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.session_identity import get_session_id, get_session_token
 
 _TUI_SESSION_NAME = "tc_tui"
+_API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
 
 
 class ToolAPIError(Exception):
@@ -61,7 +63,7 @@ def tool_api_request(
     json_body: object = None,
     params: dict[str, str] | None = None,
     timeout: float = 30.0,
-    socket_path: str = API_SOCKET_PATH,
+    socket_path: str | None = None,
 ) -> object:
     """Make a synchronous API call to the daemon.
 
@@ -82,6 +84,7 @@ def tool_api_request(
     Raises:
         ToolAPIError: On daemon unavailability, timeout, or HTTP error response.
     """
+    resolved_socket_path = socket_path or os.environ.get(_API_SOCKET_ENV, API_SOCKET_PATH)
     tmux_session = _read_tmux_session_name()
     use_session_identity = tmux_session != _TUI_SESSION_NAME
     session_id = get_session_id() if use_session_identity else None
@@ -99,7 +102,7 @@ def tool_api_request(
         headers["x-tmux-session"] = tmux_session
 
     try:
-        transport = httpx.HTTPTransport(uds=socket_path)
+        transport = httpx.HTTPTransport(uds=resolved_socket_path)
         with httpx.Client(
             transport=transport,
             base_url="http://localhost",
@@ -113,7 +116,7 @@ def tool_api_request(
                 headers=headers,
             )
     except httpx.ConnectError:
-        raise ToolAPIError(f"daemon is not running (socket not found: {socket_path})")
+        raise ToolAPIError(f"daemon is not running (socket not found: {resolved_socket_path})")
     except httpx.TimeoutException:
         raise ToolAPIError("request timed out", is_timeout=True)
     except Exception as exc:
@@ -141,7 +144,7 @@ def tool_api_call(
     json_body: object = None,
     params: dict[str, str] | None = None,
     timeout: float = 30.0,
-    socket_path: str = API_SOCKET_PATH,
+    socket_path: str | None = None,
 ) -> object:
     """Make a synchronous API call and exit on failure."""
     try:
