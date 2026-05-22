@@ -61,12 +61,14 @@ And exits 0
 
 ```gherkin
 Given a Claude session has uncommitted turn-local changes
+Or the session's current HEAD differs from the turn-start anchor SHA on main
 And the persistent checkpoint clear flag is not set
 And the per-turn recheck flag has not already fired
 When Claude invokes telec-hook ... Stop after the agent attempts to stop
 Then the receiver maps "Stop" to AgentHookEvents.AGENT_STOP
 And calls _maybe_checkpoint_output which loads the session row and gathers evidence
 And get_checkpoint_content returns a non-empty checkpoint reason string
+And when HEAD advanced on main, the checkpoint reason includes the post-commit review-gate surfacing action even if no dirty files remain
 And enqueue_checkpoint_seen writes a CHECKPOINT_SEEN row to the outbox
 And ClaudeAdapter.format_checkpoint_response serializes {"decision":"block","reason":<reason>} to stdout
 And the process exits 0 BEFORE enqueueing the original AGENT_STOP event
