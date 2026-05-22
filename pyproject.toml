@@ -324,7 +324,6 @@ orphan-exclude = [
     "tests/unit/core/migrations/test_drop_session_metadata_column.py",  # Mapper-gap: migration filenames carry numeric prefixes (045_drop_session_metadata_column.py) and do not fit the 1:1 mirror convention.
     "tests/unit/core/migrations/test_add_operations_error_payload.py",  # Mapper-gap: migration filenames carry numeric prefixes (046_add_operations_error_payload.py) and do not fit the 1:1 mirror convention.
     "tests/unit/core/next_machine/test_authoritative_phase_clearing.py",  # Cross-module: phase clearing spans lifecycle normalization and TodoState data.
-    "tests/unit/core/next_machine/test_git_ops_drift.py",  # Concept-split: per-class drift derivation helpers live in git_ops.py alongside the broader git-ops surface; the drift coverage is split into a sibling test file for readability. Imports span git_ops constants/helpers and TodoState/ArtifactEntry/DependencyEntry/DriftReviewedStamp drift-fields.
     "tests/unit/core/next_machine/test_authoritative_phase_fields_specs.py",  # Deferred split: authoritative phase specs span CLI todo handler, state_io, and types.
     "tests/unit/core/next_machine/test_prepare_lifecycle_pair_model_specs.py",  # Deferred split: prepare lifecycle specs span lifecycle, output formatting, state_io, and worktrees.
     "tests/unit/core/next_machine/test_stamp_verdict.py",  # Cross-module: verdict stamping spans state_io persistence and TodosDb/TodoState.
@@ -369,7 +368,6 @@ orphan-exclude = [
     "tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py",  # Cross-module: Redis wire format spans metadata models, snapshots, and transport.
     "tests/unit/transport/redis_transport/test_target_computer_named_field.py",  # Cross-module: target-computer wire field spans command mapper, metadata models, and transport.
     "tests/unit/cli/telec/test_todo_help.py",  # Cross-module: help snapshot tests cover help.py _usage_leaf for todo subcommands; no dedicated todo_help.py source.
-    "tests/unit/types/test_todos_drift_fields.py",  # Concept-split: drift provenance fields are part of teleclaude/types/todos.py but split into a sibling test file by concept. Imports span ArtifactEntry, DependencyEntry, DriftReviewedStamp, ReviewVerdictState, and TodoState — the drift-related slice of the broader todos type module.
 ]
 
 [tool.coverage.run]
