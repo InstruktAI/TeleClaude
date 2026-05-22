@@ -54,6 +54,20 @@ class TestGitDiffHelpers:
         mock_repo.git.config.assert_called_with("--local", "core.bare", "false")
 
     @pytest.mark.unit
+    def test_head_changed_since_anchor_detects_turn_commit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock_repo = MagicMock()
+        mock_repo.git.rev_parse.return_value = "new-head"
+
+        def fake_repo(*_args: object, **_kwargs: object) -> MagicMock:
+            return mock_repo
+
+        monkeypatch.setattr("teleclaude.hooks.checkpoint._git.Repo", fake_repo)
+
+        assert _git._head_changed_since_anchor("/repo", "old-head") is True
+        assert _git._head_changed_since_anchor("/repo", "new-head") is False
+        assert _git._head_changed_since_anchor("/repo", None) is False
+
+    @pytest.mark.unit
     def test_extract_shell_and_apply_patch_paths_normalize_project_relative_files(self) -> None:
         command_paths = _git._extract_shell_touched_paths(
             "python -m pytest ./tests/unit/hooks/test_inbound.py teleclaude/hooks/inbound.py",

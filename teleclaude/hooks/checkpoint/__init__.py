@@ -46,6 +46,7 @@ from teleclaude.hooks.checkpoint._git import (
     _extract_shell_touched_paths,
     _extract_turn_file_signals,
     _file_matches_category,
+    _head_changed_since_anchor,
     _is_checkpoint_project_supported,
     _is_docs_only,
     _is_no_action_only,
@@ -93,6 +94,7 @@ __all__ = [
     "_has_evidence",
     "_has_evidence_after_index",
     "_has_status_evidence",
+    "_head_changed_since_anchor",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
     "_is_no_action_only",
@@ -100,6 +102,7 @@ __all__ = [
     "_last_category_mutation_index",
     "_looks_like_path_token",
     "_normalize_repo_path",
+    "_post_commit_review_instruction",
     "_scope_git_files_to_current_turn",
     "_segment_matches_evidence",
     "_segment_tokens",
@@ -121,19 +124,26 @@ def run_heuristics(
     timeline: TurnTimeline,
     context: CheckpointContext,
     log_since_window: str = "2m",
+    git_head_changed_this_turn: bool = False,
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
     result.on_main = _current_branch(context.project_path) == "main"
+    result.git_head_changed_this_turn = git_head_changed_this_turn
     result.commit_action_required = not _has_commit_evidence_after_last_mutation(
         timeline,
         git_files,
         context.project_path,
     )
+    if result.git_head_changed_this_turn and not git_files:
+        result.commit_action_required = False
 
     def append_required_action(action: str) -> None:
         if action not in result.required_actions:
             result.required_actions.append(action)
+
+    if result.on_main and result.git_head_changed_this_turn:
+        append_required_action(_post_commit_review_instruction())
 
     # 1. File categorization
     categories: list[FileCategory] = _categorize_files(git_files)
@@ -241,6 +251,14 @@ def _commit_instruction(on_main: bool) -> str:
     return "Commit your changes with `telec code commit --approved '<message>'`"
 
 
+def _post_commit_review_instruction() -> str:
+    """Instruction emitted when a main-branch commit occurred in the turn."""
+    return (
+        "A main-branch commit occurred this turn. Surface the `telec code commit` "
+        "review gate to the user with your recommendation before reporting completion."
+    )
+
+
 def _docs_check_instruction() -> str:
     """Instruction that documentation updates must happen before commit."""
     return "Docs check: if relevant, update existing docs or add a new doc"
@@ -263,7 +281,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     commit_lines = [commit_line] if result.commit_action_required else []
 
     # Special case: docs only
-    if not git_files or _is_docs_only(git_files):
+    if (not git_files or _is_docs_only(git_files)) and not result.required_actions and not result.observations:
         body = " ".join(commit_lines)
         return (
             f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\n"
@@ -387,12 +405,14 @@ def get_checkpoint_content(
             timeline,
             project_path,
         )
+        git_head_changed_this_turn = _head_changed_since_anchor(project_path, turn_anchor_sha)
+        force_main_commit_checkpoint = git_head_changed_this_turn and _current_branch(project_path) == "main"
 
         # Intentionally no full-session fallback:
         # checkpoint attribution must stay strictly turn-local.
         used_session_fallback = False
 
-        if not effective_files:
+        if not effective_files and not force_main_commit_checkpoint:
             logger.info(
                 "Checkpoint payload skipped (no turn-local changes)",
                 extra={
@@ -409,11 +429,12 @@ def get_checkpoint_content(
                     "mode": "silent_no_changes",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
+                    "git_head_changed_this_turn": git_head_changed_this_turn,
                 },
             )
             return None
 
-        if _is_no_action_only(effective_files):
+        if _is_no_action_only(effective_files) and not force_main_commit_checkpoint:
             logger.info(
                 "Checkpoint payload skipped (docs/no-action changes only)",
                 extra={
@@ -427,6 +448,7 @@ def get_checkpoint_content(
                     "mode": "silent_docs_only",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
+                    "git_head_changed_this_turn": git_head_changed_this_turn,
                 },
             )
             return None
@@ -438,10 +460,22 @@ def get_checkpoint_content(
         )
         log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
 
-        result = run_heuristics(effective_files, timeline, context, log_since_window=log_since_window)
+        result = run_heuristics(
+            effective_files,
+            timeline,
+            context,
+            log_since_window=log_since_window,
+            git_head_changed_this_turn=git_head_changed_this_turn,
+        )
 
         message = _compose_checkpoint_message(effective_files, result)
-        mode = "docs_only" if _is_docs_only(effective_files) else ("all_clear" if result.is_all_clear else "actionable")
+        mode = (
+            "main_head_changed"
+            if force_main_commit_checkpoint
+            else "docs_only"
+            if _is_docs_only(effective_files)
+            else ("all_clear" if result.is_all_clear else "actionable")
+        )
         logger.info(
             "Checkpoint payload computed",
             extra={
@@ -458,6 +492,7 @@ def get_checkpoint_content(
                 "mode": mode,
                 "message_len": len(message),
                 "used_session_fallback": used_session_fallback,
+                "git_head_changed_this_turn": git_head_changed_this_turn,
             },
         )
         return message

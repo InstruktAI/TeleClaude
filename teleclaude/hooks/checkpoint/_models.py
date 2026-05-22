@@ -33,3 +33,4 @@ class CheckpointResult:
     is_all_clear: bool = False
     commit_action_required: bool = True
     on_main: bool = False
+    git_head_changed_this_turn: bool = False

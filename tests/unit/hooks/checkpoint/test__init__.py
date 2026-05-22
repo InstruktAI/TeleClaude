@@ -16,6 +16,7 @@ from teleclaude.hooks.checkpoint import (
     TurnTimeline,
     _commit_instruction,
     _compose_checkpoint_message,
+    _post_commit_review_instruction,
     get_checkpoint_content,
     run_heuristics,
 )
@@ -126,6 +127,46 @@ class TestGetCheckpointContent:
 
         assert checkpoint_text is None
         run_heuristics_mock.assert_not_called()
+
+    @pytest.mark.unit
+    def test_checkpoint_cycle_emits_when_main_head_changed_without_dirty_files(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        scoped_paths = ScopedPathsResult(
+            paths=(),
+            scope_mode="turn_delta",
+            workspace_kind="git_shared",
+            strategy="codex_structured+anchor_diff",
+            ledger_updated=False,
+        )
+        result = CheckpointResult(
+            required_actions=[_post_commit_review_instruction()],
+            observations=[],
+            is_all_clear=False,
+            commit_action_required=False,
+            on_main=True,
+            git_head_changed_this_turn=True,
+        )
+
+        with (
+            patch("teleclaude.hooks.checkpoint._is_checkpoint_project_supported", return_value=True),
+            patch("teleclaude.hooks.checkpoint.extract_effective_tool_calls", return_value=timeline),
+            patch("teleclaude.hooks.checkpoint.resolve_scoped_paths", return_value=scoped_paths),
+            patch("teleclaude.hooks.checkpoint._head_changed_since_anchor", return_value=True),
+            patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"),
+            patch("teleclaude.hooks.checkpoint.run_heuristics", return_value=result) as run_heuristics_mock,
+        ):
+            checkpoint_text = get_checkpoint_content(
+                session_id="session-1",
+                transcript_path="/tmp/parent.jsonl",
+                agent_name=AgentName.CODEX,
+                project_path="/repo",
+                native_session_id="parent-thread",
+                working_slug="demo-slug",
+                turn_anchor_sha="old-head",
+            )
+
+        assert checkpoint_text is not None
+        assert run_heuristics_mock.call_args.kwargs["git_head_changed_this_turn"] is True
 
     @pytest.mark.unit
     def test_checkpoint_cycle_scopes_files_to_post_checkpoint_mutations(self) -> None:
@@ -300,6 +341,18 @@ class TestRunHeuristics:
             result = run_heuristics(["src/app.py"], timeline, context)
 
         assert result.on_main is False
+
+    @pytest.mark.unit
+    def test_main_head_change_adds_post_commit_review_action(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CODEX, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"):
+            result = run_heuristics([], timeline, context, git_head_changed_this_turn=True)
+
+        assert result.git_head_changed_this_turn is True
+        assert result.commit_action_required is False
+        assert result.required_actions == [_post_commit_review_instruction()]
 
     @pytest.mark.unit
     def test_daemon_code_off_main_suppresses_make_restart(self) -> None:

@@ -26,6 +26,7 @@ __all__ = [
     "_extract_turn_file_signals",
     "_file_matches_category",
     "_get_uncommitted_files",
+    "_head_changed_since_anchor",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
     "_is_no_action_only",
@@ -126,6 +127,19 @@ def _current_branch(project_path: str) -> str | None:
         return branch or None
     except (GitCommandError, OSError, ValueError):
         return None
+
+
+def _head_changed_since_anchor(project_path: str, turn_anchor_sha: str | None) -> bool:
+    """Return True when HEAD advanced after the turn-start anchor."""
+    anchor = (turn_anchor_sha or "").strip()
+    if not anchor:
+        return False
+    try:
+        repo = Repo(project_path or ".", search_parent_directories=True)
+        current = repo.git.rev_parse("HEAD").strip()
+        return bool(current and current != anchor)
+    except (GitCommandError, OSError, ValueError):
+        return False
 
 
 def _transcript_observability(transcript_path: str | None) -> TranscriptObservability:
