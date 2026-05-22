@@ -10,7 +10,7 @@ from teleclaude.core import db_models
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
-from teleclaude.memory.context.compiler import compile_timeline, filter_by_recency
+from teleclaude.memory.context.compiler import compile_timeline
 from teleclaude.memory.context.renderer import render_context
 
 logger = get_logger(__name__)
@@ -26,7 +26,6 @@ async def generate_context(project: str, identity_key: str | None = None) -> str
             return ""
 
         timeline = compile_timeline(observations, summaries)
-        timeline = filter_by_recency(timeline)
         return render_context(timeline)
     except Exception:
         logger.warning("Failed to generate memory context", project=project, exc_info=True)
@@ -44,7 +43,7 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
             if identity_key:
                 obs_sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                 obs_params["identity_key"] = identity_key
-            obs_sql += " ORDER BY created_at_epoch DESC LIMIT 50"
+            obs_sql += " ORDER BY created_at_epoch DESC LIMIT 100"
             result = session.exec(text(obs_sql).bindparams(**obs_params))  # type: ignore[call-overload]
             obs_rows = result.fetchall()
             observations = [_row_to_observation(row) for row in obs_rows]
@@ -62,7 +61,6 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
             return ""
 
         timeline = compile_timeline(observations, summaries)
-        timeline = filter_by_recency(timeline)
         return render_context(timeline)
     except Exception:
         logger.warning("Failed to generate memory context (sync)", project=project, exc_info=True)
@@ -72,7 +70,7 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
 
 
 async def _get_recent_observations(
-    project: str, limit: int = 50, identity_key: str | None = None
+    project: str, limit: int = 100, identity_key: str | None = None
 ) -> list[db_models.MemoryObservation]:
     """Fetch recent observations for a project, optionally scoped by identity."""
     async with db._session() as session:

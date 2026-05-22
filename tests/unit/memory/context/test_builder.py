@@ -100,7 +100,7 @@ def _observation_row(identity_key: str | None = None) -> RowValue:
 class TestGenerateContext:
     async def test_generate_context_returns_empty_when_no_recent_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
         async def fake_get_recent_observations(
-            project: str, limit: int = 50, identity_key: str | None = None
+            project: str, limit: int = 100, identity_key: str | None = None
         ) -> list[db_models.MemoryObservation]:
             return []
 
@@ -112,17 +112,16 @@ class TestGenerateContext:
 
         assert await builder_module.generate_context("alpha") == ""
 
-    async def test_generate_context_passes_loaded_data_through_compile_filter_and_render(
+    async def test_generate_context_passes_loaded_data_through_compile_and_render(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         observations = [_observation(1)]
         summaries = [_summary(2)]
         compile_calls: list[tuple[list[db_models.MemoryObservation], list[db_models.MemorySummary]]] = []
-        filter_calls: list[list[object]] = []
         render_calls: list[list[object]] = []
 
         async def fake_get_recent_observations(
-            project: str, limit: int = 50, identity_key: str | None = None
+            project: str, limit: int = 100, identity_key: str | None = None
         ) -> list[db_models.MemoryObservation]:
             return observations
 
@@ -136,10 +135,6 @@ class TestGenerateContext:
             compile_calls.append((loaded_observations, loaded_summaries))
             return ["compiled"]
 
-        def fake_filter_by_recency(entries: list[object], max_entries: int = 50) -> list[object]:
-            filter_calls.append(entries)
-            return ["filtered"]
-
         def fake_render_context(entries: list[object]) -> str:
             render_calls.append(entries)
             return "rendered"
@@ -147,21 +142,19 @@ class TestGenerateContext:
         monkeypatch.setattr(builder_module, "_get_recent_observations", fake_get_recent_observations)
         monkeypatch.setattr(builder_module, "_get_recent_summaries", fake_get_recent_summaries)
         monkeypatch.setattr(builder_module, "compile_timeline", fake_compile_timeline)
-        monkeypatch.setattr(builder_module, "filter_by_recency", fake_filter_by_recency)
         monkeypatch.setattr(builder_module, "render_context", fake_render_context)
 
         result = await builder_module.generate_context("alpha", identity_key="user-1")
 
         assert result == "rendered"
         assert compile_calls == [(observations, summaries)]
-        assert filter_calls == [["compiled"]]
-        assert render_calls == [["filtered"]]
+        assert render_calls == [["compiled"]]
 
     async def test_generate_context_returns_empty_when_recent_load_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         async def raise_recent_observations(
-            project: str, limit: int = 50, identity_key: str | None = None
+            project: str, limit: int = 100, identity_key: str | None = None
         ) -> list[db_models.MemoryObservation]:
             raise RuntimeError("database unavailable")
 

@@ -7,6 +7,9 @@ import time
 
 from teleclaude.memory.context.compiler import TimelineEntry
 
+MEMORY_INDEX_CAP = 100
+MEMORY_EXPANDED_TOP_N = 10
+
 
 def render_context(entries: list[TimelineEntry]) -> str:
     """Render timeline entries as markdown for agent context injection."""
@@ -28,13 +31,20 @@ def render_context(entries: list[TimelineEntry]) -> str:
 
 
 def _render_observations(observations: list[TimelineEntry], parts: list[str]) -> None:
-    """Render observation table and detail blocks."""
-    parts.append(f"## Recent Observations (last {len(observations)})\n")
+    """Render index table (up to MEMORY_INDEX_CAP) and expanded detail (up to MEMORY_EXPANDED_TOP_N)."""
+    total = len(observations)
+    indexed = observations[:MEMORY_INDEX_CAP]
+
+    if total <= MEMORY_INDEX_CAP:
+        parts.append(f"## Index ({total} memories, newest first)\n")
+    else:
+        parts.append(f"## Index ({MEMORY_INDEX_CAP} of {total} memories, newest first)\n")
+
     parts.append("| # | Type | Title | When |")
     parts.append("|---|------|-------|------|")
 
     now_epoch = int(time.time())
-    for i, entry in enumerate(observations, 1):
+    for i, entry in enumerate(indexed, 1):
         obs = entry.observation
         assert obs is not None
         when = _relative_time(now_epoch, obs.created_at_epoch)
@@ -43,7 +53,13 @@ def _render_observations(observations: list[TimelineEntry], parts: list[str]) ->
 
     parts.append("")
 
-    for i, entry in enumerate(observations, 1):
+    expanded = indexed[:MEMORY_EXPANDED_TOP_N]
+    if len(expanded) >= MEMORY_EXPANDED_TOP_N:
+        parts.append(f"## Top {MEMORY_EXPANDED_TOP_N} — Expanded\n")
+    else:
+        parts.append("## Expanded\n")
+
+    for i, entry in enumerate(expanded, 1):
         obs = entry.observation
         assert obs is not None
         _render_observation_detail(i, obs, parts)
