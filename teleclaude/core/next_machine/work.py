@@ -28,9 +28,26 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
-from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, get_head_commit, get_stash_entries
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, require_lifecycle_phase
-from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
+from teleclaude.core.next_machine.git_ops import (
+    DRIFT_PENDING,
+    DRIFT_SUBSTANTIVE,
+    ArtifactDriftStatus,
+    _merge_origin_main_into_worktree,
+    get_head_commit,
+    get_stash_entries,
+)
+from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
+    apply_authoritative_signal,
+    collapse_drift,
+    derive_lifecycle_drift,
+    require_lifecycle_phase,
+)
+from teleclaude.core.next_machine.output_formatting import (
+    format_error,
+    format_stash_debt,
+    format_work_entry_drift_bounce,
+)
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
     HolderResolutionReason,
@@ -45,6 +62,7 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work_steps import _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 from teleclaude.project_root import resolve_state_root
+from teleclaude.snippet_validation import snippet_body_digest
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -127,6 +145,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     precondition_error = await _validate_work_preconditions(cwd, resolved_slug)
     if precondition_error is not None:
         return precondition_error
+
+    drift_error = await _check_work_entry_drift(todos_db, resolved_slug, cwd, phase_slug)
+    if drift_error is not None:
+        return drift_error
 
     worktree_cwd, ensure_error = await _ensure_worktree_ready(cwd, resolved_slug, phase_slug)
     if ensure_error is not None:
@@ -226,6 +248,45 @@ async def _advance_prepared_to_build_started(
     writer = StateWriter(state)
     apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
     await writer.commit(todos_db, slug)
+
+
+async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: str, phase_slug: str) -> str | None:
+    """Re-derive prepare drift before any worktree setup can run."""
+    drift_started = perf_counter()
+    state = await todos_db.read_state(resolved_slug)
+    if state is None:
+        _log_next_work_phase(phase_slug, "drift_check", drift_started, "bounce", "missing_state")
+        return format_error(
+            "NO_STATE",
+            f"No state record for {resolved_slug}. Run telec todo prepare {resolved_slug} first.",
+            next_call=f"telec todo prepare {resolved_slug}",
+        )
+    writer = StateWriter(state)
+    drift_result = await derive_lifecycle_drift(
+        resolved_slug,
+        writer.state,
+        repo_root=cwd,
+        todos_db=todos_db,
+        snippet_digest_fn=snippet_body_digest,
+        writer=writer,
+    )
+    await writer.commit(todos_db, resolved_slug)
+    drift = collapse_drift(drift_result)
+    if _has_work_entry_blocking_drift(drift):
+        reason = _work_entry_drift_reason(drift)
+        _log_next_work_phase(phase_slug, "drift_check", drift_started, "bounce", reason)
+        return format_work_entry_drift_bounce(resolved_slug, drift)
+    _log_next_work_phase(phase_slug, "drift_check", drift_started, "proceed", "fresh")
+    return None
+
+
+def _has_work_entry_blocking_drift(drift: dict[str, ArtifactDriftStatus]) -> bool:
+    return any(status in (DRIFT_PENDING, DRIFT_SUBSTANTIVE) for status in drift.values())
+
+
+def _work_entry_drift_reason(drift: dict[str, ArtifactDriftStatus]) -> str:
+    blocking = {artifact: status for artifact, status in drift.items() if status in (DRIFT_PENDING, DRIFT_SUBSTANTIVE)}
+    return ",".join(f"{artifact}:{status}" for artifact, status in sorted(blocking.items()))
 
 
 async def _normalize_next_work_cwd(cwd: str) -> str:

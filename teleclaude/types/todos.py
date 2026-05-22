@@ -26,6 +26,8 @@ LifecyclePhaseValue = Literal[
     "finalize_ready",
 ]
 
+RoadmapStatusLiteral = Literal["active", "icebox", "delivered"]
+
 
 class DorActions(BaseModel):
     """Legacy-bridge: actions field from old DOR-format state files. Read-only for upcycle."""
@@ -85,6 +87,13 @@ class SkipStamp(BaseModel):
     caller_session_id: str = ""
 
 
+class DependencyEntry(BaseModel):
+    """Snapshot of a direct roadmap dependency and its roadmap status."""
+
+    dep_slug: str
+    roadmap_status: RoadmapStatusLiteral
+
+
 class DriftReviewedStamp(BaseModel):
     """Drift review verdict for one prepare artifact."""
 
@@ -92,6 +101,10 @@ class DriftReviewedStamp(BaseModel):
     reason: str = ""
     stamped_at: str = ""
     caller_session_id: str = ""
+    head_sha_at_review: str = ""
+    upstream_digests_at_review: dict[str, str] = Field(default_factory=dict)
+    snippet_digests_at_review: dict[str, str] = Field(default_factory=dict)
+    dep_set_at_review: list[DependencyEntry] = Field(default_factory=list)
 
 
 class ApprovalsState(BaseModel):
@@ -112,6 +125,7 @@ class ReviewVerdictState(BaseModel):
     rounds: int = 0
     baseline_commit: str = ""
     approved_digest: str = ""
+    cleared_by_substantive_drift: bool = False
 
 
 class BuildReviewState(BaseModel):
@@ -150,6 +164,10 @@ class ArtifactEntry(BaseModel):
     upstream_digests: dict[str, str] = Field(default_factory=dict)
     codebase_sha_at_write: str = ""
     referenced_paths: list[str] = Field(default_factory=list)
+    owned_snippet_digests: dict[str, str] = Field(default_factory=dict)
+    referenced_snippet_digests: dict[str, str] = Field(default_factory=dict)
+    dependency_set_at_write: list[DependencyEntry] = Field(default_factory=list)
+    async_provenance_complete: bool = False
 
 
 class ArtifactsState(BaseModel):

@@ -7,19 +7,29 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as app_config
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS,
+    WORKTREE_DIR,
+)
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
-from teleclaude.types.todos import ArtifactEntry, DriftReviewedStamp
+from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
 
 logger = get_logger(__name__)
 
@@ -28,6 +38,37 @@ DRIFT_FRESH: ArtifactDriftStatus = "fresh"
 DRIFT_PENDING: ArtifactDriftStatus = "pending"
 DRIFT_COSMETIC: ArtifactDriftStatus = "cosmetic"
 DRIFT_SUBSTANTIVE: ArtifactDriftStatus = "substantive"
+
+_ARTIFACT_TO_STATE_KEY: dict[str, str] = {
+    STATE_KEY_INPUT: STATE_KEY_INPUT,
+    STATE_KEY_PRD: STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
+    STATE_KEY_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+    ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+}
+
+_STATE_KEY_TO_ARTIFACT: dict[str, str] = {
+    STATE_KEY_INPUT: STATE_KEY_INPUT,
+    STATE_KEY_PRD: STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
+    STATE_KEY_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
+}
+
+_ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
+    STATE_KEY_PRD: (STATE_KEY_INPUT,),
+    STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
+    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE),
+}
+
+
+class DependencyStatusReader(Protocol):
+    """Boundary needed by dependency-graph drift derivation."""
+
+    async def get_deps_with_status(self, slug: str) -> list[DependencyEntry]:
+        """Return immediate dependency slugs with roadmap status."""
+        ...
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +82,25 @@ def get_head_commit(cwd: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse("HEAD").strip()
         return result
-    except (GitCommandError, Exception):
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
+        logger.warning("head_commit_missing", cwd=cwd, reason=str(exc))
+        return ""
+
+
+def get_origin_main_sha(cwd: str) -> str:
+    """Return origin/main SHA as the canonical drift anchor, or empty when unavailable."""
+    try:
+        repo = Repo(cwd)
+        repo.git.fetch("origin", "main")
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
+        logger.warning("origin_main_fetch_failed", cwd=cwd, reason=str(exc))
+        return ""
+
+    try:
+        result: str = repo.git.rev_parse("origin/main").strip()
+        return result
+    except (GitCommandError, OSError) as exc:
+        logger.warning("origin_main_missing", cwd=cwd, reason=str(exc))
         return ""
 
 
@@ -51,7 +110,8 @@ def get_ref_commit(cwd: str, ref: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse(ref).strip()
         return result
-    except (GitCommandError, Exception):
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
+        logger.warning("ref_commit_missing", cwd=cwd, ref=ref, reason=str(exc))
         return ""
 
 
@@ -60,7 +120,8 @@ def get_remote_branch_head(cwd: str, branch: str) -> str:
     try:
         repo = Repo(cwd)
         output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
-    except (GitCommandError, Exception):
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
+        logger.warning("remote_branch_head_missing", cwd=cwd, branch=branch, reason=str(exc))
         return ""
     parts = output.split()
     return parts[0] if parts else ""
@@ -151,7 +212,7 @@ def extract_referenced_paths(content: str, repo_root: str) -> list[str]:
 def derive_artifact_drift(
     artifact_entry: ArtifactEntry,
     drift_reviewed_stamp: DriftReviewedStamp | None,
-    current_head_sha: str,
+    _current_head_sha: str,
     repo_root: str,
 ) -> ArtifactDriftStatus:
     """Derive artifact drift from recorded provenance and current git state.
@@ -164,7 +225,8 @@ def derive_artifact_drift(
     if not artifact_entry.digest and not artifact_entry.produced_at:
         return DRIFT_FRESH
     if not artifact_entry.referenced_paths:
-        return drift_reviewed_stamp.verdict if drift_reviewed_stamp is not None else DRIFT_FRESH
+        return DRIFT_FRESH
+    current_head_sha = get_origin_main_sha(repo_root) if repo_root else ""
     if not artifact_entry.codebase_sha_at_write or not current_head_sha:
         return DRIFT_PENDING
     if artifact_entry.codebase_sha_at_write == current_head_sha:
@@ -185,9 +247,188 @@ def derive_artifact_drift(
     )
     if not has_overlap:
         return DRIFT_FRESH
-    if drift_reviewed_stamp is not None:
+    if (
+        drift_reviewed_stamp is not None
+        and drift_reviewed_stamp.head_sha_at_review
+        and drift_reviewed_stamp.head_sha_at_review == current_head_sha
+    ):
         return drift_reviewed_stamp.verdict
     return DRIFT_PENDING
+
+
+def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> ArtifactDriftStatus:
+    """Derive drift between an artifact and the current digests of its upstream artifacts."""
+    state_key = _state_key_for_artifact(artifact_name)
+    entry = getattr(model.artifacts, state_key)
+    if _artifact_is_absent(entry):
+        return DRIFT_FRESH
+    upstream_keys = _ARTIFACT_UPSTREAMS.get(state_key, ())
+    if not upstream_keys:
+        return DRIFT_FRESH
+    if not entry.upstream_digests:
+        return DRIFT_PENDING
+    current = {key: getattr(model.artifacts, key).digest for key in upstream_keys}
+    if not all(current.values()):
+        return DRIFT_PENDING
+    if entry.upstream_digests == current:
+        return DRIFT_FRESH
+    return _anchored_verdict_or_pending(
+        _drift_stamp_for_artifact(model, state_key),
+        current,
+        "upstream_digests_at_review",
+    )
+
+
+def derive_owned_snippet_drift(
+    model: TodoState,
+    artifact_name: str,
+    *,
+    snippet_digest_fn: Callable[[str], str],
+) -> ArtifactDriftStatus:
+    """Derive drift for snippets owned by the artifact's delivering todo."""
+    state_key = _state_key_for_artifact(artifact_name)
+    entry = getattr(model.artifacts, state_key)
+    if _artifact_is_absent(entry):
+        return DRIFT_FRESH
+    if not entry.async_provenance_complete:
+        return DRIFT_PENDING
+    current = _current_snippet_digests(entry.owned_snippet_digests, snippet_digest_fn=snippet_digest_fn)
+    if current is None:
+        return DRIFT_PENDING
+    if entry.owned_snippet_digests == current:
+        return DRIFT_FRESH
+    return _anchored_verdict_or_pending(
+        _drift_stamp_for_artifact(model, state_key),
+        current,
+        "snippet_digests_at_review",
+    )
+
+
+def derive_upstream_snippet_drift(
+    model: TodoState,
+    artifact_name: str,
+    *,
+    snippet_digest_fn: Callable[[str], str],
+) -> ArtifactDriftStatus:
+    """Derive drift for snippets referenced by the artifact body."""
+    state_key = _state_key_for_artifact(artifact_name)
+    entry = getattr(model.artifacts, state_key)
+    if _artifact_is_absent(entry):
+        return DRIFT_FRESH
+    if not entry.async_provenance_complete:
+        return DRIFT_PENDING
+    current = _current_snippet_digests(entry.referenced_snippet_digests, snippet_digest_fn=snippet_digest_fn)
+    if current is None:
+        return DRIFT_PENDING
+    if entry.referenced_snippet_digests == current:
+        return DRIFT_FRESH
+    return _anchored_verdict_or_pending(
+        _drift_stamp_for_artifact(model, state_key),
+        current,
+        "snippet_digests_at_review",
+    )
+
+
+async def derive_dependency_graph_drift(
+    slug: str,
+    model: TodoState,
+    artifact_name: str,
+    *,
+    todos_db: DependencyStatusReader,
+) -> ArtifactDriftStatus:
+    """Derive drift for the todo's immediate dependency set and direct dep statuses."""
+    state_key = _state_key_for_artifact(artifact_name)
+    entry = getattr(model.artifacts, state_key)
+    if _artifact_is_absent(entry):
+        return DRIFT_FRESH
+    if not entry.async_provenance_complete:
+        return DRIFT_PENDING
+    current = _sorted_dependency_entries(await todos_db.get_deps_with_status(slug))
+    recorded = _sorted_dependency_entries(entry.dependency_set_at_write)
+    if recorded == current:
+        return DRIFT_FRESH
+    return _anchored_verdict_or_pending(
+        _drift_stamp_for_artifact(model, state_key),
+        current,
+        "dep_set_at_review",
+    )
+
+
+def derive_age_drift(
+    model: TodoState,
+    artifact_name: str,
+    *,
+    age_window_seconds: int | None,
+    now_iso: str | None = None,
+) -> ArtifactDriftStatus:
+    """Derive age drift for one artifact; disabled when no age window is configured."""
+    if age_window_seconds is None:
+        return DRIFT_FRESH
+    state_key = _state_key_for_artifact(artifact_name)
+    entry = getattr(model.artifacts, state_key)
+    if _artifact_is_absent(entry):
+        return DRIFT_FRESH
+    if not entry.produced_at:
+        return DRIFT_PENDING
+    try:
+        produced_at = _parse_iso_datetime(entry.produced_at)
+        now = _parse_iso_datetime(now_iso) if now_iso else datetime.now(UTC)
+    except ValueError:
+        return DRIFT_PENDING
+    age_seconds = (now - produced_at).total_seconds()
+    return DRIFT_PENDING if age_seconds > age_window_seconds else DRIFT_FRESH
+
+
+def _state_key_for_artifact(artifact_name: str) -> str:
+    return _ARTIFACT_TO_STATE_KEY.get(artifact_name, artifact_name)
+
+
+def _artifact_name_for_state_key(state_key: str) -> str:
+    return _STATE_KEY_TO_ARTIFACT.get(state_key, state_key)
+
+
+def _artifact_is_absent(entry: ArtifactEntry) -> bool:
+    return not entry.digest and not entry.produced_at
+
+
+def _drift_stamp_for_artifact(model: TodoState, state_key: str) -> DriftReviewedStamp | None:
+    return model.approvals.drift_reviewed.get(
+        _artifact_name_for_state_key(state_key)
+    ) or model.approvals.drift_reviewed.get(state_key)
+
+
+def _current_snippet_digests(
+    recorded: dict[str, str],
+    *,
+    snippet_digest_fn: Callable[[str], str],
+) -> dict[str, str] | None:
+    current: dict[str, str] = {}
+    for snippet_id in sorted(recorded):
+        digest = snippet_digest_fn(snippet_id)
+        if not digest:
+            return None
+        current[snippet_id] = digest
+    return current
+
+
+def _anchored_verdict_or_pending(
+    stamp: DriftReviewedStamp | None,
+    current_evidence: object,
+    anchor_field: str,
+) -> ArtifactDriftStatus:
+    if stamp is None:
+        return DRIFT_PENDING
+    if stamp.verdict == DRIFT_SUBSTANTIVE:
+        return DRIFT_SUBSTANTIVE
+    return stamp.verdict if getattr(stamp, anchor_field) == current_evidence else DRIFT_PENDING
+
+
+def _sorted_dependency_entries(entries: list[DependencyEntry]) -> list[DependencyEntry]:
+    return sorted(entries, key=lambda entry: (entry.dep_slug, entry.roadmap_status))
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 # ---------------------------------------------------------------------------
@@ -494,8 +735,14 @@ __all__ = [
     "_merge_origin_main_into_worktree",
     "build_git_hook_env",
     "compose_agent_guidance",
+    "derive_age_drift",
     "derive_artifact_drift",
+    "derive_dependency_graph_drift",
+    "derive_owned_snippet_drift",
+    "derive_upstream_artifact_drift",
+    "derive_upstream_snippet_drift",
     "extract_referenced_paths",
+    "get_origin_main_sha",
     "get_stash_entries",
     "has_git_stash_entries",
     "has_uncommitted_changes",

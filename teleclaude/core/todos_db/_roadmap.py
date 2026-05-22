@@ -32,6 +32,7 @@ from teleclaude.core.todos_db._models import (
 from teleclaude.core.todos_db._rows import RoadmapRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.docs_reconcile import scan_remove_orphans
+from teleclaude.types.todos import DependencyEntry
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
 
@@ -754,6 +755,32 @@ class TodosDbRoadmapMixin:
                 .order_by(RoadmapDep.depends_on)
             )
             return [str(dep) for dep in result.all()]
+
+    async def get_deps_with_status(self, slug: str) -> list[DependencyEntry]:
+        """Return immediate dependency slugs with each direct dep's current roadmap status."""
+        child_roadmap = ROADMAP_TABLE.alias("child_roadmap")
+        dep_roadmap = ROADMAP_TABLE.alias("dep_roadmap")
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(
+                select(ROADMAP_DEPS_TABLE.c.depends_on, dep_roadmap.c.status)
+                .join(child_roadmap, child_roadmap.c.slug == ROADMAP_DEPS_TABLE.c.slug)
+                .join(dep_roadmap, dep_roadmap.c.slug == ROADMAP_DEPS_TABLE.c.depends_on)
+                .where(ROADMAP_DEPS_TABLE.c.slug == slug)
+                .where(child_roadmap.c.status.in_(("active", "icebox")))
+                .where(dep_roadmap.c.status.in_(("active", "icebox", "delivered")))
+                .order_by(ROADMAP_DEPS_TABLE.c.depends_on, dep_roadmap.c.status)
+            )
+            status_by_slug: dict[str, str] = {}
+            for dep_slug, roadmap_status in result.all():
+                if not isinstance(dep_slug, str) or not isinstance(roadmap_status, str):
+                    continue
+                current = status_by_slug.get(dep_slug)
+                if current is None or (current == "delivered" and roadmap_status != "delivered"):
+                    status_by_slug[dep_slug] = roadmap_status
+            return [
+                DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
+                for dep_slug, roadmap_status in sorted(status_by_slug.items())
+            ]
 
     async def load_deps(self) -> dict[str, list[str]]:
         """Return dependency graph: {slug: [depends_on, ...]}."""

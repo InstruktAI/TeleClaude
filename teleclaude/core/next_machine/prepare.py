@@ -31,8 +31,10 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.next_machine.output_formatting import format_blocker_resolution
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
+from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.project_root import resolve_state_root
+from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
 
 if TYPE_CHECKING:
@@ -95,15 +97,26 @@ async def _hydrate_artifact_presence_for_adoption(
     todos_db: TodosDb,
     slug: str,
     writer: StateWriter,
+    *,
+    repo_root: str,
 ) -> None:
     """Load current artifact presence into state before handoff adoption."""
     for state_key, artifact_name in _ADOPTION_ARTIFACTS:
         entry = getattr(writer.state.artifacts, state_key)
-        if entry.digest:
+        if entry.digest and entry.async_provenance_complete:
             continue
         if not await todos_db.artifact_exists(slug, artifact_name):
             continue
-        entry.digest = await todos_db.artifact_digest(slug, artifact_name)
+        artifact_body = await todos_db.read_artifact(slug, artifact_name)
+        await sync_artifact_provenance(
+            todos_db,
+            writer,
+            slug,
+            artifact_name,
+            repo_root=repo_root,
+            artifact_body=artifact_body,
+            snippet_digest_fn=snippet_body_digest,
+        )
 
 
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
@@ -128,12 +141,13 @@ async def _adopt_prepare_phase(
     repo_root: str,
 ) -> dict[str, StateValue]:
     writer = StateWriter(raw_state)
-    await _hydrate_artifact_presence_for_adoption(todos_db, slug, writer)
+    await _hydrate_artifact_presence_for_adoption(todos_db, slug, writer, repo_root=repo_root)
     derived = reconcile_lifecycle_phase(writer.state, stage=LifecycleStage.PREPARE, worktree_cwd=repo_root)
     if derived is None:
         derived = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root)
-    if writer.state.lifecycle_phase != derived.value:
-        writer.state.lifecycle_phase = derived.value
+    writer.state.lifecycle_phase = derived.value
+    payload = writer.to_dict()
+    if payload != raw_state:
         payload = await writer.commit(todos_db, slug)
         return payload
     return raw_state

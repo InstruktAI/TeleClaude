@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,19 +22,28 @@ from typing import TYPE_CHECKING
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TEST_SPECS,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TEST_SPECS,
     WORKTREE_DIR,
 )
 from teleclaude.core.db import get_session_field_sync
-from teleclaude.core.next_machine.git_ops import has_build_commits_beyond_main
+from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.provenance import (
+    read_dependency_set,
+    read_owned_snippet_digests,
+    read_referenced_snippet_digests,
+    sync_artifact_provenance,
+)
 from teleclaude.core.next_machine.state_io import (
-    _ARTIFACT_UPSTREAMS,
     _BUILD_VERDICT_PHASE,
     _BUILD_VERDICT_VALUES,
     _PREPARE_VERDICT_PHASES,
@@ -49,6 +59,7 @@ from teleclaude.core.next_machine.state_mutation import (
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_state_root
+from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
 
 if TYPE_CHECKING:
@@ -61,6 +72,30 @@ _READINESS_ARTIFACT_KEY: dict[str, str] = {
     ARTIFACT_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
     ARTIFACT_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+}
+_STATE_KEY_TO_ARTIFACT_NAME: dict[str, str] = {
+    STATE_KEY_INPUT: ARTIFACT_INPUT,
+    STATE_KEY_PRD: ARTIFACT_PRD,
+    STATE_KEY_ARCHITECTURE: ARTIFACT_ARCHITECTURE,
+    STATE_KEY_REQUIREMENTS: ARTIFACT_REQUIREMENTS,
+    STATE_KEY_TEST_SPECS: ARTIFACT_TEST_SPECS,
+    STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
+}
+_ARTIFACT_TO_STATE_KEY: dict[str, str] = {
+    **_READINESS_ARTIFACT_KEY,
+    ARTIFACT_INPUT: STATE_KEY_INPUT,
+    ARTIFACT_TEST_SPECS: STATE_KEY_TEST_SPECS,
+    STATE_KEY_INPUT: STATE_KEY_INPUT,
+    STATE_KEY_PRD: STATE_KEY_PRD,
+    STATE_KEY_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
+    STATE_KEY_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TEST_SPECS: STATE_KEY_TEST_SPECS,
+    STATE_KEY_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+}
+_ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
+    STATE_KEY_PRD: (STATE_KEY_INPUT,),
+    STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
+    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE),
 }
 
 _CREATIVE_GATE_STAMPS: dict[str, tuple[str, str]] = {
@@ -104,15 +139,48 @@ async def apply_todo_stamp(
         section, flag = _CREATIVE_GATE_STAMPS[stamp_type]
         _apply_creative_gate_stamp(writer, section=section, flag=flag)
     elif stamp_type == "requirements_ready":
-        await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_REQUIREMENTS, "requirements_ready")
+        await _apply_readiness_stamp(
+            todos_db,
+            writer,
+            slug,
+            ARTIFACT_REQUIREMENTS,
+            "requirements_ready",
+            repo_root=cwd,
+            snippet_digest_fn=snippet_body_digest,
+        )
     elif stamp_type == "plan_ready":
-        await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_IMPLEMENTATION_PLAN, "plan_ready")
+        await _apply_readiness_stamp(
+            todos_db,
+            writer,
+            slug,
+            ARTIFACT_IMPLEMENTATION_PLAN,
+            "plan_ready",
+            repo_root=cwd,
+            snippet_digest_fn=snippet_body_digest,
+        )
     elif stamp_type == "prd_approved":
-        await _apply_approval_stamp(todos_db, writer, slug, ARTIFACT_PRD, "prd_approved", caller_session_id)
+        await _apply_approval_stamp(
+            todos_db,
+            writer,
+            slug,
+            ARTIFACT_PRD,
+            "prd_approved",
+            caller_session_id,
+            repo_root=cwd,
+            snippet_digest_fn=snippet_body_digest,
+        )
     elif stamp_type == "architecture_skipped":
         ApprovalsManager(writer).skip("architecture_skipped", reason=value, caller_session_id=caller_session_id or "")
     elif stamp_type == "drift_reviewed":
-        _apply_drift_reviewed_stamp(writer, value, caller_session_id=caller_session_id or "")
+        await _apply_drift_reviewed_stamp(
+            todos_db,
+            writer,
+            slug,
+            value,
+            repo_root=cwd,
+            snippet_digest_fn=snippet_body_digest,
+            caller_session_id=caller_session_id or "",
+        )
     elif stamp_type == "build_complete":
         await _apply_build_complete_stamp(
             writer,
@@ -142,6 +210,9 @@ async def _apply_readiness_stamp(
     slug: str,
     artifact_name: str,
     signal: str,
+    *,
+    repo_root: str,
+    snippet_digest_fn: Callable[[str], str],
 ) -> None:
     """Validate artifact existence and hydrate provenance.
 
@@ -154,17 +225,16 @@ async def _apply_readiness_stamp(
         raise StateMutationError(f"cannot stamp {signal}: {artifact_name} artifact missing")
     state_key = _READINESS_ARTIFACT_KEY.get(artifact_name)
     if state_key:
-        digest = await todos_db.artifact_digest(slug, artifact_name)
-        if digest:
-            entry = getattr(writer.state.artifacts, state_key)
-            entry.digest = digest
-            if not entry.produced_at:
-                entry.produced_at = datetime.now(UTC).isoformat()
-            upstream_keys = _ARTIFACT_UPSTREAMS.get(state_key, ())
-            if upstream_keys:
-                entry.upstream_digests = {
-                    upstream_key: getattr(writer.state.artifacts, upstream_key).digest for upstream_key in upstream_keys
-                }
+        artifact_body = await todos_db.read_artifact(slug, artifact_name)
+        await sync_artifact_provenance(
+            todos_db,
+            writer,
+            slug,
+            artifact_name,
+            repo_root=repo_root,
+            artifact_body=artifact_body,
+            snippet_digest_fn=snippet_digest_fn,
+        )
 
 
 async def _apply_approval_stamp(
@@ -174,10 +244,21 @@ async def _apply_approval_stamp(
     artifact_name: str,
     field_name: str,
     caller_session_id: str | None,
+    *,
+    repo_root: str,
+    snippet_digest_fn: Callable[[str], str],
 ) -> None:
     if not await todos_db.artifact_exists(slug, artifact_name):
         raise StateMutationError(f"cannot stamp {field_name}: {artifact_name} artifact missing")
-    await _apply_readiness_stamp(todos_db, writer, slug, artifact_name, field_name)
+    await _apply_readiness_stamp(
+        todos_db,
+        writer,
+        slug,
+        artifact_name,
+        field_name,
+        repo_root=repo_root,
+        snippet_digest_fn=snippet_digest_fn,
+    )
     ApprovalsManager(writer).approve(field_name, caller_session_id=caller_session_id or "")
 
 
@@ -193,7 +274,16 @@ def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) 
     creative[section] = section_state
 
 
-def _apply_drift_reviewed_stamp(writer: StateWriter, value: str, *, caller_session_id: str) -> None:
+async def _apply_drift_reviewed_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    value: str,
+    *,
+    repo_root: str,
+    snippet_digest_fn: Callable[[str], str],
+    caller_session_id: str,
+) -> None:
     try:
         payload = json.loads(value)
     except json.JSONDecodeError as exc:
@@ -205,12 +295,56 @@ def _apply_drift_reviewed_stamp(writer: StateWriter, value: str, *, caller_sessi
     reason = payload.get("reason", "")
     if not isinstance(artifact, str) or not isinstance(verdict, str) or not isinstance(reason, str):
         raise StateMutationError("drift_reviewed requires string artifact, verdict, and reason fields")
+    artifact_name = _canonical_artifact_name(artifact)
+    state_key = _ARTIFACT_TO_STATE_KEY.get(artifact_name)
+    if state_key is None:
+        raise StateMutationError(f"unknown drift_reviewed artifact: {artifact!r}")
+    artifact_body = await todos_db.read_artifact(slug, artifact_name)
+    owned_snippets = await read_owned_snippet_digests(
+        todos_db,
+        slug,
+        artifact_name,
+        snippet_digest_fn=snippet_digest_fn,
+    )
+    referenced_snippets = await read_referenced_snippet_digests(
+        todos_db,
+        slug,
+        artifact_name,
+        artifact_body,
+        repo_root=repo_root,
+        snippet_digest_fn=snippet_digest_fn,
+    )
+    dependency_set = await read_dependency_set(todos_db, slug)
+    upstream_digests = _current_upstream_digests(writer, state_key)
+    entry = getattr(writer.state.artifacts, state_key)
+    if not entry.async_provenance_complete:
+        entry.owned_snippet_digests = owned_snippets
+        entry.referenced_snippet_digests = referenced_snippets
+        entry.dependency_set_at_write = dependency_set
+        entry.async_provenance_complete = True
+        bootstrap_reason = "bootstrap: established baseline anchor for sync-written artifact"
+        reason = f"{reason}; {bootstrap_reason}" if reason.strip() else bootstrap_reason
     ApprovalsManager(writer).drift_reviewed(
-        artifact=artifact,
+        artifact=artifact_name,
         verdict=verdict,
         reason=reason,
         caller_session_id=caller_session_id,
+        head_sha_at_review=get_origin_main_sha(repo_root),
+        upstream_digests_at_review=upstream_digests,
+        snippet_digests_at_review={**owned_snippets, **referenced_snippets},
+        dep_set_at_review=dependency_set,
     )
+
+
+def _canonical_artifact_name(artifact: str) -> str:
+    return _STATE_KEY_TO_ARTIFACT_NAME.get(artifact, artifact)
+
+
+def _current_upstream_digests(writer: StateWriter, state_key: str) -> dict[str, str]:
+    return {
+        upstream_key: getattr(writer.state.artifacts, upstream_key).digest
+        for upstream_key in _ARTIFACT_UPSTREAMS.get(state_key, ())
+    }
 
 
 async def _apply_build_complete_stamp(

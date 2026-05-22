@@ -7,11 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
+from teleclaude.core.next_machine.git_ops import DRIFT_COSMETIC, DRIFT_FRESH, DRIFT_PENDING, DRIFT_SUBSTANTIVE
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     adopt_prepare_handoff_phase,
     apply_authoritative_signal,
     coerce_lifecycle_phase,
+    collapse_drift,
     is_in_prepare_lane,
     is_ready_for_work,
     is_settled_ok_phase,
@@ -40,6 +42,18 @@ def test_no_artifacts_stays_draft() -> None:
     state = TodoState.defaults()
 
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.DRAFT
+
+
+def test_collapse_drift_prefers_pending_over_cosmetic() -> None:
+    collapsed = collapse_drift({"prd": {"code": DRIFT_COSMETIC, "upstream-artifact": DRIFT_PENDING}})
+
+    assert collapsed == {"prd": DRIFT_PENDING}
+
+
+def test_collapse_drift_prefers_substantive_over_fresh() -> None:
+    collapsed = collapse_drift({"architecture": {"code": DRIFT_FRESH, "upstream-artifact": DRIFT_SUBSTANTIVE}})
+
+    assert collapsed == {"architecture": DRIFT_SUBSTANTIVE}
 
 
 def test_input_without_prd_enters_prd_drafting() -> None:
@@ -109,6 +123,34 @@ def test_architecture_review_approval_advances_to_plan(monkeypatch: pytest.Monke
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PLAN_DRAFTING
 
 
+def test_architecture_present_with_cleared_review_routes_to_review(monkeypatch: pytest.MonkeyPatch) -> None:
+    state = _base_feature()
+    state.artifacts.prd.digest = "prd"
+    state.artifacts.architecture.digest = "architecture"
+    state.approvals.prd_approved = _approved()
+    state.architecture_review.cleared_by_substantive_drift = False
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
+    )
+
+    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.ARCHITECTURE_REVIEW
+
+
+def test_architecture_review_cleared_by_substantive_drift_routes_to_drafting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _base_feature()
+    state.artifacts.prd.digest = "prd"
+    state.artifacts.architecture.digest = "architecture"
+    state.approvals.prd_approved = _approved()
+    state.architecture_review.cleared_by_substantive_drift = True
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
+    )
+
+    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.ARCHITECTURE_DRAFTING
+
+
 def test_architecture_approved_with_plan_advances_to_plan_review(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _base_feature()
     state.artifacts.prd.digest = "prd"
@@ -138,7 +180,7 @@ def test_plan_review_approval_advances_to_prepared(monkeypatch: pytest.MonkeyPat
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PREPARED
 
 
-def test_substantive_drift_blocks_after_plan_review_approval(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_substantive_drift_does_not_block_sync_phase_derivation(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _base_feature()
     state.artifacts.prd.digest = "prd"
     state.approvals.prd_approved = _approved()
@@ -154,10 +196,10 @@ def test_substantive_drift_blocks_after_plan_review_approval(monkeypatch: pytest
         "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
     )
 
-    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.BLOCKED
+    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PREPARED
 
 
-def test_pending_git_drift_blocks_after_plan_review_approval(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pending_git_drift_does_not_block_sync_phase_derivation(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _base_feature()
     state.artifacts.prd.digest = "prd"
     state.artifacts.prd.codebase_sha_at_write = "base"
@@ -177,7 +219,7 @@ def test_pending_git_drift_blocks_after_plan_review_approval(monkeypatch: pytest
     with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=repo):
         phase = adopt_prepare_handoff_phase(state, repo_root="/repo")
 
-    assert phase is LifecyclePhase.BLOCKED
+    assert phase is LifecyclePhase.PREPARED
 
 
 def test_review_changes_requested_without_remediation_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -230,6 +272,24 @@ def test_refactor_kind_is_plan_only() -> None:
     state.artifacts.implementation_plan.digest = "plan"
     state.plan_review.verdict = "approve"
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PREPARED
+
+
+def test_plan_present_with_cleared_review_routes_to_review() -> None:
+    state = TodoState.defaults()
+    state.kind = "refactor"
+    state.artifacts.implementation_plan.digest = "plan"
+    state.plan_review.cleared_by_substantive_drift = False
+
+    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PLAN_REVIEW
+
+
+def test_plan_review_cleared_by_substantive_drift_routes_to_drafting() -> None:
+    state = TodoState.defaults()
+    state.kind = "refactor"
+    state.artifacts.implementation_plan.digest = "plan"
+    state.plan_review.cleared_by_substantive_drift = True
+
+    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PLAN_DRAFTING
 
 
 def test_migration_kind_plan_review_approval_respects_blockers() -> None:

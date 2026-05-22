@@ -22,11 +22,15 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._roadmap import ReactivateRefused
+from teleclaude.types.todos import DependencyEntry
 from teleclaude.docs_reconcile import scan_remove_orphans
 
 pytestmark = pytest.mark.asyncio
 
 _RenameRoadmapSlug = Callable[[str, str], Awaitable[bool]]
+_ACTIVE_STATUS = "active"
+_ICEBOX_STATUS = "icebox"
+_DELIVERED_STATUS = "delivered"
 
 
 def _rename_roadmap_slug(todos_db: TodosDb) -> _RenameRoadmapSlug:
@@ -285,6 +289,30 @@ async def test_set_deps_replaces_previous(todos_db: TodosDb) -> None:
     await todos_db.set_deps("child", after=["new-dep"])
     deps = await todos_db.load_deps()
     assert deps["child"] == ["new-dep"]
+
+
+async def test_get_deps_with_status_returns_immediate_deps_including_delivered(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("child")
+    await todos_db.add_to_roadmap("active-parent")
+    await todos_db.add_to_roadmap("icebox-parent")
+    await todos_db.add_to_roadmap("delivered-parent")
+    await todos_db.freeze("icebox-parent")
+    await todos_db.deliver("delivered-parent")
+    await todos_db.set_deps("child", after=["active-parent", "icebox-parent", "delivered-parent"])
+
+    deps = await todos_db.get_deps_with_status("child")
+
+    assert deps == [
+        DependencyEntry(dep_slug="active-parent", roadmap_status=_ACTIVE_STATUS),
+        DependencyEntry(dep_slug="delivered-parent", roadmap_status=_DELIVERED_STATUS),
+        DependencyEntry(dep_slug="icebox-parent", roadmap_status=_ICEBOX_STATUS),
+    ]
+
+
+async def test_get_deps_with_status_returns_empty_when_slug_has_no_deps(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("child")
+
+    assert await todos_db.get_deps_with_status("child") == []
 
 
 async def test_set_deps_refuses_removed_slug(todos_db: TodosDb, patched_cleanup: MagicMock) -> None:

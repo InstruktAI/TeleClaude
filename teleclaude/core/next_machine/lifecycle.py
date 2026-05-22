@@ -8,7 +8,7 @@ stamps, and drift-review stamps.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
 from teleclaude.constants import (
@@ -24,10 +24,18 @@ from teleclaude.constants import (
 from teleclaude.core.db import SessionIdentityError, get_session_field_sync, resolve_session_principal
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.git_ops import (
+    DRIFT_COSMETIC,
+    DRIFT_FRESH,
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
     ArtifactDriftStatus,
+    DependencyStatusReader,
+    derive_age_drift,
     derive_artifact_drift,
+    derive_dependency_graph_drift,
+    derive_owned_snippet_drift,
+    derive_upstream_artifact_drift,
+    derive_upstream_snippet_drift,
     get_head_commit,
 )
 from teleclaude.paths import MAIN_DB_PATH
@@ -50,7 +58,8 @@ __all__ = [
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
     "coerce_lifecycle_phase",
-    "derive_prepare_drift",
+    "collapse_drift",
+    "derive_lifecycle_drift",
     "infer_lifecycle_stage",
     "invalidate_downstream_on_refine",
     "is_in_prepare_lane",
@@ -69,14 +78,33 @@ __all__ = [
 _ArtifactPresence = Mapping[str, bool]
 _FEATURE_KINDS = {"", "todo", "feature", "draft"}
 _PLAN_ONLY_KINDS = {"refactor", "migration"}
-_DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str], ...] = (
-    (STATE_KEY_INPUT, STATE_KEY_INPUT),
-    (STATE_KEY_PRD, STATE_KEY_PRD),
-    (STATE_KEY_REQUIREMENTS, STATE_KEY_REQUIREMENTS),
-    (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE),
-    (ARTIFACT_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN),
+_DRIFT_CLASS_CODE = "code"
+_DRIFT_CLASS_UPSTREAM_ARTIFACT = "upstream-artifact"
+_DRIFT_CLASS_OWNED_SNIPPET = "owned-snippet"
+_DRIFT_CLASS_UPSTREAM_SNIPPET = "upstream-snippet"
+_DRIFT_CLASS_DEPENDENCY_GRAPH = "dependency-graph"
+_DRIFT_CLASS_AGE = "age"
+_ALL_DRIFT_CLASSES = (
+    _DRIFT_CLASS_CODE,
+    _DRIFT_CLASS_UPSTREAM_ARTIFACT,
+    _DRIFT_CLASS_OWNED_SNIPPET,
+    _DRIFT_CLASS_UPSTREAM_SNIPPET,
+    _DRIFT_CLASS_DEPENDENCY_GRAPH,
+    _DRIFT_CLASS_AGE,
 )
-_BLOCKING_DRIFT_STATUSES: frozenset[ArtifactDriftStatus] = frozenset({DRIFT_PENDING, DRIFT_SUBSTANTIVE})
+_DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (STATE_KEY_INPUT, STATE_KEY_INPUT, _ALL_DRIFT_CLASSES),
+    (STATE_KEY_PRD, STATE_KEY_PRD, _ALL_DRIFT_CLASSES),
+    (STATE_KEY_REQUIREMENTS, STATE_KEY_REQUIREMENTS, _ALL_DRIFT_CLASSES),
+    (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE, _ALL_DRIFT_CLASSES),
+    (ARTIFACT_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN, _ALL_DRIFT_CLASSES),
+)
+_DRIFT_PRIORITY: tuple[ArtifactDriftStatus, ...] = (
+    DRIFT_SUBSTANTIVE,
+    DRIFT_PENDING,
+    DRIFT_COSMETIC,
+    DRIFT_FRESH,
+)
 
 
 def coerce_lifecycle_phase(raw: object) -> LifecyclePhase | None:
@@ -291,40 +319,75 @@ def _clear_work_entry_state(model: TodoState) -> None:
     model.build_gate_claim_at = ""
 
 
-def derive_prepare_drift(model: TodoState, *, repo_root: str | None = None) -> dict[str, ArtifactDriftStatus]:
-    """Return drift status for every present prepare artifact."""
-    current_head_sha = get_head_commit(repo_root) if repo_root else ""
-    drift: dict[str, ArtifactDriftStatus] = {}
-    for artifact_name, state_key in _DRIFT_TRACKED_ARTIFACTS:
+async def derive_lifecycle_drift(
+    slug: str,
+    model: TodoState,
+    *,
+    repo_root: str | None = None,
+    todos_db: DependencyStatusReader,
+    snippet_digest_fn: Callable[[str], str],
+    writer: object,
+) -> dict[str, dict[str, ArtifactDriftStatus]]:
+    """Return per-artifact, per-class drift for every present tracked artifact."""
+    _ = writer
+    drift: dict[str, dict[str, ArtifactDriftStatus]] = {}
+    for artifact_name, state_key, applicable_classes in _DRIFT_TRACKED_ARTIFACTS:
         entry = getattr(model.artifacts, state_key)
         if not entry.digest and not entry.produced_at:
             continue
-        drift[artifact_name] = derive_artifact_drift(
-            entry,
-            model.approvals.drift_reviewed.get(artifact_name),
-            current_head_sha,
-            repo_root or "",
-        )
+        class_drift: dict[str, ArtifactDriftStatus] = {}
+        for class_name in applicable_classes:
+            if class_name == _DRIFT_CLASS_CODE:
+                class_drift[class_name] = derive_artifact_drift(
+                    entry,
+                    model.approvals.drift_reviewed.get(artifact_name),
+                    "",
+                    repo_root or "",
+                )
+            elif class_name == _DRIFT_CLASS_UPSTREAM_ARTIFACT:
+                class_drift[class_name] = derive_upstream_artifact_drift(model, artifact_name)
+            elif class_name == _DRIFT_CLASS_OWNED_SNIPPET:
+                class_drift[class_name] = derive_owned_snippet_drift(
+                    model,
+                    artifact_name,
+                    snippet_digest_fn=snippet_digest_fn,
+                )
+            elif class_name == _DRIFT_CLASS_UPSTREAM_SNIPPET:
+                class_drift[class_name] = derive_upstream_snippet_drift(
+                    model,
+                    artifact_name,
+                    snippet_digest_fn=snippet_digest_fn,
+                )
+            elif class_name == _DRIFT_CLASS_DEPENDENCY_GRAPH:
+                class_drift[class_name] = await derive_dependency_graph_drift(
+                    slug,
+                    model,
+                    artifact_name,
+                    todos_db=todos_db,
+                )
+            elif class_name == _DRIFT_CLASS_AGE:
+                class_drift[class_name] = derive_age_drift(model, artifact_name, age_window_seconds=None)
+        drift[artifact_name] = class_drift
     return drift
 
 
-def blocking_prepare_drift(model: TodoState, *, repo_root: str | None = None) -> dict[str, ArtifactDriftStatus]:
-    """Return artifact drift states that prevent the item from becoming PREPARED."""
-    return {
-        artifact: status
-        for artifact, status in derive_prepare_drift(model, repo_root=repo_root).items()
-        if status in _BLOCKING_DRIFT_STATUSES
-    }
+def collapse_drift(
+    result: dict[str, dict[str, ArtifactDriftStatus]],
+) -> dict[str, ArtifactDriftStatus]:
+    """Collapse per-class drift to per-artifact status by priority."""
+    collapsed: dict[str, ArtifactDriftStatus] = {}
+    for artifact_name, class_statuses in result.items():
+        for status in _DRIFT_PRIORITY:
+            if status in class_statuses.values():
+                collapsed[artifact_name] = status
+                break
+    return collapsed
 
 
 def prepare_blockers(model: TodoState, *, repo_root: str | None = None) -> list[str]:
     """Return deterministic prepare blockers for advisory payloads and phase derivation."""
-    blockers = _non_drift_prepare_blockers(model)
-    blockers.extend(
-        f"{artifact} drift is {status}; run drift analysis before prepared"
-        for artifact, status in blocking_prepare_drift(model, repo_root=repo_root).items()
-    )
-    return blockers
+    _ = repo_root
+    return _non_drift_prepare_blockers(model)
 
 
 def _non_drift_prepare_blockers(model: TodoState) -> list[str]:
@@ -381,6 +444,8 @@ def _plan_only_phase(
     if not _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence):
         return LifecyclePhase.PLAN_DRAFTING
     if not _review_approved(model.plan_review):
+        if model.plan_review.cleared_by_substantive_drift:
+            return LifecyclePhase.PLAN_DRAFTING
         return LifecyclePhase.PLAN_REVIEW
     if prepare_blockers(model, repo_root=repo_root):
         return LifecyclePhase.BLOCKED
@@ -418,6 +483,8 @@ def _feature_phase(
         if not _artifact_present(model, STATE_KEY_ARCHITECTURE, artifact_presence=artifact_presence):
             return LifecyclePhase.ARCHITECTURE_DRAFTING
         if not _review_approved(model.architecture_review):
+            if model.architecture_review.cleared_by_substantive_drift:
+                return LifecyclePhase.ARCHITECTURE_DRAFTING
             return LifecyclePhase.ARCHITECTURE_REVIEW
 
     return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)

@@ -1,4 +1,19 @@
 # serializer version: 1
+# name: test_next_work_bounces_pending_drift_before_worktree_setup
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  WORK_ENTRY_DRIFT: my-slug has unresolved prepare-artifact drift. Worktree setup was not started.
+  
+  DRIFT STATUS:
+  - prd: pending
+  
+  NEXT ACTION:
+  1. Call `telec todo prepare my-slug`.
+  2. Follow the prepare state machine's drift-analysis or re-derivation instructions.
+  3. When prepare reaches PREPARED again, call `telec todo work my-slug`.
+  '''
+# ---
 # name: test_resolve_explicit_holder_emits_child_work_commands
   '''
   HOLDER_WORK: Holder 'holder' has runnable child work.
@@ -9,4 +24,7 @@
   
   Do not dispatch build/review/fix/finalize for holder 'holder' itself.
   '''
+# ---
+# name: test_resolve_explicit_work_slug_does_not_readd_delivered_slug
+  "COMPLETE: Item 'done-slug' is already done."
 # ---

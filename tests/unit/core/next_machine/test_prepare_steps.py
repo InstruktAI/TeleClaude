@@ -7,18 +7,34 @@ the wording at the boundary and rely on the snapshot diff to catch regressions.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
+from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine._types import PreparePhase
+from teleclaude.core.next_machine.output_formatting import (
+    PENDING_DRIFT_CONTEXT_PREFIX,
+    format_pending_classes_for_dispatch,
+)
 from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
 from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
 _STEPS = "teleclaude.core.next_machine.prepare_steps"
+_DISPATCHED = "DISPATCHED"
+
+
+def _parse_pending_context(context: str) -> dict[str, list[str]]:
+    prefix, _separator, body = context.partition(": ")
+    assert prefix == PENDING_DRIFT_CONTEXT_PREFIX
+    parsed: dict[str, list[str]] = {}
+    for part in body.split("; "):
+        artifact, _equals, raw_classes = part.partition("=")
+        parsed[artifact] = raw_classes.removeprefix("[").removesuffix("]").split(",")
+    return parsed
 
 
 async def _dispatch(phase: PreparePhase, *, live_worker_id: str | None = None) -> tuple[bool, str]:
@@ -97,7 +113,7 @@ async def test_prd_human_approval_emits_stamp_instruction(snapshot: SnapshotAsse
 
 
 @pytest.mark.asyncio
-async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: SnapshotAssertion) -> None:
+async def test_blocked_pending_drift_dispatches_drift_analyzer() -> None:
     db = AsyncMock()
     todos_db = AsyncMock()
     state = {
@@ -111,10 +127,11 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: Snapsho
             }
         },
     }
+    drift_result = {"prd": {"code": "pending"}}
+    dispatch_worker = AsyncMock(return_value=(False, _DISPATCHED))
     with (
-        patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
-        patch(f"{_STEPS}.find_live_prepare_worker_for_slug", new=AsyncMock(return_value=None)),
-        patch(f"{_STEPS}.derive_prepare_drift", return_value={"prd": "pending"}),
+        patch(f"{_STEPS}.derive_lifecycle_drift", new=AsyncMock(return_value=drift_result)),
+        patch(f"{_STEPS}._dispatch_worker", new=dispatch_worker),
         patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
     ):
         keep_going, instruction = await _prepare_dispatch(
@@ -126,11 +143,55 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: Snapsho
             state=state,
         )
     assert keep_going is False
-    assert instruction == snapshot
+    assert instruction == _DISPATCHED
+    assert dispatch_worker.call_args.kwargs["command"] is SlashCommand.NEXT_DRIFT_ANALYZE
+    assert dispatch_worker.call_args.kwargs["additional_context"] == format_pending_classes_for_dispatch(drift_result)
 
 
 @pytest.mark.asyncio
-async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAssertion) -> None:
+async def test_blocked_pending_drift_fresh_spawn_passes_pending_classes_as_context() -> None:
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    state = {
+        "schema_version": LATEST_TODO_STATE_SCHEMA_VERSION,
+        "lifecycle_phase": "blocked",
+        "artifacts": {
+            "prd": {
+                "digest": "prd",
+                "codebase_sha_at_write": "base",
+                "referenced_paths": ["src/app.py"],
+            }
+        },
+    }
+    drift_result = {
+        "prd": {"code": "pending", "age": "fresh"},
+        "implementation-plan": {"dependency-graph": "pending", "upstream-snippet": "cosmetic"},
+    }
+    format_tool_call = Mock(return_value=_DISPATCHED)
+    with (
+        patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_STEPS}.find_live_prepare_worker_for_slug", new=AsyncMock(return_value=None)),
+        patch(f"{_STEPS}.derive_lifecycle_drift", new=AsyncMock(return_value=drift_result)),
+        patch(f"{_STEPS}.format_tool_call", new=format_tool_call),
+        patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
+    ):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.BLOCKED,
+            state=state,
+        )
+
+    assert keep_going is False
+    assert instruction == _DISPATCHED
+    request = format_tool_call.call_args.args[0]
+    assert request["additional_context"] == format_pending_classes_for_dispatch(drift_result)
+
+
+@pytest.mark.asyncio
+async def test_blocked_pending_drift_reuses_live_analyzer() -> None:
     """A live drift analyzer for the slug is reused instead of spawned fresh."""
     db = AsyncMock()
     todos_db = AsyncMock()
@@ -145,10 +206,11 @@ async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAsse
             }
         },
     }
+    drift_result = {"prd": {"code": "pending", "age": "fresh"}}
     with (
         patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
         patch(f"{_STEPS}.find_live_prepare_worker_for_slug", new=AsyncMock(return_value="analyzer-1")),
-        patch(f"{_STEPS}.derive_prepare_drift", return_value={"prd": "pending"}),
+        patch(f"{_STEPS}.derive_lifecycle_drift", new=AsyncMock(return_value=drift_result)),
         patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
     ):
         keep_going, instruction = await _prepare_dispatch(
@@ -160,7 +222,10 @@ async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAsse
             state=state,
         )
     assert keep_going is False
-    assert instruction == snapshot
+    expected_context = format_pending_classes_for_dispatch(drift_result)
+    _prefix, _separator, payload = instruction.partition('"')
+    message, _separator, _suffix = payload.partition('"')
+    assert message[: len(expected_context)] == expected_context
 
 
 @pytest.mark.asyncio
@@ -170,7 +235,7 @@ async def test_blocked_no_drift_emits_blocker_resolution(snapshot: SnapshotAsser
     state = {"schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": "blocked", "artifacts": {}}
     with (
         patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
-        patch(f"{_STEPS}.derive_prepare_drift", return_value={}),
+        patch(f"{_STEPS}.derive_lifecycle_drift", new=AsyncMock(return_value={})),
         patch(
             f"{_STEPS}.prepare_blockers",
             return_value=["architecture artifact is present but required upstream prd is missing"],
@@ -202,6 +267,90 @@ async def test_prepared_delegates_to_terminal_formatter() -> None:
         keep_going, instruction = await _dispatch(PreparePhase.PREPARED)
     assert keep_going is False
     assert instruction == _PREPARED_TERMINAL_INSTRUCTION
+
+
+@pytest.mark.asyncio
+async def test_prepared_pending_drift_dispatches_analyzer_before_terminal_formatter() -> None:
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    state = {
+        "schema_version": LATEST_TODO_STATE_SCHEMA_VERSION,
+        "lifecycle_phase": PreparePhase.PREPARED.value,
+        "artifacts": {"prd": {"digest": "prd"}},
+    }
+    dispatch_worker = AsyncMock(return_value=(False, _DISPATCHED))
+    drift_result = {"prd": {"code": "pending", "age": "fresh"}}
+    with (
+        patch(f"{_STEPS}.derive_lifecycle_drift", new=AsyncMock(return_value=drift_result)),
+        patch(f"{_STEPS}._dispatch_worker", new=dispatch_worker),
+        patch(f"{_STEPS}._prepare_step_prepared", new=AsyncMock(return_value=(False, _PREPARED_TERMINAL_INSTRUCTION))),
+    ):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.PREPARED,
+            state=state,
+        )
+
+    assert keep_going is False
+    assert instruction == _DISPATCHED
+    assert dispatch_worker.call_args.kwargs["command"] is SlashCommand.NEXT_DRIFT_ANALYZE
+    assert dispatch_worker.call_args.kwargs["additional_context"] == format_pending_classes_for_dispatch(drift_result)
+
+
+def test_pending_classes_formatter_renders_pending_pairs_only() -> None:
+    drift_result = {
+        "implementation-plan": {"age": "pending", "code": "fresh"},
+        "architecture": {
+            "upstream-snippet": "pending",
+            "code": "pending",
+            "dependency-graph": "substantive",
+        },
+        "prd": {"owned-snippet": "cosmetic"},
+    }
+    context = format_pending_classes_for_dispatch(drift_result)
+    assert _parse_pending_context(context) == {
+        "architecture": ["code", "upstream-snippet"],
+        "implementation-plan": ["age"],
+    }
+
+
+def test_pending_classes_formatter_returns_empty_without_pending_pairs() -> None:
+    drift_result = {
+        "architecture": {"code": "fresh", "dependency-graph": "substantive"},
+        "prd": {"owned-snippet": "cosmetic"},
+    }
+    assert len(format_pending_classes_for_dispatch(drift_result)) == 0
+
+
+@pytest.mark.asyncio
+async def test_prepared_fresh_drift_delegates_to_terminal_formatter() -> None:
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    state = {
+        "schema_version": LATEST_TODO_STATE_SCHEMA_VERSION,
+        "lifecycle_phase": PreparePhase.PREPARED.value,
+        "artifacts": {"prd": {"digest": "prd"}},
+    }
+    prepared = AsyncMock(return_value=(False, _PREPARED_TERMINAL_INSTRUCTION))
+    with (
+        patch(f"{_STEPS}.derive_lifecycle_drift", new=AsyncMock(return_value={"prd": {"code": "fresh"}})),
+        patch(f"{_STEPS}._prepare_step_prepared", new=prepared),
+    ):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.PREPARED,
+            state=state,
+        )
+
+    assert keep_going is False
+    assert instruction == _PREPARED_TERMINAL_INSTRUCTION
+    prepared.assert_awaited_once()
 
 
 @pytest.mark.asyncio

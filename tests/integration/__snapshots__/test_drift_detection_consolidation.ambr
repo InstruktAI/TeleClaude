@@ -1,0 +1,41 @@
+# serializer version: 1
+# name: test_cosmetic_drift_bounces_then_allows_work_after_review
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  WORK_ENTRY_DRIFT: test-drift has unresolved prepare-artifact drift. Worktree setup was not started.
+  
+  DRIFT STATUS:
+  - prd: pending
+  
+  NEXT ACTION:
+  1. Call `telec todo prepare test-drift`.
+  2. Follow the prepare state machine's drift-analysis or re-derivation instructions.
+  3. When prepare reaches PREPARED again, call `telec todo work test-drift`.
+  '''
+# ---
+# name: test_substantive_plan_drift_routes_to_plan_drafting_without_prd_gate
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: test-drift
+  
+  NEXT ACTION:
+  Put on the Planner hat. Read the procedure for this turn:
+  
+  Read TMP/.teleclaude/commands/next-prepare-plan.md and follow it exactly as the active instruction set for this session.
+  
+  Treat the following as provided inputs to that instruction set:
+  test-drift
+  
+  The wider prepare lifecycle is still yours. This is one focused phase. The
+  procedure is loaded inline; no new session is dispatched.
+  
+  EXPECTED DELIVERABLE: an `implementation-plan` artifact or split decision
+  
+  WHEN THE PHASE'S WORK IS COMPLETE:
+  Call `telec todo prepare test-drift` to advance the state machine. The state
+  machine will route the next action — dispatch a reviewer, pause for human
+  approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED.
+  '''
+# ---

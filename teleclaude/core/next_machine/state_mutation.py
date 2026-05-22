@@ -16,12 +16,23 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import ValidationError
 
+from teleclaude.constants import (
+    ARTIFACT_ARCHITECTURE,
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_PRD,
+    ARTIFACT_REQUIREMENTS,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS,
+)
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.types.todos import (
     ApprovalsState,
     ApprovalStamp,
     AuditReviewEntry,
     AuditState,
+    DependencyEntry,
     DriftReviewedStamp,
     ReviewVerdictState,
     SkipStamp,
@@ -40,6 +51,17 @@ __all__ = [
     "StateMutationError",
     "StateWriter",
 ]
+
+_DRIFT_REVIEW_CASCADE: dict[str, tuple[str, ...]] = {
+    ARTIFACT_PRD: ("architecture_review", "plan_review"),
+    STATE_KEY_PRD: ("architecture_review", "plan_review"),
+    ARTIFACT_REQUIREMENTS: ("requirements_review",),
+    STATE_KEY_REQUIREMENTS: ("requirements_review",),
+    ARTIFACT_ARCHITECTURE: ("architecture_review", "plan_review"),
+    STATE_KEY_ARCHITECTURE: ("architecture_review", "plan_review"),
+    ARTIFACT_IMPLEMENTATION_PLAN: ("plan_review",),
+    STATE_KEY_IMPLEMENTATION_PLAN: ("plan_review",),
+}
 
 
 class StateMutationError(ValueError):
@@ -191,6 +213,10 @@ class ApprovalsManager:
         verdict: str,
         reason: str,
         caller_session_id: str,
+        head_sha_at_review: str = "",
+        upstream_digests_at_review: dict[str, str] | None = None,
+        snippet_digests_at_review: dict[str, str] | None = None,
+        dep_set_at_review: list[DependencyEntry] | None = None,
     ) -> None:
         """Record drift review for one artifact."""
         if verdict not in ("substantive", "cosmetic"):
@@ -203,7 +229,24 @@ class ApprovalsManager:
             reason=reason,
             stamped_at=datetime.now(UTC).isoformat(),
             caller_session_id=caller_session_id,
+            head_sha_at_review=head_sha_at_review,
+            upstream_digests_at_review=upstream_digests_at_review or {},
+            snippet_digests_at_review=snippet_digests_at_review or {},
+            dep_set_at_review=dep_set_at_review or [],
         )
+        if typed_verdict == "substantive":
+            self._cascade_substantive_drift(artifact)
+
+    def _cascade_substantive_drift(self, artifact: str) -> None:
+        for review_field in _DRIFT_REVIEW_CASCADE.get(artifact, ()):
+            review = self._writer.review(review_field)
+            review.verdict = ""
+            review.reviewed_at = ""
+            review.approved_digest = ""
+            review.cleared_by_substantive_drift = True
+            audit = self._writer.audit_entry(review_field)
+            audit.verdict = ""
+            audit.completed_at = ""
 
     @staticmethod
     def _require_reason(field_name: str, reason: str) -> None:

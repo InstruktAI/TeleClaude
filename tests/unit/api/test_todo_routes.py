@@ -396,7 +396,7 @@ class TestTodoRoutes:
             assert snapshot["lifecycle_phase"] == _PLAN_DRAFTING
             requirements = _requirements_artifact(snapshot)
             assert requirements.get("digest", _EMPTY)
-            assert requirements.get("produced_at", _EMPTY) == _EMPTY
+            assert requirements.get("produced_at", _EMPTY)
         finally:
             await database.close()
 
@@ -441,7 +441,11 @@ class TestTodoRoutes:
         try:
             await database.add_to_roadmap(_MY_SLUG)
             await database.write_state(_MY_SLUG, {"schema_version": 3, "lifecycle_phase": _PLAN_DRAFTING})
-            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                patch("teleclaude.core.next_machine.provenance.get_origin_main_sha", return_value=_HEAD_SHA),
+                patch("teleclaude.core.next_machine.provenance.extract_referenced_paths", return_value=[_SRC_APP]),
+            ):
                 response = await todo_routes.write_artifact(
                     slug=_MY_SLUG,
                     name=ARTIFACT_PRD,
@@ -803,7 +807,7 @@ class TestTodoRoutes:
         mock_db = self._make_dump_mock_db()
         with (
             patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
-            patch("teleclaude.api.todo_routes._sync_artifact_digest_state", new_callable=AsyncMock),
+            patch("teleclaude.api.todo_routes._sync_artifact_provenance_state", new_callable=AsyncMock),
             patch("teleclaude.api.todo_routes.emit_event", new_callable=AsyncMock) as mock_emit,
         ):
             await todo_routes.todo_dump(TodoDumpRequest(slug=_MY_SLUG, content="some content", cwd=_REPO_CWD))
@@ -829,7 +833,7 @@ class TestTodoRoutes:
         mock_db = self._make_dump_mock_db()
         with (
             patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
-            patch("teleclaude.api.todo_routes._sync_artifact_digest_state", new_callable=AsyncMock),
+            patch("teleclaude.api.todo_routes._sync_artifact_provenance_state", new_callable=AsyncMock),
             patch("teleclaude.api.todo_routes.emit_event", new_callable=AsyncMock) as mock_emit,
         ):
             await todo_routes.todo_dump(

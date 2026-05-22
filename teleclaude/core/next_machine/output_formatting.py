@@ -5,23 +5,32 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.paths import COMMANDS_DIR
 
+if TYPE_CHECKING:
+    from teleclaude.core.next_machine.git_ops import ArtifactDriftStatus
+
 __all__ = [
     "ORCHESTRATOR_IDLE_INVARIANT",
+    "PENDING_DRIFT_CONTEXT_PREFIX",
     "REVIEW_DIFF_NOTE",
     "ToolCallRequest",
     "format_blocker_resolution",
     "format_command_loader_message",
     "format_error",
     "format_finalize_handoff_complete",
+    "format_pending_classes_for_dispatch",
     "format_prepared",
     "format_procedure_load",
     "format_stash_debt",
     "format_tool_call",
     "format_uncommitted_changes",
+    "format_work_entry_drift_bounce",
     "parse_human_in_loop",
 ]
 
@@ -31,6 +40,16 @@ ORCHESTRATOR_IDLE_INVARIANT = (
     "while a worker referenced in this script is still active. "
     "Always wait for the named worker(s) to emit agent_stop first."
 )
+PENDING_DRIFT_CONTEXT_PREFIX = "PENDING_DRIFT"
+_PENDING_DRIFT_STATUS = "pending"
+_DRIFT_CLASS_ORDER = {
+    "code": 0,
+    "upstream-artifact": 1,
+    "owned-snippet": 2,
+    "upstream-snippet": 3,
+    "dependency-graph": 4,
+    "age": 5,
+}
 
 
 class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
@@ -47,6 +66,32 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
         additional_context: extra context for the worker (optional)
         note: trailing note appended to the output (optional)
     """
+
+
+def _drift_class_sort_key(name: str) -> tuple[int, str]:
+    """Return stable taxonomy order for known drift classes."""
+    return (_DRIFT_CLASS_ORDER.get(name, len(_DRIFT_CLASS_ORDER)), name)
+
+
+def format_pending_classes_for_dispatch(
+    drift_result: dict[str, dict[str, ArtifactDriftStatus]],
+) -> str:
+    """Render pending drift classes for the drift analyzer dispatch context."""
+    pending_parts: list[str] = []
+    for artifact_name in sorted(drift_result):
+        pending_classes = sorted(
+            (
+                class_name
+                for class_name, status in drift_result[artifact_name].items()
+                if status == _PENDING_DRIFT_STATUS
+            ),
+            key=_drift_class_sort_key,
+        )
+        if pending_classes:
+            pending_parts.append(f"{artifact_name}=[{','.join(pending_classes)}]")
+    if not pending_parts:
+        return ""
+    return f"{PENDING_DRIFT_CONTEXT_PREFIX}: {'; '.join(pending_parts)}"
 
 
 def format_blocker_resolution(
@@ -291,6 +336,24 @@ def format_uncommitted_changes(slug: str) -> str:
     return f"""UNCOMMITTED CHANGES in {WORKTREE_DIR}/{slug}
 
 NEXT: Resolve these changes according to the commit policy, then call telec todo work {slug} to continue."""
+
+
+def format_work_entry_drift_bounce(slug: str, drift_status_per_artifact: Mapping[str, str]) -> str:
+    """Format the work-entry bounce back to prepare when drift is unresolved."""
+    lines = ["DRIFT STATUS:"]
+    for artifact, status in sorted(drift_status_per_artifact.items()):
+        lines.append(f"- {artifact}: {status}")
+    drift_block = "\n".join(lines)
+    return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
+
+WORK_ENTRY_DRIFT: {slug} has unresolved prepare-artifact drift. Worktree setup was not started.
+
+{drift_block}
+
+NEXT ACTION:
+1. Call `telec todo prepare {slug}`.
+2. Follow the prepare state machine's drift-analysis or re-derivation instructions.
+3. When prepare reaches PREPARED again, call `telec todo work {slug}`."""
 
 
 def format_finalize_handoff_complete(slug: str, next_call: str, child_session_ids: list[str] | None = None) -> str:

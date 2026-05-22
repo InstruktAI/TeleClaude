@@ -46,8 +46,8 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
-from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import apply_prepared_state, reconcile_phase_state
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.operations import get_operations_service
@@ -57,9 +57,9 @@ from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
+from teleclaude.snippet_validation import snippet_body_digest
 
 if TYPE_CHECKING:
-    from teleclaude.core.next_machine.state_mutation import StateWriter
     from teleclaude.core.todos_db import TodosDb
     from teleclaude.core.todos_db._show import ShowPayload
 
@@ -68,6 +68,14 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+_DRIFT_TRACKED_ARTIFACT_NAMES = {
+    ARTIFACT_INPUT,
+    ARTIFACT_PRD,
+    ARTIFACT_REQUIREMENTS,
+    ARTIFACT_ARCHITECTURE,
+    ARTIFACT_TEST_SPECS,
+    ARTIFACT_IMPLEMENTATION_PLAN,
+}
 
 
 # ── Response models ─────────────────────────────────────────────────────────
@@ -306,60 +314,31 @@ async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
     return await get_todos_db(project_root)
 
 
-def _artifact_name_to_state_key(artifact_name: str) -> str | None:
-    """Return the typed todo-state artifact key for a persisted artifact name."""
-    return {
-        ARTIFACT_INPUT: "input",
-        ARTIFACT_PRD: "prd",
-        ARTIFACT_REQUIREMENTS: "requirements",
-        ARTIFACT_ARCHITECTURE: "architecture",
-        ARTIFACT_TEST_SPECS: "test_specs",
-        ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
-    }.get(artifact_name)
-
-
-async def _sync_artifact_digest_state(
-    todos_db: TodosDb,
-    slug: str,
-    artifact_name: str,
-    *,
-    codebase_sha_at_write: str = "",
-    referenced_paths: list[str] | None = None,
+async def _sync_artifact_provenance_state(
+    todos_db: TodosDb, slug: str, artifact_name: str, *, repo_root: str, artifact_body: str
 ) -> None:
-    """Refresh artifact provenance stored in todo state."""
-    key = _artifact_name_to_state_key(artifact_name)
-    if key is None:
-        return
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         return
     writer = StateWriter(raw_state)
-    entry = getattr(writer.state.artifacts, key, None)
-    if entry is None:
-        return
-    entry.digest = await todos_db.artifact_digest(slug, artifact_name)
-    entry.codebase_sha_at_write = codebase_sha_at_write
-    entry.referenced_paths = referenced_paths or []
+    await sync_artifact_provenance(
+        todos_db,
+        writer,
+        slug,
+        artifact_name,
+        repo_root=repo_root,
+        artifact_body=artifact_body,
+        snippet_digest_fn=snippet_body_digest,
+    )
     await writer.commit(todos_db, slug)
 
 
-async def _clear_artifact_digest_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
-    """Clear persisted provenance for a removed lifecycle artifact."""
-    key = _artifact_name_to_state_key(artifact_name)
-    if key is None:
-        return
+async def _clear_artifact_provenance_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         return
     writer = StateWriter(raw_state)
-    entry = getattr(writer.state.artifacts, key, None)
-    if entry is None:
-        return
-    entry.digest = ""
-    entry.produced_at = ""
-    entry.codebase_sha_at_write = ""
-    entry.referenced_paths = []
-    entry.upstream_digests = {}
+    clear_artifact_provenance(writer, slug, artifact_name)
     await writer.commit(todos_db, slug)
 
 
@@ -412,24 +391,14 @@ async def write_artifact(
             detail=f"input artifact for '{slug}' is frozen — requirements already exist",
         )
     await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
-    sha_at_write = codebase_sha_at_write if codebase_sha_at_write is not None else get_head_commit(effective_cwd)
-    paths_at_write = (
-        referenced_paths if referenced_paths is not None else extract_referenced_paths(content, effective_cwd)
-    )
-    if name in {
-        ARTIFACT_INPUT,
-        ARTIFACT_PRD,
-        ARTIFACT_REQUIREMENTS,
-        ARTIFACT_ARCHITECTURE,
-        ARTIFACT_TEST_SPECS,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-    }:
-        await _sync_artifact_digest_state(
+    _ = codebase_sha_at_write, referenced_paths
+    if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
+        await _sync_artifact_provenance_state(
             todos_db,
             slug,
             name,
-            codebase_sha_at_write=sha_at_write,
-            referenced_paths=paths_at_write,
+            repo_root=effective_cwd,
+            artifact_body=content,
         )
     logger.info(
         "todo artifact write route completed",
@@ -462,7 +431,7 @@ async def remove_artifact(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     if result["removed"]:
-        await _clear_artifact_digest_state(todos_db, slug, name)
+        await _clear_artifact_provenance_state(todos_db, slug, name)
         logger.info(
             "todo artifact remove route completed",
             slug=slug,
@@ -559,6 +528,8 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
         if request.kind == "draft":
             state["lifecycle_phase"] = LifecyclePhase.DRAFT.value
 
+        written_artifact_name = ""
+        written_artifact_body = ""
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
                 await todos_db.add_to_roadmap(slug, after=request.after if request.after else None, session=session)
@@ -574,6 +545,8 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                     )
                 elif request.kind == "prepped":
                     plan_content = f"# {slug} — Implementation Plan\n\n{request.content}\n"
+                    written_artifact_name = ARTIFACT_IMPLEMENTATION_PLAN
+                    written_artifact_body = plan_content
                     await todos_db.write_artifact(
                         slug,
                         ARTIFACT_IMPLEMENTATION_PLAN,
@@ -583,6 +556,8 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                     )
                 else:
                     input_content = f"# {slug} — Input\n\n{request.content}\n"
+                    written_artifact_name = ARTIFACT_INPUT
+                    written_artifact_body = input_content
                     await todos_db.write_artifact(
                         slug,
                         ARTIFACT_INPUT,
@@ -593,10 +568,14 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
 
         todos_db.on_committed("todo_updated")
 
-        if request.kind == "prepped":
-            await _sync_artifact_digest_state(todos_db, slug, ARTIFACT_IMPLEMENTATION_PLAN)
-        elif request.kind != "bug":
-            await _sync_artifact_digest_state(todos_db, slug, ARTIFACT_INPUT)
+        if written_artifact_name in _DRIFT_TRACKED_ARTIFACT_NAMES:
+            await _sync_artifact_provenance_state(
+                todos_db,
+                slug,
+                written_artifact_name,
+                repo_root=effective_cwd,
+                artifact_body=written_artifact_body,
+            )
 
         if request.kind in ("prepped", "bug"):
             # Stamp DOR, grounding baseline, and review approvals so the

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
@@ -188,6 +191,88 @@ def _global_ref_prefixes() -> tuple[str, ...]:
     configured_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"
     home_prefix = f"@{Path.home()}/.teleclaude/docs/"
     return tuple(dict.fromkeys((configured_prefix, home_prefix)))
+
+
+def snippet_body_digest(snippet_id: str) -> str:
+    """Return SHA256 of snippet content, excluding delivered_by frontmatter churn."""
+    snippet_path = _resolve_snippet_path(snippet_id)
+    if snippet_path is None:
+        return ""
+    try:
+        content = snippet_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    filtered = _strip_delivered_by_frontmatter(content)
+    return hashlib.sha256(filtered.encode("utf-8")).hexdigest()
+
+
+def _resolve_snippet_path(snippet_id: str) -> Path | None:
+    """Resolve a canonical snippet ID through project then global snippet indexes."""
+    project_index = Path.cwd() / "docs" / "project" / "index.yaml"
+    global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
+    for index_path in (project_index, global_index):
+        resolved = _resolve_snippet_path_from_index(snippet_id, index_path)
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _resolve_snippet_path_from_index(snippet_id: str, index_path: Path) -> Path | None:
+    if not index_path.exists():
+        return None
+    try:
+        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    project_root = payload.get("project_root")
+    snippets = payload.get("snippets")
+    if not isinstance(project_root, str) or not isinstance(snippets, list):
+        return None
+    root_path = Path(project_root).expanduser()
+    for item in snippets:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        raw_path = item.get("path")
+        if item_id != snippet_id or not isinstance(raw_path, str):
+            continue
+        path = Path(raw_path).expanduser()
+        return path if path.is_absolute() else root_path / path
+    return None
+
+
+def _strip_delivered_by_frontmatter(content: str) -> str:
+    lines = content.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return content
+    end_idx = next((idx for idx, line in enumerate(lines[1:], start=1) if line.strip() == "---"), None)
+    if end_idx is None:
+        return content
+
+    filtered_header = [lines[0]]
+    skipping_delivered_by = False
+    for line in lines[1:end_idx]:
+        stripped = line.lstrip()
+        if stripped.startswith("delivered_by:"):
+            skipping_delivered_by = True
+            continue
+        if skipping_delivered_by:
+            if _is_frontmatter_continuation(stripped):
+                continue
+            skipping_delivered_by = False
+        filtered_header.append(line)
+    filtered_header.append(lines[end_idx])
+    return "".join(filtered_header + lines[end_idx + 1 :])
+
+
+def _is_frontmatter_continuation(stripped_line: str) -> bool:
+    if not stripped_line.strip():
+        return True
+    if stripped_line.startswith("-"):
+        return True
+    return ":" not in stripped_line
 
 
 def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:

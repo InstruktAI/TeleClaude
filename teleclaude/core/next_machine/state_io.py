@@ -36,7 +36,6 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.file_io import (
     file_sha256 as _file_sha256,
 )
@@ -45,7 +44,9 @@ from teleclaude.core.next_machine.file_io import (
     write_text_sync,
 )
 from teleclaude.core.next_machine.git_ops import (
+    extract_referenced_paths,
     get_head_commit,
+    get_origin_main_sha,
     run_git_command,
 )
 from teleclaude.core.next_machine.lifecycle import (
@@ -58,13 +59,14 @@ from teleclaude.core.next_machine.lifecycle import (
     require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
+from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance_sync_subset
 from teleclaude.core.next_machine.state_mutation import (
     ReviewManager,
     StateWriter,
 )
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.todos import ArtifactEntry, BreakdownState, FinalizeModel, TodoState
+from teleclaude.types.todos import BreakdownState, FinalizeModel, TodoState
 
 logger = get_logger(__name__)
 
@@ -89,22 +91,11 @@ def _artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
 
 def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: bool) -> None:
     """Refresh artifact digest in state and optionally mark it as produced."""
-    key = artifact_name_to_state_key(artifact_name)
-    digest = _artifact_digest(cwd, slug, artifact_name)
-
     state = read_phase_state(cwd, slug)
-    artifacts = state.get("artifacts", {})
-    if not isinstance(artifacts, dict):
-        artifacts = {}
-    entry = artifacts.get(key, {})
-    if not isinstance(entry, dict):
-        entry = {}
-    entry["digest"] = digest
-    if produced:
-        entry["produced_at"] = datetime.now(UTC).isoformat()
-    artifacts[key] = entry
-    state["artifacts"] = artifacts
-    write_phase_state(cwd, slug, state)
+    writer = StateWriter(state)
+    db = get_todos_db_sync(cwd)
+    digest = _sync_artifact_provenance_subset_from_db(cwd, slug, artifact_name, writer, db=db)
+    writer.commit_sync(db, slug)
 
     if produced:
         _emit_prepare_event(
@@ -116,6 +107,33 @@ def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: b
 def sync_artifact_digest(cwd: str, slug: str, artifact_name: str) -> None:
     """Refresh the stored digest for an artifact without stamping completion."""
     _sync_artifact_state(cwd, slug, artifact_name, produced=False)
+
+
+def _sync_artifact_provenance_subset_from_db(
+    cwd: str,
+    slug: str,
+    artifact_name: str,
+    writer: StateWriter,
+    *,
+    db: object | None = None,
+) -> str:
+    """Sync provenance fields available from sync callers and return the digest."""
+    todos_db = db if db is not None else get_todos_db_sync(cwd)
+    digest = _artifact_digest(cwd, slug, artifact_name)
+    if not digest:
+        clear_artifact_provenance(writer, slug, artifact_name)
+        return ""
+    artifact_body = todos_db.read_artifact_sync(slug, artifact_name)  # type: ignore[attr-defined]
+    sync_artifact_provenance_sync_subset(
+        writer,
+        slug,
+        artifact_name,
+        repo_root=cwd,
+        sha_at_write=get_origin_main_sha(cwd),
+        referenced_paths=extract_referenced_paths(artifact_body, cwd),
+        digest=digest,
+    )
+    return digest
 
 
 # ---------------------------------------------------------------------------
@@ -150,15 +168,6 @@ _REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
     "requirements_review": STATE_KEY_REQUIREMENTS,
     "architecture_review": STATE_KEY_ARCHITECTURE,
     "plan_review": STATE_KEY_IMPLEMENTATION_PLAN,
-}
-
-# For each artifact that is built from upstream artifacts, lists the upstream
-# state keys whose digests must be captured at stamp time. Used by stamp_artifact
-# to bind upstream_digests so the satisfaction walk can detect upstream changes.
-_ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
-    STATE_KEY_PRD: (STATE_KEY_INPUT,),
-    STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
-    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE),
 }
 
 
@@ -202,20 +211,11 @@ def _read_artifact_presence(cwd: str, slug: str) -> dict[str, bool]:
 
 
 def _sync_reconcile_artifacts(cwd: str, slug: str, writer: StateWriter) -> None:
-    """Align state-model provenance with blob reality. Bootstrap-only — never overwrites
-    recorded provenance once the production path has captured it."""
-    now = datetime.now(UTC).isoformat()
+    """Align state-model provenance with blob reality through the sync boundary."""
+    db = get_todos_db_sync(cwd)
     for state_key, artifact_name in _RECONCILE_ARTIFACT_NAMES.items():
-        entry = getattr(writer.state.artifacts, state_key)
-        entry.digest = _artifact_digest(cwd, slug, artifact_name)
-        if not entry.digest:
-            entry.produced_at = ""
-            continue
-        if not entry.produced_at:
-            entry.produced_at = now
-        upstream_keys = _ARTIFACT_UPSTREAMS.get(state_key, ())
-        if upstream_keys and not entry.upstream_digests:
-            entry.upstream_digests = {k: getattr(writer.state.artifacts, k).digest for k in upstream_keys}
+        _ = state_key
+        _sync_artifact_provenance_subset_from_db(cwd, slug, artifact_name, writer, db=db)
 
 
 def validate_mark_phase_preconditions(
@@ -607,7 +607,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         conn.close()
     input_digest = input_row[0] if input_row and input_row[0] else ""
 
-    now_iso = datetime.now(UTC).isoformat()
     writer = StateWriter(state)
 
     review_mgr = ReviewManager(writer)
@@ -622,17 +621,14 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         review_mgr.stamp_verdict("plan_review", "approve")
 
     if input_digest:
-        writer.state.artifacts.input.digest = input_digest
+        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_INPUT, writer, db=db)
     writer.state.lifecycle_phase = "prepared"
     if kind not in ("prepped", "bug") and has_prd:
-        writer.state.artifacts.prd.digest = _artifact_digest(cwd, slug, ARTIFACT_PRD)
-        writer.state.artifacts.prd.produced_at = now_iso
+        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_PRD, writer, db=db)
     elif kind not in ("prepped", "bug") and has_legacy_requirements:
-        writer.state.artifacts.requirements.digest = _artifact_digest(cwd, slug, ARTIFACT_REQUIREMENTS)
-        writer.state.artifacts.requirements.produced_at = now_iso
+        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_REQUIREMENTS, writer, db=db)
     if kind != "bug":
-        writer.state.artifacts.implementation_plan.digest = _artifact_digest(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN)
-        writer.state.artifacts.implementation_plan.produced_at = now_iso
+        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN, writer, db=db)
 
     payload = writer.commit_sync(db, slug)
     logger.info(
@@ -793,25 +789,7 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
         raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_NAMES)}")
     artifact_name = _PREPARE_ARTIFACT_NAMES[artifact_key]
     _sync_artifact_state(cwd, slug, artifact_name, produced=True)
-    _capture_upstream_digests(cwd, slug, artifact_key)
     return read_phase_state(cwd, slug)
-
-
-def _capture_upstream_digests(cwd: str, slug: str, artifact_key: str) -> None:
-    """Record current upstream digests on a freshly stamped artifact entry."""
-    upstream_keys = _ARTIFACT_UPSTREAMS.get(artifact_key, ())
-    if not upstream_keys:
-        return
-    db = get_todos_db_sync(cwd)
-    state = read_phase_state(cwd, slug)
-    writer = StateWriter(state)
-    entry = getattr(writer.state.artifacts, artifact_key, None)
-    if not isinstance(entry, ArtifactEntry):
-        return
-    entry.upstream_digests = {
-        upstream_key: getattr(writer.state.artifacts, upstream_key).digest for upstream_key in upstream_keys
-    }
-    writer.commit_sync(db, slug)
 
 
 __all__ = [
