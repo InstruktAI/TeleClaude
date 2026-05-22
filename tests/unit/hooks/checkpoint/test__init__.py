@@ -441,6 +441,18 @@ class TestRunHeuristics:
         assert result.required_actions == [_post_commit_review_instruction()]
 
     @pytest.mark.unit
+    def test_non_main_head_change_does_not_add_post_commit_review_action(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CODEX, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature-x"):
+            result = run_heuristics([], timeline, context, git_head_changed_this_turn=True)
+
+        assert result.on_main is False
+        assert result.post_commit_review_action_required is False
+        assert result.required_actions == []
+
+    @pytest.mark.unit
     def test_seen_main_head_change_suppresses_only_post_commit_review_action(self) -> None:
         timeline = TurnTimeline(has_data=True, tool_calls=[])
         context = CheckpointContext(agent_name=AgentName.CODEX, project_path="/repo")
