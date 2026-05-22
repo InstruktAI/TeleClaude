@@ -104,13 +104,16 @@ class AgentCoordinator(
 
         task.add_done_callback(_on_done)
 
-    async def _signal_headless_activity(self, session_id: str) -> None:
-        """Drive one transcript projection pass for a headless session."""
+    async def _signal_projection_activity(self, session_id: str) -> None:
+        """Drive one transcript projection pass from agent activity."""
         session = await db.get_session(session_id)
-        if not session or session.lifecycle_status != "headless":
+        if not session:
             return
         await db.update_last_activity(session_id)
-        await polling_coordinator.schedule_headless_projection(session_id, self.client)
+        if session.lifecycle_status == "headless":
+            await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
+        else:
+            await polling_coordinator.schedule_session_projection(session_id, self.client)
 
     def _emit_activity_event(
         self,
@@ -423,7 +426,9 @@ class AgentCoordinator(
         if update_kwargs:
             await db.update_session(session_id, **update_kwargs)
         await db.update_last_activity(session_id)
-        if terminal_origin_recorded:
+        if session.lifecycle_status == "headless":
+            await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
+        else:
             await polling_coordinator.schedule_session_projection(session_id, self.client)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
@@ -445,7 +450,7 @@ class AgentCoordinator(
         """Handle stop event - Agent session stopped.
 
         Fast path only: row mutations, status/activity emit (without summary),
-        headless signal, and stop finalize. The slow summary/title/TTS chain
+        projection signal, and stop finalize. The slow summary/title/TTS chain
         is scheduled via ``_slow_work`` so it never blocks the per-session
         FIFO drain and gets superseded on the next agent_stop for this
         session.
@@ -476,8 +481,8 @@ class AgentCoordinator(
         # Emit canonical lifecycle status: completed (R2)
         self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=stop_timestamp)
 
-        # Immediate headless pull on stop — final output must be captured.
-        await self._signal_headless_activity(session_id)
+        # Immediate projection pull on stop — final output must be captured.
+        await self._signal_projection_activity(session_id)
 
         await self._finalize_agent_stop(
             session_id,
@@ -644,8 +649,5 @@ class AgentCoordinator(
             await db.update_session(session_id, last_tool_use_at=now.isoformat())
             logger.debug("tool_use recorded for session %s", session_id)
 
-        # Output fanout is transcript-driven from polling; hooks stay control-plane only.
-        # tool_use still emits activity + checkpoint timing metadata.
-
-        # Drive headless output delivery via debounced transcript pull.
-        await self._signal_headless_activity(session_id)
+        # Tool hooks are liveness signals; projection remains transcript-driven.
+        await self._signal_projection_activity(session_id)

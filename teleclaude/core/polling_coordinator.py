@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
 from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -29,6 +30,7 @@ from teleclaude.utils.transcript import (
     render_clean_agent_output,
 )
 from teleclaude.utils.transcript import extract_recent_transcript_turns as _extract_recent_transcript_turns
+from teleclaude.utils.transcript_discovery import TranscriptCandidate, discover_transcripts, extract_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -164,25 +166,39 @@ def _clear_output_metrics(session_id: str) -> None:
     state = _output_metrics_state.pop(session_id, None)
     if state:
         _log_output_metrics_summary(session_id, state, reason="final")
+    _last_session_projection_started_at.pop(session_id, None)
     clear_title_projection_state(session_id)
 
 
-_codex_transcript_bind_attempted: set[str] = set()
+_transcript_bind_attempted: set[str] = set()
 
 
 def _cleanup_codex_input_state(session_id: str) -> None:
-    """Clean up Codex transcript-bind tracking state when session ends."""
-    _codex_transcript_bind_attempted.discard(session_id)
+    """Clean up transcript-bind tracking state when session ends."""
+    _transcript_bind_attempted.discard(session_id)
 
 
-async def _try_bind_codex_transcript(session: "Session") -> bool:
-    """One-shot opportunistic transcript binding for Codex sessions.
+def _discover_native_transcript_path(agent_name: AgentName, native_session_id: str) -> str | None:
+    """Find a transcript path for an agent-native session id."""
+    if agent_name == AgentName.CODEX:
+        return discover_codex_transcript_path(native_session_id)
+
+    candidates: list[TranscriptCandidate] = discover_transcripts([agent_name])
+    for candidate in candidates:
+        if extract_session_id(candidate.path, agent_name) == native_session_id:
+            return str(candidate.path)
+    return None
+
+
+async def _try_bind_transcript_path(session: "Session") -> bool:
+    """Opportunistically bind a native transcript path for any supported agent.
 
     Returns True when the DB was updated with a discovered transcript path.
     """
-    if not session.active_agent or session.active_agent.lower() != AgentName.CODEX.value:
+    active_agent = (session.active_agent or "").strip()
+    if not active_agent:
         return False
-    if session.session_id in _codex_transcript_bind_attempted:
+    if session.session_id in _transcript_bind_attempted:
         return False
     native_session_id = (session.native_session_id or "").strip()
     if not native_session_id:
@@ -190,21 +206,25 @@ async def _try_bind_codex_transcript(session: "Session") -> bool:
     if (session.native_log_file or "").strip():
         return False
 
-    transcript_path = discover_codex_transcript_path(native_session_id)
+    try:
+        agent_name = AgentName.from_str(active_agent)
+    except ValueError:
+        return False
+
+    transcript_path = _discover_native_transcript_path(agent_name, native_session_id)
     if not transcript_path:
-        # Not found — mark attempted so we don't rescan the filesystem every tick.
-        _codex_transcript_bind_attempted.add(session.session_id)
         return False
     await db.update_session(session.session_id, native_log_file=transcript_path)
-    _codex_transcript_bind_attempted.add(session.session_id)
+    _transcript_bind_attempted.add(session.session_id)
     return True
 
 
 _active_pollers: set[str] = set()
 _poller_lock = asyncio.Lock()
-_active_headless_projections: set[str] = set()
-_pending_headless_projections: set[str] = set()
-_headless_projection_lock = asyncio.Lock()
+_active_session_projections: set[str] = set()
+_pending_session_projections: set[str] = set()
+_session_projection_signal_lock = asyncio.Lock()
+_last_session_projection_started_at: dict[str, float] = {}
 _session_projection_locks: dict[str, asyncio.Lock] = {}
 _session_projection_locks_lock = asyncio.Lock()
 
@@ -286,36 +306,57 @@ async def _unregister_polling(session_id: str) -> None:
         _active_pollers.discard(session_id)
 
 
-async def _register_headless_projection(session_id: str) -> bool:
+def _projection_cadence_s() -> float:
+    """Return the coalesced projection cadence."""
+    return max(0.0, float(config.polling.output_cadence_s))
+
+
+async def _wait_for_session_projection_cadence(session_id: str) -> None:
+    """Throttle scheduled projection starts to the configured session cadence."""
+    cadence_s = _projection_cadence_s()
+    if cadence_s <= 0:
+        _last_session_projection_started_at[session_id] = time.monotonic()
+        return
+
+    now = time.monotonic()
+    last_started_at = _last_session_projection_started_at.get(session_id)
+    if last_started_at is not None:
+        delay_s = cadence_s - (now - last_started_at)
+        if delay_s > 0:
+            await asyncio.sleep(delay_s)
+    _last_session_projection_started_at[session_id] = time.monotonic()
+
+
+async def _register_session_projection(session_id: str) -> bool:
     """Claim the projection slot or queue a follow-up.
 
     Returns True when the caller should start a new projection task. Returns
     False when one is already in flight; the slot is marked pending so the
     running task will re-run after it finishes.
     """
-    async with _headless_projection_lock:
-        if session_id in _active_headless_projections:
-            _pending_headless_projections.add(session_id)
+    async with _session_projection_signal_lock:
+        if session_id in _active_session_projections:
+            _pending_session_projections.add(session_id)
             return False
-        _active_headless_projections.add(session_id)
+        _active_session_projections.add(session_id)
         return True
 
 
 async def _consume_pending_projection(session_id: str) -> bool:
     """At end of a projection pass, decide whether to loop or release."""
-    async with _headless_projection_lock:
-        if session_id in _pending_headless_projections:
-            _pending_headless_projections.discard(session_id)
+    async with _session_projection_signal_lock:
+        if session_id in _pending_session_projections:
+            _pending_session_projections.discard(session_id)
             return True
-        _active_headless_projections.discard(session_id)
+        _active_session_projections.discard(session_id)
         return False
 
 
-async def _release_headless_projection(session_id: str) -> None:
+async def _release_session_projection(session_id: str) -> None:
     """Release the projection slot unconditionally (used in error paths)."""
-    async with _headless_projection_lock:
-        _pending_headless_projections.discard(session_id)
-        _active_headless_projections.discard(session_id)
+    async with _session_projection_signal_lock:
+        _pending_session_projections.discard(session_id)
+        _active_session_projections.discard(session_id)
 
 
 async def _get_session_projection_lock(session_id: str) -> asyncio.Lock:
@@ -465,7 +506,7 @@ async def schedule_session_projection(
     This guarantees state changes that land during a projection (e.g. a session
     title update) are reflected on the next pass without needing a fresh signal.
     """
-    if not await _register_headless_projection(session_id):
+    if not await _register_session_projection(session_id):
         return False
 
     async def _run() -> None:
@@ -474,11 +515,26 @@ async def schedule_session_projection(
                 session = await db.get_session(session_id)
                 if not session or (headless_only and session.lifecycle_status != "headless"):
                     return
+
+                try:
+                    if await _try_bind_transcript_path(session):
+                        refreshed = await db.get_session(session_id)
+                        if refreshed is not None:
+                            session = refreshed
+                except Exception as exc:
+                    logger.error(
+                        "Transcript bind failed during scheduled projection for session %s: %s",
+                        session_id,
+                        exc,
+                        exc_info=True,
+                    )
+
+                await _wait_for_session_projection_cadence(session_id)
                 await project_session_from_transcript(session, adapter_client)
                 if not await _consume_pending_projection(session_id):
                     return
         finally:
-            await _release_headless_projection(session_id)
+            await _release_session_projection(session_id)
 
     task_name = f"project-headless-{session_id}" if headless_only else f"project-session-{session_id}"
     task = asyncio.create_task(_run(), name=task_name)
@@ -533,9 +589,9 @@ async def poll_and_send_output(
 
     Tmux is a liveness and visible-activity signal only. Durable payloads —
     including tool activity — come from the agent's native hooks (Claude
-    PreToolUse, Gemini BeforeTool, Codex PreToolUse). Codex transcript-path
-    binding is opportunistic from polling because some Codex versions omit
-    transcript_path on early lifecycle events.
+    PreToolUse, Gemini BeforeTool, Codex PreToolUse). Transcript-path binding is
+    opportunistic from polling and scheduled projection because some agent
+    versions omit transcript_path on early lifecycle events.
 
     Args:
         session_id: Session ID
@@ -575,16 +631,15 @@ async def poll_and_send_output(
                     session.last_output_digest,
                 )
 
-                # Opportunistic Codex transcript-path binding (no hook support for
-                # transcript_path in some Codex versions). Tool activity comes from
-                # the native PreToolUse hook, not from inferring it here.
+                # Opportunistic transcript-path binding. Tool activity comes from
+                # the native hook, not from inferring it here.
                 try:
-                    if await _try_bind_codex_transcript(session):
+                    if await _try_bind_transcript_path(session):
                         refreshed = await db.get_session(event.session_id)
                         if refreshed is not None:
                             session = refreshed
                 except Exception as e:
-                    logger.error("[CODEX] Error in Codex transcript bind: %s", e, exc_info=True)
+                    logger.error("Error in transcript bind: %s", e, exc_info=True)
 
                 await db.update_last_activity(event.session_id)
                 await project_session_from_transcript(

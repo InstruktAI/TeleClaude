@@ -585,7 +585,7 @@ class TestHandleUserPromptSubmit:
         schedule_projection.assert_awaited_once_with(SESSION_ID, coord.client)
 
     @pytest.mark.unit
-    async def test_fresh_ui_origin_is_preserved_and_does_not_signal_projection(self):
+    async def test_fresh_ui_origin_is_preserved_and_still_signals_projection(self):
         coord = _make_coordinator()
         context = MagicMock()
         context.session_id = SESSION_ID
@@ -619,7 +619,7 @@ class TestHandleUserPromptSubmit:
             await coord.handle_user_prompt_submit(context)
 
         assert not any(LAST_INPUT_ORIGIN_FIELD in call.kwargs for call in mock_db.update_session.await_args_list)
-        schedule_projection.assert_not_awaited()
+        schedule_projection.assert_awaited_once_with(SESSION_ID, coord.client)
 
 
 class TestHandleAgentStop:
@@ -643,7 +643,7 @@ class TestHandleAgentStop:
             coord._prepare_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._signal_headless_activity = AsyncMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -667,7 +667,7 @@ class TestHandleAgentStop:
             coord._prepare_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._signal_headless_activity = AsyncMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -689,7 +689,7 @@ class TestHandleAgentStop:
             coord._prepare_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._signal_headless_activity = AsyncMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -719,7 +719,7 @@ class TestHandleAgentStop:
             coord._prepare_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._signal_headless_activity = AsyncMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -740,7 +740,7 @@ class TestHandleAgentStop:
             coord._prepare_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._signal_headless_activity = AsyncMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -766,7 +766,7 @@ class TestHandleAgentStop:
             coord._prepare_agent_stop_output = AsyncMock(return_value=("raw text", FINAL_OUTPUT))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._signal_headless_activity = AsyncMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -822,6 +822,7 @@ class TestHandleToolUse:
             mock_db.update_session = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._clear_tool_use_skip = MagicMock()  # pyright: ignore[reportAttributeAccessIssue]
             await coord.handle_tool_use(context)
 
@@ -846,6 +847,7 @@ class TestHandleToolUse:
             mock_db.update_session = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
+            coord._signal_projection_activity = AsyncMock()
             coord._clear_tool_use_skip = MagicMock()  # pyright: ignore[reportAttributeAccessIssue]
             await coord.handle_tool_use(context)
 
@@ -870,6 +872,7 @@ class TestHandleToolUse:
             mock_db.update_last_activity = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
+            coord._signal_projection_activity = AsyncMock()
             await coord.handle_tool_use(context)
 
         mock_db.update_session.assert_called_once()
@@ -894,9 +897,36 @@ class TestHandleToolUse:
             mock_db.update_last_activity = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
+            coord._signal_projection_activity = AsyncMock()
             await coord.handle_tool_use(context)
 
         mock_db.update_session.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_tool_use_signals_projection_for_active_session(self):
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = SESSION_ID
+        context.data.raw = {}
+        session = _make_session(lifecycle_status="active", last_tool_use_at=datetime.now(UTC))
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator._coordinator.extract_tool_name", return_value=None),
+            patch("teleclaude.core.agent_coordinator._coordinator.build_tool_preview", return_value=None),
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.schedule_session_projection",
+                AsyncMock(),
+            ) as schedule_projection,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            await coord.handle_tool_use(context)
+
+        schedule_projection.assert_awaited_once_with(SESSION_ID, coord.client)
 
 
 class TestQueueBackgroundTask:

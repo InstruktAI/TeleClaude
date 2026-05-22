@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Generator
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,7 +18,7 @@ from teleclaude.core.polling_coordinator import (
     _build_transcript_output_update,
     _cleanup_codex_input_state,
     _percentile,
-    _try_bind_codex_transcript,
+    _try_bind_transcript_path,
     project_session_from_transcript,
 )
 
@@ -94,23 +95,25 @@ def _make_session(
 
 @pytest.fixture(autouse=True)
 def _reset_codex_sets() -> Generator[None, None, None]:
-    pc._codex_transcript_bind_attempted.clear()
+    pc._transcript_bind_attempted.clear()
+    pc._last_session_projection_started_at.clear()
     getattr(pc, "_session_projection_locks", {}).clear()
     yield
-    pc._codex_transcript_bind_attempted.clear()
+    pc._transcript_bind_attempted.clear()
+    pc._last_session_projection_started_at.clear()
     getattr(pc, "_session_projection_locks", {}).clear()
 
 
-class TestTryBindCodexTranscript:
+class TestTryBindTranscriptPath:
     @pytest.mark.unit
-    async def test_non_codex_session_returns_false(self):
-        session = _make_session(active_agent="claude")
-        result = await _try_bind_codex_transcript(session)
+    async def test_session_with_existing_transcript_returns_false(self):
+        session = _make_session(active_agent="claude", native_log_file=NATIVE_LOG_FILE)
+        result = await _try_bind_transcript_path(session)
         assert result is False
-        assert session.session_id not in pc._codex_transcript_bind_attempted
+        assert session.session_id not in pc._transcript_bind_attempted
 
     @pytest.mark.unit
-    async def test_transcript_found_calls_db_update_and_returns_true(self):
+    async def test_codex_transcript_found_calls_db_update_and_returns_true(self):
         session = _make_session()
         mock_db = AsyncMock()
         with (
@@ -120,29 +123,44 @@ class TestTryBindCodexTranscript:
             ),
             patch("teleclaude.core.polling_coordinator.db", mock_db),
         ):
-            result = await _try_bind_codex_transcript(session)
+            result = await _try_bind_transcript_path(session)
         assert result is True
         mock_db.update_session.assert_called_once_with(session.session_id, native_log_file=NATIVE_LOG_FILE)
-        assert session.session_id in pc._codex_transcript_bind_attempted
+        assert session.session_id in pc._transcript_bind_attempted
 
     @pytest.mark.unit
-    async def test_transcript_not_found_returns_false_and_sets_guard(self):
+    async def test_claude_transcript_found_calls_db_update_and_returns_true(self):
+        session = _make_session(active_agent="claude", native_session_id="native-claude")
+        mock_db = AsyncMock()
+        candidate = pc.TranscriptCandidate(path=Path(NATIVE_LOG_FILE), agent=pc.AgentName.CLAUDE)
+        with (
+            patch("teleclaude.core.polling_coordinator.discover_transcripts", return_value=[candidate]),
+            patch("teleclaude.core.polling_coordinator.extract_session_id", return_value="native-claude"),
+            patch("teleclaude.core.polling_coordinator.db", mock_db),
+        ):
+            result = await _try_bind_transcript_path(session)
+        assert result is True
+        mock_db.update_session.assert_called_once_with(session.session_id, native_log_file=NATIVE_LOG_FILE)
+        assert session.session_id in pc._transcript_bind_attempted
+
+    @pytest.mark.unit
+    async def test_transcript_not_found_returns_false_without_setting_guard(self):
         session = _make_session()
         with patch(
             "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
             return_value=None,
         ):
-            result = await _try_bind_codex_transcript(session)
+            result = await _try_bind_transcript_path(session)
         assert result is False
-        assert session.session_id in pc._codex_transcript_bind_attempted
+        assert session.session_id not in pc._transcript_bind_attempted
 
     @pytest.mark.unit
     async def test_already_attempted_returns_false(self):
         session = _make_session()
-        pc._codex_transcript_bind_attempted.add(session.session_id)
+        pc._transcript_bind_attempted.add(session.session_id)
         mock_discover = patch("teleclaude.core.polling_coordinator.discover_codex_transcript_path")
         with mock_discover as discover:
-            result = await _try_bind_codex_transcript(session)
+            result = await _try_bind_transcript_path(session)
         discover.assert_not_called()
         assert result is False
 
@@ -159,17 +177,17 @@ class TestTryBindCodexTranscript:
             patch("teleclaude.core.polling_coordinator.db", mock_db),
         ):
             with pytest.raises(RuntimeError):
-                await _try_bind_codex_transcript(session)
-        assert session.session_id not in pc._codex_transcript_bind_attempted
+                await _try_bind_transcript_path(session)
+        assert session.session_id not in pc._transcript_bind_attempted
 
 
 class TestCleanupCodexInputState:
     @pytest.mark.unit
     def test_discards_from_transcript_bind_set(self):
         sid = "sess-cleanup-1"
-        pc._codex_transcript_bind_attempted.add(sid)
+        pc._transcript_bind_attempted.add(sid)
         _cleanup_codex_input_state(sid)
-        assert sid not in pc._codex_transcript_bind_attempted
+        assert sid not in pc._transcript_bind_attempted
 
 
 class TestBuildTranscriptOutputUpdate:
@@ -1020,15 +1038,17 @@ class TestProjectSessionFromTranscript:
         assert result is session
 
 
-class TestScheduleHeadlessProjection:
+class TestScheduleSessionProjection:
     @pytest.fixture(autouse=True)
     def _reset_projection_state(self) -> Generator[None]:
-        pc._active_headless_projections.clear()
-        pc._pending_headless_projections.clear()
+        pc._active_session_projections.clear()
+        pc._pending_session_projections.clear()
+        pc._last_session_projection_started_at.clear()
         getattr(pc, "_session_projection_locks", {}).clear()
         yield
-        pc._active_headless_projections.clear()
-        pc._pending_headless_projections.clear()
+        pc._active_session_projections.clear()
+        pc._pending_session_projections.clear()
+        pc._last_session_projection_started_at.clear()
         getattr(pc, "_session_projection_locks", {}).clear()
 
     @pytest.mark.unit
@@ -1058,32 +1078,33 @@ class TestScheduleHeadlessProjection:
                 "teleclaude.core.polling_coordinator.project_session_from_transcript",
                 AsyncMock(side_effect=fake_project),
             ) as project,
+            patch("teleclaude.core.polling_coordinator._projection_cadence_s", return_value=0.0),
         ):
             mock_db.get_session = AsyncMock(return_value=session)
 
-            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is True
+            assert await pc.schedule_session_projection(session.session_id, adapter_client) is True
             await first_started.wait()
 
             # Signal lands while the first projection pass is still running.
-            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is False
-            assert session.session_id in pc._pending_headless_projections
+            assert await pc.schedule_session_projection(session.session_id, adapter_client) is False
+            assert session.session_id in pc._pending_session_projections
 
             release_first.set()
 
             # Wait for the inflight task to finish (it should re-run once).
             for _ in range(50):
-                if call_count["value"] >= 2 and session.session_id not in pc._active_headless_projections:
+                if call_count["value"] >= 2 and session.session_id not in pc._active_session_projections:
                     break
                 await asyncio.sleep(0.01)
 
         assert project.await_count == 2
-        assert session.session_id not in pc._active_headless_projections
-        assert session.session_id not in pc._pending_headless_projections
+        assert session.session_id not in pc._active_session_projections
+        assert session.session_id not in pc._pending_session_projections
 
     @pytest.mark.unit
     async def test_signal_with_no_active_projection_runs_once(self) -> None:
-        session = _make_session(session_id="sess-headless-single")
-        session.lifecycle_status = "headless"
+        session = _make_session(session_id="sess-projection-single")
+        session.lifecycle_status = "active"
         adapter_client = AsyncMock()
 
         with (
@@ -1094,10 +1115,10 @@ class TestScheduleHeadlessProjection:
             ) as project,
         ):
             mock_db.get_session = AsyncMock(return_value=session)
-            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is True
+            assert await pc.schedule_session_projection(session.session_id, adapter_client) is True
 
             for _ in range(50):
-                if session.session_id not in pc._active_headless_projections:
+                if session.session_id not in pc._active_session_projections:
                     break
                 await asyncio.sleep(0.01)
 
@@ -1139,11 +1160,12 @@ class TestScheduleHeadlessProjection:
                 return_value=None,
             ),
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
+            patch("teleclaude.core.polling_coordinator._projection_cadence_s", return_value=0.0),
         ):
             mock_db.get_session = AsyncMock(side_effect=lambda _session_id: current_session)
             mock_db.update_session = AsyncMock(side_effect=update_session)
 
-            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is True
+            assert await pc.schedule_session_projection(session.session_id, adapter_client, headless_only=True) is True
             await first_broadcast_started.wait()
             direct = asyncio.create_task(project_session_from_transcript(stale_direct, adapter_client))
             await asyncio.sleep(0)
@@ -1151,11 +1173,11 @@ class TestScheduleHeadlessProjection:
             await direct
 
             for _ in range(50):
-                if session.session_id not in pc._active_headless_projections:
+                if session.session_id not in pc._active_session_projections:
                     break
                 await asyncio.sleep(0.01)
 
         adapter_client.broadcast_user_input.assert_awaited_once()
         assert mock_db.update_session.await_count == 1
-        assert session.session_id not in pc._active_headless_projections
-        assert session.session_id not in pc._pending_headless_projections
+        assert session.session_id not in pc._active_session_projections
+        assert session.session_id not in pc._pending_session_projections

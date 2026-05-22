@@ -372,3 +372,43 @@ async def test_dispatch_hook_event_does_not_reset_existing_headless_origin() -> 
 
     assert not any(LAST_INPUT_ORIGIN_FIELD in call.kwargs for call in mock_db.update_session.await_args_list)
     assert daemon_instance._handle_agent_event.called
+
+
+@pytest.mark.unit
+async def test_native_metadata_update_signals_projection_activity() -> None:
+    daemon_instance = _TestDaemon()
+    daemon_instance.shutdown_event = asyncio.Event()
+    daemon_instance.client = object()  # pyright: ignore[reportAttributeAccessIssue]
+    session = SimpleNamespace(
+        tmux_session_name="tmux-1",
+        lifecycle_status="active",
+        active_agent="claude",
+        native_log_file=None,
+        native_session_id="native-1",
+        transcript_files=None,
+    )
+
+    with (
+        patch("teleclaude.daemon_hook_outbox.db") as mock_db,
+        patch(
+            "teleclaude.daemon_hook_outbox.polling_coordinator.schedule_session_projection",
+            AsyncMock(),
+        ) as schedule_projection,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        daemon_instance._handle_agent_event = AsyncMock()
+        daemon_instance._ensure_output_polling = AsyncMock()
+
+        await daemon_instance._dispatch_hook_event(
+            "sess-native-metadata",
+            daemon_hook_outbox.AgentHookEvents.NATIVE_METADATA_UPDATE,
+            {
+                "agent": "claude",
+                "native_session_id": "native-1",
+                "native_log_file": "/tmp/claude.jsonl",
+            },
+        )
+
+    schedule_projection.assert_awaited_once_with("sess-native-metadata", daemon_instance.client)
+    daemon_instance._handle_agent_event.assert_not_called()

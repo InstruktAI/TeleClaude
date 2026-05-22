@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.core import polling_coordinator
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.command_registry import get_command_service
@@ -44,6 +45,7 @@ from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import CreateSessionCommand
 
 if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
@@ -120,10 +122,20 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         _hook_outbox_claim_paused_sessions: set[str]
         _hook_outbox_stale_dropped_count: int
         cache: DaemonCache
+        client: AdapterClient
 
         def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None: ...
         async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None: ...
         async def _ensure_output_polling(self, session: Session) -> None: ...
+
+    async def _schedule_projection_from_signal(self, session_id: str, session: Session) -> None:
+        """Schedule transcript projection from a hook-side activity signal."""
+        if session.lifecycle_status == "closed":
+            return
+        if session.lifecycle_status == "headless":
+            await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
+        else:
+            await polling_coordinator.schedule_session_projection(session_id, self.client)
 
     @staticmethod
     def _make_stale_read_callback(
@@ -424,6 +436,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         session_id: str,
         event_type: str,
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+        session: Session,
     ) -> bool:
         """Handle outbox events whose only effect is session-row mutation."""
         if event_type == AgentHookEvents.CHECKPOINT_SEEN:
@@ -431,9 +444,11 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             return True
         if event_type == AgentHookEvents.NATIVE_METADATA_UPDATE:
             await handle_native_metadata_update(db, session_id=session_id, payload=data)
+            await self._schedule_projection_from_signal(session_id, session)
             return True
         if event_type == AgentHookEvents.NATIVE_SESSION_REFRESH:
             await handle_native_session_refresh(db, session_id=session_id, payload=data)
+            await self._schedule_projection_from_signal(session_id, session)
             return True
         return False
 
@@ -457,7 +472,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         # Native metadata arrives through the outbox and can legitimately lag
         # behind session close. Persist those row mutations before the generic
         # closed-session guard so revive retains the last known native binding.
-        if await self._handle_session_state_mutation_event(session_id, event_type, data):
+        if await self._handle_session_state_mutation_event(session_id, event_type, data, session):
             return
 
         if session.lifecycle_status == "closed":
