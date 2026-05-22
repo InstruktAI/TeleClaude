@@ -24,24 +24,38 @@ Analysis dimensions map to taxonomy types as guidance. The analysis session
 decides which snippets to produce based on what it finds — this mapping is not
 a fixed checklist.
 
-| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern         |
-| ---------------------------------------------- | ------------- | -------------------------- |
-| Architecture patterns, module organization     | `design`      | `project/design/{slug}`    |
-| Naming conventions, code style, error handling | `policy`      | `project/policy/{slug}`    |
-| Dependency inventory, entry points, config     | `spec`        | `project/spec/{slug}`      |
-| Test strategy, coverage model                  | `design`      | `project/design/{slug}`    |
-| Build/deploy pipeline                          | `spec`        | `project/spec/{slug}`      |
-| Key abstractions, domain model                 | `concept`     | `project/concept/{slug}`   |
-| Operational procedures                         | `procedure`   | `project/procedure/{slug}` |
+| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern                              |
+| ---------------------------------------------- | ------------- | ----------------------------------------------- |
+| Bounded context contract                       | `spec`        | `project/spec/domain/{context}`                 |
+| User-visible product capability                | `spec`        | `project/spec/feature/{context}/{concept-name}` |
+| Architecture patterns, module organization     | `design`      | `project/design/{slug}`                         |
+| Naming conventions, code style, error handling | `policy`      | `project/policy/{slug}`                         |
+| Dependency inventory, entry points, config     | `spec`        | `project/spec/{slug}`                           |
+| Test strategy, coverage model                  | `design`      | `project/design/{slug}`                         |
+| Build/deploy pipeline                          | `spec`        | `project/spec/{slug}`                           |
+| Operational procedures                         | `procedure`   | `project/procedure/{slug}`                      |
 
 ### Snippet ID Conventions
 
-Generated snippet IDs follow the pattern `project/{taxonomy}/{slug}` where:
+Generated snippet IDs follow these supported shapes:
+
+- `project/{taxonomy}/{slug}` for flat project snippets.
+- `project/spec/domain/{context}` for bounded-context domain specs.
+- `project/spec/feature/{context}/{concept-name}` for Category A feature specs.
+
+Where:
 
 - `{taxonomy}` is one of: `principle`, `concept`, `policy`, `procedure`, `design`, `spec`.
 - `{slug}` is a lowercase kebab-case name derived from the content topic.
+- `{context}` is a safe bounded-context identifier using lowercase letters,
+  digits, hyphen, or underscore, beginning with a lowercase letter.
+- `{concept-name}` is a safe durable product/domain noun using lowercase
+  letters, digits, hyphen, or underscore, beginning with a lowercase letter.
 - IDs must be unique within the project scope.
 - IDs must not collide with existing manually authored snippet IDs.
+- IDs must not contain empty path segments, `.` segments, `..` segments, or any
+  other path traversal. File destinations must still resolve under
+  `docs/project/`.
 
 Reserved snippet IDs (standard set, used as applicable):
 
@@ -53,7 +67,6 @@ project/spec/dependencies
 project/spec/entry-points
 project/spec/build-deploy
 project/spec/configuration
-project/concept/domain-model
 ```
 
 ### File Placement
@@ -73,8 +86,11 @@ docs/project/
     entry-points.md
     build-deploy.md
     configuration.md
-  concept/
-    domain-model.md
+    domain/
+      workflow.md
+    feature/
+      workflow/
+        todo-management.md
   procedure/
     (as needed)
 ```
@@ -92,15 +108,20 @@ id: 'project/{taxonomy}/{slug}'
 type: '{taxonomy}'
 scope: 'project'
 description: '{concise description of what this snippet documents}'
+status: 'actual'
 generated_by: 'telec-init'
 generated_at: '{ISO8601 timestamp}'
 ---
 ```
 
-Required fields: `id`, `type`, `scope`, `description`, `generated_by`, `generated_at`.
+Required fields: `id`, `type`, `scope`, `description`, `status`,
+`generated_by`, `generated_at`.
 
 - `generated_by: telec-init` marks the snippet as auto-generated.
 - `generated_at` records when the snippet was last generated or refreshed.
+- `status: actual` marks generated code-grounded snippets as current
+  implementation truth. Analysis does not generate `target` or `mixed`
+  snippets; those belong to an approved design delivery with an owning slug.
 - `scope` is always `project` for enrichment-generated snippets.
 
 ### Merge Rules for Re-analysis
@@ -154,8 +175,7 @@ its content.
 
 The enrichment writer validates all output before persistence:
 
-- Snippet IDs must match the pattern `project/{taxonomy}/{slug}` where taxonomy
-  is a valid taxonomy type.
+- Snippet IDs must match one of the supported flat or nested project ID shapes.
 - File destinations must resolve to paths under `docs/project/`.
 - Frontmatter must contain all required fields.
 - Unknown or unsafe snippet IDs (those that would escape `docs/project/`) are

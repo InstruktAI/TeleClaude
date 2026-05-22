@@ -32,19 +32,21 @@ make the repository legible to AI from the first session. This command is invoke
 ## Steps
 
 1. Follow the project analysis procedure from the required reads.
-2. For each analysis dimension that yields findings, apply the value test
+2. Classify each candidate before authoring: bounded-context domain spec,
+   Category A feature spec, other project snippet, or skip.
+3. For each analysis dimension that yields findings, apply the value test
    from `general/policy/snippet-value-contract` and only then generate the
    corresponding snippet using the enrichment writer functions:
    - Call `write_snippet(project_root, snippet_id, content, metadata)` for each snippet.
    - Call `ensure_taxonomy_directories(project_root, snippet_ids)` before writing.
    - If re-analyzing, call `read_existing_snippets(project_root)` first and use
      `merge_snippet(existing, generated)` to preserve human edits.
-3. Apply the AGENTS.master.md decision from the procedure's Step 15 (four
+4. Apply the AGENTS.master.md decision from the procedure's bootstrap step (four
    normal cases plus anomaly). Promote, generate, respect, or halt-and-flag
    per the case detected.
-4. Call `write_metadata(project_root, ...)` to persist analysis metadata.
-5. Run `telec sync --validate-only` and report the result.
-6. Print a concise summary of created/updated files.
+5. Call `write_metadata(project_root, ...)` to persist analysis metadata.
+6. Run `telec sync --validate-only` and report the result.
+7. Print a concise summary of created/updated files.
 
 ## Discipline
 
@@ -54,6 +56,7 @@ make the repository legible to AI from the first session. This command is invoke
   future-agent question it answers.
 - Every generated snippet must reference concrete findings: real package names,
   actual file paths, observed patterns. Never emit generic placeholder text.
-- Conform to the scaffolding schema for snippet IDs, frontmatter, and file placement.
+- Conform to the scaffolding schema for snippet IDs, frontmatter, and file placement,
+  including nested domain and feature spec IDs only when classification earns them.
 - On re-analysis, preserve human-authored sections and avoid duplication.
 - Do not remain active after artifact generation — complete and exit.

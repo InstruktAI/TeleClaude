@@ -10,11 +10,16 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
-- @~/.teleclaude/docs/software-development/spec/init-scaffolding.md
 - @~/.teleclaude/docs/general/concept/normalized-agent-artifacts.md
+- @~/.teleclaude/docs/general/principle/intent-first-documentation.md
+- @~/.teleclaude/docs/software-development/principle/documentation-first-development.md
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/general/policy/snippet-value-contract.md
+- @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
 - @~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
 - @~/.teleclaude/docs/general/spec/agent-artifacts.md
+- @~/.teleclaude/docs/software-development/spec/domain-spec.md
+- @~/.teleclaude/docs/software-development/spec/init-scaffolding.md
 
 ## Goal
 
@@ -80,6 +85,38 @@ Identify the dominant architecture:
 - State management patterns (global state, dependency injection, actor model).
 - Communication patterns (REST, GraphQL, gRPC, WebSocket, message queues).
 - Database access patterns (ORM, raw SQL, repository pattern).
+
+#### Brownfield domain and documentation classification
+
+Before authoring any snippet, classify what the evidence is asking the doc
+layer to represent. This classification is part of analysis, not a post-write
+cleanup pass.
+
+- **Bounded context discovery:** identify candidate contexts from service or
+  module boundaries, state ownership, domain vocabulary, entry points, emitted
+  or consumed events, and persistence boundaries. A package, directory, or
+  class is not automatically a bounded context; it earns that treatment only
+  when it owns a coherent domain model.
+- **Domain specs:** author or refresh `project/spec/domain/<context>` only
+  when a bounded context is evidenced. The spec names ubiquitous language,
+  aggregates, domain events, use cases, and context-map position in domain
+  terms. Do not replace this with a flat `project/concept/domain-model`
+  summary.
+- **Feature specs:** author or refresh
+  `project/spec/feature/<context>/<concept>` only for Category A
+  user-visible product capabilities. The concept is a durable product/domain
+  noun, never the onboarding run slug and never a tooling cleanup label.
+- **Contract or tooling refinements:** route service contracts, CLI surfaces,
+  generated-doc behavior, conventions, and scaffolding rules to the relevant
+  domain spec, tool spec, policy, procedure, or design doc. Do not create a
+  feature spec for work whose audience is agents or operators.
+- **Current versus target truth:** onboarding analysis is code-grounded
+  inventory. Generated snippets describe current behavior and use
+  `status: actual`. `target` and `mixed` belong to an approved design delivery
+  that declares its owning slug; do not invent them during brownfield analysis.
+- **Skip:** if the candidate only restates source files, repeats global
+  policy, or fills a taxonomy slot without changing future-agent behavior, do
+  not author it.
 
 ### 5. Test Pattern and Coverage Model
 
@@ -180,8 +217,11 @@ Infer project conventions from evidence, not assumptions:
 Generated snippets must:
 
 - Conform to the scaffolding schema (`software-development/spec/init-scaffolding`).
-- Use `project/` scope IDs (e.g., `project/design/architecture`).
-- Include `generated_by: telec-init` and `generated_at: <ISO8601>` in frontmatter.
+- Use `project/` scope IDs from the scaffolding schema. Flat IDs such as
+  `project/design/architecture` remain valid; nested spec IDs are reserved for
+  earned domain specs and Category A feature specs.
+- Include `generated_by: telec-init`, `generated_at: <ISO8601>`, and
+  `status: actual` in frontmatter.
 - Declare `visibility` deliberately. Default to `internal`. Promote a single
   snippet to `public` only when both hold: (a) the content reveals nothing
   sensitive (no credentials, no private infra topology, no internal personnel
@@ -202,15 +242,17 @@ do not produce that snippet. Coverage is not a virtue; signal is. When the
 project implements a global policy, prefer a reverse pointer (`See also: <global policy ID>`)
 over restating the contract.
 
-| Snippet shape                  | Taxonomy | Worth producing when…                                                                                                                                                                           |
-| ------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project/design/architecture`  | design   | Repo structure encodes durable intent the code can't express — non-obvious layering, a deliberate constraint, a topology agents must navigate.                                                  |
-| `project/policy/conventions`   | policy   | Conventions diverge from the language's global policy in ways agents must respect (custom error hierarchy, project-specific naming). The global policy answers the rest.                        |
-| `project/spec/dependencies`    | spec     | Dependency choices encode constraints invisible in the manifest (why a version is pinned, why a library was chosen over alternatives). Otherwise the manifest is the source of truth.           |
-| `project/spec/entry-points`    | spec     | Entry points have non-obvious wiring (conditional registration, side-effect imports). Otherwise a 30-second source read answers it.                                                             |
-| `project/design/test-strategy` | design   | The project tests in non-standard ways agents must follow (custom fixtures, coverage philosophy, specific frameworks). Generic pytest/jest patterns do not earn a snippet.                      |
-| `project/spec/build-deploy`    | spec     | The pipeline encodes constraints invisible in the CI YAML (why a step exists, what failure it defends). Otherwise the YAML is the source of truth.                                              |
-| `project/spec/configuration`   | spec     | Configuration semantics are project-specific. **If the project implements a global policy, write a reverse pointer (`See also: <global policy ID>`) and stop — do not duplicate the contract.** |
+| Snippet shape                                   | Taxonomy | Worth producing when…                                                                                                                                                                           |
+| ----------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project/spec/domain/<context>`                 | spec     | A bounded context is evidenced by coherent domain vocabulary, state ownership, events, entry points, and invariants.                                                                            |
+| `project/spec/feature/<context>/<concept>`      | spec     | A user-visible product capability is present and needs durable business value plus Gherkin scenarios. Never use this for tooling, contract cleanup, or generic code inventory.                  |
+| `project/design/architecture`                  | design   | Repo structure encodes durable intent the code cannot express — non-obvious layering, a deliberate constraint, or topology agents must navigate.                                                |
+| `project/policy/conventions`                   | policy   | Conventions diverge from the language's global policy in ways agents must respect (custom error hierarchy, project-specific naming). The global policy answers the rest.                        |
+| `project/spec/dependencies`                    | spec     | Dependency choices encode constraints invisible in the manifest (why a version is pinned, why a library was chosen over alternatives). Otherwise the manifest is the source of truth.           |
+| `project/spec/entry-points`                    | spec     | Entry points have non-obvious wiring (conditional registration, side-effect imports). Otherwise a 30-second source read answers it.                                                             |
+| `project/design/test-strategy`                 | design   | The project tests in non-standard ways agents must follow (custom fixtures, coverage philosophy, specific frameworks). Generic pytest/jest patterns do not earn a snippet.                      |
+| `project/spec/build-deploy`                    | spec     | The pipeline encodes constraints invisible in the CI YAML (why a step exists, what failure it defends). Otherwise the YAML is the source of truth.                                              |
+| `project/spec/configuration`                   | spec     | Configuration semantics are project-specific. **If the project implements a global policy, write a reverse pointer (`See also: <global policy ID>`) and stop — do not duplicate the contract.** |
 
 ### 15. Agent Bootstrap Content (AGENTS.master.md decision)
 

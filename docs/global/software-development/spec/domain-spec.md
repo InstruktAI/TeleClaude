@@ -13,18 +13,18 @@ description: 'Template every bounded context''s canonical domain spec must follo
 
 The required structure for the canonical domain spec of a bounded context. One spec per context. The spec is the source of truth for what the context does in domain terms — independent of implementation language or technology. Implementation (Python, Rust, anything else) must satisfy the spec; the spec does not describe implementation.
 
-Domain specs are documentation snippets and follow the snippet schema (`general/spec/snippet-authoring-schema`). They live under `docs/project/domain/<context>/spec.md` (or `docs/global/domain/<context>/spec.md` for cross-project domain contexts).
+Domain specs are documentation snippets and follow the snippet schema (`general/spec/snippet-authoring-schema`). Project-scoped domain specs live under `docs/project/spec/domain/<context>.md`. Cross-project domain contexts use the owning global domain's `spec/domain/<context>` snippet path when a global snippet is warranted.
 
 Each spec is authored once per bounded context and evolves with the context. New target state is added by updating the spec under `status: target` with the delivering slug in `delivered_by`. Implementation changes that change behavior MUST update the spec.
 
-During a migration window (v1 → v2 or similar), a domain spec describes the platform contract — default `applies_to: both`. If v2 will diverge from v1 for some aspect of the context, do NOT fork the spec; author a sibling `<context>-v2-diff.md` companion of `type: spec-diff` capturing only the delta. See `software-development/principle/documentation-first-development` section 10 for the three-state architecture and the spec-diff sections schema.
+During a declared migration window, a domain spec describes the platform contract across implementation tracks. If the successor track will diverge from the current track for some aspect of the context, do NOT fork the spec; author a sibling diff companion of `type: spec-diff` capturing only the delta. TeleClaude names that successor track `v2`; other projects must declare their own migration vocabulary before using a successor-track diff. See `software-development/principle/documentation-first-development` section 10 for the three-state architecture and the spec-diff sections schema.
 
 ## Canonical fields
 
 ### Frontmatter
 
 ```yaml
-id: <domain>/spec/domain/<context-name>
+id: project/spec/domain/<context-name>
 type: spec
 domain: <domain>
 scope: project | global

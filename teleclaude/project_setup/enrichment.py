@@ -55,8 +55,12 @@ GENERATED_BY_VALUE = "telec-init"
 # Metadata file name persisted in project root.
 META_FILENAME = ".telec-init-meta.yaml"
 
-# Valid snippet ID pattern: project/{taxonomy}/{slug}
-_SNIPPET_ID_RE = re.compile(r"^project/(" + "|".join(TAXONOMY_TYPES) + r")/[a-z][a-z0-9-]*$")
+# Valid snippet ID patterns:
+# - project/{taxonomy}/{slug}
+# - project/spec/domain/{context}
+# - project/spec/feature/{context}/{concept}
+_SAFE_SEGMENT_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+_FLAT_SNIPPET_ID_RE = re.compile(r"^project/(" + "|".join(TAXONOMY_TYPES) + r")/[a-z][a-z0-9-]*$")
 
 # Baseline taxonomy directories ensured by the writer.
 _BASELINE_DIRS = ("design", "policy", "spec")
@@ -68,20 +72,35 @@ _REQUIRED_META_KEYS = frozenset(
 
 
 def validate_snippet_id(snippet_id: str) -> bool:
-    """Check whether a snippet ID conforms to the project/{taxonomy}/{slug} pattern."""
-    return bool(_SNIPPET_ID_RE.match(snippet_id))
+    """Check whether a snippet ID conforms to the enrichment writer contract."""
+    if _FLAT_SNIPPET_ID_RE.match(snippet_id):
+        return True
+
+    parts = snippet_id.split("/")
+    match parts:
+        case ["project", "spec", "domain", context]:
+            return bool(_SAFE_SEGMENT_RE.match(context))
+        case ["project", "spec", "feature", context, concept]:
+            return bool(_SAFE_SEGMENT_RE.match(context)) and bool(_SAFE_SEGMENT_RE.match(concept))
+        case _:
+            return False
 
 
 def snippet_id_to_path(project_root: Path, snippet_id: str) -> Path:
     """Convert a snippet ID to its filesystem path under docs/project/.
 
     Raises:
-        ValueError: If snippet_id does not contain exactly three slash-separated parts.
+        ValueError: If snippet_id does not match a supported enrichment writer ID shape.
     """
-    parts = snippet_id.split("/", 2)  # ['project', taxonomy, slug]
-    if len(parts) != 3:
-        raise ValueError(f"Snippet ID must have 3 parts (project/taxonomy/slug), got: {snippet_id!r}")
-    return project_root / "docs" / parts[0] / parts[1] / f"{parts[2]}.md"
+    if not validate_snippet_id(snippet_id):
+        raise ValueError(f"Invalid snippet ID: {snippet_id}")
+
+    parts = snippet_id.split("/")
+    if len(parts) == 3:
+        return project_root / "docs" / parts[0] / parts[1] / f"{parts[2]}.md"
+    if parts[:3] == ["project", "spec", "domain"]:
+        return project_root / "docs" / "project" / "spec" / "domain" / f"{parts[3]}.md"
+    return project_root / "docs" / "project" / "spec" / "feature" / parts[3] / f"{parts[4]}.md"
 
 
 def ensure_taxonomy_directories(project_root: Path, snippet_ids: list[str]) -> None:
@@ -235,6 +254,7 @@ def _render_snippet(snippet_id: str, content: str, metadata: SnippetMetadata) ->
         "type": metadata.get("type", snippet_id.split("/")[1]),
         "scope": metadata.get("scope", "project"),
         "description": metadata.get("description", ""),
+        "status": "actual",
         "visibility": metadata.get("visibility", SNIPPET_VISIBILITY_INTERNAL),
         GENERATED_BY_KEY: GENERATED_BY_VALUE,
         "generated_at": metadata.get(
