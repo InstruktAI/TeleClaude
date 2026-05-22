@@ -4,6 +4,8 @@ id: 'project/design/architecture/telegram-adapter'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+status: 'target'
+delivered_by: ['voice-transcription-survives-restart']
 ---
 
 # Telegram Adapter — Design
@@ -163,13 +165,21 @@ flowchart TD
 
 ### 5. Voice Message Handling
 
+The Telegram adapter owns only Telegram-specific message operations (extract
+session from topic, download the audio, send/edit/delete platform messages).
+Transcription durability — the `voice_transcriptions` row lifecycle, the tracked
+transcription task, the wall-clock timeout, bounded restart recovery, and
+edit-in-place notice semantics — is owned by Core/Daemon and is authoritative in
+`database#voice-transcription-durability-and-recovery` and
+`daemon-lifecycle#post-adapter-completion-tasks`. The adapter does not transcribe
+inline and does not own the row.
+
 ```mermaid
 sequenceDiagram
     participant User
     participant TG as Telegram
     participant Adapter
-    participant TTS as Voice Service
-    participant Daemon
+    participant Core
 
     User->>TG: Send voice message
     TG->>Adapter: Update (voice)
@@ -177,11 +187,12 @@ sequenceDiagram
     Adapter->>TG: getFile(file_id)
     TG->>Adapter: file_path
     Adapter->>TG: Download voice file
-    Adapter->>TTS: Transcribe audio
-    TTS->>Adapter: Transcribed text
-    Adapter->>DB: Store voice_message_id in pending_message_deletions
-    Adapter->>Daemon: SendMessageCommand(transcribed_text)
-    Adapter->>TG: Send feedback "🎤 Transcribed: {text}"
+    Adapter->>Core: handle_voice (audio path + notice routing)
+    Core->>Adapter: Send "🎤 Transcribing..." notice
+    Adapter->>TG: Send notice; return platform message id
+    Note over Core: Core persists notice id, runs the<br/>transcription as a tracked task, drives row state
+    Core->>Adapter: Edit notice in place (final text, or failure/interrupted notice)
+    Adapter->>TG: Edit message
 ```
 
 ### 6. Topic Title Status Updates
