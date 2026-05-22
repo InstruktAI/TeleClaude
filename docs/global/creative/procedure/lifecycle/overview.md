@@ -18,7 +18,7 @@ a precondition for requirements discovery.
 
 Not every todo requires creative work. The creative stage activates only when the todo
 involves visual or creative work — explicitly stated in `input.md` or flagged in
-the roadmap.
+the todo list.
 
 Governing constraints:
 
@@ -34,7 +34,7 @@ preconditions for the prepare machine: `design-spec` constrains requirements,
 ## Preconditions
 
 - Input artifact exists in `todos.db` (`telec todo artifacts read {slug} input`).
-- Work item exists in `todos.db` roadmap.
+- Work item exists in the `todos.db` todo list.
 
 ## Steps
 

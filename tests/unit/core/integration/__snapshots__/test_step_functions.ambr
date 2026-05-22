@@ -2,7 +2,7 @@
 # name: test_delivery_bookkeeping_fails_fast_when_roadmap_entry_is_missing
   '''
   INTEGRATION ERROR: DELIVERY_FAILED
-  todos_db.deliver_sync returned False for ghost-slug and the slug is not in delivered_slugs — roadmap entry is missing
+  todos_db.deliver_sync returned False for ghost-slug and the slug is not in delivered_slugs — todo entry is missing
   '''
 # ---
 # name: test_delivery_bookkeeping_idempotently_continues_when_slug_already_delivered

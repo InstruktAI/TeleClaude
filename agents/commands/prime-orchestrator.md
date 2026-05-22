@@ -35,7 +35,7 @@ inline skill when directed:
 ## Steps
 
 1. Read all required snippets before any decision.
-2. If a focus/slug is provided, inspect current todo/roadmap state and determine which lifecycle stage applies.
+2. If a focus/slug is provided, inspect current todo state and determine which lifecycle stage applies.
 3. If no focus is provided, summarize available work and wait for user direction.
 4. When the user indicates what they want, load the appropriate command inline.
 

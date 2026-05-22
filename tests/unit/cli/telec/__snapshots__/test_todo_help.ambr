@@ -12,7 +12,7 @@
     --prepped              HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking.
   
   Notes:
-    Creates the roadmap entry, canonical state, and stores content as the input artifact.
+    Creates the todo entry, canonical state, and stores content as the input artifact.
     Emits workflow.todo.created for autonomous pickup unless --silent is set.
   
   '''

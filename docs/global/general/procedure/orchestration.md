@@ -45,7 +45,7 @@ The state machine owns every concrete decision: dispatch, session ending, phase 
 - Parent holder input is frozen source material for child seeding. The holder has no lifecycle state and no executable prepare/work artifacts.
 - `telec todo prepare <holder>` emits `telec todo prepare <child>` only for dependency-satisfied direct children that still need preparation.
 - `telec todo work <holder>` emits `telec todo work <child>` only for dependency-satisfied direct children that are ready for work or already in progress.
-- `telec todo work` with no slug scans the roadmap until it finds runnable work. A holder with no work-runnable direct child is skipped; it must not block unrelated ready work later in the roadmap. Only after the full roadmap is exhausted may the machine report `NO_READY_ITEMS` or a dependency blocker.
+- `telec todo work` with no slug scans the todo list until it finds runnable work. A holder with no work-runnable direct child is skipped; it must not block unrelated ready work later in the todo list. Only after the full todo list is exhausted may the machine report `NO_READY_ITEMS` or a dependency blocker.
 
 ### Tailing Discipline
 

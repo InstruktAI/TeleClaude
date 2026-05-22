@@ -86,7 +86,7 @@ def _format_holder_prepare_instruction(
             "their dependencies are not delivered yet."
         )
     if reason is HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP:
-        return f"Holder '{holder_slug}' has child todos, but none are active roadmap entries."
+        return f"Holder '{holder_slug}' has child todos, but none are active todo-list entries."
     return (
         f"Holder '{holder_slug}' has direct children, but none are currently prepare-runnable. "
         f"Children: {', '.join(children)}"

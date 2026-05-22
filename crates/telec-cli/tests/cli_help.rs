@@ -48,12 +48,6 @@ fn todo_help_subcommand_list_snapshot() {
 }
 
 #[test]
-fn roadmap_help_subcommand_list_snapshot() {
-    let extracted = help_subcommand_section(&["roadmap", "--help"]);
-    insta::assert_snapshot!("roadmap_commands", extracted);
-}
-
-#[test]
 fn workflow_help_subcommand_list_snapshot() {
     let extracted = help_subcommand_section(&["workflow", "--help"]);
     insta::assert_snapshot!("workflow_commands", extracted);

@@ -120,7 +120,7 @@ flowchart TD
 - `FilterTodos(filter_state)` (status, owner, scope, search)
 - `SyncTodos(todos)` (refresh todos list + prune state)
 - `ExpandTodo(todo_id)` / `CollapseTodo(todo_id)`
-- `ToggleProjectDelivered(project_path)` / `ToggleProjectIcebox(project_path)` / `ToggleProjectTrashed(project_path)` — per-project, persisted reveal toggles for the Delivered, Icebox, and Trashed roadmap sections (the Trashed toggle is `target — delivered_by roadmap-trash-reveal-ui`).
+- `ToggleProjectDelivered(project_path)` / `ToggleProjectIcebox(project_path)` / `ToggleProjectTrashed(project_path)` — per-project, persisted reveal toggles for the Delivered, Icebox, and Trashed todo-list sections (the Trashed toggle is `target — delivered_by roadmap-trash-reveal-ui`).
 - `UnfreezeTodo(todo_id)` (existing actual) and `ReactivateTodo(todo_id)` (new, target — delivered_by roadmap-trash-reveal-ui) — both intents are dispatched through the same `u` keybinding under the context-sensitive restore mapping defined in the Interaction mapping section. `ReactivateTodo` dispatches the soft-delete reactivation primitive against the selected trashed row; fail-closed diagnostics surface via notifications, never via state mutation.
 - `StartSession(project_path)` (sessions view: new session on project)
 - `ToggleProjectStickySessions(project_path)` (sessions view: open/close previews)
@@ -180,9 +180,9 @@ flowchart TD
 - Expanded todo file list is derived from DB-sourced artifacts for the todo (via `telec todo artifacts list {slug}`), sorted alphabetically.
 - Todo rows render roadmap status plus compact phase tags (`B`, `R`, `DOR`, `DEF`, `F`) from todo metadata.
 
-### Section model — Roadmap (Preparation view)
+### Section model — Todo list (Preparation view)
 
-The roadmap pane assembles entries into per-project sections that mirror the persisted roadmap `status` enum (workflow domain spec, Roadmap entry term). Each non-active section is opt-in via a per-project toggle persisted alongside `expanded_todos`. The four sections, in display order:
+The todo-list pane assembles entries into per-project sections that mirror the persisted roadmap `status` enum (workflow domain spec, Roadmap entry term). Each non-active section is opt-in via a per-project toggle persisted alongside `expanded_todos`. The four sections, in display order:
 
 - **Active** (always rendered) — `status=active` entries plus their derived display states (`pending`/`ready`/`in_progress`).
 - **Delivered** (toggle `d`) — `status=delivered` entries (recent window); shown under `DeliveredSeparator`.

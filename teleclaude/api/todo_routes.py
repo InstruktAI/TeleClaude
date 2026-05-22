@@ -1,6 +1,6 @@
 """Todo/workflow REST endpoints for the telec CLI tool subcommands.
 
-Exposes the next-machine state machine functions (prepare, work) and roadmap
+Exposes the next-machine state machine functions (prepare, work) and todo
 mutation operations as REST endpoints with dual-factor caller identity
 enforcement. Local todo stamping and operator phase overrides are CLI-local
 mutations, not API routes.
@@ -260,11 +260,11 @@ async def todo_set_deps(  # pyright: ignore
     cwd: Annotated[str | None, Body()] = None,
     _identity: CallerIdentity = Depends(clearance_todos_set_deps),
 ) -> dict[str, str]:
-    """Set dependencies for a work item in the roadmap.
+    """Set dependencies for a work item in the todo list.
 
     Replaces all existing dependencies for the slug with the given list.
     Pass after=[] to clear all dependencies. Validates slugs and checks for
-    circular dependencies. Requires clearance to modify roadmap dependencies.
+    circular dependencies. Requires clearance to modify todo dependencies.
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
@@ -286,10 +286,10 @@ async def todo_set_deps(  # pyright: ignore
     todos_db = await _get_todos_db_from_cwd(cwd)
 
     if not await todos_db.slug_in_roadmap(slug):
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
     for dep in after:
         if not await todos_db.slug_in_roadmap(dep):
-            raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in roadmap")
+            raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in todo list")
 
     deps = await todos_db.load_deps()
     cycle = detect_circular_dependency(deps, slug, after)
@@ -384,7 +384,7 @@ async def write_artifact(
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     effective_updated_by = updated_by or "api.todo.write_artifact"
     if not await todos_db.slug_in_roadmap(slug):
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
     if name == ARTIFACT_INPUT and await todos_db.artifact_exists(slug, ARTIFACT_REQUIREMENTS):
         raise HTTPException(
             status_code=409,
@@ -423,7 +423,7 @@ async def remove_artifact(
     if name == ARTIFACT_INPUT:
         raise HTTPException(status_code=400, detail="input artifact cannot be removed")
     if not await todos_db.slug_in_roadmap(slug):
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
 
     try:
         result = await todos_db.delete_artifact(slug, name)
@@ -500,7 +500,7 @@ async def diff_artifact(
 
 @router.post("/dump")
 async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
-    """Create a todo: state + artifact + roadmap entry in todos.db.
+    """Create a todo: state + artifact + todo entry in todos.db.
 
     Kind variants (see TodoDumpRequest for the full contract):
       - None (default): writes an "input" artifact; enters the normal prepare lifecycle.
@@ -670,7 +670,7 @@ async def todo_remove(  # pyright: ignore
     client_request_id: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(clearance_todos_remove),
 ) -> SerializedOperation:
-    """Remove a todo: delete state, artifacts, roadmap entry, and clean up worktree.
+    """Remove a todo: delete state, artifacts, todo entry, and clean up worktree.
 
     Submits a durable receipt-backed remove operation. Returns immediately
     with a receipt for polling.
@@ -694,7 +694,7 @@ async def todo_freeze(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     if not await todos_db.freeze(slug):
-        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in roadmap")
+        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in todo list")
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
@@ -703,7 +703,7 @@ async def todo_unfreeze(
     slug: str,
     cwd: Annotated[str | None, Body(embed=True)] = None,
 ) -> _SlugStatusResponse:
-    """Restore a todo from icebox to active roadmap."""
+    """Restore a todo from icebox to active todo list."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     if not await todos_db.unfreeze(slug):

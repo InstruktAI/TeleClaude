@@ -87,7 +87,7 @@ The harvest has four quadrants:
 
 Artifact types (not all are required every breath):
 
-- **Roadmap updates** — items to add, reprioritize, or retire. Committed directly.
+- **Todo list updates** — items to add, reprioritize, or retire. Committed directly.
 - **New todos** — work that emerged from the sensing. Created in final form — slug, description, ready for the pipeline.
 - **Doc amendments** — principles, policies, or designs that need updating. The edit IS the artifact — no "action item to update docs later."
 - **Memory entries** — discoveries, patterns, friction, or gotchas. Saved to the Memory API where they accumulate and surface when searched.
@@ -125,7 +125,7 @@ The close is not a summary of the meeting. It is a gift back to the system — t
 ## Outputs
 
 - **Shared understanding** — the intangible harvest. Trust, attunement, collective learning.
-- **Structured artifacts** — the tangible harvest. Todos, doc changes, roadmap updates, memory entries. Ready for execution.
+- **Structured artifacts** — the tangible harvest. Todos, doc changes, todo list updates, memory entries. Ready for execution.
 - **Trail entry** — the close synthesis becomes an entry in `gatherings/<rhythm>.md`. The trail is the durable record — a map of what happened and where the harvest went, not a copy of the harvest itself. Each entry links to the artifacts produced (todo slugs, doc paths, memory types). Reading the trail tells the story of what the system sensed and how it changed. Each rhythm's trail feeds the next rhythm up: daily trail entries become weekly sensing material. The trail is a floor, not a ceiling — brief for a quiet day, richer when something significant emerged.
 
 ## Recovery

@@ -18,7 +18,7 @@ A hands-on walkthrough for programmer friends. Each use case has what to show, w
 10. [Building in a Worktree (Phase B)](#10-building-in-a-worktree-phase-b)
 11. [Code Review and Fix Cycles](#11-code-review-and-fix-cycles)
 12. [Integration to Main (Phase C)](#12-integration-to-main-phase-c)
-13. [The Roadmap — Dependency-Aware Planning](#13-the-roadmap--dependency-aware-planning)
+13. [The Todo List — Dependency-Aware Planning](#13-the-todo-list--dependency-aware-planning)
 14. [Bug Reporting and Auto-Fix](#14-bug-reporting-and-auto-fix)
 15. [Scheduled Jobs — Cron for AI](#15-scheduled-jobs--cron-for-ai)
 16. [Multi-Agent Coordination](#16-multi-agent-coordination)
@@ -365,8 +365,8 @@ input.md                  Worktree created            Merge to main
 # Create a new todo
 telec todo create my-feature
 
-# Check the roadmap
-telec roadmap list
+# Check the todo list
+telec todo list
 
 # See current state
 telec todo show my-feature
@@ -374,15 +374,15 @@ telec todo show my-feature
 
 **Under the hood:**
 
-- `telec todo create` creates a roadmap entry and initial state in `todos.db`
+- `telec todo create` creates a todo entry and initial state in `todos.db`
 - The state machine tracks phases: `prepare` (discovery → draft → review → gate) and `work` (build → review → fix → finalize)
 - Each transition has formal quality gates (DOR = Definition of Ready, DOD = Definition of Done)
 - State is tracked in `todos.db` — agents update this as they progress
-- The roadmap in `todos.db` tracks ordering, dependencies, and status across all items
+- The todo list in `todos.db` tracks ordering, dependencies, and status across all items
 
 **Where to find things:**
 
-- Roadmap and state: `todos.db` (via `telec roadmap list`, `telec todo show <slug>`)
+- Todo list and state: `todos.db` (via `telec todo list`, `telec todo show <slug>`)
 - Artifacts: `todos.db` artifact tables (via `telec todo artifacts list <slug>`)
 - State machine: [`teleclaude/todo/`](teleclaude/todo/)
 - Delivered archive: `todos.db` delivered entries
@@ -556,10 +556,10 @@ telec todo integrate my-feature
 telec todo integrate my-feature
 
 # After successful integration:
-telec roadmap deliver my-feature
+telec todo deliver my-feature
 
 # See it in the delivered archive
-telec roadmap list --delivered-only
+telec todo list --delivered-only
 ```
 
 **Under the hood:**
@@ -568,7 +568,7 @@ telec roadmap list --delivered-only
 - The integrator acquires a lease (only one integration at a time)
 - It merges the feature branch into main, resolves conflicts if possible, pushes
 - After push, the feature worktree (`trees/{slug}/`) is cleaned up
-- The todo moves from `roadmap (todos.db)` to `delivered.yaml`
+- The todo moves from the active todo list to the delivered archive in `todos.db`
 
 **Where to find files:**
 
@@ -578,54 +578,51 @@ telec roadmap list --delivered-only
 
 ---
 
-## 13. The Roadmap — Dependency-Aware Planning
+## 13. The Todo List — Dependency-Aware Planning
 
-**What to show:** The roadmap system with dependencies and ordering.
+**What to show:** The todo list system with dependencies and ordering.
 
 ```bash
-telec roadmap list
+telec todo list
 ```
 
 **What to say:**
 
-> "The roadmap is the source of truth for what's being worked on. Items have dependencies — a feature can be blocked until its prerequisite is done. The system respects this: it won't start work on a blocked item."
+> "The todo list is the source of truth for what's being worked on. Items have dependencies — a feature can be blocked until its prerequisite is done. The system respects this: it won't start work on a blocked item."
 
 **Demo interaction:**
 
 ```bash
-# View the roadmap with status and DOR scores
-telec roadmap list
+# View the todo list with status and DOR scores
+telec todo list
 
 # Add a new entry
-telec roadmap add my-new-feature
+telec todo create my-new-feature "New feature"
 
 # Set dependencies
-telec roadmap deps my-new-feature --after prerequisite-feature
-
-# Reorder priorities
-telec roadmap move my-new-feature --before other-feature
+telec todo set-deps my-new-feature --after prerequisite-feature
 
 # Send something to the icebox (deprioritize)
-telec roadmap freeze low-priority-item
+telec todo freeze low-priority-item
 
 # Bring it back
-telec roadmap unfreeze low-priority-item
+telec todo unfreeze low-priority-item
 ```
 
 **Under the hood:**
 
-- `todos.db` roadmap is the single source of truth
+- `todos.db` todo list is the single source of truth
 - Each entry tracks: slug, status, DOR score, dependencies, container membership
 - Dependencies use `after:` — the item won't be started until all dependencies are delivered
-- The icebox holds frozen items that aren't on the active roadmap (`telec roadmap freeze/unfreeze`)
+- The icebox holds frozen items that aren't on the active todo list (`telec todo freeze/unfreeze`)
 - Container items can be split into sub-items with `telec todo split`
 - Status progression: `pending` → `ready` → `in_progress` → delivered
 
 **Where to find things:**
 
-- Roadmap: `todos.db` (via `telec roadmap list`)
+- Todo list: `todos.db` (via `telec todo list`)
 - Delivered archive: `todos.db` delivered entries
-- Icebox: `todos.db` frozen entries (via `telec roadmap list --icebox-only`)
+- Icebox: `todos.db` frozen entries (via `telec todo list --icebox-only`)
 
 ---
 
@@ -894,7 +891,7 @@ telec config get business.domains
 | `telec todo prepare <slug>`                            | Run Phase A (prepare)          |
 | `telec todo work <slug>`                               | Run Phase B (build/review/fix) |
 | `telec todo integrate <slug>`                          | Run Phase C (merge to main)    |
-| `telec roadmap list`                                   | View the roadmap               |
+| `telec todo list`                                      | View the todo list             |
 | `telec bugs report "description"`                      | Report and auto-fix a bug      |
 | `telec sync`                                           | Validate and build everything  |
 | `telec version`                                        | Show version info              |

@@ -5,7 +5,7 @@ domain: software-development
 scope: project
 visibility: public
 applies_to: v1
-description: Per-project roadmap stored in todos.db and managed through todo-scoped
+description: Per-project ordered todo list stored in todos.db and managed through todo-scoped
   commands; sectioned list output, derived active ordering, soft removal, and delivery
   transitions.
 ---
@@ -20,9 +20,9 @@ description: Per-project roadmap stored in todos.db and managed through todo-sco
 
 ## What it is
 
-Todo management is the operator-facing surface for the per-project roadmap. The roadmap remains the source of truth for "what is being worked on, what is next, and what is done," but it is managed through the `telec todo` namespace rather than a separate roadmap command family.
+Todo management is the operator-facing surface for the per-project ordered todo list. Internal roadmap rows remain the storage source of truth for "what is being worked on, what is next, and what is done," but the surface is managed through the `telec todo` namespace rather than a separate roadmap command family.
 
-Each row is a roadmap entry tied to a Todo by durable row id and active slug. Creation goes through `telec todo create`, which requires substantive content and writes the roadmap row, canonical state, input artifact, and artifact-version row together. The default read path is `telec todo list`, which renders sectioned dependency trees for active todos and optionally includes delivered or iceboxed sections. Active order is derived from workflow state: Ready entries appear before In-prep entries, and each band sorts by its persisted timestamps and slug. Manual position, move, and add-before/add-after ordering are not part of this surface.
+Each row is a todo entry tied to a Todo by durable row id and active slug. Creation goes through `telec todo create`, which requires substantive content and writes the storage row, canonical state, input artifact, and artifact-version row together. The default read path is `telec todo list`, which renders sectioned dependency trees for active todos and optionally includes delivered or iceboxed sections. Active order is derived from workflow state: Ready entries appear before In-prep entries, and each band sorts by its persisted timestamps and slug. Manual position, move, and add-before/add-after ordering are not part of this surface.
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and row-id-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
@@ -38,7 +38,7 @@ And "telec todo list --json" emits "{}"
 ```
 
 ```
-Given an empty roadmap
+Given an empty todo list
 When the operator runs "telec todo create new-feature 'do the thing' --description 'do the thing'"
 Then a live roadmap row is inserted with status="active"
 And a stable UUID is assigned as the row id
@@ -105,4 +105,4 @@ And the todo disappears from every default read path
 - `telec todo create` is not a thin roadmap-row insert; substantive content is required and the input artifact/version are part of the create transaction.
 - Slug uniqueness is enforced only across live rows (`active` and `icebox`). Delivered and removed retained rows may share a slug with a fresh live row because they are addressed by durable row identity.
 - `telec todo remove` is soft and retained during the recovery window; hard purge is routine maintenance and row-id-only.
-- The roadmap is per-project: one `.teleclaude/todos.db` per project root resolved via `resolve_state_root`. There is no global roadmap.
+- The ordered todo list is per-project: one `.teleclaude/todos.db` per project root resolved via `resolve_state_root`. There is no global todo list.

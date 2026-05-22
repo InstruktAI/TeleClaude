@@ -53,7 +53,7 @@ The Integration state machine is the **only role authorized to push canonical `m
 **Outputs:**
 
 - Updated `origin/main` with squash-merged feature content (pushed from `trees/_integration/`)
-- Delivery bookkeeping on repo root: `roadmap (todos.db)` → `delivered.yaml` transitions and cleanup
+- Delivery bookkeeping on repo root: todo-list delivery transitions and cleanup
 - Cleanup: worktree removal, branch deletion, todo directory removal
 - `integration.*` lifecycle events at each state transition
 - Final status with metrics (`items_processed`, `items_blocked`, `duration_ms`)
@@ -456,7 +456,7 @@ flowchart TD
 
     Deliver["core.todos_db.deliver_sync(slug)<br/>(todos.db delivery stamp)"]
 
-    Stage["git add<br/>todos.db<br/>(roadmap + delivered)"]
+    Stage["git add<br/>todos.db<br/>(todo list + delivered)"]
     Commit["git commit<br/>'chore: deliver slug'"]
 
     Push["DELIVERY_BOOKKEEPING<br/>complete"]

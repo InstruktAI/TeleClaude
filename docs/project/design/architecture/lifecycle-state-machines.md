@@ -40,7 +40,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 **Inputs:**
 
-- `todos.db` roadmap — work item registry with priorities and dependency graph
+- `todos.db` todo list — work item registry with priorities and dependency graph
 - `telec todo artifacts read {slug} input` — human idea or requirement (Phase A entry)
 - `telec todo artifacts read {slug} prd` — product contract (Phase A output, Phase B input)
 - `telec todo artifacts read {slug} architecture` — optional thin index/log of the architecture doc-snippet edits (Phase A output, Phase B input)
@@ -53,7 +53,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 - Instruction blocks for the orchestrator to execute (dispatch worker, mark phase, handoff)
 - Lifecycle events at each phase transition (consumed by automation and notifications)
 - Delivered code on canonical `main` (Phase C pushes from integration worktree)
-- Delivery bookkeeping (roadmap updates and cleanup)
+- Delivery bookkeeping (todo list updates and cleanup)
 
 ## Invariants
 
@@ -197,7 +197,7 @@ Each state machine has its own design document with full state diagrams, sequenc
 
 ## Failure modes
 
-- **No roadmap**: cannot discover work items. Returns error instructing user to create roadmap.
+- **No todo list**: cannot discover work items. Returns error instructing user to create a todo.
 - **Dependency cycle**: circular dependencies detected. Logs error, refuses to dispatch.
 - **All agents unavailable**: hard error. If some are degraded, notes in guidance and lets orchestrator decide.
 - **Worker crash**: orchestrator retries once, then escalates.

@@ -21,7 +21,7 @@ You are the **Architect**. Your role is strategic: requirements, architecture, u
 1. **Refine architecture** - Update docs when vision evolves
 2. **Define requirements** - Create clear specs for builders
 3. **Maintain use cases** - Add/update scenarios as needed
-4. **Groom roadmap** - Prioritize, clarify, break down work using Definition of Ready criteria
+4. **Groom the todo list** - Prioritize, clarify, break down work using Definition of Ready criteria
 5. **Answer "what" and "why"** - Not "how" (that's for builders)
 6. **Assess todo readiness** - Apply story splitting patterns when criteria fail
 

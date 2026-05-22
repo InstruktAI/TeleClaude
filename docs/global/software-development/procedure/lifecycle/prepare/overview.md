@@ -48,7 +48,7 @@ state machine. The state machine decides what happens next.
 
 ## Preconditions
 
-- Slug exists in the roadmap, or is created during the session at the moment
+- Slug exists in the todo list, or is created during the session at the moment
   intent is concrete enough.
 - Session was invoked via `/next-prepare [slug]` (direct human invocation) or
   auto-spawned by the daemon (dump-mode entry).

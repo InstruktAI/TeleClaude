@@ -29,7 +29,7 @@ machine and the interactive creative process.
 
 ## Preconditions
 
-1. `todos.db` roadmap exists.
+1. `todos.db` todo list exists.
 2. Target slug is active and flagged for creative work.
 3. `telec todo artifacts read {slug} input` exists with human thinking.
 4. The human is available for interactive participation (design spec

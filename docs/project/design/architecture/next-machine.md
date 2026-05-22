@@ -21,7 +21,7 @@ visibility: 'public'
 The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix, Phase C: Integrate) without maintaining internal state.
 
 1. **Canonical phase pointer**: It reads the persisted `lifecycle_phase` pointer and routes from that state:
-   - `roadmap (todos.db)` (item discovery)
+   - todo list (`todos.db`) (item discovery)
    - prepared workflow artifacts: `prd`, optional `architecture` / `test-specs`,
      and `implementation-plan` (preparation check)
    - `todo state (todos.db)` (build/review phase tracking)
@@ -36,9 +36,9 @@ The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phas
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CheckRoadmap
-    CheckRoadmap --> Prepare: Item needs prep
-    CheckRoadmap --> Work: Item ready to build
+    [*] --> CheckTodoList
+    CheckTodoList --> Prepare: Item needs prep
+    CheckTodoList --> Work: Item ready to build
     Prepare --> Work: Prep complete
     Work --> Build: Ready to build
     Build --> Review: Build complete
@@ -53,7 +53,7 @@ stateDiagram-v2
 
 **Inputs:**
 
-- `todos.db` roadmap - Work item registry with priorities
+- `todos.db` todo list - Work item registry with priorities
 - `telec todo artifacts read {slug} prd` - Product intent and requirements contract
 - `telec todo artifacts read {slug} architecture` - Optional technical brief
 - `telec todo artifacts read {slug} test-specs` - Optional behavioral specs
@@ -196,7 +196,7 @@ sequenceDiagram
 
 ## Failure modes
 
-- **Missing Roadmap**: Cannot discover work items. Returns error instructing user to create roadmap.
+- **Missing todo list**: Cannot discover work items. Returns error instructing user to create a todo.
 - **Malformed State JSON**: Cannot read phase status. Treats as pending and restarts build phase.
 - **Dependency Cycle**: Circular dependencies detected. Logs error, refuses to dispatch.
 - **No Selectable Agents**: All agents are disabled in `config.yml` or marked unavailable in DB. Next Machine returns a hard error. If some agents are available but degraded, it notes this in the guidance and lets the orchestrator choose whether to proceed.

@@ -32,12 +32,20 @@ pub struct TodoArgs {
 pub enum TodoCommand {
     /// Create a new todo backed by its required `input` artifact.
     Create(CreateArgs),
+    /// List todo entries (source of truth for todo status).
+    List(ListArgs),
     /// Run the creative state machine (deferred to v1).
     Design(DeferredSlugArgs),
     /// Deprecated alias for `telec todo design` (deferred to v1).
     CoCreate(DeferredSlugArgs),
-    /// Remove a todo and its roadmap entry.
+    /// Remove a todo and its todo entry.
     Remove(SlugArgs),
+    /// Move a todo to the icebox.
+    Freeze(SlugArgs),
+    /// Promote a todo from the icebox to the active todo list.
+    Unfreeze(SlugArgs),
+    /// Move a todo to delivered.
+    Deliver(DeliverArgs),
     /// Run the Phase A (prepare) state machine (deferred to v1).
     Prepare(DeferredSlugArgs),
     /// Run the Phase B (work) state machine (deferred to v1).
@@ -49,7 +57,7 @@ pub enum TodoCommand {
     MarkPhase(DeferredSlugArgs),
     /// Re-evaluate evidence and align `lifecycle_phase` (deferred to v1).
     Reconcile(DeferredSlugArgs),
-    /// Set dependencies for a work item in the roadmap.
+    /// Set dependencies for a work item in the todo list.
     SetDeps(SetDepsArgs),
     /// Fire-and-forget brain dump (deferred to v1).
     Dump(DeferredSlugArgs),
@@ -96,11 +104,39 @@ pub struct SlugArgs {
 }
 
 #[derive(Args, Debug)]
+pub struct ListArgs {
+    /// Include icebox entries in the listing.
+    #[arg(long)]
+    pub include_icebox: bool,
+    /// Show only icebox entries.
+    #[arg(long)]
+    pub icebox_only: bool,
+    /// Include delivered entries in the listing.
+    #[arg(long)]
+    pub include_delivered: bool,
+    /// Show only delivered entries.
+    #[arg(long)]
+    pub delivered_only: bool,
+    /// Emit results as JSON instead of a table.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug)]
 pub struct SetDepsArgs {
     pub slug: String,
     /// Comma-separated dependency slugs (replaces existing edges verbatim).
     #[arg(long, default_value = "")]
     pub after: String,
+}
+
+#[derive(Args, Debug)]
+pub struct DeliverArgs {
+    pub slug: String,
+    /// Commit hash to record (auto-detection is not implemented in v2; pass
+    /// the hash explicitly).
+    #[arg(long)]
+    pub commit: Option<String>,
 }
 
 /// Slug placeholder used by subcommands that defer to v1.
@@ -166,7 +202,11 @@ pub async fn dispatch(
 ) -> Result<i32> {
     match args.command {
         TodoCommand::Create(a) => create(a, service, project, principal).await,
+        TodoCommand::List(a) => list(a, service, project).await,
         TodoCommand::Remove(a) => remove(a, service, project, principal).await,
+        TodoCommand::Freeze(a) => freeze(a, service, project, principal).await,
+        TodoCommand::Unfreeze(a) => unfreeze(a, service, project, principal).await,
+        TodoCommand::Deliver(a) => deliver(a, service, project, principal).await,
         TodoCommand::SetDeps(a) => set_deps(a, service, project, principal).await,
         TodoCommand::Show(a) => show(a, service, project).await,
         TodoCommand::Artifacts(a) => dispatch_artifacts(a, service, project, principal).await,
@@ -181,6 +221,29 @@ pub async fn dispatch(
         TodoCommand::Split(_) => deferred("split"),
         TodoCommand::Stamp(_) => deferred("stamp"),
     }
+}
+
+async fn list(args: ListArgs, service: &WorkflowService, project: ProjectId) -> Result<i32> {
+    // Translate v1 flag combinations to the storage service surface:
+    // icebox_only and delivered_only widen the service result, then filter.
+    let include_icebox = args.include_icebox || args.icebox_only;
+    let include_delivered = args.include_delivered || args.delivered_only;
+    let mut entries = service
+        .list_roadmap(project, include_icebox, include_delivered)
+        .await?;
+
+    if args.icebox_only {
+        entries.retain(|e| e.frozen);
+    } else if args.delivered_only {
+        entries.retain(|e| e.delivered_at.is_some());
+    }
+
+    if args.json {
+        output::print_json(&entries)?;
+    } else {
+        println!("{}", output::render_todo_list(&entries));
+    }
+    Ok(0)
 }
 
 async fn create(
@@ -253,6 +316,48 @@ async fn remove(
     let slug = Slug::new(&args.slug).context("parse todo slug")?;
     service.delete_todo(project, &slug, principal).await?;
     println!("removed todo {}", slug.as_str());
+    Ok(0)
+}
+
+async fn freeze(
+    args: SlugArgs,
+    service: &WorkflowService,
+    project: ProjectId,
+    principal: &Principal,
+) -> Result<i32> {
+    let slug = Slug::new(&args.slug).context("parse todo slug")?;
+    let entry = service
+        .freeze_roadmap_entry(project, &slug, principal)
+        .await?;
+    output::print_json(&entry)?;
+    Ok(0)
+}
+
+async fn unfreeze(
+    args: SlugArgs,
+    service: &WorkflowService,
+    project: ProjectId,
+    principal: &Principal,
+) -> Result<i32> {
+    let slug = Slug::new(&args.slug).context("parse todo slug")?;
+    let entry = service
+        .unfreeze_roadmap_entry(project, &slug, principal)
+        .await?;
+    output::print_json(&entry)?;
+    Ok(0)
+}
+
+async fn deliver(
+    args: DeliverArgs,
+    service: &WorkflowService,
+    project: ProjectId,
+    principal: &Principal,
+) -> Result<i32> {
+    let slug = Slug::new(&args.slug).context("parse todo slug")?;
+    let entry = service
+        .deliver_roadmap_entry(project, &slug, args.commit, principal)
+        .await?;
+    output::print_json(&entry)?;
     Ok(0)
 }
 

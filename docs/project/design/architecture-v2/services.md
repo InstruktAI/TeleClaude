@@ -466,8 +466,7 @@ authoritative cutover; defer to parallel-capable instead.
 Complete v1 footprint for workflow data (todos, roadmap, artifacts,
 state machines):
 
-- **CLI handlers** — `teleclaude/cli/telec/handlers/todo.py`,
-  `teleclaude/cli/telec/handlers/roadmap.py`
+- **CLI handlers** — `teleclaude/cli/telec/handlers/todo.py`
 - **HTTP API** — `teleclaude/api/todo_routes.py` (~25 calls to
   `todos_db.*` functions; backs the browser-facing API)
 - **TUI direct reads** — `teleclaude/cli/tui/widgets/todo_row.py`,

@@ -17,13 +17,13 @@ When you're away from your desk, your context dies. When you're on your server, 
 
 TeleClaude collapses these distances. At its heart is the **Telec TUI** — a rich terminal cockpit with animated headers, agent-themed colors, party mode, and full session management. No adapters required. Connect Telegram, Discord, or WhatsApp for mobile access, and every computer in your network meets as a single collective.
 
-- **The Cockpit:** The Telec TUI is the primary interface — a rich, themed terminal application for launching sessions, monitoring agents, managing your roadmap, and orchestrating work across computers. Everything starts here.
+- **The Cockpit:** The Telec TUI is the primary interface — a rich, themed terminal application for launching sessions, monitoring agents, managing your todo list, and orchestrating work across computers. Everything starts here.
 
 ![TUI Sessions View](./assets/screenshots/tui/dark/tui-sessions-dark-0.1.1.png)
 _AI Sessions — live session cards with agent type, thinking mode, timestamps, and output summaries. Agent availability at the bottom._
 
 ![TUI Work Preparation View](./assets/screenshots/tui/dark/tui-work-preparation-dark-0.1.png)
-_Work Preparation — multi-project roadmap with DOR scores, build/review status, dependency trees, and one-key scaffolding._
+_Work Preparation — multi-project todo list with DOR scores, build/review status, dependency trees, and one-key scaffolding._
 
 - **Continue on Any Client:** Sessions started from the cockpit are live on every connected client. Pick up your phone and continue the conversation directly on Discord, Telegram, or WhatsApp — talk to your agents, send voice commands, monitor progress. The Discord experience is superb: full thread-based session management, help desk monitoring, and direct agent interaction from your pocket.
 - **Multi-Channel Help Desk:** Scale your support by bridging Discord, Telegram, and WhatsApp Business into a unified, agent-monitored workspace. Monitor customer sessions from any client, escalate when needed, and let session post-processing extract business intelligence after every interaction.
@@ -143,8 +143,8 @@ A v2 Rust workspace lives under `crates/` and ships alongside the Python codebas
 What v2 currently delivers:
 
 - A Cargo workspace with `shared`, `observability`, `storage`, `event-bus`, `identity`, `workflow`, and `telec-cli` crates (see `docs/project/design/architecture-v2/`).
-- A Postgres-backed `WorkflowService` with full CRUD, roadmap operations, artifact versioning, and a lifecycle state machine.
-- A `telec-cli` binary that mirrors v1's `telec todo` and `telec roadmap` CRUD against the v2 schema. Orchestrator-level subcommands (`design`, `prepare`, `work`, `integrate`, …) intentionally defer to the v1 Python handlers.
+- A Postgres-backed `WorkflowService` with full CRUD, todo-list operations, artifact versioning, and a lifecycle state machine.
+- A `telec-cli` binary that mirrors v1's `telec todo` CRUD against the v2 schema. Orchestrator-level subcommands (`design`, `prepare`, `work`, `integrate`, …) intentionally defer to the v1 Python handlers.
 - A `migrate-workflow-v1` subcommand that can copy v1 SQLite todos into the v2 Postgres schema (tool only — **not run automatically**).
 - A Python bridge in the v1 daemon (`teleclaude/transport/workflow_bridge.py`) that subscribes to `workflow.*` Redis events and refreshes the existing cache. It's a no-op until someone uses the v2 CLI.
 

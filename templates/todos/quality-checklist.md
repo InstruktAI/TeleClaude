@@ -67,5 +67,5 @@ Ownership:
 - [ ] Build gates all checked
 - [ ] Review gates all checked
 - [ ] Merge to main complete
-- [ ] Delivery logged in roadmap (status: delivered)
+- [ ] Delivery logged in todo list (status: delivered)
 - [ ] Worktree cleanup complete

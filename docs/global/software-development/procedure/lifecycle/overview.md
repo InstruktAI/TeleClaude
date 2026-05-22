@@ -46,7 +46,7 @@ Merge candidates to canonical main:
 - **Squash merge** — single commit capturing full delivery intent
 - **Conflict resolution** — resolve in integration worktree
 - **Push** — advance `origin/main`
-- **Delivery bookkeeping** — roadmap update and worktree cleanup
+- **Delivery bookkeeping** — todo list update and worktree cleanup
 
 ### Principles
 
@@ -59,7 +59,7 @@ Work state lives in `todos.db` state.
 
 ## Preconditions
 
-- Work item exists in `todos.db` roadmap.
+- Work item exists in the `todos.db` todo list.
 - On the first DB-backed access to an old project, TeleClaude auto-imports legacy markdown todo indexes into an empty `todos.db`. Detection requires an empty database plus at least one legacy index file (`roadmap.md`, `icebox.md`, `delivered.md`, or `bugs.md`).
 
 ## Steps
@@ -71,7 +71,7 @@ Work state lives in `todos.db` state.
 ## Outputs
 
 - Delivered work item merged to main.
-- Updated roadmap and delivery records.
+- Updated todo list and delivery records.
 
 ## Recovery
 

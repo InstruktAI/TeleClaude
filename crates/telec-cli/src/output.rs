@@ -16,14 +16,14 @@ pub fn print_json<T: Serialize>(value: &T) -> Result<()> {
     Ok(())
 }
 
-/// Render a list of roadmap entries as an aligned table.
-pub fn render_roadmap(entries: &[RoadmapEntry]) -> String {
-    let rows: Vec<RoadmapRow> = entries.iter().map(RoadmapRow::from_entry).collect();
+/// Render ordered todo-list storage entries as an aligned table.
+pub fn render_todo_list(entries: &[RoadmapEntry]) -> String {
+    let rows: Vec<TodoListRow> = entries.iter().map(TodoListRow::from_entry).collect();
     Table::new(rows).with(Style::sharp()).to_string()
 }
 
 #[derive(Tabled)]
-struct RoadmapRow {
+struct TodoListRow {
     position: i32,
     slug: String,
     group: String,
@@ -32,7 +32,7 @@ struct RoadmapRow {
     after: String,
 }
 
-impl RoadmapRow {
+impl TodoListRow {
     fn from_entry(entry: &RoadmapEntry) -> Self {
         Self {
             position: entry.position,

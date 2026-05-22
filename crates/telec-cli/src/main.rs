@@ -1,7 +1,7 @@
 //! telec-cli — v2 replacement for selected workflow surfaces.
 //!
 //! Composes the primitive crates (observability, storage, event-bus,
-//! identity, workflow) and dispatches todo/roadmap/workflow subcommands. Other
+//! identity, workflow) and dispatches todo/workflow subcommands. Other
 //! v1 top-level commands stay in Python during the transition; the F1 CLI
 //! intentionally focuses on CRUD-level operations against
 //! [`workflow::WorkflowService`].
@@ -11,8 +11,8 @@
 //! * `0` — success.
 //! * `1` — unexpected error (printed via `anyhow`).
 //! * `2` — subcommand is intentionally deferred to the v1 Python shim
-//!   (orchestrator-level commands like `todo design`, `migrate-icebox`,
-//!   and `migrate-workflow-v1` until G1 lands).
+//!   (orchestrator-level commands like `todo design` and
+//!   `migrate-workflow-v1` until G1 lands).
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -29,7 +29,6 @@ mod migrate;
 mod migrate_identity;
 mod output;
 mod project;
-mod roadmap;
 mod todo;
 mod workflow_cli;
 
@@ -62,8 +61,6 @@ struct Cli {
 enum Command {
     /// Manage todos.
     Todo(todo::TodoArgs),
-    /// Manage the roadmap.
-    Roadmap(roadmap::RoadmapArgs),
     /// Manage v2 workflow surfaces.
     Workflow(workflow_cli::WorkflowArgs),
     /// One-shot data migration from v1 SQLite to v2 Postgres (stub; G1).
@@ -145,7 +142,6 @@ async fn run() -> Result<i32> {
 
     match cli.command {
         Command::Todo(args) => todo::dispatch(args, &service, project, &principal).await,
-        Command::Roadmap(args) => roadmap::dispatch(args, &service, project, &principal).await,
         Command::Workflow(args) => {
             workflow_cli::dispatch(args, &service, project, &principal).await
         }

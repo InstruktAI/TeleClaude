@@ -132,7 +132,7 @@ async def _get_item_phase_db(
 
     if is_delivered and is_in_roadmap:
         msg = (
-            f"Slug '{slug}' found in both delivered and active roadmap. "
+            f"Slug '{slug}' found in both delivered and the active todo list. "
             f"This is a data integrity issue — escalate to the user to resolve."
         )
         raise ValueError(msg)
@@ -148,7 +148,7 @@ async def _get_item_phase_db(
     if is_in_roadmap:
         return ItemPhase.PENDING.value
 
-    msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in roadmap. Cannot determine phase."
+    msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in the todo list. Cannot determine phase."
     raise ValueError(msg)
 
 
@@ -377,7 +377,7 @@ def get_item_phase(cwd: str, slug: str) -> str:
 
     if is_delivered and is_in_roadmap:
         msg = (
-            f"Slug '{slug}' found in both delivered and active roadmap. "
+            f"Slug '{slug}' found in both delivered and the active todo list. "
             f"This is a data integrity issue — escalate to the user to resolve."
         )
         raise ValueError(msg)
@@ -393,7 +393,7 @@ def get_item_phase(cwd: str, slug: str) -> str:
     if is_in_roadmap:
         return ItemPhase.PENDING.value
 
-    msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in roadmap. Cannot determine phase."
+    msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in the todo list. Cannot determine phase."
     raise ValueError(msg)
 
 

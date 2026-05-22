@@ -78,7 +78,7 @@ Then it rejects the call with "Unknown artifact name" and the canonical list bef
 ```
 
 ```
-Given a todo whose roadmap entry is in status=delivered
+Given a todo whose entry is in status=delivered
 When an agent attempts to write any artifact for that slug
 Then `_ensure_artifact_id` raises ValueError("…is delivered (read-only)") and the API surfaces an error
 ```

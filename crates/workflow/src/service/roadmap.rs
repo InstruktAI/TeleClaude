@@ -1,7 +1,7 @@
-//! Roadmap operations.
+//! Ordered todo-list storage operations.
 //!
-//! Mirrors the v1 `telec roadmap` surface (list, add, move, deps, freeze,
-//! unfreeze, deliver, remove). Roadmap order is a per-project monotonically
+//! Maintains ordering and dependency storage now exposed through `telec todo`.
+//! Roadmap order is a per-project monotonically
 //! increasing `position` integer; mutations rewrite the affected positions
 //! inside a single transaction so a reader never sees a hole or duplicate.
 //!

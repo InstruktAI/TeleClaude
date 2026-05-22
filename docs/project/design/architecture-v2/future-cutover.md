@@ -63,13 +63,12 @@ scope catch from MVP.
 - Cargo workspace at `crates/` with seven crates (`shared`,
   `observability`, `storage`, `event-bus`, `identity`, `workflow`,
   `telec-cli`).
-- Postgres-backed `WorkflowService` with full CRUD, roadmap operations,
+- Postgres-backed `WorkflowService` with full CRUD, todo-list operations,
   artifact versioning, lifecycle state machine, and event emission.
 - `telec-cli` binary mirroring v1's `telec todo` CRUD
   against the v2 schema. Orchestrator-level subcommands (`design`,
   `prepare`, `work`, `integrate`, `mark-phase`, `reconcile`, `dump`,
-  `split`, `stamp`, `migrate-icebox`) exit with code 2 so a future shim
-  can route them to v1.
+  `split`, `stamp`) exit with code 2 so a future shim can route them to v1.
 - `migrate-workflow-v1` subcommand that copies v1 SQLite todos into the
   v2 Postgres schema. Tool only — the cutover PR does NOT invoke it
   against real project data.
@@ -87,8 +86,7 @@ scope catch from MVP.
 
 The original `mvp-shape.md` task DAG included a Wave I cutover that
 deleted `teleclaude/core/next_machine/`, `teleclaude/core/todos_db/`,
-`teleclaude/cli/telec/handlers/todo.py`, and
-`teleclaude/cli/telec/handlers/roadmap.py`, then replaced v1 dispatch
+and `teleclaude/cli/telec/handlers/todo.py`, then replaced v1 dispatch
 with the Rust binary. **That cutover was deferred.**
 
 Reality check during the build session: v1's workflow access paths are
@@ -128,7 +126,7 @@ single coordinated step. That means:
    the new Python layer. Browser frontend keeps the same wire shape.
 3. **TUI widget migration** — `todo_row.py`, `preparation_actions.py`,
    and any other direct-read sites move to the new layer.
-4. **Integration / operations / roadmap migration** —
+4. **Integration / operations / todo-list migration** —
    `teleclaude/core/integration/`, `teleclaude/core/operations/`,
    `teleclaude/core/roadmap.py` switch to the new layer.
 5. **Orchestrator migration** — every file under
@@ -140,7 +138,7 @@ single coordinated step. That means:
    registered project to copy SQLite → Postgres. The migration is
    idempotent (SHA-tracked) so it can re-run safely.
 7. **v1 CLI dispatch shim** — `teleclaude/cli/telec/handlers/todo.py`
-   and `handlers/roadmap.py` keep their entry points but delegate CRUD
+   keeps its entry points but delegates CRUD
    subcommands to the Rust `telec-cli` binary (subprocess call). The
    orchestrator-level subcommands keep their v1 handler bodies.
 

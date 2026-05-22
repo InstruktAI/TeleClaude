@@ -121,7 +121,7 @@ Scenario: Delivery completes before sync
 
 ### Cross-context references
 
-- **workflow / integration** — own roadmap delivery state and delivery-time
+- **workflow / integration** — own todo delivery state and delivery-time
   `delivered_by` reconciliation.
 - **config** — supplies project root and Mother-project resolution consumed by
   the distribute subprocess.

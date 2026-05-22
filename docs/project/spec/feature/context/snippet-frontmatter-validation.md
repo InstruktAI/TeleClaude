@@ -27,7 +27,7 @@ or wrong taxonomy sections.
 Validation is shape-only for lifecycle metadata. `status: actual` forbids
 `delivered_by`; `status: target` and `status: mixed` require a non-empty
 `delivered_by` list. Relationship decisions such as whether a slug exists in
-the roadmap, whether all slugs have delivered, and when a snippet flips to
+the todo list, whether all slugs have delivered, and when a snippet flips to
 actual are owned by lifecycle callers, not by the snippet validator.
 
 ## Canonical fields

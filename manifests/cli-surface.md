@@ -20,7 +20,7 @@ List sessions (default: spawned by current, --all for all)
 
 Start a new agent session
 
-**Usage:** `telec sessions start [--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--direct] [--detach]`
+**Usage:** `telec sessions start [--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--direct]`
 
 **Flags:**
 
@@ -30,12 +30,11 @@ Start a new agent session
 - `--mode`: Thinking mode: fast, med, slow
 - `--message`: Initial message to send
 - `--direct`: Conversation mode: create direct link with caller and bypass listeners
-- `--detach`: Fire-and-forget: inherit context but skip listener registration
 
 **Notes:**
 
 - Use --direct for peer conversation mode when you want shared linked output instead of worker supervision notifications.
-- Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.
+- --detach: do not use unless explicitly instructed. Sanctioned only for a personal-assistant dispatching an orchestrator to a project. --detach disables notifications — you will not learn when the child finishes, so omit it whenever your next step depends on the result.
 
 ### `telec sessions send`
 
@@ -60,7 +59,7 @@ Send a message to a running session
 
 Get recent messages from a session's transcript
 
-**Usage:** `telec sessions tail <session_id> [--since <ts>] [--tools] [--thinking]`
+**Usage:** `telec sessions tail <session_id> [--since <ts>] [--tools] [--thinking] [--full]`
 
 **Flags:**
 
@@ -68,12 +67,13 @@ Get recent messages from a session's transcript
 - `--since`: ISO8601 timestamp filter
 - `--tools`: Include tool use entries
 - `--thinking`: Include thinking blocks
+- `--full`: Show all projected messages instead of the latest user turn
 
 ### `telec sessions run`
 
 Run a slash command on a new agent session
 
-**Usage:** `telec sessions run [--command <cmd>] [--project <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach] [--additional-context <ctx>]`
+**Usage:** `telec sessions run [--command <cmd>] [--project <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--additional-context <ctx>]`
 
 **Flags:**
 
@@ -84,14 +84,13 @@ Run a slash command on a new agent session
 - `--mode`: Thinking mode: fast, med, slow
 - `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--subfolder`: Subdirectory within the project
-- `--detach`: Fire-and-forget: inherit context but skip listener registration
 - `--additional-context`: Additional context for the worker, appended to startup message
 
 **Notes:**
 
 - Creates a fresh session and runs the slash command as the first agent message.
 - Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.
-- Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.
+- --detach: do not use unless explicitly instructed. Sanctioned only for a personal-assistant dispatching an orchestrator to a project. --detach disables notifications — you will not learn when the child finishes, so omit it whenever your next step depends on the result.
 
 ### `telec sessions revive`
 
@@ -303,6 +302,7 @@ Query documentation snippets
 **Notes:**
 
 - Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.
+- Omitting --areas and/or --domains returns all values for that dimension; pass a comma-separated subset to filter.
 - Example phase 1: telec docs index --areas policy,procedure --domains software-development
 - Example phase 2: telec docs get software-development/policy/testing project/spec/command-surface
 
@@ -310,14 +310,19 @@ Query documentation snippets
 
 List snippet IDs and metadata (phase 1)
 
-**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <types>] [--domains <names>]`
+**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|customer-relations>] [--target <slug>]`
 
 **Flags:**
 
 - `--baseline-only` (`-b`): Show only baseline snippets
 - `--third-party` (`-t`): Include third-party docs
-- `--areas` (`-a`): Filter by taxonomy type
-- `--domains` (`-d`): Filter by domain
+- `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec|adr); omit for all
+- `--domains` (`-d`): Filter by domain (software-development|creative|marketing|customer-relations); omit for all
+- `--target`: Filter to snippets delivered by slug
+
+**Notes:**
+
+- Non-actual snippets render with a [target → slug] or [mixed → slug] prefix in phase 1 output.
 
 ### `telec docs get`
 
@@ -331,18 +336,43 @@ Manage work items
 
 ### `telec todo create`
 
-Create a draft todo skeleton with no input artifact
+Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> [--after <deps>]`
+**Usage:** `telec todo create <slug> <content> [--after <deps>] [--silent] [--prepped]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
+- `--silent`: Create silently — suppress pickup notification
+- `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking.
 
 **Notes:**
 
-- Creates only the roadmap entry and canonical draft state.
-- Use this when humans are fleshing out artifacts directly and there is no braindump input yet.
+- Creates the todo entry, canonical state, and stores content as the input artifact.
+- Emits workflow.todo.created for autonomous pickup unless --silent is set.
+
+### `telec todo list`
+
+List todo entries (source of truth for todo status)
+
+**Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]`
+
+**Flags:**
+
+- `--include-icebox` (`-i`): Include icebox items
+- `--icebox-only` (`-o`): Show only icebox items
+- `--include-delivered` (`-d`): Include delivered items
+- `--delivered-only`: Show only delivered items
+- `--since`: Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.
+- `--json`: Output as a sectioned JSON object (active/delivered/icebox trees)
+
+**Notes:**
+
+- Output is sectioned into active/delivered/icebox dependency trees.
+- CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
+- --include-delivered returns the full delivery history; scope it with --since.
+- --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
+- --since alone implies --include-delivered; combine with --delivered-only to exclude active items.
 
 ### `telec todo design`
 
@@ -352,9 +382,37 @@ Run the creative state machine
 
 ### `telec todo remove`
 
-Remove a todo and its roadmap entry
+Soft-remove a todo: the durable record (todo entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
 
 **Usage:** `telec todo remove <slug>`
+
+### `telec todo freeze`
+
+Move todo to icebox
+
+**Usage:** `telec todo freeze <slug>`
+
+### `telec todo unfreeze`
+
+Promote todo from icebox
+
+**Usage:** `telec todo unfreeze <slug>`
+
+### `telec todo deliver`
+
+Move todo to delivered
+
+**Usage:** `telec todo deliver <slug> [--commit <hash>]`
+
+**Flags:**
+
+- `--commit`: Commit hash (auto-detects HEAD if omitted)
+
+### `telec todo rename`
+
+Rename a todo slug
+
+**Usage:** `telec todo rename <old-slug> <new-slug>`
 
 ### `telec todo prepare`
 
@@ -391,7 +449,7 @@ Operator override: write the authoritative lifecycle_phase field
 
 **Notes:**
 
-- Validates the target step's prerequisites, then persists lifecycle_phase. Use `--phase prepared` when you intentionally want to fast-track a todo into work-ready state.
+- Operator escape hatch; downstream phases will see whatever you set without re-deriving from evidence.
 
 ### `telec todo reconcile`
 
@@ -411,32 +469,13 @@ Re-evaluate current todo evidence and align lifecycle_phase within one stage
 
 ### `telec todo set-deps`
 
-Set dependencies for a work item in the roadmap
+Set dependencies for a work item in the todo list
 
 **Usage:** `telec todo set-deps <slug> [--after <slugs>]`
 
 **Flags:**
 
 - `--after`: Dependency slug (repeatable)
-
-### `telec todo dump`
-
-Fire-and-forget brain dump with notification trigger
-
-**Usage:** `telec todo dump <slug> <content> [--after <deps>] [--draft] [--prepped]`
-
-**Flags:**
-
-- `--after`: Comma-separated dependency slugs
-- `--draft`: Create silently — skip domain event so no cartridge picks it up
-- `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking. Never apply general guidance from a prior --prepped dump as authorization for a different todo.
-
-**Notes:**
-
-- Emits todo.dumped notification for autonomous processing.
-- Use --draft to stage an idea without triggering autonomous pickup.
-- Use --prepped when content is a complete implementation plan: content becomes the implementation-plan artifact, kind=prepped, plan_review=approve, requirements_review=skipped, ready for build.
-- POLICY — --prepped requires explicit human-in-the-loop approval of the exact plan content. Bypassing prepare via --prepped lands a build-ready todo into the work pickup chain, where an autonomous orchestrator can spawn builders against it. Agents must present the full plan and the dump command to the human and obtain explicit consent BEFORE invoking. Approval is per-todo and per-plan — never inherit it from another todo.
 
 ### `telec todo split`
 
@@ -450,7 +489,7 @@ Split a todo into child items (container transition)
 
 **Notes:**
 
-- Scaffolds children, cleans parent artifacts, sets container state.
+- Scaffolds children and marks the parent as a holder/container. Parent artifacts are preserved as source material for plucking and seeding child todos.
 - Children inherit parent's approved prepare phase: if requirements were approved, children start at plan_drafting; if the plan was approved, children start at prepared (ready for build).
 
 ### `telec todo artifacts`
@@ -467,24 +506,39 @@ List artifacts for a todo
 
 Read a todo artifact
 
-**Usage:** `telec todo artifacts read <slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>`
 
 #### `telec todo artifacts write`
 
 Write a todo artifact
 
-**Usage:** `telec todo artifacts write <slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <content>`
+**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
+
+**Notes:**
+
+- Writable names exclude retired kinds (test-specs, spec-review-findings); those remain readable/removable for pre-cutover todos only.
 
 #### `telec todo artifacts diff`
 
 Show a unified diff between two artifact versions
 
-**Usage:** `telec todo artifacts diff <slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
+**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
 
 **Notes:**
 
 - Looks up both versions by digest in the artifact version history and prints a unified diff between them.
 - Used by the prepare loop to show reviewers what changed since the last approved digest.
+
+#### `telec todo artifacts remove`
+
+Remove a todo artifact and its version history
+
+**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>`
+
+**Notes:**
+
+- Refuses input because it is the seed artifact for a todo.
+- Missing artifacts are treated as a successful no-op.
 
 ### `telec todo show`
 
@@ -496,103 +550,16 @@ Show full state payload for a todo
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--grounding-invalidated] [--requirements-ready] [--plan-ready] [--specs-built] [--finalize-ready] [--agent-a <session_id> --agent-b <session_id>]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--finalize-ready]`
 
 **Flags:**
 
 - `--verdict`: approve | changes_requested | needs_work | needs_decision
-- `--phase`: Review phase the verdict belongs to (requirements_review, test_spec_review, plan_review, build_review)
-- `--grounding-invalidated`: Mark grounding as invalid
-- `--requirements-ready`: Mark requirements as produced and ready for review
-- `--plan-ready`: Mark implementation plan as produced and ready for review
-- `--specs-built`: Mark test specifications as delivered
+- `--phase`: Review phase the verdict belongs to (architecture_review, plan_review, build_review)
+- `--prd-approved`: Mark PRD as approved by the human
+- `--architecture-skipped`: Skip architecture phase with a reason
+- `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
-- `--agent-a`: Prepare pair slot A session_id (atomic with --agent-b)
-- `--agent-b`: Prepare pair slot B session_id (atomic with --agent-a)
-
-## `telec roadmap`
-
-Manage the work item roadmap
-
-### `telec roadmap list`
-
-List roadmap entries (source of truth for todo status)
-
-**Usage:** `telec roadmap list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--json]`
-
-**Flags:**
-
-- `--include-icebox` (`-i`): Include icebox items
-- `--icebox-only` (`-o`): Show only icebox items
-- `--include-delivered` (`-d`): Include delivered items
-- `--delivered-only`: Show only delivered items
-- `--json`: Output as JSON
-
-### `telec roadmap add`
-
-Add entry to the roadmap
-
-**Usage:** `telec roadmap add <slug> [--group <label>] [--after <slugs>] [--before <slug>] [--description <text>]`
-
-**Flags:**
-
-- `--group`: Visual grouping label
-- `--after`: Comma-separated dependency slugs
-- `--before`: Insert before this slug (default: append)
-- `--description`: Summary description
-
-### `telec roadmap remove`
-
-Remove entry from the roadmap
-
-**Usage:** `telec roadmap remove <slug>`
-
-### `telec roadmap move`
-
-Reorder an entry in the roadmap
-
-**Usage:** `telec roadmap move <slug> [--before <slug>] [--after <slug>]`
-
-**Flags:**
-
-- `--before`: Move before this slug
-- `--after`: Move after this slug
-
-### `telec roadmap deps`
-
-Set dependencies for an entry
-
-**Usage:** `telec roadmap deps <slug> [--after <slugs>]`
-
-**Flags:**
-
-- `--after`: Comma-separated dependency slugs
-
-### `telec roadmap freeze`
-
-Move entry to icebox
-
-**Usage:** `telec roadmap freeze <slug>`
-
-### `telec roadmap unfreeze`
-
-Promote entry from icebox to roadmap
-
-**Usage:** `telec roadmap unfreeze <slug>`
-
-### `telec roadmap migrate-icebox`
-
-One-time migration: move icebox folders into todos/_icebox/
-
-### `telec roadmap deliver`
-
-Move entry to delivered
-
-**Usage:** `telec roadmap deliver <slug> [--commit <hash>]`
-
-**Flags:**
-
-- `--commit`: Commit hash (auto-detects HEAD if omitted)
 
 ## `telec bugs`
 
@@ -612,12 +579,13 @@ Scaffold a bug from a description; lifecycle router dispatches /next-work
 
 ### `telec bugs create`
 
-Scaffold a bug from an explicit slug; lifecycle router dispatches /next-work
+Scaffold a bug from a description; lifecycle router dispatches /next-work
 
-**Usage:** `telec bugs create <slug> [--project <name>]`
+**Usage:** `telec bugs create <description> [--slug <slug>] [--project <name>]`
 
 **Flags:**
 
+- `--slug`: Custom slug (default: auto-generated)
 - `--project`: Project name (from trusted_dirs)
 
 ### `telec bugs list`
@@ -815,53 +783,41 @@ Show full transcript for a session
 
 ## `telec memories`
 
-Search and manage memory observations
+Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — their relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the session memory extraction agent (the memory scraper, invoked via /extract-memory); other agents must never create them.
 
 ### `telec memories list`
 
-List memory observations
+List personal-preference observations about the human.
 
 **Usage:** `telec memories list [--limit <n>] [--type <type>] [--project <name>]`
 
 **Flags:**
 
 - `--limit`: Max results (default: 50)
-- `--type`: Filter by type: preference, decision, discovery, gotcha, pattern, friction, context
+- `--type`: Filter by observation type stored in the schema
 - `--project`: Filter by project name
 
 ### `telec memories search`
 
-Search memory observations
+Search personal-preference observations about the human.
 
 **Usage:** `telec memories search <query> [--limit <n>] [--type <type>] [--project <name>]`
 
 **Flags:**
 
 - `--limit`: Max results (default: 20)
-- `--type`: Filter by type: preference, decision, discovery, gotcha, pattern, friction, context
+- `--type`: Filter by observation type stored in the schema
 - `--project`: Filter by project name
-
-### `telec memories save`
-
-Save a memory observation
-
-**Usage:** `telec memories save <text> [--title <title>] [--type <type>] [--project <name>]`
-
-**Flags:**
-
-- `--title`: Observation title
-- `--type`: Type: preference, decision, discovery, gotcha, pattern, friction, context
-- `--project`: Project name
 
 ### `telec memories delete`
 
-Delete a memory observation by ID
+Delete a personal-preference observation by ID (typically run by the human while pruning).
 
 **Usage:** `telec memories delete <id>`
 
 ### `telec memories timeline`
 
-Show observations around an anchor ID
+Show personal-preference observations around an anchor ID.
 
 **Usage:** `telec memories timeline <id> [--before <n>] [--after <n>] [--project <name>]`
 
@@ -892,6 +848,7 @@ Run language-aware test suite
 
 - `--expensive`: Include expensive/slow tests
 - `--all`: Run all tests, skip workspace scoping
+- `--update-snapshots`: Update snapshot files after reading diffs. Use only when test failures show snapshot deltas that match your intended change.
 
 ### `telec code format`
 
@@ -905,13 +862,39 @@ Run language-aware code formatter
 
 List workspace-scoped changed files
 
+### `telec code add`
+
+Stage files for the next commit (NEW, unmerged, or partial-staged tracked)
+
+**Usage:** `telec code add <path> [<path> ...]`
+
+**Notes:**
+
+- Sealed equivalent of 'git add' for the three cases git's data model genuinely requires staging:
+-   (1) NEW (untracked) files — must enter the index before commit pathspec can match.
+-   (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
+-   (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec code commit` directs agents here for recovery.
+- Modified-tracked files that are NOT partial-staged don't need staging — pathspec commits them straight from the working tree.
+- NEW files in scope are NOT auto-committed; this is the explicit declaration step. Without it, untracked files stay untracked (safety net for temp/scratch artifacts the agent may have created incidentally).
+- Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.
+
 ### `telec code commit`
 
-Stage workspace-scoped files, lint, format, and commit
+Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)
 
-**Usage:** `telec code commit [<git-commit-args>]`
+**Usage:** `telec code commit "<message>" [--approved] [--include <path> ...]`
 
 **Flags:**
 
-- `-m`: Commit message
+- `--approved`: Human-approved commit gate. Required to commit on main; bare invocation prints Path A/B/C and exits.
+- `--include`: Declare files outside workspace scope to add to this commit (space-separated paths).
 
+**Notes:**
+
+- Accepts only: one quoted message, --approved, and --include <path> ... .
+- Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.
+- NEW (untracked) files in scope are NOT auto-committed; declare them via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts).
+- Unmerged-index files in pathspec are staged internally for the integrator conflict path.
+- Without --approved on main: prints Path A/B/C classification and exits.
+- Pathspec = workspace scope plus --include paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.
+- The 🤖/Co-Authored-By trailer is appended automatically (idempotent).

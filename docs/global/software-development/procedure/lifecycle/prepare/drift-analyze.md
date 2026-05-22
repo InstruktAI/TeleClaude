@@ -55,7 +55,7 @@ The six drift classes:
   `teleclaude/resource_validation/_snippet.py:124`), mapped to
   canonical snippet IDs.
 - **dependency-graph** — `dependency_set_at_write` vs the Todo's current
-  **immediate** `after` set and each direct dep's roadmap status.
+  **immediate** `after` set and each direct dep's todo status.
   Shallow only — not transitive.
 - **age** — `produced_at` vs the artifact-kind's configured freshness
   window (policy-driven; disabled when unset).
@@ -88,7 +88,7 @@ The six drift classes:
     artifact references.
   - **dependency-graph** — compare the recorded `dependency_set_at_write`
     to the Todo's current **immediate** `after` set (added/removed deps)
-    and each direct dep's roadmap status flips (e.g., HELD → DELIVERED).
+    and each direct dep's todo status flips (e.g., HELD → DELIVERED).
     Shallow only — do NOT resolve a transitive closure; deep transitive
     changes are surfaced upward by each direct dep's own drift detection
     when that dep is itself prepared. Judge whether the dep-graph change
@@ -190,7 +190,7 @@ evidence.
 - If a referenced snippet ID no longer resolves (`telec docs get` errors
   or the snippet was removed), stamp `substantive` on
   upstream-snippet — the artifact's grounding is now incomplete.
-- If a dep slug no longer exists in the roadmap, stamp `substantive` on
+- If a dep slug no longer exists in the todo list, stamp `substantive` on
   dependency-graph — the artifact's dep assumptions are invalid.
 - If the project's age window for the artifact kind is unset (`0` or
   absent), the age class is disabled and does not appear in the

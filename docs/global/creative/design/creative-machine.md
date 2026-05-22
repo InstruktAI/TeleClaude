@@ -68,7 +68,7 @@ compositional intent into code).
   dispatches workers or returns instructions for the orchestrator.
 - **Creative phase is optional**: not every todo requires creative work. The machine
   activates only when the todo's input indicates visual work (explicitly stated or
-  flagged in `roadmap (todos.db)`).
+  flagged in the todo list (`todos.db`)).
 
 ## Primary flows
 

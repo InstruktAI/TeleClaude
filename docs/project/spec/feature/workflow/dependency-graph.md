@@ -6,7 +6,7 @@ scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
 status: 'actual'
-description: 'Directed acyclic graph of `after` edges between todo roadmap entries; cycle detection at the API boundary refuses bad mutations before persistence; unmet dependencies block dispatch during prepare/work slug resolution.'
+description: 'Directed acyclic graph of `after` edges between todo entries; cycle detection at the API boundary refuses bad mutations before persistence; unmet dependencies block dispatch during prepare/work slug resolution.'
 ---
 
 # Dependency Graph — Spec
@@ -56,15 +56,15 @@ And no further validation or write happens
 ```
 
 ```
-Given a request to /todos/set-deps where "alpha" exists but "ghost" is not in the roadmap
+Given a request to /todos/set-deps where "alpha" exists but "ghost" is not in the todo list
 When the route validates the deps
 Then the missing slug check fires before cycle detection
-And the API responds with HTTP 404 "dependency 'ghost' not found in roadmap"
+And the API responds with HTTP 404 "dependency 'ghost' not found in todo list"
 And no row is written
 ```
 
 ```
-Given roadmap entries [a, b, c] with edges {b: [a], c: [b]} and only "a" delivered
+Given todo entries [a, b, c] with edges {b: [a], c: [b]} and only "a" delivered
 When the work orchestrator searches for the next runnable slug
 Then "b" is selected because its only dependency "a" is delivered
 And "c" is skipped because "b" is not yet delivered
@@ -76,7 +76,7 @@ Given an entry "c" depending on iceboxed entry "b"
 When the work orchestrator evaluates "c"
 Then "b" is not in delivered_slugs (icebox is not delivery)
 And "c" is reported as dependency-blocked
-And the resolver continues searching the rest of the roadmap
+And the resolver continues searching the rest of the todo list
 ```
 
 ```
@@ -102,7 +102,7 @@ And the API responds with "dependencies cleared for '<slug>'"
 ### Cross-context references
 
 - `workflow` orchestration internals — prepare and work pickup (`next_machine.slug_resolution`) consult `load_deps()` against `delivered_slugs()` to decide what is runnable
-- `agent_runtime` / daemon cache — `set_deps` triggers `_on_mutation("todo_updated")`, propagating the change to cached roadmap views
+- `agent_runtime` / daemon cache — `set_deps` triggers `_on_mutation("todo_updated")`, propagating the change to cached todo-list views
 
 ## Known caveats
 

@@ -594,7 +594,7 @@ class PreparationViewActionsMixin:
         self._rebuild()  # type: ignore[attr-defined]
 
     def action_unfreeze(self) -> None:
-        """u: unfreeze an icebox todo back to active roadmap."""
+        """u: unfreeze an icebox todo back to the active todo list."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if not row or row.todo.status != TodoStatus.ICEBOX:
             return
@@ -612,7 +612,7 @@ class PreparationViewActionsMixin:
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Unfrozen '{slug}' to roadmap")  # type: ignore[attr-defined]
+                self.app.notify(f"Unfrozen '{slug}' to todo list")  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]

@@ -22,7 +22,7 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 4. **Add the API endpoint** (if daemon-backed). Add a route in `teleclaude/api/` (e.g., `todo_routes.py`). Use FastAPI path/body params. Return `{"status": "ok", ...}` on success.
 
-5. **Route the subcommand.** Wire the handler into the dispatcher function (`_handle_todo`, `_handle_roadmap`, etc.) with the appropriate subcommand string match.
+5. **Route the subcommand.** Wire the handler into the dispatcher function (`_handle_todo`, etc.) with the appropriate subcommand string match.
 
 6. **Update `__all__` exports.** Add the handler to the module's `__all__` list.
 

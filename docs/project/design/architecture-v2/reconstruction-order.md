@@ -85,7 +85,7 @@ data**, not just the CLI. For workflow:
   `teleclaude/core/roadmap.py` (internal service callers)
 - `teleclaude/core/next_machine/*` (the orchestrator running EVERY
   in-flight todo, including the build session attempting the cutover)
-- `teleclaude/cli/telec/handlers/todo.py` + `roadmap.py` (CLI handlers)
+- `teleclaude/cli/telec/handlers/todo.py` (CLI handlers)
 
 A "CLI-only cutover" — switching just `telec todo` to v2 while leaving
 the other write paths on SQLite — creates **dual source of truth**: v2

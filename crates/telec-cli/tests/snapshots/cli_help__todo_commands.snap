@@ -3,15 +3,19 @@ source: crates/telec-cli/tests/cli_help.rs
 expression: extracted
 ---
   create      Create a new todo backed by its required `input` artifact
+  list        List todo entries (source of truth for todo status)
   design      Run the creative state machine (deferred to v1)
   co-create   Deprecated alias for `telec todo design` (deferred to v1)
-  remove      Remove a todo and its roadmap entry
+  remove      Remove a todo and its todo entry
+  freeze      Move a todo to the icebox
+  unfreeze    Promote a todo from the icebox to the active todo list
+  deliver     Move a todo to delivered
   prepare     Run the Phase A (prepare) state machine (deferred to v1)
   work        Run the Phase B (work) state machine (deferred to v1)
   integrate   Run the Phase C (integrate) state machine (deferred to v1)
   mark-phase  Operator override: write the authoritative `lifecycle_phase` (deferred to v1)
   reconcile   Re-evaluate evidence and align `lifecycle_phase` (deferred to v1)
-  set-deps    Set dependencies for a work item in the roadmap
+  set-deps    Set dependencies for a work item in the todo list
   dump        Fire-and-forget brain dump (deferred to v1)
   split       Split a todo into child items (deferred to v1)
   stamp       Stamp a verdict or readiness marker (deferred to v1)

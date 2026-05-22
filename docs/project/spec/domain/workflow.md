@@ -56,10 +56,10 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. (`test-specs` and `spec-review-findings` are retired legacy kinds, accepted only for reading/removing pre-cutover todos.)
 
 **Roadmap**
-: The ordered list of todos with their dependency edges, groupings, and statuses. The public face of "what's being worked on and what's next."
+: Internal ordering/dependency storage for todos: rows, dependency edges, groupings, and statuses. It is surfaced to users as the ordered `telec todo list` view of "what's being worked on and what's next."
 
 **Roadmap entry**
-: One row in the roadmap, addressed by its own durable row identity (v1: `roadmap.id`). Carries: slug (the active alias), the **persisted** `status` (`active` | `icebox` | `delivered` | `removed`), `removed_at` (tombstone timestamp, set only when `status=removed`), `prev_status` and `removed_deps` (the Removal tombstone — pre-removal status and the outgoing-`after`-edge snapshot, set only when `status=removed`), `after` (live dependency slugs), optional `group` and `description`. Persisted `status` is distinct from the roadmap **display state**: the roadmap view derives `pending` / `ready` / `in_progress` from a live (`active`) entry plus its lifecycle phase, while `delivered`/`icebox` surface directly and `removed` is hidden from the default view (visible only via the recovery surface). The soft-delete invariants below operate on the persisted vocabulary.
+: One row in the roadmap, addressed by its own durable row identity (v1: `roadmap.id`). Carries: slug (the active alias), the **persisted** `status` (`active` | `icebox` | `delivered` | `removed`), `removed_at` (tombstone timestamp, set only when `status=removed`), `prev_status` and `removed_deps` (the Removal tombstone — pre-removal status and the outgoing-`after`-edge snapshot, set only when `status=removed`), `after` (live dependency slugs), optional `group` and `description`. Persisted `status` is distinct from the todo-list **display state**: the todo-list view derives `pending` / `ready` / `in_progress` from a live (`active`) entry plus its lifecycle phase, while `delivered`/`icebox` surface directly and `removed` is hidden from the default view (visible only via the recovery surface). The soft-delete invariants below operate on the persisted vocabulary.
 
 **Holder**
 : A structural roadmap row that groups child Todos. A row becomes a holder when at least one live child row sets `group_slug` to the holder slug. A holder is not an implementation Todo: it MUST NOT have a `todo_state` row, MUST NOT carry lifecycle phase, approvals, verdicts, or non-input artifacts, and MUST retain at most the original `input` artifact that seeded the split. That retained input is frozen - readable and cloneable into children, but not writable or removable through artifact mutation paths. Holder status is display-only, derived from child rows; holder dependency satisfaction is likewise computed from child delivery without mutating the holder row.
@@ -68,7 +68,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 : An `after` relationship between roadmap entries. Todo A is `after: [B, C]` means A cannot start until B and C are `delivered`.
 
 **Icebox**
-: Frozen-but-recoverable state for roadmap entries that aren't being actively pursued. Lives at `todos/_icebox/`. Unfreeze restores to the active roadmap.
+: Frozen-but-recoverable state for roadmap entries that aren't being actively pursued. Lives at `todos/_icebox/`. Unfreeze restores to the active todo list.
 
 **Removed (soft-deleted)**
 : A roadmap entry that an operator/agent explicitly removed. The entry is marked `status=removed` with a `removed_at` tombstone timestamp; the row and the Todo's state, artifacts, and full artifact-version history are **retained** (not cascade-deleted). A removed entry is invisible to every default read path. It is the todo-store analogue of the closed-session soft-delete (`sessions.closed_at` + `lifecycle_status='closed'`), and follows that mechanism deliberately rather than introducing a divergent one.
@@ -135,9 +135,9 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 - **Invariants:**
   - Every roadmap entry references exactly one todo (1:1), keyed by durable row identity. At most one **live** entry exists per slug; retained `delivered`/`removed` rows may share that slug as additional historical rows.
   - The dependency graph (`after` edges across all entries) is a DAG.
-  - Ordering within the active roadmap is derived from section membership and per-section timestamps; the system does not support manual reorder.
+  - Ordering within the active todo list is derived from section membership and per-section timestamps; the system does not support manual reorder.
   - Icebox entries do NOT participate in the active dependency graph; unfreezing restores them.
-  - Delivered entries remain in the roadmap (visible via `--include-delivered`) for history.
+  - Delivered entries remain in the todo list (visible via `--include-delivered`) for history.
   - **Removal is soft and retained.** `telec todo remove` marks the entry `status=removed`, `removed_at=now()`, and writes the removal tombstone (`prev_status` + `removed_deps`). It does NOT delete the entry's Todo state, artifacts, or artifact-version history — survival for reactivation is the point. The roadmap row itself is also retained (not physically deleted) during the retention window: the FK from `todo_state`/`todo_artifacts` to the roadmap row is `ON DELETE CASCADE`, so physically deleting the row at remove-time would destroy the very history the soft-delete exists to keep. The exception to "retain everything" is **all slug-keyed teardown**, which runs at soft-remove while the slug unambiguously names this entry: both directions of the entry's live `roadmap_deps` rows are deleted (outgoing snapshotted into `removed_deps` first; inbound discarded), and the slug's git worktree, local + remote branch, and workspace directory are cleaned up. None of this is deferred to purge: by purge time a same-slug live todo may exist, and any slug-keyed operation would destroy that live todo's edges or working resources. The durable record (row + state + artifacts + versions + tombstone) is what is retained.
   - **Removed entries are invisible to every default read path.** Every slug→row resolver, the roadmap-assembly read, cache-backed default reads, AND slug-enumeration paths (notably `list_slugs` over `todo_state` and its service/protocol wrappers) exclude `status=removed` by default — exactly as non-included delivered/icebox entries are excluded. Because soft-remove retains `todo_state` rows, any state-derived enumeration that does not gate through live roadmap status would leak removed todos; the gating contract is therefore exhaustive and includes `list_slugs`. A removed entry does not participate in the active dependency graph. **Two sanctioned reveal paths exist alongside the default-hide invariant**, both strictly opt-in: the durable row-id-addressed reactivation query (used by the recovery primitive — UC-WFL-12), and the operator-facing recovery surface (UC-WFL-14 / UC-WFL-15) — `telec todo list --include-removed` / `--removed-only`, `telec todo show <slug>` with the opt-in reveal flag, and the TUI trash-toggle. **Reveal paths split by surface — CLI reaches the workflow DB via the existing resolvers (locally for `todo list`, via the daemon REST API for `todo show`); the daemon cache contract is TUI-only:** the CLI reveal consumers each follow their existing topology. `telec todo list --include-removed` / `--removed-only` invokes `assemble_roadmap_from_db` locally with the new `include_removed` / `removed_only` keyword args. `telec todo show --include-removed` continues to call the daemon REST API (`GET /todos/{slug}/show?include_removed=true` via the existing `tool_api_request` client); the new include-removed resolver lives on the API route and assembles the row-id-backed show payload server-side. Neither CLI command consults the daemon roadmap cache snapshot. The daemon roadmap cache is scoped to the high-frequency TUI roadmap pane: it stores one snapshot per project that holds the full persisted roadmap including `removed` rows (preserving the cache-system "Single Snapshot Per Scope" invariant); every default cache accessor applies a filter at read time that excludes `removed`, so the TUI's default sections continue to see exactly what the default resolvers expose; the TUI Trashed section reads the SAME cache snapshot with the filter relaxed via a per-call opt-in flag. The filter — never the snapshot — is what changes between default and reveal paths on the TUI side, and the cache shape itself never widens to a second-snapshot variant. Orchestration slug enumeration, integration finalize, and work dispatch always use the default-filtered path.
   - **Removed entries do not collide with slug reuse.** The active-slug uniqueness constraint covers only `status IN ('active','icebox')`; `removed` sits outside that predicate, so a freshly created entry may reuse a slug while a removed-and-retained twin still exists. No uniqueness-index change is required. Crucially, a removed entry holds NO live slug-keyed `roadmap_deps` rows (they were scrubbed at soft-remove, outgoing parked in the row-id-keyed `removed_deps` tombstone), so a same-slug recreate starts with a clean dependency set and cannot inherit the removed entry's edges. Reactivation (which restores `removed_deps`) is itself fail-closed against a live same-slug twin, so the two can never both hold live edges for the slug.
@@ -169,7 +169,7 @@ The default roadmap order is derived, not manually positioned. Active rows are s
 #### `workflow.todo.created`
 
 - **Producer:** `workflow`
-- **Emitted when:** a new todo is added to the roadmap (via `create`, the
+- **Emitted when:** a new todo is added to the todo list (via `create`, the
   `dump` compatibility alias, `split`, `bugs report`, `bugs create`). Always
   emitted on successful creation regardless of `creation_mode` — silent mode
   suppresses pickup dispatch, not the state-change event.
@@ -232,7 +232,7 @@ cutover.
 - **Emitted when:** any mutation to a todo's metadata or artifacts that does NOT change its phase (artifact write, description change, dependency edit).
 - **Payload:** `slug`, `updated_at`, `change_summary` (string), `updated_by_principal`.
 - **Visibility:** CLUSTER
-- **Known consumers:** `frontend` (live roadmap view refresh), `telec-tui` (cache invalidation).
+- **Known consumers:** `frontend` (live todo-list view refresh), `telec-tui` (cache invalidation).
 - **Idempotency key:** `(slug, updated_at)` with millisecond precision.
 - **Posture:** `commit-then-emit`.
 
@@ -272,7 +272,7 @@ cutover.
 - **Emitted when:** an operator changes a dependency edge, freezes/unfreezes an entry, or the delivery path stamps the entry delivered.
 - **Payload:** `slug`, `change_type` (`dependency_changed` | `frozen` | `unfrozen` | `delivered`), `details`, `moved_at`, `moved_by_principal`.
 - **Visibility:** CLUSTER
-- **Known consumers:** `frontend` (roadmap view refresh), `telec-tui` (cache invalidation).
+- **Known consumers:** `frontend` (todo-list view refresh), `telec-tui` (cache invalidation).
 - **Idempotency key:** `(slug, change_type, moved_at)`.
 - **Posture:** `commit-then-emit`.
 
@@ -339,7 +339,7 @@ Given an operator (or agent) wants to register substantive work
 When they run `telec todo create my-feature "<substantive content>" --kind feature --after upstream-slug`
 Then workflow validates the slug is unique among live entries and kebab-case
 And validates the content is non-empty
-And validates `upstream-slug` exists in the roadmap
+And validates `upstream-slug` exists in the todo list
 And creates the Todo aggregate, RoadmapEntry, input Artifact, and initial artifact-version in one transaction
 And emits workflow.todo.created with creation_mode=pickup and pickup_requested=true
 And autonomous pickup consumers dispatch the relevant prepare/work entry
@@ -429,13 +429,13 @@ And the state machine advances to the next phase
 And emits workflow.todo.phase_advanced with verdict=approve
 ```
 
-#### UC-WFL-6: Roadmap entry moves to icebox
+#### UC-WFL-6: Todo entry moves to icebox
 
 ```
-Given an operator decides a roadmap entry is not currently being pursued
+Given an operator decides a todo entry is not currently being pursued
 When they run `telec todo freeze <slug>`
 Then workflow moves the entry's filesystem to todos/_icebox/<slug>/
-And marks the roadmap entry status=icebox
+And marks the todo entry status=icebox
 And the entry no longer participates in dependency resolution for active entries
 And emits workflow.roadmap.entry_moved with change_type=frozen
 And `telec todo list` no longer shows it by default
@@ -449,7 +449,7 @@ And integration has reconciled and staged any doc snippets whose delivered_by in
 When the integrator stamps the delivery commit (workflow.deliver(slug, commit_sha))
 Then workflow sets the todo's stage=delivered, delivery_commit=<sha>
 And emits workflow.todo.delivered
-And the roadmap entry status becomes delivered
+And the todo entry status becomes delivered
 And the todo's worktree (if any) is eligible for cleanup
 ```
 
@@ -479,7 +479,7 @@ And the orchestrator is told which dependencies are unmet
 ```
 Given an operator or agent runs `telec todo remove <slug>`
 And no target/mixed snippet's delivered_by would be left with zero live deliverers if this slug were soft-removed (a live deliverer is any slug whose roadmap status is active, icebox, or delivered — soft-removed slugs do not count)
-Then workflow marks the roadmap entry status=removed and removed_at=now()
+Then workflow marks the todo entry status=removed and removed_at=now()
 And captures prev_status and snapshots the entry's outgoing after-edges into the removal tombstone (removed_deps)
 And retains the Todo state, all artifacts, and all artifact versions (no cascade delete)
 And performs ALL slug-keyed teardown now, while the slug unambiguously names this entry: deletes from the live roadmap_deps table BOTH the entry's outgoing edges (slug == removed_slug) and inbound edges (depends_on == removed_slug); and removes the slug's git worktree, local + remote branch, and workspace directory
@@ -501,7 +501,7 @@ And the invoking agent reads the structured error and resolves the orphan (drops
 #### UC-WFL-11: Retention purge finalizes an expired removal
 
 ```
-Given a roadmap entry has status=removed with removed_at older than the retention window
+Given a todo entry has status=removed with removed_at older than the retention window
 When the routine maintenance sweep runs
 Then workflow hard-DELETEs the retained roadmap row by its durable row id
 And the ON DELETE CASCADE FK removes state, artifacts, and artifact versions
@@ -611,9 +611,9 @@ And if any leg fails, every completed leg is reversed (LIFO) and the system
 #### UC-WFL-14: Reveal removed entries through the recovery surface
 
 ```
-Given one or more roadmap entries have status=removed within the retention window
+Given one or more todo entries have status=removed within the retention window
 And every default read path continues to hide them (the soft-delete invariant is unchanged)
-When the operator requests the explicit reveal path — `telec todo list --include-removed` (interleaved with live entries) or `telec todo list --removed-only` (removed entries exclusively), or the TUI Trashed-section toggle keybinding (`x`) on the roadmap view
+When the operator requests the explicit reveal path — `telec todo list --include-removed` (interleaved with live entries) or `telec todo list --removed-only` (removed entries exclusively), or the TUI Trashed-section toggle keybinding (`x`) on the todo-list view
 Then workflow returns those removed entries alongside their durable row identity and removed_at age
 And the entries are visually marked as removed so the operator distinguishes them from active/icebox/delivered entries
 And no other default reader (orchestration slug enumeration, integration finalize, work dispatch) sees the removed entries — the reveal is strictly opt-in to the requesting surface
@@ -621,7 +621,7 @@ And snippet validation is the named exception (per the adjacent "Soft-removed sl
 ```
 
 ```
-Given a roadmap entry has status=removed within the retention window
+Given a todo entry has status=removed within the retention window
 When the operator runs `telec todo show <slug> --include-removed` (or the equivalent opt-in flag chosen for show)
 Then workflow resolves the slug against the set of removed rows for that slug
 And if exactly one removed row matches, returns the full show payload (state, artifacts, version history) for that row
@@ -633,7 +633,7 @@ And the default `telec todo show <slug>` (without the opt-in flag) continues to 
 #### UC-WFL-15: CLI-facing reactivate addressed by slug
 
 ```
-Given a roadmap entry has status=removed within the retention window
+Given a todo entry has status=removed within the retention window
 And exactly one removed row exists for the given slug
 And no live (active/icebox) entry currently exists for that slug
 When the operator runs `telec todo reactivate <slug>` (CLI only — the TUI restore action is UC-WFL-16, addressed by durable row id)
@@ -666,13 +666,13 @@ Then workflow refuses with a live-twin diagnostic carrying the primitive's struc
 #### UC-WFL-16: TUI-facing reactivate addressed by durable row id
 
 ```
-Given a roadmap entry has status=removed within the retention window
+Given a todo entry has status=removed within the retention window
 And the operator has selected that entry's trashed row in the TUI
 And the rendered row carries the entry's durable roadmap.id
 When the operator triggers the TUI restore keybinding on the selected row
 Then workflow dispatches the row-id-addressed reactivation primitive (UC-WFL-12) directly against the selected row's roadmap.id — no slug→row-id resolution happens in the TUI, because selection already identifies the unique row
 And the entry's own footprint is restored exactly as UC-WFL-12 specifies (prev_status, replayed removed_deps, retained state/artifacts/versions)
-And the daemon's _on_mutation('todo_updated') hook fires so the TUI roadmap pane refreshes and the entry reappears in its restored section
+And the daemon's _on_mutation('todo_updated') hook fires so the TUI todo-list pane refreshes and the entry reappears in its restored section
 And the ambiguous-slug diagnostic that UC-WFL-15 produces for the CLI cannot arise here, because the TUI never resolves a slug to a row
 ```
 
@@ -795,7 +795,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`integration-state-machine`](../feature/workflow/integration-state-machine.md) — Phase C: lease-serialized 12-state machine that squash-merges from `trees/_integration/` and pushes `origin/main`; durable checkpoint enables crash recovery.
 - [`worktree-prep-lifecycle`](../feature/workflow/worktree-prep-lifecycle.md) — Per-slug git worktree at `trees/<slug>/` with a digest-tracked prep marker; archives binary artifacts on delivery cleanup.
 - [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.
-- [`todo-management`](../feature/workflow/todo-management.md) — Per-project Roadmap access through todo-scoped commands; derived section ordering; delivery transition.
+- [`todo-management`](../feature/workflow/todo-management.md) — Per-project ordered todo-list access through todo-scoped commands; derived section ordering; delivery transition.
 - [`todo-icebox`](../feature/workflow/todo-icebox.md) — Frozen-but-recoverable state for Todo entries; iceboxed entries do not participate in dependency resolution.
 - [`todo-creation`](../feature/workflow/todo-creation.md) — `create`, `dump`, and `design` paths to scaffold a Todo, with `--draft` and `--prepped` modes plus bug-kind helpers that route to `/next-work`.
 - [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
@@ -818,7 +818,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - `work phases`: `pending`, `building`, `review_pending`, `review_complete`, `fixing`, `finalize_pending`, `finalize_ready`.
 - `integrate phases`: per `integration-state-machine` design doc (squash, conflict-resolve, lint, test, push, deliver).
 - `roadmap status` (persisted): `active`, `icebox`, `delivered`, `removed`.
-- `roadmap display state` (derived for the roadmap view from persisted status + lifecycle phase): `pending`, `ready`, `in_progress`, `delivered`, `icebox`. (`removed` is persisted-only — excluded from the default view, surfaced only via the recovery UI.)
+- `todo-list display state` (derived for the todo-list view from persisted roadmap status + lifecycle phase): `pending`, `ready`, `in_progress`, `delivered`, `icebox`. (`removed` is persisted-only — excluded from the default view, surfaced only via the recovery UI.)
 - `artifact kind`: `input`, `prd`, `architecture`, `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. (`test-specs`, `spec-review-findings` retired; legacy read/remove only.)
 - `verdict`: `approve`, `needs_work`, `needs_decision`.
 

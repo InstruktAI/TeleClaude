@@ -126,12 +126,12 @@ subcommands:
           --project-root: 'Project root (default: cwd).'
           --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
           --kind: 'Todo kind (feature | bug | refactor | migration | prepped).'
-          --group: 'Optional grouping label for the roadmap entry.'
-          --description: 'Optional roadmap-entry description.'
+          --group: 'Optional grouping label for the todo entry.'
+          --description: 'Optional todo-entry description.'
           --prepped: 'Write content as `implementation-plan` (skip prepare). HITL guard enforced.'
           --silent: 'Persist without triggering autonomous pickup dispatch. The workflow.todo.created event is still emitted with creation_mode=silent and pickup_requested=false so cache/audit consumers observe the new aggregate; only the pickup dispatch consumers gate themselves on pickup_requested. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: UC-WFL-19.)'
       list:
-        description: 'List roadmap entries grouped into sections (active, optionally delivered, optionally icebox, optionally removed). Default output shows only active entries; each visibility section opts in via its own flag pair (`--include-*` to interleave, `--*-only` to isolate). Each section''s tree is independent — cross-section edges drop out automatically. Soft-removed entries (status=removed) are hidden by default and only appear under the explicit `--include-removed` / `--removed-only` opt-in (UC-WFL-14); each removed row renders with its durable row id and `removed_at` age so the operator sees how much grace window remains. (status: mixed — active/delivered/icebox visibility is `actual`; the removed-row visibility opt-in is `target — delivered_by roadmap-trash-reveal-ui`.)'
+        description: 'List todo entries grouped into sections (active, optionally delivered, optionally icebox, optionally removed). Default output shows only active entries; each visibility section opts in via its own flag pair (`--include-*` to interleave, `--*-only` to isolate). Each section''s tree is independent — cross-section edges drop out automatically. Soft-removed entries (status=removed) are hidden by default and only appear under the explicit `--include-removed` / `--removed-only` opt-in (UC-WFL-14); each removed row renders with its durable row id and `removed_at` age so the operator sees how much grace window remains. (status: mixed — active/delivered/icebox visibility is `actual`; the removed-row visibility opt-in is `target — delivered_by roadmap-trash-reveal-ui`.)'
         flags:
           --include-icebox: 'Interleave iceboxed entries alongside active entries.'
           --icebox-only: 'Show only iceboxed entries.'
@@ -192,11 +192,11 @@ subcommands:
         flags:
           --project-root: 'Project root (default: cwd).'
       freeze:
-        description: 'Move a todo to the icebox so it no longer appears in the default active roadmap or participates in active dependency resolution.'
+        description: 'Move a todo to the icebox so it no longer appears in the default active todo list or participates in active dependency resolution.'
         args:
           - slug: 'string'
       unfreeze:
-        description: 'Promote an iceboxed todo back to the active roadmap.'
+        description: 'Promote an iceboxed todo back to the active todo list.'
         args:
           - slug: 'string'
       deliver:
@@ -291,7 +291,7 @@ subcommands:
               --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
               --kind: 'Todo kind.'
               --group: 'Optional grouping label.'
-              --description: 'Optional roadmap-entry description.'
+              --description: 'Optional todo-entry description.'
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
               --input-file: 'Read content from path instead of positional argument.'
               # --prepped is intentionally NOT on the v2 workflow todo create surface in
@@ -308,7 +308,7 @@ subcommands:
               --artifact: 'Artifact kind to write the positional content as (default `input`). Must be a writable kind per ARTIFACT_NAMES_WRITABLE.'
               --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. The supplied set REPLACES the existing dependency set in full (not patched/appended).'
               --group: 'New grouping label.'
-              --description: 'New roadmap-entry description.'
+              --description: 'New todo-entry description.'
               --kind: 'New todo kind (validated against the canonical set).'
               --prepped: 'Write content as `implementation-plan`; HITL guard enforced.'
           rename:

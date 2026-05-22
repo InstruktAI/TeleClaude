@@ -37,7 +37,7 @@ def handle_todo_design(args: list[str]) -> None:
     or human gate signals.
 
     When called without a slug, selects the next work item that needs
-    creative work from the roadmap.
+    creative work from the todo list.
 
     Options:
       <slug>    Work item slug (optional; auto-selects if omitted)
@@ -80,7 +80,7 @@ def handle_todo_prepare(args: list[str]) -> None:
     complete), or signal already prepared (if gate passed).
 
     When called without a slug, selects the next unprepared work item from the
-    roadmap. Requires orchestrator clearance (not available to workers).
+    todo list. Requires orchestrator clearance (not available to workers).
 
     Options:
       <slug>                Work item slug (optional; auto-selects if omitted)
@@ -282,7 +282,7 @@ def handle_operations_get(args: list[str]) -> None:
 
 
 def handle_todo_set_deps(args: list[str]) -> None:
-    """Set dependencies for a work item in the roadmap.
+    """Set dependencies for a work item in the todo list.
 
     Usage: telec todo set-deps <slug> --after <dep1> [<dep2> ...]
                                OR
@@ -290,7 +290,7 @@ def handle_todo_set_deps(args: list[str]) -> None:
 
     Replaces all existing dependencies for the slug with the given list.
     Pass no --after flags to clear all dependencies. Validates all slugs
-    against roadmap.yaml and detects circular dependencies.
+    against the todo list and detects circular dependencies.
 
     Options:
       <slug>           Work item slug

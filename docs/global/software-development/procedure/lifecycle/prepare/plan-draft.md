@@ -37,7 +37,7 @@ for one builder session, this phase owns the split.
 
 1. `telec todo artifacts read {slug} prd` exists and is human-approved.
 2. `architecture` is either reviewer-approved or explicitly skipped.
-3. `todos.db` roadmap is readable.
+3. `todos.db` todo list is readable.
 4. Slug is active (not icebox, not delivered).
 
 ## Steps
@@ -106,7 +106,7 @@ work that will fail gate validation. Split first:
 
 - create focused child todos
 - seed them from the human-approved parent PRD and any reviewer-approved architecture-snippet slices
-- add dependency ordering in `todos.db` roadmap
+- add dependency ordering in the `todos.db` todo list
 - call `telec todo split <slug> --into <child1> --into <child2> ...`
 - stop treating the parent as directly prepare/work-ready
 
@@ -187,7 +187,7 @@ If the todo is split instead:
 - Do not invent behavior not grounded in PRD, architecture snippets, or codebase patterns.
 - Do not rewrite approved or reviewer-approved upstream artifacts unless the plan is blocked by a genuine
   contradiction in those artifacts.
-- Do not change roadmap status beyond the child dependency links needed for a split.
+- Do not change todo status beyond the child dependency links needed for a split.
 - If blocked by uncertainty, record the blocker and continue with what is known.
 
 ### 7. Final step — advance

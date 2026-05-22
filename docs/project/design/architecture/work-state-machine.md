@@ -51,7 +51,7 @@ The Work state machine routes implementation through four sub-phases: **Build �
 - `telec todo artifacts read {slug} implementation-plan` — execution plan with task checkboxes (from Phase A)
 - `todos.db` state — build/review status, finalize state, review rounds
 - `telec todo artifacts read {slug} quality-checklist` — build and review gate checkboxes
-- `todos.db` roadmap — slug resolution and dependency graph
+- `todos.db` todo list — slug resolution and dependency graph
 - Worktree at `trees/{slug}/` — isolated git branch for implementation
 
 **Outputs:**
@@ -295,7 +295,7 @@ sequenceDiagram
 
 ## Failure modes
 
-- **No ready items in roadmap**: returns `NO_READY_ITEMS` — run prepare first.
+- **No ready items in todo list**: returns `NO_READY_ITEMS` — run prepare first.
 - **Dependency not satisfied**: returns `BLOCKED` with dependency information.
 - **Stash debt detected**: hard error — git stash is forbidden in agent workflows.
 - **Missing preparation artifacts**: returns `NO_READY_ITEMS` — run `telec todo prepare` first.

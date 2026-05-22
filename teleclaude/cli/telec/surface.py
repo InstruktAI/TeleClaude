@@ -449,7 +449,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 notes=[
-                    "Creates the roadmap entry, canonical state, and stores content as the input artifact.",
+                    "Creates the todo entry, canonical state, and stores content as the input artifact.",
                     "Emits workflow.todo.created for autonomous pickup unless --silent is set.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
@@ -498,7 +498,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "remove": CommandDef(
                 desc=(
-                    "Soft-remove a todo: the durable record (roadmap entry + state + all "
+                    "Soft-remove a todo: the durable record (todo entry + state + all "
                     "artifacts and version history) is retained for a fixed grace window; "
                     "the working resources (worktree + branch + workspace) are released "
                     "immediately. After the window elapses, background maintenance hard-"
@@ -578,7 +578,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "set-deps": CommandDef(
-                desc="Set dependencies for a work item in the roadmap",
+                desc="Set dependencies for a work item in the todo list",
                 args="<slug> [--after <slugs>]",
                 flags=[
                     _H,

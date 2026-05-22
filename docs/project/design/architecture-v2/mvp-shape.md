@@ -119,8 +119,7 @@ This doc is the contract the MVP todo's PRD/plan/build is built against.
 
 - Run `telec migrate-workflow-v1` for each registered project.
 - Delete v1 Python paths: `teleclaude/core/next_machine/`,
-  `teleclaude/core/todos_db/`, `teleclaude/cli/telec/handlers/todo.py`,
-  `teleclaude/cli/telec/handlers/roadmap.py`.
+  `teleclaude/core/todos_db/`, and `teleclaude/cli/telec/handlers/todo.py`.
 - Replace v1 `telec todo *` dispatch with
   invocation of the Rust `telec-cli` binary (shim in v1 CLI, or
   install-time symlink replacement).
@@ -222,7 +221,7 @@ Wave F — CLI binary (1 agent, depends on E)
   F1: crates/telec-cli/
       - main.rs: observability::init, config load, workflow service
         construction, clap-derive dispatch
-      - Subcommand modules: todo.rs, roadmap.rs
+      - Subcommand module: todo.rs
       - All operations from v1 `telec todo` commands
       - Acceptance: full CLI smoke test against docker-compose Postgres;
         all commands work, events fire to Redis
@@ -246,7 +245,7 @@ Wave I — Cutover (1 agent, sequential, depends on ALL above)
   I1: Cutover PR
       - Run telec migrate-workflow-v1 for each project
       - Delete v1 paths: teleclaude/core/next_machine/, todos_db/,
-        cli/telec/handlers/todo.py, cli/telec/handlers/roadmap.py
+        cli/telec/handlers/todo.py
       - Replace v1 telec todo dispatch with telec-cli invocation
       - Verify: v1 TUI displays v2-managed todos via Redis bridge
       - Verify: all v1 todo surfaces still work end-to-end

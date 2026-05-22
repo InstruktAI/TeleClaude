@@ -25,7 +25,7 @@ Process deferrals, decide outcomes, and create new todos as needed.
 ## Outputs
 
 - Updated `telec todo artifacts read {slug} deferrals`
-- New todos in the roadmap (if needed)
+- New todos in the todo list (if needed)
 - Report format:
 
   ```
@@ -41,12 +41,12 @@ Process deferrals, decide outcomes, and create new todos as needed.
 
 - Read `telec todo artifacts read {slug} deferrals`.
 - For each deferral: decide NEW_TODO or NOOP.
-- Create new todos in the roadmap if needed.
+- Create new todos in the todo list if needed.
 - Mark deferrals as processed.
 
 ## Discipline
 
 You are the deferral resolver. Your failure mode is creating overly broad new todos
 from deferrals, or marking everything NOOP without genuine assessment. Each deferral
-needs an honest evaluation against the roadmap. A deferral that becomes a todo must
+needs an honest evaluation against the todo list. A deferral that becomes a todo must
 be scoped tightly enough to pass DOR independently.

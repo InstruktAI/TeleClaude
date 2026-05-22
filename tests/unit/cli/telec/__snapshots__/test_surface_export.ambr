@@ -351,7 +351,7 @@
   
   **Notes:**
   
-  - Creates the roadmap entry, canonical state, and stores content as the input artifact.
+  - Creates the todo entry, canonical state, and stores content as the input artifact.
   - Emits workflow.todo.created for autonomous pickup unless --silent is set.
   
   ### `telec todo list`
@@ -385,7 +385,7 @@
   
   ### `telec todo remove`
   
-  Soft-remove a todo: the durable record (roadmap entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
+  Soft-remove a todo: the durable record (todo entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
   
   **Usage:** `telec todo remove <slug>`
   
@@ -472,7 +472,7 @@
   
   ### `telec todo set-deps`
   
-  Set dependencies for a work item in the roadmap
+  Set dependencies for a work item in the todo list
   
   **Usage:** `telec todo set-deps <slug> [--after <slugs>]`
   
@@ -961,7 +961,7 @@
   '''
   ### `telec todo remove`
   
-  Soft-remove a todo: the durable record (roadmap entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
+  Soft-remove a todo: the durable record (todo entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
   
   **Usage:** `telec todo remove <slug>`
   

@@ -26,6 +26,8 @@ static SUFFIX: AtomicU32 = AtomicU32::new(0);
 const STREAM_TODO_CREATED: &str = "events:workflow.todo.created";
 const STREAM_TODO_DELETED: &str = "events:workflow.todo.deleted";
 const STREAM_ARTIFACT_WRITTEN: &str = "events:workflow.artifact.written";
+const STREAM_ROADMAP_FROZEN: &str = "events:workflow.roadmap.entry_frozen";
+const STREAM_ROADMAP_UNFROZEN: &str = "events:workflow.roadmap.entry_unfrozen";
 
 const EXIT_DEFERRED_TO_V1: i32 = 2;
 
@@ -116,6 +118,58 @@ fn todo_create_show_remove_round_trip() {
         stream_len(STREAM_TODO_DELETED),
         deleted_len_before + 1,
         "workflow.todo.deleted not appended to Redis Streams"
+    );
+}
+
+#[test]
+#[ignore = "requires Postgres + Redis (docker-compose dev stack)"]
+fn todo_list_freeze_unfreeze_round_trip() {
+    if !require_smoke_env() {
+        panic!("DATABASE_URL and REDIS_URL must be set for this test");
+    }
+    let slug = unique_slug("todo-list-smoke");
+
+    let frozen_len_before = stream_len(STREAM_ROADMAP_FROZEN);
+    let unfrozen_len_before = stream_len(STREAM_ROADMAP_UNFROZEN);
+
+    telec()
+        .args([
+            "todo",
+            "create",
+            &slug,
+            "--kind",
+            "feature",
+            "--input",
+            "todo list smoke input",
+        ])
+        .assert()
+        .success();
+
+    let list = telec().args(["todo", "list", "--json"]).assert().success();
+    let listed: Value = parse_json_stdout(&list);
+    let entries = listed.as_array().expect("todo list returns JSON array");
+    let present = entries
+        .iter()
+        .any(|e| e.get("slug").and_then(Value::as_str) == Some(slug.as_str()));
+    assert!(present, "todo list did not contain the newly created slug");
+
+    let frozen = telec().args(["todo", "freeze", &slug]).assert().success();
+    assert_eq!(parse_json_stdout(&frozen)["frozen"], Value::Bool(true));
+
+    let unfrozen = telec().args(["todo", "unfreeze", &slug]).assert().success();
+    assert_eq!(parse_json_stdout(&unfrozen)["frozen"], Value::Bool(false));
+
+    telec().args(["todo", "remove", &slug]).assert().success();
+
+    assert_eq!(
+        stream_len(STREAM_ROADMAP_FROZEN),
+        frozen_len_before + 1,
+        "workflow.roadmap.entry_frozen not appended to Redis Streams"
+    );
+    assert_eq!(
+        stream_len(STREAM_ROADMAP_UNFROZEN),
+        unfrozen_len_before + 1,
+        "workflow.roadmap.entry_unfrozen not appended to Redis Streams"
     );
 }
 

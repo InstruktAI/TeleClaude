@@ -7,7 +7,7 @@ visibility: 'public'
 applies_to: 'v1'
 status: 'target'
 delivered_by: [integrate-deliveredby-flip]
-description: 'Integration-time flip of status target or mixed snippets when a delivery slug reaches roadmap status delivered.'
+description: 'Integration-time flip of status target or mixed snippets when a delivery slug reaches delivered todo status.'
 ---
 
 # Lifecycle Marker Reconciliation — Spec
@@ -20,9 +20,9 @@ description: 'Integration-time flip of status target or mixed snippets when a de
 ## What it is
 
 Lifecycle marker reconciliation keeps documentation-first metadata aligned
-with roadmap delivery. When a snippet is authored ahead of implementation it
+with todo delivery. When a snippet is authored ahead of implementation it
 is marked `status: target` or `status: mixed` with a `delivered_by` list of
-roadmap slugs. When the integrator is about to commit a delivered candidate,
+todo slugs. When the integrator is about to commit a delivered candidate,
 it pre-applies the current slug as delivered, reconciles only snippets that
 reference that slug, and stages the resulting snippet writes in the integration
 worktree before the merge commit prompt is returned.
@@ -41,7 +41,7 @@ does not perform delivery-driven snippet mutations.
 ```
 Scenario: All delivered_by slugs are delivered by the current candidate
   Given a snippet with status "target" and delivered_by ["alpha", "beta"]
-  And the roadmap status map reports "alpha" delivered
+  And the todo status map reports "alpha" delivered
   And the current integration candidate is "beta"
   When the candidate merge succeeds in the integration worktree
   Then reconciliation treats "beta" as delivered before writing

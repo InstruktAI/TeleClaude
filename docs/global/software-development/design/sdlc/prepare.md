@@ -32,7 +32,7 @@ human, who is the sole authority on intent.
 - whatever the todo carries: a brain dump (`input`), existing artifacts, or
   any other starting state — all treated as input to the process
 - the codebase (ground truth)
-- the roadmap (signal about project direction and adjacent work)
+- the todo list (signal about project direction and adjacent work)
 - applicable documentation and domain context
 - session `additional_context` carrying `human_in_loop: true | false`
 

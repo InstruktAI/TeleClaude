@@ -25,7 +25,7 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 
 ## v2 workspace (Rust, parallel-capable)
 
-A v2 Rust workspace lives alongside v1 under `crates/`. It exposes a parallel `WorkflowService` plus a `telec-cli` binary that mirrors v1's `telec todo` and `telec roadmap` CRUD against a Postgres-backed schema. As of the `v2-mvp-bootstrap` delivery:
+A v2 Rust workspace lives alongside v1 under `crates/`. It exposes a parallel `WorkflowService` plus a `telec-cli` binary that mirrors v1's `telec todo` CRUD against a Postgres-backed schema. As of the `v2-mvp-bootstrap` delivery:
 
 - **v1 remains authoritative for all workflow data.** The Rust binary writes to its own `workflow` Postgres schema and emits `workflow.*` Redis events. It is **not** wired into v1 dispatch.
 - **The v1 daemon subscribes to `workflow.*` Redis channels** (`teleclaude/transport/workflow_bridge.py`) and invalidates its cache when events arrive. The subscription is a no-op while nobody uses the v2 CLI.

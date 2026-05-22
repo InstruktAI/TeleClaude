@@ -333,7 +333,7 @@ def _group_subcommand_flags(cmd: CommandDef) -> list[tuple[str, list[Flag]]]:
 
 
 def _usage_leaf(cmd_name: str, sub_name: str) -> str:
-    """Generate help for a specific subcommand (e.g. 'roadmap add')."""
+    """Generate help for a specific subcommand (e.g. 'todo set-deps')."""
     cmd = CLI_SURFACE[cmd_name]
     sub = cmd.subcommands.get(sub_name)
     if not sub:

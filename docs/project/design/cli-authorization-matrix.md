@@ -111,11 +111,11 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                           |
 | `telec todo dump`             | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | **Deprecated** — compatibility alias for `telec todo create`. Retained for transition; prefer `telec todo create`.  |
 
-### Roadmap Management
+### Todo List Management
 
 | Command                 | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                      |
 | ----------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `telec todo list`       | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the roadmap is useful for orientation. Workers don't need roadmap context. Customers should not see internal planning. |
+| `telec todo list`       | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the todo list is useful for orientation. Workers don't need todo-list context. Customers should not see internal planning. |
 | `telec todo freeze`     | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                             |
 | `telec todo unfreeze`   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring an iceboxed entry is planning management. Only admins and members.                                                   |
 | `telec todo deliver`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                    |

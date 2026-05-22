@@ -22,7 +22,7 @@ visibility: 'public'
 
 1. Read `telec todo artifacts read {slug} deferrals` and `todos.db` state.
 2. For each deferral entry:
-   - If `Suggested outcome` is `NEW_TODO`, create a new todo with `input.md`, add to roadmap, and add dependencies if needed.
+   - If `Suggested outcome` is `NEW_TODO`, create a new todo with `input.md`, add it to the todo list, and add dependencies if needed.
    - If `Suggested outcome` is `NOOP`, mark the entry as processed.
 3. Stamp processing complete:
    - `telec todo stamp {slug} --deferrals-processed`

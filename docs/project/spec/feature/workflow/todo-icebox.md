@@ -83,12 +83,12 @@ And the command prints "Slug not found in todo list: missing-slug" and exits non
 - `teleclaude/cli/telec/surface.py` — `telec todo freeze`, `telec todo unfreeze`, and `telec todo list` help surface.
 - `teleclaude/core/todos_db/_roadmap.py` — `freeze`, `unfreeze`, and list filtering over persisted roadmap status.
 - `teleclaude/core/roadmap.py` — section ordering for active, delivered, and icebox rows.
-- `teleclaude/core/next_machine/slug_resolution.py` — prepare/work candidate resolution over the active roadmap projection.
+- `teleclaude/core/next_machine/slug_resolution.py` — prepare/work candidate resolution over the active todo-list projection.
 
 ### Cross-context references
 
 - `agent_runtime` / daemon cache — `freeze` and `unfreeze` invoke `_on_mutation("todo_updated")`, invalidating the daemon cache and refreshing TUI/frontend subscribers.
-- `workflow` orchestration internals — prepare/work resolvers consume the active roadmap projection; iceboxed entries are out of band because they are filtered upstream.
+- `workflow` orchestration internals — prepare/work resolvers consume the active todo-list projection; iceboxed entries are out of band because they are filtered upstream.
 
 ## Known caveats
 

@@ -43,7 +43,7 @@ These are the platform-wide preferences the emulator carries into every answer w
 
 When the real human's input contradicts a standing wish, the human's input wins. Note the contradiction in the answer so the BA can capture it in the PRD's Constraints section.
 
-### 2. Glance the roadmap and icebox
+### 2. Glance the todo list and icebox
 
 Run `telec todo list --include-icebox` and read the titles. The emulator stands in for a PO who carries the landscape in their head — what's in flight, what's queued, what was deferred and why. The glance is shallow (titles, not bodies) and forms the mental map for three downstream moves:
 
@@ -61,7 +61,7 @@ If no input artifact exists, the only available source is whatever the BA convey
 
 ### 4. Hold the PO stance — propose confidently, default to answering
 
-For every BA question, default to a confident proposal grounded in input + standing wishes + roadmap glance + your full architect-grade reasoning. The patterns by question type:
+For every BA question, default to a confident proposal grounded in input + standing wishes + todo-list glance + your full architect-grade reasoning. The patterns by question type:
 
 - **Goal questions** ("what is the user trying to do?") — answer from the input's stated intent. JTBD-shaped if natural: "the user wants the system to do X for Y under Z." When the input is thin, propose the goal an experienced PO would draw from the surface ask and surrounding signals; don't ask the human to write it.
 - **Why questions** ("what's the underlying need?") — apply 5-Whys reasoning to surface the root. Propose the underlying need as if you knew it; the human corrects if you missed.
@@ -88,12 +88,12 @@ The output of the intake is a rich PRD draft with a _short_ list of genuine open
 
 ### 6. Proactively surface common features when prompted
 
-When the BA recognizes a business-domain pattern (CRM-shaped, dashboard-shaped, etc.) and runs through its standard feature list, react per feature against input + standing wishes + roadmap glance + your own knowledge of what enterprise systems of this shape need:
+When the BA recognizes a business-domain pattern (CRM-shaped, dashboard-shaped, etc.) and runs through its standard feature list, react per feature against input + standing wishes + todo-list glance + your own knowledge of what enterprise systems of this shape need:
 
 - "the input mentions this — include in scope"
 - "the input doesn't mention this but an enterprise system of this shape needs it — propose for inclusion"
 - "the input rules this out (or standing wishes argue against) — propose for exclusion with reason"
-- "the roadmap shows `<slug>` already covers this — point the BA at consolidation rather than duplication"
+- "the todo list shows `<slug>` already covers this — point the BA at consolidation rather than duplication"
 - "this turns on the human's specific business judgment — flag for them"
 
 The last category is the small one. The first three are where most features land.

@@ -664,7 +664,7 @@ def _step_delivery_bookkeeping(
 ) -> tuple[bool, str]:
     """DELIVERY_BOOKKEEPING: run bookkeeping in integration worktree, then push all together.
 
-    Bookkeeping commits (roadmap delivery, todo cleanup) are created in the
+    Bookkeeping commits (todo delivery, todo cleanup) are created in the
     integration worktree alongside the squash merge commit. This avoids the
     divergence that occurred when bookkeeping ran on repo root after the
     integration worktree had already pushed.
@@ -684,7 +684,7 @@ def _step_delivery_bookkeeping(
         # `deliver_sync` returns False for two distinct reasons: the row is
         # already in 'delivered' (idempotent, expected after a worker-side
         # finalize that wrote delivered_commit), or the slug doesn't exist in
-        # the roadmap at all (genuine bug — typo, race with roadmap_remove,
+        # the todo list at all (genuine bug — typo, race with todo remove,
         # schema drift). Probe to distinguish; fail fast on the missing case.
         if key.slug in todos_db.delivered_slugs_sync():
             logger.info(
@@ -694,7 +694,7 @@ def _step_delivery_bookkeeping(
         else:
             return False, _format_error(
                 "DELIVERY_FAILED",
-                f"todos_db.deliver_sync returned False for {key.slug} and the slug is not in delivered_slugs — roadmap entry is missing",
+                f"todos_db.deliver_sync returned False for {key.slug} and the slug is not in delivered_slugs — todo entry is missing",
             )
 
     # --- Clean dependency references in DB ---
@@ -852,7 +852,7 @@ def _do_cleanup(
 ) -> tuple[bool, str]:
     """Perform cleanup and advance to CANDIDATE_DELIVERED.
 
-    Git-tracked bookkeeping (roadmap delivery, todo removal, dependency
+    Git-tracked bookkeeping (todo delivery, todo removal, dependency
     cleanup) was already committed in the integration worktree and pushed
     to origin/main during DELIVERY_BOOKKEEPING. This step delegates to
     cleanup_delivered_slug which handles physical artifacts (worktree

@@ -27,7 +27,7 @@ unresolved, so that downstream work always derives from a fresh PRD,
 fresh architecture, a fresh plan, and a fresh design surface.
 
 Drift is not a single class — it is a taxonomy. Truth lives in several
-places (code, sibling artifacts, doc snippets, the roadmap dependency
+places (code, sibling artifacts, doc snippets, the todo-list dependency
 graph) and an artifact authored at one moment can fall out of step with any
 of them by the time prepare is asked to converge. The feature names each
 class explicitly, records the provenance needed to detect it, derives a

@@ -54,7 +54,7 @@ def _make_checkpoint(
 
 
 def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) -> None:
-    """Regression: bookkeeping (roadmap delivery, todo removal) must run in the
+    """Regression: bookkeeping (todo delivery, todo removal) must run in the
     integration worktree so all commits push atomically to origin/main.
 
     Old behavior: these ran on repo root, then a separate push was attempted —

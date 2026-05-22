@@ -1,7 +1,7 @@
 """SqliteWorkService — facade composing focused sub-services.
 
 The service exposes sub-services as properties:
-    svc.roadmap   — roadmap list, add, move, deliver, deps, freeze, unfreeze
+    svc.roadmap   — todo-list ordering/dependency storage operations
     svc.state     — todo state read, write, delete, list, classify
     svc.artifacts — artifact read, write, list, versions, digest
 

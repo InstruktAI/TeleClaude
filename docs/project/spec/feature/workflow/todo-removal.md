@@ -19,7 +19,7 @@ description: 'Soft-remove a Todo from default workflow views while retaining its
 
 ## What it is
 
-`telec todo remove <slug>` (and the matching `POST /todos/remove`) soft-removes the live Todo row in `todos.db`: the roadmap entry becomes `status=removed`, default roadmap/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and DB transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no roadmap, state, dependency, or filesystem mutation is committed.
+`telec todo remove <slug>` (and the matching `POST /todos/remove`) soft-removes the live Todo row in `todos.db`: the todo entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and DB transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
 
 The durable row, lifecycle state, current artifacts, and every artifact version-history row remain retained by the Todo row id for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The CLI submits the removal as a receipt-backed durable operation, then polls the receipt with a 30 s estimated timeout until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation as `error_payload` so the CLI can render the affected snippet paths without recomputing state.
 
@@ -30,7 +30,7 @@ A retained removed row can be reactivated by durable row id before purge, unless
 ### Use cases
 
 ```
-Given a Todo "feature-x" exists with state, multiple artifact versions, a roadmap entry, and another Todo "feature-y" that depends on it
+Given a Todo "feature-x" exists with state, multiple artifact versions, a todo entry, and another Todo "feature-y" that depends on it
 When `telec todo remove feature-x` is run
 Then `POST /todos/remove` submits a receipt-backed operation and returns 202 immediately
 And inside the operation handler, the shared soft-remove primitive marks the live roadmap row status=removed
@@ -72,7 +72,7 @@ And the operation reports completed
 Given a holder roadmap row "parent" with child rows whose group_slug is "parent"
 When `telec todo remove parent` is run
 Then only the "parent" row is soft-removed and inbound deps pointing at "parent" are scrubbed
-And "child-a" and "child-b" stay in todos.db and on the roadmap untouched
+And "child-a" and "child-b" stay in todos.db and on the todo list untouched
 And each child must be removed by a separate `telec todo remove` call to be cleaned up
 ```
 
@@ -153,6 +153,6 @@ And no API request is made
 - Cleanup is **idempotent by design**, not transactional across the DB-and-filesystem boundary. The DB tombstone commits first; the filesystem cascade then runs and may partially fail (logged as warnings). A subsequent re-run of `telec todo remove` finds no live row and fails the receipt rather than claiming a second removal.
 - Purge-time docs reconciliation is commit-gated. A dirty candidate snippet on a fresh pass leaves `pending_purge_paths` NULL and the row retained. A failed commit or verification failure leaves `pending_purge_paths` populated so the next sweep can distinguish sweep-owned residue from foreign edits.
 - Removing a delivered Todo is not part of this surface; removal targets active or icebox rows only. Delivered work stays in git history (integration commits and merged branches on `main` are untouched).
-- Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the roadmap until removed individually.
+- Children of a removed holder are **not** auto-removed. The split relationship is not enforced as a cascade on parent removal; orphaned children remain in the todo list until removed individually.
 - The remote branch delete uses a tight 5 s timeout and is non-fatal — a slow or unreachable origin will not block the operation from reporting completed, but may leave a stale remote branch that must be cleaned up out of band.
 - The receipt-backed dispatch means the HTTP 202 returns before the cascade has executed; callers that need a synchronous outcome must poll the receipt (the CLI does this for you with a 30 s estimated timeout).

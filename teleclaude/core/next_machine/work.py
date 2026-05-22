@@ -325,12 +325,12 @@ async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: st
         return "", format_error(
             "DEPS_UNSATISFIED",
             "Ready items exist but all have unsatisfied dependencies.",
-            next_call="Complete dependency items first, or check the roadmap.",
+            next_call="Complete dependency items first, or check the todo list.",
         )
 
     _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "no_ready_items")
     return "", (
-        "NO_READY_ITEMS: No ready items found in roadmap.\n\n"
+        "NO_READY_ITEMS: No ready items found in the todo list.\n\n"
         "Execute:\n\n"
         "telec sessions end self\n\n"
         "The work queue is empty. Call telec todo prepare to prepare items first when new work arrives."
@@ -404,8 +404,8 @@ async def _resolve_holder_slug(
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_children_missing")
         return "", format_error(
             "NOT_PREPARED",
-            f"Holder '{slug}' has child todos, but none are in roadmap.",
-            next_call="Add child items to roadmap or call telec todo prepare.",
+            f"Holder '{slug}' has child todos, but none are in the todo list.",
+            next_call="Add child items to the todo list or call telec todo prepare.",
         )
     return slug, None
 
