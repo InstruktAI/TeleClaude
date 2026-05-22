@@ -35,6 +35,7 @@ from teleclaude.core.next_machine.git_ops import (
     get_remote_branch_head,
     has_uncommitted_changes,
 )
+from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_PREPPED, KIND_TODO, PLAN_ONLY_PREPARE_KINDS
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, is_ready_for_work
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
@@ -71,7 +72,7 @@ PLAN_ONLY_ARTIFACT_CONTRACT = (
     "Plan-only artifact contract for {slug}: implementation-plan is the intent and execution source "
     "for this {kind} work."
 )
-_PLAN_ONLY_WORK_KINDS = {"refactor", "migration"}
+_PLAN_ONLY_WORK_KINDS = PLAN_ONLY_PREPARE_KINDS
 
 
 # ---------------------------------------------------------------------------
@@ -105,9 +106,9 @@ def _prepared_artifact_note(slug: str) -> str:
 
 def _artifact_contract_note(slug: str, kind: str) -> str:
     """Return the work artifact contract for the current todo kind."""
-    if kind == "bug":
+    if kind == KIND_BUG:
         return BUG_ARTIFACT_CONTRACT.format(slug=slug)
-    if kind == "prepped":
+    if kind == KIND_PREPPED:
         return PREPPED_ARTIFACT_CONTRACT.format(slug=slug)
     if kind in _PLAN_ONLY_WORK_KINDS:
         return PLAN_ONLY_ARTIFACT_CONTRACT.format(slug=slug, kind=kind)
@@ -211,7 +212,7 @@ async def _work_step_build_started(
         return claim_result
 
     kind_raw = state.get("kind")
-    kind = kind_raw if isinstance(kind_raw, str) else "todo"
+    kind = kind_raw if isinstance(kind_raw, str) else KIND_TODO
     lifecycle_phase_raw = state.get("lifecycle_phase")
     lifecycle_phase = lifecycle_phase_raw if isinstance(lifecycle_phase_raw, str) else None
     ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=lifecycle_phase)
@@ -222,7 +223,7 @@ async def _work_step_build_started(
             next_call=f"telec todo prepare {slug}",
         )
 
-    command = SlashCommand.NEXT_BUGS_FIX if kind == "bug" else SlashCommand.NEXT_BUILD
+    command = SlashCommand.NEXT_BUGS_FIX if kind == KIND_BUG else SlashCommand.NEXT_BUILD
     builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")
     if builder_id is not None:
         return False, (
@@ -327,7 +328,7 @@ async def _work_step_build_complete(
 
     # No live reviewer claimed the review — dispatch a fresh one.
     kind_raw = state.get("kind")
-    kind = kind_raw if isinstance(kind_raw, str) else "todo"
+    kind = kind_raw if isinstance(kind_raw, str) else KIND_TODO
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
     reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")

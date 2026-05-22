@@ -15,6 +15,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.types.state_value import StateValue
 
@@ -88,7 +89,7 @@ class TodosDbStateMixin:
     def _payload_is_ready_candidate(self, payload: Mapping[str, StateValue]) -> bool:
         kind = self._payload_kind(payload)
         phase = coerce_lifecycle_phase(payload.get("lifecycle_phase"))
-        return kind in {"bug", "prepped"} or phase in READY_BAND_PHASES
+        return kind in FAST_TRACK_PREPARED_KINDS or phase in READY_BAND_PHASES
 
     def _project_root(self) -> Path:
         db_path = cast(Path, self._db_path)  # type: ignore[attr-defined]
@@ -398,7 +399,7 @@ class TodosDbStateMixin:
         state = await self.read_state(slug)
         if state is None:
             return False
-        return state.get("kind") == "bug"
+        return state.get("kind") == KIND_BUG
 
     async def has_pending_deferrals(self, slug: str) -> bool:
         """Check if deferrals artifact exists and deferrals_processed is not True."""

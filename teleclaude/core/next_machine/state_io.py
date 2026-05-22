@@ -49,6 +49,7 @@ from teleclaude.core.next_machine.git_ops import (
     get_origin_main_sha,
     run_git_command,
 )
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG, KIND_PREPPED
 from teleclaude.core.next_machine.lifecycle import (
     PREPARE_LIFECYCLE_PHASES,
     LifecyclePhase,
@@ -564,9 +565,9 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
     has_prd = _has_artifact_content(cwd, slug, ARTIFACT_PRD)
     has_legacy_requirements = _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS)
-    if kind not in ("prepped", "bug") and not (has_prd or has_legacy_requirements):
+    if kind not in FAST_TRACK_PREPARED_KINDS and not (has_prd or has_legacy_requirements):
         raise ValueError(f"Missing prd artifact with content for {slug}")
-    if kind != "bug" and not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
+    if kind != KIND_BUG and not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
 
     rc, _current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
@@ -610,12 +611,12 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     writer = StateWriter(state)
 
     review_mgr = ReviewManager(writer)
-    if kind in ("prepped", "bug"):
+    if kind in FAST_TRACK_PREPARED_KINDS:
         review_mgr.stamp_verdict("requirements_review", "skipped")
     else:
         review_mgr.stamp_verdict("requirements_review", "approve")
 
-    if kind == "bug":
+    if kind == KIND_BUG:
         review_mgr.stamp_verdict("plan_review", "skipped")
     else:
         review_mgr.stamp_verdict("plan_review", "approve")
@@ -623,11 +624,11 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     if input_digest:
         _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_INPUT, writer, db=db)
     writer.state.lifecycle_phase = "prepared"
-    if kind not in ("prepped", "bug") and has_prd:
+    if kind not in FAST_TRACK_PREPARED_KINDS and has_prd:
         _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_PRD, writer, db=db)
-    elif kind not in ("prepped", "bug") and has_legacy_requirements:
+    elif kind not in FAST_TRACK_PREPARED_KINDS and has_legacy_requirements:
         _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_REQUIREMENTS, writer, db=db)
-    if kind != "bug":
+    if kind != KIND_BUG:
         _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN, writer, db=db)
 
     payload = writer.commit_sync(db, slug)
@@ -749,7 +750,7 @@ def has_pending_deferrals(cwd: str, slug: str) -> bool:
 def is_bug_todo(cwd: str, slug: str) -> bool:
     """Check if a todo is a bug (kind='bug' in state.yaml)."""
     state = read_phase_state(cwd, slug)
-    return state.get("kind") == "bug"
+    return state.get("kind") == KIND_BUG
 
 
 def is_prepped_todo(cwd: str, slug: str) -> bool:
@@ -759,7 +760,7 @@ def is_prepped_todo(cwd: str, slug: str) -> bool:
     prepare phase entirely. They have no PRD artifact — the plan is the sole spec.
     """
     state = read_phase_state(cwd, slug)
-    return state.get("kind") == "prepped"
+    return state.get("kind") == KIND_PREPPED
 
 
 # Artifact keys that can be stamped after worker output is verified.

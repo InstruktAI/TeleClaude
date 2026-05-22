@@ -38,6 +38,13 @@ from teleclaude.core.next_machine.git_ops import (
     derive_upstream_snippet_drift,
     get_head_commit,
 )
+from teleclaude.core.next_machine.kinds import (
+    FAST_TRACK_PREPARED_KINDS,
+    FEATURE_PREPARE_KINDS,
+    KIND_BUG,
+    KIND_PREPPED,
+    PLAN_ONLY_PREPARE_KINDS,
+)
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.types.lifecycle import (
     LEGACY_LIFECYCLE_PHASE_NORMALIZATION,
@@ -78,8 +85,7 @@ __all__ = [
 ]
 
 _ArtifactPresence = Mapping[str, bool]
-_FEATURE_KINDS = {"", "todo", "feature", "draft"}
-_PLAN_ONLY_KINDS = {"refactor", "migration"}
+_FEATURE_KINDS = FEATURE_PREPARE_KINDS
 READY_BAND_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
         LifecyclePhase.PREPARED,
@@ -103,12 +109,25 @@ _ALL_DRIFT_CLASSES = (
     _DRIFT_CLASS_DEPENDENCY_GRAPH,
     _DRIFT_CLASS_AGE,
 )
+_INTENT_DRIFT_CLASSES = (
+    _DRIFT_CLASS_CODE,
+    _DRIFT_CLASS_UPSTREAM_SNIPPET,
+    _DRIFT_CLASS_DEPENDENCY_GRAPH,
+    _DRIFT_CLASS_AGE,
+)
+_IMPLEMENTATION_PLAN_DRIFT_CLASSES = (
+    _DRIFT_CLASS_CODE,
+    _DRIFT_CLASS_UPSTREAM_ARTIFACT,
+    _DRIFT_CLASS_UPSTREAM_SNIPPET,
+    _DRIFT_CLASS_DEPENDENCY_GRAPH,
+    _DRIFT_CLASS_AGE,
+)
 _DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    (STATE_KEY_INPUT, STATE_KEY_INPUT, _ALL_DRIFT_CLASSES),
+    (STATE_KEY_INPUT, STATE_KEY_INPUT, _INTENT_DRIFT_CLASSES),
     (STATE_KEY_PRD, STATE_KEY_PRD, _ALL_DRIFT_CLASSES),
-    (STATE_KEY_REQUIREMENTS, STATE_KEY_REQUIREMENTS, _ALL_DRIFT_CLASSES),
+    (STATE_KEY_REQUIREMENTS, STATE_KEY_REQUIREMENTS, _INTENT_DRIFT_CLASSES),
     (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE, _ALL_DRIFT_CLASSES),
-    (ARTIFACT_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN, _ALL_DRIFT_CLASSES),
+    (ARTIFACT_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN, _IMPLEMENTATION_PLAN_DRIFT_CLASSES),
 )
 _DRIFT_PRIORITY: tuple[ArtifactDriftStatus, ...] = (
     DRIFT_SUBSTANTIVE,
@@ -161,7 +180,7 @@ def infer_lifecycle_stage(phase: LifecyclePhase) -> LifecycleStage:
 
 def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple[bool, str]:
     """Authoritative gate for entering or resuming the work lane."""
-    if kind == "bug":
+    if kind == KIND_BUG:
         return True, ""
     phase = coerce_lifecycle_phase(lifecycle_phase)
     if phase is None:
@@ -181,7 +200,7 @@ def is_ready_band_eligible(
     """Return whether a todo belongs in the active Ready band."""
     all_deps_delivered = all(dep in delivered_slugs for dep in after_deps)
     phase = coerce_lifecycle_phase(lifecycle_phase)
-    phase_ok = kind in {"bug", "prepped"} or phase in READY_BAND_PHASES
+    phase_ok = kind in FAST_TRACK_PREPARED_KINDS or phase in READY_BAND_PHASES
     return all_deps_delivered and phase_ok
 
 
@@ -391,7 +410,12 @@ async def derive_lifecycle_drift(
                     todos_db=todos_db,
                 )
             elif class_name == _DRIFT_CLASS_AGE:
-                class_drift[class_name] = derive_age_drift(model, artifact_name, age_window_seconds=None)
+                class_drift[class_name] = derive_age_drift(
+                    model,
+                    artifact_name,
+                    age_window_seconds=None,
+                    drift_reviewed_stamp=model.approvals.drift_reviewed.get(artifact_name),
+                )
         drift[artifact_name] = class_drift
     return drift
 
@@ -522,13 +546,13 @@ def adopt_prepare_handoff_phase(
     repo_root: str | None = None,
 ) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts."""
-    if model.kind == "prepped":
+    if model.kind == KIND_PREPPED:
         return LifecyclePhase.PREPARED
-    if model.kind == "bug":
+    if model.kind == KIND_BUG:
         return LifecyclePhase.PREPARED
     if _non_drift_prepare_blockers(model):
         return LifecyclePhase.BLOCKED
-    if model.kind in _PLAN_ONLY_KINDS:
+    if model.kind in PLAN_ONLY_PREPARE_KINDS:
         return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
     return _feature_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
 

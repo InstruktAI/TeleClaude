@@ -28,6 +28,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
+from teleclaude.core.next_machine.kinds import PLAN_WITHOUT_INTENT_UPSTREAM_KINDS
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
 
@@ -38,8 +39,6 @@ DRIFT_FRESH: ArtifactDriftStatus = "fresh"
 DRIFT_PENDING: ArtifactDriftStatus = "pending"
 DRIFT_COSMETIC: ArtifactDriftStatus = "cosmetic"
 DRIFT_SUBSTANTIVE: ArtifactDriftStatus = "substantive"
-
-_PLAN_ONLY_KINDS = {"refactor", "migration"}
 
 _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_INPUT: STATE_KEY_INPUT,
@@ -228,7 +227,7 @@ def derive_artifact_drift(
         return DRIFT_FRESH
     current_head_sha = get_origin_main_sha(repo_root) if repo_root else ""
     if not artifact_entry.codebase_sha_at_write or not current_head_sha:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(drift_reviewed_stamp)
     if artifact_entry.codebase_sha_at_write == current_head_sha:
         return DRIFT_FRESH
 
@@ -238,7 +237,7 @@ def derive_artifact_drift(
         current_head_sha,
     )
     if changed_files is None:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(drift_reviewed_stamp)
 
     has_overlap = any(
         _path_overlaps_reference(path, reference)
@@ -267,15 +266,16 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
         return DRIFT_FRESH
     if _has_intentional_plan_only_upstreams(model, state_key, upstream_keys, entry.upstream_digests):
         return DRIFT_FRESH
-    if not entry.upstream_digests:
-        return DRIFT_PENDING
     current = {key: getattr(model.artifacts, key).digest for key in upstream_keys}
-    if _has_missing_required_upstream(model, state_key, current):
-        return DRIFT_PENDING
     if entry.upstream_digests == current:
         return DRIFT_FRESH
+    stamp = _drift_stamp_for_artifact(model, state_key)
+    if stamp is not None and stamp.verdict == DRIFT_SUBSTANTIVE:
+        return DRIFT_SUBSTANTIVE
+    if _has_missing_required_upstream(model, state_key, current):
+        return DRIFT_PENDING
     return _anchored_verdict_or_pending(
-        _drift_stamp_for_artifact(model, state_key),
+        stamp,
         current,
         "upstream_digests_at_review",
     )
@@ -287,7 +287,7 @@ def _has_intentional_plan_only_upstreams(
     upstream_keys: tuple[str, ...],
     recorded_digests: dict[str, str],
 ) -> bool:
-    if state_key != STATE_KEY_IMPLEMENTATION_PLAN or model.kind not in _PLAN_ONLY_KINDS:
+    if state_key != STATE_KEY_IMPLEMENTATION_PLAN or model.kind not in PLAN_WITHOUT_INTENT_UPSTREAM_KINDS:
         return False
     current_digests = [getattr(model.artifacts, upstream_key).digest for upstream_key in upstream_keys]
     return not any(current_digests) and not any(recorded_digests.values())
@@ -323,17 +323,17 @@ def derive_owned_snippet_drift(
     entry = getattr(model.artifacts, state_key)
     if _artifact_is_absent(entry):
         return DRIFT_FRESH
+    stamp = _drift_stamp_for_artifact(model, state_key)
     if not entry.async_provenance_complete:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(stamp)
     current = _current_snippet_digests(entry.owned_snippet_digests, snippet_digest_fn=snippet_digest_fn)
     if current is None:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(stamp)
     if entry.owned_snippet_digests == current:
         return DRIFT_FRESH
-    return _anchored_verdict_or_pending(
-        _drift_stamp_for_artifact(model, state_key),
+    return _anchored_snippet_verdict_or_pending(
+        stamp,
         current,
-        "snippet_digests_at_review",
     )
 
 
@@ -348,17 +348,17 @@ def derive_upstream_snippet_drift(
     entry = getattr(model.artifacts, state_key)
     if _artifact_is_absent(entry):
         return DRIFT_FRESH
+    stamp = _drift_stamp_for_artifact(model, state_key)
     if not entry.async_provenance_complete:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(stamp)
     current = _current_snippet_digests(entry.referenced_snippet_digests, snippet_digest_fn=snippet_digest_fn)
     if current is None:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(stamp)
     if entry.referenced_snippet_digests == current:
         return DRIFT_FRESH
-    return _anchored_verdict_or_pending(
-        _drift_stamp_for_artifact(model, state_key),
+    return _anchored_snippet_verdict_or_pending(
+        stamp,
         current,
-        "snippet_digests_at_review",
     )
 
 
@@ -393,6 +393,7 @@ def derive_age_drift(
     *,
     age_window_seconds: int | None,
     now_iso: str | None = None,
+    drift_reviewed_stamp: DriftReviewedStamp | None = None,
 ) -> ArtifactDriftStatus:
     """Derive age drift for one artifact; disabled when no age window is configured."""
     if age_window_seconds is None:
@@ -402,14 +403,27 @@ def derive_age_drift(
     if _artifact_is_absent(entry):
         return DRIFT_FRESH
     if not entry.produced_at:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(drift_reviewed_stamp)
     try:
         produced_at = _parse_iso_datetime(entry.produced_at)
         now = _parse_iso_datetime(now_iso) if now_iso else datetime.now(UTC)
     except ValueError:
-        return DRIFT_PENDING
+        return _substantive_verdict_or_pending(drift_reviewed_stamp)
     age_seconds = (now - produced_at).total_seconds()
-    return DRIFT_PENDING if age_seconds > age_window_seconds else DRIFT_FRESH
+    if age_seconds <= age_window_seconds:
+        return DRIFT_FRESH
+    if drift_reviewed_stamp is None:
+        return DRIFT_PENDING
+    if drift_reviewed_stamp.verdict == DRIFT_SUBSTANTIVE:
+        return DRIFT_SUBSTANTIVE
+    if not drift_reviewed_stamp.stamped_at:
+        return DRIFT_PENDING
+    try:
+        stamped_at = _parse_iso_datetime(drift_reviewed_stamp.stamped_at)
+    except ValueError:
+        return DRIFT_PENDING
+    review_age_seconds = (now - stamped_at).total_seconds()
+    return drift_reviewed_stamp.verdict if review_age_seconds <= age_window_seconds else DRIFT_PENDING
 
 
 def _state_key_for_artifact(artifact_name: str) -> str:
@@ -454,6 +468,27 @@ def _anchored_verdict_or_pending(
     if stamp.verdict == DRIFT_SUBSTANTIVE:
         return DRIFT_SUBSTANTIVE
     return stamp.verdict if getattr(stamp, anchor_field) == current_evidence else DRIFT_PENDING
+
+
+def _anchored_snippet_verdict_or_pending(
+    stamp: DriftReviewedStamp | None,
+    current_evidence: dict[str, str],
+) -> ArtifactDriftStatus:
+    if stamp is None:
+        return DRIFT_PENDING
+    if stamp.verdict == DRIFT_SUBSTANTIVE:
+        return DRIFT_SUBSTANTIVE
+    anchor = stamp.snippet_digests_at_review
+    for snippet_id, digest in current_evidence.items():
+        if anchor.get(snippet_id) != digest:
+            return DRIFT_PENDING
+    return stamp.verdict
+
+
+def _substantive_verdict_or_pending(stamp: DriftReviewedStamp | None) -> ArtifactDriftStatus:
+    if stamp is not None and stamp.verdict == DRIFT_SUBSTANTIVE:
+        return DRIFT_SUBSTANTIVE
+    return DRIFT_PENDING
 
 
 def _sorted_dependency_entries(entries: list[DependencyEntry]) -> list[DependencyEntry]:

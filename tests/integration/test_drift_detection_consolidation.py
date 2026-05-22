@@ -29,6 +29,20 @@ _PREPARED_STATE = {
     "architecture_review": {"verdict": "approve"},
     "plan_review": {"verdict": "approve"},
 }
+_PREPPED_STATE = {
+    "kind": "prepped",
+    "lifecycle_phase": "prepared",
+    "artifacts": {
+        "implementation_plan": {
+            "digest": "plan-digest",
+            "produced_at": "2026-01-01T00:00:00+00:00",
+            "upstream_digests": {"prd": "", "architecture": ""},
+            "async_provenance_complete": True,
+        },
+    },
+    "requirements_review": {"verdict": "skipped"},
+    "plan_review": {"verdict": "approve"},
+}
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(10)]
 
@@ -143,5 +157,33 @@ async def test_substantive_plan_drift_routes_to_plan_drafting_without_prd_gate(
             instruction = await next_prepare(AsyncMock(), _SLUG, str(tmp_path))
 
         assert _normalize_instruction_paths(instruction) == snapshot
+    finally:
+        await database.close()
+
+
+async def test_prepped_plan_without_intent_upstreams_enters_work_without_drift_bounce(tmp_path: Path) -> None:
+    database = TodosDb(str(tmp_path / ".teleclaude" / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap(_SLUG)
+        await database.write_state(_SLUG, _PREPPED_STATE)
+        await database.write_artifact(_SLUG, "implementation-plan", "plan body")
+
+        with (
+            patch("teleclaude.core.next_machine.work.get_todos_db", new=AsyncMock(return_value=database)),
+            patch(
+                "teleclaude.core.next_machine.work._normalize_next_work_cwd", new=AsyncMock(return_value=str(tmp_path))
+            ),
+            patch(
+                "teleclaude.core.next_machine.work._ensure_worktree_ready",
+                new=AsyncMock(return_value=(str(tmp_path / "trees" / _SLUG), None)),
+            ),
+            patch("teleclaude.core.next_machine.work.get_head_commit", return_value="head"),
+            patch("teleclaude.core.next_machine.work._merge_origin_main_into_worktree", return_value=""),
+            patch("teleclaude.core.next_machine.work._work_dispatch", new=AsyncMock(return_value=(False, _DISPATCHED))),
+        ):
+            instruction = await next_work(AsyncMock(), _SLUG, str(tmp_path))
+
+        assert instruction == _DISPATCHED
     finally:
         await database.close()

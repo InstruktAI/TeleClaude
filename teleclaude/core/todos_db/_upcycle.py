@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_DRAFT, KIND_FEATURE, KIND_TODO
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
@@ -88,7 +89,7 @@ def _review_verdict(raw: dict[str, StateValue], review_key: str) -> str:
 
 def _infer_v1_lifecycle_phase(raw: dict[str, StateValue]) -> str:
     kind = _text(raw, "kind")
-    if kind == "draft":
+    if kind == KIND_DRAFT:
         return LifecyclePhase.DRAFT.value
 
     lifecycle = _text(raw, "lifecycle_phase")
@@ -120,7 +121,7 @@ def _infer_v1_lifecycle_phase(raw: dict[str, StateValue]) -> str:
         return LifecyclePhase.REVIEW_CHANGES_REQUESTED.value
     if build_completed_at:
         return LifecyclePhase.BUILD_COMPLETE.value
-    if kind in {"bug", "prepped"}:
+    if kind in FAST_TRACK_PREPARED_KINDS:
         return LifecyclePhase.PREPARED.value
     if grounding_valid:
         return LifecyclePhase.PREPARED.value
@@ -217,8 +218,8 @@ def _upcycle_v2_to_v3(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated.pop("prepare_pair", None)
     migrated.pop("grounding", None)
     migrated.setdefault("approvals", {})
-    if migrated.get("kind") == "todo":
-        migrated["kind"] = "feature"
+    if migrated.get("kind") == KIND_TODO:
+        migrated["kind"] = KIND_FEATURE
     migrated["schema_version"] = _V3_SCHEMA_VERSION
     return migrated
 

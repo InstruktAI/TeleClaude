@@ -314,6 +314,9 @@ _COSMETIC_REASON = "cosmetic"
 _ACTIVE_STATUS = "active"
 _DEPENDENCY_SLUG = "dependency"
 _REFACTOR_KIND = "refactor"
+_MIGRATION_KIND = "migration"
+_PREPPED_KIND = "prepped"
+_OWNED_SNIPPET_ID = "project/spec/owned"
 
 
 class _FakeTodosDb:
@@ -382,6 +385,58 @@ def test_upstream_artifact_drift_ignores_absent_upstreams_for_plan_only_work() -
     assert status == DRIFT_FRESH
 
 
+def test_upstream_artifact_drift_ignores_absent_upstreams_for_migration_work() -> None:
+    state = TodoState.defaults()
+    state.kind = _MIGRATION_KIND
+    state.artifacts.implementation_plan.digest = "plan-digest"
+    state.artifacts.implementation_plan.upstream_digests = {_PRD: "", _ARCHITECTURE: ""}
+
+    status = derive_upstream_artifact_drift(state, _IMPLEMENTATION_PLAN)
+
+    assert status == DRIFT_FRESH
+
+
+def test_upstream_artifact_drift_ignores_absent_upstreams_for_prepped_work() -> None:
+    state = TodoState.defaults()
+    state.kind = _PREPPED_KIND
+    state.artifacts.implementation_plan.digest = "plan-digest"
+    state.artifacts.implementation_plan.upstream_digests = {_PRD: "", _ARCHITECTURE: ""}
+
+    status = derive_upstream_artifact_drift(state, _IMPLEMENTATION_PLAN)
+
+    assert status == DRIFT_FRESH
+
+
+def test_upstream_artifact_drift_uses_cosmetic_anchor_when_recorded_upstream_provenance_is_missing() -> None:
+    state = TodoState.defaults()
+    state.artifacts.prd.digest = _CURRENT_DIGEST
+    state.artifacts.architecture.digest = "architecture-digest"
+    state.approvals.drift_reviewed[_ARCHITECTURE] = DriftReviewedStamp(
+        verdict=DRIFT_COSMETIC,
+        reason=_COSMETIC_REASON,
+        upstream_digests_at_review={_PRD: _CURRENT_DIGEST},
+    )
+
+    status = derive_upstream_artifact_drift(state, _ARCHITECTURE)
+
+    assert status == DRIFT_COSMETIC
+
+
+def test_upstream_artifact_drift_routes_substantive_stamp_when_required_upstream_is_missing() -> None:
+    state = TodoState.defaults()
+    state.artifacts.architecture.digest = "architecture-digest"
+    state.artifacts.architecture.upstream_digests = {_PRD: _STALE_DIGEST}
+    state.approvals.drift_reviewed[_ARCHITECTURE] = DriftReviewedStamp(
+        verdict=DRIFT_SUBSTANTIVE,
+        reason="prd missing",
+        upstream_digests_at_review={_PRD: ""},
+    )
+
+    status = derive_upstream_artifact_drift(state, _ARCHITECTURE)
+
+    assert status == DRIFT_SUBSTANTIVE
+
+
 def test_upstream_artifact_drift_uses_anchor_when_architecture_is_skipped() -> None:
     state = TodoState.defaults()
     state.approvals.architecture_skipped = SkipStamp(reason="projection-only")
@@ -420,6 +475,16 @@ def test_code_drift_ignores_substantive_stamp_when_code_evidence_is_fresh() -> N
     assert status == DRIFT_FRESH
 
 
+def test_code_drift_routes_substantive_stamp_when_baseline_sha_is_missing() -> None:
+    entry = ArtifactEntry(digest="plan-digest", referenced_paths=["src/feature.py"])
+    stamp = DriftReviewedStamp(verdict=DRIFT_SUBSTANTIVE, reason="missing baseline")
+
+    with patch("teleclaude.core.next_machine.git_ops.get_origin_main_sha", return_value=_ORIGIN_MAIN_SHA):
+        status = derive_artifact_drift(entry, stamp, "ignored", "/repo")
+
+    assert status == DRIFT_SUBSTANTIVE
+
+
 def test_owned_snippet_drift_is_pending_until_async_provenance_is_complete() -> None:
     state = TodoState.defaults()
     state.artifacts.architecture.digest = "architecture-digest"
@@ -428,6 +493,26 @@ def test_owned_snippet_drift_is_pending_until_async_provenance_is_complete() -> 
     status = derive_owned_snippet_drift(state, _ARCHITECTURE, snippet_digest_fn=_snippet_digest)
 
     assert status == DRIFT_PENDING
+
+
+def test_owned_snippet_drift_uses_relevant_subset_of_combined_snippet_anchor() -> None:
+    state = TodoState.defaults()
+    state.artifacts.architecture.digest = "architecture-digest"
+    state.artifacts.architecture.async_provenance_complete = True
+    state.artifacts.architecture.owned_snippet_digests = {_OWNED_SNIPPET_ID: _STALE_DIGEST}
+    state.approvals.drift_reviewed[_ARCHITECTURE] = DriftReviewedStamp(
+        verdict=DRIFT_COSMETIC,
+        reason=_COSMETIC_REASON,
+        snippet_digests_at_review={_OWNED_SNIPPET_ID: _CURRENT_DIGEST, _SNIPPET_ID: _CURRENT_DIGEST},
+    )
+
+    status = derive_owned_snippet_drift(
+        state,
+        _ARCHITECTURE,
+        snippet_digest_fn=lambda snippet_id: _CURRENT_DIGEST if snippet_id == _OWNED_SNIPPET_ID else "",
+    )
+
+    assert status == DRIFT_COSMETIC
 
 
 def test_owned_snippet_drift_is_fresh_when_digests_match() -> None:
@@ -455,6 +540,41 @@ def test_upstream_snippet_drift_re_pends_when_cosmetic_anchor_is_stale() -> None
     status = derive_upstream_snippet_drift(state, _IMPLEMENTATION_PLAN_STATE_KEY, snippet_digest_fn=_snippet_digest)
 
     assert status == DRIFT_PENDING
+
+
+def test_upstream_snippet_drift_uses_relevant_subset_of_combined_snippet_anchor() -> None:
+    state = TodoState.defaults()
+    state.artifacts.implementation_plan.digest = "plan-digest"
+    state.artifacts.implementation_plan.async_provenance_complete = True
+    state.artifacts.implementation_plan.referenced_snippet_digests = {_SNIPPET_ID: _STALE_DIGEST}
+    state.approvals.drift_reviewed[_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
+        verdict=DRIFT_COSMETIC,
+        reason=_COSMETIC_REASON,
+        snippet_digests_at_review={_OWNED_SNIPPET_ID: _CURRENT_DIGEST, _SNIPPET_ID: _CURRENT_DIGEST},
+    )
+
+    status = derive_upstream_snippet_drift(state, _IMPLEMENTATION_PLAN_STATE_KEY, snippet_digest_fn=_snippet_digest)
+
+    assert status == DRIFT_COSMETIC
+
+
+def test_upstream_snippet_drift_routes_substantive_stamp_when_referenced_snippet_is_missing() -> None:
+    state = TodoState.defaults()
+    state.artifacts.implementation_plan.digest = "plan-digest"
+    state.artifacts.implementation_plan.async_provenance_complete = True
+    state.artifacts.implementation_plan.referenced_snippet_digests = {_SNIPPET_ID: _STALE_DIGEST}
+    state.approvals.drift_reviewed[_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
+        verdict=DRIFT_SUBSTANTIVE,
+        reason="snippet missing",
+    )
+
+    status = derive_upstream_snippet_drift(
+        state,
+        _IMPLEMENTATION_PLAN_STATE_KEY,
+        snippet_digest_fn=lambda _snippet_id: "",
+    )
+
+    assert status == DRIFT_SUBSTANTIVE
 
 
 async def test_dependency_graph_drift_is_fresh_when_snapshot_matches_current_direct_deps() -> None:
@@ -510,3 +630,24 @@ def test_age_drift_is_pending_when_artifact_is_older_than_window() -> None:
     status = derive_age_drift(state, _ARCHITECTURE, age_window_seconds=1, now_iso="2020-01-01T00:00:02+00:00")
 
     assert status == DRIFT_PENDING
+
+
+def test_age_drift_uses_recent_cosmetic_review_as_freshness_anchor() -> None:
+    state = TodoState.defaults()
+    state.artifacts.architecture.digest = "architecture-digest"
+    state.artifacts.architecture.produced_at = "2020-01-01T00:00:00+00:00"
+    stamp = DriftReviewedStamp(
+        verdict=DRIFT_COSMETIC,
+        reason=_COSMETIC_REASON,
+        stamped_at="2020-01-01T00:00:02+00:00",
+    )
+
+    status = derive_age_drift(
+        state,
+        _ARCHITECTURE,
+        age_window_seconds=2,
+        now_iso="2020-01-01T00:00:03+00:00",
+        drift_reviewed_stamp=stamp,
+    )
+
+    assert status == DRIFT_COSMETIC

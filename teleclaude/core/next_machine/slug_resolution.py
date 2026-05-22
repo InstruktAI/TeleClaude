@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
+from teleclaude.core.next_machine.kinds import KIND_TODO
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
@@ -158,7 +159,7 @@ async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
     if state is None:
         return False
     kind_raw = state.get("kind")
-    kind = kind_raw if isinstance(kind_raw, str) else "todo"
+    kind = kind_raw if isinstance(kind_raw, str) else KIND_TODO
     lifecycle_phase_raw = state.get("lifecycle_phase")
     lifecycle_phase = lifecycle_phase_raw if isinstance(lifecycle_phase_raw, str) else None
     ready, _ = is_ready_for_work(kind=kind, lifecycle_phase=lifecycle_phase)

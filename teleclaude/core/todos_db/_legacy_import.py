@@ -20,6 +20,7 @@ from teleclaude.constants import (
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TEST_SPECS,
 )
+from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_TODO
 from teleclaude.slug import normalize_slug, validate_slug
 from teleclaude.types.todos import DorState, TodoState
 
@@ -246,7 +247,7 @@ def _parse_roadmap_index(path: Path, *, status: str, seen_slugs: set[str]) -> li
                 status=status,
                 marker=(match.group("marker") or "").strip(),
                 description=description,
-                kind="todo",
+                kind=KIND_TODO,
             )
         )
     return entries
@@ -280,7 +281,7 @@ def _parse_delivered_index(path: Path, *, seen_slugs: set[str]) -> list[_LegacyE
                 status="delivered",
                 marker="x",
                 description=description,
-                kind="todo",
+                kind=KIND_TODO,
                 delivered_at=delivered_at,
                 delivered_commit=delivered_commit,
             )
@@ -310,7 +311,7 @@ def _parse_bug_index(path: Path, *, seen_slugs: set[str]) -> list[_LegacyEntry]:
                 status="delivered" if marker == "x" else "active",
                 marker=marker,
                 description=description,
-                kind="bug",
+                kind=KIND_BUG,
             )
         )
     return entries
@@ -361,7 +362,7 @@ def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str)
         state.phase = "in_progress"
     elif marker == ".":
         state.dor = DorState(last_assessed_at=now, score=8, status="pass", schema_version=1, blockers=[])
-        if kind == "bug":
+        if kind == KIND_BUG:
             state.requirements_review.verdict = "skipped"
             state.plan_review.verdict = "skipped"
         else:
