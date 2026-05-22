@@ -109,7 +109,7 @@ _real_git() {
     local _rc=$?
     if [ -s "$_stderr_capture" ]; then
         while IFS= read -r _line || [ -n "$_line" ]; do
-            echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
+            echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
             printf '%s\n' "$_line" >&2
         done < "$_stderr_capture"
     fi
@@ -122,13 +122,14 @@ _real_git() {
 _log_wrapper() {
     local _inv_id="$1"
     shift
-    { echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id event=start role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id event=start role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
 }
 
 _log_wrapper_end() {
     local _inv_id="$1"
     local _rc="$2"
-    local _level=INFO
+    # ERROR only when git itself failed; rc=0 is routine — DEBUG.
+    local _level=DEBUG
     [ "$_rc" -ne 0 ] && _level=ERROR
     { echo "$(_ts_cmd) level=$_level logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
 }

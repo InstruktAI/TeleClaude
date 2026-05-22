@@ -32,7 +32,7 @@ each decision point until the queue is drained.
   commands inside the worktree are gated per the wrapper matrix (see
   `docs/project/design/code-commit.md`): `stash` is absolutely blocked everywhere
   (no role carve-out — stash is too coarse for a multi-agent repo); `checkout <ref>
-  -- <path>`, `restore <path>`, and `restore --source <ref> <path>` require the
+-- <path>`, `restore <path>`, and `restore --source <ref> <path>` require the
   `--confirmed` flag after reading the printed inspection checklist; pathspec
   `reset HEAD <path>` / `restore --staged <path>` are index-only and allowed
   without ceremony. The `--confirmed` friction is the integrator's deliberate
@@ -105,7 +105,7 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
    agents per the wrapper matrix. NEW (untracked) resolution files (e.g. a
    file added on one side that the other side deleted) also go through this
    command; modified-tracked resolutions ride the pathspec via `telec code
-   commit` directly.
+commit` directly.
 7. Compose a commit message (same quality standard as squash commit). In the body,
    note which conflicts were resolved and how both sides' contributions were preserved.
 8. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.

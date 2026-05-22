@@ -285,6 +285,17 @@ def _collect_artifact_headings(lines: list[str], path: str, *, h1_idx: int) -> l
     return headings
 
 
+def _is_ordered_subset(headings: list[str], required: list[str]) -> bool:
+    """Return whether headings appear in the canonical order with no extras or repeats.
+
+    Commands may omit sections (a thin wrapper that is just Purpose + Steps is
+    valid), but the sections present must keep the canonical order. Walking the
+    required sequence once rejects out-of-order and duplicated headings.
+    """
+    cursor = iter(required)
+    return all(heading in cursor for heading in headings)
+
+
 def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, h1_idx: int) -> None:
     headings = _collect_artifact_headings(lines, path, h1_idx=h1_idx)
     if not headings:
@@ -293,7 +304,12 @@ def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, 
     for heading in headings:
         if heading not in required:
             raise ValueError(f"{path} has invalid section heading '{heading}'")
-    if headings != required:
+    # Commands may carry an ordered subset of the canonical sections so thin
+    # wrappers stay minimal; other artifacts must match the full schema exactly.
+    if kind == "command":
+        if not _is_ordered_subset(headings, required):
+            raise ValueError(f"{path} sections must follow the order: {' → '.join(required)}")
+    elif headings != required:
         raise ValueError(f"{path} section order must be: {' → '.join(required)}")
 
 
