@@ -54,7 +54,7 @@ def _render_observations(observations: list[TimelineEntry], parts: list[str]) ->
     parts.append("")
 
     expanded = indexed[:MEMORY_EXPANDED_TOP_N]
-    if len(expanded) >= MEMORY_EXPANDED_TOP_N:
+    if total >= MEMORY_EXPANDED_TOP_N:
         parts.append(f"## Top {MEMORY_EXPANDED_TOP_N} — Expanded\n")
     else:
         parts.append("## Expanded\n")

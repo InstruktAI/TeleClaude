@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from teleclaude.core import db_models
-from teleclaude.memory.context.compiler import TimelineEntry, compile_timeline, filter_by_recency
+from teleclaude.memory.context.compiler import compile_timeline
 
 pytestmark = pytest.mark.unit
 
@@ -55,12 +55,3 @@ class TestCompileTimeline:
         assert [entry.epoch for entry in entries] == [300, 200, 100]
         assert entries[0].observation is not None and entries[0].observation.id == 2
         assert entries[1].summary is not None and entries[1].summary.id == 3
-
-    def test_filter_by_recency_returns_the_requested_prefix(self) -> None:
-        entries = [
-            TimelineEntry(kind="observation", epoch=300),
-            TimelineEntry(kind="summary", epoch=200),
-            TimelineEntry(kind="observation", epoch=100),
-        ]
-
-        assert filter_by_recency(entries, max_entries=2) == entries[:2]

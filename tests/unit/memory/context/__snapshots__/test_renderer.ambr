@@ -1,0 +1,447 @@
+# serializer version: 1
+# name: TestRenderContext.test_render_context_emits_observation_and_summary_sections
+  '''
+  # Memory Context
+  
+  ## Index (1 memories, newest first)
+  
+  | # | Type | Title | When |
+  |---|------|-------|------|
+  | 1 | discovery | Observation title | 2m ago |
+  
+  ## Expanded
+  
+  ### 1. Observation title
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ## Session Summaries
+  
+  ### Session: alpha
+  - **Investigated:** Investigated
+  - **Learned:** Learned
+  - **Completed:** Completed
+  - **Next Steps:** Next
+  '''
+# ---
+# name: TestRenderContext.test_render_context_index_at_or_above_top_n_uses_top_n_heading
+  '''
+  # Memory Context
+  
+  ## Index (50 memories, newest first)
+  
+  | # | Type | Title | When |
+  |---|------|-------|------|
+  | 1 | discovery | obs-0 | 1m ago |
+  | 2 | discovery | obs-1 | 1m ago |
+  | 3 | discovery | obs-2 | 1m ago |
+  | 4 | discovery | obs-3 | 1m ago |
+  | 5 | discovery | obs-4 | 1m ago |
+  | 6 | discovery | obs-5 | 1m ago |
+  | 7 | discovery | obs-6 | 1m ago |
+  | 8 | discovery | obs-7 | 1m ago |
+  | 9 | discovery | obs-8 | 1m ago |
+  | 10 | discovery | obs-9 | 1m ago |
+  | 11 | discovery | obs-10 | 1m ago |
+  | 12 | discovery | obs-11 | 1m ago |
+  | 13 | discovery | obs-12 | 1m ago |
+  | 14 | discovery | obs-13 | 1m ago |
+  | 15 | discovery | obs-14 | 1m ago |
+  | 16 | discovery | obs-15 | 1m ago |
+  | 17 | discovery | obs-16 | 1m ago |
+  | 18 | discovery | obs-17 | 1m ago |
+  | 19 | discovery | obs-18 | 1m ago |
+  | 20 | discovery | obs-19 | 1m ago |
+  | 21 | discovery | obs-20 | 2m ago |
+  | 22 | discovery | obs-21 | 2m ago |
+  | 23 | discovery | obs-22 | 2m ago |
+  | 24 | discovery | obs-23 | 2m ago |
+  | 25 | discovery | obs-24 | 2m ago |
+  | 26 | discovery | obs-25 | 2m ago |
+  | 27 | discovery | obs-26 | 2m ago |
+  | 28 | discovery | obs-27 | 2m ago |
+  | 29 | discovery | obs-28 | 2m ago |
+  | 30 | discovery | obs-29 | 2m ago |
+  | 31 | discovery | obs-30 | 2m ago |
+  | 32 | discovery | obs-31 | 2m ago |
+  | 33 | discovery | obs-32 | 2m ago |
+  | 34 | discovery | obs-33 | 2m ago |
+  | 35 | discovery | obs-34 | 2m ago |
+  | 36 | discovery | obs-35 | 2m ago |
+  | 37 | discovery | obs-36 | 2m ago |
+  | 38 | discovery | obs-37 | 2m ago |
+  | 39 | discovery | obs-38 | 2m ago |
+  | 40 | discovery | obs-39 | 2m ago |
+  | 41 | discovery | obs-40 | 2m ago |
+  | 42 | discovery | obs-41 | 2m ago |
+  | 43 | discovery | obs-42 | 2m ago |
+  | 44 | discovery | obs-43 | 2m ago |
+  | 45 | discovery | obs-44 | 2m ago |
+  | 46 | discovery | obs-45 | 2m ago |
+  | 47 | discovery | obs-46 | 2m ago |
+  | 48 | discovery | obs-47 | 2m ago |
+  | 49 | discovery | obs-48 | 2m ago |
+  | 50 | discovery | obs-49 | 2m ago |
+  
+  ## Top 10 — Expanded
+  
+  ### 1. obs-0
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 2. obs-1
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 3. obs-2
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 4. obs-3
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 5. obs-4
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 6. obs-5
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 7. obs-6
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 8. obs-7
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 9. obs-8
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 10. obs-9
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  '''
+# ---
+# name: TestRenderContext.test_render_context_index_caps_at_one_hundred_when_total_exceeds
+  '''
+  # Memory Context
+  
+  ## Index (100 of 150 memories, newest first)
+  
+  | # | Type | Title | When |
+  |---|------|-------|------|
+  | 1 | discovery | obs-0 | just now |
+  | 2 | discovery | obs-1 | just now |
+  | 3 | discovery | obs-2 | just now |
+  | 4 | discovery | obs-3 | just now |
+  | 5 | discovery | obs-4 | just now |
+  | 6 | discovery | obs-5 | just now |
+  | 7 | discovery | obs-6 | just now |
+  | 8 | discovery | obs-7 | just now |
+  | 9 | discovery | obs-8 | just now |
+  | 10 | discovery | obs-9 | just now |
+  | 11 | discovery | obs-10 | just now |
+  | 12 | discovery | obs-11 | just now |
+  | 13 | discovery | obs-12 | just now |
+  | 14 | discovery | obs-13 | just now |
+  | 15 | discovery | obs-14 | just now |
+  | 16 | discovery | obs-15 | just now |
+  | 17 | discovery | obs-16 | just now |
+  | 18 | discovery | obs-17 | just now |
+  | 19 | discovery | obs-18 | just now |
+  | 20 | discovery | obs-19 | just now |
+  | 21 | discovery | obs-20 | just now |
+  | 22 | discovery | obs-21 | just now |
+  | 23 | discovery | obs-22 | just now |
+  | 24 | discovery | obs-23 | just now |
+  | 25 | discovery | obs-24 | just now |
+  | 26 | discovery | obs-25 | just now |
+  | 27 | discovery | obs-26 | just now |
+  | 28 | discovery | obs-27 | just now |
+  | 29 | discovery | obs-28 | just now |
+  | 30 | discovery | obs-29 | just now |
+  | 31 | discovery | obs-30 | just now |
+  | 32 | discovery | obs-31 | just now |
+  | 33 | discovery | obs-32 | just now |
+  | 34 | discovery | obs-33 | just now |
+  | 35 | discovery | obs-34 | just now |
+  | 36 | discovery | obs-35 | just now |
+  | 37 | discovery | obs-36 | just now |
+  | 38 | discovery | obs-37 | just now |
+  | 39 | discovery | obs-38 | just now |
+  | 40 | discovery | obs-39 | just now |
+  | 41 | discovery | obs-40 | just now |
+  | 42 | discovery | obs-41 | just now |
+  | 43 | discovery | obs-42 | just now |
+  | 44 | discovery | obs-43 | just now |
+  | 45 | discovery | obs-44 | just now |
+  | 46 | discovery | obs-45 | just now |
+  | 47 | discovery | obs-46 | just now |
+  | 48 | discovery | obs-47 | just now |
+  | 49 | discovery | obs-48 | just now |
+  | 50 | discovery | obs-49 | just now |
+  | 51 | discovery | obs-50 | just now |
+  | 52 | discovery | obs-51 | just now |
+  | 53 | discovery | obs-52 | just now |
+  | 54 | discovery | obs-53 | just now |
+  | 55 | discovery | obs-54 | just now |
+  | 56 | discovery | obs-55 | just now |
+  | 57 | discovery | obs-56 | just now |
+  | 58 | discovery | obs-57 | just now |
+  | 59 | discovery | obs-58 | just now |
+  | 60 | discovery | obs-59 | just now |
+  | 61 | discovery | obs-60 | 1m ago |
+  | 62 | discovery | obs-61 | 1m ago |
+  | 63 | discovery | obs-62 | 1m ago |
+  | 64 | discovery | obs-63 | 1m ago |
+  | 65 | discovery | obs-64 | 1m ago |
+  | 66 | discovery | obs-65 | 1m ago |
+  | 67 | discovery | obs-66 | 1m ago |
+  | 68 | discovery | obs-67 | 1m ago |
+  | 69 | discovery | obs-68 | 1m ago |
+  | 70 | discovery | obs-69 | 1m ago |
+  | 71 | discovery | obs-70 | 1m ago |
+  | 72 | discovery | obs-71 | 1m ago |
+  | 73 | discovery | obs-72 | 1m ago |
+  | 74 | discovery | obs-73 | 1m ago |
+  | 75 | discovery | obs-74 | 1m ago |
+  | 76 | discovery | obs-75 | 1m ago |
+  | 77 | discovery | obs-76 | 1m ago |
+  | 78 | discovery | obs-77 | 1m ago |
+  | 79 | discovery | obs-78 | 1m ago |
+  | 80 | discovery | obs-79 | 1m ago |
+  | 81 | discovery | obs-80 | 1m ago |
+  | 82 | discovery | obs-81 | 1m ago |
+  | 83 | discovery | obs-82 | 1m ago |
+  | 84 | discovery | obs-83 | 1m ago |
+  | 85 | discovery | obs-84 | 1m ago |
+  | 86 | discovery | obs-85 | 1m ago |
+  | 87 | discovery | obs-86 | 1m ago |
+  | 88 | discovery | obs-87 | 1m ago |
+  | 89 | discovery | obs-88 | 1m ago |
+  | 90 | discovery | obs-89 | 1m ago |
+  | 91 | discovery | obs-90 | 1m ago |
+  | 92 | discovery | obs-91 | 1m ago |
+  | 93 | discovery | obs-92 | 1m ago |
+  | 94 | discovery | obs-93 | 1m ago |
+  | 95 | discovery | obs-94 | 1m ago |
+  | 96 | discovery | obs-95 | 1m ago |
+  | 97 | discovery | obs-96 | 1m ago |
+  | 98 | discovery | obs-97 | 1m ago |
+  | 99 | discovery | obs-98 | 1m ago |
+  | 100 | discovery | obs-99 | 1m ago |
+  
+  ## Top 10 — Expanded
+  
+  ### 1. obs-0
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 2. obs-1
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 3. obs-2
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 4. obs-3
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 5. obs-4
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 6. obs-5
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 7. obs-6
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 8. obs-7
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 9. obs-8
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 10. obs-9
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  '''
+# ---
+# name: TestRenderContext.test_render_context_index_under_top_n_uses_expanded_heading
+  '''
+  # Memory Context
+  
+  ## Index (5 memories, newest first)
+  
+  | # | Type | Title | When |
+  |---|------|-------|------|
+  | 1 | discovery | obs-0 | 1m ago |
+  | 2 | discovery | obs-1 | 1m ago |
+  | 3 | discovery | obs-2 | 1m ago |
+  | 4 | discovery | obs-3 | 1m ago |
+  | 5 | discovery | obs-4 | 1m ago |
+  
+  ## Expanded
+  
+  ### 1. obs-0
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 2. obs-1
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 3. obs-2
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 4. obs-3
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  
+  ### 5. obs-4
+  **Type:** discovery | **Concepts:** auth
+  > Narrative text
+  
+  **Facts:**
+  - fact-one
+  
+  ---
+  '''
+# ---

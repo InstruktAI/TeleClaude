@@ -31,8 +31,3 @@ def compile_timeline(
 
     entries.sort(key=lambda e: e.epoch, reverse=True)
     return entries
-
-
-def filter_by_recency(entries: list[TimelineEntry], max_entries: int = 50) -> list[TimelineEntry]:
-    """Cap to most recent entries."""
-    return entries[:max_entries]

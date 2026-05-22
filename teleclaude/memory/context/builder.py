@@ -28,6 +28,9 @@ async def generate_context(project: str, identity_key: str | None = None) -> str
         timeline = compile_timeline(observations, summaries)
         return render_context(timeline)
     except Exception:
+        # Best-effort context injection: any failure (DB, render, schema drift)
+        # must return "" rather than propagate, or the SessionStart hook crashes
+        # and the entire session bootstrap fails. Log and degrade.
         logger.warning("Failed to generate memory context", project=project, exc_info=True)
         return ""
 
@@ -63,6 +66,9 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
         timeline = compile_timeline(observations, summaries)
         return render_context(timeline)
     except Exception:
+        # Best-effort context injection: any failure (DB, render, schema drift)
+        # must return "" rather than propagate, or the SessionStart hook crashes
+        # and the entire session bootstrap fails. Log and degrade.
         logger.warning("Failed to generate memory context (sync)", project=project, exc_info=True)
         return ""
     finally:
