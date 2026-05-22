@@ -29,9 +29,10 @@ stdout that causes the agent CLI to re-prompt itself with the checkpoint
 instruction.
 
 The engine is gated by session-scoped flag files: a persistent **clear flag**
-disables checkpoints for the session entirely; a per-turn **recheck flag**
-prevents re-firing within the same turn after the first checkpoint of the
-turn has been delivered.
+disables checkpoints for the session entirely; turn scoping prevents ordinary
+file-change checkpoints from re-firing after a checkpoint has been delivered;
+and a SHA-scoped **post-commit review flag** prevents the main-branch
+post-commit review action from re-firing for the same HEAD.
 
 ## Canonical fields
 
@@ -94,6 +95,34 @@ Given a checkpoint fired earlier in this turn and set CHECKPOINT_RECHECK_FLAG
 When a new user_prompt_submit hook arrives that is NOT system-injected
 Then _reset_checkpoint_flags consumes CHECKPOINT_RECHECK_FLAG
 And the next agent_stop in the new turn may fire a fresh checkpoint
+```
+
+#### UC-CP5A: Main-branch post-commit review action is edge-triggered per HEAD
+
+```gherkin
+Given the current branch is main
+And the current HEAD differs from the turn-start anchor SHA
+And no post-commit review flag exists for the current HEAD
+When get_checkpoint_content runs
+Then the heuristic engine includes the post-commit review-gate surfacing action
+And records a post-commit review flag for the current HEAD under the session flag directory
+And removes older post-commit review flags for the same session
+
+Given the current branch is main
+And the current HEAD differs from the turn-start anchor SHA
+And a post-commit review flag already exists for the current HEAD
+And there are no turn-local dirty files
+When get_checkpoint_content runs again before a new commit
+Then it returns None
+And does not emit the post-commit review-gate surfacing action again
+
+Given the current branch is main
+And the current HEAD differs from the turn-start anchor SHA
+And a post-commit review flag already exists for the current HEAD
+And there are turn-local dirty files
+When get_checkpoint_content runs
+Then ordinary checkpoint classification still runs for those files
+And only the post-commit review-gate surfacing action is suppressed
 ```
 
 #### UC-CP6: Per-adapter checkpoint response payloads

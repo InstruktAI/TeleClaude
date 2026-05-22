@@ -41,6 +41,7 @@ from teleclaude.hooks.checkpoint._git import (
     _categorize_files,
     _command_likely_mutates_files,
     _current_branch,
+    _current_head_sha,
     _extract_apply_patch_paths,
     _extract_shell_command,
     _extract_shell_touched_paths,
@@ -58,6 +59,7 @@ from teleclaude.hooks.checkpoint._git import (
     _transcript_observability,
 )
 from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult, TranscriptObservability
+from teleclaude.hooks.checkpoint_flags import has_post_commit_review_flag, replace_post_commit_review_flag
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
@@ -82,6 +84,7 @@ __all__ = [
     "_compose_checkpoint_message",
     "_compute_log_since_window",
     "_current_branch",
+    "_current_head_sha",
     "_dedupe_strings",
     "_enrich_error",
     "_extract_apply_patch_paths",
@@ -125,6 +128,7 @@ def run_heuristics(
     context: CheckpointContext,
     log_since_window: str = "2m",
     git_head_changed_this_turn: bool = False,
+    post_commit_review_already_seen: bool = False,
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
@@ -142,8 +146,9 @@ def run_heuristics(
         if action not in result.required_actions:
             result.required_actions.append(action)
 
-    if result.on_main and result.git_head_changed_this_turn:
+    if result.on_main and result.git_head_changed_this_turn and not post_commit_review_already_seen:
         append_required_action(_post_commit_review_instruction())
+        result.post_commit_review_action_required = True
 
     # 1. File categorization
     categories: list[FileCategory] = _categorize_files(git_files)
@@ -405,8 +410,19 @@ def get_checkpoint_content(
             timeline,
             project_path,
         )
-        git_head_changed_this_turn = _head_changed_since_anchor(project_path, turn_anchor_sha)
-        force_main_commit_checkpoint = git_head_changed_this_turn and _current_branch(project_path) == "main"
+        current_head_sha = _current_head_sha(project_path)
+        normalized_anchor_sha = (turn_anchor_sha or "").strip()
+        git_head_changed_this_turn = bool(
+            current_head_sha and normalized_anchor_sha and current_head_sha != normalized_anchor_sha
+        )
+        post_commit_review_already_seen = bool(
+            current_head_sha and has_post_commit_review_flag(session_id, current_head_sha)
+        )
+        force_main_commit_checkpoint = (
+            git_head_changed_this_turn
+            and _current_branch(project_path) == "main"
+            and not post_commit_review_already_seen
+        )
 
         # Intentionally no full-session fallback:
         # checkpoint attribution must stay strictly turn-local.
@@ -430,6 +446,7 @@ def get_checkpoint_content(
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
                     "git_head_changed_this_turn": git_head_changed_this_turn,
+                    "post_commit_review_already_seen": post_commit_review_already_seen,
                 },
             )
             return None
@@ -449,6 +466,7 @@ def get_checkpoint_content(
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
                     "git_head_changed_this_turn": git_head_changed_this_turn,
+                    "post_commit_review_already_seen": post_commit_review_already_seen,
                 },
             )
             return None
@@ -466,9 +484,12 @@ def get_checkpoint_content(
             context,
             log_since_window=log_since_window,
             git_head_changed_this_turn=git_head_changed_this_turn,
+            post_commit_review_already_seen=post_commit_review_already_seen,
         )
 
         message = _compose_checkpoint_message(effective_files, result)
+        if result.post_commit_review_action_required and current_head_sha:
+            replace_post_commit_review_flag(session_id, current_head_sha)
         mode = (
             "main_head_changed"
             if force_main_commit_checkpoint
@@ -493,6 +514,8 @@ def get_checkpoint_content(
                 "message_len": len(message),
                 "used_session_fallback": used_session_fallback,
                 "git_head_changed_this_turn": git_head_changed_this_turn,
+                "post_commit_review_already_seen": post_commit_review_already_seen,
+                "post_commit_review_action_required": result.post_commit_review_action_required,
             },
         )
         return message

@@ -145,13 +145,16 @@ class TestGetCheckpointContent:
             commit_action_required=False,
             on_main=True,
             git_head_changed_this_turn=True,
+            post_commit_review_action_required=True,
         )
 
         with (
             patch("teleclaude.hooks.checkpoint._is_checkpoint_project_supported", return_value=True),
             patch("teleclaude.hooks.checkpoint.extract_effective_tool_calls", return_value=timeline),
             patch("teleclaude.hooks.checkpoint.resolve_scoped_paths", return_value=scoped_paths),
-            patch("teleclaude.hooks.checkpoint._head_changed_since_anchor", return_value=True),
+            patch("teleclaude.hooks.checkpoint._current_head_sha", return_value="new-head"),
+            patch("teleclaude.hooks.checkpoint.has_post_commit_review_flag", return_value=False),
+            patch("teleclaude.hooks.checkpoint.replace_post_commit_review_flag") as replace_flag_mock,
             patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"),
             patch("teleclaude.hooks.checkpoint.run_heuristics", return_value=result) as run_heuristics_mock,
         ):
@@ -167,6 +170,88 @@ class TestGetCheckpointContent:
 
         assert checkpoint_text is not None
         assert run_heuristics_mock.call_args.kwargs["git_head_changed_this_turn"] is True
+        assert run_heuristics_mock.call_args.kwargs["post_commit_review_already_seen"] is False
+        replace_flag_mock.assert_called_once_with("session-1", "new-head")
+
+    @pytest.mark.unit
+    def test_checkpoint_cycle_suppresses_repeated_main_head_change_without_dirty_files(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        scoped_paths = ScopedPathsResult(
+            paths=(),
+            scope_mode="turn_delta",
+            workspace_kind="git_shared",
+            strategy="codex_structured+anchor_diff",
+            ledger_updated=False,
+        )
+
+        with (
+            patch("teleclaude.hooks.checkpoint._is_checkpoint_project_supported", return_value=True),
+            patch("teleclaude.hooks.checkpoint.extract_effective_tool_calls", return_value=timeline),
+            patch("teleclaude.hooks.checkpoint.resolve_scoped_paths", return_value=scoped_paths),
+            patch("teleclaude.hooks.checkpoint._current_head_sha", return_value="new-head"),
+            patch("teleclaude.hooks.checkpoint.has_post_commit_review_flag", return_value=True),
+            patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"),
+            patch("teleclaude.hooks.checkpoint.run_heuristics") as run_heuristics_mock,
+        ):
+            checkpoint_text = get_checkpoint_content(
+                session_id="session-1",
+                transcript_path="/tmp/parent.jsonl",
+                agent_name=AgentName.CODEX,
+                project_path="/repo",
+                native_session_id="parent-thread",
+                working_slug="demo-slug",
+                turn_anchor_sha="old-head",
+            )
+
+        assert checkpoint_text is None
+        run_heuristics_mock.assert_not_called()
+
+    @pytest.mark.unit
+    def test_checkpoint_cycle_passes_seen_post_commit_flag_for_other_dirty_work(self) -> None:
+        timeline = TurnTimeline(
+            has_data=True,
+            tool_calls=[
+                ToolCallRecord(
+                    tool_name="apply_patch",
+                    input_data={"paths": ["teleclaude/hooks/checkpoint/__init__.py"]},
+                    had_error=False,
+                )
+            ],
+        )
+        scoped_paths = ScopedPathsResult(
+            paths=("teleclaude/hooks/checkpoint/__init__.py",),
+            scope_mode="turn_delta",
+            workspace_kind="git_shared",
+            strategy="codex_structured",
+            ledger_updated=False,
+        )
+        result = CheckpointResult(
+            categories=["hook runtime"],
+            required_actions=[],
+            observations=[],
+            is_all_clear=True,
+        )
+
+        with (
+            patch("teleclaude.hooks.checkpoint._is_checkpoint_project_supported", return_value=True),
+            patch("teleclaude.hooks.checkpoint.extract_effective_tool_calls", return_value=timeline),
+            patch("teleclaude.hooks.checkpoint.resolve_scoped_paths", return_value=scoped_paths),
+            patch("teleclaude.hooks.checkpoint._current_head_sha", return_value="new-head"),
+            patch("teleclaude.hooks.checkpoint.has_post_commit_review_flag", return_value=True),
+            patch("teleclaude.hooks.checkpoint.run_heuristics", return_value=result) as run_heuristics_mock,
+        ):
+            checkpoint_text = get_checkpoint_content(
+                session_id="session-1",
+                transcript_path="/tmp/parent.jsonl",
+                agent_name=AgentName.CODEX,
+                project_path="/repo",
+                native_session_id="parent-thread",
+                working_slug="demo-slug",
+                turn_anchor_sha="old-head",
+            )
+
+        assert checkpoint_text is not None
+        assert run_heuristics_mock.call_args.kwargs["post_commit_review_already_seen"] is True
 
     @pytest.mark.unit
     def test_checkpoint_cycle_scopes_files_to_post_checkpoint_mutations(self) -> None:
@@ -352,7 +437,26 @@ class TestRunHeuristics:
 
         assert result.git_head_changed_this_turn is True
         assert result.commit_action_required is False
+        assert result.post_commit_review_action_required is True
         assert result.required_actions == [_post_commit_review_instruction()]
+
+    @pytest.mark.unit
+    def test_seen_main_head_change_suppresses_only_post_commit_review_action(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CODEX, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"):
+            result = run_heuristics(
+                [],
+                timeline,
+                context,
+                git_head_changed_this_turn=True,
+                post_commit_review_already_seen=True,
+            )
+
+        assert result.git_head_changed_this_turn is True
+        assert result.post_commit_review_action_required is False
+        assert result.required_actions == []
 
     @pytest.mark.unit
     def test_daemon_code_off_main_suppresses_make_restart(self) -> None:

@@ -34,3 +34,4 @@ class CheckpointResult:
     commit_action_required: bool = True
     on_main: bool = False
     git_head_changed_this_turn: bool = False
+    post_commit_review_action_required: bool = False

@@ -68,6 +68,15 @@ class TestGitDiffHelpers:
         assert _git._head_changed_since_anchor("/repo", None) is False
 
     @pytest.mark.unit
+    def test_current_head_sha_returns_none_when_git_lookup_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def fake_repo(*_args: object, **_kwargs: object) -> MagicMock:
+            raise GitCommandError("git rev-parse", 128)
+
+        monkeypatch.setattr("teleclaude.hooks.checkpoint._git.Repo", fake_repo)
+
+        assert _git._current_head_sha("/repo") is None
+
+    @pytest.mark.unit
     def test_extract_shell_and_apply_patch_paths_normalize_project_relative_files(self) -> None:
         command_paths = _git._extract_shell_touched_paths(
             "python -m pytest ./tests/unit/hooks/test_inbound.py teleclaude/hooks/inbound.py",

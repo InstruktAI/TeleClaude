@@ -9,11 +9,15 @@ import pytest
 
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
+    CHECKPOINT_RECHECK_FLAG,
     _safe_session_path_component,
     checkpoint_flag_path,
     consume_checkpoint_flag,
     has_checkpoint_flag,
+    has_post_commit_review_flag,
     is_checkpoint_disabled,
+    post_commit_review_flag_name,
+    replace_post_commit_review_flag,
     session_tmp_base_dir,
     set_checkpoint_flag,
 )
@@ -67,3 +71,29 @@ class TestCheckpointFlags:
         set_checkpoint_flag("session-1", CHECKPOINT_CLEAR_FLAG)
 
         assert is_checkpoint_disabled("session-1") is True
+
+    @pytest.mark.unit
+    def test_post_commit_review_flag_tracks_head_sha(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+        replace_post_commit_review_flag("session-1", "new-head")
+
+        assert has_post_commit_review_flag("session-1", "new-head") is True
+        assert has_post_commit_review_flag("session-1", "other-head") is False
+
+    @pytest.mark.unit
+    def test_post_commit_review_flag_replaces_older_post_commit_markers_only(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+        old_flag = checkpoint_flag_path("session-1", post_commit_review_flag_name("old-head"))
+        current_flag = checkpoint_flag_path("session-1", post_commit_review_flag_name("new-head"))
+        unrelated_flag = checkpoint_flag_path("session-1", CHECKPOINT_RECHECK_FLAG)
+        set_checkpoint_flag("session-1", post_commit_review_flag_name("old-head"))
+        set_checkpoint_flag("session-1", CHECKPOINT_RECHECK_FLAG)
+
+        replace_post_commit_review_flag("session-1", "new-head")
+
+        assert old_flag.exists() is False
+        assert current_flag.exists() is True
+        assert unrelated_flag.exists() is True
