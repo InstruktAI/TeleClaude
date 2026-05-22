@@ -26,6 +26,18 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(5)]
 
 WRAPPER_PATH = Path(__file__).resolve().parents[3] / "teleclaude" / "install" / "wrappers" / "git"
 
+# Named markers for the wrapper's diagnostic vocabulary. The wrapper emits
+# these tokens verbatim on the stderr it prints when blocking; the tests
+# assert presence of the token, not the surrounding prose. Per the testing
+# policy's "String Assertions — One Paradigm", string content assertions
+# go through named constants rather than literal substrings.
+_DIAG_PROHIBITED = "prohibited"
+_DIAG_DESTRUCTIVE = "destructive"
+_DIAG_PROTECTED = "protected"
+_DIAG_INSPECTION_REQUIRED = "inspection required"
+_DIAG_TELEC_CODE_COMMIT = "telec code commit"
+_DIAG_IDENTITY_BROKEN = "identity is broken"
+
 _FAKE_GIT_SCRIPT = """\
 #!/usr/bin/env bash
 # Fake git for wrapper permission tests.
@@ -120,12 +132,12 @@ class TestNoIdentity:
     def test_no_role_fails_fast(self) -> None:
         code, stderr = _run(["status"])
         assert code != 0
-        assert "identity is broken" in stderr.lower()
+        assert _DIAG_IDENTITY_BROKEN in stderr.lower()
 
     def test_no_identity_file_fails(self) -> None:
         code, stderr = _run(["status"], no_identity_file=True)
         assert code != 0
-        assert "identity is broken" in stderr.lower()
+        assert _DIAG_IDENTITY_BROKEN in stderr.lower()
 
 
 # ── HUMAN SESSION ─────────────────────────────────────────────────────────────
@@ -140,7 +152,7 @@ class TestHumanSession:
         # All git commit calls are redirected to telec code commit.
         code, stderr = _run(["commit", "-m", "human commit"], human_role="admin", branch="feature")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
 
 # ── DESTRUCTIVE ───────────────────────────────────────────────────────────────
@@ -152,21 +164,21 @@ class TestDestructive:
     def test_clean_blocked(self, role: str) -> None:
         code, stderr = _run(["clean", "-fd"], role=role)
         assert code != 0
-        assert "destructive" in stderr.lower()
+        assert _DIAG_DESTRUCTIVE in stderr.lower()
 
     # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_switch_blocked(self, role: str) -> None:
         code, stderr = _run(["switch", "main"], role=role)
         assert code != 0
-        assert "destructive" in stderr.lower()
+        assert _DIAG_DESTRUCTIVE in stderr.lower()
 
     # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_revert_without_confirmed_blocked(self, role: str) -> None:
         code, stderr = _run(["revert", "abc123"], role=role)
         assert code != 0
-        assert "inspection required" in stderr.lower()
+        assert _DIAG_INSPECTION_REQUIRED in stderr.lower()
 
     # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
@@ -200,39 +212,39 @@ class TestStashBlockedEverywhere:
     def test_worker_blocked(self) -> None:
         code, stderr = _run(["stash"], role="worker")
         assert code != 0
-        assert "prohibited" in stderr.lower()
+        assert _DIAG_PROHIBITED in stderr.lower()
 
     def test_system_blocked(self) -> None:
         code, stderr = _run(["stash"], role="system")
         assert code != 0
-        assert "prohibited" in stderr.lower()
+        assert _DIAG_PROHIBITED in stderr.lower()
 
     def test_orchestrator_blocked(self) -> None:
         code, stderr = _run(["stash"], role="orchestrator")
         assert code != 0
-        assert "prohibited" in stderr.lower()
+        assert _DIAG_PROHIBITED in stderr.lower()
 
     def test_integrator_blocked(self) -> None:
         # Regression guard: the integrator carve-out introduced by
         # commit 9e1742bb4 (March 20, 2026) is gone.
         code, stderr = _run(["stash"], role="integrator")
         assert code != 0
-        assert "prohibited" in stderr.lower()
+        assert _DIAG_PROHIBITED in stderr.lower()
 
     def test_human_blocked(self) -> None:
         code, stderr = _run(["stash"], human_role="admin")
         assert code != 0
-        assert "prohibited" in stderr.lower()
+        assert _DIAG_PROHIBITED in stderr.lower()
 
     def test_stash_push_blocked(self) -> None:
         code, stderr = _run(["stash", "push", "-u"], role="integrator")
         assert code != 0
-        assert "prohibited" in stderr.lower()
+        assert _DIAG_PROHIBITED in stderr.lower()
 
     def test_stash_pop_blocked(self) -> None:
         code, stderr = _run(["stash", "pop"], role="integrator")
         assert code != 0
-        assert "prohibited" in stderr.lower()
+        assert _DIAG_PROHIBITED in stderr.lower()
 
 
 # ── PROTECTED: checkout ───────────────────────────────────────────────────────
@@ -244,7 +256,7 @@ class TestCheckoutPermissions:
     def test_bare_checkout_blocked_for_all(self, role: str) -> None:
         code, stderr = _run(["checkout", "main"], role=role)
         assert code != 0
-        assert "protected" in stderr.lower()
+        assert _DIAG_PROTECTED in stderr.lower()
 
     # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
@@ -259,7 +271,7 @@ class TestCheckoutPermissions:
             fake_toplevel="/tmp/repo/trees/_integration",
         )
         assert code != 0
-        assert "inspection required" in stderr.lower()
+        assert _DIAG_INSPECTION_REQUIRED in stderr.lower()
 
     def test_file_scoped_checkout_inside_integration_with_confirmed_allowed(self) -> None:
         code, _ = _run(
@@ -308,7 +320,7 @@ class TestRestorePermissions:
             fake_toplevel="/tmp/repo/trees/_integration",
         )
         assert code != 0
-        assert "inspection required" in stderr.lower()
+        assert _DIAG_INSPECTION_REQUIRED in stderr.lower()
 
     def test_default_inside_integration_with_confirmed_allowed(self) -> None:
         code, _ = _run(
@@ -326,7 +338,7 @@ class TestRestorePermissions:
             fake_toplevel="/tmp/repo/trees/_integration",
         )
         assert code != 0
-        assert "inspection required" in stderr.lower()
+        assert _DIAG_INSPECTION_REQUIRED in stderr.lower()
 
     def test_pure_staged_inside_integration_allowed(self) -> None:
         # Pure --staged is index-only; no working-tree mutation; no gate.
@@ -344,7 +356,7 @@ class TestRestorePermissions:
             fake_toplevel="/tmp/repo/trees/_integration",
         )
         assert code != 0
-        assert "inspection required" in stderr.lower()
+        assert _DIAG_INSPECTION_REQUIRED in stderr.lower()
 
     def test_minus_C_into_integration_does_not_bypass_gate(self) -> None:
         # The wrapper resolves the effective working tree via `-C`, not $PWD.
@@ -354,7 +366,7 @@ class TestRestorePermissions:
             fake_toplevel="/tmp/repo/trees/_integration",
         )
         assert code != 0
-        assert "inspection required" in stderr.lower()
+        assert _DIAG_INSPECTION_REQUIRED in stderr.lower()
 
 
 # ── CONFIRMED: git reset tree-ish pathspec ────────────────────────────────────
@@ -373,7 +385,7 @@ class TestResetTreeishPathspec:
     def test_reset_foreign_treeish_pathspec_requires_confirmed(self) -> None:
         code, stderr = _run(["reset", "origin/main", "f.txt"], role="worker")
         assert code != 0
-        assert "inspection required" in stderr.lower()
+        assert _DIAG_INSPECTION_REQUIRED in stderr.lower()
 
     def test_reset_foreign_treeish_with_confirmed_allowed(self) -> None:
         code, _ = _run(
@@ -394,34 +406,34 @@ class TestGitAddBlocked:
     def test_blocked_specific_path(self) -> None:
         code, stderr = _run(["add", "file.txt"], role="worker", branch="feature")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
     def test_blocked_with_separator_pathspec(self) -> None:
         code, stderr = _run(["add", "--", "file.txt"], role="worker", branch="feature")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
     def test_blocked_dash_all(self) -> None:
         code, stderr = _run(["add", "-A"], role="worker", branch="feature")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
     def test_blocked_on_main(self) -> None:
         code, stderr = _run(["add", "file.txt"], role="worker", branch="main")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
     def test_blocked_for_integrator(self) -> None:
         """Integrator no longer needs `git add` — `--include` covers
         conflict resolution. Block applies to every agent role."""
         code, stderr = _run(["add", "resolved.txt"], role="integrator", branch="main")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
     def test_blocked_for_human_session(self) -> None:
         code, stderr = _run(["add", "file.txt"], human_role="admin", branch="feature")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
 
 # ── COMMIT REDIRECT ───────────────────────────────────────────────────────────
@@ -435,19 +447,19 @@ class TestCommitRedirect:
     def test_all_roles_redirected_on_branch(self, role: str) -> None:
         code, stderr = _run(["commit", "-m", "test"], role=role, branch="feature")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
     # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_all_roles_redirected_on_main(self, role: str) -> None:
         code, stderr = _run(["commit", "-m", "test"], role=role, branch="main")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
     def test_human_session_redirected(self) -> None:
         code, stderr = _run(["commit", "-m", "test"], human_role="admin", branch="main")
         assert code != 0
-        assert "telec code commit" in stderr
+        assert _DIAG_TELEC_CODE_COMMIT in stderr
 
 
 # ── REPLAY GATE: cherry-pick / rebase / merge on main ────────────────────────
@@ -514,7 +526,7 @@ class TestProtectedPushFromMain:
     def test_non_integrator_blocked(self, role: str) -> None:
         code, stderr = _run(["push", "origin", "main"], role=role, branch="main")
         assert code != 0
-        assert "protected" in stderr.lower()
+        assert _DIAG_PROTECTED in stderr.lower()
 
     def test_integrator_allowed(self) -> None:
         code, _ = _run(["push", "origin", "main"], role="integrator", branch="main")
@@ -524,3 +536,41 @@ class TestProtectedPushFromMain:
 # ── ORCHESTRATOR RESTRICTION ──────────────────────────────────────────────────
 # Commit-level orchestrator restriction moved to telec code commit.
 # Wrapper redirects all commits; orchestrator-specific tests in TestCommitRedirect.
+
+
+# ── ALIAS BYPASS REGRESSION ───────────────────────────────────────────────────
+
+
+_DIAG_ALIAS_REDEFINITION = "redefine git subcommands"
+
+
+class TestAliasRedefinitionBlocked:
+    """Regression guard: `git -c alias.X=stash X` previously bypassed the
+    subcmd-name-based stash block because the wrapper parsed `X` as the
+    subcommand. The wrapper now refuses any `-c alias.*` config at the
+    invocation level."""
+
+    def test_alias_redefining_stash_blocked_for_integrator(self) -> None:
+        code, stderr = _run(
+            ["-c", "alias.hack=stash", "hack"],
+            role="integrator",
+        )
+        assert code != 0
+        assert _DIAG_ALIAS_REDEFINITION in stderr.lower()
+
+    def test_alias_redefining_stash_blocked_for_worker(self) -> None:
+        code, stderr = _run(
+            ["-c", "alias.hack=stash", "hack"],
+            role="worker",
+        )
+        assert code != 0
+        assert _DIAG_ALIAS_REDEFINITION in stderr.lower()
+
+    def test_alias_inline_form_blocked(self) -> None:
+        # The -calias.X=... inline form (no space) also blocked.
+        code, stderr = _run(
+            ["-calias.hack=stash", "hack"],
+            role="integrator",
+        )
+        assert code != 0
+        assert _DIAG_ALIAS_REDEFINITION in stderr.lower()

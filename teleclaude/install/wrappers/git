@@ -93,19 +93,27 @@ _real_git() {
     local _inv_id="$$.$(date +%s).$RANDOM"
     _log_wrapper "$_inv_id" "$@"
 
-    # Save original stderr so the process-substitution child can pass git
-    # error output through to the caller while also appending it to
-    # WRAPPER_LOG. stdout is passed through unchanged — logging every line
-    # of `git log`/`git status` produced too much noise; the start/end
-    # lines plus stderr+rc are the audit trail we actually use.
-    exec 4>&2
-    "$_real_git_bin" "$@" \
-        2> >(while IFS= read -r _line || [ -n "$_line" ]; do
-                echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
-                printf '%s\n' "$_line" >&4
-            done)
+    # stdout passes through unchanged — logging every line of `git log` /
+    # `git status` produced too much noise.
+    #
+    # stderr is captured to a temp file rather than `2> >(...)`. Process
+    # substitution does not block on subshell drain: when the git binary
+    # exits, the wrapper continues without waiting for the proc-sub child
+    # to finish reading the pipe, so closing the saved FDs could truncate
+    # the tail of large outputs. Temp-file capture is bounded by git's own
+    # write completion (which IS synchronous with its exit), then drained
+    # to the log + the caller's stderr in order with no race.
+    local _stderr_capture
+    _stderr_capture="$(mktemp -t teleclaude-git-wrapper.XXXXXX)"
+    "$_real_git_bin" "$@" 2>"$_stderr_capture"
     local _rc=$?
-    exec 4>&-
+    if [ -s "$_stderr_capture" ]; then
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
+            printf '%s\n' "$_line" >&2
+        done < "$_stderr_capture"
+    fi
+    rm -f "$_stderr_capture"
 
     _log_wrapper_end "$_inv_id" "$_rc"
     return $_rc
@@ -166,6 +174,33 @@ if [ -n "$_human_role" ] && [ -z "$_system_role" ]; then
 fi
 
 _role="$_system_role"
+
+# ── Block `-c alias.*` config redefinition ───────────────────────────────────
+# `git -c alias.X=stash X` would otherwise bypass every subcmd-name-based block
+# (the wrapper sees `X` as `_subcmd`, not `stash`). Agents have no legitimate
+# use for per-invocation alias redefinition.
+_prev_arg=""
+for _arg in "$@"; do
+    case "$_prev_arg:$_arg" in
+        -c:alias.*)
+            _subcmd="config"  # for the _log_block line, before _subcmd parse
+            _log_block alias_redefinition
+            echo "ERROR: 'git -c alias.<name>=…' is prohibited in agent sessions." >&2
+            echo "       Agents must not redefine git subcommands at invocation time." >&2
+            exit 1
+            ;;
+    esac
+    case "$_arg" in
+        -calias.*)
+            _subcmd="config"
+            _log_block alias_redefinition
+            echo "ERROR: 'git -calias.<name>=…' is prohibited in agent sessions." >&2
+            echo "       Agents must not redefine git subcommands at invocation time." >&2
+            exit 1
+            ;;
+    esac
+    _prev_arg="$_arg"
+done
 
 # ── Parse git subcommand and -C args ─────────────────────────────────────────
 _subcmd=""
