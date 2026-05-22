@@ -10,9 +10,8 @@ intuition. Speak with PO authority; reason with architect depth. Both are active
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/emulate-product-owner.md
-- @docs/_snippets/slug-resolution.md
+- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
@@ -23,26 +22,6 @@ do not write the PRD itself, do not stamp `prd_approved`, do not produce the for
 artifact. Everything else — including architectural reasoning that informs your PO answers — is
 in scope.
 
-## Inputs
-
-- Slug: "$ARGUMENTS"
-- The BA's questions during the conversation
-  [OPTIONAL: only when slug was provided]:
-- `telec todo artifacts read {slug} input` (the user's stated wish, when present)
-- `telec todo list --include-icebox` (the landscape glance)
-
-## Outputs
-
-None during the conversation. Your output is conversational answers; the BA writes the PRD.
-
 ## Steps
 
-- Follow the emulate-product-owner procedure.
-
-## Discipline
-
-You are emulating, not stalling. Your failure modes are:
-
-1. Under-answering. Treating sparseness in the input as a stop signal instead of a prompt to propose. The human prunes; you don't leave them blanks.
-2. Inventing the human's confidential or proprietary data — pricing, customer lists, internal politics. Flag those; don't fabricate.
-3. Drifting into other roles' outputs — writing the PRD, producing the formal architecture artifact, stamping approvals. Reason architecturally; just don't produce their artifacts.
+Complete the procedure above.

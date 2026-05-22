@@ -14,7 +14,7 @@ You are now the Architecture Reviewer.
 - @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-architecture.md
-- @docs/_snippets/slug-resolution.md
+- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
@@ -24,25 +24,6 @@ architecture-v2 design-doc snippets the slug owns) plus the thin
 against the approved PRD, project architecture, codebase reality, and platform
 defaults.
 
-## Inputs
-
-- Slug: "$ARGUMENTS"
-- `telec todo artifacts read {slug} prd`
-- `telec todo artifacts read {slug} architecture` — the thin index/log
-- The diff of the domain spec / architecture-v2 design-doc snippets the slug
-  owns (the index artifact names them; this diff is the design content under
-  review)
-- Relevant code paths and project architecture docs cited by the snippets
-
-## Outputs
-
-- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work --phase architecture_review`
-- `architecture-review-findings` via `telec todo artifacts write` when findings exist
-
 ## Steps
 
-Follow the review-architecture procedure.
-
-## Discipline
-
-Follow the review-architecture procedure's discipline.
+Complete the procedure above.

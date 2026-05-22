@@ -1,6 +1,7 @@
 ---
 description: 'Bug fix phase. Investigate, document, fix, and verify a reported bug in a worktree.'
 domain: 'software-development'
+needs_domain_baseline: 'True'
 id: 'software-development/procedure/lifecycle/work/bug-fix'
 scope: 'domain'
 type: 'procedure'
@@ -8,6 +9,11 @@ visibility: 'public'
 ---
 
 # Bug Fix — Procedure
+
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/builder.md
+- @~/.teleclaude/docs/software-development/procedure/debugging.md
 
 ## Goal
 

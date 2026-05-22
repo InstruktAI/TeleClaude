@@ -1,6 +1,7 @@
 ---
 description: 'Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.'
 domain: 'software-development'
+needs_domain_baseline: 'True'
 id: 'software-development/procedure/lifecycle/work/build'
 scope: 'domain'
 type: 'procedure'
@@ -11,7 +12,8 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/policy/no-semantic-validators.md
+- @~/.teleclaude/docs/software-development/concept/builder.md
+- @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 
 ## Goal
 
@@ -29,6 +31,8 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 - The todo scope is implementable in one build phase.
 
 ## Steps
+
+First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
 
 1. Read the PRD artifact via `telec todo artifacts read {slug} prd` to confirm
    intent, success criteria, and scope constraints. If `prd` is absent but legacy

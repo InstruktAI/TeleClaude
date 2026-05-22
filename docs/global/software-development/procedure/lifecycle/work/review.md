@@ -1,6 +1,7 @@
 ---
 description: 'Review phase. Verify PRD intent, prepared artifacts, code quality, tests, and deliver verdict with findings.'
 domain: 'software-development'
+needs_domain_baseline: 'True'
 id: 'software-development/procedure/lifecycle/work/review'
 scope: 'domain'
 type: 'procedure'
@@ -11,9 +12,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/policy/no-semantic-validators.md
 - @~/.teleclaude/docs/software-development/concept/reviewer.md
-- @~/.teleclaude/docs/software-development/principle/architecture-boundary-purity.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
 
@@ -32,9 +31,11 @@ Verify the implementation against the PRD, prepared artifacts, and standards, an
 
 ## Steps
 
+First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
+
 ### 1. Establish review scope
 
-If no slug provided, select the first item with phase `active` in `todo state (todos.db)` that lacks `review-findings.md`.
+If no slug provided, select the first item with phase `active` in `telec todo list` that lacks `review-findings`.
 
 Read **in full, not only the diff**:
 
@@ -62,7 +63,7 @@ git diff $(git merge-base HEAD main)..HEAD --name-only
 git diff $(git merge-base HEAD main)..HEAD
 ```
 
-Orchestrator-managed files (`todos.db` roadmap, `todos.db` state) are part of the task context. Do not raise findings for changes in these files unless review scope explicitly includes planning/state edits.
+Orchestrator-managed files (`telec todo list`) are part of the task context. Do not raise findings for changes in these files unless review scope explicitly includes planning/state edits.
 
 ### 2. Completeness checks
 
@@ -344,7 +345,7 @@ Apply the check only when the commit series shows clear Category A indicators:
 
 If at least one Category A indicator is present:
 
-1. Inspect whether the series came through prepare (slug in commit subjects, a corresponding row in `todos.db`, upstream prepare artifacts).
+1. Inspect whether the series came through prepare (slug in commit subjects, `telec todo list --include-delivered` shows item, upstream prepare artifacts).
 2. If it did NOT come through prepare, raise an **Important** finding: the series introduces what the principle classifies as Category A but bypassed the prepare phase where its feature spec snippet would have been authored.
 3. The finding offers two acceptable resolutions:
    a. Author a retroactive feature spec under `docs/project/spec/feature/<context>/<concept>.md` and commit it as a Path A follow-up.

@@ -13,43 +13,12 @@ You are now the Frontender.
 - @~/.teleclaude/docs/creative/procedure/visual-drafting.md
 - @~/.teleclaude/docs/creative/spec/visual-artifact.md
 - @~/.teleclaude/docs/creative/spec/design-spec.md
-- @docs/_snippets/slug-resolution.md
+- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
 Produce self-contained HTML+CSS visual artifacts for the slug.
 
-## Inputs
-
-- Slug: "$ARGUMENTS"
-- `telec todo artifacts read {slug} design-spec` — confirmed design spec (exact values)
-- `workspace/{slug}/art/` (filesystem, not DB-backed) — approved mood board images (compositional intent)
-- `telec todo artifacts read {slug} input` — content structure and storytelling arc
-
-## Outputs
-
-- HTML files in `workspace/{slug}/html/` (filesystem, not DB-backed)
-- Report format:
-
-  ```
-  HTML CREATED: {slug}
-
-  Sections produced: {count}
-  Files: {list}
-  Design spec fidelity: verified
-
-  Ready for review.
-  ```
-
 ## Steps
 
-- Follow the visual drafting procedure.
-- End with: `Ready for review.`
-
-## Discipline
-
-You are the frontender. Your failure mode is diverging from the approved art —
-producing HTML that looks technically correct but does not capture the compositional
-intent of the mood board. Read the images first, internalize the layout and spatial
-rhythm, then translate into code using exact values from the design spec. No
-JavaScript, no external dependencies, no invented tokens.
+Complete the procedure above.

@@ -16,12 +16,91 @@
   ```
   '''
 # ---
+# name: test_expand_inline_refs_inlines_referenced_snippet_transitively
+  '''
+  # Proc
+  
+  Procedure body.
+  
+  ---
+  
+  # Policy A
+  
+  Alpha rule.
+  
+  ---
+  
+  # Command
+  
+  ## Body
+  
+  Command body.
+  '''
+# ---
+# name: test_expand_inline_refs_skips_baseline_snippet_transitively
+  '''
+  # Proc
+  
+  Procedure body.
+  
+  ---
+  
+  # Command
+  
+  ## Body
+  
+  Command body.
+  '''
+# ---
+# name: test_expand_inline_refs_without_skip_inlines_baseline_snippet
+  '''
+  # Proc
+  
+  Procedure body.
+  
+  ---
+  
+  # Policy A
+  
+  Alpha rule.
+  
+  ---
+  
+  # Command
+  
+  ## Body
+  
+  Command body.
+  '''
+# ---
 # name: test_gemini_transform_output_matches_snapshot
   '''
   description = """Test."""
   prompt = '''
   Do the thing.
   '''
+  
+  '''
+# ---
+# name: test_inflate_domain_baseline_appends_progressive_index
+  '''
+  # Policy A
+  
+  Alpha rule.
+  
+  ---
+  
+  ## Baseline index — load via get_context when relevant
+  
+  - `test/policy/b`
+  
+  '''
+# ---
+# name: test_inflate_domain_baseline_without_progressive_sibling
+  '''
+  # Policy A
+  
+  Alpha rule.
   
   '''
 # ---
