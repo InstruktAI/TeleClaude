@@ -7,8 +7,9 @@
 # Permission model for agent sessions (see docs/project/design/code-commit.md
 # for the full operations matrix):
 #   DESTRUCTIVE  — blocked for all agent roles, no override
-#                  (clean, switch, reset --hard/--merge/--keep, branch-switching checkout)
-#   PROTECTED    — integrator only (stash, push on main)
+#                  (stash, clean, switch, reset --hard/--merge/--keep,
+#                   branch-switching checkout)
+#   PROTECTED    — integrator only (push on main)
 #                  REPLAY  (cherry-pick/rebase/merge on main) — integrator role
 #                          or TELECLAUDE_OVERRIDE_APPROVED=1
 #   CONFIRMED    — friction-gated (require --confirmed after reading the
@@ -336,18 +337,28 @@ case "$_effective_wt" in
         ;;
 esac
 
-# ── PROTECTED: integrator only ────────────────────────────────────────────────
-if [ "$_subcmd" = "stash" ] && [ "$_role" != "integrator" ]; then
-    echo "ERROR: 'git stash' is a protected operation. Only the integrator role may use it." >&2
-    exit 1
-fi
-
-if [ "$_subcmd" = "stash" ] && [ "$_in_integration_wt" = "1" ]; then
+# ── DESTRUCTIVE: stash blocked unconditionally ───────────────────────────────
+# Stash captures every dirty file in the worktree it runs in — there is no
+# pathspec granularity that bounds it to "files this agent touched". In a
+# multi-agent repo where the project root accumulates concurrent dirty state
+# continuously, a single stash push lifts other agents' WIP; the pop later
+# either reapplies cleanly (and the bookkeeping commit silently inherits
+# foreign content) or conflicts (and the half-resolved state has no clean
+# recovery). The integrator's documented recovery path when repo-root sync
+# finds dirty files is to surface to the human, NOT to stash.
+if [ "$_subcmd" = "stash" ]; then
     cat >&2 <<'MSG'
-ERROR: 'git stash' inside the integration worktree is prohibited.
+ERROR: 'git stash' is prohibited in agent sessions, no override.
 
-DELIVERY_BOOKKEEPING commits whatever is staged. Stash/pop can re-stage
-content into the next bookkeeping commit.
+Stash captures every dirty file in the worktree — it cannot be bounded to
+"only my changes". In a multi-agent repo this lifts other agents' WIP and
+either silently reapplies it into a commit or leaves the worktree in a
+half-resolved state with no clean recovery.
+
+If you're the integrator and repo-root sync finds dirty files, halt and
+surface to the human per the integration procedure. The procedure's
+"if dirty files block the merge, STOP and ask the human" guidance is the
+sanctioned recovery path; stash is not.
 MSG
     exit 1
 fi

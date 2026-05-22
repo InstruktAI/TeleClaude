@@ -24,20 +24,25 @@ each decision point until the queue is drained.
   patches, and operational edits on `main` do not affect integration.
 - Worker worktrees branch from `origin/main` (not local HEAD).
 - **The agent's cwd is the integration worktree.** All git and make commands run from
-  there without `-C` prefixes. Commands targeting project root (repo sync, stash recovery)
-  are emitted by the engine with explicit `-C <project_root>` paths. **The worktree's
-  index and working tree belong to the state machine.** Only `telec todo integrate` and
-  the `telec code commit` instructions it emits write to them. Read-only git commands —
+  there without `-C` prefixes. Commands targeting project root (repo sync) are emitted
+  by the engine with explicit `-C <project_root>` paths. **The worktree's index and
+  working tree belong to the state machine.** Only `telec todo integrate` and the
+  `telec code commit` instructions it emits write to them. Read-only git commands —
   `status`, `log`, `show`, `diff <ref>..<ref>`, `rev-parse` — are fine. Mutating
   commands inside the worktree are gated per the wrapper matrix (see
-  `docs/project/design/code-commit.md`): `stash` is absolutely blocked because
-  stash-pop can re-stage foreign content into `DELIVERY_BOOKKEEPING`; `checkout <ref>
+  `docs/project/design/code-commit.md`): `stash` is absolutely blocked everywhere
+  (no role carve-out — stash is too coarse for a multi-agent repo); `checkout <ref>
   -- <path>`, `restore <path>`, and `restore --source <ref> <path>` require the
   `--confirmed` flag after reading the printed inspection checklist; pathspec
   `reset HEAD <path>` / `restore --staged <path>` are index-only and allowed
   without ceremony. The `--confirmed` friction is the integrator's deliberate
   ratification that the working-tree mutation has been inspected and will not
   silently overwrite intentional state before the next bookkeeping commit.
+- **When repo-root sync finds dirty files**, halt and surface to the human. The
+  integrator does NOT stash and does NOT rebase across foreign WIP. Dirty files in
+  the project root belong to concurrent agents; their author is the only safe
+  resolver. The state-machine emits this guidance explicitly when it observes the
+  divergence; do not work around it.
 
 ## Steps
 

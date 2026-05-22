@@ -187,20 +187,52 @@ class TestDestructive:
         assert code == 0
 
 
-# ── PROTECTED: stash ──────────────────────────────────────────────────────────
+# ── DESTRUCTIVE: stash blocked unconditionally ────────────────────────────────
 
 
-class TestProtectedStash:
-    # guard: parametrize-cleanup-pending
-    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
-    def test_non_integrator_blocked(self, role: str) -> None:
-        code, stderr = _run(["stash"], role=role)
+class TestStashBlockedEverywhere:
+    """`git stash` is blocked for every role, with no override. Stash captures
+    every dirty file in the worktree it runs in — no pathspec granularity —
+    so it lifts other agents' WIP in a multi-agent repo. The integrator's
+    documented recovery when repo-root sync finds dirty files is to halt and
+    surface to the human; stash is never the sanctioned tool."""
+
+    def test_worker_blocked(self) -> None:
+        code, stderr = _run(["stash"], role="worker")
         assert code != 0
-        assert "protected" in stderr.lower()
+        assert "prohibited" in stderr.lower()
 
-    def test_integrator_allowed(self) -> None:
-        _, stderr = _run(["stash"], role="integrator")
-        assert "protected" not in stderr.lower()
+    def test_system_blocked(self) -> None:
+        code, stderr = _run(["stash"], role="system")
+        assert code != 0
+        assert "prohibited" in stderr.lower()
+
+    def test_orchestrator_blocked(self) -> None:
+        code, stderr = _run(["stash"], role="orchestrator")
+        assert code != 0
+        assert "prohibited" in stderr.lower()
+
+    def test_integrator_blocked(self) -> None:
+        # Regression guard: the integrator carve-out introduced by
+        # commit 9e1742bb4 (March 20, 2026) is gone.
+        code, stderr = _run(["stash"], role="integrator")
+        assert code != 0
+        assert "prohibited" in stderr.lower()
+
+    def test_human_blocked(self) -> None:
+        code, stderr = _run(["stash"], human_role="admin")
+        assert code != 0
+        assert "prohibited" in stderr.lower()
+
+    def test_stash_push_blocked(self) -> None:
+        code, stderr = _run(["stash", "push", "-u"], role="integrator")
+        assert code != 0
+        assert "prohibited" in stderr.lower()
+
+    def test_stash_pop_blocked(self) -> None:
+        code, stderr = _run(["stash", "pop"], role="integrator")
+        assert code != 0
+        assert "prohibited" in stderr.lower()
 
 
 # ── PROTECTED: checkout ───────────────────────────────────────────────────────
