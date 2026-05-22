@@ -99,8 +99,8 @@ async def test_spawn_rejects_unknown_caller_identity():
 
 
 @pytest.mark.asyncio
-async def test_spawn_notifies_running_integrator():
-    """If an integrator session is already running, send it a ProcessMessageCommand."""
+async def test_spawn_skips_running_integrator():
+    """If an integrator session is already running, leave it undisturbed."""
     running = MagicMock()
     running.session_id = "dead-beef-1234"
     running.job = JobRole.INTEGRATOR
@@ -108,6 +108,7 @@ async def test_spawn_notifies_running_integrator():
     mock_db.list_sessions = AsyncMock(return_value=[running])
     mock_svc = MagicMock()
     mock_svc.process_message = AsyncMock()
+    mock_svc.create_session = AsyncMock()
 
     with (
         patch("teleclaude.core.integration_bridge.db", mock_db),
@@ -116,12 +117,13 @@ async def test_spawn_notifies_running_integrator():
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "caller-sess")
 
     assert result is None
-    mock_svc.process_message.assert_awaited_once()
+    mock_svc.process_message.assert_not_awaited()
+    mock_svc.create_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_spawn_notifies_running_integrator_without_caller_identity():
-    """Notification path works even with empty caller identity."""
+async def test_spawn_skips_running_integrator_without_caller_identity():
+    """An active integrator suppresses both spawning and caller identity validation."""
     running = MagicMock()
     running.session_id = "dead-beef-1234"
     running.job = JobRole.INTEGRATOR
@@ -137,28 +139,25 @@ async def test_spawn_notifies_running_integrator_without_caller_identity():
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "")
 
     assert result is None
-    mock_svc.process_message.assert_awaited_once()
-    cmd = mock_svc.process_message.call_args[0][0]
-    assert cmd.session_id == "dead-beef-1234"
+    mock_svc.process_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_spawn_notify_failure_raises():
-    """If process_message raises, exception propagates — no silent swallowing."""
+async def test_spawn_skips_running_integrator_without_command_service():
+    """Skipping an active integrator does not need the command service."""
     running = MagicMock()
     running.session_id = "dead-beef-1234"
     running.job = JobRole.INTEGRATOR
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[running])
-    mock_svc = MagicMock()
-    mock_svc.process_message = AsyncMock(side_effect=RuntimeError("session gone"))
 
     with (
         patch("teleclaude.core.integration_bridge.db", mock_db),
-        patch("teleclaude.core.integration_bridge.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.integration_bridge.get_command_service", side_effect=AssertionError),
     ):
-        with pytest.raises(RuntimeError, match="session gone"):
-            await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
+        result = await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
+
+    assert result is None
 
 
 @pytest.mark.asyncio

@@ -129,8 +129,8 @@ class TestIntegrationTriggerIdempotentRedeliverySpecs:
 
     > **Idempotent-redelivery contract.** Redelivery of an event that
     > previously partially succeeded does not produce duplicate
-    > externally-visible work. `IntegrationTriggerCartridge` does not spawn
-    > or wake the integrator more than once for the same logical event when
+    > externally-visible work. `IntegrationTriggerCartridge` does not trigger
+    > integrator dispatch more than once for the same logical event when
     > that event is redelivered. The cartridge interface contract requires
     > every required cartridge to tolerate redelivery; this requirement is
     > satisfied by behavior, not by any specific reordering or guarding

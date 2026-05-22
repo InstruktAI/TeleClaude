@@ -1,8 +1,8 @@
 """Bridge between orchestration lifecycle and the event platform.
 
 Provides typed emission helpers that construct EventEnvelopes and emit
-them through the configured EventProducer.  Also provides the integrator
-session spawn/wake helper used by the integration trigger cartridge.
+them through the configured EventProducer. Also provides the integrator
+session spawn helper used by the integration trigger cartridge.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.session_identity import get_session_id
-from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
+from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
 
@@ -211,19 +211,16 @@ async def spawn_integrator_session(
     sha: str,
     caller_session_id: str,
 ) -> _SpawnResult | None:
-    """Spawn or wake the singleton integrator session.
+    """Spawn the singleton integrator session when none is already open.
 
     Checks if an integrator session is already running via the DB directly.
-    If one is running, sends it a message to process the new candidate — whether
-    the session is legitimately mid-work or a zombie that failed to self-terminate.
+    If one is running, leaves it undisturbed; the integrator state machine drains
+    queued candidates on its next pass.
     If none is running, spawns a fresh integrator via the command service.
 
-    Returns session info dict on spawn, or None if integrator was notified.
+    Returns session info dict on spawn, or None if an integrator is already open.
     Raises on spawn failure — the caller (cartridge) is responsible for handling.
     """
-    # If an integrator session is already active, wake it with a message instead of
-    # spawning a duplicate. This handles both the mid-work case and zombie sessions
-    # that failed to call `telec sessions end self`.
     try:
         sessions = await db.list_sessions()
     except Exception:
@@ -235,20 +232,13 @@ async def spawn_integrator_session(
         None,
     )
     if integrator_session:
-        logger.info(
-            "Integrator session %s already running; notifying of new candidate %s",
-            integrator_session.session_id,
-            slug,
-        )
-        msg_cmd = ProcessMessageCommand(
+        logger.debug(
+            "integration.candidate.spawner_skipped_existing_integrator",
+            slug=slug,
+            branch=branch,
+            sha=sha[:8],
             session_id=integrator_session.session_id,
-            text=(
-                f"New integration candidate ready: {slug} ({branch}@{sha[:8]}). "
-                "Please run `telec todo integrate` to drain the queue."
-            ),
-            origin=InputOrigin.TERMINAL.value,
         )
-        await get_command_service().process_message(msg_cmd)
         return None
 
     # Caller identity is only required when spawning a new integrator session

@@ -1,9 +1,9 @@
 """Integration trigger cartridge — spawns integrator on todo_finalize_ready.
 
 Stateless: reacts to ``planning.todo_finalize_ready`` (emitted by the
-finalize-ready stamp) by immediately spawning or waking the singleton
-integrator session. The integrator's own state machine scans worktree
-state to find candidates — no in-memory event accumulation needed here.
+finalize-ready stamp) by ensuring the singleton integrator session exists.
+The integrator's own state machine scans worktree state to find candidates
+— no in-memory event accumulation needed here.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ class IntegrationTriggerCartridge:
         return self.name
 
     async def _spawn_integrator(self, slug: str, branch: str, sha: str, caller_session_id: str) -> None:
-        """Spawn or wake the singleton integrator session."""
+        """Ensure the singleton integrator session exists."""
         logger.info(
             "spawning integrator for slug=%s branch=%s sha=%s caller=%s",
             slug,
