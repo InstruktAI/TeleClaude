@@ -1,4 +1,11 @@
 # serializer version: 1
+# name: test_build_agent_session_environment_includes_platform_runtime_env_from_source
+  dict({
+    'APPEARANCE_MODE': 'dark',
+    'LANG': 'en_US.UTF-8',
+    'LC_CTYPE': 'UTF-8',
+  })
+# ---
 # name: test_build_agent_session_environment_merges_global_and_project_env_allow_lists
   dict({
     'GLOBAL_TOKEN': 'global',

@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from syrupy.assertion import SnapshotAssertion
+
 from teleclaude.runtime.environment import (
     compose_runtime_path,
     filter_platform_session_environment,
@@ -43,21 +45,26 @@ def test_filter_tui_tmux_environment_keeps_only_non_secret_runtime_keys() -> Non
     assert result == {"LC_ALL": "en_US.UTF-8", "PATH": "/usr/bin", "TELEC_TUI_SESSION": "1"}
 
 
-def test_filter_platform_session_environment_keeps_only_explicit_runtime_keys() -> None:
+def test_filter_platform_session_environment_keeps_only_explicit_runtime_keys(snapshot: SnapshotAssertion) -> None:
     source = {
         "APPEARANCE_MODE": "dark",
         "COLORTERM": "truecolor",
         "DATABASE_URL": "blocked",
         "GITHUB_PAT": "blocked",
         "GOOGLE_APPLICATION_CREDENTIALS": "blocked",
+        "LANG": "en_US.UTF-8",
+        "LC_ALL": "en_US.UTF-8",
+        "LC_CTYPE": "UTF-8",
+        "LC_SECRET": "blocked",
         "MACOS_VOICE": "Samantha",
         "MY_SERVICE_TOKEN": "blocked",
+        "NO_COLOR": "1",
         "OPENAI_VOICE": "alloy",
     }
 
     result = filter_platform_session_environment(source)
 
-    assert result == {"APPEARANCE_MODE": "dark", "MACOS_VOICE": "Samantha", "OPENAI_VOICE": "alloy"}
+    assert result == snapshot
 
 
 def test_resolve_user_shell_prefers_process_shell_when_it_is_not_the_wrapper(tmp_path: Path) -> None:

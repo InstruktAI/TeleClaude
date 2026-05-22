@@ -51,5 +51,6 @@ def build_agent_session_environment(
         if name in source:
             env_vars[name] = source[name]
 
+    env_vars.update(filter_platform_session_environment(source))
     env_vars.update(filter_platform_session_environment(platform_env or {}))
     return env_vars

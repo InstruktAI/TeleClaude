@@ -85,3 +85,25 @@ def test_build_agent_session_environment_uses_global_env_allow_list_without_proj
     )
 
     assert result == snapshot
+
+
+@pytest.mark.unit
+def test_build_agent_session_environment_includes_platform_runtime_env_from_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: SnapshotAssertion,
+) -> None:
+    monkeypatch.setattr("teleclaude.core.session_environment.load_global_config", lambda: GlobalConfig())
+
+    result = build_agent_session_environment(
+        project_path=str(tmp_path),
+        source_env={
+            "APPEARANCE_MODE": "dark",
+            "LANG": "en_US.UTF-8",
+            "LC_CTYPE": "UTF-8",
+            "LC_SECRET": "blocked",
+            "NO_COLOR": "1",
+        },
+    )
+
+    assert result == snapshot
