@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from sqlalchemy import delete, func, update
 from sqlmodel import select
@@ -32,7 +32,7 @@ from teleclaude.core.todos_db._models import (
 from teleclaude.core.todos_db._rows import RoadmapRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.docs_reconcile import scan_remove_orphans
-from teleclaude.types.todos import DependencyEntry
+from teleclaude.types.todos import DependencyEntry, RoadmapStatusLiteral
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
 
@@ -778,7 +778,7 @@ class TodosDbRoadmapMixin:
                 if current is None or (current == "delivered" and roadmap_status != "delivered"):
                     status_by_slug[dep_slug] = roadmap_status
             return [
-                DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
+                DependencyEntry(dep_slug=dep_slug, roadmap_status=cast(RoadmapStatusLiteral, roadmap_status))
                 for dep_slug, roadmap_status in sorted(status_by_slug.items())
             ]
 
