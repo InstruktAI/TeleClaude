@@ -7,15 +7,17 @@ import os
 import signal
 import time as _t
 import traceback
+from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
-from textual.widgets import TabbedContent, TabPane
+from textual.widget import Widget
+from textual.widgets import Input, TabbedContent, TabPane
 from textual.widgets._tabbed_content import ContentTabs
 
 from teleclaude.api_models import (
@@ -80,6 +82,10 @@ logger = get_logger(__name__)
 APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueError)
 APP_RUNTIME_ERRORS = (APIError, AttributeError, ImportError, LookupError, OSError, RuntimeError, TypeError, ValueError)
 APP_DATA_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
+_PASTE_IGNORED_NOTIFICATION = "paste ignored on TUI controls — focus an agent pane to paste"
+_POST_PASTE_KEY_SUPPRESSION_MS = 100
+_POST_PASTE_KEY_SUPPRESSION_SECONDS = _POST_PASTE_KEY_SUPPRESSION_MS / 1000
+_BURST_THRESHOLD = 30
 _APP_STATE_FIELDS = {
     "_persisted": ("_init_state", "persisted"),
     "_start_view": ("_init_state", "start_view"),
@@ -191,6 +197,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     _animation_requested_mode: str
     _chiptunes_state_version: int
     _chiptunes_reconcile_task: asyncio.Task[None] | None
+    _paste_guard_keys: deque[tuple[str, str | None]]
+    _paste_guard_flush_scheduled: bool
+    _paste_guard_replay_count: int
+    _last_paste_at: float
 
     CSS_PATH = "telec.tcss"
 
@@ -285,6 +295,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         self._runtime_state = _AppRuntimeState()
         self._media_state = _AppMediaState()
         self._sky_width_timer = None
+        self._paste_guard_keys = deque(maxlen=_BURST_THRESHOLD + 1)
+        self._paste_guard_flush_scheduled = False
+        self._paste_guard_replay_count = 0
+        self._last_paste_at = float("-inf")
         self._media_state.animation_engine.on_animation_start = self._show_animation_toast
 
     def __getattr__(self, name: str) -> object:
@@ -358,6 +372,68 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             widget.refresh()
         for widget in self.query("TodoRow"):
             widget.refresh()
+
+    def on_paste(self, event: events.Paste) -> None:
+        """Discard bracketed-paste events that reach the TUI control surface."""
+        if self._focused_widget_is_paste_safe():
+            return
+        self._last_paste_at = _t.monotonic()
+        event.prevent_default()
+        event.stop()
+        self.notify(_PASTE_IGNORED_NOTIFICATION, severity="warning")
+
+    def on_key(self, event: events.Key) -> None:
+        """Coalesce same-turn control-surface keys before binding dispatch."""
+        if self._paste_guard_replay_count > 0:
+            self._paste_guard_replay_count -= 1
+            return
+        if self._focused_widget_is_paste_safe():
+            return
+
+        event.prevent_default()
+        event.stop()
+
+        now = _t.monotonic()
+        if now - self._last_paste_at <= _POST_PASTE_KEY_SUPPRESSION_SECONDS:
+            return
+
+        self._paste_guard_keys.append((event.key, event.character))
+        if len(self._paste_guard_keys) > _BURST_THRESHOLD:
+            self._discard_guarded_keys()
+            return
+
+        self._schedule_guarded_key_flush()
+
+    def _focused_widget_is_paste_safe(self) -> bool:
+        """Return whether the focused widget explicitly accepts paste or key bursts."""
+        widget = self.focused
+        while isinstance(widget, Widget):
+            if getattr(widget, "paste_safe", False) or isinstance(widget, Input):
+                return True
+            widget = widget.parent
+        return False
+
+    def _schedule_guarded_key_flush(self) -> None:
+        """Schedule buffered manual keys for replay on the next loop turn."""
+        if self._paste_guard_flush_scheduled:
+            return
+        self._paste_guard_flush_scheduled = True
+        self.call_later(self._flush_guarded_keys)
+
+    def _flush_guarded_keys(self) -> None:
+        """Replay buffered keys that did not cross the burst threshold."""
+        guarded_keys = list(self._paste_guard_keys)
+        self._paste_guard_keys.clear()
+        self._paste_guard_flush_scheduled = False
+        self._paste_guard_replay_count += len(guarded_keys)
+        for key, character in guarded_keys:
+            self.post_message(events.Key(key, character))
+
+    def _discard_guarded_keys(self) -> None:
+        """Drop buffered injected keys and surface one warning."""
+        self._paste_guard_keys.clear()
+        self._paste_guard_flush_scheduled = False
+        self.notify(_PASTE_IGNORED_NOTIFICATION, severity="warning")
 
     def compose(self) -> ComposeResult:
         logger.trace("[PERF] compose START t=%.3f", _t.monotonic())

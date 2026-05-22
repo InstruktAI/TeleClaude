@@ -1,0 +1,17 @@
+# serializer version: 1
+# name: test_burst_keys_on_preparation_surface_do_not_fire_new_item_binding
+  list([
+    dict({
+      'message': 'paste ignored on TUI controls — focus an agent pane to paste',
+      'severity': 'warning',
+    }),
+  ])
+# ---
+# name: test_paste_on_preparation_surface_does_not_fire_remove_binding
+  list([
+    dict({
+      'message': 'paste ignored on TUI controls — focus an agent pane to paste',
+      'severity': 'warning',
+    }),
+  ])
+# ---

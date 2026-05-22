@@ -1,13 +1,14 @@
 ---
-description: 'State-driven layout model for the Telec TUI sessions and preparation views.'
-id: 'project/design/architecture/tui-state-layout'
-scope: 'project'
-type: 'design'
-visibility: 'public'
-applies_to: 'v1'
-status: 'mixed'
+description: State-driven layout model for the Telec TUI sessions and preparation
+  views.
+id: project/design/architecture/tui-state-layout
+scope: project
+type: design
+visibility: public
+applies_to: v1
+status: mixed
 delivered_by:
-  - 'roadmap-trash-reveal-ui'
+- roadmap-trash-reveal-ui
 ---
 
 # Tui State Layout — Design
@@ -50,6 +51,17 @@ flowchart LR
 - **Un-Sticky Transitions to Preview**: When a sticky session is removed (double-press), that session becomes the active preview. Any previously active preview is dismissed. This preserves the user's focus on the session they just interacted with and minimizes layout disruption.
 - **Local-Only State**: TUI state is local UI state; core session state remains owned by the daemon.
 - **Pane Style Transition Contract**: Session pane foreground remains constant across focus changes; focus/inactive transitions are represented by background only (terminal default for active, computed haze for inactive).
+- **Input Safety**: Operational-control views honor terminal paste boundaries and reject injected key bursts before they can fire bindings.
+
+### Input Safety
+
+Operational-control views (Sessions, Preparation, Jobs, Config) discard bracketed-paste events with a one-line `self.notify(...)` warning: "paste ignored on TUI controls — focus an agent pane to paste". The discard happens at the TUI boundary so pasted clipboard contents never execute view bindings such as remove, freeze, close, or restart.
+
+Text-entry surfaces explicitly opt in to paste and burst handling. Every Textual `Input` is paste-safe by default; future non-`Input` widgets that legitimately accept pasted text or fast generated input opt in with a `paste_safe = True` class attribute. There is no external paste-safe registry.
+
+The same operational-control surfaces use a keystroke-burst safety net for input tools that emit raw key events without a preceding `Paste` event. Same-turn key groups above `_BURST_THRESHOLD` (`30` keys in `teleclaude/cli/tui/app.py`) are discarded as a group with the same notification before bindings fire; smaller groups replay on the next event-loop turn so manual typing remains responsive. `_POST_PASTE_KEY_SUPPRESSION_MS` suppresses duplicate raw-key fallout briefly after a handled bracketed paste.
+
+Bracketed-paste forwarding from tmux into the TUI pane is a documented runtime requirement; the burst net is the backstop if forwarding ever degrades. This invariant carries into `v2-tui-rewrite` as a required contract rather than a behavior to rediscover during the rewrite.
 
 ### State model
 
