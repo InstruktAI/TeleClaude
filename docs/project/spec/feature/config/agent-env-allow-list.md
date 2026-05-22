@@ -6,7 +6,7 @@ scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
 status: 'actual'
-description: 'Project-level authorization surface for environment variables that may enter agent tmux sessions.'
+description: 'Global and project-level authorization surfaces for environment variables that may enter agent tmux sessions.'
 ---
 
 # Agent Env Allow List — Spec
@@ -62,15 +62,6 @@ And authorized values are delivered by the agent-runtime private env file, not b
 ```
 
 ```
-Given the human wants to configure agent environment access without hand-editing YAML
-When the human opens telec config wizard
-Then the wizard exposes the global env_allow_list field in the environment section
-And writes changes to ~/.teleclaude/teleclaude.yml through the GlobalConfig writer
-And validates each entered name before persisting
-And preserves existing entries when the human accepts defaults
-```
-
-```
 Given an agent skill needs a secret or account credential
 When the project owner trusts the agent with that access
 Then the owner adds the variable name to env_allow_list
@@ -94,3 +85,6 @@ And starts or restarts the agent session
 - The private per-session env file prevents secrets from appearing in tmux
   command-line arguments. It does not decide which variables are allowed; the
   allow list does.
+- Wizard editing for the global allow list is target behavior in
+  `project/spec/feature/config/setup-wizard`; the implemented v1 behavior
+  described here is the config/schema/session-runtime contract.

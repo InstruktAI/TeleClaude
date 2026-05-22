@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.config.schema import (
     DeploymentConfig,
@@ -141,9 +142,9 @@ class TestSchemaValidators:
             ProjectConfig.model_validate({"env_allow_list": ["NOT-AN-ENV"]})
 
     @pytest.mark.unit
-    def test_global_env_allow_list_uses_same_validation(self) -> None:
+    def test_global_env_allow_list_uses_same_validation(self, snapshot: SnapshotAssertion) -> None:
         config = GlobalConfig.model_validate({"env_allow_list": [" OPENAI_API_KEY ", "OPENAI_API_KEY", "_CUSTOM"]})
-        assert config.env_allow_list == ["OPENAI_API_KEY", "_CUSTOM"]
+        assert config.env_allow_list == snapshot
 
         with pytest.raises(ValidationError):
             GlobalConfig.model_validate({"env_allow_list": ["NOT-AN-ENV"]})

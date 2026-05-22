@@ -72,6 +72,7 @@ def test_build_agent_session_environment_merges_global_and_project_env_allow_lis
 def test_build_agent_session_environment_uses_global_env_allow_list_without_project_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    snapshot: SnapshotAssertion,
 ) -> None:
     monkeypatch.setattr(
         "teleclaude.core.session_environment.load_global_config",
@@ -83,4 +84,4 @@ def test_build_agent_session_environment_uses_global_env_allow_list_without_proj
         source_env={"OPENAI_API_KEY": "allowed", "DATABASE_URL": "not-allowed"},
     )
 
-    assert result == {"OPENAI_API_KEY": "allowed", "MACOS_VOICE": "Samantha"}
+    assert result == snapshot
