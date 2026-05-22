@@ -105,17 +105,21 @@ The first visible user entry after a cursor is handled according to its origin.
 Signals wake projection. They do not decide projection content.
 
 - `inbound_accepted`: UI-origin input was accepted into core state.
+- `user_prompt_submit`: the agent runtime observed a submitted user prompt in the native hook stream.
 - `terminal_origin_recorded`: terminal origin was recorded for a terminal user turn.
 - `tmux_output_changed`: terminal output changed and transcript/source state may have advanced.
 - `tool_use`: agent activity indicates an active turn.
 - `agent_stop`: turn completion may make final output/title/replay work eligible.
+- `native_metadata_update`: native session metadata or transcript path may have landed.
+- `native_session_refresh`: native session identity may have changed or become discoverable.
 - `daemon_startup_reconcile`: restart recovery should replay from cursors.
 
 Only `terminal_origin_recorded` is an origin write that also acts as a projection signal. Non-terminal
 origin writes are not standalone projection signals: `inbound_accepted` is emitted or scheduled only
 after accepted-input metadata is durable and fresh; later activity signals may also wake projection.
-Origin writes do not decide content; the projection gate still reads transcript/source truth and
-defers when the matching origin is not fresh.
+The later `user_prompt_submit` hook may wake projection even when it preserves already-fresh UI-origin
+metadata. Origin writes and hook signals do not decide content; the projection gate still reads
+transcript/source truth and defers when the matching origin is not fresh.
 
 ### Adapter delivery mechanics
 
@@ -159,10 +163,13 @@ Projection outcomes:
 Signal types:
 
 - `inbound_accepted`
+- `user_prompt_submit`
 - `terminal_origin_recorded`
 - `tmux_output_changed`
 - `tool_use`
 - `agent_stop`
+- `native_metadata_update`
+- `native_session_refresh`
 - `daemon_startup_reconcile`
 
 ## Known caveats
