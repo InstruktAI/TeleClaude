@@ -274,7 +274,7 @@ async def test_build_started_rejects_pre_prepared_lifecycle_phase(snapshot: Snap
 async def test_review_changes_requested_waits_for_fix_completion_stamp_after_commits(
     snapshot: SnapshotAssertion,
 ) -> None:
-    """Committed fixes are evidence only until the builder stamps completion."""
+    """Committed fixes still keep the reviewer/fixer direct-link handoff alive until stamped."""
     state: dict = {
         "lifecycle_phase": "review_changes_requested",
         "build_review": {
@@ -287,7 +287,10 @@ async def test_review_changes_requested_waits_for_fix_completion_stamp_after_com
 
     with (
         patch(f"{_WORK_STEPS}.get_head_commit", return_value="bbb222"),
-        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="builder-1")),
+        patch(
+            f"{_WORK_STEPS}.find_live_session_for_slug",
+            new=AsyncMock(side_effect=["builder-1", "reviewer-1"]),
+        ),
     ):
         keep_going, instruction = await _work_step_review_changes_requested(
             db=_mock_db(),

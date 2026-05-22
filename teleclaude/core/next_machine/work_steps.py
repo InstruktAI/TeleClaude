@@ -434,15 +434,6 @@ async def _work_step_review_changes_requested(
             next_call=f"telec todo work {slug}",
         )
 
-    if reviewed_head and head_sha and head_sha != reviewed_head:
-        return False, (
-            f"FIX WORK NOT STAMPED: {slug}\n\n"
-            f"Builder session {builder_id} has commits after reviewed head {reviewed_head} "
-            f"at HEAD {head_sha}, but has not stamped build completion. "
-            f"Wait for it to run `telec todo stamp {slug} --build-complete`, "
-            f"then call telec todo work {slug}."
-        )
-
     message = (
         f"Review requested changes for {slug}. "
         f"Findings artifact: `review-findings`. Target: source code in the worktree. "
@@ -468,6 +459,18 @@ async def _work_step_review_changes_requested(
         ),
     )
     escaped = reviewer_message.replace('"', '\\"')
+
+    if reviewed_head and head_sha and head_sha != reviewed_head:
+        return False, (
+            f"FIX WORK NOT STAMPED: {slug}\n\n"
+            f"Builder session {builder_id} has commits after reviewed head {reviewed_head} "
+            f"at HEAD {head_sha}, but has not stamped build completion.\n\n"
+            f"Tell the reviewer to start a direct conversation with the fixer:\n"
+            f'telec sessions send {reviewer_id} "{escaped}" (you will use regular send, NOT --direct)\n\n'
+            f"Wait for it to run `telec todo stamp {slug} --build-complete`, "
+            f"then call telec todo work {slug}."
+        )
+
     return False, (
         f"REVIEW CHANGES REQUESTED: {slug}\n\n"
         f"Execute in order:\n\n"
