@@ -313,6 +313,7 @@ class ProjectConfig(BaseModel):
     description: str | None = None
     language: str | None = None
     languages: list[str] = []
+    env_allow_list: list[str] = []
     frontend_root: str | None = None
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
@@ -337,6 +338,23 @@ class ProjectConfig(BaseModel):
             return None
         validate_slug(stripped)
         return stripped
+
+    @field_validator("env_allow_list")
+    @classmethod
+    def validate_env_allow_list(cls, value: list[str]) -> list[str]:
+        """Validate agent-session environment variable names."""
+        valid_name = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+        result: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            name = item.strip()
+            if not valid_name.fullmatch(name):
+                raise ValueError(f"Invalid environment variable name in env_allow_list: {item}")
+            if name in seen:
+                continue
+            seen.add(name)
+            result.append(name)
+        return result
 
     @model_validator(mode="before")
     @classmethod

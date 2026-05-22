@@ -33,7 +33,7 @@ subcommands:
       send:
         description: 'Send a message to a running session.'
       tail:
-        description: 'Retrieve session messages (transcript chain with unified tmux/session-data fallback).'
+        description: 'Retrieve session messages (default latest user turn; --since/--full widen the window; transcript chain with unified tmux/session-data fallback).'
       run:
         description: 'Run an agent command in a new session.'
         flags:

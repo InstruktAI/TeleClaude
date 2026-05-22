@@ -275,7 +275,7 @@ def handle_sessions_tail(args: list[str]) -> None:
     """Get recent messages from a session's transcript.
 
     Usage: telec sessions tail <session_id> [--since <timestamp>]
-                               [--tools] [--thinking]
+                               [--tools] [--thinking] [--full]
 
     Retrieves structured messages from the session's transcript files.
     Useful for inspecting what an agent has done or said recently.
@@ -284,11 +284,12 @@ def handle_sessions_tail(args: list[str]) -> None:
       --since <ISO8601>  Only messages after this UTC timestamp
       --tools            Include tool_use/tool_result entries
       --thinking         Include thinking/reasoning blocks
+      --full             Show all projected messages instead of the latest user turn
 
     Examples:
       telec sessions tail abc123
       telec sessions tail abc123 --since 2024-01-01T00:00:00Z
-      telec sessions tail abc123 --tools --thinking
+      telec sessions tail abc123 --full
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_tail.__doc__ or "")
@@ -301,16 +302,22 @@ def handle_sessions_tail(args: list[str]) -> None:
         session_id = args[0]
         args = args[1:]
 
+    explicit_since = False
+    show_full = False
     i = 0
     while i < len(args):
         if args[i] == "--since" and i + 1 < len(args):
             params["since"] = args[i + 1]
+            explicit_since = True
             i += 2
         elif args[i] == "--tools":
             params["include_tools"] = "true"
             i += 1
         elif args[i] == "--thinking":
             params["include_thinking"] = "true"
+            i += 1
+        elif args[i] == "--full":
+            show_full = True
             i += 1
         elif args[i] in ("--session", "-s") and i + 1 < len(args):
             session_id = args[i + 1]
@@ -322,6 +329,7 @@ def handle_sessions_tail(args: list[str]) -> None:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
 
+    params["tail_scope"] = "all" if show_full or explicit_since else "latest_turn"
     data = tool_api_call("GET", f"/sessions/{session_id}/messages", params=params)
     print_json(data)
 

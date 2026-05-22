@@ -64,10 +64,11 @@ class TestSessionTmpDirHelpers:
 class TestCreateAndEnsureSession:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_create_tmux_session_injects_env_overrides(self, tmp_path: Path) -> None:
+    async def test_create_tmux_session_sources_agent_env_from_private_file(self, tmp_path: Path) -> None:
         teleclaude_bin = str(tc_paths.BIN_DIR)
         shell_dir = str(tc_paths.SHELL_DIR)
-        session_tmp = Path("/tmp/tmux-alpha")
+        session_tmp = tmp_path / "tmux-alpha"
+        session_tmp.mkdir()
         runtime_path = f"{teleclaude_bin}:{tmp_path / 'user-bin'}"
         host_shell = str(tmp_path / "user-shell")
 
@@ -95,7 +96,7 @@ class TestCreateAndEnsureSession:
                 name="tmux-alpha",
                 working_dir="/workspace/demo",
                 session_id="sess-1",
-                env_vars={"VOICE": "alloy"},
+                env_vars={"GOOGLE_APPLICATION_CREDENTIALS": "/keys/google.json", "OPENAI_VOICE": "alloy"},
             )
 
         assert result is True
@@ -111,7 +112,8 @@ class TestCreateAndEnsureSession:
         assert new_session_command[6] == "/workspace/demo"
 
         env_values = _extract_tmux_env(new_session_command)
-        assert env_values["VOICE"] == "alloy"
+        assert "OPENAI_VOICE" not in env_values
+        assert "GOOGLE_APPLICATION_CREDENTIALS" not in env_values
         assert env_values["ZSH_LAST_WORKING_DIRECTORY"] == "1"
         # PATH is resolved live from the user's shell at session creation and
         # injected here so the pane and every agent CLI see the same lookup path.
@@ -132,7 +134,14 @@ class TestCreateAndEnsureSession:
         # override-rooted daemon would have the wrapper reset paths back
         # to the default via its $HOME/.teleclaude fallback.
         assert env_values["TELECLAUDE_HOME"] == str(tc_paths.TELECLAUDE_HOME)
+        agent_env_file = session_tmp / "agent-env.sh"
+        assert agent_env_file.read_text(encoding="utf-8") == (
+            "export GOOGLE_APPLICATION_CREDENTIALS=/keys/google.json\nexport OPENAI_VOICE=alloy\n"
+        )
         pane_command_parts = shlex.split(str(new_session_command[-1]))
+        assert pane_command_parts[:3] == [".", str(agent_env_file), ";"]
+        assert "OPENAI_VOICE=alloy" not in pane_command_parts
+        assert "GOOGLE_APPLICATION_CREDENTIALS=/keys/google.json" not in pane_command_parts
         assert f"PATH={runtime_path}" in pane_command_parts
         assert f"SHELL={teleclaude_bin}/teleclaude-shell" in pane_command_parts
         assert f"TELECLAUDE_HOST_SHELL={host_shell}" in pane_command_parts
@@ -300,7 +309,10 @@ class TestUpdateSessionEnvironment:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_update_tmux_session_sets_each_env_var_until_a_failure_occurs(self) -> None:
-        env_vars = {"VOICE": "alloy", "MODE": "interactive"}
+        env_vars = {
+            "MACOS_VOICE": "Samantha",
+            "OPENAI_VOICE": "alloy",
+        }
 
         with (
             patch(
@@ -320,14 +332,14 @@ class TestUpdateSessionEnvironment:
             "setenv",
             "-t",
             "tmux-alpha",
-            "VOICE",
-            "alloy",
+            "MACOS_VOICE",
+            "Samantha",
         )
         assert mock_exec.await_args_list[1].args == (
             _session.config.computer.tmux_binary,
             "setenv",
             "-t",
             "tmux-alpha",
-            "MODE",
-            "interactive",
+            "OPENAI_VOICE",
+            "alloy",
         )

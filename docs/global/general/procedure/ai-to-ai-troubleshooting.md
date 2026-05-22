@@ -54,6 +54,6 @@ Diagnose and resolve failures in AI-to-AI session dispatch and notifications.
 ## Recovery
 
 - **Handshake Failures:** If `handshake replay failed`, manually retry the command or restart the client session.
-- **Missing Notifications:** Manually check worker status with `telec sessions tail <worker_session_id> --thinking --tools` if the automated notification fails to deliver.
+- **Missing Notifications:** Manually check worker status with `telec sessions tail <worker_session_id>` if the automated notification fails to deliver.
 - **`unsubscribe` returned `success` with all flags false:** No subscription existed for that pair — this is the idempotent empty-state success, not an error.
 - **Unexpected notification silence while in a direct conversation:** Expected behavior. Suppression resumes delivery when the link is severed.

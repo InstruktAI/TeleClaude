@@ -3,6 +3,7 @@ languages:
 - python
 - typescript
 - rust
+env_allow_list: []
 frontend_root: frontend
 
 business:

@@ -130,6 +130,16 @@ class TestSchemaValidators:
         config = ProjectConfig.model_validate({"project_slug": "   "})
         assert config.project_slug is None
 
+    @pytest.mark.unit
+    def test_project_env_allow_list_trims_and_deduplicates_names(self) -> None:
+        config = ProjectConfig.model_validate({"env_allow_list": [" OPENAI_API_KEY ", "OPENAI_API_KEY", "_CUSTOM"]})
+        assert config.env_allow_list == ["OPENAI_API_KEY", "_CUSTOM"]
+
+    @pytest.mark.unit
+    def test_project_env_allow_list_rejects_invalid_names(self) -> None:
+        with pytest.raises(ValidationError):
+            ProjectConfig.model_validate({"env_allow_list": ["NOT-AN-ENV"]})
+
 
 class TestMultiLanguageConfig:
     """ProjectConfig supports multi-language configuration via languages list."""

@@ -458,7 +458,7 @@ async def get_session_data(
                 tmux_session_name,
                 capture_lines=tmux_bridge.FALLBACK_CAPTURE_LINES,
             )
-        except Exception as exc:
+        except (OSError, ValueError, tmux_bridge.SubprocessTimeoutError) as exc:
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",
                 session_id,

@@ -43,7 +43,7 @@ When the operator runs `telec`
 Then read_current_session_email returns the bound email
 And _exec_tmux_tui kills any existing tc_tui session
 And spawns a fresh tmux session named "tc_tui" with TELEC_TUI_SESSION=1
-And the rest of the operator's environment is forwarded into the tmux session (excluding TELEC_TUI_SESSION itself, which the launcher sets explicitly)
+And only the platform-owned TUI environment allowlist is forwarded into the tmux session; TELEC_TUI_SESSION is set explicitly by the launcher
 And `telec` is exec'd inside that tmux session
 ```
 
@@ -92,4 +92,4 @@ And the in-process TUI loop runs directly (no nested tmux session is spawned)
 - A reachable but unparseable global config makes `_requires_tui_login()` return False (fail-open). The fail-open posture preserves usability on a half-configured host but means a corrupted multi-user config silently degrades the gate to no-op. Operators relying on this gate as a security control should monitor `config validate`.
 - The gate trusts that any prior login file on the current TTY (or the global fallback) belongs to an authorized operator. The launcher does not re-validate the email against the live `people` list before opening the TUI — the daemon does that lookup later on the first API call. A stale auth file whose email was removed from `people` will pass the gate but fail on the first protected request.
 - The launcher kills any existing `tc_tui` tmux session before spawning a new one. This is intentional (only one trusted TUI per host at a time) but means a concurrent invocation will displace an in-progress operator session without warning.
-- Environment forwarding into the new tmux session is wholesale (every `os.environ` entry except `TELEC_TUI_SESSION` is propagated). Operators who need to scrub secrets from the TUI environment must clear them before invoking `telec`.
+- Environment forwarding into the new tmux session is fail-closed. Only platform-owned TUI runtime keys are propagated; arbitrary shell variables and secrets are never forwarded by configuration.

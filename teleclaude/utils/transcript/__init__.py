@@ -93,6 +93,7 @@ from teleclaude.utils.transcript._utils import (
 from teleclaude.utils.transcript.tailer import (
     TranscriptTailBatch,
     TranscriptTailCursor,
+    TranscriptTailReadError,
     read_appended_jsonl_entries,
 )
 
@@ -110,6 +111,7 @@ __all__ = [
     "TranscriptParserInfo",
     "TranscriptTailBatch",
     "TranscriptTailCursor",
+    "TranscriptTailReadError",
     "TurnTimeline",
     "_apply_tail_limit",
     "_apply_tail_limit_codex",

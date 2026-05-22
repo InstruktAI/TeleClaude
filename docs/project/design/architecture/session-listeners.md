@@ -136,7 +136,7 @@ sequenceDiagram
 
 | Event Type    | Message Format                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------ |
-| Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id} --thinking --tools` |
+| Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}`                   |
 | Input Request | `Session {id} on {computer} needs input: {message}. Reply with: telec sessions send {id} "<your message>"`   |
 
 ### 6. Stale Listener Inspection

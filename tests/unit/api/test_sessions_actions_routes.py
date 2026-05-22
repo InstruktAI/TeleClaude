@@ -17,6 +17,7 @@ from teleclaude.api_models import (
     EscalateRequest,
     FileUploadRequest,
     KeysRequest,
+    MessageDTO,
     RenderWidgetRequest,
     RunSessionRequest,
     SendResultRequest,
@@ -512,6 +513,21 @@ class TestSessionsActionsRoutes:
         assert response.last_agent_stop_at is None
         check_session_access.assert_awaited_once_with(http_request, "sess-active")
         service.get_session_data.assert_awaited_once()
+
+    @pytest.mark.unit
+    def test_apply_session_tail_scope_returns_last_user_turn(self) -> None:
+        """Latest-turn scope drops prior transcript context before the last user message."""
+        messages = [
+            MessageDTO(role="user", type="text", text="old prompt", timestamp="2025-02-01T00:00:00Z"),
+            MessageDTO(role="assistant", type="text", text="old answer", timestamp="2025-02-01T00:00:01Z"),
+            MessageDTO(role="user", type="text", text="new prompt", timestamp="2025-02-01T00:00:02Z"),
+            MessageDTO(role="assistant", type="text", text="new answer", timestamp="2025-02-01T00:00:03Z"),
+        ]
+
+        scoped = sessions_actions_routes._apply_session_tail_scope(messages, "latest_turn")
+
+        assert [message.text for message in scoped] == ["new prompt", "new answer"]
+        assert sessions_actions_routes._apply_session_tail_scope(messages, "all") is messages
 
     @pytest.mark.unit
     @pytest.mark.asyncio

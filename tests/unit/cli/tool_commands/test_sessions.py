@@ -71,6 +71,53 @@ def test_handle_sessions_send_uses_positional_message_and_direct(monkeypatch: py
     )
 
 
+def test_handle_sessions_tail_defaults_to_latest_turn(monkeypatch: pytest.MonkeyPatch) -> None:
+    tool_api_call = MagicMock(return_value={"messages": []})
+    print_json = MagicMock()
+
+    monkeypatch.setattr(sessions, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(sessions, "print_json", print_json)
+
+    sessions.handle_sessions_tail(["sess-1"])
+
+    tool_api_call.assert_called_once_with(
+        "GET",
+        "/sessions/sess-1/messages",
+        params={"tail_scope": "latest_turn"},
+    )
+    print_json.assert_called_once_with({"messages": []})
+
+
+def test_handle_sessions_tail_since_widens_to_all_since_marker(monkeypatch: pytest.MonkeyPatch) -> None:
+    tool_api_call = MagicMock(return_value={"messages": []})
+
+    monkeypatch.setattr(sessions, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(sessions, "print_json", MagicMock())
+
+    sessions.handle_sessions_tail(["sess-1", "--since", "2026-05-22T00:00:00Z"])
+
+    tool_api_call.assert_called_once_with(
+        "GET",
+        "/sessions/sess-1/messages",
+        params={"since": "2026-05-22T00:00:00Z", "tail_scope": "all"},
+    )
+
+
+def test_handle_sessions_tail_full_widens_to_all_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    tool_api_call = MagicMock(return_value={"messages": []})
+
+    monkeypatch.setattr(sessions, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(sessions, "print_json", MagicMock())
+
+    sessions.handle_sessions_tail(["sess-1", "--full"])
+
+    tool_api_call.assert_called_once_with(
+        "GET",
+        "/sessions/sess-1/messages",
+        params={"tail_scope": "all"},
+    )
+
+
 def test_handle_sessions_end_resolves_self(monkeypatch: pytest.MonkeyPatch) -> None:
     tool_api_call = MagicMock(return_value={"ok": True})
     print_json = MagicMock()

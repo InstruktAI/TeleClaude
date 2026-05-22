@@ -36,6 +36,7 @@ from teleclaude.output_projection.models import WEB_POLICY
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import (
     TranscriptTailCursor,
+    TranscriptTailReadError,
     _iter_claude_entries,
     _iter_codex_entries,
     _iter_gemini_entries,
@@ -254,7 +255,18 @@ async def _tail_live_transcript(
     live_file: str,
 ) -> AsyncIterator[str]:
     """Tail the live transcript file and yield incremental SSE events."""
-    cursor = TranscriptTailCursor(offset=os.path.getsize(live_file))
+    try:
+        cursor = TranscriptTailCursor(offset=os.path.getsize(live_file))
+    except OSError:
+        logger.warning(
+            "Unable to initialize live transcript tail",
+            lane="web",
+            session_id=session_id,
+            event_type="data-session-status",
+            exc_info=True,
+        )
+        yield convert_session_status("error", session_id)
+        return
     idle_elapsed = 0.0
     current_live_file = live_file
 
@@ -269,16 +281,38 @@ async def _tail_live_transcript(
         if not Path(current_live_file).exists():
             return
 
-        current_size = os.path.getsize(current_live_file)
+        try:
+            current_size = os.path.getsize(current_live_file)
+        except OSError:
+            logger.warning(
+                "Unable to stat live transcript during tail",
+                lane="web",
+                session_id=session_id,
+                event_type="data-session-status",
+                exc_info=True,
+            )
+            yield convert_session_status("error", session_id)
+            return
         if current_size <= cursor.offset:
             idle_elapsed += LIVE_POLL_INTERVAL_S
         else:
             idle_elapsed = 0.0
-            next_cursor, live_events = await _load_live_transcript_events(
-                current_live_file,
-                cursor=cursor,
-                session_id=session_id,
-            )
+            try:
+                next_cursor, live_events = await _load_live_transcript_events(
+                    current_live_file,
+                    cursor=cursor,
+                    session_id=session_id,
+                )
+            except TranscriptTailReadError:
+                logger.warning(
+                    "Unable to read live transcript during tail",
+                    lane="web",
+                    session_id=session_id,
+                    event_type="data-session-status",
+                    exc_info=True,
+                )
+                yield convert_session_status("error", session_id)
+                return
             if next_cursor == cursor:
                 return
             cursor = next_cursor

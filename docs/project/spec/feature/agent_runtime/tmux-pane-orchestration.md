@@ -44,10 +44,12 @@ Given _create_tmux_session(name, working_dir, session_id, env_vars) is called
 When the bridge builds the tmux new-session command
 Then a per-session TMPDIR is materialized under TMP_SESSIONS_DIR / safe_session_tmp_component(session_id)
 And the directory is recreated empty with mode 0700 to drop any stray unix sockets
-And the env dict injects TELECLAUDE_HOME, SHELL=teleclaude-shell, ZDOTDIR, BASH_ENV, ENV, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, ZSH_LAST_WORKING_DIRECTORY=1, TMPDIR/TMP/TEMP all pointing at the per-session TMPDIR
-And caller-supplied env vars are filtered to remove secret-like names before they are passed through tmux argv or session environment
-And each env var is validated against ^[A-Za-z_][A-Za-z0-9_]*$ — invalid names raise ValueError
-And tmux is invoked as `tmux new-session -d -s <name> -c <working_dir> [-e VAR=VAL ...] <shell_command>` with shell_command=`VAR=val ... exec teleclaude-shell`
+And the TeleClaude-controlled env dict injects TELECLAUDE_HOME, SHELL=teleclaude-shell, ZDOTDIR, BASH_ENV, ENV, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, ZSH_LAST_WORKING_DIRECTORY=1, TMPDIR/TMP/TEMP all pointing at the per-session TMPDIR
+And project-authorized agent env vars are resolved from `ProjectConfig.env_allow_list`
+And agent env vars are written to a 0600 file under the per-session TMPDIR
+And each env var name is validated against ^[A-Za-z_][A-Za-z0-9_]*$ — invalid names raise ValueError
+And tmux is invoked as `tmux new-session -d -s <name> -c <working_dir> [-e VAR=VAL ...] <shell_command>` with only TeleClaude-controlled values in `-e`
+And shell_command sources the private agent env file before executing `teleclaude-shell`
 And on success, a follow-up `set-environment -u NO_COLOR ; set-option destroy-unattached off ; set-hook client-detached run-shell true` setup chain runs, with per-step markers logged so the failing step can be identified
 And the call returns True on tmux returncode==0, False on returncode!=0 or SubprocessTimeoutError
 ```
@@ -209,7 +211,7 @@ And the call returns True on returncode==0
 
 `agent_runtime` owns tmux orchestration end-to-end; no other bounded context calls into `tmux_bridge` directly. Adjacent dependencies:
 
-- **config** — `config.computer.tmux_binary` selects the tmux binary path; the env override `TELECLAUDE_SESSION_TMPDIR_BASE` overrides the per-session TMPDIR root from `paths.TMP_SESSIONS_DIR`. Subprocess timeout constants are module-level (`SUBPROCESS_TIMEOUT_QUICK`, `..._DEFAULT`, `..._LONG`), not currently sourced from config.
+- **config** — `config.computer.tmux_binary` selects the tmux binary path; `ProjectConfig.env_allow_list` names ambient env vars that may enter agent sessions; the env override `TELECLAUDE_SESSION_TMPDIR_BASE` overrides the per-session TMPDIR root from `paths.TMP_SESSIONS_DIR`. Subprocess timeout constants are module-level (`SUBPROCESS_TIMEOUT_QUICK`, `..._DEFAULT`, `..._LONG`), not currently sourced from config.
 - **Internal `agent_runtime` consumers** — session_lifecycle (session start, end, kill), session_cleanup (orphan tmux sweeps), the polling cadence loop (snapshot-driven cadence transitions), agent_coordinator (signal escalation, control queue).
 - No identity, integration, workflow, knowledge, or session_mirrors call this surface.
 

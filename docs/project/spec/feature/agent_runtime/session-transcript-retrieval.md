@@ -107,7 +107,7 @@ Then the daemon returns the access-control error from check_session_access (typi
 - `teleclaude/core/agents.py` — `resolve_parser_agent` (per-active-agent parser selection)
 - `teleclaude/core/session_status.py` — `compute_agent_status` (idle / busy / stopped derivation used in the DTO)
 - `teleclaude/types/commands.py` — `GetSessionDataCommand` (fallback tail dispatch)
-- CLI verb: `telec sessions tail <session_id>` with `--since <ts>`, `--tools`, `--thinking` (`--session` is a routing flag for cross-computer fetches)
+- CLI verb: `telec sessions tail <session_id>` defaults to the latest user turn and subsequent output. `--since <ts>` and `--full` widen the message window; `--tools` and `--thinking` explicitly opt into scrubbed internal blocks (`--session` is a routing flag for cross-computer fetches).
 
 ### Cross-context references
 

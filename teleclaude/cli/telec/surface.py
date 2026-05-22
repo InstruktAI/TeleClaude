@@ -158,13 +158,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "tail": CommandDef(
                 desc="Get recent messages from a session's transcript",
-                args="<session_id> [--since <ts>] [--tools] [--thinking]",
+                args="<session_id> [--since <ts>] [--tools] [--thinking] [--full]",
                 flags=[
                     _H,
                     _FLAG_SESSION,
                     Flag("--since", desc="ISO8601 timestamp filter"),
                     Flag("--tools", desc="Include tool use entries"),
                     _FLAG_THINKING,
+                    Flag("--full", desc="Show all projected messages instead of the latest user turn"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),

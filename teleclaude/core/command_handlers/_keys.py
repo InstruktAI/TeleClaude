@@ -11,6 +11,7 @@ from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
+from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import ensure_tmux_with_identity
@@ -91,7 +92,10 @@ async def _ensure_tmux_for_headless(
         )
         return None
     voice = await db.get_voice(session.session_id)
-    env_vars = get_voice_env_vars(voice) if voice else {}
+    env_vars = build_agent_session_environment(
+        project_path=session.project_path,
+        platform_env=get_voice_env_vars(voice) if voice else {},
+    )
 
     try:
         success = await ensure_tmux_with_identity(session, tmux_name, working_dir, env_vars)

@@ -62,7 +62,7 @@
   
   Get recent messages from a session's transcript
   
-  **Usage:** `telec sessions tail <session_id> [--since <ts>] [--tools] [--thinking]`
+  **Usage:** `telec sessions tail <session_id> [--since <ts>] [--tools] [--thinking] [--full]`
   
   **Flags:**
   
@@ -70,6 +70,7 @@
   - `--since`: ISO8601 timestamp filter
   - `--tools`: Include tool use entries
   - `--thinking`: Include thinking blocks
+  - `--full`: Show all projected messages instead of the latest user turn
   
   ### `telec sessions run`
   

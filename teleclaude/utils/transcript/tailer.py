@@ -25,14 +25,18 @@ class TranscriptTailBatch:
     entries: list[JsonDict]
 
 
+class TranscriptTailReadError(RuntimeError):
+    """Raised when an incremental transcript read cannot access the file."""
+
+
 def read_appended_jsonl_entries(path: str | Path, cursor: TranscriptTailCursor) -> TranscriptTailBatch:
     """Read complete JSONL entries appended after ``cursor``."""
 
     transcript_path = Path(path)
     try:
         file_size = transcript_path.stat().st_size
-    except OSError:
-        return TranscriptTailBatch(cursor=cursor, entries=[])
+    except OSError as exc:
+        raise TranscriptTailReadError(f"Unable to stat transcript file: {transcript_path}") from exc
 
     offset = cursor.offset if 0 <= cursor.offset <= file_size else 0
     partial_line = cursor.partial_line if offset == cursor.offset else ""
@@ -42,8 +46,8 @@ def read_appended_jsonl_entries(path: str | Path, cursor: TranscriptTailCursor) 
             f.seek(offset)
             new_bytes = f.read()
             next_offset = f.tell()
-    except OSError:
-        return TranscriptTailBatch(cursor=cursor, entries=[])
+    except OSError as exc:
+        raise TranscriptTailReadError(f"Unable to read transcript file: {transcript_path}") from exc
 
     if not new_bytes:
         return TranscriptTailBatch(cursor=TranscriptTailCursor(offset=offset, partial_line=partial_line), entries=[])

@@ -22,6 +22,13 @@ _TUI_ENV_EXACT_ALLOWLIST = frozenset(
         "COLORTERM",
         "HOME",
         "LANG",
+        "LC_ALL",
+        "LC_COLLATE",
+        "LC_CTYPE",
+        "LC_MESSAGES",
+        "LC_MONETARY",
+        "LC_NUMERIC",
+        "LC_TIME",
         "LOGNAME",
         "NO_COLOR",
         "PATH",
@@ -44,8 +51,15 @@ _TUI_ENV_EXACT_ALLOWLIST = frozenset(
         "UV_NO_SYNC",
     }
 )
-_SECRET_ENV_EXACT_DENYLIST = frozenset({"DATABASE_URL", "REDIS_URL", "SSH_AUTH_SOCK"})
-_SECRET_ENV_NAME_PARTS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "PAT")
+_PLATFORM_SESSION_ENV_EXACT_ALLOWLIST = frozenset(
+    {
+        "APPEARANCE_MODE",
+        "ELEVENLABS_VOICE_ID",
+        "MACOS_VOICE",
+        "OPENAI_VOICE",
+        "TERMINAL_BG",
+    }
+)
 
 
 class RuntimeEnvironment(TypedDict):
@@ -55,30 +69,16 @@ class RuntimeEnvironment(TypedDict):
     SHELL: NotRequired[str]
 
 
-def is_secret_like_env_name(name: str) -> bool:
-    """Return True when an env var name should not cross tmux argv boundaries."""
-
-    upper_name = name.upper()
-    if upper_name in _SECRET_ENV_EXACT_DENYLIST:
-        return True
-    parts = tuple(part for part in upper_name.split("_") if part)
-    return any(part in _SECRET_ENV_NAME_PARTS for part in parts) or upper_name.endswith("_KEY")
-
-
 def filter_tui_tmux_environment(env: Mapping[str, str]) -> dict[str, str]:
     """Return the narrow environment allowed through tmux ``-e`` for the TUI."""
 
-    return {
-        key: value
-        for key, value in env.items()
-        if (key in _TUI_ENV_EXACT_ALLOWLIST or key.startswith("LC_")) and not is_secret_like_env_name(key)
-    }
+    return {key: value for key, value in env.items() if key in _TUI_ENV_EXACT_ALLOWLIST}
 
 
-def reject_secret_like_environment(env: Mapping[str, str]) -> dict[str, str]:
-    """Drop secret-like env vars before they are encoded into tmux command arguments."""
+def filter_platform_session_environment(env: Mapping[str, str]) -> dict[str, str]:
+    """Return TeleClaude-owned session env vars allowed beside project config."""
 
-    return {key: value for key, value in env.items() if not is_secret_like_env_name(key)}
+    return {key: value for key, value in env.items() if key in _PLATFORM_SESSION_ENV_EXACT_ALLOWLIST}
 
 
 def _dedupe_path_entries(entries: list[str]) -> list[str]:

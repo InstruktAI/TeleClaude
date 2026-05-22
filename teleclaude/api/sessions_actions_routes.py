@@ -146,6 +146,7 @@ class SessionMessagesQuery:
     include_tools: bool = False
     include_thinking: bool = False
     tail_chars: int = 10000
+    tail_scope: str = "all"
 
 
 def _parse_session_messages_query(
@@ -153,6 +154,7 @@ def _parse_session_messages_query(
     include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
     include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
     tail_chars: int = Query(10000, description="Fallback char budget for tmux/session tail output"),
+    tail_scope: str = Query("all", description="Message window: all or latest_turn"),
 ) -> SessionMessagesQuery:
     """Collect session-messages query parameters into one object."""
     return SessionMessagesQuery(
@@ -160,6 +162,7 @@ def _parse_session_messages_query(
         include_tools=include_tools,
         include_thinking=include_thinking,
         tail_chars=tail_chars,
+        tail_scope=tail_scope,
     )
 
 
@@ -268,6 +271,17 @@ def _project_session_messages(
             output_serializers.to_structured_message(projected_block) for projected_block in projected_blocks
         )
     ]
+
+
+def _apply_session_tail_scope(messages: list[MessageDTO], tail_scope: str) -> list[MessageDTO]:
+    """Apply a caller-requested message window to already projected messages."""
+    if tail_scope != "latest_turn":
+        return messages
+
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].role == "user":
+            return messages[index:]
+    return messages
 
 
 @dataclass(frozen=True)
@@ -610,6 +624,8 @@ async def get_session_messages(
                         file_index=0,
                     )
                 ]
+
+        messages = _apply_session_tail_scope(messages, query.tail_scope)
 
         last_activity_at = session.last_activity.isoformat() if isinstance(session.last_activity, datetime) else None
         last_input_at = (

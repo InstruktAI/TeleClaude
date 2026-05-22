@@ -46,6 +46,7 @@ project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
 language: string # deprecated; use languages list
 languages: list[string] # project languages for quality tooling and init skeletons (e.g. [python, typescript])
+env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions
 frontend_root: string # directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
 description: string
 business:
@@ -66,6 +67,14 @@ deployment:
   pinned_minor: string # required when channel=stable
 channel_subscriptions: list[ChannelSubscription]
 ```
+
+`env_allow_list` is an explicit project-level pass-through list for agent
+sessions. At tmux session creation, TeleClaude reads these names from the
+daemon process environment and exports only the names that are configured and
+present. The values are loaded into the pane through the session's private
+TMPDIR env file, not through tmux command-line `-e` arguments. The regular
+project `.env` remains the source for application/runtime secrets; those values
+enter agent sessions only when their names are also listed in `env_allow_list`.
 
 ### Global-only keys (`GlobalConfig` adds these)
 

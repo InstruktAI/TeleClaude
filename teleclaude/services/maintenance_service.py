@@ -24,6 +24,7 @@ from teleclaude.core.next_machine.delivery import _run_git_cmd
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
+from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -570,7 +571,7 @@ class MaintenanceService:
                 return
 
             working_dir = resolve_working_dir(session.project_path, session.subdir)
-            env_vars = await self._build_tmux_env_vars(session.session_id)
+            env_vars = await self._build_tmux_env_vars(session)
             if not await ensure_tmux_with_identity(session, session.tmux_session_name, working_dir, env_vars):
                 return
 
@@ -633,9 +634,9 @@ class MaintenanceService:
         finally:
             self._restoring_sessions.discard(session.session_id)
 
-    async def _build_tmux_env_vars(self, session_id: str) -> dict[str, str]:
-        env_vars: dict[str, str] = {}
-        voice = await db.get_voice(session_id)
-        if voice:
-            env_vars.update(get_voice_env_vars(voice))
-        return env_vars
+    async def _build_tmux_env_vars(self, session: Session) -> dict[str, str]:
+        voice = await db.get_voice(session.session_id)
+        return build_agent_session_environment(
+            project_path=session.project_path,
+            platform_env=get_voice_env_vars(voice) if voice else {},
+        )

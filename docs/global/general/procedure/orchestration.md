@@ -52,7 +52,7 @@ The state machine owns every concrete decision: dispatch, session ending, phase 
 The orchestrator maintains a **marker timestamp** per dispatched worker, initialized
 to the dispatch time. All session inspection follows this protocol:
 
-- **First tail** (after dispatch): use a full window (`telec sessions tail <session_id> --tools --thinking`) to establish context. Save the timestamp of the last message as the marker.
+- **First tail** (after dispatch): use the default latest-turn window (`telec sessions tail <session_id>`) to establish context. Save the timestamp of the last message as the marker.
 - **All subsequent tails**: use `--since <marker>` to retrieve only new output. This avoids re-reading content already seen and makes progress detection trivial — if `--since` returns no new messages, nothing happened.
 - After every tail, update the marker to the latest message timestamp from the response.
 - Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
@@ -66,7 +66,7 @@ Status semantics:
 ### When Notification Arrives
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
-2. Tail the session (first time: full window; subsequent tails: `--since <marker>`).
+2. Tail the session (first time: default latest-turn window; subsequent tails: `--since <marker>`).
 3. Update the marker to the latest message timestamp when new messages appear.
 4. If `agent_status` is `active`, reset the heartbeat timer and continue waiting.
 5. If `agent_status` is `idle`, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
@@ -76,7 +76,7 @@ Status semantics:
 ### When Timer Expires
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the timer was set, the timer's intent is stale — discard the encoded instructions and re-evaluate from the current state. Do not blindly resume the orchestration loop.
-2. Tail the session (first time: full window; subsequent tails: `--since <marker>`).
+2. Tail the session (first time: default latest-turn window; subsequent tails: `--since <marker>`).
 3. Update the marker to the latest message timestamp when new messages appear.
 4. If `agent_status` is `active`, reset the heartbeat timer and continue waiting.
 5. If `agent_status` is `idle`, invoke the state machine again and execute its returned script verbatim.

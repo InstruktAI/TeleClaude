@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR
-from teleclaude.runtime.environment import reject_secret_like_environment, resolve_runtime_environment
+from teleclaude.runtime.environment import filter_platform_session_environment, resolve_runtime_environment
 
 from ._pane import session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -34,12 +34,38 @@ def _describe_setup_chain_failure(stdout: bytes) -> str:
     return "set-environment -u NO_COLOR"
 
 
-def _build_tmux_shell_command(env_vars: dict[str, str], shell_command: Path) -> str:
-    parts: list[str] = []
-    for var_name, var_value in env_vars.items():
+def _validate_env_names(env_vars: dict[str, str]) -> None:
+    for var_name in env_vars:
         if not _ENV_NAME_RE.fullmatch(var_name):
             msg = f"Invalid tmux environment variable name: {var_name}"
             raise ValueError(msg)
+
+
+def _write_agent_env_file(session_tmp_dir: Path, env_vars: dict[str, str]) -> Path | None:
+    if not env_vars:
+        return None
+
+    _validate_env_names(env_vars)
+    path = session_tmp_dir / "agent-env.sh"
+    lines = [f"export {var_name}={shlex.quote(var_value)}" for var_name, var_value in env_vars.items()]
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+        handle.write("\n")
+    return path
+
+
+def _build_tmux_shell_command(
+    env_vars: dict[str, str],
+    shell_command: Path,
+    *,
+    source_env_file: Path | None = None,
+) -> str:
+    parts: list[str] = []
+    if source_env_file:
+        parts.extend([".", shlex.quote(str(source_env_file)), ";"])
+    _validate_env_names(env_vars)
+    for var_name, var_value in env_vars.items():
         parts.append(f"{var_name}={shlex.quote(var_value)}")
     parts.extend(["exec", shlex.quote(str(shell_command))])
     return " ".join(parts)
@@ -129,11 +155,12 @@ async def _create_tmux_session(
         True if successful, False otherwise
     """
     try:
-        effective_env_vars: dict[str, str] = reject_secret_like_environment(env_vars or {})
+        agent_env_vars: dict[str, str] = dict(env_vars or {})
+        controlled_env_vars: dict[str, str] = {}
 
         # Prevent oh-my-zsh last-working-dir plugin from overriding our -c directory.
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
-        effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
+        controlled_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
         # Pin the shell environment that agent CLIs and every subshell they
         # spawn will land in. The tmux pane command below starts the wrapper
@@ -149,34 +176,38 @@ async def _create_tmux_session(
         # wrapper only to have the wrapper reset PATH/ZDOTDIR/etc. back to
         # the default root via the fallback.
         shell_dir = str(SHELL_DIR)
-        effective_env_vars["TELECLAUDE_HOME"] = str(TELECLAUDE_HOME)
-        effective_env_vars["SHELL"] = str(BIN_DIR / "teleclaude-shell")
-        effective_env_vars["ZDOTDIR"] = shell_dir
-        effective_env_vars["BASH_ENV"] = f"{shell_dir}/.bashenv"
-        effective_env_vars["ENV"] = f"{shell_dir}/.profile"
+        controlled_env_vars["TELECLAUDE_HOME"] = str(TELECLAUDE_HOME)
+        controlled_env_vars["SHELL"] = str(BIN_DIR / "teleclaude-shell")
+        controlled_env_vars["ZDOTDIR"] = shell_dir
+        controlled_env_vars["BASH_ENV"] = f"{shell_dir}/.bashenv"
+        controlled_env_vars["ENV"] = f"{shell_dir}/.profile"
         runtime_env = resolve_runtime_environment()
-        effective_env_vars["PATH"] = runtime_env["PATH"]
+        controlled_env_vars["PATH"] = runtime_env["PATH"]
         host_shell = runtime_env.get("SHELL")
         if host_shell:
-            effective_env_vars["TELECLAUDE_HOST_SHELL"] = host_shell
+            controlled_env_vars["TELECLAUDE_HOST_SHELL"] = host_shell
 
         # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
         # Codex) fall back to 256-color or plain text because TERM=tmux-256color
         # alone does not advertise truecolor.
-        effective_env_vars["COLORTERM"] = "truecolor"
+        controlled_env_vars["COLORTERM"] = "truecolor"
 
         # Prevent `uv run` from auto-syncing the project venv inside worker
         # sessions. Ambient sync while the daemon holds modules loaded causes
         # stale-module ImportError crashes. Explicit `uv sync` still works.
-        effective_env_vars["UV_NO_SYNC"] = "1"
+        controlled_env_vars["UV_NO_SYNC"] = "1"
 
         # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
+        agent_env_file: Path | None = None
         if session_id:
             session_tmp_dir = await asyncio.to_thread(_prepare_session_tmp_dir, session_id)
-            effective_env_vars["TMPDIR"] = str(session_tmp_dir)
-            effective_env_vars["TMP"] = str(session_tmp_dir)
-            effective_env_vars["TEMP"] = str(session_tmp_dir)
+            controlled_env_vars["TMPDIR"] = str(session_tmp_dir)
+            controlled_env_vars["TMP"] = str(session_tmp_dir)
+            controlled_env_vars["TEMP"] = str(session_tmp_dir)
+            agent_env_file = await asyncio.to_thread(_write_agent_env_file, session_tmp_dir, agent_env_vars)
+        elif agent_env_vars:
+            controlled_env_vars.update(agent_env_vars)
 
         # Create tmux session in detached mode with the lean TeleClaude shell
         # wrapper as the explicit pane command. The assignments are repeated in
@@ -195,12 +226,20 @@ async def _create_tmux_session(
             working_dir,  # Working directory
         ]
 
-        # Inject additional environment variables (e.g., TTS voice configuration)
-        if effective_env_vars:
-            for var_name, var_value in effective_env_vars.items():
+        # Inject TeleClaude-controlled environment into tmux. User-authorized
+        # agent variables are sourced from a private file so secret values do
+        # not appear in the tmux command line during session creation.
+        if controlled_env_vars:
+            for var_name, var_value in controlled_env_vars.items():
                 cmd.extend(["-e", f"{var_name}={var_value}"])
 
-        cmd.append(_build_tmux_shell_command(effective_env_vars, BIN_DIR / "teleclaude-shell"))
+        cmd.append(
+            _build_tmux_shell_command(
+                controlled_env_vars,
+                BIN_DIR / "teleclaude-shell",
+                source_env_file=agent_env_file,
+            )
+        )
 
         # Capture stderr for diagnostics on failure (no special handling otherwise).
         result = await asyncio.create_subprocess_exec(
@@ -321,7 +360,9 @@ async def update_tmux_session(session_name: str, env_vars: dict[str, str]) -> bo
         True if successful, False otherwise
     """
     try:
-        for var_name, var_value in reject_secret_like_environment(env_vars).items():
+        filtered_env_vars = filter_platform_session_environment(env_vars)
+        _validate_env_names(filtered_env_vars)
+        for var_name, var_value in filtered_env_vars.items():
             cmd = [config.computer.tmux_binary, "setenv", "-t", session_name, var_name, var_value]
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -338,7 +379,7 @@ async def update_tmux_session(session_name: str, env_vars: dict[str, str]) -> bo
                 )
                 return False
 
-        logger.debug("Updated tmux env vars in %s: %s", session_name, list(env_vars.keys()))
+        logger.debug("Updated tmux env vars in %s: %s", session_name, list(filtered_env_vars.keys()))
         return True
 
     except (OSError, ValueError, SubprocessTimeoutError) as e:

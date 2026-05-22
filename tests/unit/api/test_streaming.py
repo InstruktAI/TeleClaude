@@ -14,6 +14,7 @@ from teleclaude.api import streaming
 from teleclaude.api.streaming import ChatStreamMessage, ChatStreamRequest
 from teleclaude.core.db_models import Session
 from teleclaude.core.models import JsonDict
+from teleclaude.utils.transcript import TranscriptTailReadError
 
 
 def _make_request() -> SimpleNamespace:
@@ -60,6 +61,7 @@ def _parse_sse_event(chunk: str) -> JsonDict | str:
 @pytest.mark.unit
 @pytest.mark.asyncio
 class TestStreamingRoute:
+    # guard: parametrize-cleanup-pending - tracked by main-lint-debt-cleanup
     @pytest.mark.parametrize(
         ("lifecycle_status", "expected_status"),
         [
@@ -154,6 +156,41 @@ class TestStreamingRoute:
         ]
         assert payloads[1]["status"] == "streaming"
         assert payloads[-2]["status"] == "closed"
+        assert events[-1] == "[DONE]"
+
+    async def test_chat_stream_reports_error_when_live_transcript_read_fails(self, tmp_path: Path) -> None:
+        """Live transcript read errors are surfaced as stream error status."""
+        live_file = tmp_path / "session.jsonl"
+        live_file.write_text("", encoding="utf-8")
+        session = _make_session(native_log_file=str(live_file))
+        sleep_calls = 0
+
+        async def _fake_sleep(_: float) -> None:
+            nonlocal sleep_calls
+            sleep_calls += 1
+            if sleep_calls == 1:
+                live_file.write_text("{}\n", encoding="utf-8")
+
+        with (
+            patch("teleclaude.api.streaming.db.get_session", new=AsyncMock(return_value=session)),
+            patch("teleclaude.api.streaming.asyncio.sleep", new=_fake_sleep),
+            patch(
+                "teleclaude.api.streaming.read_appended_jsonl_entries",
+                side_effect=TranscriptTailReadError("boom"),
+            ),
+        ):
+            response = await streaming.chat_stream(_make_request(), ChatStreamRequest(sessionId=session.session_id))
+            events = [_parse_sse_event(chunk) for chunk in await _collect_stream(response)]
+
+        payloads = [event for event in events if isinstance(event, dict)]
+
+        assert [payload["type"] for payload in payloads] == [
+            "start",
+            "data-session-status",
+            "data-session-status",
+            "finish",
+        ]
+        assert payloads[2]["status"] == "error"
         assert events[-1] == "[DONE]"
 
     async def test_chat_stream_raises_404_when_session_is_missing(self) -> None:
