@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 import teleclaude.paths as tc_paths
 from teleclaude.core.tmux_bridge import _session
@@ -64,7 +65,11 @@ class TestSessionTmpDirHelpers:
 class TestCreateAndEnsureSession:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_create_tmux_session_sources_agent_env_from_private_file(self, tmp_path: Path) -> None:
+    async def test_create_tmux_session_sources_agent_env_from_private_file(
+        self,
+        tmp_path: Path,
+        snapshot: SnapshotAssertion,
+    ) -> None:
         teleclaude_bin = str(tc_paths.BIN_DIR)
         shell_dir = str(tc_paths.SHELL_DIR)
         session_tmp = tmp_path / "tmux-alpha"
@@ -135,9 +140,7 @@ class TestCreateAndEnsureSession:
         # to the default via its $HOME/.teleclaude fallback.
         assert env_values["TELECLAUDE_HOME"] == str(tc_paths.TELECLAUDE_HOME)
         agent_env_file = session_tmp / "agent-env.sh"
-        assert agent_env_file.read_text(encoding="utf-8") == (
-            "export GOOGLE_APPLICATION_CREDENTIALS=/keys/google.json\nexport OPENAI_VOICE=alloy\n"
-        )
+        assert agent_env_file.read_text(encoding="utf-8") == snapshot
         pane_command_parts = shlex.split(str(new_session_command[-1]))
         assert pane_command_parts[:3] == [".", str(agent_env_file), ";"]
         assert "OPENAI_VOICE=alloy" not in pane_command_parts
@@ -173,6 +176,21 @@ class TestCreateAndEnsureSession:
             "client-detached",
             "run-shell true",
         )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_tmux_session_rejects_agent_env_without_session_tmpdir(self) -> None:
+        with patch(
+            "teleclaude.core.tmux_bridge._session.resolve_runtime_environment",
+            return_value={"PATH": "/usr/bin", "SHELL": "/bin/zsh"},
+        ):
+            result = await _session._create_tmux_session(
+                name="tmux-alpha",
+                working_dir="/workspace/demo",
+                env_vars={"OPENAI_VOICE": "alloy"},
+            )
+
+        assert result is False
 
     @pytest.mark.unit
     @pytest.mark.asyncio

@@ -207,7 +207,8 @@ async def _create_tmux_session(
             controlled_env_vars["TEMP"] = str(session_tmp_dir)
             agent_env_file = await asyncio.to_thread(_write_agent_env_file, session_tmp_dir, agent_env_vars)
         elif agent_env_vars:
-            controlled_env_vars.update(agent_env_vars)
+            msg = "session_id is required when injecting agent environment variables"
+            raise ValueError(msg)
 
         # Create tmux session in detached mode with the lean TeleClaude shell
         # wrapper as the explicit pane command. The assignments are repeated in

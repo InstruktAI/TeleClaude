@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.session_environment import build_agent_session_environment
 
@@ -13,6 +14,7 @@ from teleclaude.core.session_environment import build_agent_session_environment
 def test_build_agent_session_environment_uses_project_env_allow_list(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    snapshot: SnapshotAssertion,
 ) -> None:
     config_path = tmp_path / "teleclaude.yml"
     config_path.write_text(
@@ -31,11 +33,7 @@ def test_build_agent_session_environment_uses_project_env_allow_list(
         },
     )
 
-    assert result == {
-        "OPENAI_API_KEY": "agent-openai",
-        "GOOGLE_APPLICATION_CREDENTIALS": "/keys/google.json",
-        "OPENAI_VOICE": "alloy",
-    }
+    assert result == snapshot
 
 
 @pytest.mark.unit

@@ -1,0 +1,8 @@
+# serializer version: 1
+# name: test_build_agent_session_environment_uses_project_env_allow_list
+  dict({
+    'GOOGLE_APPLICATION_CREDENTIALS': '/keys/google.json',
+    'OPENAI_API_KEY': 'agent-openai',
+    'OPENAI_VOICE': 'alloy',
+  })
+# ---
