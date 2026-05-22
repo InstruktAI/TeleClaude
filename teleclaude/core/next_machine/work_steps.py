@@ -14,6 +14,7 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
+import shlex
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -458,7 +459,7 @@ async def _work_step_review_changes_requested(
             f"Report FIX COMPLETE."
         ),
     )
-    escaped = reviewer_message.replace('"', '\\"')
+    quoted_reviewer_message = shlex.quote(reviewer_message)
 
     if reviewed_head and head_sha and head_sha != reviewed_head:
         return False, (
@@ -466,7 +467,7 @@ async def _work_step_review_changes_requested(
             f"Builder session {builder_id} has commits after reviewed head {reviewed_head} "
             f"at HEAD {head_sha}, but has not stamped build completion.\n\n"
             f"Tell the reviewer to start a direct conversation with the fixer:\n"
-            f'telec sessions send {reviewer_id} "{escaped}" (you will use regular send, NOT --direct)\n\n'
+            f"telec sessions send {reviewer_id} {quoted_reviewer_message} (you will use regular send, NOT --direct)\n\n"
             f"Wait for it to run `telec todo stamp {slug} --build-complete`, "
             f"then call telec todo work {slug}."
         )
@@ -475,7 +476,7 @@ async def _work_step_review_changes_requested(
         f"REVIEW CHANGES REQUESTED: {slug}\n\n"
         f"Execute in order:\n\n"
         f"Tell the reviewer to start a direct conversation with the fixer:\n"
-        f'telec sessions send {reviewer_id} "{escaped}" (you will use regular send, NOT --direct)\n\n'
+        f"telec sessions send {reviewer_id} {quoted_reviewer_message} (you will use regular send, NOT --direct)\n\n"
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
         f"Start a new non-blocking heartbeat timer via "
         f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
