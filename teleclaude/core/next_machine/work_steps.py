@@ -402,6 +402,8 @@ async def _work_step_review_changes_requested(
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
+    dispatch_head_raw = build_review.get("dispatch_head", "")
+    reviewed_head = dispatch_head_raw if isinstance(dispatch_head_raw, str) and dispatch_head_raw else baseline
     head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
 
     # Fix not yet committed: relay findings to live builder.
@@ -431,10 +433,10 @@ async def _work_step_review_changes_requested(
             next_call=f"telec todo work {slug}",
         )
 
-    if baseline and head_sha and head_sha != baseline:
+    if reviewed_head and head_sha and head_sha != reviewed_head:
         return False, (
             f"FIX WORK NOT STAMPED: {slug}\n\n"
-            f"Builder session {builder_id} has commits after review baseline {baseline} "
+            f"Builder session {builder_id} has commits after reviewed head {reviewed_head} "
             f"at HEAD {head_sha}, but has not stamped build completion. "
             f"Wait for it to run `telec todo stamp {slug} --build-complete`, "
             f"then call telec todo work {slug}."

@@ -17,7 +17,12 @@ from teleclaude.core.next_machine.git_ops import (
     _has_meaningful_diff,
     build_git_hook_env,
     compose_agent_guidance,
+    derive_age_drift,
     derive_artifact_drift,
+    derive_dependency_graph_drift,
+    derive_owned_snippet_drift,
+    derive_upstream_artifact_drift,
+    derive_upstream_snippet_drift,
     get_head_commit,
     get_origin_main_sha,
     get_ref_commit,
@@ -297,19 +302,6 @@ async def test_compose_agent_guidance_lists_enabled_agents_and_skips_unavailable
 
 
 # ── Per-class drift derivation helpers (merged from former test_git_ops_drift.py) ─────
-
-from teleclaude.core.next_machine.git_ops import (  # noqa: E402
-    DRIFT_COSMETIC,
-    DRIFT_FRESH,
-    DRIFT_PENDING,
-    DRIFT_SUBSTANTIVE,
-    derive_age_drift,
-    derive_artifact_drift,
-    derive_dependency_graph_drift,
-    derive_owned_snippet_drift,
-    derive_upstream_artifact_drift,
-    derive_upstream_snippet_drift,
-)
 
 _ARCHITECTURE = "architecture"
 _IMPLEMENTATION_PLAN = "implementation-plan"

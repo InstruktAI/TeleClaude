@@ -39,6 +39,8 @@ DRIFT_PENDING: ArtifactDriftStatus = "pending"
 DRIFT_COSMETIC: ArtifactDriftStatus = "cosmetic"
 DRIFT_SUBSTANTIVE: ArtifactDriftStatus = "substantive"
 
+_PLAN_ONLY_KINDS = {"refactor", "migration"}
+
 _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_INPUT: STATE_KEY_INPUT,
     STATE_KEY_PRD: STATE_KEY_PRD,
@@ -220,8 +222,6 @@ def derive_artifact_drift(
     ``pending`` is fail-safe: if an artifact names referenced code but the git
     comparison cannot prove freshness, a drift-review worker must inspect it.
     """
-    if drift_reviewed_stamp is not None and drift_reviewed_stamp.verdict == "substantive":
-        return DRIFT_SUBSTANTIVE
     if not artifact_entry.digest and not artifact_entry.produced_at:
         return DRIFT_FRESH
     if not artifact_entry.referenced_paths:
@@ -265,6 +265,8 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
     upstream_keys = _ARTIFACT_UPSTREAMS.get(state_key, ())
     if not upstream_keys:
         return DRIFT_FRESH
+    if _has_intentional_plan_only_upstreams(model, state_key, upstream_keys, entry.upstream_digests):
+        return DRIFT_FRESH
     if not entry.upstream_digests:
         return DRIFT_PENDING
     current = {key: getattr(model.artifacts, key).digest for key in upstream_keys}
@@ -277,6 +279,18 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
         current,
         "upstream_digests_at_review",
     )
+
+
+def _has_intentional_plan_only_upstreams(
+    model: TodoState,
+    state_key: str,
+    upstream_keys: tuple[str, ...],
+    recorded_digests: dict[str, str],
+) -> bool:
+    if state_key != STATE_KEY_IMPLEMENTATION_PLAN or model.kind not in _PLAN_ONLY_KINDS:
+        return False
+    current_digests = [getattr(model.artifacts, upstream_key).digest for upstream_key in upstream_keys]
+    return not any(current_digests) and not any(recorded_digests.values())
 
 
 def derive_owned_snippet_drift(

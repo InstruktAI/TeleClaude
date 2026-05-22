@@ -340,6 +340,38 @@ async def test_review_changes_requested_relay_message_addresses_every_finding(
 
 
 @pytest.mark.asyncio
+async def test_review_changes_requested_relays_after_current_head_was_reviewed(
+    snapshot: SnapshotAssertion,
+) -> None:
+    """A rejected re-review should relay findings when HEAD equals its dispatch head."""
+    state: dict = {
+        "lifecycle_phase": "review_changes_requested",
+        "build_review": {
+            "verdict": "changes_requested",
+            "baseline_commit": "aaa111",
+            "dispatch_head": "bbb222",
+            "round": 1,
+        },
+    }
+
+    with (
+        patch(f"{_WORK_STEPS}.get_head_commit", return_value="bbb222"),
+        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="builder-1")),
+    ):
+        keep_going, instruction = await _work_step_review_changes_requested(
+            db=_mock_db(),
+            todos_db=_mock_todos_db(),
+            slug="test-slug",
+            cwd="/project",
+            worktree_cwd="/project/trees/test-slug",
+            state=state,
+        )
+
+    assert keep_going is False
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
 async def test_review_changes_requested_tells_reviewer_to_open_direct_builder_link(
     snapshot: SnapshotAssertion,
 ) -> None:
