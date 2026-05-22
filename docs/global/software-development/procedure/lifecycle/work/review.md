@@ -1,7 +1,7 @@
 ---
 description: 'Review phase. Verify PRD intent, prepared artifacts, code quality, tests, and deliver verdict with findings.'
 domain: 'software-development'
-needs_domain_baseline: 'True'
+needs_domain_baseline: true
 id: 'software-development/procedure/lifecycle/work/review'
 scope: 'domain'
 type: 'procedure'

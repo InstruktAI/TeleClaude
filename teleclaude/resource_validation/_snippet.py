@@ -814,7 +814,8 @@ def _validate_baseline_dedup(project_root: Path) -> None:
                 meta = frontmatter.loads(path.read_text(encoding="utf-8")).metadata
             except OSError:
                 continue
-            if meta.get("needs_domain_baseline") is not True:
+            flag = meta.get("needs_domain_baseline")
+            if not (flag is True or (isinstance(flag, str) and flag.strip().lower() == "true")):
                 continue
             domain = meta.get("domain")
             if not isinstance(domain, str) or not domain:

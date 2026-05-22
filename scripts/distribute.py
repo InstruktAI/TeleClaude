@@ -172,6 +172,7 @@ ArtifactFrontmatter = TypedDict(
         "description": str,
         "name": str,
         "argument-hint": str,
+        "domain": str,
         "hooks": object,
         "parameters": list[
             dict[str, object]  # guard: loose-dict - TOML parsed data — pyproject config
@@ -318,6 +319,38 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     return filtered
 
 
+def _is_truthy_flag(value: object) -> bool:
+    """Treat a frontmatter boolean flag as true whether it survives as bool or string.
+
+    YAML reserializers (e.g. the Codex single-quote normalizer) can stringify a
+    ``true`` into ``'True'``; accept both so the flag's meaning is robust.
+    """
+    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
+def _needs_domain_baseline_domain(content: str, *, project_root: Path, current_path: Path) -> str | None:
+    """Domain to stamp on a command whose role procedure requests baseline injection.
+
+    Read from the source content *before* inline expansion strips the `@`-refs:
+    if a required-read procedure declares ``needs_domain_baseline: true``, return
+    its ``domain`` so the deployed command frontmatter carries it. Dispatch reads
+    that frontmatter at SessionStart (frontmatter survives inlining; refs do not).
+    """
+    for match in INLINE_REF_RE.finditer(content):
+        resolved = resolve_ref_path(match.group(1), root_path=project_root, current_path=current_path)
+        if not resolved or not resolved.exists():
+            continue
+        try:
+            metadata = frontmatter.loads(resolved.read_text(encoding="utf-8")).metadata
+        except Exception:  # pylint: disable=broad-exception-caught
+            continue
+        if _is_truthy_flag(metadata.get("needs_domain_baseline")):
+            domain = metadata.get("domain")
+            if isinstance(domain, str) and domain:
+                return domain
+    return None
+
+
 def _prepare_post(
     post: Post,
     *,
@@ -326,7 +359,13 @@ def _prepare_post(
     project_root: Path,
     current_path: Path,
     warn_only: bool,
+    kind: str,
 ) -> Post:
+    stamped_domain = (
+        _needs_domain_baseline_domain(post.content, project_root=project_root, current_path=current_path)
+        if kind == "command"
+        else None
+    )
     content = process_file(post.content, agent_prefix, agent_name)
     if _should_expand_inline(agent_name):
         content = expand_inline_refs(
@@ -336,6 +375,8 @@ def _prepare_post(
             warn_only=warn_only,
         )
     metadata = _filter_frontmatter(post.metadata, agent_name)
+    if stamped_domain:
+        metadata["domain"] = stamped_domain
     return Post(content, **metadata)
 
 
@@ -1102,6 +1143,7 @@ def main() -> None:  # noqa: C901
                                 post,
                                 agent_prefix=config["prefix"],
                                 agent_name=agent_name,
+                                kind=spec.artifact_kind,
                                 project_root=Path(project_root),
                                 current_path=Path(item_path),
                                 warn_only=args.warn_only,

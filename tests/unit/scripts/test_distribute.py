@@ -25,6 +25,7 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts import distribute
 from scripts.distribute import (
     _inflate_domain_baseline,
+    _needs_domain_baseline_domain,
     expand_exec_directives,
     expand_inline_refs,
     transform_to_codex,
@@ -130,6 +131,42 @@ def test_expand_inline_refs_inlines_referenced_snippet_transitively(
     result = expand_inline_refs(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
 
     assert result == snapshot
+
+
+def test_needs_domain_baseline_domain_resolves_from_flagged_procedure(tmp_path: Path) -> None:
+    """A command referencing a procedure with needs_domain_baseline yields that procedure's domain."""
+    proc = tmp_path / "docs" / "proc.md"
+    proc.parent.mkdir(parents=True, exist_ok=True)
+    proc.write_text("---\ndomain: software-development\nneeds_domain_baseline: true\n---\n# Proc\n", encoding="utf-8")
+    content = "# Cmd\n\n## Required reads\n\n- @docs/proc.md\n"
+
+    result = _needs_domain_baseline_domain(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
+
+    assert result == "software-development"
+
+
+def test_needs_domain_baseline_domain_tolerates_stringified_flag(tmp_path: Path) -> None:
+    """A reserialized 'True' string flag still resolves the domain (YAML reserializer guard)."""
+    proc = tmp_path / "docs" / "proc.md"
+    proc.parent.mkdir(parents=True, exist_ok=True)
+    proc.write_text("---\ndomain: software-development\nneeds_domain_baseline: 'True'\n---\n# Proc\n", encoding="utf-8")
+    content = "# Cmd\n\n## Required reads\n\n- @docs/proc.md\n"
+
+    result = _needs_domain_baseline_domain(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
+
+    assert result == "software-development"
+
+
+def test_needs_domain_baseline_domain_none_when_procedure_unflagged(tmp_path: Path) -> None:
+    """A referenced procedure without the flag yields no stamped domain."""
+    proc = tmp_path / "docs" / "proc.md"
+    proc.parent.mkdir(parents=True, exist_ok=True)
+    proc.write_text("---\ndomain: software-development\n---\n# Proc\n", encoding="utf-8")
+    content = "# Cmd\n\n## Required reads\n\n- @docs/proc.md\n"
+
+    result = _needs_domain_baseline_domain(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
+
+    assert result is None
 
 
 def test_inflate_domain_baseline_appends_progressive_index(tmp_path: Path, snapshot: SnapshotAssertion) -> None:

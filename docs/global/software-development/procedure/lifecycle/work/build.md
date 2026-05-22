@@ -1,7 +1,7 @@
 ---
 description: 'Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.'
 domain: 'software-development'
-needs_domain_baseline: 'True'
+needs_domain_baseline: true
 id: 'software-development/procedure/lifecycle/work/build'
 scope: 'domain'
 type: 'procedure'

@@ -1044,3 +1044,40 @@ class TestSessionsActionsRoutes:
 
         assert exc_info.value.status_code == 503
         mock_service.escalate_session.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# _resolve_command_domain_field — read the build-stamped domain frontmatter
+# ---------------------------------------------------------------------------
+
+
+def _deployed_command(commands_dir: Path, *, frontmatter_lines: str) -> None:
+    """Write a deployed command (procedure already inlined; only frontmatter + body remain)."""
+    commands_dir.mkdir(parents=True, exist_ok=True)
+    (commands_dir / "next-role.md").write_text(
+        f"---\nargument-hint: '[slug]'\n{frontmatter_lines}---\n# Role\n\nYou are now the Role.\n\nInlined procedure body.\n",
+        encoding="utf-8",
+    )
+
+
+def test_resolve_domain_reads_stamped_frontmatter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dispatch domain is the command's build-stamped domain frontmatter."""
+    _deployed_command(tmp_path / "commands", frontmatter_lines="domain: software-development\n")
+    monkeypatch.setattr(sessions_actions_routes, "COMMANDS_DIR", tmp_path / "commands")
+
+    assert sessions_actions_routes._resolve_command_domain_field("next-role") == "software-development"
+
+
+def test_resolve_domain_none_when_unstamped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A command without a stamped domain triggers no injection."""
+    _deployed_command(tmp_path / "commands", frontmatter_lines="")
+    monkeypatch.setattr(sessions_actions_routes, "COMMANDS_DIR", tmp_path / "commands")
+
+    assert sessions_actions_routes._resolve_command_domain_field("next-role") is None
+
+
+def test_resolve_domain_none_when_command_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unknown command resolves to no domain."""
+    monkeypatch.setattr(sessions_actions_routes, "COMMANDS_DIR", tmp_path / "commands")
+
+    assert sessions_actions_routes._resolve_command_domain_field("does-not-exist") is None
