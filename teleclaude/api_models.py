@@ -224,6 +224,7 @@ class TodoDTO(BaseModel):
     kind: str | None = None
     ready_since: str | None = None
     updated_at: str | None = None
+    created_at: str | None = None
     band: str | None = None
     lifecycle_phase: str | None = None
     integration_phase: str | None = None

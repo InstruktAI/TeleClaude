@@ -729,3 +729,171 @@ async def test_assemble_roadmap_excludes_removed_entries(tmp_path: Path) -> None
     todos = assemble_roadmap_from_db(str(project), include_icebox=True, include_delivered=True)
 
     assert [t.slug for t in todos] == ["kept"]
+
+
+# --- Section ordering (newest-first) ---
+
+_ORD_READY_OLDER = "ready-older"
+_ORD_READY_NEWER = "ready-newer"
+_ORD_READY_HOLDER = "ready-holder"
+_ORD_READY_HOLDER_CHILD = "ready-holder-child"
+_ORD_PREP_OLDER = "prep-older"
+_ORD_PREP_NEWER = "prep-newer"
+_ORD_DELIVERED_OLDER = "ord-delivered-older"
+_ORD_DELIVERED_NEWER = "ord-delivered-newer"
+_ORD_ICEBOX_OLDER = "ord-icebox-older"
+_ORD_ICEBOX_NEWER = "ord-icebox-newer"
+
+_ORD_READY_OLDER_SINCE = "2026-05-20T00:00:00+00:00"
+_ORD_READY_NEWER_SINCE = "2026-05-21T00:00:00+00:00"
+_ORD_PREP_OLDER_CREATED = "2026-05-18T00:00:00+00:00"
+_ORD_PREP_NEWER_CREATED = "2026-05-22T00:00:00+00:00"
+_ORD_DELIVERED_OLDER_AT = "2026-05-19T00:00:00+00:00"
+_ORD_DELIVERED_NEWER_AT = "2026-05-21T00:00:00+00:00"
+_ORD_ICEBOX_OLDER_UPDATED = "2026-05-17T00:00:00+00:00"
+_ORD_ICEBOX_NEWER_UPDATED = "2026-05-22T00:00:00+00:00"
+
+
+def _ordering_project(tmp_path: Path) -> Path:
+    project = tmp_path / "ordering-project"
+    project.mkdir()
+    (project / ".teleclaude").mkdir()
+    return project
+
+
+def _ordering_db(project: Path) -> TodosDb:
+    return TodosDb(str(project / ".teleclaude" / "todos.db"))
+
+
+def _set_ordering_fields(
+    database: TodosDb,
+    slug: str,
+    *,
+    ready_since: str | None = None,
+    updated_at: str | None = None,
+    created_at: str | None = None,
+) -> None:
+    with database._sync_session() as session:
+        entry = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == slug).limit(1)).one()
+        entry.ready_since = ready_since
+        if updated_at is not None:
+            entry.updated_at = updated_at
+        if created_at is not None:
+            entry.created_at = created_at
+        session.add(entry)
+        session.commit()
+
+
+async def _add_ordering_state(database: TodosDb, slug: str, *, lifecycle_phase: str) -> None:
+    await database.add_to_roadmap(slug, description=slug)
+    await database.write_state(
+        slug,
+        {
+            "schema_version": 2,
+            "kind": "todo",
+            "phase": "in_progress",
+            "lifecycle_phase": lifecycle_phase,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_active_roadmap_ordering_groups_ready_then_newest_first(tmp_path: Path) -> None:
+    """Active rows group Ready above In-prep, newest-first within each group."""
+    old_created = "2026-05-10T00:00:00+00:00"
+    project = _ordering_project(tmp_path)
+    database = _ordering_db(project)
+    await database.initialize()
+    try:
+        await _add_ordering_state(database, _ORD_PREP_NEWER, lifecycle_phase="prd_drafting")
+        await _add_ordering_state(database, _ORD_READY_NEWER, lifecycle_phase="prepared")
+        await _add_ordering_state(database, _ORD_PREP_OLDER, lifecycle_phase="prd_drafting")
+        await _add_ordering_state(database, _ORD_READY_OLDER, lifecycle_phase="prepared")
+        _set_ordering_fields(database, _ORD_READY_NEWER, ready_since=_ORD_READY_NEWER_SINCE, created_at=old_created)
+        _set_ordering_fields(database, _ORD_READY_OLDER, ready_since=_ORD_READY_OLDER_SINCE, created_at=old_created)
+        _set_ordering_fields(database, _ORD_PREP_NEWER, ready_since=None, created_at=_ORD_PREP_NEWER_CREATED)
+        _set_ordering_fields(database, _ORD_PREP_OLDER, ready_since=None, created_at=_ORD_PREP_OLDER_CREATED)
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project))
+
+    # Ready band (newest ready_since first), then In-prep band (newest created_at first).
+    assert [todo.slug for todo in todos] == [_ORD_READY_NEWER, _ORD_READY_OLDER, _ORD_PREP_NEWER, _ORD_PREP_OLDER]
+
+
+@pytest.mark.asyncio
+async def test_active_roadmap_ordering_marks_derived_ready_holder_ready(tmp_path: Path) -> None:
+    project = _ordering_project(tmp_path)
+    database = _ordering_db(project)
+    await database.initialize()
+    try:
+        await database.add_to_roadmap(_ORD_READY_HOLDER)
+        await database.add_to_roadmap(_ORD_READY_HOLDER_CHILD, group_slug=_ORD_READY_HOLDER)
+        await database.write_state(
+            _ORD_READY_HOLDER_CHILD,
+            {
+                "schema_version": 2,
+                "kind": "todo",
+                "phase": "in_progress",
+                "lifecycle_phase": "prepared",
+            },
+        )
+        _set_ordering_fields(
+            database,
+            _ORD_READY_HOLDER_CHILD,
+            ready_since=_ORD_READY_OLDER_SINCE,
+            created_at="2026-05-10T00:00:00+00:00",
+        )
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project))
+    holder = next(todo for todo in todos if todo.slug == _ORD_READY_HOLDER)
+
+    assert holder.status == RoadmapStatus.READY
+    assert holder.ready_since == _ORD_READY_OLDER_SINCE
+
+
+@pytest.mark.asyncio
+async def test_delivered_roadmap_ordering_uses_newest_delivery_first(tmp_path: Path) -> None:
+    """Delivered rows sort by delivered_at descending."""
+    project = _ordering_project(tmp_path)
+    database = _ordering_db(project)
+    await database.initialize()
+    try:
+        for slug, delivered_at in (
+            (_ORD_DELIVERED_OLDER, _ORD_DELIVERED_OLDER_AT),
+            (_ORD_DELIVERED_NEWER, _ORD_DELIVERED_NEWER_AT),
+        ):
+            await _add_ordering_state(database, slug, lifecycle_phase="finalize_ready")
+            await database.deliver(slug, commit=slug, delivered_at=delivered_at)
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), delivered_only=True)
+
+    assert [todo.slug for todo in todos] == [_ORD_DELIVERED_NEWER, _ORD_DELIVERED_OLDER]
+
+
+@pytest.mark.asyncio
+async def test_icebox_roadmap_ordering_uses_newest_update_first(tmp_path: Path) -> None:
+    """Icebox rows sort by updated_at descending."""
+    project = _ordering_project(tmp_path)
+    database = _ordering_db(project)
+    await database.initialize()
+    try:
+        for slug, updated_at in (
+            (_ORD_ICEBOX_OLDER, _ORD_ICEBOX_OLDER_UPDATED),
+            (_ORD_ICEBOX_NEWER, _ORD_ICEBOX_NEWER_UPDATED),
+        ):
+            await _add_ordering_state(database, slug, lifecycle_phase="prd_drafting")
+            assert await database.freeze(slug) is True
+            _set_ordering_fields(database, slug, updated_at=updated_at)
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), icebox_only=True)
+
+    assert [todo.status for todo in todos] == [RoadmapStatus.ICEBOX, RoadmapStatus.ICEBOX]
+    assert [todo.slug for todo in todos] == [_ORD_ICEBOX_NEWER, _ORD_ICEBOX_OLDER]

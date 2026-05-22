@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
@@ -37,10 +38,11 @@ for one builder session, this phase owns the split.
 
 1. `telec todo artifacts read {slug} prd` exists and is human-approved.
 2. `architecture` is either reviewer-approved or explicitly skipped.
-3. `todos.db` todo list is readable.
-4. Slug is active (not icebox, not delivered).
+3. Slug is active (not icebox, not delivered).
 
 ## Steps
+
+First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
 
 ### 1. Read and ground
 
@@ -104,10 +106,11 @@ Evaluate:
 **If the work fails the scope/size gate, stop here.** Do not draft a plan for
 work that will fail gate validation. Split first:
 
-- create focused child todos
-- seed them from the human-approved parent PRD and any reviewer-approved architecture-snippet slices
-- add dependency ordering in the `todos.db` todo list
-- call `telec todo split <slug> --into <child1> --into <child2> ...`
+- call `telec todo split <slug> --into <child1> --into <child2> ...` — this
+  creates the children and clones the parent `input` into each
+- narrow each child's input to its own scope, drawing on the human-approved
+  parent PRD and any reviewer-approved architecture-snippet slices
+- add dependency ordering between the children with `telec todo set-deps`
 - stop treating the parent as directly prepare/work-ready
 
 If the work passes the scope/size gate, continue to plan drafting.

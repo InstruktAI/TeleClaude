@@ -11,9 +11,8 @@ from textual.app import App, ComposeResult
 from teleclaude.api_models import ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.views.preparation import PreparationView
-from teleclaude.cli.tui.widgets.todo_band_separator import TodoBandSeparator
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
-from teleclaude.core.roadmap import IN_PREP_BAND, READY_BAND
+from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
 _FINGERPRINT_SLUG = "todo-1"
 _VERSION_BEFORE = 1
@@ -83,7 +82,7 @@ def _fingerprint_project(version_total: int) -> ProjectWithTodosDTO:
     )
 
 
-def _band_project() -> ProjectWithTodosDTO:
+def _active_project() -> ProjectWithTodosDTO:
     return ProjectWithTodosDTO(
         computer="local",
         name="Test Project",
@@ -94,7 +93,6 @@ def _band_project() -> ProjectWithTodosDTO:
                 status="ready",
                 has_requirements=True,
                 has_impl_plan=True,
-                band=READY_BAND,
                 ready_since="2026-05-20T00:00:00+00:00",
             ),
             TodoDTO(
@@ -102,8 +100,7 @@ def _band_project() -> ProjectWithTodosDTO:
                 status="in_progress",
                 has_requirements=True,
                 has_impl_plan=False,
-                band=IN_PREP_BAND,
-                updated_at="2026-05-21T00:00:00+00:00",
+                created_at="2026-05-21T00:00:00+00:00",
             ),
         ],
     )
@@ -123,10 +120,10 @@ def test_todo_fingerprint_changes_when_only_artifact_version_total_changes() -> 
 
 
 @pytest.mark.unit
-def test_todo_fingerprint_changes_when_band_changes() -> None:
-    before = PreparationView._todo_fingerprint([_band_project()])
-    project = _band_project()
-    project.todos[0] = project.todos[0].model_copy(update={"band": IN_PREP_BAND})
+def test_todo_fingerprint_changes_when_ready_since_changes() -> None:
+    before = PreparationView._todo_fingerprint([_active_project()])
+    project = _active_project()
+    project.todos[0] = project.todos[0].model_copy(update={"ready_since": "2026-05-25T00:00:00+00:00"})
     after = PreparationView._todo_fingerprint([project])
 
     assert before != after
@@ -134,17 +131,17 @@ def test_todo_fingerprint_changes_when_band_changes() -> None:
 
 @pytest.mark.unit
 @pytest.mark.timeout(60)
-async def test_preparation_view_renders_active_band_separators() -> None:
+async def test_preparation_view_renders_active_rows_without_band_separators() -> None:
     app = _PreparationHarness()
 
     async with app.run_test() as pilot:
         prep = app.query_one("#preparation-view", PreparationView)
-        prep.update_data([_band_project()])
+        prep.update_data([_active_project()])
         await pilot.pause()
 
-        separators = list(prep.query(TodoBandSeparator))
+        rows = list(prep.query(TodoRow))
 
-    assert [separator.band for separator in separators] == [READY_BAND, IN_PREP_BAND]
+    assert len(rows) == 2
 
 
 @pytest.mark.unit

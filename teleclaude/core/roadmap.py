@@ -127,7 +127,7 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
             derived = RoadmapStatus.READY
         else:
             derived = RoadmapStatus.PENDING
-        updates: dict[str, object] = {"status": derived}
+        updates: dict[str, str | None] = {"status": derived}
         if derived == RoadmapStatus.READY:
             updates["band"] = READY_BAND
             updates["ready_since"] = _first_text([leaf.ready_since or leaf.updated_at for leaf in leaf_todos])
@@ -160,19 +160,19 @@ def _with_active_band(todo: TodoDTO, delivered_slug_set: set[str]) -> TodoDTO:
 
 
 def section_sort_key(todo: TodoDTO, *, raw_status: str | None = None) -> tuple[int, object, str]:
-    """Sort key for derived roadmap sections.
+    """Sort key for derived roadmap sections — newest-first within each section.
 
-    Active rows are split into ready/in-prep bands; delivered and icebox rows
-    use descending timestamp keys while preserving ascending sort semantics.
+    Active rows group actionable (Ready band) rows above in-prep rows, then sort
+    newest-first by ``ready_since`` falling back to ``created_at``. Delivered
+    sorts by ``delivered_at``, icebox by ``updated_at``. Slug breaks ties.
     """
     status = raw_status or todo.status
     if status == RoadmapStatus.DELIVERED:
-        return (2, _descending_text_key(todo.delivered_at), todo.slug)
+        return (0, _descending_text_key(todo.delivered_at), todo.slug)
     if status == RoadmapStatus.ICEBOX:
-        return (3, _descending_text_key(todo.updated_at), todo.slug)
-    if todo.band == READY_BAND:
-        return (0, todo.ready_since or todo.updated_at or "", todo.slug)
-    return (1, todo.updated_at or "", todo.slug)
+        return (0, _descending_text_key(todo.updated_at), todo.slug)
+    band_rank = 0 if todo.band == READY_BAND else 1
+    return (band_rank, _descending_text_key(todo.ready_since or todo.created_at), todo.slug)
 
 
 def _apply_section_ordering(
@@ -182,8 +182,7 @@ def _apply_section_ordering(
 ) -> list[TodoDTO]:
     banded: list[TodoDTO] = []
     for todo in todos:
-        raw_status = raw_status_by_slug.get(todo.slug)
-        if raw_status == RoadmapStatus.ACTIVE:
+        if raw_status_by_slug.get(todo.slug) == RoadmapStatus.ACTIVE:
             banded.append(_with_active_band(todo, delivered_slug_set))
         else:
             banded.append(todo)
@@ -252,7 +251,7 @@ def assemble_roadmap_from_db(
         roadmap_started_at = time.perf_counter()
         rows = conn.execute(
             "SELECT id, slug, ready_since, group_slug, description, status, "  # guard: raw-sql
-            f"delivered_at, updated_at FROM roadmap WHERE {where} ORDER BY id",
+            f"delivered_at, updated_at, created_at FROM roadmap WHERE {where} ORDER BY id",
         ).fetchall()
         roadmap_dt = time.perf_counter() - roadmap_started_at
 
@@ -387,6 +386,7 @@ def assemble_roadmap_from_db(
                     kind=kind if isinstance(kind, str) else None,
                     ready_since=row[2],
                     updated_at=row[7],
+                    created_at=row[8],
                     build_status=build_status,
                     review_status=review_status,
                     after=deps_map.get(slug, []),

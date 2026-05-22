@@ -10,8 +10,37 @@ from teleclaude.core.roadmap_tree import build_roadmap_sections, flatten
 
 pytestmark = pytest.mark.unit
 
+_HOLDER = "holder"
+_READY_OLDER = "ready-older"
+_READY_NEWER = "ready-newer"
+_PREP_OLDER = "prep-older"
+_PREP_NEWER = "prep-newer"
+_DELIVERED_OLDER = "delivered-older"
+_DELIVERED_NEWER = "delivered-newer"
+_ICEBOX_OLDER = "icebox-older"
+_ICEBOX_NEWER = "icebox-newer"
 
-def _todo(slug: str, status: RoadmapStatus, *, group: str | None = None, after: list[str] | None = None) -> TodoDTO:
+_READY_OLDER_SINCE = "2026-05-20T00:00:00+00:00"
+_READY_NEWER_SINCE = "2026-05-21T00:00:00+00:00"
+_PREP_OLDER_CREATED = "2026-05-18T00:00:00+00:00"
+_PREP_NEWER_CREATED = "2026-05-22T00:00:00+00:00"
+_DELIVERED_OLDER_AT = "2026-05-19T00:00:00+00:00"
+_DELIVERED_NEWER_AT = "2026-05-21T00:00:00+00:00"
+_ICEBOX_OLDER_UPDATED = "2026-05-17T00:00:00+00:00"
+_ICEBOX_NEWER_UPDATED = "2026-05-22T00:00:00+00:00"
+
+
+def _todo(
+    slug: str,
+    status: RoadmapStatus,
+    *,
+    group: str | None = None,
+    after: list[str] | None = None,
+    ready_since: str | None = None,
+    updated_at: str | None = None,
+    delivered_at: str | None = None,
+    created_at: str | None = None,
+) -> TodoDTO:
     return TodoDTO(
         slug=slug,
         status=status,
@@ -19,6 +48,10 @@ def _todo(slug: str, status: RoadmapStatus, *, group: str | None = None, after: 
         has_impl_plan=False,
         group=group,
         after=after or [],
+        ready_since=ready_since,
+        updated_at=updated_at,
+        delivered_at=delivered_at,
+        created_at=created_at,
     )
 
 
@@ -129,3 +162,72 @@ def test_flatten_yields_depth_and_last_flags() -> None:
         ("root", 0, True),
         ("kid", 1, True),
     ]
+
+
+def test_active_holder_children_sort_newest_first() -> None:
+    """Grouped active children sort newest-first by ready_since, fallback created_at."""
+    sections = build_roadmap_sections(
+        [
+            _todo(_HOLDER, RoadmapStatus.IN_PROGRESS),
+            _todo(_PREP_NEWER, RoadmapStatus.IN_PROGRESS, group=_HOLDER, created_at=_PREP_NEWER_CREATED),
+            _todo(_READY_NEWER, RoadmapStatus.READY, group=_HOLDER, ready_since=_READY_NEWER_SINCE),
+            _todo(_PREP_OLDER, RoadmapStatus.IN_PROGRESS, group=_HOLDER, created_at=_PREP_OLDER_CREATED),
+            _todo(_READY_OLDER, RoadmapStatus.READY, group=_HOLDER, ready_since=_READY_OLDER_SINCE),
+        ]
+    )
+
+    # Anchors: PREP_NEWER 05-22, READY_NEWER 05-21, READY_OLDER 05-20, PREP_OLDER 05-18.
+    assert [child.todo.slug for child in sections.active[0].children] == [
+        _PREP_NEWER,
+        _READY_NEWER,
+        _READY_OLDER,
+        _PREP_OLDER,
+    ]
+
+
+def test_delivered_roots_use_newest_delivery_first() -> None:
+    """Delivered root siblings use delivered_at descending."""
+    sections = build_roadmap_sections(
+        [
+            _todo(_DELIVERED_OLDER, RoadmapStatus.DELIVERED, delivered_at=_DELIVERED_OLDER_AT),
+            _todo(_DELIVERED_NEWER, RoadmapStatus.DELIVERED, delivered_at=_DELIVERED_NEWER_AT),
+        ]
+    )
+
+    assert [node.todo.slug for node in sections.delivered] == [_DELIVERED_NEWER, _DELIVERED_OLDER]
+
+
+def test_delivered_holder_children_use_newest_delivery_first() -> None:
+    sections = build_roadmap_sections(
+        [
+            _todo(_HOLDER, RoadmapStatus.DELIVERED),
+            _todo(_DELIVERED_OLDER, RoadmapStatus.DELIVERED, group=_HOLDER, delivered_at=_DELIVERED_OLDER_AT),
+            _todo(_DELIVERED_NEWER, RoadmapStatus.DELIVERED, group=_HOLDER, delivered_at=_DELIVERED_NEWER_AT),
+        ]
+    )
+
+    assert [child.todo.slug for child in sections.delivered[0].children] == [_DELIVERED_NEWER, _DELIVERED_OLDER]
+
+
+def test_icebox_roots_use_newest_update_first() -> None:
+    """Icebox root siblings use updated_at descending."""
+    sections = build_roadmap_sections(
+        [
+            _todo(_ICEBOX_OLDER, RoadmapStatus.ICEBOX, updated_at=_ICEBOX_OLDER_UPDATED),
+            _todo(_ICEBOX_NEWER, RoadmapStatus.ICEBOX, updated_at=_ICEBOX_NEWER_UPDATED),
+        ]
+    )
+
+    assert [node.todo.slug for node in sections.icebox] == [_ICEBOX_NEWER, _ICEBOX_OLDER]
+
+
+def test_icebox_holder_children_use_newest_update_first() -> None:
+    sections = build_roadmap_sections(
+        [
+            _todo(_HOLDER, RoadmapStatus.ICEBOX),
+            _todo(_ICEBOX_OLDER, RoadmapStatus.ICEBOX, group=_HOLDER, updated_at=_ICEBOX_OLDER_UPDATED),
+            _todo(_ICEBOX_NEWER, RoadmapStatus.ICEBOX, group=_HOLDER, updated_at=_ICEBOX_NEWER_UPDATED),
+        ]
+    )
+
+    assert [child.todo.slug for child in sections.icebox[0].children] == [_ICEBOX_NEWER, _ICEBOX_OLDER]

@@ -6,10 +6,10 @@ scope: project
 visibility: public
 status: target
 delivered_by:
-- v2-workflow-cutover
-- roadmap-trash-reveal-ui
-- v2-workflow-cli-refinement-commands
-applies_to: both
+  - v2-workflow-cutover
+  - roadmap-trash-reveal-ui
+  - v2-workflow-cli-refinement-commands
+applies_to: v2
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---
@@ -135,7 +135,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 - **Invariants:**
   - Every roadmap entry references exactly one todo (1:1), keyed by durable row identity. At most one **live** entry exists per slug; retained `delivered`/`removed` rows may share that slug as additional historical rows.
   - The dependency graph (`after` edges across all entries) is a DAG.
-  - Ordering within the active todo list is derived from section membership and per-section timestamps; the system does not support manual reorder.
+  - Ordering within each section is derived newest-first from per-section timestamps; the system does not support manual reorder.
   - Icebox entries do NOT participate in the active dependency graph; unfreezing restores them.
   - Delivered entries remain in the todo list (visible via `--include-delivered`) for history.
   - **Removal is soft and retained.** `telec todo remove` marks the entry `status=removed`, `removed_at=now()`, and writes the removal tombstone (`prev_status` + `removed_deps`). It does NOT delete the entry's Todo state, artifacts, or artifact-version history — survival for reactivation is the point. The roadmap row itself is also retained (not physically deleted) during the retention window: the FK from `todo_state`/`todo_artifacts` to the roadmap row is `ON DELETE CASCADE`, so physically deleting the row at remove-time would destroy the very history the soft-delete exists to keep. The exception to "retain everything" is **all slug-keyed teardown**, which runs at soft-remove while the slug unambiguously names this entry: both directions of the entry's live `roadmap_deps` rows are deleted (outgoing snapshotted into `removed_deps` first; inbound discarded), and the slug's git worktree, local + remote branch, and workspace directory are cleaned up. None of this is deferred to purge: by purge time a same-slug live todo may exist, and any slug-keyed operation would destroy that live todo's edges or working resources. The durable record (row + state + artifacts + versions + tombstone) is what is retained.
@@ -148,9 +148,9 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 - **Identifier:** the per-project roadmap is unique per project; no separate identifier.
 - **Lifecycle:** Created when the project is initialized. Viewed through `telec todo list`; mutated by `telec todo create/remove/freeze/unfreeze/deliver`, dependency-setting primitives, lifecycle state machines, and recovery primitives. `remove` is soft + retained (above), finalized by the maintenance retention purge or reversed by reactivation. Persists for the project's lifetime.
 
-### Banded ordering
+### Section ordering
 
-The default roadmap order is derived, not manually positioned. Active rows are split into a **Ready** band followed by an **In prep** band. A row enters Ready only when all `after` dependencies are delivered and either its kind is `bug` / `prepped` or its lifecycle phase is one of `prepared`, `build_started`, `build_complete`, `review_changes_requested`, or `review_approved`; Ready rows sort by `ready_since` (falling back to `updated_at`) and then slug. In-prep rows sort by `updated_at` and then slug. Delivered and icebox rows are optional sections outside the active bands; delivered sorts newest-first by `delivered_at`, icebox newest-first by `updated_at`. Removed rows are persisted for recovery but absent from the default order.
+The default roadmap order is derived, not manually positioned. The dependency tree is preserved (a row nests under its `after`/holder parent), and sibling rows sort newest-first with slug breaking ties. Active rows are grouped into a **Ready** band above an **In prep** band — a row is Ready when all `after` dependencies are delivered and either its kind is `bug` / `prepped` or its lifecycle phase is one of `prepared`, `build_started`, `build_complete`, `review_changes_requested`, `review_approved`. Within each band, rows sort newest-first by `ready_since`, falling back to `created_at` when a row has not yet entered the ready state. This grouping governs ordering only; the UI renders the active list as a single tree without band header lines. Delivered rows sort by `delivered_at`; icebox rows by `updated_at`. `ready_since` is stamped by the lifecycle state machine when a row first becomes ready and cleared on freeze and deliver. Removed rows are persisted for recovery but absent from the default order.
 
 #### Artifact (aggregate, lives inside Todo)
 
@@ -304,15 +304,15 @@ cutover.
     roadmap.
   - **`integration`** — slug-keyed subscription bookkeeping. Receives the
     pair from the bus subscriber the same way the daemon does.
-  A rename changes the aggregate's active alias; consumers that cache by
-  slug cannot learn the re-key from a generic `workflow.todo.updated`
-  (which carries only the post-rename slug), so a dedicated event carrying
-  the `(old_slug, new_slug)` pair is required rather than reusing
-  `updated`. Exhaustive consumer-wiring breadth (including the per-consumer
-  fallback when a payload-aware dispatcher has not yet been wired) is an
-  implementation-plan concern; the durable contract is the `(old_slug,
-  new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
-  WebSocket / integration subscriber.
+    A rename changes the aggregate's active alias; consumers that cache by
+    slug cannot learn the re-key from a generic `workflow.todo.updated`
+    (which carries only the post-rename slug), so a dedicated event carrying
+    the `(old_slug, new_slug)` pair is required rather than reusing
+    `updated`. Exhaustive consumer-wiring breadth (including the per-consumer
+    fallback when a payload-aware dispatcher has not yet been wired) is an
+    implementation-plan concern; the durable contract is the `(old_slug,
+new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
+    WebSocket / integration subscriber.
 - **Idempotency key:** `(old_slug, new_slug, renamed_at)`.
 - **Posture:** `commit-then-emit`.
 

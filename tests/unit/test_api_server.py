@@ -166,6 +166,7 @@ class TestApiServerHttpRoutes:
                 "kind": None,
                 "ready_since": None,
                 "updated_at": None,
+                "created_at": None,
                 "band": None,
                 "lifecycle_phase": None,
                 "integration_phase": None,
