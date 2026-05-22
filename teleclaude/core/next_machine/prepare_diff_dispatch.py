@@ -2,7 +2,7 @@
 explicit dispatch reasons.
 
 Re-entry is the base case for prepare's downstream-artifact dispatches:
-build-specs, prepare-plan, review-architecture, review-specs, review-plan,
+prepare-plan, review-architecture, review-specs, review-plan,
 and drift analysis. The orchestrator must tell the worker *why* it was
 dispatched so the worker can pick the right behavior (produce fresh, fix
 findings, refresh against upstream changes, or verify alignment when

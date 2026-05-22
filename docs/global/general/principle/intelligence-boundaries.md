@@ -18,7 +18,7 @@ Heuristics built on regex, word counts, or hardcoded vocabulary are correct only
 
 ## Implications
 
-- When the impulse arises to *build a validator / classifier / scorer / checker for X*, X is almost always semantic. The impulse is the warning sign. Load `general/policy/no-semantic-validators` before writing the check.
+- When the impulse arises to *build a validator / classifier / scorer / checker for X*, X is almost always semantic. The impulse is the warning sign. Load `software-development/policy/no-semantic-validators` before writing the check.
 - Policy on agent output lives in the agent's briefing, not in transport, validation, or scoring code that wraps the agent.
 
 ## Tensions
