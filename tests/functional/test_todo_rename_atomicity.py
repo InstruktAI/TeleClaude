@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import pytest
-from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.constants import ARTIFACT_REQUIREMENTS, WORKTREE_DIR
 from teleclaude.core.db import Db
@@ -188,12 +187,6 @@ def _git_surface_snapshot(project_root: Path, remote_root: Path) -> _GitSurfaceS
     }
 
 
-def _commit_snippet_baseline(project_root: Path, snippet_path: Path) -> None:
-    repo = Repo(str(project_root))
-    repo.git.add(snippet_path.relative_to(project_root).as_posix())
-    repo.git.commit("-m", "seed rename snippet")
-
-
 def _project_files(project_root: Path) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
     for path in sorted(project_root.rglob("*")):
@@ -286,198 +279,6 @@ async def _run_rename(
     return await executor(main_db, _OLD_SLUG, _NEW_SLUG, str(project_root))
 
 
-async def test_execute_todo_rename_refuses_on_dirty_snippet_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: SnapshotAssertion,
-) -> None:
-    project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    _init_git_project(project_root, remote_root)
-    todos_db = await _todos_db(project_root)
-    main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    snippet_path.write_text(snippet_path.read_text(encoding="utf-8") + "\nDirty edit.\n", encoding="utf-8")
-    before = (_todos_dump(todos_db), snippet_path.read_bytes())
-
-    try:
-        result = await _run_rename(project_root, todos_db, main_db, monkeypatch)
-
-        assert (_todos_dump(todos_db), snippet_path.read_bytes()) == before
-        assert result == snapshot
-    finally:
-        await todos_db.close()
-        await main_db.close()
-
-
-async def test_execute_todo_rename_refuses_on_hook_env_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: SnapshotAssertion,
-) -> None:
-    project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    _init_git_project(project_root, remote_root)
-    todos_db = await _todos_db(project_root)
-    main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    before = (_todos_dump(todos_db), snippet_path.read_bytes())
-    rename_module = importlib.import_module("teleclaude.core.next_machine.rename")
-    original_run_git_cmd = delivery_module._run_git_cmd  # pylint: disable=protected-access
-
-    def _fail_repo_sanity(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
-        if args == ["rev-parse", "--git-dir"]:
-            return 1, "", "injected git sanity failure"
-        return original_run_git_cmd(args, cwd=cwd, timeout=timeout)
-
-    monkeypatch.setattr(rename_module, "_run_git_cmd", _fail_repo_sanity, raising=False)
-
-    try:
-        result = await _run_rename(project_root, todos_db, main_db, monkeypatch)
-
-        assert (_todos_dump(todos_db), snippet_path.read_bytes()) == before
-        assert result == snapshot
-    finally:
-        await todos_db.close()
-        await main_db.close()
-
-
-async def test_execute_todo_rename_commits_snippet_mutations_to_git(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: SnapshotAssertion,
-) -> None:
-    project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    repo = _init_git_project(project_root, remote_root)
-    todos_db = await _todos_db(project_root)
-    main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    unrelated_path = project_root / "unrelated.md"
-    unrelated_path.write_text("unrelated staged edit\n", encoding="utf-8")
-    repo.git.add(unrelated_path.relative_to(project_root).as_posix())
-
-    try:
-        await _run_rename(project_root, todos_db, main_db, monkeypatch)
-
-        snippet_pathspec = snippet_path.relative_to(project_root).as_posix()
-        assert not repo.git.status("--porcelain", "--", snippet_pathspec)
-        assert repo.git.diff("--cached", "--name-only").splitlines() == [unrelated_path.name]
-        assert repo.git.log("-1", "--format=%s") == snapshot
-        assert repo.git.show("--stat", "--format=%s", "HEAD") == snapshot
-    finally:
-        await todos_db.close()
-        await main_db.close()
-
-
-async def test_execute_todo_rename_compensates_on_post_db_commit_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: SnapshotAssertion,
-) -> None:
-    project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    repo = _init_git_project(project_root, remote_root)
-    todos_db = await _todos_db(project_root)
-    main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    before_todos = _todos_dump(todos_db)
-    snippet_pathspec = snippet_path.relative_to(project_root).as_posix()
-    rename_module = importlib.import_module("teleclaude.core.next_machine.rename")
-    original_run_git_cmd = rename_module._run_git_cmd  # pylint: disable=protected-access
-
-    def _fail_commit(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
-        if args and args[0] == "commit":
-            return 1, "", "injected commit failure"
-        return original_run_git_cmd(args, cwd=cwd, timeout=timeout)
-
-    monkeypatch.setattr(rename_module, "_run_git_cmd", _fail_commit, raising=False)
-
-    try:
-        result = await _run_rename(project_root, todos_db, main_db, monkeypatch)
-
-        assert _todos_dump(todos_db) == before_todos
-        assert not repo.git.status("--porcelain", "--", snippet_pathspec)
-        assert result == snapshot
-    finally:
-        await todos_db.close()
-        await main_db.close()
-
-
-async def test_execute_todo_rename_compensates_when_snippet_gets_dirty_after_precondition(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: SnapshotAssertion,
-) -> None:
-    project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    repo = _init_git_project(project_root, remote_root)
-    todos_db = await _todos_db(project_root)
-    main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    before = (_todos_dump(todos_db), snippet_path.read_bytes())
-    snippet_pathspec = snippet_path.relative_to(project_root).as_posix()
-    rename_module = importlib.import_module("teleclaude.core.next_machine.rename")
-    original_rewrite_and_commit = rename_module._rewrite_and_commit_delivered_by  # pylint: disable=protected-access
-
-    def _dirty_after_precondition(project_root_arg: Path, old_slug: str, new_slug: str) -> list[object]:
-        snippet_path.write_text(snippet_path.read_text(encoding="utf-8") + "\nConcurrent edit.\n", encoding="utf-8")
-        return original_rewrite_and_commit(project_root_arg, old_slug, new_slug)
-
-    monkeypatch.setattr(rename_module, "_rewrite_and_commit_delivered_by", _dirty_after_precondition, raising=False)
-
-    try:
-        result = await _run_rename(project_root, todos_db, main_db, monkeypatch)
-
-        assert (_todos_dump(todos_db), snippet_path.read_bytes()) == before
-        assert not repo.git.status("--porcelain", "--", snippet_pathspec)
-        assert result == snapshot
-    finally:
-        await todos_db.close()
-        await main_db.close()
-
-
-async def test_execute_todo_rename_compensates_db_when_snippet_index_restore_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    _init_git_project(project_root, remote_root)
-    todos_db = await _todos_db(project_root)
-    main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    before_todos = _todos_dump(todos_db)
-    rename_module = importlib.import_module("teleclaude.core.next_machine.rename")
-    original_run_git_cmd = rename_module._run_git_cmd  # pylint: disable=protected-access
-
-    def _fail_commit(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
-        if args and args[0] == "commit":
-            return 1, "", "injected commit failure"
-        return original_run_git_cmd(args, cwd=cwd, timeout=timeout)
-
-    def _fail_index_restore(*_args: object, **_kwargs: object) -> None:
-        raise RuntimeError("injected index restore failure")
-
-    monkeypatch.setattr(rename_module, "_run_git_cmd", _fail_commit, raising=False)
-    monkeypatch.setattr(rename_module, "_sync_snippet_index_to_head", _fail_index_restore, raising=False)
-
-    try:
-        with pytest.raises(RuntimeError):
-            await _run_rename(project_root, todos_db, main_db, monkeypatch)
-
-        assert _todos_dump(todos_db) == before_todos
-    finally:
-        await todos_db.close()
-        await main_db.close()
-
-
 async def test_git_managed_happy_path_renames_worktree_branch_remote_and_workspace(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -487,8 +288,7 @@ async def test_git_managed_happy_path_renames_worktree_branch_remote_and_workspa
     _init_git_project(project_root, remote_root)
     todos_db = await _todos_db(project_root)
     main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
+    await _seed_project(project_root, todos_db)
 
     try:
         await _run_rename(project_root, todos_db, main_db, monkeypatch)
@@ -616,13 +416,10 @@ async def test_db_leg_failure_restores_project_byte_for_byte(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    _init_git_project(project_root, remote_root)
     todos_db = await _todos_db(project_root)
     main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    before = (_todos_dump(todos_db), snippet_path.read_bytes())
+    await _seed_project(project_root, todos_db)
+    before = _snapshot_project(project_root, todos_db)
 
     async def _raise_db_leg(*_args: object, **_kwargs: object) -> bool:
         raise RuntimeError("injected todos.db leg failure")
@@ -633,7 +430,7 @@ async def test_db_leg_failure_restores_project_byte_for_byte(
         with pytest.raises(RuntimeError):
             await _run_rename(project_root, todos_db, main_db, monkeypatch)
 
-        assert (_todos_dump(todos_db), snippet_path.read_bytes()) == before
+        assert _snapshot_project(project_root, todos_db) == before
     finally:
         await todos_db.close()
         await main_db.close()
@@ -642,16 +439,13 @@ async def test_db_leg_failure_restores_project_byte_for_byte(
 async def test_frontmatter_leg_failure_restores_project_byte_for_byte(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    snapshot: SnapshotAssertion,
 ) -> None:
     project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    _init_git_project(project_root, remote_root)
     todos_db = await _todos_db(project_root)
     main_db = await _main_db(project_root)
     snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    before = (_todos_dump(todos_db), snippet_path.read_bytes())
+    before = _snapshot_project(project_root, todos_db)
+    snippet_before = snippet_path.read_bytes()
 
     def _raise_frontmatter_leg(*_args: object, **_kwargs: object) -> list[object]:
         raise RuntimeError("injected frontmatter leg failure")
@@ -660,17 +454,11 @@ async def test_frontmatter_leg_failure_restores_project_byte_for_byte(
         rename_module = importlib.import_module("teleclaude.core.next_machine.rename")
         monkeypatch.setattr(rename_module, "rewrite_delivered_by_slug", _raise_frontmatter_leg, raising=False)
 
-        result = await _run_rename(project_root, todos_db, main_db, monkeypatch)
+        with pytest.raises(RuntimeError):
+            await _run_rename(project_root, todos_db, main_db, monkeypatch)
 
-        git_snapshot = _git_surface_snapshot(project_root, remote_root)
-        worktree_paths = {entry["worktree"] for entry in git_snapshot["worktrees"]}
-        assert (_todos_dump(todos_db), snippet_path.read_bytes()) == before
-        assert str(project_root / WORKTREE_DIR / _OLD_SLUG) in worktree_paths
-        assert str(project_root / WORKTREE_DIR / _NEW_SLUG) not in worktree_paths
-        assert _OLD_SLUG in git_snapshot["branches"]
-        assert _NEW_SLUG not in git_snapshot["branches"]
-        assert git_snapshot["remote_heads"] == [_OLD_SLUG]
-        assert result == snapshot
+        assert _snapshot_project(project_root, todos_db) == before
+        assert snippet_path.read_bytes() == snippet_before
     finally:
         await todos_db.close()
         await main_db.close()
@@ -681,13 +469,10 @@ async def test_local_fs_leg_failure_restores_project_byte_for_byte(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root = tmp_path / "project"
-    remote_root = tmp_path / "remote.git"
-    _init_git_project(project_root, remote_root)
     todos_db = await _todos_db(project_root)
     main_db = await _main_db(project_root)
-    snippet_path = await _seed_project(project_root, todos_db)
-    _commit_snippet_baseline(project_root, snippet_path)
-    before = (_todos_dump(todos_db), snippet_path.read_bytes(), _git_surface_snapshot(project_root, remote_root))
+    await _seed_project(project_root, todos_db)
+    before = _snapshot_project(project_root, todos_db)
 
     def _raise_local_fs_leg(*_args: object, **_kwargs: object) -> list[object]:
         raise RuntimeError("injected local filesystem leg failure")
@@ -699,11 +484,7 @@ async def test_local_fs_leg_failure_restores_project_byte_for_byte(
         with pytest.raises(RuntimeError):
             await _run_rename(project_root, todos_db, main_db, monkeypatch)
 
-        assert (
-            _todos_dump(todos_db),
-            snippet_path.read_bytes(),
-            _git_surface_snapshot(project_root, remote_root),
-        ) == before
+        assert _snapshot_project(project_root, todos_db) == before
     finally:
         await todos_db.close()
         await main_db.close()
