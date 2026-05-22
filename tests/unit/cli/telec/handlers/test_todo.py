@@ -8,21 +8,27 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlmodel import select
 from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_create,
+    _handle_todo_deliver,
     _handle_todo_design,
     _handle_todo_dump,
+    _handle_todo_freeze,
     _handle_todo_reconcile,
     _handle_todo_remove,
     _handle_todo_rename,
     _handle_todo_split,
     _handle_todo_stamp,
+    _handle_todo_unfreeze,
 )
+from teleclaude.constants import RoadmapStatus
 from teleclaude.core.db import Db
 from teleclaude.core.operations.service import OperationsService
-from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db._models import TodoRoadmap
 
 _MODULE = "teleclaude.cli.telec.handlers.todo"
 _RENAME_RESULT = "renamed old-slug->new-slug (todos.db, delivered_by:1, worktree)"
@@ -31,6 +37,37 @@ _RENAME_RESULT = "renamed old-slug->new-slug (todos.db, delivered_by:1, worktree
 _DEPRECATION_KEYWORD = "deprecated"
 _KIND_PREPPED = "prepped"
 _EVENTS_EMIT_PATH = "/events/emit"
+_ACTIVE_SLUG = "active-item"
+_DEPENDENCY_SLUG = "dependency-item"
+_COMMIT_HASH = "abc123"
+_READY_SINCE = "2026-05-20T00:00:00+00:00"
+_TODO_STATE = {"schema_version": 2, "kind": "todo", "phase": "in_progress", "lifecycle_phase": "prepared"}
+
+
+def _make_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    repo_root = tmp_path / "main"
+    worktree = tmp_path / "trees" / "sample"
+    gitdir = repo_root / ".git" / "worktrees" / "sample"
+    gitdir.mkdir(parents=True)
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+    return repo_root, worktree
+
+
+def _make_project(tmp_path: Path) -> Path:
+    project = tmp_path / "project"
+    project.mkdir()
+    return project
+
+
+def _database(project: Path) -> TodosDb:
+    return TodosDb(str(project / ".teleclaude" / "todos.db"))
+
+
+def _entry_status(database: TodosDb, slug: str) -> tuple[str, str | None]:
+    with database._sync_session() as session:
+        entry = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == slug).limit(1)).one()
+        return entry.status, entry.ready_since
 
 
 class TestHandleTodoDump:
@@ -504,3 +541,61 @@ class TestHandleTodoStampEnsureProducer:
             _handle_todo_stamp(["my-slug", "--verdict", "approve", "--phase", "build"])
 
         mock_ensure.assert_not_called()
+
+
+class TestHandleTodoRoadmapVerbs:
+    """telec todo freeze/unfreeze/deliver mutate roadmap status."""
+
+    def test_freeze_unfreeze_round_trip(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        project = _make_project(tmp_path)
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", str(project))
+        monkeypatch.chdir(project)
+        database = _database(project)
+        asyncio.run(database.initialize())
+        try:
+            asyncio.run(database.add_to_roadmap(_ACTIVE_SLUG))
+            asyncio.run(database.write_state(_ACTIVE_SLUG, _TODO_STATE))
+
+            _handle_todo_freeze([_ACTIVE_SLUG])
+            assert _entry_status(database, _ACTIVE_SLUG)[0] == RoadmapStatus.ICEBOX
+
+            _handle_todo_unfreeze([_ACTIVE_SLUG])
+            assert _entry_status(database, _ACTIVE_SLUG)[0] == RoadmapStatus.ACTIVE
+        finally:
+            asyncio.run(database.close())
+
+    def test_deliver_calls_cleanup_delivered_slug(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        db_called: list[tuple[Path, str, str]] = []
+        repo_root, worktree = _make_worktree(tmp_path)
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree))
+        monkeypatch.chdir(worktree)
+        monkeypatch.setattr(
+            f"{_MODULE}._run_db",
+            lambda project_root, slug, method, **_kw: db_called.append((project_root, slug, method)) or True,
+        )
+
+        with patch(f"{_MODULE}.cleanup_delivered_slug") as cleanup:
+            _handle_todo_deliver([_ACTIVE_SLUG, "--commit", _COMMIT_HASH])
+
+        assert db_called[0] == (repo_root, _ACTIVE_SLUG, "deliver")
+        cleanup.assert_called_once_with(str(repo_root), _ACTIVE_SLUG)
+
+    def test_deliver_marks_delivered_and_clears_ready_since(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        project = _make_project(tmp_path)
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", str(project))
+        monkeypatch.chdir(project)
+        database = _database(project)
+        asyncio.run(database.initialize())
+        try:
+            asyncio.run(database.add_to_roadmap(_ACTIVE_SLUG, after=[_DEPENDENCY_SLUG]))
+            asyncio.run(database.write_state(_ACTIVE_SLUG, _TODO_STATE))
+            database.stamp_ready_since_if_null_sync(_ACTIVE_SLUG, _READY_SINCE)
+
+            with patch(f"{_MODULE}.cleanup_delivered_slug"):
+                _handle_todo_deliver([_ACTIVE_SLUG, "--commit", _COMMIT_HASH])
+
+            assert _entry_status(database, _ACTIVE_SLUG) == (RoadmapStatus.DELIVERED, None)
+        finally:
+            asyncio.run(database.close())
