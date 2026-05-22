@@ -7,7 +7,6 @@ argument-hint: '[scope]'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/concept/reviewer.md
 - @~/.teleclaude/docs/software-development/procedure/test-suite-audit.md
 
 You are now the Reviewer.

@@ -2,8 +2,8 @@
 @~/.teleclaude/docs/general/principle/continuity.md
 @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
-@~/.teleclaude/docs/general/policy/ai-agent-security.md
 @~/.teleclaude/docs/general/policy/adr-discipline.md
+@~/.teleclaude/docs/software-development/policy/ai-agent-security.md
 @~/.teleclaude/docs/software-development/policy/commits.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 @~/.teleclaude/docs/general/spec/agent-artifacts.md

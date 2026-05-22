@@ -1,13 +1,11 @@
 ---
-id: project/spec/feature/workflow/todo-management
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-description: Per-project ordered todo list stored in todos.db and managed through todo-scoped
-  commands; sectioned list output, derived active ordering, soft removal, and delivery
-  transitions.
+id: 'project/spec/feature/workflow/todo-management'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+description: 'Per-project ordered todo list stored in todos.db and managed through todo-scoped commands; sectioned list output, derived active ordering, soft removal, and delivery transitions.'
 ---
 
 # Todo Management — Spec

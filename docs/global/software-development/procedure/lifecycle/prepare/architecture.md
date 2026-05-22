@@ -11,8 +11,8 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
+- @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
@@ -83,6 +83,8 @@ above). Note ephemeral tactic decisions on the implementation-plan artifact
   is detected, re-grounding happens before substantive work begins.
 
 ## Steps
+
+First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
 
 ### 1. Load context
 
@@ -212,4 +214,3 @@ the Definition of Done as your review-awareness checklist.
 - ~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - ~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md

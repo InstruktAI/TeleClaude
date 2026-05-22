@@ -78,7 +78,7 @@ scope catch from MVP.
   `DaemonCache.publish_workflow_change`. No-op while nobody uses the v2
   CLI.
 - `make pg-up` / `pg-down` / `pg-reset` and `cargo-build/test/lint/fmt`
-  Makefile targets. Pre-commit hooks invoke `cargo fmt --check` and
+  Makefile targets for non-native Postgres setups. Pre-commit hooks invoke `cargo fmt --check` and
   `cargo clippy --workspace --all-targets -- -D warnings` on Rust
   changes.
 

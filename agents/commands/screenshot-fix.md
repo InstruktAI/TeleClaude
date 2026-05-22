@@ -5,11 +5,7 @@ argument-hint: '[screenshot-path]'
 
 # Screenshot Fix
 
-You are now the Builder.
-
-## Required reads
-
-- @~/.teleclaude/docs/software-development/concept/builder.md
+You are now the Screenshot Fixer.
 
 ## Purpose
 

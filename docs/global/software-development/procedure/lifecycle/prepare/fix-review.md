@@ -47,6 +47,8 @@ Extract:
 
 ## Steps
 
+First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
+
 1. Read the findings artifact in full and categorize issues.
 2. For each Critical and Important issue: understand the issue and the
    referenced file/line; apply the minimal fix to the artifact under review

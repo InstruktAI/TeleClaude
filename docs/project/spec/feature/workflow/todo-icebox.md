@@ -1,13 +1,11 @@
 ---
-id: project/spec/feature/workflow/todo-icebox
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-description: Frozen-but-recoverable state for todos that are not being actively pursued;
-  iceboxed rows are hidden from default list output and ignored by active dispatch
-  until unfrozen.
+id: 'project/spec/feature/workflow/todo-icebox'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+description: 'Frozen-but-recoverable state for todos that are not being actively pursued; iceboxed rows are hidden from default list output and ignored by active dispatch until unfrozen.'
 ---
 
 # Todo Icebox — Spec

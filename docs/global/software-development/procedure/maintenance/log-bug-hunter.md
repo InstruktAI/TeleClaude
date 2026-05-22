@@ -12,7 +12,6 @@ visibility: 'public'
 ## Required reads
 
 @~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
-@docs/project/spec/jobs/log-bug-hunter.md
 
 ## Goal
 

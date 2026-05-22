@@ -58,6 +58,19 @@ block feature work.
 - **Per-service alpha is small.** Each is hours-to-days of focused AI
   execution, not weeks. If a single service migration is taking longer,
   the scope is wrong — split it or simplify.
+- **v1 feature parity is the universal default.** Each service's cutover
+  MUST implement every v1 feature in that service's surface unless a
+  paired `<stem>-v2-diff.md` spec-diff explicitly documents the
+  divergence (per the three-state architecture in
+  `software-development/principle/documentation-first-development`).
+  Trimming a v1 feature without a paired v2-diff is regression by
+  definition, regardless of how clean the v2 surface looks. The
+  parity-gate check is part of every per-service alpha acceptance:
+  inventory v1's feature surface for this service from the existing
+  `feature/<service>/*.md` specs, confirm v2 covers every item or has
+  a paired v2-diff. Until v1-spec-cleanup retires the `applies_to`
+  field, v1 feature specs are tagged `applies_to: v1, status: actual`
+  and serve as the parity-target inventory.
 
 ## Primary flows
 
@@ -189,7 +202,7 @@ sessions doing migration work re-derive architecture from priors and drift.
 8. `crates/telec/` — CLI binary:
    - `telec todo list/show/create/update/remove/freeze/unfreeze/deliver`
    - Embeds workflow + identity + observability
-9. Postgres setup: `docker-compose.yml`, `make pg-up`/`make pg-down`.
+9. Postgres setup: `docker-compose.yml`, `make pg-up`/`make pg-down` when not using native Postgres.
 10. Data migration tool: read v1 SQLite `todos.db` → write to v2 Postgres
     `workflow` schema. Run once.
 11. Cutover: `telec todo` routes to v2 binary; v1 todo

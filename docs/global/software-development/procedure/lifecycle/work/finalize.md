@@ -9,6 +9,10 @@ visibility: 'public'
 
 # Finalize — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/concept/finalizer.md
+
 ## Goal
 
 Advance `origin/main` only through canonical-root orchestrator apply after a worker proves the branch is finalize-ready.

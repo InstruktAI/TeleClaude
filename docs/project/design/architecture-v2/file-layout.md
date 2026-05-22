@@ -424,7 +424,7 @@ While v1 (Python) and v2 (Rust) coexist:
 - `frontend/` is shared — talks to whichever backend exposes the API at
   the time (v1 daemon today, v2 `telec-api` eventually).
 - `Makefile` orchestrates both: `make build` builds both; `make test` runs
-  both; `make pg-up` brings up Postgres for v2.
+  both; `make pg-up` brings up Postgres for v2 if not using native Postgres.
 
 After v2 reaches full parity and v1 is retired, `teleclaude/` deletes.
 

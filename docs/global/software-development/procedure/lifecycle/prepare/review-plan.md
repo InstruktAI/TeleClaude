@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
 
@@ -28,6 +29,8 @@ it without guessing and a reviewer finds no surprises.
   fallback and must be called out in findings.
 
 ## Steps
+
+First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
 
 ### 1. Read context
 

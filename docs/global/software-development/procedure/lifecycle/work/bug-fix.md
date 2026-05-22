@@ -1,7 +1,7 @@
 ---
 description: 'Bug fix phase. Investigate, document, fix, and verify a reported bug in a worktree.'
 domain: 'software-development'
-needs_domain_baseline: true
+needs_domain_baseline: 'True'
 id: 'software-development/procedure/lifecycle/work/bug-fix'
 scope: 'domain'
 type: 'procedure'

@@ -22,7 +22,6 @@ orchestrator calls it in a loop and dispatches the phase command it returns.
 
 ## Preconditions
 
-- `todos.db` todo list exists and is readable.
 - Target slug is active (not icebox, not delivered).
 - If auto-spawned from `telec todo create`, the session may include
   `additional_context` with `human_in_loop: false`.

@@ -27,6 +27,7 @@
 @docs/third-party/gemini-cli/commands.md
 @docs/third-party/gemini-cli/hooks.md
 @docs/third-party/gemini-cli/permissions.md
+@docs/third-party/gemini-cli/policy-engine.md
 @docs/third-party/gemini-cli/skills.md
 @docs/third-party/gemini-cli/sub-agents.md
 @docs/third-party/image-generation/gemini-nano-banana.md

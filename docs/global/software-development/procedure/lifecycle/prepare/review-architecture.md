@@ -30,6 +30,8 @@ rather than inventing one-off patterns.
 
 ## Steps
 
+First read the software-development principles as listed in the software-development baseline that apply to this work with `telec docs get`.
+
 ### 1. Read context
 
 - `telec todo artifacts read {slug} prd` — the approved product contract.

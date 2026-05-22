@@ -205,7 +205,6 @@ class SlashCommand(str, Enum):
 
     NEXT_WORK = "next-work"
     NEXT_INTEGRATE = "next-integrate"
-    NEXT_BUILD_SPECS = "next-build-specs"
     NEXT_CREATE_ART = "next-create-art"
     NEXT_CREATE_HTML = "next-create-html"
 
@@ -226,7 +225,6 @@ class JobRole(str, Enum):
     PREPARE_ORCHESTRATOR = "prepare-orchestrator"
     WORK_ORCHESTRATOR = "work-orchestrator"
     CREATE_ORCHESTRATOR = "create-orchestrator"
-    SPEC_BUILDER = "spec-builder"
     ARTIST = "artist"
     FRONTENDER = "frontender"
     INTEGRATOR = "integrator"

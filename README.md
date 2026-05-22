@@ -151,7 +151,7 @@ What v2 currently delivers:
 Local v2 infrastructure:
 
 ```bash
-make pg-up         # start Postgres 17 + Redis 7 via docker compose
+make pg-up         # start Postgres 17 + Redis 7 via docker compose if not using native Postgres
 psql … -f crates/workflow/migrations/0001_init.sql  # apply schema
 cargo build --release --workspace
 cargo test --workspace
