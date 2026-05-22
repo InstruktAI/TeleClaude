@@ -15,7 +15,6 @@ use chrono::{DateTime, Utc};
 use identity::Principal;
 use sha2::{Digest, Sha256};
 use shared::{ProjectId, Slug, TodoId};
-use similar::TextDiff;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -23,7 +22,7 @@ use crate::errors::WorkflowError;
 use crate::events::{
     ArtifactDeleted, ArtifactWritten, CHANNEL_ARTIFACT_DELETED, CHANNEL_ARTIFACT_WRITTEN,
 };
-use crate::models::{Artifact, ArtifactDiff, ArtifactName};
+use crate::models::{Artifact, ArtifactName};
 use crate::service::WorkflowService;
 
 impl WorkflowService {
@@ -206,34 +205,6 @@ impl WorkflowService {
 
         Ok(())
     }
-
-    /// Return a unified diff between two exact artifact versions.
-    pub async fn artifact_diff(
-        &self,
-        project: ProjectId,
-        slug: &Slug,
-        name: ArtifactName,
-        old_digest: &str,
-        new_digest: &str,
-    ) -> Result<ArtifactDiff, WorkflowError> {
-        let (todo_pk, _) = resolve_todo(self, project, slug).await?;
-        let old_content =
-            artifact_version_content(self.pool(), todo_pk, slug, name, old_digest).await?;
-        let new_content =
-            artifact_version_content(self.pool(), todo_pk, slug, name, new_digest).await?;
-        Ok(ArtifactDiff {
-            slug: slug.clone(),
-            name,
-            old_digest: old_digest.to_owned(),
-            new_digest: new_digest.to_owned(),
-            diff: unified_diff(
-                &format!("{}@{}", artifact_name_label(name), short_digest(old_digest)),
-                &format!("{}@{}", artifact_name_label(name), short_digest(new_digest)),
-                &old_content,
-                &new_content,
-            ),
-        })
-    }
 }
 
 /// Resolve a `(project, slug)` to the bigserial `id` and public `uuid_id`
@@ -280,67 +251,6 @@ pub(crate) fn sha256_hex(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     format!("{:x}", hasher.finalize())
-}
-
-pub(crate) async fn artifact_version_content(
-    pool: &sqlx::PgPool,
-    todo_pk: i64,
-    slug: &Slug,
-    name: ArtifactName,
-    digest: &str,
-) -> Result<String, WorkflowError> {
-    let row = sqlx::query(
-        "select content from workflow.artifact_versions
-         where todo_id = $1 and name = $2 and digest = $3
-         order by created_at desc
-         limit 1",
-    )
-    .bind(todo_pk)
-    .bind(name)
-    .bind(digest)
-    .fetch_optional(pool)
-    .await?;
-    let Some(row) = row else {
-        return Err(WorkflowError::ArtifactVersionNotFound {
-            todo: slug.clone(),
-            name,
-            digest: digest.to_owned(),
-        });
-    };
-    Ok(row.try_get("content")?)
-}
-
-pub(crate) fn unified_diff(old_label: &str, new_label: &str, old: &str, new: &str) -> String {
-    let diff = TextDiff::from_lines(old, new);
-    diff.unified_diff().header(old_label, new_label).to_string()
-}
-
-pub(crate) fn artifact_name_label(name: ArtifactName) -> &'static str {
-    match name {
-        ArtifactName::Input => "input",
-        ArtifactName::Prd => "prd",
-        ArtifactName::Requirements => "requirements",
-        ArtifactName::Architecture => "architecture",
-        ArtifactName::TestSpecs => "test-specs",
-        ArtifactName::ImplementationPlan => "implementation-plan",
-        ArtifactName::Bug => "bug",
-        ArtifactName::QualityChecklist => "quality-checklist",
-        ArtifactName::DesignSpec => "design-spec",
-        ArtifactName::Deferrals => "deferrals",
-        ArtifactName::RequirementsReviewFindings => "requirements-review-findings",
-        ArtifactName::ArchitectureReviewFindings => "architecture-review-findings",
-        ArtifactName::SpecReviewFindings => "spec-review-findings",
-        ArtifactName::PlanReviewFindings => "plan-review-findings",
-        ArtifactName::ReviewFindings => "review-findings",
-    }
-}
-
-pub(crate) fn short_digest(digest: &str) -> &str {
-    if digest.len() > 12 {
-        &digest[..12]
-    } else {
-        digest
-    }
 }
 
 pub(crate) fn updated_by(principal: &Principal) -> Option<String> {

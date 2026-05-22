@@ -34,70 +34,9 @@ pub enum WorkflowError {
     #[error("create_todo requires a non-empty input artifact")]
     EmptyInputArtifact,
 
-    /// The update request tried to encode structured mutations as a JSON/YAML
-    /// patch body instead of using typed update arguments.
-    #[error("todo update refuses patch blobs; use typed update arguments")]
-    PatchBlobRejected,
-
-    /// The update request supplied mutually exclusive content routing flags.
-    #[error("ambiguous todo update content routing")]
-    AmbiguousTodoUpdate,
-
-    /// Prepped update fast-paths require a human principal.
-    #[error("prepped todo update requires a human principal")]
-    PreppedUpdateRequiresHuman,
-
-    /// The named artifact is retired for writes.
-    #[error("artifact is retired for writes: name={name:?}")]
-    RetiredArtifactWrite { name: ArtifactName },
-
-    /// Kind can only be changed while the todo is still in the prepare stage.
-    #[error("kind update is not compatible with phase {phase:?} for slug {slug}: kind={kind:?}")]
-    KindUpdatePhaseMismatch {
-        slug: Slug,
-        phase: LifecyclePhase,
-        kind: crate::models::TodoKind,
-    },
-
-    /// Rename requires distinct old/new slugs.
-    #[error("todo rename requires distinct slugs: {slug}")]
-    TodoRenameNoop { slug: Slug },
-
-    /// The target slug is already owned by a non-removed roadmap entry.
-    #[error("todo rename target slug is already held: {slug}")]
-    TodoRenameCollision { slug: Slug },
-
-    /// Delivered todos are historical records and cannot be re-keyed.
-    #[error("delivered todo cannot be renamed: {slug}")]
-    TodoRenameDelivered { slug: Slug },
-
-    /// A snippet body contains the slug outside managed frontmatter.
-    #[error("todo rename found unsafe snippet reference in {path}: slug={slug}")]
-    TodoRenameUnsafeReference { path: String, slug: Slug },
-
-    /// A non-terminal daemon operation still binds the source slug.
-    #[error("todo rename blocked by non-terminal operation {operation_id}: slug={slug}")]
-    TodoRenameOperationBound { slug: Slug, operation_id: String },
-
-    /// An open daemon session still binds the source slug.
-    #[error("todo rename blocked by open session {session_id}: slug={slug}")]
-    TodoRenameSessionBound { slug: Slug, session_id: String },
-
-    /// A project-local filesystem or git destination already exists.
-    #[error("todo rename target surface already exists: surface={surface} target={target}")]
-    TodoRenameSurfaceCollision { surface: String, target: String },
-
     /// The named artifact is not attached to the referenced todo.
     #[error("artifact not found for todo {todo}: name={name:?}")]
     ArtifactNotFound { todo: Slug, name: ArtifactName },
-
-    /// No artifact version has the requested digest.
-    #[error("artifact version not found for todo {todo}: name={name:?} digest={digest}")]
-    ArtifactVersionNotFound {
-        todo: Slug,
-        name: ArtifactName,
-        digest: String,
-    },
 
     /// The requested lifecycle transition is not legal under the state
     /// machine.
@@ -134,23 +73,6 @@ pub enum WorkflowError {
     /// JSON (de)serialization failed while reading or writing a payload.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
-
-    /// Filesystem operation failed while mutating project-local workflow data.
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-
-    /// Git repository operation failed while mutating project-local workflow data.
-    #[error("git error: {0}")]
-    Git(#[from] git2::Error),
-
-    /// A git CLI operation failed where the native Rust binding does not expose
-    /// the required porcelain-equivalent behavior.
-    #[error("git command failed: {command}: {stderr}")]
-    GitCommand { command: String, stderr: String },
-
-    /// Daemon SQLite reconciliation failed.
-    #[error("daemon database error: {0}")]
-    DaemonDb(String),
 
     /// A direct sqlx call (query, fetch, transaction) failed.
     #[error("database error: {0}")]

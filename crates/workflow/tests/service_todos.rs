@@ -327,7 +327,7 @@ async fn update_todo_mutates_description_and_emits_event(pool: PgPool) {
         ..TodoPatch::default()
     };
     let updated = svc
-        .patch_todo(project, &slug, patch, &principal)
+        .update_todo(project, &slug, patch, &principal)
         .await
         .expect("update_todo succeeds");
 
@@ -345,7 +345,7 @@ async fn update_todo_returns_not_found_for_missing_slug(pool: PgPool) {
     let slug = Slug::new("ghost").expect("slug");
 
     let err = svc
-        .patch_todo(project, &slug, TodoPatch::default(), &human_principal())
+        .update_todo(project, &slug, TodoPatch::default(), &human_principal())
         .await
         .expect_err("missing slug rejected");
 
