@@ -22,9 +22,11 @@ We needed memory writes to come from a small number of well-instructed agents wh
 
 ## Decision
 
-Memory is writable exclusively by the dedicated memory extraction agents (the scrapers — currently the human-category and project-category miners). All other agents are prohibited from calling `telec memories save`. The `telec memories save` CLI surface is hidden from default help; its desc explicitly identifies the scrapers as its only sanctioned callers.
+Memory is writable exclusively by callers that satisfy a single identity property: a daemon-spawned `ROLE_WORKER` session with no `human_role` in its lineage chain (i.e., no human anywhere upstream — cron-like or daemon-initiated only). Any caller that does not satisfy this property is prohibited from calling `telec memories save`, regardless of name or role string.
 
-The scrapers are invoked via dedicated slash commands (e.g., `/extract-memory-human <session_id>`) and follow the memory-extraction procedure family. They are the only writers.
+The memory scrapers — currently the human-category and project-category miners, invoked via `/extract-memory-human` and `/extract-memory-project` — qualify because they meet this property, not because they are named here. Any future daemon-spawned no-lineage worker that follows the memory-extraction procedure also qualifies. Conversely, a `ROLE_WORKER` session spawned downstream of a human in the lineage chain (e.g., a builder dispatched by an orchestrator that a human started) does not qualify.
+
+The `telec memories save` CLI surface is hidden from default help and its desc names the sanctioned callers. The HTTP route at `/api/memory/save` is currently ungated and the CLI `CommandAuth` is broader than this rule — both are deferred enforcement surfaces; the policy lives here.
 
 ## Consequences
 

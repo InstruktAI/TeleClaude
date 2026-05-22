@@ -5,7 +5,7 @@ domain: 'software-development'
 scope: 'project'
 applies_to: 'v1'
 status: 'actual'
-visibility: 'internal'
+visibility: 'public'
 description: 'Save a memory observation — auto-titled, default-project-scoped, identity-tagged, and slotted into a per-project manual session.'
 ---
 
@@ -19,7 +19,7 @@ description: 'Save a memory observation — auto-titled, default-project-scoped,
 
 ## What it is
 
-The save path is how a memory observation enters v1's durable store. A caller — a human via `telec memories save`, an agent via the daemon's HTTP API, or any other HTTP consumer — supplies a `text` body plus optional `title`, `type`, `project`, and `identity_key`. The save path resolves project scoping (falling back to `teleclaude` when none is supplied), derives a title from the text when none is given, ensures a per-project manual session exists, and inserts a row into `memory_observations`. The persisted observation is identified by an auto-increment integer `id` and returned to the caller alongside its resolved title and project.
+The save path is how a memory observation enters v1's durable store. The sanctioned callers are daemon-spawned `ROLE_WORKER` sessions without `human_role` lineage (the memory scrapers, invoked via `/extract-memory-human` and `/extract-memory-project`) — see ADR-0005. The caller supplies a `text` body plus optional `title`, `type`, `project`, and `identity_key`. The save path resolves project scoping (falling back to `teleclaude` when none is supplied), derives a title from the text when none is given, ensures a per-project manual session exists, and inserts a row into `memory_observations`. The persisted observation is identified by an auto-increment integer `id` and returned to the caller alongside its resolved title and project. The HTTP route is currently ungated and the CLI `CommandAuth` is broader than the rule; the restriction is policy, not enforcement.
 
 ## Canonical fields
 
@@ -28,7 +28,7 @@ The save path is how a memory observation enters v1's durable store. A caller �
 #### Save via CLI
 
 ```
-Given a human or agent runs `telec memories save "<text>" [--title <t>] [--type <obs_type>] [--project <slug>]`
+Given a sanctioned scraper worker (daemon-spawned `ROLE_WORKER`, no `human_role` lineage) runs `telec memories save "<text>" [--title <t>] [--type <obs_type>] [--project <slug>]`
 When the CLI builds the request body
 Then it includes `text`; includes `title` only if `--title` was given; includes `type` only if `--type` was given; includes `project` only if `--project` was given
 And POSTs the body to `/api/memory/save` on the daemon
