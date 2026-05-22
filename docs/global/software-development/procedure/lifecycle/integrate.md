@@ -28,9 +28,16 @@ each decision point until the queue is drained.
   are emitted by the engine with explicit `-C <project_root>` paths. **The worktree's
   index and working tree belong to the state machine.** Only `telec todo integrate` and
   the `telec code commit` instructions it emits write to them. Read-only git commands —
-  `status`, `log`, `show`, `diff <ref>..<ref>`, `rev-parse` — are fine. Mutating commands
-  — `stash`, `checkout <ref> -- ...`, `reset <ref>` — are forbidden, because
-  `DELIVERY_BOOKKEEPING` commits whatever is staged.
+  `status`, `log`, `show`, `diff <ref>..<ref>`, `rev-parse` — are fine. Mutating
+  commands inside the worktree are gated per the wrapper matrix (see
+  `docs/project/design/code-commit.md`): `stash` is absolutely blocked because
+  stash-pop can re-stage foreign content into `DELIVERY_BOOKKEEPING`; `checkout <ref>
+  -- <path>`, `restore <path>`, and `restore --source <ref> <path>` require the
+  `--confirmed` flag after reading the printed inspection checklist; pathspec
+  `reset HEAD <path>` / `restore --staged <path>` are index-only and allowed
+  without ceremony. The `--confirmed` friction is the integrator's deliberate
+  ratification that the working-tree mutation has been inspected and will not
+  silently overwrite intentional state before the next bookkeeping commit.
 
 ## Steps
 

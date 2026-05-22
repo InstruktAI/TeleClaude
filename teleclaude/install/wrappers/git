@@ -4,9 +4,24 @@
 # Pure bash — no Python, no external deps. Must be fast (<5ms overhead)
 # because shell prompts and hub call git dozens of times per second.
 #
-# Three-tier permission model for agent sessions:
+# Permission model for agent sessions (see docs/project/design/code-commit.md
+# for the full operations matrix):
 #   DESTRUCTIVE  — blocked for all agent roles, no override
-#   PROTECTED    — integrator only (stash, commit on main, push on main)
+#                  (clean, switch, reset --hard/--merge/--keep, branch-switching checkout)
+#   PROTECTED    — integrator only (stash, push on main)
+#                  REPLAY  (cherry-pick/rebase/merge on main) — integrator role
+#                          or TELECLAUDE_OVERRIDE_APPROVED=1
+#   CONFIRMED    — friction-gated (require --confirmed after reading the
+#                  inspection checklist):
+#                    revert (any context — multi-agent commits)
+#                    checkout <ref> -- <path>  inside integration worktree OR active merge
+#                    checkout -- <path>         inside integration worktree OR active merge
+#                    restore <path>             inside integration worktree OR active merge
+#                    restore --source <ref>     inside integration worktree OR active merge
+#   PATHSPEC-OK  — pathspec-scoped variants pass through:
+#                    reset HEAD <path> / reset -- <path>
+#                    restore --staged <path>
+#                    checkout -- <path> (outside integration / merge)
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Commit-producing subcmds (commit, cherry-pick, rebase, merge) are gated:
@@ -188,7 +203,7 @@ fi
 
 # ── DESTRUCTIVE: blocked for all roles, no override ──────────────────────────
 case "$_subcmd" in
-    restore|clean|switch)
+    clean|switch)
         echo "ERROR: 'git $_subcmd' is a destructive operation and is prohibited." >&2
         exit 1
         ;;
@@ -302,27 +317,35 @@ if [ "$_subcmd" = "checkout" ]; then
         echo "ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed." >&2
         exit 1
     fi
-    # Inside the integration worktree, file-scoped checkout from a ref is
-    # prohibited absolutely — no --confirmed override. The state machine owns
-    # the worktree's index and working tree.
-    if [ "$_has_separator" -eq 1 ] && [ "$_in_integration_wt" = "1" ]; then
-        cat >&2 <<'MSG'
-ERROR: 'git checkout <ref> -- <files>' inside the integration worktree is prohibited.
-
-DELIVERY_BOOKKEEPING commits whatever is staged with no path filter.
-A checkout here can push a delivery-reverting commit to origin/main.
-MSG
-        exit 1
+    # File-scoped checkout (-- present). Require --confirmed when (a) inside
+    # the integration worktree, or (b) during active merge. Both contexts can
+    # silently overwrite intentional working-tree state before the next
+    # bookkeeping commit (integration) or conflict resolution (merge).
+    _in_merge=0
+    if [ -f "$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --git-dir 2>/dev/null)/MERGE_HEAD" ]; then
+        _in_merge=1
     fi
-    # During active merge, file-scoped checkout from a ref silently overwrites
-    # the local version. Require --confirmed to proceed.
-    if [ "$_has_separator" -eq 1 ] && [ -f "$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --git-dir 2>/dev/null)/MERGE_HEAD" ]; then
+    if [ "$_in_integration_wt" = "1" ] || [ "$_in_merge" = "1" ]; then
         _has_co_confirmed=0
         for _carg in "$@"; do
             [ "$_carg" = "--confirmed" ] && _has_co_confirmed=1
         done
         if [ "$_has_co_confirmed" -eq 0 ]; then
-            cat >&2 <<'MSG'
+            if [ "$_in_integration_wt" = "1" ]; then
+                cat >&2 <<'MSG'
+WARNING: 'git checkout <ref> -- <files>' inside the integration worktree — inspection required.
+
+The integration worktree's index and working tree feed DELIVERY_BOOKKEEPING,
+which commits whatever is staged with no path filter. A blind checkout here
+can land delivery-reverting content on origin/main.
+
+Before proceeding:
+  1. Run: git diff HEAD -- <file>   (see what the worktree has)
+  2. Verify the working-tree version carries no resolution worth preserving.
+  3. Rerun with: git checkout --confirmed <ref> -- <files>
+MSG
+            else
+                cat >&2 <<'MSG'
 WARNING: 'git checkout <ref> -- <files>' during active merge — inspection required.
 
 This overwrites local versions of conflicted files. In a multi-agent
@@ -334,6 +357,7 @@ Before proceeding:
   3. Verify the local version has no unique work worth preserving.
   4. Rerun with: git checkout --confirmed <ref> -- <files>
 MSG
+            fi
             exit 1
         fi
         _co_args=()
@@ -343,6 +367,75 @@ MSG
         done
         _real_git "${_co_args[@]}"
         exit $?
+    fi
+fi
+
+# git restore: working-tree revert / unstage / cross-ref pull.
+# Risk surface mirrors git checkout -- <path> / git reset -- <path> /
+# git checkout <ref> -- <path>, so gating follows the same matrix.
+if [ "$_subcmd" = "restore" ]; then
+    _has_staged=0
+    _has_source=0
+    for _rarg in "$@"; do
+        case "$_rarg" in
+            --staged|-S|--staged=*) _has_staged=1 ;;
+            --source|-s|--source=*) _has_source=1 ;;
+        esac
+    done
+    # --staged: index-only effect. Allowed for all roles.
+    if [ "$_has_staged" = "1" ] && [ "$_has_source" = "0" ]; then
+        : # allowed
+    else
+        # Working-tree restore (default) or --source <ref>: same friction surface as
+        # checkout HEAD -- <path> / checkout <ref> -- <path>. Require --confirmed
+        # inside integration worktree or during active merge.
+        _in_merge=0
+        if [ -f "$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --git-dir 2>/dev/null)/MERGE_HEAD" ]; then
+            _in_merge=1
+        fi
+        if [ "$_in_integration_wt" = "1" ] || [ "$_in_merge" = "1" ]; then
+            _has_restore_confirmed=0
+            for _rarg in "$@"; do
+                [ "$_rarg" = "--confirmed" ] && _has_restore_confirmed=1
+            done
+            if [ "$_has_restore_confirmed" = "0" ]; then
+                if [ "$_in_integration_wt" = "1" ]; then
+                    cat >&2 <<'MSG'
+WARNING: 'git restore' inside the integration worktree — inspection required.
+
+The integration worktree's index and working tree feed DELIVERY_BOOKKEEPING,
+which commits whatever is staged with no path filter. A blind restore here
+can land delivery-reverting content on origin/main.
+
+Before proceeding:
+  1. Run: git diff HEAD -- <file>   (see what the worktree has)
+  2. Verify the working-tree version carries no resolution worth preserving.
+  3. Rerun with: git restore --confirmed [--source <ref>] <path>...
+MSG
+                else
+                    cat >&2 <<'MSG'
+WARNING: 'git restore' during active merge — inspection required.
+
+This overwrites local versions of conflicted files. In a multi-agent
+environment, local main often has hotfixes not present on the remote.
+
+Before proceeding:
+  1. Run: git diff HEAD -- <file>   (see what local has)
+  2. Run: git diff MERGE_HEAD -- <file>   (see what remote has)
+  3. Verify the local version has no unique work worth preserving.
+  4. Rerun with: git restore --confirmed [--source <ref>] <path>...
+MSG
+                fi
+                exit 1
+            fi
+            _restore_args=()
+            for _rarg in "$@"; do
+                [ "$_rarg" = "--confirmed" ] && continue
+                _restore_args+=("$_rarg")
+            done
+            _real_git "${_restore_args[@]}"
+            exit $?
+        fi
     fi
 fi
 

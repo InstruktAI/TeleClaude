@@ -59,18 +59,51 @@ the resolved workspace scope, and the agent must name every path it claims.
 **Wrapper-enforced intent layer:**
 
 The git wrapper enforces the intent layer for every git invocation in a
-tmux session. `telec code commit` runs on top of these guarantees:
+tmux session. `telec code commit` runs on top of these guarantees.
 
-- `git stash*` is blocked for non-integrators; `rebase.autoStash` and
-  `merge.autoStash` are forced off on every wrapper-driven git call.
-- `git add -A`, `git add --all`, and `git add .` are blocked on main for
-  non-integrators. Staging on main requires explicit file paths.
-- `git restore`, `git clean`, `git switch`, `git reset --hard|--merge|--keep`,
-  and branch-switching `git checkout` are blocked.
-- `git commit` is redirected to `telec code commit` with no bypass.
-- `git push` from main is integrator-only; `git merge`/`rebase`/`cherry-pick`
-  on main require integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` (a
-  replay-only escape; it does not affect plain `git commit`).
+The full matrix of wrapper-gated operations, by role and by execution
+context. Read columns left-to-right; the first column that decides the
+op wins.
+
+| Operation | Worker (worktree or repo root) | Integrator (in `trees/_integration/`) | Active merge (`MERGE_HEAD` present) | Rationale |
+|---|---|---|---|---|
+| `git status`, `git log`, `git show`, `git diff <ref>..<ref>`, `git rev-parse` | ✅ allowed | ✅ allowed | ✅ allowed | Read-only inspection. |
+| `git add` (any form) | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | ❌ blocked | Staging is telec's job; sealed-commit pathspec depends on it. |
+| `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ❌ blocked | Sealed commit contract; no env-var bypass. |
+| `git reset HEAD <path>` / `git reset -- <path>` (pathspec) | ✅ allowed | ✅ allowed | ✅ allowed | Path-scoped unstage; index-only effect. |
+| `git reset` (no pathspec) | ❌ blocked | ❌ blocked | ❌ blocked | Discards staged state non-locally. |
+| `git reset --hard\|--merge\|--keep` | ❌ blocked | ❌ blocked | ❌ blocked | Discards commits / merge state. |
+| `git restore <path>` (working-tree revert to HEAD) | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Same risk as `git checkout HEAD -- <path>`. Worktree-only blast radius elsewhere; in the integration worktree the working tree feeds DELIVERY_BOOKKEEPING. |
+| `git restore --staged <path>` | ✅ allowed | ✅ allowed | ✅ allowed | Index-only effect; same as `git reset -- <path>`. |
+| `git restore --source <ref> <path>` | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Pulls foreign content from `<ref>` into working tree; same risk surface as `git checkout <ref> -- <path>`. |
+| `git checkout -- <path>` (no ref) | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Working-tree revert to HEAD; same gating as `git restore <path>`. |
+| `git checkout <ref> -- <path>` | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Foreign-ref content into working tree. |
+| `git checkout <branch>` / `git switch` | ❌ blocked | ❌ blocked | ❌ blocked | Branch switching loses workspace; not how agents change branches. |
+| `git stash*` | ✅ allowed (integrator role only) | ❌ blocked (absolute) | ❌ blocked | Outside integration: needed for repo-root rebases. Inside integration: stash pop can re-stage foreign content into DELIVERY_BOOKKEEPING. |
+| `git clean` | ❌ blocked | ❌ blocked | ❌ blocked | Deletes untracked files; rarely the right answer for agents. |
+| `git revert <commit>` | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Multi-agent commits often span scopes; inspection precedes revert. |
+| `git merge`/`rebase`/`cherry-pick` on main | ❌ unless integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` | ✅ allowed | (n/a) | Replays produce commits via paths that bypass `telec code commit`'s Path A/B/C gate. |
+| `git push origin main` | ❌ blocked | ✅ allowed (from integration worktree) | (n/a) | Only the integrator publishes to canonical main. |
+
+**Legend.** ✅ = allowed; ❌ = wrapper blocks with diagnostic; ⚠️ = blocked
+without the `--confirmed` flag, allowed with it. `--confirmed` is a
+deliberate friction: the wrapper requires the agent to re-run the
+exact command with `--confirmed` appended after reading the printed
+inspection checklist.
+
+**The integration-worktree extras** matter because the worktree's index
+and working tree are owned by the state machine's
+`DELIVERY_BOOKKEEPING` step, which commits whatever is staged with no
+path filter. Any mutation introduced from outside the state machine can
+produce a delivery-reverting commit on origin/main. `--confirmed` is
+the integrator's deliberate ratification that the inspection has
+happened.
+
+**Notes carried over from earlier prose:** `rebase.autoStash` and
+`merge.autoStash` are forced off on every wrapper-driven git call.
+`git add -A`/`git add --all`/`git add .` are blocked on main for
+non-integrators regardless of the table above — staging on main always
+names files explicitly.
 
 ## Inputs / Outputs
 
