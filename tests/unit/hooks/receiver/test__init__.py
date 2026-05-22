@@ -384,7 +384,7 @@ class TestDomainBaselineInjection:
         baseline = docs_root / "software-development" / "baseline.md"
         baseline.write_text("# Software Baseline\n\nrules: ...\n", encoding="utf-8")
 
-        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+        with patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"):
             content = _load_domain_baseline_content("software-development")
 
         # Identity comparison vs the file the production code reads — proves
@@ -396,7 +396,7 @@ class TestDomainBaselineInjection:
 
         (tmp_path / ".teleclaude" / "docs").mkdir(parents=True)
 
-        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+        with patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"):
             with pytest.raises(DomainBaselineUnavailable):
                 _load_domain_baseline_content("software-development")
 
@@ -406,7 +406,7 @@ class TestDomainBaselineInjection:
         (docs_root / "software-development").mkdir(parents=True)
         (docs_root / "software-development" / "baseline.md").write_text("   \n", encoding="utf-8")
 
-        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+        with patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"):
             with pytest.raises(DomainBaselineUnavailable):
                 _load_domain_baseline_content("software-development")
 
@@ -426,7 +426,7 @@ class TestDomainBaselineInjection:
         docs_root.mkdir(parents=True)
         (docs_root / "evil").symlink_to(outside)
 
-        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+        with patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"):
             with pytest.raises(DomainBaselineUnavailable):
                 _load_domain_baseline_content("evil")
 
@@ -479,6 +479,31 @@ class TestDomainBaselineInjection:
 
         assert result == allowlisted
 
+    def test_resolve_command_domain_reads_nested_origin(self, tmp_path: Path) -> None:
+        """Real dispatch nests command_domain under the origin type; it must still resolve."""
+        allowlisted = DOMAIN_SCOPES[0]
+        outbox_db = _make_outbox_db(tmp_path)
+        engine = create_sync_db_engine(outbox_db)
+        SQLModel.metadata.create_all(engine, tables=[db_models.Session.__table__])
+        with SqlSession(engine) as session:
+            session.add(
+                db_models.Session(
+                    session_id="sess-nested",
+                    computer_name="test",
+                    title="t",
+                    origin_metadata=json.dumps(
+                        {"terminal": {"email": "a@b", "command_domain": allowlisted}, "discord": {"channel_id": 1}}
+                    ),
+                    last_input_origin="terminal",
+                )
+            )
+            session.commit()
+
+        with patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine):
+            result = _resolve_command_domain_for_session("sess-nested")
+
+        assert result == allowlisted
+
     def test_print_additional_context_emits_codex_system_message(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -510,7 +535,7 @@ class TestDomainBaselineInjection:
             session.commit()
 
         with (
-            patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path),
+            patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"),
             patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine),
             patch("teleclaude.hooks.receiver._resolve_identity_context", return_value=(None, None)),
             patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
@@ -530,7 +555,7 @@ class TestDomainBaselineInjection:
         # itself is referenced through the production constant.
         assert isinstance(payload, dict)
         assert CODEX_OUTPUT_SYSTEM_MESSAGE in payload
-        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+        with patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"):
             expected = _load_domain_baseline_content(DOMAIN_SCOPES[0])
         assert payload[CODEX_OUTPUT_SYSTEM_MESSAGE] == expected
 
@@ -568,7 +593,7 @@ class TestDomainBaselineInjection:
             session.commit()
 
         with (
-            patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path),
+            patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"),
             patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine),
             patch("teleclaude.hooks.receiver._resolve_identity_context", return_value=(None, None)),
             patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
@@ -623,7 +648,7 @@ class TestDomainBaselineInjection:
             session.commit()
 
         with (
-            patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path),
+            patch("teleclaude.hooks.receiver.tc_paths.GLOBAL_SNIPPETS_DIR", tmp_path / ".teleclaude" / "docs"),
             patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine),
             patch("teleclaude.hooks.receiver._resolve_identity_context", return_value=(None, None)),
             patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
