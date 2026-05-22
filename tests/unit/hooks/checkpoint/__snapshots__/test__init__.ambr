@@ -1,0 +1,4 @@
+# serializer version: 1
+# name: TestPostCommitReviewInstruction.test_post_commit_review_instruction_copy
+  'A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.'
+# ---
