@@ -38,7 +38,7 @@ delivered_by: ['voice-transcription-survives-restart']
 
 - Telegram bot commands from users (/start, /cancel, /kill, /clear, etc.)
 - Text messages in session topics (user input to AI)
-- Voice messages (transcribed via external TTS service)
+- Voice messages (transcribed via the existing speech-to-text backend chain)
 - File uploads (documents, images, audio)
 - Callback queries (inline button clicks)
 - Telegram API webhooks (updates)
@@ -237,7 +237,7 @@ sequenceDiagram
 - **Telegram API Timeout**: Edit or send fails due to network. Logged; next polling cycle retries. Message may be stale.
 - **Rate Limit Exceeded**: Too many edits in 1s window. Adapter skips edit, accumulates diff, retries next cycle.
 - **Unauthorized User**: Message from non-whitelisted user. Silently ignored; no response or error sent.
-- **Voice Transcription Failure**: TTS service down or returns error. User sees error feedback; voice message not deleted.
+- **Voice Transcription Failure**: the speech-to-text backend chain is unavailable or returns an error. User sees error feedback; voice message not deleted.
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
 - **Cleanup Failure**: pending_message_deletions row exists but message already deleted. Logged; row cleared on next cleanup.

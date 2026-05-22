@@ -223,7 +223,7 @@ never mutate core state directly — see `#invariants` and
 | 3    | Core      | Writes `voice_transcriptions` row `state=pending` (notice id NULL)           |
 | 4    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only); returns its platform msg id |
 | 5    | Core      | Persists the returned id as `notice_message_id`; runs transcription as a tracked task |
-| 6    | TTS       | Transcribes audio via Whisper API, bounded by a wall-clock timeout           |
+| 6    | STT       | Transcribes audio via the existing speech-to-text backend chain, bounded by a wall-clock timeout |
 | 7    | UiAdapter | Edits the notice in place with the transcribed text                          |
 | 8    | Core      | Transitions row to `succeeded`                                               |
 | 9    | UiAdapter | Deletes voice message per cleanup rules (temp audio is swept by maintenance) |
@@ -291,6 +291,6 @@ flowchart TD
 - **Cleanup Message Already Deleted**: pending_message_deletions references deleted message. Delete fails gracefully; row cleared.
 - **Feedback Routing Failure**: last_input_origin adapter offline. Feedback not delivered; logged. User sees nothing.
 - **Adapter State Treated as Truth**: Invalid. A stale message id, char offset, or turn anchor may cause bad rendering, but it must not move the projection cursor or reorder source content.
-- **Voice Transcription Failure**: TTS API down or audio format unsupported. User sees error notice; voice message not deleted.
+- **Voice Transcription Failure**: the speech-to-text backend chain is unavailable or the audio format is unsupported. User sees error notice; voice message not deleted.
 - **File Download Failure**: Platform API error during download. User sees error feedback; no file sent to AI.
 - **Multiple Adapters Active**: Origin-only feedback appears only on the origin endpoint. Non-origin endpoints rely on dual-lane stream traffic.
