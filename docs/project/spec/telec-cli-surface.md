@@ -440,7 +440,7 @@ subcommands:
           --thinking: 'Include thinking blocks.'
           --tail: 'Limit output to last N chars.'
   memories:
-    description: 'Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the memory scraper; agents must never create them.'
+    description: 'Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the session memory extraction agent (the memory scraper, invoked via /extract-memory); other agents must never create them.'
     subcommands:
       search:
         description: 'Search personal-preference observations about the human.'
@@ -451,7 +451,7 @@ subcommands:
           --type: 'Filter by observation type stored in the schema.'
           --project: 'Filter by project name.'
       save:
-        description: 'Persist a memory observation. Reserved for the memory scraper — agents must never call this. Hidden from the baseline surface (omitted from subcommand listings, flag-group sections, and shell completion); reachable only by explicit name, e.g. `telec memories save -h`.'
+        description: 'Persist a memory observation. Reserved for the session memory extraction agent (the memory scraper, invoked via /extract-memory) — other agents must never call this. Hidden from the baseline surface (omitted from subcommand listings, flag-group sections, and shell completion); reachable only by explicit name, e.g. `telec memories save -h`.'
         args:
           - text: 'string'
         flags:

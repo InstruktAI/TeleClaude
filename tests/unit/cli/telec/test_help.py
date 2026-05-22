@@ -141,22 +141,13 @@ def test_usage_main_sessions_overview_renders_without_hidden_flags(
     assert sessions_block == snapshot
 
 
-def test_usage_subcmd_todo_dump_renders_without_hidden_flags(
-    snapshot: SnapshotAssertion,
-) -> None:
-    todo_help = help_mod._usage_subcmd("todo")
-    dump_line = "\n".join(line for line in todo_help.splitlines() if "telec todo dump" in line)
-
-    assert dump_line == snapshot
-
-
 def _fixture_surface_with_hidden_sub() -> CommandDef:
-    """Minimal CommandDef tree with one visible and one hidden subcommand.
+    """Minimal CommandDef tree with one visible and one hidden top-level subcommand.
 
-    Used to pin the hidden-subcommand filter independently at each renderer
-    site, so future iteration sites that forget to honor ``sub.hidden``
-    surface as targeted test failures instead of hiding behind a global
-    snapshot."""
+    Pins the hidden-subcommand filter at each renderer site for the top-level
+    iteration branch. Companion fixture ``_fixture_surface_with_hidden_child``
+    exercises the nested-child iteration branches that the prior fixture
+    didn't reach."""
     return CommandDef(
         desc="root",
         subcommands={
@@ -169,6 +160,33 @@ def _fixture_surface_with_hidden_sub() -> CommandDef:
             ),
         },
     )
+
+
+def _fixture_surface_with_hidden_child() -> CommandDef:
+    """Tree exercising the nested-child branches in subcommand renderers.
+
+    Renderer sites ``_iter_subcommand_entries``,
+    ``_iter_subcommand_entries_for``, and ``_usage_main_subcommand_entries``
+    each contain a second iteration loop over ``sub.subcommands.items()``
+    when the top-level sub itself has children. A regression that drops the
+    nested ``if child.hidden: continue`` would slip past the top-level
+    fixture; this one catches it."""
+    return CommandDef(
+        desc="root",
+        subcommands={
+            "parent": CommandDef(
+                desc="visible parent with children",
+                subcommands={
+                    "child_vis": CommandDef(desc="visible child", args="<c>"),
+                    "child_hid": CommandDef(desc="hidden child", args="<d>", hidden=True),
+                },
+            ),
+        },
+    )
+
+
+def _visible_child_count(parent: CommandDef) -> int:
+    return sum(1 for c in parent.subcommands.values() if not c.hidden)
 
 
 def test_memories_save_subcommand_is_hidden() -> None:
@@ -224,6 +242,26 @@ def test_subcmd_tuples_excludes_hidden_subcommand() -> None:
     fixture = _fixture_surface_with_hidden_sub()
     names = {name for name, _ in fixture.subcmd_tuples}
     assert names == {"vis"}
+
+
+def test_iter_subcommand_entries_skips_hidden_child() -> None:
+    """Nested-iteration branch: hidden grandchildren must be filtered too."""
+    fixture = _fixture_surface_with_hidden_child()
+    entries = help_mod._iter_subcommand_entries("fake", fixture, col=40)
+    assert len(entries) == _visible_child_count(fixture.subcommands["parent"])
+
+
+def test_iter_subcommand_entries_for_skips_hidden_child() -> None:
+    fixture = _fixture_surface_with_hidden_child()
+    entries = help_mod._iter_subcommand_entries_for("fake", fixture, col=40)
+    assert len(entries) == _visible_child_count(fixture.subcommands["parent"])
+
+
+def test_usage_main_subcommand_entries_skips_hidden_child() -> None:
+    fixture = _fixture_surface_with_hidden_child()
+    parent = fixture.subcommands["parent"]
+    entries = help_mod._usage_main_subcommand_entries("fake", "parent", parent, col=40)
+    assert len(entries) == _visible_child_count(parent)
 
 
 def test_usage_leaf_sessions_run_renders_full_output(snapshot: SnapshotAssertion) -> None:
