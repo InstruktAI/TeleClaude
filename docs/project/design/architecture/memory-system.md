@@ -184,10 +184,10 @@ sequenceDiagram
 
     Note over Hook: SessionStart event fires
     Hook->>Builder: generate_context_sync(project, db_path)
-    Builder->>DB: SELECT recent observations (limit 50)
+    Builder->>DB: SELECT recent observations (limit 100)
     Builder->>DB: SELECT recent summaries (limit 5)
-    Builder->>Builder: compile_timeline() + filter_by_recency()
-    Builder->>Builder: render_context() → markdown
+    Builder->>Builder: compile_timeline()
+    Builder->>Builder: render_context() → markdown (index up to 100; expanded top 10)
     Builder->>Hook: Markdown string
     Hook->>Hook: Format for agent type (Claude XML / Gemini JSON)
     Hook->>Tmux: Inject as part of SessionStart output

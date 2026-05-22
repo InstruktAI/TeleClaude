@@ -3,7 +3,7 @@ id: 'project/spec/feature/memory/memory-context-injection'
 type: 'spec'
 domain: 'software-development'
 scope: 'project'
-visibility: 'internal'
+visibility: 'public'
 applies_to: 'v1'
 status: 'actual'
 description: 'Render the most recent observations for a project as a Markdown block to inject into agent context at session start.'
@@ -66,9 +66,11 @@ And returns the rendered Markdown string (or `""` on empty input or exception)
 Given `render_context` receives a non-empty observation timeline
 When it renders the Markdown
 Then the output begins with `# Memory Context`
-And includes a `## Recent Observations (last <N>)` section with a four-column table `| # | Type | Title | When |`
+And includes a `## Index (<N> memories, newest first)` section with a four-column table `| # | Type | Title | When |` where `<N>` is the observation count
+And the index caps at `MEMORY_INDEX_CAP` entries (default 100); when the total exceeds the cap, the heading reads `## Index (<cap> of <total> memories, newest first)` and only the newest `<cap>` rows appear in the table
 And the `When` column uses relative-time formatting: `just now` (<60s), `<m>m ago` (<1h), `<h>h ago` (<24h), `<d>d ago` (≥24h)
-And after the table emits one `### <i>. <title>` detail block per observation containing the `**Type:**` line and the `> <narrative>` quote
+And below the index a second section emits one `### <i>. <title>` detail block per observation containing the `**Type:**` line and the `> <narrative>` quote
+And that section's heading is `## Top <MEMORY_EXPANDED_TOP_N> — Expanded` (default `Top 10 — Expanded`) when the indexed count meets or exceeds `MEMORY_EXPANDED_TOP_N`, otherwise `## Expanded`
 And titles are truncated to 60 characters in the table cells
 And missing titles render as `Untitled`
 ```
@@ -79,7 +81,7 @@ And missing titles render as `Untitled`
 - Sync generator — `teleclaude/memory/context/builder.py:36` (`generate_context_sync`)
 - Re-export — `teleclaude/memory/context/__init__.py:3`
 - Timeline compile — `teleclaude/memory/context/compiler.py:20` (`compile_timeline`)
-- Recency cap — `teleclaude/memory/context/compiler.py:36` (`filter_by_recency`, max 50)
+- Index/expanded caps — `teleclaude/memory/context/renderer.py` (`MEMORY_INDEX_CAP = 100`, `MEMORY_EXPANDED_TOP_N = 10`)
 - Markdown renderer — `teleclaude/memory/context/renderer.py:11` (`render_context`)
 - Relative-time formatter — `teleclaude/memory/context/renderer.py:113` (`_relative_time`)
 - HTTP entry — `teleclaude/memory/api_routes.py:115` (`GET /api/memory/inject`)
