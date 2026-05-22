@@ -1,4 +1,11 @@
 # serializer version: 1
+# name: test_build_agent_session_environment_merges_global_and_project_env_allow_lists
+  dict({
+    'GLOBAL_TOKEN': 'global',
+    'OPENAI_API_KEY': 'shared',
+    'PROJECT_TOKEN': 'project',
+  })
+# ---
 # name: test_build_agent_session_environment_uses_project_env_allow_list
   dict({
     'GOOGLE_APPLICATION_CREDENTIALS': '/keys/google.json',

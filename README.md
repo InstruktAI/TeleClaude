@@ -122,6 +122,20 @@ make init
 
 For AI-driven project analysis and quality-config assessment, run `telec projects onboard` (or `telec projects analyze` / `telec projects assess` individually) after `telec projects init`.
 
+### Agent environment access
+
+TeleClaude starts agent CLIs in sealed `tmux` sessions. Project application secrets in `.env` are not automatically exposed to agents.
+
+If an agent skill or CLI integration needs an environment variable, authorize the variable name explicitly in your global TeleClaude config at `~/.teleclaude/teleclaude.yml`:
+
+```yaml
+env_allow_list:
+  - GITHUB_TOKEN
+  - OPENAI_API_KEY
+```
+
+Project configs may add project-specific names in `<project>/teleclaude.yml` with the same `env_allow_list` key. The effective allow list is global first, then project additions. Only listed names are copied from the TeleClaude daemon environment into new agent sessions. Values are delivered through a private per-session env file under the session TMPDIR, not through `tmux new-session -e` command-line arguments. Restart or recreate the agent session after changing this setting; live processes do not receive new environment values.
+
 ### v2 Rust workspace (parallel, not yet authoritative)
 
 A v2 Rust workspace lives under `crates/` and ships alongside the Python codebase. It is **parallel-capable**, not v1-replacing: v1 remains authoritative for all workflow data (todos, roadmap, artifacts) used by the daemon, HTTP API, TUI, and `/next-*` orchestrators.

@@ -46,7 +46,7 @@ project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
 language: string # deprecated; use languages list
 languages: list[string] # project languages for quality tooling and init skeletons (e.g. [python, typescript])
-env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions
+env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
 frontend_root: string # directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
 description: string
 business:
@@ -68,13 +68,19 @@ deployment:
 channel_subscriptions: list[ChannelSubscription]
 ```
 
-`env_allow_list` is an explicit project-level pass-through list for agent
-sessions. At tmux session creation, TeleClaude reads these names from the
-daemon process environment and exports only the names that are configured and
-present. The values are loaded into the pane through the session's private
-TMPDIR env file, not through tmux command-line `-e` arguments. The regular
-project `.env` remains the source for application/runtime secrets; those values
-enter agent sessions only when their names are also listed in `env_allow_list`.
+`env_allow_list` is an explicit pass-through list for agent sessions. It is the
+authorization/filter surface: a name not listed in the effective allow list must
+not enter agent tmux sessions, even if it exists in `.env` or in the daemon
+environment. At tmux session creation, TeleClaude combines the global allow list
+from `~/.teleclaude/teleclaude.yml` with project additions from
+`<project>/teleclaude.yml`, reads those names from the daemon process
+environment, and exports only the names that are configured and present. The
+values are loaded into the pane through the session's private TMPDIR env file,
+not through tmux command-line `-e` arguments; that private file is a delivery
+mechanism, not an authorization mechanism. The regular project `.env` remains
+the source for application/runtime secrets. Those values enter agent sessions
+only when their names are also listed in the effective `env_allow_list` and are
+present in the daemon environment.
 
 ### Global-only keys (`GlobalConfig` adds these)
 
@@ -82,11 +88,16 @@ Valid **only** in `~/.teleclaude/teleclaude.yml`. Rejected by `ProjectConfig`.
 
 ```yaml
 people: list[PersonEntry] # REJECTED at project level
+env_allow_list: list[string] # ambient env vars explicitly allowed into all local agent tmux sessions
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
 event_domains:
   domains: mapping[string, DomainConfig]
 ```
+
+Global `env_allow_list` is the normal place to authorize env vars needed by
+global agent skills or CLI integrations. Project `env_allow_list` is additive
+for repository-specific names.
 
 ### Per-person keys (`PersonConfig`)
 

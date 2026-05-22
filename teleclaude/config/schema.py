@@ -12,6 +12,22 @@ from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import validate_slug
 
 
+def normalize_env_allow_list(value: list[str]) -> list[str]:
+    """Validate and de-duplicate agent-session environment variable names."""
+    valid_name = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        name = item.strip()
+        if not valid_name.fullmatch(name):
+            raise ValueError(f"Invalid environment variable name in env_allow_list: {item}")
+        if name in seen:
+            continue
+        seen.add(name)
+        result.append(name)
+    return result
+
+
 class AgentDispatchConfig(BaseModel):
     """Per-agent dispatch configuration."""
 
@@ -343,18 +359,7 @@ class ProjectConfig(BaseModel):
     @classmethod
     def validate_env_allow_list(cls, value: list[str]) -> list[str]:
         """Validate agent-session environment variable names."""
-        valid_name = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-        result: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            name = item.strip()
-            if not valid_name.fullmatch(name):
-                raise ValueError(f"Invalid environment variable name in env_allow_list: {item}")
-            if name in seen:
-                continue
-            seen.add(name)
-            result.append(name)
-        return result
+        return normalize_env_allow_list(value)
 
     @model_validator(mode="before")
     @classmethod
@@ -373,11 +378,18 @@ class GlobalConfig(BaseModel):
     """Global-level configuration."""
 
     model_config = ConfigDict(extra="allow")
+    env_allow_list: list[str] = []
     people: list[PersonEntry] = []
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
     event_domains: DomainsConfig | None = None
     checkout_root: str | None = None
+
+    @field_validator("env_allow_list")
+    @classmethod
+    def validate_env_allow_list(cls, value: list[str]) -> list[str]:
+        """Validate agent-session environment variable names."""
+        return normalize_env_allow_list(value)
 
     @field_validator("interests", mode="before")
     @classmethod

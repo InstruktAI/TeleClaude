@@ -6,20 +6,35 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.config.loader import load_project_config
+from teleclaude.config.loader import load_global_config, load_project_config
 from teleclaude.runtime.environment import filter_platform_session_environment
 from teleclaude.utils import resolve_project_config_path
 
 
-def _load_project_env_allow_list(project_path: str | None) -> list[str]:
+def _load_agent_env_allow_list(project_path: str | None) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for name in load_global_config().env_allow_list:
+        if name in seen:
+            continue
+        seen.add(name)
+        result.append(name)
+
     if not project_path:
-        return []
+        return result
 
     config_path = resolve_project_config_path(Path(project_path))
     if not config_path.exists():
-        return []
+        return result
 
-    return load_project_config(config_path).env_allow_list
+    for name in load_project_config(config_path).env_allow_list:
+        if name in seen:
+            continue
+        seen.add(name)
+        result.append(name)
+
+    return result
 
 
 def build_agent_session_environment(
@@ -32,7 +47,7 @@ def build_agent_session_environment(
 
     source = source_env if source_env is not None else os.environ
     env_vars: dict[str, str] = {}
-    for name in _load_project_env_allow_list(project_path):
+    for name in _load_agent_env_allow_list(project_path):
         if name in source:
             env_vars[name] = source[name]
 

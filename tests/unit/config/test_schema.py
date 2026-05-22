@@ -140,6 +140,14 @@ class TestSchemaValidators:
         with pytest.raises(ValidationError):
             ProjectConfig.model_validate({"env_allow_list": ["NOT-AN-ENV"]})
 
+    @pytest.mark.unit
+    def test_global_env_allow_list_uses_same_validation(self) -> None:
+        config = GlobalConfig.model_validate({"env_allow_list": [" OPENAI_API_KEY ", "OPENAI_API_KEY", "_CUSTOM"]})
+        assert config.env_allow_list == ["OPENAI_API_KEY", "_CUSTOM"]
+
+        with pytest.raises(ValidationError):
+            GlobalConfig.model_validate({"env_allow_list": ["NOT-AN-ENV"]})
+
 
 class TestMultiLanguageConfig:
     """ProjectConfig supports multi-language configuration via languages list."""

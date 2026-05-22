@@ -29,9 +29,10 @@ inspect or change configuration without leaving the TeleClaude CLI.
 
 The wizard owns every persisted value TeleClaude needs to come up cleanly:
 system identity (computer name), platform adapters (Telegram, Discord,
-AI/Voice, WhatsApp), people, notifications, environment, deployment
-release channel (with the stable-pinned-minor field shown only on the
-`stable` channel), and a permissions/preflight section that surfaces and
+AI/Voice, WhatsApp), people, notifications, environment, agent
+environment access (`GlobalConfig.env_allow_list`), deployment release
+channel (with the stable-pinned-minor field shown only on the `stable`
+channel), and a permissions/preflight section that surfaces and
 status-checks the host- and adapter-level consents that commonly block
 startup. The wizard guides the human toward each external prompt; it
 never escalates host permissions or replaces a prompt the external system
@@ -90,7 +91,7 @@ When the human runs `telec config wizard`
 Then the wizard opens with the at-a-glance status showing every section as `unconfigured`
 And the wizard guides the human through every section in turn
   (system identity, adapters, people, notifications, environment,
-   release channel, permissions/preflight)
+   agent environment access, release channel, permissions/preflight)
 And every value the human provides is written through the atomic config-write path
 When the human exits the wizard with all required sections completed
 And the human runs `make start`
@@ -232,6 +233,21 @@ And every previously-passing validation continues to pass
 And no existing adapter, person, notification, or environment behavior regresses
 ```
 
+#### UC-WIZ-11: Agent environment access is configurable
+
+```
+Given an agent skill or CLI integration needs an ambient environment variable
+When the human opens `telec config wizard`
+Then the environment section offers an agent environment allow-list step
+And the step reads and writes `~/.teleclaude/teleclaude.yml: env_allow_list`
+And the human can add, remove, or keep variable names without editing YAML by hand
+And each entered name is validated as a shell environment variable name
+And the step explains that `.env` is not an implicit agent pass-through surface
+And the step explains that the daemon must have the value in its environment
+And the wizard reminds the human that existing agent sessions must be restarted
+  before newly authorized values are visible to those agents
+```
+
 ### Persistence surfaces and writers
 
 The wizard writes through five distinct persistence surfaces. The
@@ -243,6 +259,7 @@ lands in one of the five surfaces below.
 | People, subscriptions, interests, event domains       | `~/.teleclaude/teleclaude.yml` (global YAML)  | `GlobalConfig` (Pydantic)              | `cli/config_handlers.py:save_global_config`                  |
 | Per-person creds, subscriptions, interests            | `~/.teleclaude/people/<name>/teleclaude.yml`  | `PersonConfig` (Pydantic)              | `cli/config_handlers.py:save_person_config`                  |
 | Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)     | `ProjectConfig` (Pydantic)             | `config/loader.py:save_project_config` (atomic, per `atomic-project-config-write`) |
+| Agent environment allow list                          | `~/.teleclaude/teleclaude.yml` (global YAML)  | `GlobalConfig.env_allow_list`          | `cli/config_handlers.py:save_global_config`                  |
 | Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                   | env-var registry (untyped)             | `cli/config_handlers.py:set_env_var` (atomic — per `atomic-env-file-write`, promoted from `target.write_text` by this delivery) |
 | Computer identity, agents inventory, daemon settings  | `config.yml` (machine config)                 | `Config` dataclass tree (no Pydantic)  | `save_machine_config` (target — per `machine-config-write`)  |
 
@@ -309,13 +326,15 @@ Notifications → Review Environment):
 | New guided step                | Position                                | Subtab        | Persistence                                                                                |
 | ------------------------------ | --------------------------------------- | ------------- | ------------------------------------------------------------------------------------------ |
 | Configure System Identity      | First (before Configure Telegram)       | `environment` | `config.yml: computer.name` via `save_machine_config` (per `machine-config-write`)         |
+| Configure Agent Environment Access | After Review Environment             | `environment` | `~/.teleclaude/teleclaude.yml: env_allow_list` via `save_global_config` (per `agent-env-allow-list`) |
 | Configure Release Channel      | After Review Environment (last)         | `environment` | `<project>/teleclaude.yml: deployment.{channel,pinned_minor}` via `save_project_config`    |
 
 Rationale for placement: system identity is foundational (later steps
-may reference it in guidance text), so it leads. Release channel is
-deployment policy and follows the environment review, framing the
-"what daemon channel does this machine run" question after the
-machine-level pass.
+may reference it in guidance text), so it leads. Agent environment access
+belongs after the general environment review because it is a global user-owned
+authorization decision for agent sessions, not a generic `.env` editor.
+Release channel remains last, framing the "what daemon channel does this
+machine run" question after the machine-level pass.
 
 ### Permissions / preflight check inventory
 
@@ -398,6 +417,9 @@ rendering concern, not a state concern.
 - `project/spec/feature/config/atomic-project-config-write` is the
   persistence contract the wizard's release-channel step traverses
   (project YAML).
+- `project/spec/feature/config/agent-env-allow-list` is the
+  authorization contract the wizard's agent environment access step
+  traverses (project YAML).
 - `project/spec/feature/config/machine-config-write` is the
   persistence contract the wizard's system-identity step traverses
   (machine `config.yml`). Authored alongside this delivery; both
@@ -419,6 +441,8 @@ rendering concern, not a state concern.
 - Release channel: `alpha`, `beta`, `stable` (defaults to `stable`).
 - Pinned-minor field visibility: shown iff channel = `stable`; required to
   be non-empty when channel = `stable`.
+- Agent environment allow-list entries: shell environment variable names
+  matching `^[A-Za-z_][A-Za-z0-9_]*$`.
 - External-prompt categories the wizard guides but does not own: OS
   permission dialogs, OAuth browser consent, WhatsApp QR pairing, agent
   CLI permission probes.
