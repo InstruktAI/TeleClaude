@@ -53,10 +53,10 @@ from teleclaude.core.tmux_bridge._subprocess import (
 )
 
 __all__ = [
+    "FALLBACK_CAPTURE_LINES",
     "SUBPROCESS_TIMEOUT_DEFAULT",
     "SUBPROCESS_TIMEOUT_LONG",
     "SUBPROCESS_TIMEOUT_QUICK",
-    "FALLBACK_CAPTURE_LINES",
     "PaneSnapshot",
     "SubprocessTimeoutError",
     "capture_pane",

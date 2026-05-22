@@ -16,6 +16,7 @@ from teleclaude.types.todos import (
 _ARCHITECTURE_ARTIFACT = "architecture"
 _COSMETIC_VERDICT = "cosmetic"
 _DEPENDENCY_SLUG = "dependency-slug"
+_EMPTY_SHA = ""
 _MISSING_STATUS_ENTRY = {"dep_slug": _DEPENDENCY_SLUG}
 _UNKNOWN_STATUS_ENTRY = {"dep_slug": _DEPENDENCY_SLUG, "roadmap_status": "unknown"}
 
@@ -35,7 +36,7 @@ def test_artifact_entry_defaults_to_empty_drift_provenance() -> None:
 def test_drift_reviewed_stamp_defaults_to_empty_evidence_anchor() -> None:
     stamp = DriftReviewedStamp(verdict=_COSMETIC_VERDICT)
 
-    assert stamp.head_sha_at_review == ""
+    assert stamp.head_sha_at_review == _EMPTY_SHA
     assert stamp.upstream_digests_at_review == {}
     assert stamp.snippet_digests_at_review == {}
     assert stamp.dep_set_at_review == []
