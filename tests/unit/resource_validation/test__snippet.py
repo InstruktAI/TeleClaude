@@ -73,14 +73,12 @@ class TestResolveRefPath:
         assert resolved == target.resolve()
 
 
+# guard: loose-dict-func - validation error payloads carry a variable per-code field set
 def _normalize_error_paths(errors: list[dict[str, object]], root: Path) -> list[dict[str, object]]:
     normalized: list[dict[str, object]] = []
     for error in errors:
         normalized.append(
-            {
-                key: value.replace(str(root), "TMP") if isinstance(value, str) else value
-                for key, value in error.items()
-            }
+            {key: value.replace(str(root), "TMP") if isinstance(value, str) else value for key, value in error.items()}
         )
     return normalized
 
@@ -360,3 +358,104 @@ class TestThirdPartyValidation:
         _snippet.validate_third_party_docs(tmp_path)
 
         assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot
+
+
+# ---------------------------------------------------------------------------
+# _validate_baseline_dedup — injecting procedures must not re-include baseline
+# ---------------------------------------------------------------------------
+
+_DEDUP_VIOLATION = "baseline_dedup_violation"
+
+
+def _dedup_snippet(path: Path, snippet_id: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\nid: {snippet_id}\ntype: policy\ndomain: sd\nscope: domain\n"
+        f"description: x\nvisibility: public\n---\n# {snippet_id}\n",
+        encoding="utf-8",
+    )
+
+
+def _dedup_injecting_procedure(root: Path, *, required_read: str) -> None:
+    path = root / "docs/global/sd/procedure/build.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\nid: sd/procedure/build\ntype: procedure\ndomain: sd\nscope: domain\n"
+        "description: x\nvisibility: public\nneeds_domain_baseline: true\n---\n"
+        f"# Build\n\n## Required reads\n\n- @{required_read}\n",
+        encoding="utf-8",
+    )
+
+
+def _dedup_baseline(root: Path, *refs: str) -> None:
+    path = root / "docs/global/sd/baseline.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f"@{ref}\n" for ref in refs), encoding="utf-8")
+
+
+def _dedup_violations() -> int:
+    return sum(1 for e in resource_models.get_errors() if e.get("code") == _DEDUP_VIOLATION)
+
+
+def test_baseline_dedup_flags_required_read_already_in_baseline(tmp_path: Path) -> None:
+    """An injecting procedure that re-reads a baseline snippet is a violation."""
+    _dedup_snippet(tmp_path / "docs/global/sd/policy/commits.md", "sd/policy/commits")
+    _dedup_baseline(tmp_path, "docs/global/sd/policy/commits.md")
+    _dedup_injecting_procedure(tmp_path, required_read="docs/global/sd/policy/commits.md")
+
+    resource_models.clear_errors()
+    _snippet._validate_baseline_dedup(tmp_path)
+
+    assert _dedup_violations() == 1
+
+
+def test_baseline_dedup_flags_transitively_through_nested_procedure(tmp_path: Path) -> None:
+    """A baseline snippet reached through a chained procedure is still flagged."""
+    _dedup_snippet(tmp_path / "docs/global/sd/policy/commits.md", "sd/policy/commits")
+    nested = tmp_path / "docs/global/sd/procedure/review.md"
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.write_text(
+        "---\nid: sd/procedure/review\ntype: procedure\ndomain: sd\nscope: domain\n"
+        "description: x\nvisibility: public\n---\n# Review\n\n## Required reads\n\n"
+        "- @docs/global/sd/policy/commits.md\n",
+        encoding="utf-8",
+    )
+    _dedup_baseline(tmp_path, "docs/global/sd/policy/commits.md")
+    _dedup_injecting_procedure(tmp_path, required_read="docs/global/sd/procedure/review.md")
+
+    resource_models.clear_errors()
+    _snippet._validate_baseline_dedup(tmp_path)
+
+    assert _dedup_violations() == 1
+
+
+def test_baseline_dedup_passes_when_required_read_not_in_baseline(tmp_path: Path) -> None:
+    """Referencing a non-baseline snippet is allowed."""
+    _dedup_snippet(tmp_path / "docs/global/sd/policy/commits.md", "sd/policy/commits")
+    _dedup_snippet(tmp_path / "docs/global/sd/concept/role.md", "sd/concept/role")
+    _dedup_baseline(tmp_path, "docs/global/sd/policy/commits.md")
+    _dedup_injecting_procedure(tmp_path, required_read="docs/global/sd/concept/role.md")
+
+    resource_models.clear_errors()
+    _snippet._validate_baseline_dedup(tmp_path)
+
+    assert _dedup_violations() == 0
+
+
+def test_baseline_dedup_ignores_non_injecting_procedures(tmp_path: Path) -> None:
+    """A procedure without needs_domain_baseline may reference baseline snippets freely."""
+    _dedup_snippet(tmp_path / "docs/global/sd/policy/commits.md", "sd/policy/commits")
+    _dedup_baseline(tmp_path, "docs/global/sd/policy/commits.md")
+    path = tmp_path / "docs/global/sd/procedure/plain.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\nid: sd/procedure/plain\ntype: procedure\ndomain: sd\nscope: domain\n"
+        "description: x\nvisibility: public\n---\n# Plain\n\n## Required reads\n\n"
+        "- @docs/global/sd/policy/commits.md\n",
+        encoding="utf-8",
+    )
+
+    resource_models.clear_errors()
+    _snippet._validate_baseline_dedup(tmp_path)
+
+    assert _dedup_violations() == 0
