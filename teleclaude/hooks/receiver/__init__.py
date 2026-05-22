@@ -363,6 +363,20 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
         return None
     domain = origin.get("command_domain")
     if not isinstance(domain, str) or not domain:
+        # origin_metadata is composite — keyed by origin type (terminal/web/discord),
+        # each holding its own sub-dict. The command_domain set at dispatch lives
+        # inside the dispatching origin's sub-dict, not at the top level.
+        domain = next(
+            (
+                nested["command_domain"]
+                for nested in origin.values()
+                if isinstance(nested, dict)
+                and isinstance(nested.get("command_domain"), str)
+                and nested["command_domain"]
+            ),
+            None,
+        )
+    if not isinstance(domain, str) or not domain:
         return None
     if domain not in DOMAIN_SCOPES:
         logger.warning(EVENT_COMMAND_DOMAIN_NOT_ALLOWLISTED, session_id=session_id, domain=domain)
@@ -390,7 +404,7 @@ def _load_domain_baseline_content(domain: str) -> str:
     unreadable, or empty — the SessionStart hook surfaces this as a visible
     failure rather than silently dropping mandatory context.
     """
-    docs_root = (Path.home() / ".teleclaude" / "docs").resolve()
+    docs_root = tc_paths.GLOBAL_SNIPPETS_DIR.resolve()
     candidate = (docs_root / domain / "baseline.md").resolve()
     if docs_root not in candidate.parents:
         raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")

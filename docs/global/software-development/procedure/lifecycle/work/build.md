@@ -1,7 +1,7 @@
 ---
 description: 'Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.'
 domain: 'software-development'
-needs_domain_baseline: true
+needs_domain_baseline: 'True'
 id: 'software-development/procedure/lifecycle/work/build'
 scope: 'domain'
 type: 'procedure'
@@ -13,7 +13,6 @@ visibility: 'public'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/builder.md
-- @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 
 ## Goal
 
