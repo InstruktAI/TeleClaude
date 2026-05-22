@@ -13,6 +13,7 @@ from syrupy.assertion import SnapshotAssertion
 from teleclaude.runtime.environment import (
     compose_runtime_path,
     filter_platform_session_environment,
+    filter_tmux_runtime_environment,
     filter_tui_tmux_environment,
     resolve_runtime_environment,
     resolve_user_shell,
@@ -29,20 +30,44 @@ def test_compose_runtime_path_prepends_teleclaude_bin_and_dedupes_existing_entry
     assert [Path(entry) for entry in result.split(os.pathsep)] == [teleclaude_bin, user_bin]
 
 
-def test_filter_tui_tmux_environment_keeps_only_non_secret_runtime_keys() -> None:
+def test_filter_tmux_runtime_environment_keeps_shared_non_secret_tmux_keys(snapshot: SnapshotAssertion) -> None:
     source = {
+        "APPEARANCE_MODE": "dark",
+        "COLORTERM": "truecolor",
         "GITHUB_PAT": "blocked",
+        "LANG": "en_US.UTF-8",
         "LC_ALL": "en_US.UTF-8",
         "LC_SECRET": "blocked",
+        "MACOS_VOICE": "Samantha",
+        "NO_COLOR": "1",
+        "PATH": "/usr/bin",
+        "TELEC_TUI_SESSION": "1",
+        "TERMINAL_BG": "light",
+    }
+
+    result = filter_tmux_runtime_environment(source)
+
+    assert result == snapshot
+
+
+def test_filter_tui_tmux_environment_extends_shared_tmux_runtime_keys(snapshot: SnapshotAssertion) -> None:
+    source = {
+        "APPEARANCE_MODE": "dark",
+        "GITHUB_PAT": "blocked",
+        "LANG": "en_US.UTF-8",
+        "LC_ALL": "en_US.UTF-8",
+        "LC_SECRET": "blocked",
+        "NO_COLOR": "1",
         "OPENAI_API_KEY": "blocked",
         "PATH": "/usr/bin",
         "TELEC_TUI_SESSION": "1",
+        "TERMINAL_BG": "light",
         "UNRELATED": "blocked",
     }
 
     result = filter_tui_tmux_environment(source)
 
-    assert result == {"LC_ALL": "en_US.UTF-8", "PATH": "/usr/bin", "TELEC_TUI_SESSION": "1"}
+    assert result == snapshot
 
 
 def test_filter_platform_session_environment_keeps_only_explicit_runtime_keys(snapshot: SnapshotAssertion) -> None:

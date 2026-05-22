@@ -47,6 +47,7 @@ And the directory is recreated empty with mode 0700 to drop any stray unix socke
 And the TeleClaude-controlled env dict injects TELECLAUDE_HOME, SHELL=teleclaude-shell, ZDOTDIR, BASH_ENV, ENV, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, ZSH_LAST_WORKING_DIRECTORY=1, TMPDIR/TMP/TEMP all pointing at the per-session TMPDIR
 And authorized agent env vars are resolved from `GlobalConfig.env_allow_list` plus `ProjectConfig.env_allow_list`
 And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance (`APPEARANCE_MODE`, `TERMINAL_BG`), locale (`LANG`, `LC_*`), and voice selectors
+And common tmux runtime env filtering uses one shared allowlist for appearance and locale keys, with TUI and agent panes adding only surface-specific extras
 And agent env vars are written to a 0600 file under the per-session TMPDIR
 And each env var name is validated against ^[A-Za-z_][A-Za-z0-9_]*$ — invalid names raise ValueError
 And tmux is invoked as `tmux new-session -d -s <name> -c <working_dir> [-e VAR=VAL ...] <shell_command>` with only TeleClaude-controlled values in `-e`

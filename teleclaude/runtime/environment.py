@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import pwd
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
@@ -16,11 +16,9 @@ from teleclaude.paths import BIN_DIR
 logger = get_logger(__name__)
 _SHELL_PATH_CAPTURE_TIMEOUT_SECONDS = 5
 _SHELL_CAPTURE_ENV_REMOVALS = ("ZDOTDIR", "BASH_ENV", "ENV", "TELECLAUDE_HOST_SHELL")
-_TUI_ENV_EXACT_ALLOWLIST = frozenset(
+_TMUX_RUNTIME_ENV_EXACT_ALLOWLIST = frozenset(
     {
         "APPEARANCE_MODE",
-        "COLORTERM",
-        "HOME",
         "LANG",
         "LC_ALL",
         "LC_COLLATE",
@@ -29,6 +27,13 @@ _TUI_ENV_EXACT_ALLOWLIST = frozenset(
         "LC_MONETARY",
         "LC_NUMERIC",
         "LC_TIME",
+        "TERMINAL_BG",
+    }
+)
+_TUI_ENV_EXTRA_ALLOWLIST = frozenset(
+    {
+        "COLORTERM",
+        "HOME",
         "LOGNAME",
         "NO_COLOR",
         "PATH",
@@ -42,7 +47,6 @@ _TUI_ENV_EXACT_ALLOWLIST = frozenset(
         "TELECLAUDE_HOME",
         "TEMP",
         "TERM",
-        "TERMINAL_BG",
         "TERM_PROGRAM",
         "TERM_PROGRAM_VERSION",
         "TMP",
@@ -51,21 +55,11 @@ _TUI_ENV_EXACT_ALLOWLIST = frozenset(
         "UV_NO_SYNC",
     }
 )
-_PLATFORM_SESSION_ENV_EXACT_ALLOWLIST = frozenset(
+_PLATFORM_SESSION_ENV_EXTRA_ALLOWLIST = frozenset(
     {
-        "APPEARANCE_MODE",
         "ELEVENLABS_VOICE_ID",
-        "LANG",
-        "LC_ALL",
-        "LC_COLLATE",
-        "LC_CTYPE",
-        "LC_MESSAGES",
-        "LC_MONETARY",
-        "LC_NUMERIC",
-        "LC_TIME",
         "MACOS_VOICE",
         "OPENAI_VOICE",
-        "TERMINAL_BG",
     }
 )
 
@@ -77,16 +71,27 @@ class RuntimeEnvironment(TypedDict):
     SHELL: NotRequired[str]
 
 
+def _filter_tmux_environment(env: Mapping[str, str], extra_allowlist: Iterable[str] = ()) -> dict[str, str]:
+    allowlist = _TMUX_RUNTIME_ENV_EXACT_ALLOWLIST | frozenset(extra_allowlist)
+    return {key: value for key, value in env.items() if key in allowlist}
+
+
+def filter_tmux_runtime_environment(env: Mapping[str, str]) -> dict[str, str]:
+    """Return non-secret runtime env vars common to TeleClaude tmux sessions."""
+
+    return _filter_tmux_environment(env)
+
+
 def filter_tui_tmux_environment(env: Mapping[str, str]) -> dict[str, str]:
     """Return the narrow environment allowed through tmux ``-e`` for the TUI."""
 
-    return {key: value for key, value in env.items() if key in _TUI_ENV_EXACT_ALLOWLIST}
+    return _filter_tmux_environment(env, _TUI_ENV_EXTRA_ALLOWLIST)
 
 
 def filter_platform_session_environment(env: Mapping[str, str]) -> dict[str, str]:
     """Return TeleClaude-owned session env vars allowed beside project config."""
 
-    return {key: value for key, value in env.items() if key in _PLATFORM_SESSION_ENV_EXACT_ALLOWLIST}
+    return _filter_tmux_environment(env, _PLATFORM_SESSION_ENV_EXTRA_ALLOWLIST)
 
 
 def _dedupe_path_entries(entries: list[str]) -> list[str]:

@@ -9,3 +9,22 @@
     'OPENAI_VOICE': 'alloy',
   })
 # ---
+# name: test_filter_tmux_runtime_environment_keeps_shared_non_secret_tmux_keys
+  dict({
+    'APPEARANCE_MODE': 'dark',
+    'LANG': 'en_US.UTF-8',
+    'LC_ALL': 'en_US.UTF-8',
+    'TERMINAL_BG': 'light',
+  })
+# ---
+# name: test_filter_tui_tmux_environment_extends_shared_tmux_runtime_keys
+  dict({
+    'APPEARANCE_MODE': 'dark',
+    'LANG': 'en_US.UTF-8',
+    'LC_ALL': 'en_US.UTF-8',
+    'NO_COLOR': '1',
+    'PATH': '/usr/bin',
+    'TELEC_TUI_SESSION': '1',
+    'TERMINAL_BG': 'light',
+  })
+# ---
