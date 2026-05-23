@@ -36,6 +36,7 @@ computer:
 #     bot_username: teleclaude_raspi_bot
 
 telegram:
+  enabled: false
   # trusted_bots is fleet-derived: the daemon automatically merges bot_username
   # from all fleet members (local + remote_computers) into the trusted list.
   # Add explicit entries here to merge additional bots not in the fleet config.
