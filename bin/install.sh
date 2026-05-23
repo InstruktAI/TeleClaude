@@ -475,6 +475,24 @@ configure_agent_cli() {
     fi
 }
 
+setup_git_filters() {
+    print_header "Setting up Git Filters"
+    print_info "Configuring teleclaude-docs smudge/clean filters..."
+
+    local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-c" "
+from pathlib import Path
+from teleclaude.project_setup.git_filters import setup_git_filters
+setup_git_filters(Path('$INSTALL_DIR'))
+")
+
+    if "${cmd[@]}"; then
+        print_success "Git filters configured"
+    else
+        print_error "Failed to configure Git filters"
+        exit 1
+    fi
+}
+
 # Load modular install steps
 source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
 source "$INSTALL_DIR/bin/init/link_shared_scripts.sh"
@@ -503,6 +521,7 @@ main() {
 
     setup_mcp_config
     configure_agent_cli
+    setup_git_filters
     link_shared_scripts
 
     print_header "Install Complete"

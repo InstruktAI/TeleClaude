@@ -16,7 +16,7 @@ def setup_git_filters(project_root: Path) -> None:
     """
     git_dir = project_root / ".git"
     if not git_dir.exists():
-        print("telec projects init: not a git repository, skipping filter setup.")
+        print("git_filters: not a git repository, skipping filter setup.")
         return
 
     repo = Repo(project_root)
@@ -28,7 +28,7 @@ def setup_git_filters(project_root: Path) -> None:
     _run_git_config(repo, "filter.teleclaude-docs.clean", clean_cmd)
     _run_git_config(repo, "filter.teleclaude-docs.required", "true")
 
-    print("telec projects init: git filters configured.")
+    print("git_filters: configured smudge/clean filters for tilde expansion.")
 
 
 def _run_git_config(repo: Repo, key: str, value: str) -> None:

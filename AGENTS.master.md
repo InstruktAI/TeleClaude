@@ -53,3 +53,11 @@ The pre-push hook runs `telec code lint --all` before allowing any push from `tr
 - **Per-worktree mirror:** `trees/_integration/.githooks/pre-push` (kept in sync to prevent regression when hooks are re-deployed from this mirror).
 
 If an integration push is blocked with `ERROR: Integration push blocked — telec code lint --all failed.`, resolve all lint violations reported by `telec code lint --all` and retry the push. The CI `make lint` check is a redundant post-push catch layer; the pre-push guard is the primary enforcement surface.
+
+## Git Documentation Filters
+
+The `teleclaude-docs` git filter ensures that `@~/.teleclaude` paths in documentation snippets are expanded to absolute paths on checkout, and contracted back to `@~/.teleclaude` on commit.
+This filter configuration is a dual-responsibility to cover both the core platform and isolated projects:
+
+- **Mother Project (TeleClaude core):** Configured automatically during `make install`.
+- **Downstream Projects:** Configured automatically by `telec projects init` when initializing a new AI-managed project.
