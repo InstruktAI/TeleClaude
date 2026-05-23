@@ -180,7 +180,7 @@ All workers are dispatched via `telec sessions run`. The machine specifies the c
 | Phase    | Worker Role                                 | Command                                                                                           | Thinking Mode      |
 | -------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------ |
 | Prepare  | Intaker / Architect / Planner               | `/next-prepare-intake`, `/next-prepare-architecture`, `/next-prepare-plan`                         | `slow`             |
-| Prepare  | Drift Analyzer                              | `/next-drift-analyze`                                                                             | `med`              |
+| Prepare  | Drift Analyzer                              | `/next-drift-analyze`                                                                             | `fast`             |
 | Prepare  | Reviewer                                    | `/next-review-architecture`, `/next-review-plan`                                                  | `slow`             |
 | Build    | Builder                                     | `/next-build` (or `/next-bugs-fix`)                                                               | `med`              |
 | Review   | Reviewer                                    | `/next-review-build`                                                                              | `slow` (mandatory) |
