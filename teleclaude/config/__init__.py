@@ -178,7 +178,8 @@ class WhatsAppQoSConfig:
 class TelegramConfig:
     """Telegram adapter configuration."""
 
-    trusted_bots: list[str]
+    enabled: bool = False
+    trusted_bots: list[str] = field(default_factory=list)
     qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
 
 

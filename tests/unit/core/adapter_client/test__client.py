@@ -103,6 +103,7 @@ class TestStart:
         client = AdapterClient(task_registry=registry)
         config = SimpleNamespace(
             discord=SimpleNamespace(enabled=True),
+            telegram=SimpleNamespace(enabled=True),
             whatsapp=SimpleNamespace(enabled=False, phone_number_id=None, access_token=None),
             redis=SimpleNamespace(enabled=True),
         )

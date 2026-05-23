@@ -131,7 +131,8 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
 
         # Telegram adapter
         # Check for env token presence (adapter authenticates from env)
-        if os.getenv("TELEGRAM_BOT_TOKEN"):
+        telegram_cfg = getattr(config, "telegram", None)
+        if telegram_cfg is not None and getattr(telegram_cfg, "enabled", False) and os.getenv("TELEGRAM_BOT_TOKEN"):
             logger.info("[STARTUP] Starting Telegram adapter (usually 2-8s)")
             telegram = TelegramAdapter(self)
             await telegram.start()  # Raises if fails → daemon crashes
