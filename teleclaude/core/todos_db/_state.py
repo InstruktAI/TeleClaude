@@ -256,7 +256,7 @@ class TodosDbStateMixin:
             payload = canonicalize_state_for_storage(state)
             row_id = await self._resolve_active_row_id(db_session, slug)
             if row_id is None:
-                msg = f"write_state: no active/icebox roadmap entry for slug {slug!r}"
+                msg = f"write_state: no active/icebox todo for slug {slug!r}"
                 raise ValueError(msg)
             if await self._is_state_holder_slug(db_session, slug):
                 msg = f"write_state: holder slug {slug!r} cannot have todo_state"
@@ -455,7 +455,7 @@ class TodosDbStateMixin:
                 .limit(1)
             ).one_or_none()
             if row_id is None:
-                msg = f"write_state_sync: no active/icebox roadmap entry for slug {slug!r}"
+                msg = f"write_state_sync: no active/icebox todo for slug {slug!r}"
                 raise ValueError(msg)
             holder = session.exec(
                 select(TodoRoadmap.id)

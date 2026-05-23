@@ -88,7 +88,7 @@ class SkipStamp(BaseModel):
 
 
 class DependencyEntry(BaseModel):
-    """Snapshot of a direct roadmap dependency and its roadmap status."""
+    """Snapshot of a direct todo dependency and its todo status."""
 
     dep_slug: str
     roadmap_status: RoadmapStatusLiteral
@@ -217,7 +217,7 @@ class TodoState(BaseModel):
 
     ``lifecycle_phase`` is the only authoritative software-development phase
     pointer. ``phase`` remains the coarse pending/in_progress/done item status
-    used by roadmap selection.
+    used by todo selection.
 
     ``prepare_phase`` and ``work_phase`` remain as transient compatibility
     fields so older code paths can still validate during the migration window,

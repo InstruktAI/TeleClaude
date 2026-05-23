@@ -1,6 +1,6 @@
-"""Core roadmap assembly logic.
+"""Core todo list assembly logic.
 
-DB-backed roadmap assembly for CLI, API, and TUI.
+DB-backed todo list assembly for CLI, API, and TUI.
 """
 
 import json
@@ -160,7 +160,7 @@ def _with_active_band(todo: TodoDTO, delivered_slug_set: set[str]) -> TodoDTO:
 
 
 def section_sort_key(todo: TodoDTO, *, raw_status: str | None = None) -> tuple[int, object, str]:
-    """Sort key for derived roadmap sections — newest-first within each section.
+    """Sort key for derived todo list sections — newest-first within each section.
 
     Active rows group actionable (Ready band) rows above in-prep rows, then sort
     newest-first by ``ready_since`` falling back to ``created_at``. Delivered
@@ -197,9 +197,9 @@ def assemble_roadmap_from_db(
     delivered_only: bool = False,
     delivered_since: str | None = None,
 ) -> list[TodoDTO]:
-    """Assemble roadmap from todos.db using sync methods.
+    """Assemble todo list from todos.db using sync methods.
 
-    Reads state, roadmap entries, and deps from the SQLite database.
+    Reads state, todo list entries, and deps from the SQLite database.
 
     ``include_delivered``/``delivered_only`` return delivered entries.
     ``delivered_since`` optionally restricts delivered entries to those
@@ -222,7 +222,7 @@ def assemble_roadmap_from_db(
     conn = db._sync_conn()
     conn_open_dt = time.perf_counter() - conn_open_started_at
     try:
-        # Build roadmap entries.
+        # Build todo list entries.
         #
         # The WHERE clause builds an explicit allow-list of statuses (active,
         # icebox, delivered) — never a negative predicate. Soft-removed rows
@@ -356,7 +356,7 @@ def assemble_roadmap_from_db(
             todo_status = raw_status  # active/icebox/delivered — authoritative DB state
             # Re-bucketing below only refines the 'active' bucket into more
             # granular states (pending/ready/in_progress). Icebox and delivered
-            # are authoritative roadmap statuses — never overwrite them from a
+            # are authoritative todo list statuses — never overwrite them from a
             # lifecycle pointer (which defaults to DRAFT for never-prepared
             # entries and would otherwise clobber 'icebox' into 'pending').
             if todo_status == RoadmapStatus.DELIVERED or is_delivered:

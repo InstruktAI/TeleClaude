@@ -68,7 +68,7 @@ class DependencyStatusReader(Protocol):
     """Boundary needed by dependency-graph drift derivation."""
 
     async def get_deps_with_status(self, slug: str) -> list[DependencyEntry]:
-        """Return immediate dependency slugs with roadmap status."""
+        """Return immediate dependency slugs with todo status."""
         ...
 
 

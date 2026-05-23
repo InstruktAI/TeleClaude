@@ -28,6 +28,7 @@ from teleclaude.core.next_machine.lifecycle import is_ready_for_work
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
+
 from teleclaude.cli.tui.messages import StateChanged
 
 
@@ -65,14 +66,14 @@ class PreparationViewActionsMixin:
         return item if isinstance(item, ComputerHeader) else None
 
     def action_move_todo_up(self) -> None:
-        """Shift+Up: manual reorder is unsupported for derived roadmap ordering."""
+        """Shift+Up: manual reorder is unsupported for derived todo ordering."""
         self.app.notify(
             "Manual reorder is not supported; ordering is derived from todo state.",
             severity="warning",
         )  # type: ignore[attr-defined]
 
     def action_move_todo_down(self) -> None:
-        """Shift+Down: manual reorder is unsupported for derived roadmap ordering."""
+        """Shift+Down: manual reorder is unsupported for derived todo ordering."""
         self.action_move_todo_up()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:

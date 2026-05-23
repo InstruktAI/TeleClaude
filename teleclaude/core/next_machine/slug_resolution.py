@@ -78,10 +78,10 @@ async def resolve_slug_async(
     ready_only: bool = False,
     dependencies: dict[str, list[str]] | None = None,
 ) -> tuple[str | None, bool, str]:
-    """Resolve slug from argument or roadmap using todos.db.
+    """Resolve slug from argument or todo list using todos.db.
 
     Args:
-        todos_db: Database instance for state and roadmap queries.
+        todos_db: Database instance for state and todo list queries.
         slug: Optional explicit slug.
         ready_only: If True, only match items with current == 'prepared' (for next_work).
         dependencies: Optional dependency graph for dependency gating.
@@ -167,13 +167,13 @@ async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
 
 
 def _deps_satisfied(dependencies: dict[str, list[str]], delivered: set[str], slug: str) -> bool:
-    """Return whether all roadmap dependencies for ``slug`` have delivered."""
+    """Return whether all todo dependencies for ``slug`` have delivered."""
     slug_deps = dependencies.get(slug, [])
     return not slug_deps or all(dep in delivered for dep in slug_deps)
 
 
 def _children_by_group(entries: list[RoadmapRow]) -> dict[str, list[str]]:
-    """Index group_slug children from roadmap rows."""
+    """Index group_slug children from todo rows."""
     children: dict[str, list[str]] = {}
     for entry in entries:
         group_slug = entry.get("group_slug")
@@ -189,7 +189,7 @@ async def _resolve_holder_children_from_entries(
     holder_slug: str,
     grouped_children: dict[str, list[str]],
 ) -> list[str]:
-    """Resolve holder children from preloaded roadmap grouping rows."""
+    """Resolve holder children from preloaded todo grouping rows."""
     return list(grouped_children.get(holder_slug, []))
 
 
@@ -201,7 +201,7 @@ async def effective_delivered_slugs_for_dependencies(
 
     Holder rows do not carry their own lifecycle status. For dependency gating,
     a holder dependency is satisfied when every direct child has delivered; this
-    mirrors the roadmap projection without mutating the holder row itself.
+    mirrors the todo list projection without mutating the holder row itself.
     """
     effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
     entries = await todos_db.list_roadmap(include_delivered=True)
@@ -240,7 +240,7 @@ async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
 
 
 async def resolve_holder_children_db(todos_db: TodosDb, holder_slug: str) -> list[str]:
-    """Resolve container/holder child slugs from DB roadmap grouping."""
+    """Resolve container/holder child slugs from DB todo grouping."""
     entries = await todos_db.list_roadmap(include_delivered=True)
     return await _resolve_holder_children_from_entries(todos_db, holder_slug, _children_by_group(entries))
 

@@ -128,7 +128,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     Args:
         db: Database instance
-        slug: Optional explicit slug (resolved from roadmap if not provided)
+        slug: Optional explicit slug (resolved from todo list if not provided)
         cwd: Current working directory (project root)
 
     Returns:

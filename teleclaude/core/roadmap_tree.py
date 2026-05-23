@@ -1,6 +1,6 @@
 """Sectioned dependency-tree projection for the roadmap.
 
-Single owner of roadmap shape: takes the flat ``list[TodoDTO]`` from
+Single owner of todo shape: takes the flat ``list[TodoDTO]`` from
 ``assemble_roadmap_from_db`` and returns ``active``/``delivered``/``icebox``
 sections, each a dependency tree. Every consumer (TUI, ``telec todo list``)
 renders these — no consumer re-derives hierarchy.
@@ -42,7 +42,7 @@ class RoadmapNode:
 
 @dataclass
 class RoadmapSections:
-    """The roadmap split into independent dependency trees by status."""
+    """The todo split into independent dependency trees by status."""
 
     active: list[RoadmapNode] = field(default_factory=list)
     delivered: list[RoadmapNode] = field(default_factory=list)
@@ -185,7 +185,7 @@ def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) 
 
 
 def build_roadmap_sections(todos: list[TodoDTO]) -> RoadmapSections:
-    """Split the flat roadmap into active/delivered/icebox dependency trees.
+    """Split the flat todo list into active/delivered/icebox dependency trees.
 
     Each section's tree is built over only its own members, so cross-section
     edges (e.g. a delivered parent of an active child) drop out automatically.

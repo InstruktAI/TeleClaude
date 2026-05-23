@@ -328,7 +328,7 @@ async def list_projects_with_todos() -> list[ProjectInfo]:
 
 
 async def list_todos(project_path: str) -> list[TodoDTO]:
-    """List roadmap + folder-based todos for a project.
+    """List todos for a project.
 
     Ephemeral request/response - no DB session required.
 

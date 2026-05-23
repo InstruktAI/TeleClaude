@@ -381,8 +381,8 @@ async def test_has_pending_deferrals_false_when_processed(todos_db: TodosDb) -> 
 
 
 async def test_write_state_raises_when_no_roadmap_entry(todos_db: TodosDb) -> None:
-    """write_state fails fast when slug has no active/icebox roadmap entry."""
-    with pytest.raises(ValueError, match="no active/icebox roadmap entry"):
+    """write_state fails fast when slug has no active/icebox todo."""
+    with pytest.raises(ValueError, match="no active/icebox todo"):
         await todos_db.write_state("orphan", {"lifecycle_phase": "prd_drafting"})
 
 
@@ -391,7 +391,7 @@ async def test_write_state_raises_when_slug_is_delivered(todos_db: TodosDb) -> N
     await todos_db.add_to_roadmap("my-slug")
     await todos_db.write_state("my-slug", {"lifecycle_phase": "finalize_ready"})
     await todos_db.deliver("my-slug", commit="abc123")
-    with pytest.raises(ValueError, match="no active/icebox roadmap entry"):
+    with pytest.raises(ValueError, match="no active/icebox todo"):
         await todos_db.write_state("my-slug", {"lifecycle_phase": "prd_drafting"})
 
 

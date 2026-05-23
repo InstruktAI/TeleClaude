@@ -120,7 +120,7 @@ async def _hydrate_artifact_presence_for_adoption(
 
 
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
-    """Find the first roadmap entry still in the prepare lane."""
+    """Find the first todo still in the prepare lane."""
     entries = await todos_db.list_roadmap()
     for entry in entries:
         slug = entry["slug"]

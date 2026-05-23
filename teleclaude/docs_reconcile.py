@@ -1,4 +1,4 @@
-"""Reconcile snippet lifecycle frontmatter against roadmap status."""
+"""Reconcile snippet lifecycle frontmatter against todo status."""
 
 from __future__ import annotations
 
@@ -269,7 +269,7 @@ def reconcile_snippets_for_purged_slugs(
     purged_slugs: Iterable[str],
     roadmap_status_map: Mapping[str, str],
 ) -> list[SnippetWriteResult]:
-    """Plan snippet lifecycle frontmatter rewrites for hard-purged roadmap slugs."""
+    """Plan snippet lifecycle frontmatter rewrites for hard-purged todo slugs."""
     purged_slug_tuple = tuple(dict.fromkeys(purged_slugs))
     if not purged_slug_tuple:
         return []
