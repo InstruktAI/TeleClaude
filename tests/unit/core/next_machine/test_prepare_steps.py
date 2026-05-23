@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.output_formatting import (
     PENDING_DRIFT_CONTEXT_PREFIX,
     format_pending_classes_for_dispatch,
 )
-from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
+from teleclaude.core.next_machine.prepare_steps import DRIFT_ANALYZER_RECOMMENDED_MODE, _prepare_dispatch
 from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
@@ -146,6 +146,7 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer() -> None:
     assert instruction == _DISPATCHED
     assert dispatch_worker.call_args.kwargs["command"] is SlashCommand.NEXT_DRIFT_ANALYZE
     assert dispatch_worker.call_args.kwargs["additional_context"] == format_pending_classes_for_dispatch(drift_result)
+    assert dispatch_worker.call_args.kwargs["recommended_mode"] == DRIFT_ANALYZER_RECOMMENDED_MODE
 
 
 @pytest.mark.asyncio
@@ -298,6 +299,7 @@ async def test_prepared_pending_drift_dispatches_analyzer_before_terminal_format
     assert instruction == _DISPATCHED
     assert dispatch_worker.call_args.kwargs["command"] is SlashCommand.NEXT_DRIFT_ANALYZE
     assert dispatch_worker.call_args.kwargs["additional_context"] == format_pending_classes_for_dispatch(drift_result)
+    assert dispatch_worker.call_args.kwargs["recommended_mode"] == DRIFT_ANALYZER_RECOMMENDED_MODE
 
 
 def test_pending_classes_formatter_renders_pending_pairs_only() -> None:

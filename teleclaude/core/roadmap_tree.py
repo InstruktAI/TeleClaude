@@ -42,7 +42,7 @@ class RoadmapNode:
 
 @dataclass
 class RoadmapSections:
-    """The todo split into independent dependency trees by status."""
+    """The todo list split into independent dependency trees by status."""
 
     active: list[RoadmapNode] = field(default_factory=list)
     delivered: list[RoadmapNode] = field(default_factory=list)

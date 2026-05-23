@@ -203,7 +203,7 @@ class DaemonCache:
         Args:
             scope: One of ``"todos"``, ``"artifacts"``, ``"roadmap"``. Todos
                 and artifacts both invalidate the per-project todos cache and
-                fire ``todos_updated``; todo invalidates the project digest
+                fire ``todos_updated``; roadmap invalidates the project digest
                 and fires ``projects_updated``.
             computer: Computer name whose caches should be invalidated.
             project_path: Project path required for todo/artifact scopes; the
