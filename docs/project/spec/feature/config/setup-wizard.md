@@ -355,13 +355,42 @@ deterministic verdict per row.
 | Enabled agent CLI binaries on `PATH`           | `shutil.which(<binary>)` per agent declared `enabled: true` in `config.yml: agents`    | Required daemon-start blocker |
 | `TELECLAUDE_HOME` resolves and is writable     | Path resolution via `teleclaude.paths` + `os.access(path, os.W_OK)`                    | Required daemon-start blocker |
 | AI/Voice keys present (when adapter enabled)   | env-var presence: `OPENAI_API_KEY` etc.                                                | Optional adapter gap          |
-| WhatsApp credentials present (when enabled)    | env-var presence (per `whatsapp-env-var-override`)                                     | Optional adapter gap          |
+| WhatsApp credentials present (when enabled)    | env/config presence: `WHATSAPP_ACCESS_TOKEN` + `phone_number_id` (Business Cloud API, per `whatsapp-env-var-override`) | Optional adapter gap          |
 | Discord credentials present (when enabled)    | env-var presence: Discord env vars                                                     | Optional adapter gap          |
+| Agent CLI auth / OAuth consent (per enabled agent) | Stored OAuth/account credential presence per enabled agent (sources per `teleclaude/helpers/agent_cli.py`): Codex → `~/.codex/auth.json`; Gemini → `~/.gemini/oauth_creds.json`; Claude → the Claude Code login credential (macOS Keychain service `Claude Code-credentials`; the CLI's own credential store on other platforms). API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are **not** a consent source — `agent_cli.py` strips them from CLI subprocess env because they bypass OAuth, so their presence must not flip this row to OK. | Required daemon-start blocker (per enabled agent) |
+| Agent CLI permission readiness (per enabled agent) | Bounded local subprocess probe: invoke the enabled agent binary with its configured non-interactive flags (`config.yml: agents` args; `constants.py` defaults) and confirm it returns without blocking on an interactive permission prompt | Required daemon-start blocker (per enabled agent) |
 
-For each non-OK row, the section renders guidance text pointing the
-human at the external system that owns the prompt (OS settings, OAuth
-flow, WhatsApp QR pairing, etc.). The wizard never grants, escalates,
-or modifies a host-level permission itself — UC-WIZ-8 mandates this.
+The two agent-CLI rows status-check the live-consent categories UC-WIZ-8
+requires the section to reflect: the agent's OAuth/browser login (the stored
+credential's presence flips to OK once consent is granted out-of-band,
+satisfying the re-open reflection clause) and its non-interactive permission
+state (subprocess probe). For each non-OK row, the section renders guidance text
+pointing the human at the external system that owns the prompt (OS settings,
+OAuth login, WhatsApp Business Cloud API token setup, etc.). The wizard never
+grants, escalates, or modifies a host-level permission itself — UC-WIZ-8
+mandates this.
+
+**WhatsApp consent — covered by the credentials row; no QR pairing applies.**
+The implemented adapter (`teleclaude/adapters/whatsapp_adapter.py`) is a
+WhatsApp **Business Cloud API** client (Meta Graph API), authenticated by
+`WHATSAPP_ACCESS_TOKEN` + `phone_number_id` (env/config). It has **no
+QR/device-pairing step** — QR pairing is the Web/linked-device model this
+adapter does not implement. Its locally-statusable consent surface is exactly
+the credentials checked by the "WhatsApp credentials present" row above;
+confirming the token is actually authorized with Meta requires a Graph API
+call, which is the excluded live-reachability ("test connection") category.
+UC-WIZ-8's "QR pairing" wording anticipates a future Web/linked-device
+adapter; if one is ever added, its pairing artifact becomes the status source.
+
+**Live-consent category that is not locally statusable (open).** One UC-WIZ-8
+external-prompt category cannot yet be given a status indicator from a local
+read; the section renders guidance only for it, recorded here so plan tasks
+derive from the finalized inventory rather than inventing a mechanism:
+
+- **OS-level permission dialogs** (e.g., macOS automation/accessibility
+  grants). No portable cross-platform local probe exists. The writable-path
+  rows cover the log/path consents the daemon needs; general OS grants stay
+  guidance-only.
 
 Cross-context status that would require a service call (e.g., "is the
 daemon currently running and healthy?") is **excluded**. The wizard's

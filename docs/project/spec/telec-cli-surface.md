@@ -375,8 +375,10 @@ subcommands:
       logout:
         description: 'Clear terminal login identity for this TTY.'
   config:
-    description: 'Interactive configuration (or get/patch/validate subcommands).'
+    description: 'Interactive setup wizard (canonical setup surface) plus get/patch/validate subcommands.'
     subcommands:
+      wizard:
+        description: 'Open the interactive configuration wizard — the canonical single human-facing setup surface for every TeleClaude-persisted setup value. During normal setup no other TeleClaude-owned interactive prompt collects those values; prompts owned by external systems (OS permission dialogs, OAuth browser login, WhatsApp Business Cloud API token setup, agent CLI permission probes) are explicit exceptions. Behavioural contract: project/spec/feature/config/setup-wizard.'
       get:
         args:
           - paths: 'string... (optional dot-separated config paths)'
