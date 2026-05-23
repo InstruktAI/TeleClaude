@@ -184,6 +184,7 @@ remote_computers:
     teleclaude_path: string | null
     bot_username: string | null
 telegram:
+  enabled: boolean
   trusted_bots: list[string] # explicit entries merged with non-null fleet bot_username values
 agents:
   default: string
