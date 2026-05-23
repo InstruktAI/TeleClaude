@@ -109,6 +109,7 @@ async def _dispatch_worker(
     expected: str,
     blockers: list[str] | None = None,
     additional_context: str = "",
+    recommended_mode: str = "",
 ) -> tuple[bool, str]:
     _ = state, blockers  # not surfaced in verbatim dispatch script
     # Reuse-or-spawn: prefer an existing live prepare worker for this
@@ -155,6 +156,7 @@ async def _dispatch_worker(
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,
         note=f"Required reading for this worker: agents/commands/{loader_name}.md",
+        recommended_mode=recommended_mode,
     )
     return False, format_tool_call(request)
 
@@ -301,6 +303,7 @@ async def _prepare_dispatch(
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=_blockers_from_state(state, cwd=project_root),
                 additional_context=format_pending_classes_for_dispatch(drift_result),
+                recommended_mode="fast",
             )
         return await _prepare_step_prepared(db, slug)
     if phase == PreparePhase.BLOCKED:
@@ -322,6 +325,7 @@ async def _prepare_dispatch(
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=blockers,
                 additional_context=format_pending_classes_for_dispatch(drift_result),
+                recommended_mode="fast",
             )
         return _blocker_resolution(slug, drift=drift, blockers=blockers)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"

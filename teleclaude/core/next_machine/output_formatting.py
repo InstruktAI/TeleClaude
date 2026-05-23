@@ -65,6 +65,9 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
         pre_dispatch: pre-dispatch steps (optional)
         additional_context: extra context for the worker (optional)
         note: trailing note appended to the output (optional)
+        recommended_mode: recommended thinking mode (fast|med|slow) for this
+            worker; when set, fills the --mode slot and steers the orchestrator
+            instead of leaving the choice open (optional)
     """
 
 
@@ -183,6 +186,19 @@ def format_tool_call(request: ToolCallRequest) -> str:
     pre_dispatch_block = _format_pre_dispatch_block(str(request.get("pre_dispatch", "")))
     additional_context_flag, additional_context_block = _format_additional_context(request)
 
+    recommended_mode = str(request.get("recommended_mode", ""))
+    mode_slot = recommended_mode if recommended_mode else "<your selection>"
+    if recommended_mode:
+        mode_selection_line = (
+            "Based on the above guidance and the work item details, select the best agent. "
+            f"Recommended thinking mode for this worker: {recommended_mode} — use it unless you "
+            "have a specific reason to override."
+        )
+    else:
+        mode_selection_line = (
+            "Based on the above guidance and the work item details, select the best agent and thinking mode."
+        )
+
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 {ORCHESTRATOR_IDLE_INVARIANT}
@@ -192,7 +208,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 {pre_dispatch_block}STEP 1 - DISPATCH:
 {guidance}
 
-Based on the above guidance and the work item details, select the best agent and thinking mode.
+{mode_selection_line}
 
 PARALLELIZATION (pick the one matching your agent choice; append to --additional-context):
 - claude:
@@ -205,7 +221,7 @@ PARALLELIZATION (pick the one matching your agent choice; append to --additional
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" \
-  --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"{additional_context_flag}
+  --agent "<your selection>" --mode "{mode_slot}" --subfolder "{subfolder}"{additional_context_flag}
 Save the returned session_id.
 
 STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
