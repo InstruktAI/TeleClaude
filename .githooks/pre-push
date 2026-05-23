@@ -38,6 +38,13 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
     [ -z "${remote_ref:-}" ] && continue
     [ "$remote_ref" != "refs/heads/main" ] && continue
 
+    # A `HEAD:main` refspec reports local_ref as "HEAD"; resolve it to the
+    # underlying branch ref so canonical-root pushes (which the integration
+    # engine issues as `push origin HEAD:main`) are evaluated as refs/heads/main.
+    if [ "$local_ref" = "HEAD" ]; then
+        local_ref="$(git symbolic-ref -q HEAD 2>/dev/null || printf '%s' "$local_ref")"
+    fi
+
     # Allow push if explicitly authorized for automation/bookkeeping
     if [ "${TELECLAUDE_ALLOW_MAIN_PUSH:-}" = "1" ]; then
         continue

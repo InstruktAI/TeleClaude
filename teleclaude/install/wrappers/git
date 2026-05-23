@@ -105,8 +105,12 @@ _real_git() {
     # to the log + the caller's stderr in order with no race.
     local _stderr_capture
     _stderr_capture="$(mktemp -t teleclaude-git-wrapper.XXXXXX)"
-    "$_real_git_bin" "$@" 2>"$_stderr_capture"
-    local _rc=$?
+    # Capture rc with `|| _rc=$?` so a non-zero git exit does not trip `set -e`
+    # and abort before the captured stderr is drained to the caller. Without
+    # this, a failing git command (e.g. a pre-push hook block) exits the
+    # wrapper silently — rc surfaces but the diagnostic stderr is lost.
+    local _rc=0
+    "$_real_git_bin" "$@" 2>"$_stderr_capture" || _rc=$?
     if [ -s "$_stderr_capture" ]; then
         while IFS= read -r _line || [ -n "$_line" ]; do
             echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
