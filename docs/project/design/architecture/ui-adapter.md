@@ -1,11 +1,10 @@
 ---
-description: 'UI adapters translate human inputs into events and render outputs with UX rules.'
-id: 'project/design/architecture/ui-adapter'
-scope: 'project'
-type: 'design'
-visibility: 'public'
-status: 'target'
-delivered_by: ['voice-transcription-survives-restart']
+description: UI adapters translate human inputs into events and render outputs with
+  UX rules.
+id: project/design/architecture/ui-adapter
+scope: project
+type: design
+visibility: public
 ---
 
 # Ui Adapter — Design
@@ -219,23 +218,24 @@ never mutate core state directly — see `#invariants` and
 | Step | Actor     | Action                                                                       |
 | ---- | --------- | ---------------------------------------------------------------------------- |
 | 1    | User      | Sends voice message                                                          |
-| 2    | UiAdapter | Downloads audio file to /tmp                                                 |
-| 3    | Core      | Writes `voice_transcriptions` row `state=pending` (notice id NULL)           |
-| 4    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only); returns its platform msg id |
-| 5    | Core      | Persists the returned id as `notice_message_id`; runs transcription as a tracked task |
-| 6    | STT       | Transcribes audio via the existing speech-to-text backend chain, bounded by a wall-clock timeout |
-| 7    | UiAdapter | Edits the notice in place with the transcribed text                          |
-| 8    | Core      | Transitions row to `succeeded`                                               |
-| 9    | UiAdapter | Deletes voice message per cleanup rules (temp audio is swept by maintenance) |
+| 2    | UiAdapter | Downloads audio file to `/tmp/teleclaude_voice/voice_*`                      |
+| 3    | UiAdapter | Dispatches `HandleVoiceCommand` through the daemon task registry and returns |
+| 4    | Core      | Writes `voice_transcriptions` row `state=pending` (notice id NULL)           |
+| 5    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only); returns its platform msg id |
+| 6    | Core      | Persists the returned id as `notice_message_id`; runs transcription as a tracked task |
+| 7    | STT       | Transcribes audio via the existing speech-to-text backend chain, bounded by a wall-clock timeout |
+| 8    | UiAdapter | Edits the notice in place with the transcribed text or explicit failure      |
+| 9    | Core      | Transitions row to `succeeded` and sends the transcription through the normal message pipeline |
+| 10   | UiAdapter | Deletes voice message per cleanup rules (temp audio is swept by maintenance) |
 
 Non-happy paths edit the **same** notice in place rather than emitting a
 duplicate. Core drives the row's state and asks the adapter to edit: a
 wall-clock timeout or terminal STT failure resolves the notice to an explicit
 failure; on a daemon restart Core marks the row `interrupted` and the adapter
 edits the notice in place (when a notice id was persisted), and the next boot's
-recovery pass either completes the transcription or reports an audio-lost
-failure. See the authoritative snippets above for the bounded-retry and
-notice-ordering contract.
+recovery pass either completes the transcription or reports an audio-lost or
+retry-cap failure. See the authoritative snippets above for the bounded-retry
+and notice-ordering contract.
 
 ### 9. File Upload Flow
 
@@ -291,6 +291,6 @@ flowchart TD
 - **Cleanup Message Already Deleted**: pending_message_deletions references deleted message. Delete fails gracefully; row cleared.
 - **Feedback Routing Failure**: last_input_origin adapter offline. Feedback not delivered; logged. User sees nothing.
 - **Adapter State Treated as Truth**: Invalid. A stale message id, char offset, or turn anchor may cause bad rendering, but it must not move the projection cursor or reorder source content.
-- **Voice Transcription Failure**: the speech-to-text backend chain is unavailable or the audio format is unsupported. User sees error notice; voice message not deleted.
+- **Voice Transcription Failure**: The speech-to-text backend chain is unavailable, the audio format is unsupported, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; source voice cleanup follows the normal cleanup rules.
 - **File Download Failure**: Platform API error during download. User sees error feedback; no file sent to AI.
 - **Multiple Adapters Active**: Origin-only feedback appears only on the origin endpoint. Non-origin endpoints rely on dual-lane stream traffic.

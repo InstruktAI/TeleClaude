@@ -1,11 +1,10 @@
 ---
-description: 'Telegram UI adapter that maps topics to sessions and enforces UX cleanup rules.'
-id: 'project/design/architecture/telegram-adapter'
-scope: 'project'
-type: 'design'
-visibility: 'public'
-status: 'target'
-delivered_by: ['voice-transcription-survives-restart']
+description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
+  rules.
+id: project/design/architecture/telegram-adapter
+scope: project
+type: design
+visibility: public
 ---
 
 # Telegram Adapter — Design
@@ -179,7 +178,9 @@ sequenceDiagram
     participant User
     participant TG as Telegram
     participant Adapter
+    participant Daemon
     participant Core
+    participant STT as Voice Service
 
     User->>TG: Send voice message
     TG->>Adapter: Update (voice)
@@ -187,13 +188,24 @@ sequenceDiagram
     Adapter->>TG: getFile(file_id)
     TG->>Adapter: file_path
     Adapter->>TG: Download voice file
-    Adapter->>Core: handle_voice (audio path + notice routing)
-    Core->>Adapter: Send "🎤 Transcribing..." notice
-    Adapter->>TG: Send notice; return platform message id
-    Note over Core: Core persists notice id, runs the<br/>transcription as a tracked task, drives row state
-    Core->>Adapter: Edit notice in place (final text, or failure/interrupted notice)
+    Adapter->>Daemon: Spawn HandleVoiceCommand via task_registry and return
+    Daemon->>Core: Create/reuse durable voice_transcriptions row
+    Core->>Adapter: Send or edit "🎤 Transcribing..." notice
+    Adapter->>TG: Send/edit notice; return platform message id
+    Core->>Core: Persist notice id and drive row state
+    Core->>STT: Transcribe audio with timeout
+    STT->>Core: Transcribed text or failure
+    Core->>Adapter: Edit original notice to result/failure
     Adapter->>TG: Edit message
+    Core->>Daemon: ProcessMessageCommand(transcribed_text)
 ```
+
+Telegram owns Telegram-specific extraction, authorization, download, and message
+operations. It does not transcribe inline and does not own recovery state. Voice
+work runs as a daemon-tracked task so shutdown can mark an in-progress row
+interrupted while Telegram is still available for an in-place notice edit.
+Startup recovery later resubmits surviving audio or edits the original notice to
+an explicit audio-lost/retry-cap failure.
 
 ### 6. Topic Title Status Updates
 
@@ -237,7 +249,7 @@ sequenceDiagram
 - **Telegram API Timeout**: Edit or send fails due to network. Logged; next polling cycle retries. Message may be stale.
 - **Rate Limit Exceeded**: Too many edits in 1s window. Adapter skips edit, accumulates diff, retries next cycle.
 - **Unauthorized User**: Message from non-whitelisted user. Silently ignored; no response or error sent.
-- **Voice Transcription Failure**: the speech-to-text backend chain is unavailable or returns an error. User sees error feedback; voice message not deleted.
+- **Voice Transcription Failure**: The speech-to-text backend chain is unavailable or returns an error, the audio format is unsupported, recovery cannot find the audio, or the retry cap is exceeded. User sees the original notice resolve to an explicit failure; voice message cleanup follows the normal cleanup rules.
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
 - **Cleanup Failure**: pending_message_deletions row exists but message already deleted. Logged; row cleared on next cleanup.

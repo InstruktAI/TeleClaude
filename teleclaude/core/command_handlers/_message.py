@@ -170,6 +170,18 @@ async def handle_voice(
             metadata=metadata,
         )
 
+    async def _edit_status(
+        session_id: str,
+        message_id: str,
+        message: str,
+        metadata: MessageMetadata,
+    ) -> bool:
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found for voice status edit", session_id)
+            return False
+        return await client.edit_message(session, message_id, message, metadata=metadata)
+
     async def _delete_feedback(session_id: str, message_id: str) -> None:
         normalized_message_id = str(message_id).strip() if message_id else ""
         if not normalized_message_id or normalized_message_id.lower() == "none":
@@ -189,6 +201,11 @@ async def handle_voice(
         message_id=cmd.message_id,
         message_thread_id=cmd.message_thread_id,
         origin=cmd.origin,
+        actor_id=cmd.actor_id,
+        actor_name=cmd.actor_name,
+        actor_avatar_url=cmd.actor_avatar_url,
+        voice_transcription_id=cmd.voice_transcription_id,
+        notice_message_id=cmd.notice_message_id,
     )
 
     transcribed = await voice_message_handler.handle_voice(
@@ -196,6 +213,7 @@ async def handle_voice(
         audio_path=cmd.file_path,
         context=context,
         send_message=_send_status,
+        edit_message=_edit_status,
         delete_message=_delete_feedback,
     )
     if not transcribed:

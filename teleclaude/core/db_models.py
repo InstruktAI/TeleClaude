@@ -72,6 +72,30 @@ class VoiceAssignment(SQLModel, table=True):
     assigned_at: datetime | None = None
 
 
+class VoiceTranscription(SQLModel, table=True):
+    """voice_transcriptions table."""
+
+    __tablename__ = "voice_transcriptions"
+    __table_args__ = {"extend_existing": True}
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str
+    audio_path: str
+    origin: str
+    notice_message_id: str | None = None
+    thread_id: str | None = None
+    actor_id: str | None = None
+    actor_name: str | None = None
+    actor_avatar_url: str | None = None
+    duration: float | None = None
+    language: str | None = None
+    state: str = "pending"
+    attempts: int = 0
+    last_error: str | None = None
+    created_at: str
+    updated_at: str
+
+
 class PendingMessageDeletion(SQLModel, table=True):
     """pending_message_deletions table."""
 

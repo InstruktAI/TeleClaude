@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from teleclaude.adapters.telegram.input_handlers import (
     FILE_SUBDIR,
@@ -15,6 +15,16 @@ from teleclaude.adapters.telegram.input_handlers import (
     _describe_update_extras,
 )
 from teleclaude.core.models import MessageMetadata
+from teleclaude.types.commands import HandleVoiceCommand
+
+
+class _RecordingTaskRegistry:
+    def __init__(self) -> None:
+        self.spawned: list[tuple[Coroutine[object, object, object], str | None]] = []
+
+    def spawn(self, coro: Coroutine[object, object, object], name: str | None = None) -> None:
+        self.spawned.append((coro, name))
+        coro.close()
 
 
 class _StubInputHandlers(InputHandlersMixin):
@@ -22,6 +32,7 @@ class _StubInputHandlers(InputHandlersMixin):
 
     def __init__(self) -> None:
         self.client = MagicMock()
+        self.task_registry = _RecordingTaskRegistry()
         self.user_whitelist = {7}
         self._processed_voice_messages: set[str] = set()
         self._topic_ready_events: dict[int, asyncio.Event] = {}
@@ -30,6 +41,7 @@ class _StubInputHandlers(InputHandlersMixin):
         self.dispatched_commands: list[tuple[object, str, MessageMetadata, str, Mapping[str, object]]] = []
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
+        kwargs.setdefault("origin", "telegram")
         return MessageMetadata(**kwargs)
 
     async def _get_session_from_topic(self, _update: object) -> object | None:
@@ -227,3 +239,50 @@ async def test_handle_text_message_dispatches_typed_actor_metadata() -> None:
         "actor_name": "telegram-user",
         "source_message_id": platform_message_id,
     }
+
+
+async def test_handle_voice_message_spawns_registry_task_without_awaiting_transcription() -> None:
+    handler = _StubInputHandlers()
+    session_id = "sess-voice"
+    message_id = 42
+    recorded_commands: list[HandleVoiceCommand] = []
+
+    async def _session_from_topic(_update: object) -> object | None:
+        return SimpleNamespace(session_id=session_id)
+
+    def handle_voice(cmd: HandleVoiceCommand) -> Coroutine[object, object, None]:
+        recorded_commands.append(cmd)
+
+        async def _blocked() -> None:
+            await asyncio.Event().wait()
+
+        return _blocked()
+
+    voice_file = SimpleNamespace(download_to_drive=AsyncMock())
+    voice = SimpleNamespace(duration=3, get_file=AsyncMock(return_value=voice_file))
+    update = MagicMock()
+    update.edited_message = None
+    update.effective_user = MagicMock(
+        id=7,
+        username="telegram-user",
+        full_name="Telegram User",
+        first_name="Telegram",
+    )
+    update.effective_message = MagicMock(
+        message_id=message_id,
+        edit_date=None,
+        message_thread_id=13,
+        voice=voice,
+    )
+    handler._get_session_from_topic = _session_from_topic
+    command_service = SimpleNamespace(handle_voice=handle_voice)
+
+    with patch("teleclaude.adapters.telegram.input_handlers.get_command_service", return_value=command_service):
+        await handler._handle_voice_message(update, MagicMock())
+
+    assert len(handler.task_registry.spawned) == 1
+    assert handler.task_registry.spawned[0][1] == f"voice-{message_id}"
+    assert len(recorded_commands) == 1
+    assert recorded_commands[0].session_id == session_id
+    assert recorded_commands[0].message_id == str(message_id)
+    assert recorded_commands[0].origin == "telegram"

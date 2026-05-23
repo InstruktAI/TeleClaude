@@ -217,6 +217,8 @@ class HandleVoiceCommand(InternalCommand):
     actor_name: str | None = None
     actor_avatar_url: str | None = None
     origin_metadata: Mapping[str, object] | None = None
+    voice_transcription_id: int | None = None
+    notice_message_id: str | None = None
 
     def __init__(
         self,
@@ -231,6 +233,8 @@ class HandleVoiceCommand(InternalCommand):
         actor_name: str | None = None,
         actor_avatar_url: str | None = None,
         origin_metadata: Mapping[str, object] | None = None,
+        voice_transcription_id: int | None = None,
+        notice_message_id: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_VOICE, request_id=request_id)
@@ -244,6 +248,8 @@ class HandleVoiceCommand(InternalCommand):
         self.actor_name = actor_name
         self.actor_avatar_url = actor_avatar_url
         self.origin_metadata = origin_metadata
+        self.voice_transcription_id = voice_transcription_id
+        self.notice_message_id = notice_message_id
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -266,6 +272,10 @@ class HandleVoiceCommand(InternalCommand):
             payload["actor_avatar_url"] = self.actor_avatar_url
         if self.origin_metadata is not None:
             payload["origin_metadata"] = dict(self.origin_metadata)
+        if self.voice_transcription_id is not None:
+            payload["voice_transcription_id"] = self.voice_transcription_id
+        if self.notice_message_id is not None:
+            payload["notice_message_id"] = self.notice_message_id
         return payload
 
 

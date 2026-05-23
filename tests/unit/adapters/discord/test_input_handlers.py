@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Coroutine
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TypedDict
@@ -10,6 +11,8 @@ import pytest
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord.input_handlers import InputHandlersMixin, _SessionCreationContext
 from teleclaude.core.models import DiscordAdapterMetadata, Session
+from teleclaude.core.origins import InputOrigin
+from teleclaude.types.commands import HandleVoiceCommand
 
 pytestmark = pytest.mark.unit
 
@@ -43,6 +46,38 @@ class DummyRoutingHandlers(InputHandlersMixin):
         )
 
     async def _get_channel(self, _channel_id: int) -> object | None:
+        return None
+
+
+class RecordingTaskRegistry:
+    def __init__(self) -> None:
+        self.spawned: list[tuple[Coroutine[object, object, object], str | None]] = []
+
+    def spawn(self, coro: Coroutine[object, object, object], name: str | None = None) -> None:
+        self.spawned.append((coro, name))
+        coro.close()
+
+
+class DummyVoiceHandlers(InputHandlersMixin):
+    def __init__(self) -> None:
+        self.task_registry = RecordingTaskRegistry()
+        self._discord = SimpleNamespace()
+
+    async def _resolve_or_create_session(self, _message: object, *, first_message: str | None = None) -> Session | None:
+        del first_message
+        return Session(session_id="sess-voice", computer_name="machine", tmux_session_name="tmux-voice", title="Voice")
+
+    @staticmethod
+    def _require_async_callable(fn: object, *, label: str):
+        del label
+        return fn
+
+    @staticmethod
+    def _discord_actor_name(_author: object, user_id: str) -> str:
+        return user_id
+
+    @staticmethod
+    def _discord_actor_avatar_url(_author: object) -> str | None:
         return None
 
 
@@ -92,6 +127,37 @@ def test_extract_channel_ids_uses_parent_for_threads_and_self_for_plain_channels
     assert adapter._extract_channel_ids(SimpleNamespace(channel=ThreadChannel("500", "100"))) == (100, 500)
     assert adapter._extract_channel_ids(SimpleNamespace(channel=ThreadChannel("700", None))) == (700, 700)
     assert adapter._extract_channel_ids(SimpleNamespace(channel=PlainChannel("600"))) == (600, None)
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_attachment_spawns_registry_task_without_awaiting_transcription() -> None:
+    adapter = DummyVoiceHandlers()
+    message_id = "12345"
+    recorded_commands: list[HandleVoiceCommand] = []
+
+    def handle_voice(cmd: HandleVoiceCommand) -> Coroutine[object, object, None]:
+        recorded_commands.append(cmd)
+
+        async def _blocked() -> None:
+            await AsyncMock()()
+
+        return _blocked()
+
+    attachment = SimpleNamespace(filename="voice.ogg", save=AsyncMock())
+    message = SimpleNamespace(
+        id=message_id,
+        author=SimpleNamespace(id="900"),
+    )
+    command_service = SimpleNamespace(handle_voice=handle_voice)
+
+    with patch("teleclaude.adapters.discord.input_handlers.get_command_service", return_value=command_service):
+        await adapter._handle_voice_attachment(message, attachment)
+
+    assert len(adapter.task_registry.spawned) == 1
+    assert adapter.task_registry.spawned[0][1] == f"voice-{message_id}"
+    assert len(recorded_commands) == 1
+    assert recorded_commands[0].origin == InputOrigin.DISCORD.value
+    assert recorded_commands[0].message_id == message_id
 
 
 def test_resolve_team_session_target_uses_discord_identity_and_scaffolded_workspace(

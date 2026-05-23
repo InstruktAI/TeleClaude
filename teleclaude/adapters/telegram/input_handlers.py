@@ -52,6 +52,7 @@ if TYPE_CHECKING:
             Awaitable[object],
         ]
         _send_general_message_with_retry: Callable[[int | None, str, str | None, object | None], Awaitable[Message]]
+        task_registry: object
 
 
 logger = get_logger(__name__)
@@ -290,27 +291,27 @@ class InputHandlersMixin:
             await voice_file.download_to_drive(temp_file_path)
             logger.info("Downloaded voice message to: %s", temp_file_path)
 
-            await get_command_service().handle_voice(
-                HandleVoiceCommand(
-                    session_id=session.session_id,
-                    file_path=str(temp_file_path),
-                    duration=(
-                        voice.duration.total_seconds()
-                        if isinstance(voice.duration, timedelta)
-                        else float(voice.duration)
-                    ),
-                    message_id=str(message.message_id),
-                    message_thread_id=message.message_thread_id,
-                    origin=cast("_InputHandlersHost", self)._metadata().origin,
-                    actor_id=f"telegram:{update.effective_user.id}",
-                    actor_name=(
-                        update.effective_user.username
-                        or update.effective_user.full_name
-                        or update.effective_user.first_name
-                        or f"telegram:{update.effective_user.id}"
-                    ),
-                )
+            cmd = HandleVoiceCommand(
+                session_id=session.session_id,
+                file_path=str(temp_file_path),
+                duration=(
+                    voice.duration.total_seconds() if isinstance(voice.duration, timedelta) else float(voice.duration)
+                ),
+                message_id=str(message.message_id),
+                message_thread_id=message.message_thread_id,
+                origin=cast("_InputHandlersHost", self)._metadata().origin,
+                actor_id=f"telegram:{update.effective_user.id}",
+                actor_name=(
+                    update.effective_user.username
+                    or update.effective_user.full_name
+                    or update.effective_user.first_name
+                    or f"telegram:{update.effective_user.id}"
+                ),
             )
+            registry = getattr(self, "task_registry", None)
+            if registry is None:
+                raise RuntimeError("Telegram voice handling requires task_registry")
+            registry.spawn(get_command_service().handle_voice(cmd), name=f"voice-{message.message_id}")
         except (OSError, RuntimeError, TypeError, ValueError) as error:
             error_msg = str(error) if str(error).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)

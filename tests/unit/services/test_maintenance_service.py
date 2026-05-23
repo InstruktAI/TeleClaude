@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 from collections.abc import Callable
 from contextlib import ExitStack
@@ -245,12 +246,54 @@ class TestMaintenanceService:
             await service._cleanup_adapter_resources()
 
     @pytest.mark.unit
+    async def test_cleanup_orphan_voice_audio_files_removes_only_old_unreferenced_voice_files(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        voice_dir = tmp_path / "teleclaude_voice"
+        voice_dir.mkdir()
+        now = datetime.now(UTC)
+        old_timestamp = (now - maintenance_service.RETENTION_WINDOW - timedelta(hours=1)).timestamp()
+        recent_timestamp = (now - timedelta(minutes=1)).timestamp()
+        orphan = voice_dir / "voice_orphan.ogg"
+        live = voice_dir / "voice_live.ogg"
+        young = voice_dir / "voice_young.ogg"
+        non_voice = voice_dir / "note.ogg"
+        for path in (orphan, live, young, non_voice):
+            path.write_bytes(b"audio")
+        os.utime(orphan, (old_timestamp, old_timestamp))
+        os.utime(live, (old_timestamp, old_timestamp))
+        os.utime(young, (recent_timestamp, recent_timestamp))
+        os.utime(non_voice, (old_timestamp, old_timestamp))
+        symlink = voice_dir / "voice_link.ogg"
+        try:
+            symlink.symlink_to(live.name)
+        except OSError:
+            symlink = None
+
+        with patch(
+            "teleclaude.services.maintenance_service.db.list_live_voice_transcription_audio_paths",
+            new=AsyncMock(return_value={str(live)}),
+        ):
+            removed = await maintenance_service._cleanup_orphan_voice_audio_files(base_dir=voice_dir, now=now)
+
+        assert removed == 1
+        assert not orphan.exists()
+        assert live.exists()
+        assert young.exists()
+        assert non_voice.exists()
+        if symlink is not None:
+            assert symlink.is_symlink()
+
+    @pytest.mark.unit
     async def test_periodic_cleanup_runs_session_map_pruning(self) -> None:
         service = _make_service()
         to_thread = AsyncMock(return_value=1)
         cleanup_inbound = AsyncMock()
         cleanup_orphan_inbound = AsyncMock()
         cleanup_terminal_operations = AsyncMock()
+        cleanup_terminal_voice_transcriptions = AsyncMock()
+        cleanup_orphan_voice_audio_files = AsyncMock(return_value=0)
         cleanup_webhook_outbox = AsyncMock()
         cleanup_hook_outbox = AsyncMock()
         cleanup_orphan_session_tokens = AsyncMock()
@@ -258,61 +301,106 @@ class TestMaintenanceService:
         compact_runtime_databases_if_needed = AsyncMock()
         event_db = SimpleNamespace(cleanup_runtime_events=AsyncMock())
 
-        with (
-            patch(
-                "teleclaude.services.maintenance_service.asyncio.sleep",
-                new=AsyncMock(side_effect=asyncio.CancelledError),
-            ),
-            patch("teleclaude.services.maintenance_service.asyncio.to_thread", new=to_thread),
-            patch(
-                "teleclaude.services.maintenance_service.session_cleanup.emit_recently_closed_session_events",
-                new=AsyncMock(),
-            ),
-            patch(
-                "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_tmux_sessions",
-                new=AsyncMock(),
-            ),
-            patch(
-                "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_workspaces",
-                new=AsyncMock(),
-            ),
-            patch(
-                "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_session_tmpdirs",
-                new=AsyncMock(),
-            ),
-            patch("teleclaude.services.maintenance_service.db.cleanup_stale_voice_assignments", new=AsyncMock()),
-            patch("teleclaude.services.maintenance_service.db.cleanup_inbound", new=cleanup_inbound),
-            patch("teleclaude.services.maintenance_service.db.cleanup_orphan_inbound", new=cleanup_orphan_inbound),
-            patch(
-                "teleclaude.services.maintenance_service.db.cleanup_terminal_operations",
-                new=cleanup_terminal_operations,
-            ),
-            patch("teleclaude.services.maintenance_service.db.cleanup_webhook_outbox", new=cleanup_webhook_outbox),
-            patch("teleclaude.services.maintenance_service.db.cleanup_hook_outbox", new=cleanup_hook_outbox),
-            patch(
-                "teleclaude.services.maintenance_service.db.cleanup_orphan_session_tokens",
-                new=cleanup_orphan_session_tokens,
-            ),
-            patch(
-                "teleclaude.services.maintenance_service.db.cleanup_orphan_session_listeners",
-                new=cleanup_orphan_session_listeners,
-            ),
-            patch(
-                "teleclaude.services.maintenance_service.db.compact_runtime_databases_if_needed",
-                new=compact_runtime_databases_if_needed,
-            ),
-            patch("teleclaude.services.maintenance_service.get_operations_service") as operations_factory,
-            patch("teleclaude.services.maintenance_service.get_event_db", new=AsyncMock(return_value=event_db)),
-            patch.object(service, "_cleanup_inactive_sessions", new=AsyncMock()),
-            patch.object(service, "_check_idle_compaction", new=AsyncMock()),
-            patch.object(service, "_cleanup_adapter_resources", new=AsyncMock()),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.asyncio.sleep",
+                    new=AsyncMock(side_effect=asyncio.CancelledError),
+                )
+            )
+            stack.enter_context(patch("teleclaude.services.maintenance_service.asyncio.to_thread", new=to_thread))
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.emit_recently_closed_session_events",
+                    new=AsyncMock(),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_tmux_sessions",
+                    new=AsyncMock(),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_workspaces",
+                    new=AsyncMock(),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_session_tmpdirs",
+                    new=AsyncMock(),
+                )
+            )
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service.db.cleanup_stale_voice_assignments", new=AsyncMock())
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.db.cleanup_terminal_voice_transcriptions",
+                    new=cleanup_terminal_voice_transcriptions,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service._cleanup_orphan_voice_audio_files",
+                    new=cleanup_orphan_voice_audio_files,
+                )
+            )
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service.db.cleanup_inbound", new=cleanup_inbound)
+            )
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service.db.cleanup_orphan_inbound", new=cleanup_orphan_inbound)
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.db.cleanup_terminal_operations",
+                    new=cleanup_terminal_operations,
+                )
+            )
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service.db.cleanup_webhook_outbox", new=cleanup_webhook_outbox)
+            )
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service.db.cleanup_hook_outbox", new=cleanup_hook_outbox)
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.db.cleanup_orphan_session_tokens",
+                    new=cleanup_orphan_session_tokens,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.db.cleanup_orphan_session_listeners",
+                    new=cleanup_orphan_session_listeners,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.db.compact_runtime_databases_if_needed",
+                    new=compact_runtime_databases_if_needed,
+                )
+            )
+            operations_factory = stack.enter_context(
+                patch("teleclaude.services.maintenance_service.get_operations_service")
+            )
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service.get_event_db", new=AsyncMock(return_value=event_db))
+            )
+            stack.enter_context(patch.object(service, "_cleanup_inactive_sessions", new=AsyncMock()))
+            stack.enter_context(patch.object(service, "_check_idle_compaction", new=AsyncMock()))
+            stack.enter_context(patch.object(service, "_cleanup_adapter_resources", new=AsyncMock()))
             operations_factory.return_value.expire_stale_operations = AsyncMock()
 
             await service.periodic_cleanup()
 
         to_thread.assert_awaited_once()
         assert to_thread.await_args.args == (maintenance_service.prune_session_map,)
+        cleanup_terminal_voice_transcriptions.assert_awaited_once()
+        cleanup_orphan_voice_audio_files.assert_awaited_once()
         cleanup_inbound.assert_awaited_once()
         cleanup_orphan_inbound.assert_awaited_once()
         cleanup_terminal_operations.assert_awaited_once()
@@ -362,6 +450,7 @@ class TestMaintenanceService:
             )
             for target in (
                 "db.cleanup_stale_voice_assignments",
+                "db.cleanup_terminal_voice_transcriptions",
                 "db.cleanup_inbound",
                 "db.cleanup_orphan_inbound",
                 "db.cleanup_terminal_operations",
@@ -371,6 +460,9 @@ class TestMaintenanceService:
                 "db.cleanup_orphan_session_listeners",
             ):
                 stack.enter_context(patch(f"teleclaude.services.maintenance_service.{target}", new=AsyncMock()))
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service._cleanup_orphan_voice_audio_files", new=AsyncMock())
+            )
             stack.enter_context(
                 patch(
                     "teleclaude.services.maintenance_service.db.compact_runtime_databases_if_needed",
@@ -418,7 +510,7 @@ async def _seed_project_with_removed_rows(
     await db.initialize()
     try:
         with db._sync_session() as session:
-            for idx, (row_id, slug, status, removed_at) in enumerate(rows):
+            for _idx, (row_id, slug, status, removed_at) in enumerate(rows):
                 session.add(
                     TodoRoadmap(
                         id=row_id,

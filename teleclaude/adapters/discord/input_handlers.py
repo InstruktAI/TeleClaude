@@ -281,21 +281,23 @@ class InputHandlersMixin:
             raw_duration = getattr(attachment, "duration", None)
             duration = float(raw_duration) if raw_duration is not None else None
 
-            await get_command_service().handle_voice(
-                HandleVoiceCommand(
-                    session_id=session.session_id,
-                    file_path=str(temp_file_path),
-                    duration=duration,
-                    message_id=message_id,
-                    origin=InputOrigin.DISCORD.value,
-                    actor_id=f"discord:{getattr(getattr(message, 'author', None), 'id', 'unknown')}",
-                    actor_name=self._discord_actor_name(
-                        getattr(message, "author", None),
-                        str(getattr(getattr(message, "author", None), "id", "unknown")),
-                    ),
-                    actor_avatar_url=self._discord_actor_avatar_url(getattr(message, "author", None)),
-                )
+            cmd = HandleVoiceCommand(
+                session_id=session.session_id,
+                file_path=str(temp_file_path),
+                duration=duration,
+                message_id=message_id,
+                origin=InputOrigin.DISCORD.value,
+                actor_id=f"discord:{getattr(getattr(message, 'author', None), 'id', 'unknown')}",
+                actor_name=self._discord_actor_name(
+                    getattr(message, "author", None),
+                    str(getattr(getattr(message, "author", None), "id", "unknown")),
+                ),
+                actor_avatar_url=self._discord_actor_avatar_url(getattr(message, "author", None)),
             )
+            registry = getattr(self, "task_registry", None)
+            if registry is None:
+                raise RuntimeError("Discord voice handling requires task_registry")
+            registry.spawn(get_command_service().handle_voice(cmd), name=f"voice-{message_id}")
         except recoverable_errors as exc:
             error_msg = str(exc) if str(exc).strip() else "Unknown error"
             logger.error("Failed to process Discord voice message: %s", error_msg, exc_info=True)

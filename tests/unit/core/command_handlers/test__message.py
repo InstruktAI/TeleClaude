@@ -197,6 +197,45 @@ class TestHandleVoice:
         client.delete_message.assert_not_awaited()
         assert any("Session sess-001 not found for voice delete" in record.message for record in caplog.records)
 
+    @pytest.mark.unit
+    async def test_voice_status_edit_callback_routes_through_client_edit_message(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = make_session(active_agent="codex")
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session), update_session=AsyncMock())
+        notice_message_id = "notice-1"
+        edited_message = "edited status"
+        client = SimpleNamespace(
+            pre_handle_command=AsyncMock(),
+            send_message=AsyncMock(return_value=notice_message_id),
+            edit_message=AsyncMock(return_value=True),
+            delete_message=AsyncMock(),
+            break_threaded_turn=AsyncMock(),
+        )
+
+        async def fake_handle_voice(**kwargs: object) -> None:
+            edit_message = kwargs["edit_message"]
+            assert callable(edit_message)
+            await edit_message(session.session_id, notice_message_id, edited_message, MessageMetadata(parse_mode=None))
+            return None
+
+        voice_message_handler = SimpleNamespace(handle_voice=AsyncMock(side_effect=fake_handle_voice))
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "voice_message_handler", voice_message_handler)
+
+        cmd = HandleVoiceCommand(
+            session_id=session.session_id,
+            file_path="/tmp/voice.wav",
+            message_id="voice-msg-1",
+            origin="discord",
+        )
+
+        await _message.handle_voice(cmd, client, AsyncMock())
+
+        client.edit_message.assert_awaited_once_with(session, notice_message_id, edited_message, metadata=ANY)
+
 
 class TestHandleFile:
     @pytest.mark.unit

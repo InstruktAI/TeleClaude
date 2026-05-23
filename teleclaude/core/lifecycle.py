@@ -18,6 +18,7 @@ from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.operations import OperationsService, set_operations_service
+from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -142,6 +143,12 @@ class DaemonLifecycle:
         logger.info("[STARTUP] Initializing voice handler (usually <1s)")
         self._init_voice_handler()
         logger.info("Voice handler initialized")
+
+        processed_voice_count = await recover_voice_transcriptions(
+            client=self.client, command_service=get_command_service()
+        )
+        if processed_voice_count:
+            logger.info("Processed voice transcription startup work for %d row(s)", processed_voice_count)
 
         logger.info("[STARTUP] Starting inbound queue manager (usually <1s)")
         await get_inbound_queue_manager().startup()

@@ -29,6 +29,7 @@ from ._sync import (
     resolve_session_principal,
 )
 from ._tokens import DbTokensMixin
+from ._voice_transcriptions import DbVoiceTranscriptionsMixin
 from ._webhooks import DbWebhooksMixin
 
 
@@ -42,6 +43,7 @@ class Db(
     DbInboundMixin,
     DbHooksMixin,
     DbSettingsMixin,
+    DbVoiceTranscriptionsMixin,
     DbSessionsMixin,
     DbBase,
 ):

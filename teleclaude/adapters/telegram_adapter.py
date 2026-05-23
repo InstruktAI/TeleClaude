@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from telegram import Message as TelegramMessage
 
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.task_registry import TaskRegistry
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -152,7 +153,7 @@ class TelegramAdapter(
 
     # -------------------------------------------------------------------------
 
-    def __init__(self, client: AdapterClient) -> None:
+    def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry | None = None) -> None:
         """Initialize Telegram adapter.
 
         Args:
@@ -162,6 +163,7 @@ class TelegramAdapter(
 
         # Store client for event emission (already set by parent, but keep for clarity)
         self.client = client
+        self.task_registry = task_registry
 
         # Get global config singleton
         # config already imported

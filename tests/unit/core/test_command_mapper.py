@@ -170,6 +170,23 @@ class TestCommandMapperApi:
         assert cmd.origin_metadata == {"email": "maurice@instrukt.ai"}
 
     @pytest.mark.unit
+    def test_handle_voice_carries_recovery_identifiers(self):
+        metadata = MessageMetadata(origin="web")
+        cmd = CommandMapper.map_api_input(
+            "handle_voice",
+            {
+                "session_id": "s1",
+                "file_path": "/tmp/a.ogg",
+                "voice_transcription_id": 12,
+                "notice_message_id": "notice-1",
+            },
+            metadata,
+        )
+        assert isinstance(cmd, HandleVoiceCommand)
+        assert cmd.voice_transcription_id == 12
+        assert cmd.notice_message_id == "notice-1"
+
+    @pytest.mark.unit
     def test_end_session_returns_close_command(self):
         metadata = MessageMetadata(origin="web")
         cmd = CommandMapper.map_api_input("end_session", {"session_id": "s1"}, metadata)

@@ -1,11 +1,10 @@
 ---
-description: 'SQLite persistence for sessions, hook outbox, memory, UX state, and agent metadata.'
-id: 'project/design/architecture/database'
-scope: 'project'
-type: 'design'
-visibility: 'public'
-status: 'target'
-delivered_by: ['voice-transcription-survives-restart']
+description: SQLite persistence for sessions, hook outbox, memory, UX state, and agent
+  metadata.
+id: project/design/architecture/database
+scope: project
+type: design
+visibility: public
 ---
 
 # Database — Design
@@ -79,6 +78,19 @@ erDiagram
         timestamp assigned_at
     }
 
+    VOICE_TRANSCRIPTIONS {
+        int id PK
+        text session_id
+        text audio_path
+        text origin
+        text notice_message_id "nullable"
+        text state "pending|in_progress|succeeded|failed|interrupted"
+        int attempts
+        text last_error "nullable"
+        timestamp created_at
+        timestamp updated_at
+    }
+
     MEMORY_OBSERVATIONS {
         int id PK
         text memory_session_id
@@ -118,7 +130,7 @@ erDiagram
 
     SESSIONS ||--o{ HOOK_OUTBOX : "hook events"
     SESSIONS ||--o{ PENDING_MESSAGE_DELETIONS : "cleanup state"
-    SESSIONS ||--o{ VOICE_TRANSCRIPTIONS : "in-flight transcriptions"
+    SESSIONS ||--o{ VOICE_TRANSCRIPTIONS : "in-flight transcription recovery"
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_OBSERVATIONS : "project memory"
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_SUMMARIES : "project summaries"
 ```
@@ -213,7 +225,8 @@ lets recovery verify the captured audio still exists before resubmitting.
    `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
    `succeeded`/`failed` rows; orphaned temp audio with no live row is swept alongside).
 5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
-6. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
+6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
+7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
 
 ## Failure modes
 
@@ -222,3 +235,4 @@ lets recovery verify the captured audio still exists before resubmitting.
 - **Outbox backlog growth**: If worker path is unhealthy, undelivered rows accumulate.
 - **Disk pressure**: WAL/table/freelist growth can degrade performance or fail writes; daemon maintenance checkpoints WAL and threshold-compacts runtime SQLite files.
 - **Corrupt row payload**: Outbox row is deleted (with error logging) to avoid infinite retry loops.
+- **Voice audio lost before recovery**: Recovery marks the row failed and resolves the original user notice instead of silently dropping the spoken input.

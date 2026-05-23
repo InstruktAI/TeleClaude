@@ -154,8 +154,8 @@ class TestEditAndDeleteMessage:
         assert result is True
         telegram.ensure_channel.assert_awaited_once_with(session)
         discord.ensure_channel.assert_awaited_once_with(session)
-        telegram.edit_message.assert_awaited_once_with(session, EDIT_MESSAGE_ID, UPDATED_TEXT)
-        discord.edit_message.assert_awaited_once_with(session, EDIT_MESSAGE_ID, UPDATED_TEXT)
+        telegram.edit_message.assert_awaited_once_with(session, EDIT_MESSAGE_ID, UPDATED_TEXT, metadata=None)
+        discord.edit_message.assert_awaited_once_with(session, EDIT_MESSAGE_ID, UPDATED_TEXT, metadata=None)
 
     @pytest.mark.unit
     @pytest.mark.asyncio

@@ -8,14 +8,23 @@ Extracted from daemon.py to reduce file size and improve organization.
 Refactored to be adapter-agnostic utility that accepts generic callbacks.
 """
 
+import asyncio
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.constants import (
+    VOICE_TRANSCRIPTION_NOTICE_EDIT_MAX_CHARS,
+    VOICE_TRANSCRIPTION_STATE_FAILED,
+    VOICE_TRANSCRIPTION_STATE_IN_PROGRESS,
+    VOICE_TRANSCRIPTION_STATE_INTERRUPTED,
+    VOICE_TRANSCRIPTION_STATE_SUCCEEDED,
+    VOICE_TRANSCRIPTION_TIMEOUT_S,
+)
 from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
@@ -123,8 +132,15 @@ async def transcribe_voice_with_retry(
     last_error: str | None = None
     for attempt in range(max_retries + 1):
         try:
-            text = await transcribe_voice(audio_file_path, language)
+            text = await asyncio.wait_for(
+                transcribe_voice(audio_file_path, language),
+                timeout=VOICE_TRANSCRIPTION_TIMEOUT_S,
+            )
             return text, None
+        except TimeoutError:
+            last_error = f"Transcription timed out after {VOICE_TRANSCRIPTION_TIMEOUT_S:g} seconds"
+            logger.error("Transcription timed out after %ss", VOICE_TRANSCRIPTION_TIMEOUT_S)
+            return None, last_error
         except Exception as e:
             last_error = str(e).strip() or e.__class__.__name__
             if attempt < max_retries:
@@ -139,11 +155,67 @@ async def transcribe_voice_with_retry(
 # ============================================================================
 
 
+def _voice_context_value(context: VoiceEventContext | Mapping[str, object], key: str) -> object | None:
+    if isinstance(context, Mapping):
+        return context.get(key)
+    return cast(object | None, getattr(context, key, None))
+
+
+def _voice_context_int(context: VoiceEventContext | Mapping[str, object], key: str) -> int | None:
+    value = _voice_context_value(context, key)
+    if value is None:
+        return None
+    return int(str(value))
+
+
+def _voice_context_float(context: VoiceEventContext | Mapping[str, object], key: str) -> float | None:
+    value = _voice_context_value(context, key)
+    if value is None:
+        return None
+    return float(str(value))
+
+
+async def _resolve_voice_notice(
+    *,
+    session_id: str,
+    message: str,
+    metadata: MessageMetadata,
+    send_message: Callable[[str, str, MessageMetadata], Awaitable[str | None]],
+    edit_message: Callable[[str, str, str, MessageMetadata], Awaitable[bool]] | None,
+    notice_message_id: str | None,
+    delete_message: Callable[[str, str], Awaitable[None]] | None = None,
+) -> None:
+    if notice_message_id is not None and edit_message is not None:
+        if len(message) <= VOICE_TRANSCRIPTION_NOTICE_EDIT_MAX_CHARS:
+            edited = await edit_message(session_id, notice_message_id, message, metadata)
+            if edited:
+                return
+            logger.warning(
+                "Voice notice edit failed for session %s message %s; sending fallback notice",
+                session_id,
+                notice_message_id,
+            )
+        else:
+            logger.info(
+                "Voice notice for session %s exceeds edit budget (%d > %d); sending overflow fallback",
+                session_id,
+                len(message),
+                VOICE_TRANSCRIPTION_NOTICE_EDIT_MAX_CHARS,
+            )
+    fallback_message_id = await send_message(session_id, message, metadata)
+    if fallback_message_id is not None and notice_message_id is not None and delete_message is not None:
+        try:
+            await delete_message(session_id, notice_message_id)
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            logger.warning("Failed to delete unresolved voice notice for session %s: %s", session_id, exc)
+
+
 async def handle_voice(
     session_id: str,
     audio_path: str,
-    context: VoiceEventContext,
+    context: VoiceEventContext | Mapping[str, object],
     send_message: Callable[[str, str, MessageMetadata], Awaitable[str | None]],
+    edit_message: Callable[[str, str, str, MessageMetadata], Awaitable[bool]] | None = None,
     delete_message: Callable[[str, str], Awaitable[None]] | None = None,
 ) -> str | None:
     """Handle voice message (adapter-agnostic utility).
@@ -158,7 +230,7 @@ async def handle_voice(
     logger.info("Session ID: %s", session_id)
     logger.info("Audio path: %s", audio_path)
     logger.info("Context: %s", context)
-    logger.info("Voice message for session %s, duration: %ss", session_id, context.duration)
+    logger.info("Voice message for session %s, duration: %ss", session_id, _voice_context_value(context, "duration"))
 
     # Get session
     session = await db.get_session(session_id)
@@ -185,22 +257,79 @@ async def handle_voice(
         return None
 
     # Voice message accepted - transcribe and forward through message pipeline.
+    recovered_transcription_id = _voice_context_int(context, "voice_transcription_id")
+    msg_id = str(_voice_context_value(context, "notice_message_id") or "") or None
+    if recovered_transcription_id is None:
+        message_thread_id = _voice_context_value(context, "message_thread_id")
+        actor_id = _voice_context_value(context, "actor_id")
+        actor_name = _voice_context_value(context, "actor_name")
+        actor_avatar_url = _voice_context_value(context, "actor_avatar_url")
+        duration = _voice_context_float(context, "duration")
+        transcription = await db.create_voice_transcription(
+            session_id=session_id,
+            audio_path=audio_path,
+            origin=str(_voice_context_value(context, "origin") or ""),
+            thread_id=str(message_thread_id) if message_thread_id is not None else None,
+            actor_id=str(actor_id) if actor_id is not None else None,
+            actor_name=str(actor_name) if actor_name is not None else None,
+            actor_avatar_url=str(actor_avatar_url) if actor_avatar_url is not None else None,
+            duration=duration,
+            language=DEFAULT_TRANSCRIBE_LANGUAGE,
+        )
+    else:
+        transcription = await db.get_voice_transcription(recovered_transcription_id)
+        if transcription is None:
+            logger.warning("Voice transcription row %s not found for recovery", recovered_transcription_id)
+            return None
 
-    # Send transcribing status if notice channel is available
-    # Mark as "next_notice" so it is cleaned up when transcribed text arrives
-    msg_id = await send_message(
-        session_id,
-        "🎤 Transcribing...",
-        MessageMetadata(parse_mode=None, cleanup_trigger="next_notice"),
-    )
     if msg_id is None:
-        logger.info(
-            "Notice not sent for session %s (non-UI adapter or topic unavailable); continuing transcription",
+        # Send transcribing status if notice channel is available.
+        msg_id = await send_message(
             session_id,
+            "🎤 Transcribing...",
+            MessageMetadata(parse_mode=None, cleanup_trigger="next_notice"),
+        )
+        if msg_id is None:
+            logger.info(
+                "Notice not sent for session %s (non-UI adapter or topic unavailable); continuing transcription",
+                session_id,
+            )
+        elif transcription.id is not None:
+            await db.set_voice_transcription_notice_message_id(transcription.id, msg_id)
+    else:
+        await _resolve_voice_notice(
+            session_id=session_id,
+            message="🎤 Retrying transcription after restart...",
+            metadata=MessageMetadata(parse_mode=None),
+            send_message=send_message,
+            edit_message=edit_message,
+            delete_message=delete_message,
+            notice_message_id=msg_id,
         )
 
+    voice_state: str | None = None
+
     # Transcribe audio using STT backend chain
-    text, error_reason = await transcribe_voice_with_retry(audio_path, language=DEFAULT_TRANSCRIBE_LANGUAGE)
+    if transcription.id is not None:
+        await db.update_voice_transcription_state(transcription.id, VOICE_TRANSCRIPTION_STATE_IN_PROGRESS)
+        voice_state = VOICE_TRANSCRIPTION_STATE_IN_PROGRESS
+    try:
+        text, error_reason = await transcribe_voice_with_retry(audio_path, language=DEFAULT_TRANSCRIBE_LANGUAGE)
+    except asyncio.CancelledError:
+        if transcription.id is not None and voice_state == VOICE_TRANSCRIPTION_STATE_IN_PROGRESS:
+            await db.update_voice_transcription_state(transcription.id, VOICE_TRANSCRIPTION_STATE_INTERRUPTED)
+            await asyncio.shield(
+                _resolve_voice_notice(
+                    session_id=session_id,
+                    message="⚠️ Transcription interrupted by daemon restart - your message will retry on startup.",
+                    metadata=MessageMetadata(parse_mode=None),
+                    send_message=send_message,
+                    edit_message=edit_message,
+                    delete_message=delete_message,
+                    notice_message_id=msg_id,
+                )
+            )
+        raise
 
     # Clean up temp file
     try:
@@ -213,27 +342,38 @@ async def handle_voice(
         failure_message = "❌ Transcription failed. Please try again."
         if error_reason:
             failure_message = f"❌ Transcription failed: {error_reason}"
-        # Append error to existing message
-        await send_message(
-            session_id,
-            failure_message,
-            MessageMetadata(parse_mode=None),
+        if transcription.id is not None:
+            await db.update_voice_transcription_state(
+                transcription.id,
+                VOICE_TRANSCRIPTION_STATE_FAILED,
+                last_error=error_reason,
+            )
+            voice_state = VOICE_TRANSCRIPTION_STATE_FAILED
+        await _resolve_voice_notice(
+            session_id=session_id,
+            message=failure_message,
+            metadata=MessageMetadata(parse_mode=None),
+            send_message=send_message,
+            edit_message=edit_message,
+            delete_message=delete_message,
+            notice_message_id=msg_id,
         )
         return None
 
-    # Send transcribed text back to UI — plain text attributed to the sender.
-    # Mark as "next_turn" so it persists as user input until next turn.
-    await send_message(
-        session_id,
-        text,
-        MessageMetadata(parse_mode=None, is_transcription=True, cleanup_trigger="next_turn"),
-    )
+    if transcription.id is not None:
+        await db.update_voice_transcription_state(transcription.id, VOICE_TRANSCRIPTION_STATE_SUCCEEDED)
+        voice_state = VOICE_TRANSCRIPTION_STATE_SUCCEEDED
 
-    if msg_id is not None and delete_message is not None:
-        try:
-            await delete_message(session_id, msg_id)
-        except Exception as exc:  # pragma: no cover - best-effort cleanup
-            logger.warning("Failed to delete transcribing message for session %s: %s", session_id, exc)
+    # Resolve the existing placeholder with the transcribed text.
+    await _resolve_voice_notice(
+        session_id=session_id,
+        message=text,
+        metadata=MessageMetadata(parse_mode=None, is_transcription=True, cleanup_trigger="next_turn"),
+        send_message=send_message,
+        edit_message=edit_message,
+        delete_message=delete_message,
+        notice_message_id=msg_id,
+    )
 
     logger.debug("Transcribed voice input for session %s: %s", session_id, text)
     return text

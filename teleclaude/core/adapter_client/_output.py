@@ -465,7 +465,14 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         adapter_type,
                     )
 
-    async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
+    async def edit_message(
+        self,
+        session: "Session",
+        message_id: str,
+        text: str,
+        *,
+        metadata: MessageMetadata | None = None,
+    ) -> bool:
         """Edit message in all UI adapters.
 
         Args:
@@ -476,7 +483,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         Returns:
             True if edit succeeded
         """
-        result = await self._route_to_ui(session, "edit_message", message_id, text)
+        result = await self._route_to_ui(session, "edit_message", message_id, text, metadata=metadata)
         return bool(result)
 
     async def delete_message(

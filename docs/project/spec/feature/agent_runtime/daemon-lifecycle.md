@@ -1,13 +1,14 @@
 ---
-id: 'project/spec/feature/agent_runtime/daemon-lifecycle'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-applies_to: 'v1'
-status: 'target'
-delivered_by: ['voice-transcription-survives-restart']
-description: 'The long-running daemon process lifecycle — single-instance lock, staged startup (DB → operations → session cache warm → adapters → event platform → API server → projects cache warm), shutdown ordering, and the API-server restart loop that keeps the in-process HTTP surface alive across crashes.'
+id: project/spec/feature/agent_runtime/daemon-lifecycle
+type: spec
+domain: software-development
+scope: project
+visibility: public
+applies_to: v1
+description: The long-running daemon process lifecycle — single-instance lock, staged
+  startup (DB → operations → session cache warm → adapters → event platform → API
+  server → projects cache warm), shutdown ordering, and the API-server restart loop
+  that keeps the in-process HTTP surface alive across crashes.
 ---
 
 # Daemon Lifecycle — Spec
@@ -63,7 +64,7 @@ When `_complete_startup_after_adapters` runs
 Then `client.reconcile_outstanding_final_outputs(config.computer.name)` replays final agent output to UI adapters that missed it
 And the `DaemonCache` is wired into the Redis transport adapter when present (`redis_transport_cache.cache = self.cache`)
 And `init_voice_handler()` initializes the voice handler
-And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in `pending|in_progress|interrupted` (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice id was persisted — or transitioned to terminal `failed` with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
+And `recover_voice_transcriptions(client, command_service)` resumes any transcription left in flight by a prior process: rows persisted in `pending|in_progress|interrupted` (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice id was persisted — or transitioned to terminal `failed` with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
 And `inbound_queue_manager.startup()` brings up the per-session inbound queue
 And `reconcile_outstanding_conversation_deliveries` re-sends bounded peer bundles for any conversation link with an orphaned `pending_through_ts`
 And the API server starts AFTER these tasks have completed
@@ -105,6 +106,8 @@ Then it sweeps:
   - `cleanup_orphan_session_tmpdirs` — removes per-session TMPDIRs not referenced by live sessions
   - `prune_session_map` — drops in-process hook-receiver caller→session entries
   - `db.cleanup_orphan_inbound`, `db.cleanup_orphan_session_tokens`, `db.cleanup_orphan_session_listeners`
+  - `db.cleanup_terminal_voice_transcriptions` — prunes succeeded/failed voice recovery rows past the runtime retention window
+  - orphan voice temp audio sweep — removes old `/tmp/teleclaude_voice/voice_*` files with no recoverable DB row
   - retention sweeps for inbound, terminal_operations, webhook_outbox, hook_outbox (7-day cutoff)
 And subsequent iterations sleep 3600s between sweeps
 And the lifecycle's own startup does NOT perform any orphan sweep — this is intentional, the sweep is amortized into the steady-state loop
@@ -137,7 +140,7 @@ And `daemon.stop()` proceeds in this order:
   6. Cancel `resource_monitor_task`, `_wal_checkpoint_task`, `launchd_watch_task`, `_contract_sweep_task`
   7. Close signal_ai client, EventDB, tts_manager
   8. Disconnect from chiptunes worker (the worker process persists across daemon restart)
-  9. `task_registry.shutdown(timeout=5.0)` — cancel any remaining tracked tasks
+  9. `task_registry.shutdown(timeout=5.0)` — cancel any remaining tracked tasks, including voice transcription tasks while adapters are still available for in-place interruption notices
   10. `lifecycle.shutdown()` — inbound_queue shutdown → api_server.stop() → for each adapter `adapter.stop()` → `db.close()`
   11. `_release_lock()`
 And every step is best-effort: a hiccup in one step is logged and the next step still runs
@@ -185,10 +188,12 @@ And the daemon does NOT exit when restart-limit is reached — the server stays 
   - `handle_api_server_exit` (`L267`), `_schedule_api_restart` (`L294`), `schedule_api_restart` (`L305`), `_restart_api_server` (`L309`)
 - Reconciliation entry points called from startup:
   - `client.reconcile_outstanding_final_outputs(...)` — `teleclaude/core/adapter_client/_output.py:383`
+  - `recover_voice_transcriptions(...)` — `teleclaude/core/voice_recovery.py`
   - `reconcile_outstanding_conversation_deliveries(...)` — `teleclaude/core/conversation_delivery.py`
 - Orphan sweeps (run from `MaintenanceService.periodic_cleanup`, `teleclaude/services/maintenance_service.py:53`, NOT from `lifecycle.startup()`):
   - `cleanup_orphan_tmux_sessions`, `cleanup_orphan_workspaces`, `cleanup_orphan_session_tmpdirs` in `teleclaude/core/session_cleanup.py`
   - `db.cleanup_orphan_inbound`, `db.cleanup_orphan_session_tokens`, `db.cleanup_orphan_session_listeners`
+  - `db.cleanup_terminal_voice_transcriptions` and orphan `/tmp/teleclaude_voice/voice_*` file cleanup
 - CLI / launch: the daemon is launched as a standalone process (typically under launchd or systemd) running `python -m teleclaude.daemon`; under uvloop when available, falling back to `asyncio.run`.
 
 ### Cross-context references

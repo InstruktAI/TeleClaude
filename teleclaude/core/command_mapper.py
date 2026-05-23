@@ -313,9 +313,17 @@ class CommandMapper:
             payload_actor_id_obj = payload.get("actor_id")
             payload_actor_name_obj = payload.get("actor_name")
             payload_actor_avatar_obj = payload.get("actor_avatar_url")
+            payload_transcription_id_obj = payload.get("voice_transcription_id")
+            payload_notice_message_id_obj = payload.get("notice_message_id")
             payload_actor_id = str(payload_actor_id_obj).strip() if payload_actor_id_obj is not None else ""
             payload_actor_name = str(payload_actor_name_obj).strip() if payload_actor_name_obj is not None else ""
             payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
+            payload_transcription_id = (
+                int(payload_transcription_id_obj) if payload_transcription_id_obj is not None else None
+            )
+            payload_notice_message_id = (
+                str(payload_notice_message_id_obj).strip() if payload_notice_message_id_obj is not None else ""
+            )
             return HandleVoiceCommand(
                 session_id=session_id,
                 file_path=str(payload.get("file_path", "")),
@@ -327,6 +335,8 @@ class CommandMapper:
                 actor_name=payload_actor_name or metadata.actor_name,
                 actor_avatar_url=payload_actor_avatar or metadata.actor_avatar_url,
                 origin_metadata=metadata.origin_metadata,
+                voice_transcription_id=payload_transcription_id,
+                notice_message_id=payload_notice_message_id or None,
             )
 
         if command_name == "handle_file":

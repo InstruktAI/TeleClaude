@@ -17,7 +17,10 @@ async def test_startup_starts_api_after_adapters_and_event_platform():
     cache = MagicMock()
     shutdown_event = asyncio.Event()
     task_registry = MagicMock()
-    init_voice_handler = MagicMock()
+
+    def init_voice_handler() -> None:
+        order.append("voice_init")
+
     api_server = MagicMock()
     api_server.start = AsyncMock()
     operations_service = MagicMock()
@@ -42,6 +45,10 @@ async def test_startup_starts_api_after_adapters_and_event_platform():
 
     async def start_inbound_queue() -> None:
         order.append("inbound_queue")
+
+    async def recover_voice(**_: object) -> int:
+        order.append("voice_recovery")
+        return 0
 
     api_server.start.side_effect = start_api
     client.start = AsyncMock(side_effect=start_client)
@@ -75,6 +82,7 @@ async def test_startup_starts_api_after_adapters_and_event_platform():
         patch("teleclaude.core.lifecycle.APIServer", return_value=api_server),
         patch("teleclaude.core.lifecycle.get_inbound_queue_manager", return_value=inbound_queue_manager),
         patch("teleclaude.core.lifecycle.get_command_service", return_value=MagicMock()),
+        patch("teleclaude.core.lifecycle.recover_voice_transcriptions", AsyncMock(side_effect=recover_voice)),
         patch(
             "teleclaude.core.lifecycle.reconcile_outstanding_conversation_deliveries",
             new_callable=AsyncMock,
@@ -87,12 +95,13 @@ async def test_startup_starts_api_after_adapters_and_event_platform():
         "warm_sessions",
         "client_start",
         "event_platform_init",
+        "voice_init",
+        "voice_recovery",
         "inbound_queue",
         "api_start",
         "warm_projects",
     ]
     api_server.set_on_server_exit.assert_called_once_with(lifecycle.handle_api_server_exit)
-    init_voice_handler.assert_called_once_with()
 
 
 @pytest.mark.asyncio
@@ -137,6 +146,7 @@ async def test_startup_repairs_outstanding_final_output_after_adapter_start():
         patch("teleclaude.core.lifecycle.APIServer", return_value=api_server),
         patch("teleclaude.core.lifecycle.get_inbound_queue_manager", return_value=inbound_queue_manager),
         patch("teleclaude.core.lifecycle.get_command_service", return_value=MagicMock()),
+        patch("teleclaude.core.lifecycle.recover_voice_transcriptions", AsyncMock(return_value=0)),
         patch(
             "teleclaude.core.lifecycle.reconcile_outstanding_conversation_deliveries",
             new_callable=AsyncMock,

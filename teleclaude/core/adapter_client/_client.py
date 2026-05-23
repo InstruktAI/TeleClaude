@@ -159,7 +159,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
                 getattr(config, "discord", None),
                 lambda: DiscordAdapter(self, task_registry=self.task_registry),
             ),
-            ("telegram", getattr(config, "telegram", None), lambda: TelegramAdapter(self)),
+            ("telegram", getattr(config, "telegram", None), lambda: TelegramAdapter(self, task_registry=self.task_registry)),
             ("whatsapp", getattr(config, "whatsapp", None), lambda: WhatsAppAdapter(self)),
         ]
         for name, cfg, factory in adapter_specs:

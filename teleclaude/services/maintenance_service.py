@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -49,6 +50,8 @@ COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes — applies to any long-live
 # retention sweep and the soft-removed-todo retention sweep so the two windows
 # cannot drift apart. Mirrors the historical 7-day sessions window.
 RETENTION_WINDOW = timedelta(days=7)
+VOICE_TEMP_AUDIO_PREFIX = "voice_"
+VOICE_TEMP_AUDIO_RACE_SAFETY = timedelta(minutes=10)
 PURGE_REASON_COMMIT_FAILURE = "commit_failure"
 PURGE_REASON_FOREIGN_EDIT_ON_FRESH_PASS = "foreign_edit_on_fresh_pass"
 PURGE_REASON_GIT_ADD_FAILURE = "git_add_failure"
@@ -129,6 +132,76 @@ def _write_snippet_plans(plans: list[SnippetWriteResult]) -> None:
 def _plans_for_paths(plans: list[SnippetWriteResult], paths: list[str], project_root: Path) -> list[SnippetWriteResult]:
     wanted = set(paths)
     return [plan for plan in plans if _repo_relative_path(project_root, plan.path) in wanted]
+
+
+def _voice_temp_audio_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "teleclaude_voice"
+
+
+def _path_is_under_directory(path: Path, base_dir: Path) -> bool:
+    try:
+        resolved_path = path.resolve()
+        resolved_base = base_dir.resolve()
+    except OSError:
+        return False
+    return resolved_path == resolved_base or resolved_base in resolved_path.parents
+
+
+async def _cleanup_orphan_voice_audio_files(
+    *,
+    base_dir: Path | None = None,
+    now: datetime | None = None,
+) -> int:
+    """Delete old voice temp files that are no longer referenced by recoverable rows."""
+    temp_dir = base_dir or _voice_temp_audio_dir()
+    if not temp_dir.exists() or not temp_dir.is_dir() or temp_dir.is_symlink():
+        return 0
+
+    live_audio_paths = set()
+    for raw_path in await db.list_live_voice_transcription_audio_paths():
+        try:
+            live_audio_paths.add(Path(raw_path).resolve())
+        except OSError:
+            continue
+
+    current_time = now or datetime.now(UTC)
+    minimum_age = max(RETENTION_WINDOW, VOICE_TEMP_AUDIO_RACE_SAFETY)
+    removed = 0
+
+    try:
+        candidates = list(temp_dir.iterdir())
+    except OSError as exc:
+        logger.warning("Voice temp audio sweep skipped for %s: %s", temp_dir, exc)
+        return 0
+
+    for candidate in candidates:
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        if not candidate.name.startswith(VOICE_TEMP_AUDIO_PREFIX):
+            continue
+        if not _path_is_under_directory(candidate, temp_dir):
+            continue
+        try:
+            modified_at = datetime.fromtimestamp(candidate.stat().st_mtime, tz=UTC)
+        except OSError:
+            continue
+        if current_time - modified_at < minimum_age:
+            continue
+        try:
+            resolved_candidate = candidate.resolve()
+        except OSError:
+            continue
+        if resolved_candidate in live_audio_paths:
+            continue
+        try:
+            candidate.unlink()
+            removed += 1
+        except OSError as exc:
+            logger.warning("Failed to remove orphan voice temp audio %s: %s", candidate, exc)
+
+    if removed:
+        logger.info("Removed %d orphan voice temp audio file(s)", removed)
+    return removed
 
 
 async def _finalize_removed_row(
@@ -348,6 +421,8 @@ class MaintenanceService:
                 runtime_cutoff_iso = (now - timedelta(days=7)).isoformat()
                 now_iso = now.isoformat()
                 await db.cleanup_stale_voice_assignments()
+                await db.cleanup_terminal_voice_transcriptions(runtime_cutoff_iso)
+                await _cleanup_orphan_voice_audio_files(now=now)
                 await db.cleanup_inbound(runtime_cutoff_iso)
                 await db.cleanup_orphan_inbound(now_iso)
                 await db.cleanup_terminal_operations(runtime_cutoff_iso)

@@ -370,6 +370,11 @@ class VoiceEventContext:
     message_id: str | None = None
     message_thread_id: int | None = None
     origin: str | None = None
+    actor_id: str | None = None
+    actor_name: str | None = None
+    actor_avatar_url: str | None = None
+    voice_transcription_id: int | None = None
+    notice_message_id: str | None = None
 
 
 @dataclass(frozen=True)
