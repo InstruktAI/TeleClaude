@@ -163,13 +163,11 @@ people:
   email: maurice@instrukt.ai
   username: Morriz
   role: admin
-  proficiency: expert
   expertise:
     python: expert
 - name: tester
   email: tester@instrukt.ai
   role: contributor
-  proficiency: expert
 interests:
 - ai-agents
 - rust
