@@ -227,7 +227,7 @@ def derive_artifact_drift(
         return DRIFT_FRESH
     current_head_sha = get_origin_main_sha(repo_root) if repo_root else ""
     if not artifact_entry.codebase_sha_at_write or not current_head_sha:
-        return _substantive_verdict_or_pending(drift_reviewed_stamp)
+        return _reviewed_verdict_or_pending(drift_reviewed_stamp)
     if artifact_entry.codebase_sha_at_write == current_head_sha:
         return DRIFT_FRESH
 
@@ -237,7 +237,7 @@ def derive_artifact_drift(
         current_head_sha,
     )
     if changed_files is None:
-        return _substantive_verdict_or_pending(drift_reviewed_stamp)
+        return _reviewed_verdict_or_pending(drift_reviewed_stamp)
 
     has_overlap = any(
         _path_overlaps_reference(path, reference)
@@ -246,13 +246,13 @@ def derive_artifact_drift(
     )
     if not has_overlap:
         return DRIFT_FRESH
-    if (
-        drift_reviewed_stamp is not None
-        and drift_reviewed_stamp.head_sha_at_review
-        and drift_reviewed_stamp.head_sha_at_review == current_head_sha
-    ):
-        return drift_reviewed_stamp.verdict
-    return DRIFT_PENDING
+    return _reviewed_verdict_or_pending(
+        drift_reviewed_stamp,
+        evidence_matches_review=lambda reviewed: (
+            bool(reviewed.head_sha_at_review) and reviewed.head_sha_at_review == current_head_sha
+        ),
+        require_evidence_for_substantive=True,
+    )
 
 
 def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> ArtifactDriftStatus:
@@ -270,14 +270,11 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
     if entry.upstream_digests == current:
         return DRIFT_FRESH
     stamp = _drift_stamp_for_artifact(model, state_key)
-    if stamp is not None and stamp.verdict == DRIFT_SUBSTANTIVE:
-        return DRIFT_SUBSTANTIVE
     if _has_missing_required_upstream(model, state_key, current):
-        return DRIFT_PENDING
-    return _anchored_verdict_or_pending(
+        return _reviewed_verdict_or_pending(stamp)
+    return _reviewed_verdict_or_pending(
         stamp,
-        current,
-        "upstream_digests_at_review",
+        evidence_matches_review=lambda reviewed: reviewed.upstream_digests_at_review == current,
     )
 
 
@@ -325,15 +322,18 @@ def derive_owned_snippet_drift(
         return DRIFT_FRESH
     stamp = _drift_stamp_for_artifact(model, state_key)
     if not entry.async_provenance_complete:
-        return _substantive_verdict_or_pending(stamp)
+        return _reviewed_verdict_or_pending(stamp)
     current = _current_snippet_digests(entry.owned_snippet_digests, snippet_digest_fn=snippet_digest_fn)
     if current is None:
-        return _substantive_verdict_or_pending(stamp)
+        return _reviewed_verdict_or_pending(stamp)
     if entry.owned_snippet_digests == current:
         return DRIFT_FRESH
-    return _anchored_snippet_verdict_or_pending(
+    return _reviewed_verdict_or_pending(
         stamp,
-        current,
+        evidence_matches_review=lambda reviewed: _snippet_evidence_matches_review(
+            reviewed.snippet_digests_at_review,
+            current,
+        ),
     )
 
 
@@ -350,15 +350,18 @@ def derive_upstream_snippet_drift(
         return DRIFT_FRESH
     stamp = _drift_stamp_for_artifact(model, state_key)
     if not entry.async_provenance_complete:
-        return _substantive_verdict_or_pending(stamp)
+        return _reviewed_verdict_or_pending(stamp)
     current = _current_snippet_digests(entry.referenced_snippet_digests, snippet_digest_fn=snippet_digest_fn)
     if current is None:
-        return _substantive_verdict_or_pending(stamp)
+        return _reviewed_verdict_or_pending(stamp)
     if entry.referenced_snippet_digests == current:
         return DRIFT_FRESH
-    return _anchored_snippet_verdict_or_pending(
+    return _reviewed_verdict_or_pending(
         stamp,
-        current,
+        evidence_matches_review=lambda reviewed: _snippet_evidence_matches_review(
+            reviewed.snippet_digests_at_review,
+            current,
+        ),
     )
 
 
@@ -380,10 +383,9 @@ async def derive_dependency_graph_drift(
     recorded = _sorted_dependency_entries(entry.dependency_set_at_write)
     if recorded == current:
         return DRIFT_FRESH
-    return _anchored_verdict_or_pending(
+    return _reviewed_verdict_or_pending(
         _drift_stamp_for_artifact(model, state_key),
-        current,
-        "dep_set_at_review",
+        evidence_matches_review=lambda reviewed: reviewed.dep_set_at_review == current,
     )
 
 
@@ -403,27 +405,23 @@ def derive_age_drift(
     if _artifact_is_absent(entry):
         return DRIFT_FRESH
     if not entry.produced_at:
-        return _substantive_verdict_or_pending(drift_reviewed_stamp)
+        return _reviewed_verdict_or_pending(drift_reviewed_stamp)
     try:
         produced_at = _parse_iso_datetime(entry.produced_at)
         now = _parse_iso_datetime(now_iso) if now_iso else datetime.now(UTC)
     except ValueError:
-        return _substantive_verdict_or_pending(drift_reviewed_stamp)
+        return _reviewed_verdict_or_pending(drift_reviewed_stamp)
     age_seconds = (now - produced_at).total_seconds()
     if age_seconds <= age_window_seconds:
         return DRIFT_FRESH
-    if drift_reviewed_stamp is None:
-        return DRIFT_PENDING
-    if drift_reviewed_stamp.verdict == DRIFT_SUBSTANTIVE:
-        return DRIFT_SUBSTANTIVE
-    if not drift_reviewed_stamp.stamped_at:
-        return DRIFT_PENDING
-    try:
-        stamped_at = _parse_iso_datetime(drift_reviewed_stamp.stamped_at)
-    except ValueError:
-        return DRIFT_PENDING
-    review_age_seconds = (now - stamped_at).total_seconds()
-    return drift_reviewed_stamp.verdict if review_age_seconds <= age_window_seconds else DRIFT_PENDING
+    return _reviewed_verdict_or_pending(
+        drift_reviewed_stamp,
+        evidence_matches_review=lambda reviewed: _review_is_within_age_window(
+            reviewed,
+            now=now,
+            age_window_seconds=age_window_seconds,
+        ),
+    )
 
 
 def _state_key_for_artifact(artifact_name: str) -> str:
@@ -458,37 +456,42 @@ def _current_snippet_digests(
     return current
 
 
-def _anchored_verdict_or_pending(
+def _reviewed_verdict_or_pending(
     stamp: DriftReviewedStamp | None,
-    current_evidence: object,
-    anchor_field: str,
+    *,
+    evidence_matches_review: Callable[[DriftReviewedStamp], bool] | None = None,
+    require_evidence_for_substantive: bool = False,
 ) -> ArtifactDriftStatus:
     if stamp is None:
         return DRIFT_PENDING
-    if stamp.verdict == DRIFT_SUBSTANTIVE:
+    if stamp.verdict == DRIFT_SUBSTANTIVE and not require_evidence_for_substantive:
         return DRIFT_SUBSTANTIVE
-    return stamp.verdict if getattr(stamp, anchor_field) == current_evidence else DRIFT_PENDING
-
-
-def _anchored_snippet_verdict_or_pending(
-    stamp: DriftReviewedStamp | None,
-    current_evidence: dict[str, str],
-) -> ArtifactDriftStatus:
-    if stamp is None:
+    if evidence_matches_review is None:
         return DRIFT_PENDING
-    if stamp.verdict == DRIFT_SUBSTANTIVE:
-        return DRIFT_SUBSTANTIVE
-    anchor = stamp.snippet_digests_at_review
+    return stamp.verdict if evidence_matches_review(stamp) else DRIFT_PENDING
+
+
+def _snippet_evidence_matches_review(anchor: dict[str, str], current_evidence: dict[str, str]) -> bool:
     for snippet_id, digest in current_evidence.items():
         if anchor.get(snippet_id) != digest:
-            return DRIFT_PENDING
-    return stamp.verdict
+            return False
+    return True
 
 
-def _substantive_verdict_or_pending(stamp: DriftReviewedStamp | None) -> ArtifactDriftStatus:
-    if stamp is not None and stamp.verdict == DRIFT_SUBSTANTIVE:
-        return DRIFT_SUBSTANTIVE
-    return DRIFT_PENDING
+def _review_is_within_age_window(
+    stamp: DriftReviewedStamp,
+    *,
+    now: datetime,
+    age_window_seconds: int,
+) -> bool:
+    if not stamp.stamped_at:
+        return False
+    try:
+        stamped_at = _parse_iso_datetime(stamp.stamped_at)
+    except ValueError:
+        return False
+    review_age_seconds = (now - stamped_at).total_seconds()
+    return review_age_seconds <= age_window_seconds
 
 
 def _sorted_dependency_entries(entries: list[DependencyEntry]) -> list[DependencyEntry]:

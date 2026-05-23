@@ -10,6 +10,7 @@ from syrupy.assertion import SnapshotAssertion
 from teleclaude.core.next_machine._types import ItemPhase
 from teleclaude.core.next_machine.work import (
     _advance_prepared_to_build_started,
+    _check_work_entry_drift,
     _resolve_explicit_work_slug,
     _resolve_work_slug,
     next_work,
@@ -149,6 +150,38 @@ async def test_next_work_bounces_pending_drift_before_worktree_setup(snapshot: S
     assert instruction == snapshot
     ensure_worktree.assert_not_awaited()
     log_phase.assert_any_call("my-slug", "drift_check", ANY, "bounce", "prd:pending")
+
+
+@pytest.mark.asyncio
+async def test_work_entry_drift_allows_pending_drift_during_in_flight_work() -> None:
+    """In-flight work re-entry does not bounce on unclassified pending drift."""
+    todos_db = AsyncMock()
+    todos_db.read_state = AsyncMock(return_value={"lifecycle_phase": "build_complete"})
+    todos_db.write_state = AsyncMock()
+
+    with (
+        patch(f"{_WORK}.derive_lifecycle_drift", new=AsyncMock(return_value={"prd": {"code": "pending"}})),
+        patch(f"{_WORK}._log_next_work_phase"),
+    ):
+        instruction = await _check_work_entry_drift(todos_db, "my-slug", "/repo", "my-slug")
+
+    assert instruction is None
+
+
+@pytest.mark.asyncio
+async def test_work_entry_drift_bounces_substantive_drift_during_in_flight_work() -> None:
+    """Confirmed substantive drift still blocks in-flight work re-entry."""
+    todos_db = AsyncMock()
+    todos_db.read_state = AsyncMock(return_value={"lifecycle_phase": "build_complete"})
+    todos_db.write_state = AsyncMock()
+
+    with (
+        patch(f"{_WORK}.derive_lifecycle_drift", new=AsyncMock(return_value={"prd": {"code": "substantive"}})),
+        patch(f"{_WORK}._log_next_work_phase"),
+    ):
+        instruction = await _check_work_entry_drift(todos_db, "my-slug", "/repo", "my-slug")
+
+    assert instruction is not None
 
 
 @pytest.mark.asyncio

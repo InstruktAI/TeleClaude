@@ -41,6 +41,7 @@ from teleclaude.core.next_machine.lifecycle import (
     apply_authoritative_signal,
     collapse_drift,
     derive_lifecycle_drift,
+    is_work_lifecycle_phase,
     require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.output_formatting import (
@@ -262,6 +263,10 @@ async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: st
             next_call=f"telec todo prepare {resolved_slug}",
         )
     writer = StateWriter(state)
+    current_phase = require_lifecycle_phase(
+        writer.state.lifecycle_phase,
+        context=f"work_entry_drift({resolved_slug})",
+    )
     drift_result = await derive_lifecycle_drift(
         resolved_slug,
         writer.state,
@@ -272,21 +277,28 @@ async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: st
     )
     await writer.commit(todos_db, resolved_slug)
     drift = collapse_drift(drift_result)
-    if _has_work_entry_blocking_drift(drift):
-        reason = _work_entry_drift_reason(drift)
+    if _has_work_entry_blocking_drift(drift, current_phase):
+        reason = _work_entry_drift_reason(drift, current_phase)
         _log_next_work_phase(phase_slug, "drift_check", drift_started, "bounce", reason)
         return format_work_entry_drift_bounce(resolved_slug, drift)
     _log_next_work_phase(phase_slug, "drift_check", drift_started, "proceed", "fresh")
     return None
 
 
-def _has_work_entry_blocking_drift(drift: dict[str, ArtifactDriftStatus]) -> bool:
-    return any(status in (DRIFT_PENDING, DRIFT_SUBSTANTIVE) for status in drift.values())
+def _has_work_entry_blocking_drift(drift: dict[str, ArtifactDriftStatus], phase: LifecyclePhase) -> bool:
+    return any(status in _work_entry_blocking_statuses(phase) for status in drift.values())
 
 
-def _work_entry_drift_reason(drift: dict[str, ArtifactDriftStatus]) -> str:
-    blocking = {artifact: status for artifact, status in drift.items() if status in (DRIFT_PENDING, DRIFT_SUBSTANTIVE)}
+def _work_entry_drift_reason(drift: dict[str, ArtifactDriftStatus], phase: LifecyclePhase) -> str:
+    blocking_statuses = _work_entry_blocking_statuses(phase)
+    blocking = {artifact: status for artifact, status in drift.items() if status in blocking_statuses}
     return ",".join(f"{artifact}:{status}" for artifact, status in sorted(blocking.items()))
+
+
+def _work_entry_blocking_statuses(phase: LifecyclePhase) -> tuple[ArtifactDriftStatus, ...]:
+    if is_work_lifecycle_phase(phase):
+        return (DRIFT_SUBSTANTIVE,)
+    return (DRIFT_PENDING, DRIFT_SUBSTANTIVE)
 
 
 async def _normalize_next_work_cwd(cwd: str) -> str:

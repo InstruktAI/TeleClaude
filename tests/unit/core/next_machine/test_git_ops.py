@@ -270,6 +270,21 @@ def test_derive_artifact_drift_substantive_when_reviewed_substantive() -> None:
     assert status == DRIFT_SUBSTANTIVE
 
 
+def test_derive_artifact_drift_re_pends_stale_substantive_review_when_head_moved() -> None:
+    artifact = ArtifactEntry(digest="digest", codebase_sha_at_write="base", referenced_paths=["src/feature.py"])
+    stamp = DriftReviewedStamp(verdict="substantive", reason="API changed", stamped_at="now", head_sha_at_review="head")
+    mock_repo = MagicMock()
+    mock_repo.git.log.return_value = "src/feature.py\n"
+
+    with (
+        patch("teleclaude.core.next_machine.git_ops.Repo", return_value=mock_repo),
+        patch("teleclaude.core.next_machine.git_ops.get_origin_main_sha", return_value="newhead"),
+    ):
+        status = derive_artifact_drift(artifact, stamp, "ignored", "/repo")
+
+    assert status == DRIFT_PENDING
+
+
 async def test_compose_agent_guidance_lists_enabled_agents_and_skips_unavailable() -> None:
     db = AsyncMock()
     db.get_agent_availability.side_effect = [
