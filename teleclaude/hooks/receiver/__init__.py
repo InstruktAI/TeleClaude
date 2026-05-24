@@ -320,19 +320,7 @@ def _render_person_header(person: PersonEntry) -> str:
 
     lines = [f"Human owner: {name}", "Expertise:"]
     for domain, value in expertise.items():
-        if isinstance(value, str):
-            lines.append(f"  {domain}: {value}")
-        else:
-            default = value.get("default")
-            sub_areas = {k: v for k, v in value.items() if k != "default"}
-            if default and sub_areas:
-                sub_str = ", ".join(f"{k}: {v}" for k, v in sub_areas.items())
-                lines.append(f"  {domain}: {default} ({sub_str})")
-            elif default:
-                lines.append(f"  {domain}: {default}")
-            elif sub_areas:
-                sub_str = ", ".join(f"{k}: {v}" for k, v in sub_areas.items())
-                lines.append(f"  {domain}: ({sub_str})")
+        lines.append(f"  {domain}: {value}")
     return "\n".join(lines)
 
 

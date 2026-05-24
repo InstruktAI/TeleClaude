@@ -169,7 +169,7 @@ class PersonEntry(BaseModel):
     username: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
     preferences: str = ""  # Plain-text user preferences
-    expertise: dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]] | None = None
+    expertise: dict[str, ProficiencyLevel] | None = None
 
     @field_validator("email")
     @classmethod

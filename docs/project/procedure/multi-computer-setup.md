@@ -20,7 +20,7 @@ Set up a distributed TeleClaude deployment across multiple computers.
 
 ## Steps
 
-1. Create a unique Telegram bot per computer and add all bots as admins to a Topics-enabled supergroup.
+1. Create a unique Telegram bot per computer.
 2. Install on each machine with `make install`, then run `telec config wizard`, then `make start`.
 3. Configure `computer_name`, `telegram.is_master` (exactly one master), `redis_url`, and `trusted_dirs`.
 4. Configure SSH keychain using the ssh-agent-keychain procedure.

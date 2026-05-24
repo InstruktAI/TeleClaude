@@ -132,7 +132,7 @@ class EventProcessor:
         """Recover and process pending entries assigned to this or stale consumers."""
         self._pending_info = await self._read_pending_info()
         pending_depth = len(self._pending_info)
-        logger.info("event_processor_pending", pending=pending_depth, stream=self._stream, group=self._group)
+        logger.debug("event_processor_pending", pending=pending_depth, stream=self._stream, group=self._group)
         self._structured_info("event_processor_pending", pending=pending_depth)
 
         if include_current_consumer:

@@ -209,8 +209,12 @@ class TelegramAdapter(
         user_id = session.origin_metadata.get("user_id") or session.origin_metadata.get("telegram_user_id")
         if not user_id:
             return
+        try:
+            tg_chat_id = int(str(user_id))
+        except (ValueError, TypeError):
+            return
         await self.bot.send_chat_action(
-            chat_id=int(user_id),  # type: ignore[arg-type]
+            chat_id=tg_chat_id,
             action=ChatAction.TYPING,
         )
 

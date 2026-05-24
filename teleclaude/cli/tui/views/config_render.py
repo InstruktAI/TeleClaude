@@ -24,6 +24,7 @@ from teleclaude.cli.tui.views._config_constants import (
     _WARN,
     _normal_style,
     completion_summary,
+    get_allowed_values_for_field,
     get_guidance_for_env,
 )
 
@@ -41,6 +42,9 @@ class ConfigContentRenderMixin:
         _guided_step_index: int
         _notification_projection: NotificationProjection
         _people_data: list[PersonEntry]
+
+        @property
+        def person_editable_fields(self) -> list[str]: ...
 
     def _render_guidance(self, result: Text, env_name: str) -> None:
         """Render inline guidance block for the given env var."""
@@ -187,7 +191,7 @@ class ConfigContentRenderMixin:
             result.append("\n")
 
             if selected and self._expanded_person == person.name:  # type: ignore[attr-defined]
-                for field_idx, field in enumerate(_PERSON_EDITABLE_FIELDS):
+                for field_idx, field in enumerate(self.person_editable_fields):
                     field_selected = field_idx == self._person_field_cursor  # type: ignore[attr-defined]
                     field_prefix = "▶" if field_selected else " "
                     field_row_style = Style(reverse=True) if field_selected else _DIM
@@ -196,11 +200,17 @@ class ConfigContentRenderMixin:
                     self._row_click_map[field_row] = ("person_field", field)  # type: ignore[attr-defined]
 
                     if self._editing_person_field == field:  # type: ignore[attr-defined]
+                        display_name = field
+                        indent = "      "
+                        if ":" in field:
+                            _, child = field.split(":", 1)
+                            display_name = child
+                            indent = "          "
                         result.append(
-                            f"      {field_prefix} {field} = {self._edit_buffer}█\n",
+                            f"{indent}{field_prefix} {display_name} = {self._edit_buffer}█\n",
                             style=field_row_style,
                         )  # type: ignore[attr-defined]
-                        result.append("          Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
+                        result.append(f"{indent}    Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
                     elif field == "role":
                         value = str(getattr(person, field, "") or "")
                         result.append(f"      {field_prefix} ", style=_DIM)
@@ -211,19 +221,44 @@ class ConfigContentRenderMixin:
                         if field_selected:
                             result.append("  ← → cycle", style=_DIM)
                         result.append("\n")
+                    elif ":" in field:
+                        parent, child = field.split(":", 1)
+                        raw_parent = getattr(person, parent, None)
+                        val = raw_parent.get(child, None) if isinstance(raw_parent, dict) else None
+
+                        icon = "✔" if val else "○"
+                        icon_style = _OK if val else _DIM
+
+                        result.append(f"          {field_prefix} {icon} ", style=icon_style)
+                        result.append(f"{child}: ", style=_DIM)
+
+                        allowed = get_allowed_values_for_field(field)
+                        if allowed and field_selected:
+                            result.append(f"{val or '(not set)'}", style=field_row_style)
+                            result.append("  ← → cycle\n", style=_DIM)
+                        else:
+                            result.append(f"{val or '(not set)'}\n", style=field_row_style)
                     else:
                         raw_val = getattr(person, field, None)
-                        if isinstance(raw_val, (dict, list)):
+                        if isinstance(raw_val, dict):
+                            icon = "📁"
+                            result.append(f"      {field_prefix} {icon} {field}:\n", style=field_row_style)
+                            if field_selected:
+                                result.append("          [Press Enter to add new key]\n", style=_INFO)
+                        elif isinstance(raw_val, list):
                             value = json.dumps(raw_val)
-                            icon = "✔" if value != "{}" and value != "[]" else "○"
+                            icon = "✔" if value != "[]" else "○"
+                            icon_style = _OK if value != "[]" else _DIM
+                            result.append(f"      {field_prefix} {icon} ", style=icon_style)
+                            result.append(f"{field}: ", style=_DIM)
+                            result.append(f"{value or '(not set)'}\n", style=field_row_style)
                         else:
                             value = str(raw_val or "")
                             icon = "✔" if value else "○"
-
-                        icon_style = _OK if value else _DIM
-                        result.append(f"      {field_prefix} {icon} ", style=icon_style)
-                        result.append(f"{field}: ", style=_DIM)
-                        result.append(f"{value or '(not set)'}\n", style=field_row_style)
+                            icon_style = _OK if value else _DIM
+                            result.append(f"      {field_prefix} {icon} ", style=icon_style)
+                            result.append(f"{field}: ", style=_DIM)
+                            result.append(f"{value or '(not set)'}\n", style=field_row_style)
 
     def _render_notifications(self, result: Text) -> None:
         """Render notification/subscription summary information."""

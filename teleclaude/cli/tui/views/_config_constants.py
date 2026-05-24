@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal, Union, get_args, get_origin
 
 from rich.style import Style
 
 from teleclaude.cli.config_handlers import EnvVarStatus
 from teleclaude.cli.tui.config_components.guidance import get_guidance_for_env
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
+from teleclaude.config.schema import PersonEntry
 
-_SUBTABS = ("adapters", "people", "notifications", "environment")
+_SUBTABS = ("adapters", "people", "environment")
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")
 _VALID_ROLES = ("admin", "member", "contributor", "newcomer")
 _ADAPTER_TABS = ("telegram", "discord", "ai_keys", "whatsapp")
@@ -139,6 +140,37 @@ def completion_summary(
     return configured, total
 
 
+def get_allowed_values_for_field(field_name: str) -> list[str] | None:
+    """Extract Literal allowed values from PersonEntry schema or Union annotations."""
+
+    def unpack_union(t: Any) -> list[Any]:
+        if get_origin(t) in (Union, getattr(Union, "_UnionGenericAlias", None), getattr(Union, "UnionType", None)):
+            return list(get_args(t))
+        return [t]
+
+    if ":" in field_name:
+        parent, _ = field_name.split(":", 1)
+        if parent in PersonEntry.model_fields:
+            ann = PersonEntry.model_fields[parent].annotation
+            # Unpack Optionals/Unions to find dict type
+            dict_types = [t for t in unpack_union(ann) if get_origin(t) is dict or t is dict]
+            if dict_types:
+                dict_ann = dict_types[0]
+                args = get_args(dict_ann)
+                if len(args) == 2:
+                    val_type = args[1]
+                    for option in unpack_union(val_type):
+                        if get_origin(option) is Literal:
+                            return list(get_args(option))
+    else:
+        if field_name in PersonEntry.model_fields:
+            ann = PersonEntry.model_fields[field_name].annotation
+            for option in unpack_union(ann):
+                if get_origin(option) is Literal:
+                    return list(get_args(option))
+    return None
+
+
 __all__ = [
     "_ADAPTER_ENV_KEYS",
     "_ADAPTER_LABELS",
@@ -162,6 +194,7 @@ __all__ = [
     "_normal_style",
     "classify_adapter_status",
     "completion_summary",
+    "get_allowed_values_for_field",
     "get_guidance_for_env",
     "project_adapter_sections",
 ]

@@ -174,7 +174,7 @@ class TestCreateSession:
         def _resolve(_origin: str, _metadata: object) -> SimpleNamespace:
             return SimpleNamespace(
                 person_email=None,
-                person_role="member",
+                person_role="newcomer",
                 platform=None,
                 platform_user_id=None,
             )

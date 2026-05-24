@@ -1,8 +1,7 @@
 project_name: TeleClaude
 languages:
-- python
-- typescript
-- rust
+  - python
+  - typescript
 env_allow_list: []
 frontend_root: frontend
 
@@ -23,9 +22,6 @@ jobs:
     when:
       at: '06:00'
     script: jobs/youtube_scraper.py
-    tags:
-    - ai
-    - devtools
 
   temp_reaper:
     category: system

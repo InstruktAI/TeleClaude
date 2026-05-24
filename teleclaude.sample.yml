@@ -27,9 +27,6 @@
 #     when:
 #       at: '06:00'
 #     script: jobs/youtube_scraper.py
-#     tags:
-#       - ai
-#       - devtools
 #
 #   # Tags unclassified channels in each subscriber's youtube.csv (script job).
 #   youtube_sync_subscriptions:

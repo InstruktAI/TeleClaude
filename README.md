@@ -115,6 +115,7 @@ cd teleclaude
 make install
 telec config wizard
 make start
+instrukt-ai-logs teleclaude  # Monitor the newly installed daemon
 ```
 
 `make install`, `telec config wizard`, and `make start` are for this TeleClaude repo itself. They install machine-global tooling, collect interactive configuration, and bring the daemon up.

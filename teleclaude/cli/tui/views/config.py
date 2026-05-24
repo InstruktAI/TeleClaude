@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_origin
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -24,10 +24,10 @@ from teleclaude.cli.config_handlers import (
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
-    _PERSON_EDITABLE_FIELDS,
     _SUBTABS,
     AdapterSectionProjection,
     NotificationProjection,
+    get_allowed_values_for_field,
     project_adapter_sections,
 )
 from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
@@ -327,15 +327,46 @@ class ConfigContent(
         return self._expanded_person is not None
 
     @property
+    def person_editable_fields(self) -> list[str]:
+        """Dynamically return the list of editable fields for a person.
+        Flattens dict fields into 'field:key' child fields so they are individually editable.
+        """
+        fields = []
+        base_fields = list(PersonEntry.model_fields.keys())
+
+        if self._expanded_person is not None:
+            person = next((p for p in self._people_data if p.name == self._expanded_person), None)
+            if person is not None:
+                for key in person.__dict__.keys():
+                    if key not in base_fields and not key.startswith("_"):
+                        base_fields.append(key)
+
+                for field in base_fields:
+                    val = getattr(person, field, None)
+                    is_dict = isinstance(val, dict)
+                    if not is_dict and field in PersonEntry.model_fields:
+                        ann = PersonEntry.model_fields[field].annotation
+                        is_dict = get_origin(ann) is dict or ann is dict
+
+                    if is_dict:
+                        fields.append(field)  # Parent dict header
+                        if isinstance(val, dict):
+                            for subkey in val.keys():
+                                fields.append(f"{field}:{subkey}")
+                    else:
+                        fields.append(field)
+        else:
+            fields = base_fields
+        return fields
+
+    @property
     def is_on_enum_field(self) -> bool:
-        """Whether the cursor is on a role field that cycles with arrows."""
+        """Whether the cursor is on any Literal/enum-backed field."""
         tab = _SUBTABS[self.active_subtab]
-        return (
-            tab == "people"
-            and self._expanded_person is not None
-            and not self.is_editing
-            and _PERSON_EDITABLE_FIELDS[self._person_field_cursor] == "role"
-        )
+        if tab != "people" or self._expanded_person is None or self.is_editing:
+            return False
+        field = self.person_editable_fields[self._person_field_cursor]
+        return get_allowed_values_for_field(field) is not None
 
     def cycle_enum_field(self, direction: int) -> None:
         """Cycle the current enum-backed field in the requested direction."""
@@ -343,7 +374,8 @@ class ConfigContent(
             return
         person = next((p for p in self._people_data if p.name == self._expanded_person), None)
         if person is not None:
-            self._cycle_person_role(person, direction)
+            field = self.person_editable_fields[self._person_field_cursor]
+            self._cycle_person_enum(person, field, direction)
 
     def refresh_data(self) -> None:
         """Reload env vars, people, and derived projections from disk."""
@@ -465,7 +497,7 @@ class ConfigContent(
                 self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))
             else:
                 self._set_current_cursor(0)
-            self._person_field_cursor = max(0, min(self._person_field_cursor, len(_PERSON_EDITABLE_FIELDS) - 1))
+            self._person_field_cursor = max(0, min(self._person_field_cursor, len(self.person_editable_fields) - 1))
             return
         rows = self._selectable_env_rows()
         if not rows:

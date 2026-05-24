@@ -226,17 +226,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         ),
         Binding(
             "3",
-            "switch_tab('jobs')",
-            "Jobs",
-            key_display="③",
-            group=Binding.Group("Views", compact=True),
-            show=False,
-        ),
-        Binding(
-            "4",
             "switch_tab('config')",
             "Config",
-            key_display="④",
+            key_display="③",
             group=Binding.Group("Views", compact=True),
             show=False,
         ),
@@ -444,10 +436,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
                 yield SessionsView(id="sessions-view")
             with TabPane("Preparation", id="preparation"):
                 yield PreparationView(id="preparation-view")
-            with TabPane("Jobs", id="jobs"):
-                yield JobsView(id="jobs-view")
             with TabPane("Config", id="config"):
                 yield ConfigView(id="config-view")
+        yield JobsView(id="jobs-view")
         with Vertical(id="footer-area"):
             yield TelecFooter(id="telec-footer")
         yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
@@ -526,7 +517,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
 
     def _resolve_start_tab(self) -> str:
         """Resolve the initial tab from CLI overrides or persisted state."""
-        tab_ids = {1: "sessions", 2: "preparation", 3: "jobs", 4: "config"}
+        tab_ids = {1: "sessions", 2: "preparation", 3: "config"}
         persisted_tab = self._persisted.get("app", {}).get("active_tab")
         if self._start_view != 1:
             return tab_ids.get(self._start_view, "sessions")

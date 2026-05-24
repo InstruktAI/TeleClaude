@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_origin
 
 from teleclaude.cli.config_handlers import (
     EnvVarStatus,
@@ -16,14 +16,14 @@ from teleclaude.cli.config_handlers import (
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _GUIDED_STEPS,
-    _PERSON_EDITABLE_FIELDS,
     _SUBTABS,
     _VALID_ROLES,
+    get_allowed_values_for_field,
 )
+from teleclaude.config.schema import PersonEntry
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
-    from teleclaude.config.schema import PersonEntry
 
 
 class ConfigContentEditingMixin:
@@ -33,6 +33,9 @@ class ConfigContentEditingMixin:
         _adapter_sections: list[AdapterSectionProjection]
         _env_data: list[EnvVarStatus]
         _people_data: list[PersonEntry]
+
+        @property
+        def person_editable_fields(self) -> list[str]: ...
 
     def move_cursor(self, delta: int) -> None:
         """Move the cursor within the active config section."""
@@ -45,7 +48,7 @@ class ConfigContentEditingMixin:
                     0,
                     min(
                         self._person_field_cursor + delta,
-                        len(_PERSON_EDITABLE_FIELDS) - 1,
+                        len(self.person_editable_fields) - 1,
                     ),  # type: ignore[attr-defined]
                 )
             elif self._people_data:  # type: ignore[attr-defined]
@@ -80,6 +83,10 @@ class ConfigContentEditingMixin:
                     if 0 <= cursor < len(self._people_data):  # type: ignore[attr-defined]
                         self._expanded_person = self._people_data[cursor].name  # type: ignore[attr-defined]
                         self._person_field_cursor = 0  # type: ignore[attr-defined]
+                        self._status_message = (
+                            f"Expanded {self._expanded_person}. Press Esc to collapse / navigate to other people."  # type: ignore[attr-defined]
+                        )
+                        self._status_is_error = False  # type: ignore[attr-defined]
                         self.refresh(layout=True)  # type: ignore[attr-defined]
             else:
                 person = next(  # type: ignore[attr-defined]
@@ -87,8 +94,10 @@ class ConfigContentEditingMixin:
                     None,
                 )
                 if person is not None:
-                    field = _PERSON_EDITABLE_FIELDS[self._person_field_cursor]  # type: ignore[attr-defined]
-                    if field != "role":
+                    field = self.person_editable_fields[self._person_field_cursor]  # type: ignore[attr-defined]
+                    if get_allowed_values_for_field(field) is not None:
+                        self._cycle_person_enum(person, field, 1)
+                    else:
                         self._begin_person_field_edit(person, field)
             return
 
@@ -104,29 +113,67 @@ class ConfigContentEditingMixin:
         self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
-    def _cycle_person_role(self, person: object, direction: int = 1) -> None:
-        """Rotate the selected person's role through the allowed values."""
-        current = getattr(person, "role", "")
-        idx = _VALID_ROLES.index(current) if current in _VALID_ROLES else -1
-        next_role = _VALID_ROLES[(idx + direction) % len(_VALID_ROLES)]
+    def _cycle_person_enum(self, person: object, field_name: str, direction: int = 1) -> None:
+        """Dynamically cycle any Literal/enum-backed field in the requested direction."""
+        allowed_values = get_allowed_values_for_field(field_name)
+        if not allowed_values:
+            return
+
+        current_val = None
+        if ":" in field_name:
+            parent, child = field_name.split(":", 1)
+            raw_parent = getattr(person, parent, None) or {}
+            current_val = raw_parent.get(child, allowed_values[0])
+        else:
+            current_val = getattr(person, field_name, allowed_values[0])
+
+        idx = allowed_values.index(current_val) if current_val in allowed_values else -1
+        next_val = allowed_values[(idx + direction) % len(allowed_values)]
+
         try:
             config = get_global_config()
             for p in config.people:
                 if p.name == getattr(person, "name", ""):
-                    p.role = next_role  # type: ignore[assignment]
+                    if ":" in field_name:
+                        parent, child = field_name.split(":", 1)
+                        raw_parent = getattr(p, parent, None)
+                        if not isinstance(raw_parent, dict):
+                            raw_parent = {}
+                            setattr(p, parent, raw_parent)
+                        raw_parent[child] = next_val
+                    else:
+                        setattr(p, field_name, next_val)
                     break
             save_global_config(config)
-            self._status_message = f"Role set to {next_role}"  # type: ignore[attr-defined]
+            self._status_message = f"Set {field_name} to {next_val}"  # type: ignore[attr-defined]
             self._status_is_error = False  # type: ignore[attr-defined]
         except Exception as exc:
-            self._status_message = f"Failed to save role: {exc}"  # type: ignore[attr-defined]
+            self._status_message = f"Failed to save {field_name}: {exc}"  # type: ignore[attr-defined]
             self._status_is_error = True  # type: ignore[attr-defined]
         self.refresh_data()  # type: ignore[attr-defined]
 
     def _begin_person_field_edit(self, person: object, field: str) -> None:
         """Enter edit mode for a specific field on the expanded person."""
         self._editing_person_field = field  # type: ignore[attr-defined]
-        self._edit_buffer = str(getattr(person, field, "") or "")  # type: ignore[attr-defined]
+        if ":" in field:
+            parent, child = field.split(":", 1)
+            raw_parent = getattr(person, parent, {})
+            val = raw_parent.get(child, "") if isinstance(raw_parent, dict) else ""
+            self._edit_buffer = str(val or "")
+        else:
+            raw_val = getattr(person, field, None)
+            if isinstance(raw_val, dict):
+                # Editing a parent dictionary prompts to add a new skill key
+                self._edit_buffer = ""
+                person_name = getattr(person, "name", "")
+                self._status_message = f"Add new key to {person_name}.{field}: Enter name of the key"  # type: ignore[attr-defined]
+                self._status_is_error = False  # type: ignore[attr-defined]
+                self.refresh(layout=True)  # type: ignore[attr-defined]
+                return
+            elif isinstance(raw_val, list):
+                self._edit_buffer = json.dumps(raw_val)
+            else:
+                self._edit_buffer = str(raw_val or "")
         person_name = getattr(person, "name", "")
         self._status_message = f"Editing {person_name}.{field}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
         self._status_is_error = False  # type: ignore[attr-defined]
@@ -151,14 +198,37 @@ class ConfigContentEditingMixin:
             config = get_global_config()
             for p in config.people:
                 if p.name == person_name:
-                    if field == "name" and value != person_name:
-                        rename_person(person_name, value)
-                        self._expanded_person = value  # type: ignore[attr-defined]
-
-                    if field == "expertise":
-                        setattr(p, field, json.loads(value))
+                    if ":" in field:
+                        parent, child = field.split(":", 1)
+                        raw_parent = getattr(p, parent, None)
+                        if not isinstance(raw_parent, dict):
+                            raw_parent = {}
+                            setattr(p, parent, raw_parent)
+                        raw_parent[child] = value
                     else:
-                        setattr(p, field, value or None)
+                        if field == "name" and value != person_name:
+                            rename_person(person_name, value)
+                            self._expanded_person = value  # type: ignore[attr-defined]
+
+                        # Detect if field is a dict or list to parse appropriately
+                        current_val = getattr(p, field, None)
+                        is_dict = isinstance(current_val, dict)
+
+                        if not is_dict and field in PersonEntry.model_fields:
+                            ann = PersonEntry.model_fields[field].annotation
+                            is_dict = get_origin(ann) is dict or ann is dict
+
+                        if is_dict:
+                            # Adding a new key to the dict
+                            if value.strip():
+                                if current_val is None:
+                                    current_val = {}
+                                    setattr(p, field, current_val)
+                                current_val[value.strip()] = "novice"
+                        elif isinstance(current_val, list):
+                            setattr(p, field, json.loads(value))
+                        else:
+                            setattr(p, field, value or None)
                     break
             save_global_config(config)
             self._status_message = f"Saved {self._expanded_person}.{field}"  # type: ignore[attr-defined]

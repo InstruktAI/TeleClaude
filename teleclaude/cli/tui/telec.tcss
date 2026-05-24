@@ -230,6 +230,11 @@ PaneManagerBridge {
     display: none;
 }
 
+/* ── Jobs view (hidden) ───────────────────────── */
+#jobs-view {
+    display: none;
+}
+
 /* ── Scroll containers ─────────────────────────────────── */
 VerticalScroll {
     scrollbar-size: 0 0;

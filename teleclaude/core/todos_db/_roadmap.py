@@ -900,7 +900,7 @@ class TodosDbRoadmapMixin:
         try:
             entry = await self._active_entry(db_session, slug)
             if entry is None:
-                raise ValueError(f"no active/icebox roadmap entry for slug: {slug}")
+                raise ValueError(f"no active/icebox todo for slug: {slug}")
             await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.slug == slug))
             for dep in after:
                 db_session.add(RoadmapDep(slug=slug, depends_on=dep))

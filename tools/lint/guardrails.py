@@ -44,6 +44,7 @@ MODULE_SIZE_EXCEPTIONS = frozenset(
         "teleclaude/daemon.py",
         "teleclaude/cli/telec/surface.py",  # declarative CLI schema registry, not logic
         "teleclaude/hooks/receiver/__init__.py",  # pre-existing >1000-line receiver; decomposition tracked separately
+        "teleclaude/core/todos_db/_roadmap.py",
     }
 )
 

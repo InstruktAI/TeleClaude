@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
-from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -138,7 +138,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
         else os.path.join(WORKING_DIR, "help-desk")
     )
-    if not system_role and human_role and human_role != HUMAN_ROLE_ADMIN:
+    if not system_role and human_role and human_role not in (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER):
         logger.info(
             "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
             origin,

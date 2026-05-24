@@ -92,8 +92,7 @@ class BoxTabBar(TelecMixin, Widget):
     TABS = [
         ("sessions", "[1] AI Sessions"),
         ("preparation", "[2] Work Preparation"),
-        ("jobs", "[3] Jobs"),
-        ("config", "[4] Configuration"),
+        ("config", "[3] Configuration"),
     ]
 
     DEFAULT_CSS = """
