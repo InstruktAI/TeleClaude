@@ -24,8 +24,9 @@ else:
 # project venv when needed. Agent CLIs call this hook from arbitrary directories
 # where PATH may resolve python3 to system Python (missing project deps).
 _REPO_ROOT = resolve_state_root(Path(__file__).resolve().parents[3])
-_VENV_PYTHON = _REPO_ROOT / ".venv" / "bin" / "python3"
-if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
+_VENV_DIR = _REPO_ROOT / ".venv"
+_VENV_PYTHON = _VENV_DIR / "bin" / "python3"
+if _VENV_PYTHON.is_file() and Path(sys.prefix).resolve() != _VENV_DIR.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
 # Ensure local hooks utils and TeleClaude package are importable
