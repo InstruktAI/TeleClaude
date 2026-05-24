@@ -160,11 +160,11 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             self.adapters["redis"] = redis  # Register ONLY after success
             logger.info("Started redis transport")
 
-        # Validate at least one adapter started
+        # Log status but do not crash - daemon can run in TUI-only/headless mode
         if not self.adapters:
-            raise ValueError("No adapters started - check config.yml and .env")
-
-        logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
+            logger.info("Daemon running in TUI-only/headless mode (no UI adapters started)")
+        else:
+            logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
 
     async def stop(self) -> None:
         """Stop all registered adapters."""

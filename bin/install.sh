@@ -265,6 +265,24 @@ install_system_deps() {
             install_package socat
         fi
 
+        # Redis (conditional native install)
+        if confirm "Do you want to install and start a local Redis server?" "y"; then
+            if command -v redis-server &> /dev/null; then
+                print_success "Redis already installed"
+            else
+                print_info "Installing Redis..."
+                install_package redis
+            fi
+
+            print_info "Starting Redis service..."
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                brew services start redis >> "$LOG_FILE" 2>&1 || true
+            else
+                sudo systemctl enable --now redis >> "$LOG_FILE" 2>&1 || true
+            fi
+            print_success "Redis service management delegated to OS"
+        fi
+        fi
         # glow (for pretty markdown rendering in TUI)
         install_glow
     fi

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from rich.style import Style
@@ -211,8 +212,14 @@ class ConfigContentRenderMixin:
                             result.append("  ← → cycle", style=_DIM)
                         result.append("\n")
                     else:
-                        value = str(getattr(person, field, "") or "")
-                        icon = "✔" if value else "○"
+                        raw_val = getattr(person, field, None)
+                        if isinstance(raw_val, (dict, list)):
+                            value = json.dumps(raw_val)
+                            icon = "✔" if value != "{}" and value != "[]" else "○"
+                        else:
+                            value = str(raw_val or "")
+                            icon = "✔" if value else "○"
+
                         icon_style = _OK if value else _DIM
                         result.append(f"      {field_prefix} {icon} ", style=icon_style)
                         result.append(f"{field}: ", style=_DIM)

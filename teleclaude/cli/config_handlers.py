@@ -319,6 +319,15 @@ def add_person(entry: PersonEntry) -> None:
     logger.info("Added person '%s' with role '%s'", entry.name, entry.role)
 
 
+def rename_person(old_name: str, new_name: str) -> None:
+    """Rename a person's configuration directory."""
+    old_dir = _PEOPLE_DIR / old_name
+    new_dir = _PEOPLE_DIR / new_name
+    if old_dir.exists() and not new_dir.exists():
+        old_dir.rename(new_dir)
+        logger.info("Renamed person directory from '%s' to '%s'", old_name, new_name)
+
+
 def remove_person(name: str, delete_directory: bool = False) -> None:
     """Remove person from global list. Optionally remove their config directory."""
     config = get_global_config()

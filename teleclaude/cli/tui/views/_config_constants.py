@@ -12,7 +12,7 @@ from teleclaude.cli.tui.config_components.guidance import get_guidance_for_env
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 
 _SUBTABS = ("adapters", "people", "notifications", "environment")
-_PERSON_EDITABLE_FIELDS = ("email", "role", "username")
+_PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")
 _VALID_ROLES = ("admin", "member", "contributor", "newcomer")
 _ADAPTER_TABS = ("telegram", "discord", "ai_keys", "whatsapp")
 _ADAPTER_LABELS = {
@@ -81,13 +81,13 @@ class GuidedStep:
 
 
 _GUIDED_STEPS: tuple[GuidedStep, ...] = (
+    GuidedStep(subtab="people", title="Admin Setup"),
     GuidedStep(subtab="adapters", adapter_tab="telegram", title="Configure Telegram"),
     GuidedStep(subtab="adapters", adapter_tab="discord", title="Configure Discord"),
     GuidedStep(subtab="adapters", adapter_tab="ai_keys", title="Configure AI + Voice"),
     GuidedStep(subtab="adapters", adapter_tab="whatsapp", title="Configure WhatsApp"),
-    GuidedStep(subtab="people", title="Review People"),
-    GuidedStep(subtab="notifications", title="Review Notifications"),
     GuidedStep(subtab="environment", title="Review Environment"),
+    GuidedStep(subtab="notifications", title="Review Notifications"),
 )
 
 

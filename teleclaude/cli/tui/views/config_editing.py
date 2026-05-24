@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import TYPE_CHECKING
 
-from teleclaude.cli.config_handlers import EnvVarStatus, get_global_config, save_global_config, set_env_var
+from teleclaude.cli.config_handlers import (
+    EnvVarStatus,
+    get_global_config,
+    rename_person,
+    save_global_config,
+    set_env_var,
+)
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _GUIDED_STEPS,
@@ -144,10 +151,17 @@ class ConfigContentEditingMixin:
             config = get_global_config()
             for p in config.people:
                 if p.name == person_name:
-                    setattr(p, field, value or None)
+                    if field == "name" and value != person_name:
+                        rename_person(person_name, value)
+                        self._expanded_person = value  # type: ignore[attr-defined]
+
+                    if field == "expertise":
+                        setattr(p, field, json.loads(value))
+                    else:
+                        setattr(p, field, value or None)
                     break
             save_global_config(config)
-            self._status_message = f"Saved {person_name}.{field}"  # type: ignore[attr-defined]
+            self._status_message = f"Saved {self._expanded_person}.{field}"  # type: ignore[attr-defined]
             self._status_is_error = False  # type: ignore[attr-defined]
         except Exception as exc:
             self._status_message = f"Failed to save: {exc}"  # type: ignore[attr-defined]
@@ -289,15 +303,14 @@ class ConfigContentEditingMixin:
         """Return whether the active guided step is already complete."""
         step = _GUIDED_STEPS[self._guided_step_index]  # type: ignore[attr-defined]
         if step.subtab == "adapters":
-            section = next(
-                (item for item in self._adapter_sections if item.key == step.adapter_tab),
-                None,  # type: ignore[attr-defined]
-            )
-            return bool(section and section.status == "configured")
+            # Adapter steps are non-blocking; we store by contract, validation is feedback only.
+            return True
         if step.subtab == "people":
-            return bool(self._people_data)  # type: ignore[attr-defined]
+            # People step is complete if we have at least one person with 'admin' role.
+            return any(p.role == "admin" for p in self._people_data)  # type: ignore[attr-defined]
         if step.subtab == "notifications":
-            return self._notification_projection.configured  # type: ignore[attr-defined]
+            # Notifications are optional.
+            return True
         if step.subtab == "environment":
             return bool(self._env_data) and all(  # type: ignore[attr-defined]
                 status.is_set for status in self._env_data
