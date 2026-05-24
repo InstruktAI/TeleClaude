@@ -282,7 +282,6 @@ install_system_deps() {
             fi
             print_success "Redis service management delegated to OS"
         fi
-        fi
         # glow (for pretty markdown rendering in TUI)
         install_glow
     fi
