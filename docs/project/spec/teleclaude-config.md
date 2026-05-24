@@ -123,8 +123,6 @@ use `people[].name`.
 environment_variables:
   # Telegram adapter — wizard-managed via _ADAPTER_ENV_VARS["telegram"]
   - TELEGRAM_BOT_TOKEN
-  - TELEGRAM_SUPERGROUP_ID
-  - TELEGRAM_USER_IDS
   # Discord adapter — wizard-managed via _ADAPTER_ENV_VARS["discord"]
   - DISCORD_BOT_TOKEN
   - DISCORD_GUILD_ID

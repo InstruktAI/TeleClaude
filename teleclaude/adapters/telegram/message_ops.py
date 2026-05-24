@@ -137,7 +137,7 @@ class MessageOperationsMixin:
         metadata: MessageMetadata | None = None,
         multi_message: bool = False,
     ) -> str:
-        """Send message to session's topic with automatic retry on rate limits and network errors."""
+        """Send message to session's private chat."""
         self._ensure_started()
         metadata = metadata or MessageMetadata()
         if multi_message:
@@ -148,12 +148,13 @@ class MessageOperationsMixin:
             logger.debug("send_message: suppressing reflection for session %s", session.session_id)
             return "0"
 
-        # Skip when topic_id absent (channel still creating, or headless session without a topic).
-        telegram_meta = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
-        topic_id = telegram_meta.topic_id
-        if not topic_id:
-            logger.debug("send_message: skipping, topic_id not ready for session %s", session.session_id)
+        # Resolve user_id from origin metadata (private chat ID)
+        user_id = session.origin_metadata.get("user_id") or session.origin_metadata.get("telegram_user_id")
+        if not user_id:
+            logger.warning("send_message: skipping, no user_id in origin_metadata for session %s", session.session_id)
             return ""
+
+        chat_id = int(user_id)  # type: ignore[arg-type]
 
         # Extract reply_markup and parse_mode from metadata
         reply_markup = metadata.reply_markup
@@ -167,18 +168,14 @@ class MessageOperationsMixin:
         # Truncation is a platform constraint (Telegram max 4096)
         text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)
 
-        # Best-effort wait for topic readiness to avoid "thread not found" races.
-        await self._wait_for_topic_ready(topic_id, session.title)
-
         # Send message with retry decorator handling errors
-        # Note: we use MarkdownV2 by default for rich agent output
-        message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)
+        message = await self._send_message_with_retry(chat_id, text, reply_markup, parse_mode)
         return str(message.message_id)
 
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _send_message_with_retry(
         self,
-        topic_id: int,
+        chat_id: int,
         formatted_text: str,
         reply_markup: object,
         parse_mode: str | None,
@@ -193,19 +190,12 @@ class MessageOperationsMixin:
             InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply,
         ):
             reply_markup = None
-        try:
-            return await self.bot.send_message(
-                chat_id=self.supergroup_id,
-                message_thread_id=topic_id,
-                text=formatted_text,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup,
-            )
-        except BadRequest as exc:
-            if "message thread not found" in str(exc).lower():
-                logger.warning("Topic %s not ready yet; retrying send", topic_id)
-                raise TimeoutError("message thread not found") from exc
-            raise
+        return await self.bot.send_message(
+            chat_id=chat_id,
+            text=formatted_text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
 
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _send_document_with_retry(
@@ -572,11 +562,5 @@ class MessageOperationsMixin:
         parse_mode: str | None,
         reply_markup: InlineKeyboardMarkup | None,
     ) -> None:
-        """Internal method with retry logic for general-topic edits."""
-        await self.bot.edit_message_text(
-            chat_id=self.supergroup_id,
-            message_id=int(message_id),
-            text=text,
-            parse_mode=parse_mode,
-            reply_markup=reply_markup,
-        )
+        """Obsolete."""
+        return

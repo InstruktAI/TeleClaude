@@ -172,14 +172,6 @@ class TelegramAdapter(
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
         self.bot_token: str = bot_token  # Guaranteed non-None after check
 
-        supergroup_id_str = os.getenv("TELEGRAM_SUPERGROUP_ID")
-        if not supergroup_id_str:
-            raise ValueError("TELEGRAM_SUPERGROUP_ID environment variable not set")
-        self.supergroup_id = int(supergroup_id_str)
-
-        user_ids_str = os.getenv("TELEGRAM_USER_IDS", "")
-        self.user_whitelist = {int(uid.strip()) for uid in user_ids_str.split(",") if uid.strip()}
-
         # Extract from config singleton
         self.trusted_dirs = config.computer.get_all_trusted_dirs()
         self.trusted_bots = config.telegram.trusted_bots
@@ -213,14 +205,13 @@ class TelegramAdapter(
         return TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
 
     async def send_typing_indicator(self, session: Session) -> None:
-        """Send typing indicator to Telegram topic."""
-        topic_id = self._tg(session).topic_id
-        if not topic_id:
+        """Send typing indicator to Telegram private chat."""
+        user_id = session.origin_metadata.get("user_id") or session.origin_metadata.get("telegram_user_id")
+        if not user_id:
             return
         await self.bot.send_chat_action(
-            chat_id=self.supergroup_id,
+            chat_id=int(user_id),  # type: ignore[arg-type]
             action=ChatAction.TYPING,
-            message_thread_id=topic_id,
         )
 
     async def ensure_channel(self, session: Session) -> Session:
@@ -366,28 +357,6 @@ class TelegramAdapter(
 
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
-
-    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:
-        """Check if a forum topic was created by this bot.
-
-        Uses the reply_to_message on the topic close event, which references
-        the original forum_topic_created message and its author.
-        """
-        message = update.message
-        if not message or not message.reply_to_message:
-            return False
-        creator = message.reply_to_message.from_user
-        if not creator:
-            return False
-        return creator.id == self.bot.id
-
-    async def _delete_orphan_topic(self, topic_id: int) -> None:
-        """Delete a forum topic that has no session in the database."""
-        try:
-            await self._delete_forum_topic_with_retry(topic_id)
-            logger.info("Deleted orphan topic %s", topic_id)
-        except Exception as e:
-            logger.warning("Failed to delete orphan topic %s: %s", topic_id, e)
 
     def format_output(self, tmux_output: str) -> str:
         """Format tmux output with Telegram MarkdownV2 escaping and line shortening."""

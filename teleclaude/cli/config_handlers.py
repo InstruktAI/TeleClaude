@@ -85,18 +85,6 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "Telegram Bot API token",
             "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
         ),
-        EnvVarInfo(
-            "TELEGRAM_SUPERGROUP_ID",
-            "telegram",
-            "Telegram supergroup chat ID",
-            "-1001234567890",
-        ),
-        EnvVarInfo(
-            "TELEGRAM_USER_IDS",
-            "telegram",
-            "Allowed Telegram user IDs (comma-separated)",
-            "123456789,987654321",
-        ),
     ],
     "discord": [
         EnvVarInfo(

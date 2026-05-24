@@ -348,7 +348,7 @@ deterministic verdict per row.
 
 | Check                                          | Mechanism                                                                              | Verdict tier                  |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------- |
-| Telegram required env vars set                 | env-var presence: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_IDS`, `TELEGRAM_SUPERGROUP_ID`   | Required daemon-start blocker |
+| Telegram required env vars set                 | env-var presence: `TELEGRAM_BOT_TOKEN`                                                  | Required daemon-start blocker |
 | `config.yml` exists and parses                 | File presence + existing dataclass loader (per `machine-config-load`)                  | Required daemon-start blocker |
 | Project `teleclaude.yml` exists and validates  | File presence + existing `ProjectConfig` Pydantic validation                           | Required daemon-start blocker (when run inside a project) |
 | Global `~/.teleclaude/teleclaude.yml` valid    | File presence + existing `GlobalConfig` Pydantic validation                            | Optional gap                  |

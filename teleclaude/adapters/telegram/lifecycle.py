@@ -259,8 +259,6 @@ class LifecycleMixin:
             bot_info.username,
             bot_info.id,
         )
-        logger.info("Configured supergroup ID: %s", host.supergroup_id)
-        logger.info("Whitelisted user IDs: %s", host.user_whitelist)
 
     async def stop(self) -> None:
         """Stop Telegram bot."""

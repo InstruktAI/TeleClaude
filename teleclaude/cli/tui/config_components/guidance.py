@@ -268,8 +268,6 @@ class GuidanceRegistry:
 # Env var name → field path mapping for all _ADAPTER_ENV_VARS entries
 _ENV_TO_FIELD: dict[str, str] = {
     "TELEGRAM_BOT_TOKEN": "adapters.telegram.bot_token",
-    "TELEGRAM_SUPERGROUP_ID": "adapters.telegram.supergroup_id",
-    "TELEGRAM_USER_IDS": "adapters.telegram.user_ids",
     "DISCORD_BOT_TOKEN": "adapters.discord.token",
     "DISCORD_GUILD_ID": "adapters.discord.guild_id",
     "ANTHROPIC_API_KEY": "adapters.ai.anthropic_api_key",

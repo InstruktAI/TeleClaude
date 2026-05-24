@@ -17,7 +17,6 @@ TELEGRAM_MARKDOWN_V2_PARSE_MODE = "MarkdownV2"
 def adapter(monkeypatch: pytest.MonkeyPatch) -> TelegramAdapter:
     """TelegramAdapter with all external dependencies mocked."""
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
-    monkeypatch.setenv("TELEGRAM_SUPERGROUP_ID", "12345")
 
     mock_cfg = MagicMock()
     mock_cfg.computer.get_all_trusted_dirs.return_value = []
