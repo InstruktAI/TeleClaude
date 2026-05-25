@@ -5,6 +5,7 @@
 
 import atexit
 import logging
+import multiprocessing
 import os
 import shutil
 import tempfile
@@ -72,6 +73,17 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.timeout(5))
         elif "integration" in item.keywords:
             item.add_marker(pytest.mark.timeout(5))
+
+
+def pytest_xdist_auto_num_workers(config):
+    """Determine the number of xdist workers dynamically, capping at 4."""
+    if config.option.numprocesses == "auto":
+        try:
+            cores = multiprocessing.cpu_count()
+        except Exception:
+            cores = 4
+        return min(cores, 4)
+    return None
 
 
 @pytest.fixture(autouse=True)

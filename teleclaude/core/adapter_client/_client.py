@@ -153,12 +153,11 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             logger.info("Started whatsapp adapter")
 
         # Redis adapter
-        if config.redis.enabled:
-            logger.info("[STARTUP] Starting Redis transport (usually <1s)")
-            redis = RedisTransport(self, task_registry=self.task_registry)
-            await redis.start()  # Raises if fails → daemon crashes
-            self.adapters["redis"] = redis  # Register ONLY after success
-            logger.info("Started redis transport")
+        logger.info("[STARTUP] Starting Redis transport (usually <1s)")
+        redis = RedisTransport(self, task_registry=self.task_registry)
+        await redis.start()  # Raises if fails → daemon crashes
+        self.adapters["redis"] = redis  # Register ONLY after success
+        logger.info("Started redis transport")
 
         # Log status but do not crash - daemon can run in TUI-only/headless mode
         if not self.adapters:

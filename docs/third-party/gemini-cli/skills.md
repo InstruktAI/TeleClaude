@@ -1,22 +1,24 @@
 ---
-description: Gemini CLI Skills
+description: Gemini and Antigravity CLI Skills
 id: third-party/gemini-cli/skills
 scope: project
 type: third-party
 ---
 
-# Gemini CLI Skills
+# Gemini and Antigravity CLI Skills
 
 ## Overview
 
-Gemini CLI supports Agent Skills defined by `SKILL.md`.
+The CLIs support Agent Skills defined by `SKILL.md` files.
 
 ## Locations
 
-- `~/.gemini/skills/` (global)
-- `.gemini/skills/` (workspace)
-- Extensions can also supply skills
+| Scope | Gemini CLI Location | Antigravity CLI Location (`agy`) |
+| :--- | :--- | :--- |
+| **User Global** | `~/.gemini/skills/` | `~/.gemini/antigravity-cli/skills/` |
+| **Workspace Local** | `.gemini/skills/` | `.agents/skills/` |
 
 ## Sources
 
 - https://geminicli.com/docs/cli/skills/
+- https://antigravity.google/docs/gcli-migration

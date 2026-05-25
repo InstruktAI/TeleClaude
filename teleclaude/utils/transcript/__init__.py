@@ -1,5 +1,8 @@
 """Parse and convert Claude/Gemini/Codex session transcripts to markdown."""
 
+import importlib
+from typing import TYPE_CHECKING
+
 from teleclaude.utils.transcript._block_renderers import (
     _extract_tool_subject,
     _process_entry,
@@ -48,17 +51,19 @@ from teleclaude.utils.transcript._parsers import (
     _extract_codex_reasoning_text,
     normalize_transcript_entry_message,
 )
-from teleclaude.utils.transcript._rendering import (
-    AGENT_TRANSCRIPT_PARSERS,
-    TranscriptParserInfo,
-    _render_transcript_from_entries,
-    get_transcript_parser_info,
-    parse_claude_transcript,
-    parse_codex_transcript,
-    parse_gemini_transcript,
-    render_agent_output,
-    render_clean_agent_output,
-)
+
+if TYPE_CHECKING:
+    from teleclaude.utils.transcript._rendering import (
+        AGENT_TRANSCRIPT_PARSERS,
+        TranscriptParserInfo,
+        _render_transcript_from_entries,
+        get_transcript_parser_info,
+        parse_claude_transcript,
+        parse_codex_transcript,
+        parse_gemini_transcript,
+        render_agent_output,
+        render_clean_agent_output,
+    )
 from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defined]
     StructuredMessage,
     ToolCallRecord,
@@ -182,3 +187,20 @@ __all__ = [
     "render_agent_output",
     "render_clean_agent_output",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name in {
+        "AGENT_TRANSCRIPT_PARSERS",
+        "TranscriptParserInfo",
+        "_render_transcript_from_entries",
+        "get_transcript_parser_info",
+        "parse_claude_transcript",
+        "parse_codex_transcript",
+        "parse_gemini_transcript",
+        "render_agent_output",
+        "render_clean_agent_output",
+    }:
+        module = importlib.import_module("teleclaude.utils.transcript._rendering")
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

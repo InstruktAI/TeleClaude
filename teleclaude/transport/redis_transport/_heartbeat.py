@@ -10,8 +10,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
-from teleclaude.config import config
-
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
@@ -66,9 +64,6 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
             "computer_name": self.computer_name,
             "last_seen": datetime.now(UTC).isoformat(),
         }
-
-        if config.computer.bot_username:
-            payload["bot_username"] = config.computer.bot_username
 
         # Include interest if cache available
         # Collect all data types we have interest in (across all computers)

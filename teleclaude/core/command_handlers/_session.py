@@ -396,7 +396,7 @@ async def get_computer_info() -> ComputerInfo:
         is_local=True,
         system_stats=system_stats,
         tmux_binary=config.computer.tmux_binary,
-        bot_username=config.computer.bot_username,
+        bot_username=None,
     )
 
     logger.debug("get_computer_info() returning info: %s", info)

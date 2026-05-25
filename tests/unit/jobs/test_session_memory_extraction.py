@@ -532,7 +532,6 @@ class TestSessionMemoryExtractionJob:
         monkeypatch.setattr(job_module, "_call_summarizer", fake_call_summarizer, raising=False)
         monkeypatch.setattr(job_module, "get_redis", get_redis, raising=False)
         monkeypatch.setattr(job_module, "channels_publisher", channels_publisher, raising=False)
-        monkeypatch.setattr(job_module.config.redis, "enabled", True)
 
         await job._extract_and_publish_actionable_items(
             "Search hangs after refresh. We should add saved search presets and send a migration checklist.",
@@ -578,33 +577,6 @@ class TestSessionMemoryExtractionJob:
 
         get_redis.assert_not_awaited()
         assert channels_publisher.published_messages == []
-
-    async def test_extract_actionable_items_skips_when_redis_is_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        job = SessionMemoryExtractionJob()
-        session = _make_session(session_id="session-9", project_path="demo")
-        channels_publisher = _FakeChannelsPublisher()
-        get_redis = AsyncMock()
-        warning_mock = Mock()
-
-        async def fake_call_summarizer(
-            prompt: str,
-            schema: Mapping[str, object],
-            parser: object,
-        ) -> list[_ActionableItem]:
-            _ = prompt, schema, parser
-            return [{"type": "bug", "summary": "Search hangs after refresh"}]
-
-        monkeypatch.setattr(job_module, "_call_summarizer", fake_call_summarizer, raising=False)
-        monkeypatch.setattr(job_module, "get_redis", get_redis, raising=False)
-        monkeypatch.setattr(job_module, "channels_publisher", channels_publisher, raising=False)
-        monkeypatch.setattr(job_module.logger, "warning", warning_mock)
-        monkeypatch.setattr(job_module.config.redis, "enabled", False)
-
-        await job._extract_and_publish_actionable_items("Search hangs after refresh.", session)
-
-        get_redis.assert_not_awaited()
-        assert channels_publisher.published_messages == []
-        assert warning_mock.call_count == 1
 
     async def test_process_session_skips_personal_extraction_when_identity_key_is_missing(self) -> None:
         job = _SpyProcessSessionJob(transcript="User: keep this preference", identity_key=None)

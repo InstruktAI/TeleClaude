@@ -79,7 +79,6 @@ class ComputerConfig:
     trusted_dirs: list[TrustedDir]
     host: str | None = None  # Optional hostname/IP for SSH remote execution
     tmux_binary: str = "tmux"  # Resolved by runtime policy (not user-configurable)
-    bot_username: str | None = None
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:
         """Get all trusted directories from config, deduplicated by path."""
@@ -126,7 +125,6 @@ class AgentConfig:
 class RedisConfig:
     """Redis configuration with user-configurable and internal settings."""
 
-    enabled: bool
     url: str
     password: str | None
     max_connections: int
@@ -161,6 +159,15 @@ class TelegramQoSConfig:
 
 
 @dataclass
+class TelegramConfig:
+    """Telegram adapter configuration."""
+
+    enabled: bool = False
+    trusted_bots: list[str] = field(default_factory=list)
+    qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
+
+
+@dataclass
 class DiscordQoSConfig:
     """QoS configuration for Discord output coalescing."""
 
@@ -172,15 +179,6 @@ class WhatsAppQoSConfig:
     """QoS configuration for WhatsApp (disabled until limits are confirmed)."""
 
     mode: str = "off"  # "off" | "coalesce_only" | "strict"
-
-
-@dataclass
-class TelegramConfig:
-    """Telegram adapter configuration."""
-
-    enabled: bool = False
-    trusted_bots: list[str] = field(default_factory=list)
-    qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
 
 
 @dataclass
@@ -390,11 +388,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "is_master": False,
         "trusted_dirs": [],
         "host": None,
-        "bot_username": None,
     },
     "remote_computers": {},
     "redis": {
-        "enabled": False,
         "url": "redis://localhost:6379",
         "password": None,
         "max_connections": REDIS_MAX_CONNECTIONS,
@@ -403,13 +399,8 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "output_stream_maxlen": REDIS_OUTPUT_STREAM_MAXLEN,
         "output_stream_ttl": REDIS_OUTPUT_STREAM_TTL,
     },
-    "event_reliability": {
-        "idle_threshold_ms": 30_000,
-        "max_attempts": 3,
-        "sweep_interval_ms": 5_000,
-        "dlq_destination": "teleclaude:events:dlq",
-    },
     "telegram": {
+        "enabled": False,
         "trusted_bots": [],
     },
     "discord": {
@@ -432,13 +423,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "verify_token": None,
         "template_name": None,
         "template_language": "en_US",
-    },
-    "creds": {
-        "telegram": None,
-        "whatsapp": None,
-    },
-    "terminal": {
-        "strip_ansi": True,
     },
     "tts": {
         "enabled": False,
@@ -712,14 +696,11 @@ def _build_config(
     redis_raw = raw["redis"]
     if not isinstance(redis_raw, dict):
         raise ValueError("Invalid config key `config.yml:redis`: expected a mapping.")
-    event_reliability_raw = raw.get("event_reliability", {})
-    if not isinstance(event_reliability_raw, dict):
-        raise ValueError("Invalid config key `config.yml:event_reliability`: expected a mapping.")
-    tg_raw = raw["telegram"]
     discord_raw = raw.get("discord", {})
+    telegram_raw = raw.get("telegram", {})
     whatsapp_raw = raw.get("whatsapp", {})
     creds_raw = raw.get("creds", {})
-    terminal_raw = raw.get("terminal", {"strip_ansi": True})
+    terminal_raw = raw.get("terminal", {})
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
     chiptunes_raw = raw.get("chiptunes", None)
@@ -836,12 +817,6 @@ def _build_config(
 
     remote_computers = _parse_remote_computers(raw.get("remote_computers"))
 
-    # Derive trusted_bots from fleet (local + remotes) union explicit entries
-    local_bot = str(comp_raw["bot_username"]) if comp_raw.get("bot_username") else None  # type: ignore[index,attr-defined]
-    fleet_bots: list[str] = [b for b in [local_bot, *[rc.bot_username for rc in remote_computers]] if b]
-    explicit_bots: list[str] = list(tg_raw["trusted_bots"])  # type: ignore[index,misc]
-    merged_bots: list[str] = list(dict.fromkeys(fleet_bots + explicit_bots))
-
     return Config(
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index]
@@ -862,14 +837,12 @@ def _build_config(
                 else None
             ),
             tmux_binary=resolve_tmux_binary(),
-            bot_username=local_bot,
         ),
         polling=PollingConfig(
             directory_check_interval=DIRECTORY_CHECK_INTERVAL,
             output_cadence_s=OUTPUT_CADENCE_S,
         ),
         redis=RedisConfig(
-            enabled=bool(redis_raw["enabled"]),
             url=str(redis_raw["url"]),
             password=str(redis_raw["password"]) if redis_raw["password"] else None,
             max_connections=int(redis_raw.get("max_connections", REDIS_MAX_CONNECTIONS)),
@@ -879,13 +852,15 @@ def _build_config(
             output_stream_ttl=int(redis_raw.get("output_stream_ttl", REDIS_OUTPUT_STREAM_TTL)),
         ),
         event_reliability=EventReliabilityConfig(
-            idle_threshold_ms=int(event_reliability_raw["idle_threshold_ms"]),
-            max_attempts=int(event_reliability_raw["max_attempts"]),
-            sweep_interval_ms=int(event_reliability_raw["sweep_interval_ms"]),
-            dlq_destination=str(event_reliability_raw["dlq_destination"]),
+            idle_threshold_ms=30_000,
+            max_attempts=3,
+            sweep_interval_ms=5_000,
+            dlq_destination="teleclaude:events:dlq",
         ),
         telegram=TelegramConfig(
-            trusted_bots=merged_bots,
+            trusted_bots=[str(b) for b in telegram_raw.get("trusted_bots", [])]
+            if isinstance(telegram_raw, dict)
+            else [],
             qos=TelegramQoSConfig(),
         ),
         discord=DiscordConfig(

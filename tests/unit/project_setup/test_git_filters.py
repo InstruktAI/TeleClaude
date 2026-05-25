@@ -41,4 +41,4 @@ def test_setup_git_filters_configures_expected_keys(
         (mock_repo, "filter.teleclaude-docs.clean", f'sed "s|@{home}/.teleclaude|@~/.teleclaude|g"'),
         (mock_repo, "filter.teleclaude-docs.required", "true"),
     ]
-    assert "git filters configured" in capsys.readouterr().out
+    assert "configured smudge/clean filters" in capsys.readouterr().out

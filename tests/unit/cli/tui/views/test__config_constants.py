@@ -13,7 +13,6 @@ from teleclaude.cli.tui.views._config_constants import (
     _SUBTABS,
     _VALID_ROLES,
     AdapterSectionProjection,
-    NotificationProjection,
     classify_adapter_status,
     completion_summary,
     project_adapter_sections,
@@ -70,11 +69,9 @@ def test_completion_summary_counts_configured_adapters() -> None:
             key="discord", label="Discord", env_statuses=[], status="unconfigured", configured_count=0, total_count=1
         ),
     ]
-    configured, total = completion_summary(
-        sections, has_people=False, notifications_configured=False, environment_configured=False
-    )
+    configured, total = completion_summary(sections, has_people=False, environment_configured=False)
     assert configured == 1
-    assert total == 5  # 2 adapters + 3 core sections
+    assert total == 4  # 2 adapters + 2 core sections
 
 
 @pytest.mark.unit
@@ -84,11 +81,9 @@ def test_completion_summary_counts_all_core_sections_when_all_true() -> None:
             key="telegram", label="Telegram", env_statuses=[], status="configured", configured_count=1, total_count=1
         ),
     ]
-    configured, total = completion_summary(
-        sections, has_people=True, notifications_configured=True, environment_configured=True
-    )
-    assert configured == 4  # 1 adapter + 3 core
-    assert total == 4  # 1 adapter + 3 core
+    configured, total = completion_summary(sections, has_people=True, environment_configured=True)
+    assert configured == 3  # 1 adapter + 2 core
+    assert total == 3  # 1 adapter + 2 core
 
 
 # --- project_adapter_sections ---
@@ -132,7 +127,8 @@ def test_project_adapter_sections_labels_match_adapter_labels() -> None:
 
 @pytest.mark.unit
 def test_subtabs_contains_four_tabs() -> None:
-    assert len(_SUBTABS) == 4
+    # Subtabs contains adapters, people, environment (3 tabs)
+    assert len(_SUBTABS) == 3
 
 
 @pytest.mark.unit
@@ -161,16 +157,3 @@ def test_adapter_env_keys_maps_all_adapter_tabs() -> None:
 def test_guided_step_adapter_tab_optional_for_non_adapter_steps() -> None:
     people_step = next(s for s in _GUIDED_STEPS if s.subtab == "people")
     assert people_step.adapter_tab is None
-
-
-@pytest.mark.unit
-def test_notification_projection_stores_fields() -> None:
-    proj = NotificationProjection(
-        configured=True,
-        total_people=3,
-        people_with_subscriptions=2,
-        total_subscriptions=5,
-        next_action="none",
-    )
-    assert proj.configured is True
-    assert proj.total_people == 3

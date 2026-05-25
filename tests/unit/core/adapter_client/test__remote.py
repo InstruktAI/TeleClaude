@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -38,17 +38,6 @@ class TestDiscoverPeers:
         client.register_adapter("redis", _make_transport_adapter())
 
         result = await client.discover_peers(redis_enabled=False)
-
-        assert result == []
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_uses_config_when_redis_enabled_not_provided(self):
-        client = AdapterClient()
-
-        with patch("teleclaude.core.adapter_client._remote.config") as mock_config:
-            mock_config.redis.enabled = False
-            result = await client.discover_peers()
 
         assert result == []
 

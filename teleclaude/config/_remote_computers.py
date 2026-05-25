@@ -14,7 +14,6 @@ class RemoteComputerConfig:
     host: str | None = None
     ip: str | None = None
     teleclaude_path: str | None = None
-    bot_username: str | None = None
 
 
 def parse_remote_computers(
@@ -46,7 +45,6 @@ def parse_remote_computers(
                 host=str(props["host"]) if props.get("host") else None,
                 ip=str(props["ip"]) if props.get("ip") else None,
                 teleclaude_path=str(props["teleclaude_path"]) if props.get("teleclaude_path") else None,
-                bot_username=str(props["bot_username"]) if props.get("bot_username") else None,
             )
         )
     return result

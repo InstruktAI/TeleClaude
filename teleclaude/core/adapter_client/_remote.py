@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
@@ -29,7 +28,7 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
         First occurrence wins (primary adapter's data takes precedence).
 
         Args:
-            redis_enabled: Whether Redis is enabled. Defaults to config.redis.enabled.
+            redis_enabled: Whether Redis is enabled. Defaults to True.
 
         Returns:
             List of peer dicts (converted from PeerInfo dataclass) with:
@@ -44,8 +43,8 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
         """
         logger.debug("AdapterClient.discover_peers() called, adapters: %s", list(self.adapters.keys()))
 
-        # Determine Redis enabled state - explicit param takes precedence over config
-        is_redis_enabled = redis_enabled if redis_enabled is not None else config.redis.enabled
+        # Determine Redis enabled state - explicit param takes precedence
+        is_redis_enabled = redis_enabled if redis_enabled is not None else True
 
         # Early return if Redis is disabled - no peer discovery without Redis
         if not is_redis_enabled:

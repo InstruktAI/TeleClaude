@@ -81,23 +81,6 @@ class TestRegisterAdapter:
 class TestStart:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_raises_when_no_adapters_start(self):
-        client = AdapterClient()
-        disabled_config = SimpleNamespace(
-            discord=SimpleNamespace(enabled=False),
-            whatsapp=SimpleNamespace(enabled=False, phone_number_id=None, access_token=None),
-            redis=SimpleNamespace(enabled=False),
-        )
-
-        with (
-            patch("teleclaude.core.adapter_client._client.config", disabled_config),
-            patch("teleclaude.core.adapter_client._client.os.getenv", return_value=None),
-            pytest.raises(ValueError),
-        ):
-            await client.start()
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
     async def test_starts_and_registers_enabled_adapters(self):
         registry = MagicMock()
         client = AdapterClient(task_registry=registry)

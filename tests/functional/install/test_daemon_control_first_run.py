@@ -74,8 +74,8 @@ def test_start_daemon_install_before_start_ordering(tmp_path: Path, snapshot: Sn
     (project_root / "config.yml").write_text("computer:\n  name: test\n", encoding="utf-8")
     record = tmp_path / "record.txt"
     script = f"""
-source "{_SCRIPT}"
 PROJECT_ROOT="{project_root}"
+source "{_SCRIPT}"
 SERVICE_PATH="{project_root / "missing.service"}"
 PLATFORM="linux"
 SERVICE_LABEL="teleclaude"
@@ -163,8 +163,8 @@ def test_config_present_proceeds_normally(tmp_path: Path, snapshot: SnapshotAsse
     (project_root / "config.yml").write_text("computer:\n  name: test\n", encoding="utf-8")
     record = tmp_path / "record.txt"
     script = f"""
-source "{_SCRIPT}"
 PROJECT_ROOT="{project_root}"
+source "{_SCRIPT}"
 SERVICE_PATH="{project_root / "missing.service"}"
 PLATFORM="linux"
 SERVICE_LABEL="teleclaude"

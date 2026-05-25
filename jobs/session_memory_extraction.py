@@ -386,10 +386,6 @@ class SessionMemoryExtractionJob(Job):
         if not items:
             return
 
-        if not config.redis.enabled:
-            logger.warning("Skipping actionable item publish for session %s: redis unavailable", session.session_id)
-            return
-
         redis_client = await get_redis()
         channel = channels_publisher.channel_key(project, "actionable-items")
         for item in items:
@@ -538,8 +534,6 @@ def _get_session_project(session: Session) -> str | None:
 async def get_redis() -> Redis:
     """Return the configured Redis client for channels publication."""
     global _redis_client
-    if not config.redis.enabled:
-        raise RuntimeError("Redis transport is disabled")
 
     if _redis_client is None:
         kwargs: dict[str, Any] = {

@@ -1,26 +1,30 @@
 ---
-description: Gemini CLI Permissions — Spec
+description: Gemini and Antigravity CLI Permissions — Spec
 id: third-party/gemini-cli/permissions
 scope: project
 type: third-party
 ---
 
-# Gemini CLI Permissions — Spec
+# Gemini and Antigravity CLI Permissions — Spec
 
 ## Purpose
 
-Define the configuration surface for Gemini CLI sandboxing. This spec details the CLI flags and JSON settings required to run Gemini in a strict, isolated environment with explicit directory mounts.
+Define the configuration surface for Gemini CLI and its successor **Antigravity CLI (`agy`)** sandboxing. This spec details the CLI flags, settings paths, and JSON configuration files required to run these agents in a strict, isolated environment with explicit directory mounts.
 
 ## Sandbox Activation
 
-The Gemini CLI is **unrestricted by default**. Sandboxing must be explicitly enabled using one of the following methods.
+The CLIs are **unrestricted by default**. Sandboxing must be explicitly enabled using one of the following methods.
 
 ### 1. CLI Flag (Recommended)
 
-Use the `--sandbox` (or `-s`) flag at runtime. This forces the session into a containerized or restricted environment (depending on OS support).
+Use the `--sandbox` flag at runtime. This forces the session into a containerized or restricted environment.
 
 ```bash
+# Legacy Gemini
 gemini --sandbox
+
+# Antigravity
+agy --sandbox
 ```
 
 ### 2. Environment Variable
@@ -29,12 +33,12 @@ Set `GEMINI_SANDBOX` to `true`.
 
 ```bash
 export GEMINI_SANDBOX=true
-gemini
+agy
 ```
 
 ### 3. Settings File (`settings.json`)
 
-Enable it persistently in `~/.gemini/settings.json`.
+Enable it persistently in the user's `settings.json`.
 
 ```json
 {
@@ -46,47 +50,54 @@ Enable it persistently in `~/.gemini/settings.json`.
 
 ## Directory Mounting
 
-When sandboxing is active, the agent cannot access files outside the launch directory. To grant access to specific external resources (like global docs), use the `--include-directories` flag.
+When sandboxing is active, the agent cannot access files outside the launch directory. To grant access to specific external resources (like global docs), use the `--include-directories` (or `--add-dir` for `agy`) flags.
 
 ### Syntax
 
-Pass a comma-separated list of absolute paths.
+Pass a comma-separated list of absolute paths (Gemini) or repeat the directory additions (Antigravity).
 
 ```bash
-gemini --sandbox --include-directories /Users/username/.teleclaude/docs,/tmp/shared
-```
+# Legacy Gemini
+gemini --sandbox --include-directories ~/.teleclaude/docs,/tmp/shared
 
-### Runtime Mounting
-
-During a session, the user (or orchestrator) can grant access dynamically:
-
-```bash
-/directory add /path/to/resource
+# Antigravity (using --add-dir or --include-directories)
+agy --sandbox --add-dir ~/.teleclaude/docs --add-dir /tmp/shared
 ```
 
 ## Configuration File Locations
 
-Gemini CLI loads settings in this precedence order (overrides lower entries):
+Settings are loaded in this precedence order (overrides lower entries):
 
-1.  `/etc/gemini-cli/settings.json` (System Override)
-2.  `.gemini/settings.json` (Project Local)
-3.  `~/.gemini/settings.json` (User Global)
-4.  `/etc/gemini-cli/system-defaults.json` (System Defaults)
+| Configuration Surface | Gemini CLI Location | Antigravity CLI Location (`agy`) |
+| :--- | :--- | :--- |
+| **User Global Settings** | `~/.gemini/settings.json` | `~/.gemini/antigravity-cli/settings.json` |
+| **Project Local Settings** | `.gemini/settings.json` | `.agents/antigravity-cli/settings.json` or `.agents/settings.json` |
+| **MCP Servers Config** | Inline in `settings.json` | `mcp_config.json` in the respective setting folder |
+
+### Authentication & Consent Files
+
+- **Legacy Gemini**: Credentials are stored in `~/.gemini/oauth_creds.json` (Google OAuth2).
+- **Antigravity CLI (`agy`)**: Caches credentials securely in the **system native keyring** (macOS Keychain, etc.). No plain text file is written.
 
 ## Example: Secure Worker Invocation
 
 To launch a worker restricted to CWD but with access to shared documentation:
 
 ```bash
+# Legacy Gemini
 gemini --sandbox --include-directories ~/.teleclaude/docs --yolo
+
+# Antigravity CLI
+agy --sandbox --add-dir ~/.teleclaude/docs --approval-mode=yolo
 ```
 
 - `--sandbox`: Enforces filesystem isolation.
-- `--include-directories`: Explicitly mounts the docs folder into the sandbox.
-- `--yolo`: Allows the agent to run commands _within the sandbox_ without asking for confirmation (autonomy), relying on the sandbox for safety.
+- `--include-directories` / `--add-dir`: Explicitly mounts the docs folder into the sandbox.
+- `--approval-mode=yolo` (replaces deprecated `--yolo`): Auto-approves tool execution within the sandbox, relying on sandboxing for safety.
 
 ## Sources
 
 - https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/sandbox.md
 - https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
+- https://antigravity.google/docs/gcli-migration
 - https://context7.com/google-gemini/gemini-cli/llms.txt

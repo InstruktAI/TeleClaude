@@ -52,6 +52,10 @@ def _sandbox_env(tmp_path: Path) -> dict[str, str]:
         """#!/usr/bin/env bash
 set -euo pipefail
 echo "git $*" >> "$STUB_LOG/git.log"
+if [ "${1:-}" = "--version" ] || [ "${1:-}" = "version" ]; then
+  echo "git version 2.45.0"
+  exit 0
+fi
 if [ "${1:-}" = "rev-parse" ]; then
   case "${2:-}" in
     --git-dir|--git-common-dir) echo ".git"; exit 0 ;;

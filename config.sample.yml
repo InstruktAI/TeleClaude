@@ -1,62 +1,45 @@
+# Sample configuration file for TeleClaude. Copy this to `config.yml` and edit as needed.
+# expands ${ENV_VAR} from the environment after sourcing .env, allowing to keep secrets out of the config file.
+
 computer:
   name: Mac # Unique computer identifier for multi-computer MCP communication
-  user: { USER } # System user running the daemon (set via telec config wizard)
+  user: ${USER} # System user running the daemon
   role: development # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
-  bot_username: teleclaude_mac_bot # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
-  is_master: false # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
   default_working_dir: ${WORKING_DIR}
+  is_master: true # Master computer in case of multi computer mesh setup
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
   host: null # Optional hostname/IP for SSH remote execution (null = local computer)
-  # tmux binary is resolved internally by platform policy:
-  # macOS: ~/Applications/TmuxLauncher.app/... ; other Unix: tmux
-  # Trusted directories with metadata for AI understanding
+  # Trusted directories
   # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
-  # Note: default_working_dir is automatically included with desc "TeleClaude folder"
   trusted_dirs:
-    - name: documents
-      desc: personal documents
-      path: ${HOME}/Documents
-    - name: projects
-      desc: coding projects
-      path: ${HOME}/Projects
+    - name: Workspace
+      desc: Project workspace
+      path: ${HOME}/Workspace
 
-# Remote computers (optional): declare other machines in your fleet.
-# Each entry makes the computer visible in the /computers list even when offline,
-# and activates TUI WebSocket subscriptions so live cache refresh works when online.
-# remote_computers:
-#   workstation:
-#     user: alice
-#     host: workstation.local
-#     ip: 10.0.0.10
-#     teleclaude_path: /srv/teleclaude
-#     bot_username: teleclaude_workstation_bot
-#   raspi:
-#     user: pi
-#     host: raspi.local
-#     bot_username: teleclaude_raspi_bot
+# Redis Configuration (essential for TeleClaude operation)
+redis:
+  url: ${REDIS_URL}
+  password: ${REDIS_PASSWORD}
+  # max_connections: 100
+  # socket_timeout: 60
+  # message_stream_maxlen: 10000
+  # output_stream_maxlen: 10000
+  # output_stream_ttl: 3600
 
-telegram:
-  enabled: false
-  # trusted_bots is fleet-derived: the daemon automatically merges bot_username
-  # from all fleet members (local + remote_computers) into the trusted list.
-  # Add explicit entries here to merge additional bots not in the fleet config.
-  # trusted_bots:
-  #   - some_external_bot
+# Admin adapter that houses the administration of ALL computer and their projects,
+# So highly recommended to enable it for mobile interaction with the platform.
 discord:
   enabled: false
-  # Bot token. Prefer environment interpolation to avoid plaintext secrets.
+  # Bot token.
   token: ${DISCORD_BOT_TOKEN}
   # Guild (server) ID.
   guild_id: ${DISCORD_GUILD_ID}
   # All channel/category IDs below are auto-provisioned on startup.
   # The bot creates the full structure (categories, forums, text channels)
   # and persists IDs here. Do not edit manually.
-# Agent binaries are resolved internally by platform policy:
-# macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
-# other Unix: claude, gemini, codex
 
-# WhatsApp Configuration
 whatsapp:
+  # Customer/public facing Whatsapp business channel configuration. Disable if no need for public Whatsapp helpdesk/member-pa, or if this is not the master computer.
   enabled: false
   phone_number_id: ${WHATSAPP_PHONE_NUMBER_ID}
   access_token: ${WHATSAPP_ACCESS_TOKEN}
@@ -64,12 +47,6 @@ whatsapp:
   verify_token: ${WHATSAPP_VERIFY_TOKEN}
   template_name: ${WHATSAPP_TEMPLATE_NAME}
   template_language: en_US
-
-# Redis Configuration (for AI-to-AI communication)
-redis:
-  enabled: true # Enable Redis adapter for cross-computer messaging
-  url: ${REDIS_URL}
-  password: ${REDIS_PASSWORD} # Set in .env
 
 agents:
   default: claude
@@ -85,7 +62,7 @@ stt:
   enabled: true
   service_priority:
     - parakeet # Local MLX (free, private, fast on Apple Silicon)
-    - openai # Cloud Whisper API (fallback)
+    - openai # Cloud Whisper API (fallback) that needs OPENAI_API_KEY env var set
   services:
     parakeet:
       enabled: true
@@ -98,7 +75,7 @@ stt:
 
 # Text-to-Speech Configuration
 tts:
-  enabled: true
+  enabled: false
   service_priority:
     - voxcpm # Local MLX, greate voice quality. Size in mem:
     - qwen3 # Local MLX, fun to test as has weird voices
@@ -108,6 +85,8 @@ tts:
     - pyttsx3
   events:
     session_start:
+      enabled: true
+    agent_stop:
       enabled: true
   services:
     voxcpm:
@@ -258,9 +237,3 @@ tts:
     pyttsx3:
       enabled: true
       voices: []
-
-# ChipTunes background music runtime settings.
-# `volume` is app-level chiptune gain (0.0–1.0), applied before OS mixer.
-# This is not an operating-system volume control; set OS volume at the system level.
-chiptunes:
-  volume: 0.8

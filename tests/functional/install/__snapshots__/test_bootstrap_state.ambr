@@ -135,6 +135,8 @@
         'git rev-parse --git-dir',
         'git rev-parse --git-dir',
         'git rev-parse --git-common-dir',
+        'git version',
+        'git version',
       ]),
       'node.log': list([
         'node --version',
@@ -304,6 +306,9 @@
     }),
     'returncode': 0,
     'stub_logs': dict({
+      'brew.log': list([
+        'brew services start redis',
+      ]),
       'claude.log': list([
         'claude --version',
       ]),
@@ -311,6 +316,8 @@
         'git rev-parse --git-dir',
         'git rev-parse --git-dir',
         'git rev-parse --git-common-dir',
+        'git version',
+        'git version',
       ]),
       'node.log': list([
         'node --version',

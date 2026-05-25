@@ -77,7 +77,7 @@ async def list_computers(
                         user=remote.user,
                         host=remote.host,
                         is_local=False,
-                        bot_username=remote.bot_username,
+                        bot_username=None,
                     )
                 )
 

@@ -1,21 +1,22 @@
 ---
-description: Gemini CLI Commands
+description: Gemini and Antigravity CLI Commands
 id: third-party/gemini-cli/commands
 scope: project
 type: third-party
 ---
 
-# Gemini CLI Commands
+# Gemini and Antigravity CLI Commands
 
 ## Overview
 
-Gemini CLI provides built-in commands and supports custom commands defined as TOML files.
-Custom command files map to slash commands by path.
+The CLIs provide built-in commands and support custom commands defined as TOML files. Custom command files map to slash commands by path.
 
 ## Custom command locations
 
-- `.gemini/commands/` (project)
-- `~/.gemini/commands/` (user)
+| Custom Commands | Gemini CLI Location | Antigravity CLI Location (`agy`) |
+| :--- | :--- | :--- |
+| **User Global** | `~/.gemini/commands/` | `~/.gemini/antigravity-cli/commands/` |
+| **Project Local** | `.gemini/commands/` | `.agents/commands/` |
 
 ## Namespacing
 
@@ -26,3 +27,4 @@ Custom command files map to slash commands by path.
 
 - https://geminicli.com/docs/cli/commands
 - https://geminicli.com/docs/cli/custom-commands
+- https://antigravity.google/docs/gcli-migration
