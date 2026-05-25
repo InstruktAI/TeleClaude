@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 
 DEFAULT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN"
 DEFAULT_USERNAME_ENV = "TELEGRAM_ALERT_USERNAME"
-DEFAULT_CHAT_ID_ENV = ""
+DEFAULT_CHAT_ID_ENV = "TELEGRAM_ALERT_CHAT_ID"
 
 
 class ApiResponse(TypedDict, total=False):

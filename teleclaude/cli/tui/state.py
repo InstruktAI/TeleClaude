@@ -75,7 +75,7 @@ class PreparationViewState:
 class ConfigViewState:
     """State for Configuration view."""
 
-    active_subtab: Literal["adapters", "people", "notifications", "environment", "validate"] = "adapters"
+    active_subtab: Literal["adapters", "people", "environment"] = "adapters"
     guided_mode: bool = False
 
 
@@ -425,7 +425,7 @@ def _handle_set_animation_mode(state: TuiState, payload: IntentPayload) -> None:
 
 def _handle_set_config_subtab(state: TuiState, payload: IntentPayload) -> None:
     subtab = payload.get("subtab")
-    if subtab in ("adapters", "people", "notifications", "environment", "validate"):
+    if subtab in ("adapters", "people", "environment"):
         state.config.active_subtab = subtab  # type: ignore
 
 

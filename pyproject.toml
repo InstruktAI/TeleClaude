@@ -315,7 +315,7 @@
   max_supported_python="3.14"
 
 [tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-m", "-n", "-v", "4", "not expensive"]
+  addopts=["--strict-config", "--strict-markers", "--tb=short", "-n", "4", "-m", "not expensive", "-v"]
   asyncio_mode="auto"
   filterwarnings=[
     "ignore:.*datetime.utcnow.*:DeprecationWarning",

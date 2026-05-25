@@ -14,7 +14,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -626,7 +626,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             )
         await db.update_origin_metadata(session.session_id, self.ADAPTER_KEY, section)
         # Keep in-memory session consistent for subsequent reads within the same request
-        session.origin_metadata[self.ADAPTER_KEY] = section
+        cast(Any, session.origin_metadata)[self.ADAPTER_KEY] = section
 
     def _get_char_offset(self, session: Session) -> int:
         """Get adapter-specific char offset."""

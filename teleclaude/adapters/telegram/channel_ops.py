@@ -82,12 +82,8 @@ class ChannelOperationsMixin:
     # =========================================================================
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
-        """Channel creation is obsolete for the Telegram non-admin adapter.
-
-        Always returns an empty topic_id to signal private-chat-only mode.
-        """
-        self._ensure_started()
-        return ""
+        """Obsolete — Telegram adapter operates in private-chat-only mode."""
+        raise NotImplementedError("Telegram adapter does not support channel creation")
 
     async def _wait_for_topic_ready(self, topic_id: int, title: str) -> None:
         """No-op: forum topics are obsolete."""
@@ -215,28 +211,22 @@ class ChannelOperationsMixin:
         if session:
             return session
 
-        # Determine the reason and give feedback
+        # Give feedback regardless of thread_id presence — private chats never have a thread_id
         message = update.effective_message
         if not message:
             return None  # Can't send feedback without a message
 
         thread_id = message.message_thread_id
-
-        if not thread_id:
-            # Command used outside of a session context
-            error_msg = "❌ This command must be used in a session."
+        if thread_id:
+            logger.warning("No session found for thread_id %s", thread_id)
+        else:
             logger.warning(
-                "Command used outside session context by user %s",
+                "No session found for user %s (private chat)",
                 update.effective_user.id if update.effective_user else "unknown",
             )
-        else:
-            # Session not found for this topic/chat
-            error_msg = "❌ No session found. The session may have ended."
-            logger.warning("No session found for thread_id %s", thread_id)
 
         try:
-            # Fallback to direct reply if thread_id is missing or topic failed
-            await message.reply_text(error_msg)
+            await message.reply_text("❌ No active session found. The session may have ended.")
         except (TelegramError, TimeoutError, ConnectionError) as error:
             logger.error("Failed to send session error feedback: %s", error)
 

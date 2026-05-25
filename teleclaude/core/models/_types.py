@@ -1,12 +1,69 @@
-"""Shared JSON type aliases and utility functions for models."""
-
 from dataclasses import asdict
-from typing import ClassVar, Protocol, cast
+from typing import ClassVar, NotRequired, Protocol, TypedDict, cast
 
 # JSON-serializable types for database storage
 type JsonPrimitive = str | int | float | bool | None
 type JsonValue = JsonPrimitive | list[JsonValue] | dict[str, JsonValue]
 type JsonDict = dict[str, JsonValue]
+
+
+class TelegramOriginSection(TypedDict):
+    """Telegram-specific origin section keys."""
+
+    user_id: NotRequired[int | str | None]
+    telegram_user_id: NotRequired[int | str | None]
+    chat_type: NotRequired[str | None]
+    platform: NotRequired[str | None]
+
+
+class DiscordOriginSection(TypedDict):
+    """Discord-specific origin section keys."""
+
+    user_id: NotRequired[str | None]
+    discord_user_id: NotRequired[str | None]
+    platform: NotRequired[str | None]
+
+
+class WhatsAppOriginSection(TypedDict):
+    """WhatsApp-specific origin section keys."""
+
+    phone_number: NotRequired[str | None]
+    platform: NotRequired[str | None]
+
+
+class TerminalOriginSection(TypedDict):
+    """Terminal-specific origin section keys."""
+
+    email: NotRequired[str | None]
+    command_domain: NotRequired[str | None]
+    platform: NotRequired[str | None]
+
+
+class WebOriginSection(TypedDict):
+    """Web-specific origin section keys."""
+
+    email: NotRequired[str | None]
+    command_domain: NotRequired[str | None]
+    platform: NotRequired[str | None]
+
+
+class SessionOriginMetadata(TypedDict):
+    """Type-safe schema representing the merged/accumulated session origin metadata."""
+
+    platform: NotRequired[str | None]
+    email: NotRequired[str | None]
+    command_domain: NotRequired[str | None]
+    user_id: NotRequired[int | str | None]
+    telegram_user_id: NotRequired[int | str | None]
+    discord_user_id: NotRequired[str | None]
+    phone_number: NotRequired[str | None]
+    chat_type: NotRequired[str | None]
+
+    # Nested platform sections
+    telegram: NotRequired[dict[str, object] | None]  # guard: loose-dict
+    discord: NotRequired[dict[str, object] | None]  # guard: loose-dict
+    whatsapp: NotRequired[dict[str, object] | None]  # guard: loose-dict
+    redis: NotRequired[dict[str, object] | None]  # guard: loose-dict
 
 
 class _DataclassInstance(Protocol):

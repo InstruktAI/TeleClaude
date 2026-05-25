@@ -62,17 +62,6 @@ class AdapterSectionProjection:
 
 
 @dataclass(frozen=True)
-class NotificationProjection:
-    """Summary of notification setup state."""
-
-    configured: bool
-    total_people: int
-    people_with_subscriptions: int
-    total_subscriptions: int
-    next_action: str
-
-
-@dataclass(frozen=True)
 class GuidedStep:
     """Deterministic guided mode step."""
 
@@ -88,7 +77,6 @@ _GUIDED_STEPS: tuple[GuidedStep, ...] = (
     GuidedStep(subtab="adapters", adapter_tab="ai_keys", title="Configure AI + Voice"),
     GuidedStep(subtab="adapters", adapter_tab="whatsapp", title="Configure WhatsApp"),
     GuidedStep(subtab="environment", title="Review Environment"),
-    GuidedStep(subtab="notifications", title="Review Notifications"),
 )
 
 
@@ -128,15 +116,13 @@ def completion_summary(
     adapter_sections: list[AdapterSectionProjection],
     *,
     has_people: bool,
-    notifications_configured: bool,
     environment_configured: bool,
 ) -> tuple[int, int]:
     """Return configured/total summary across adapter and core sections."""
     configured = sum(1 for section in adapter_sections if section.status == "configured")
     configured += int(has_people)
-    configured += int(notifications_configured)
     configured += int(environment_configured)
-    total = len(adapter_sections) + 3
+    total = len(adapter_sections) + 2
     return configured, total
 
 
@@ -190,7 +176,6 @@ __all__ = [
     "AdapterSectionProjection",
     "AdapterStatus",
     "GuidedStep",
-    "NotificationProjection",
     "_normal_style",
     "classify_adapter_status",
     "completion_summary",

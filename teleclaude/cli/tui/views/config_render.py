@@ -29,7 +29,7 @@ from teleclaude.cli.tui.views._config_constants import (
 )
 
 if TYPE_CHECKING:
-    from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection, NotificationProjection
+    from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
     from teleclaude.config.schema import PersonEntry
 
 
@@ -40,7 +40,6 @@ class ConfigContentRenderMixin:
         _adapter_sections: list[AdapterSectionProjection]
         _env_data: list[EnvVarStatus]
         _guided_step_index: int
-        _notification_projection: NotificationProjection
         _people_data: list[PersonEntry]
 
         @property
@@ -90,7 +89,6 @@ class ConfigContentRenderMixin:
         configured, total = completion_summary(
             self._adapter_sections,  # type: ignore[attr-defined]
             has_people=bool(self._people_data),  # type: ignore[attr-defined]
-            notifications_configured=self._notification_projection.configured,  # type: ignore[attr-defined]
             environment_configured=env_complete,
         )
         summary_style = _OK if configured == total else _WARN
@@ -260,19 +258,6 @@ class ConfigContentRenderMixin:
                             result.append(f"{field}: ", style=_DIM)
                             result.append(f"{value or '(not set)'}\n", style=field_row_style)
 
-    def _render_notifications(self, result: Text) -> None:
-        """Render notification/subscription summary information."""
-        projection = self._notification_projection  # type: ignore[attr-defined]
-        result.append("\n")
-        result.append("  Notifications\n", style=Style(bold=True))
-        result.append(
-            f"  People with subscriptions: {projection.people_with_subscriptions}/{projection.total_people}\n"
-        )
-        result.append(f"  Total subscriptions: {projection.total_subscriptions}\n", style=_DIM)
-        status = "CONFIGURED" if projection.configured else "NEEDS ATTENTION"
-        result.append(f"  Status: {status}\n", style=_OK if projection.configured else _WARN)
-        result.append(f"  Next action: {projection.next_action}\n", style=_DIM)
-
     def _render_environment(self, result: Text) -> None:
         """Render the global environment variable section."""
         result.append("\n")
@@ -322,8 +307,6 @@ class ConfigContentRenderMixin:
             self._render_adapters(result)
         elif tab == "people":
             self._render_people(result)
-        elif tab == "notifications":
-            self._render_notifications(result)
         elif tab == "environment":
             self._render_environment(result)
 

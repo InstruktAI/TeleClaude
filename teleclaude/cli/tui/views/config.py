@@ -17,7 +17,6 @@ from teleclaude.cli.config_handlers import (
     EnvVarStatus,
     ValidationResult,
     check_env_vars,
-    get_person_config,
     list_people,
     validate_all,
 )
@@ -26,7 +25,6 @@ from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _SUBTABS,
     AdapterSectionProjection,
-    NotificationProjection,
     get_allowed_values_for_field,
     project_adapter_sections,
 )
@@ -291,13 +289,6 @@ class ConfigContent(
         self._people_data: list[PersonEntry] = []
         self._validation_results: list[ValidationResult] = []
         self._adapter_sections: list[AdapterSectionProjection] = []
-        self._notification_projection = NotificationProjection(
-            configured=False,
-            total_people=0,
-            people_with_subscriptions=0,
-            total_subscriptions=0,
-            next_action="Add a person first, then configure subscriptions.",
-        )
         self._cursor_by_context: dict[str, int] = {}
         self._editing_var_name: str | None = None
         self._edit_buffer = ""
@@ -395,7 +386,6 @@ class ConfigContent(
             self._status_message = f"Failed to load people: {exc}"
             self._status_is_error = True
 
-        self._notification_projection = self._build_notification_projection()
         self._clamp_current_cursor()
 
         if self._guided_mode:
@@ -416,43 +406,6 @@ class ConfigContent(
             self._status_message = f"Validation failed: {exc}"
             self._status_is_error = True
         self.refresh(layout=True)
-
-    def _build_notification_projection(self) -> NotificationProjection:
-        """Build notification coverage details from person subscription config."""
-        if not self._people_data:
-            return NotificationProjection(
-                configured=False,
-                total_people=0,
-                people_with_subscriptions=0,
-                total_subscriptions=0,
-                next_action="Run: telec config people add --name <name> --email <email>",
-            )
-
-        people_with_subscriptions = 0
-        total_subscriptions = 0
-        for person in self._people_data:
-            try:
-                person_config = get_person_config(person.name)
-            except Exception:
-                continue
-            count = len(person_config.subscriptions)
-            if count > 0:
-                people_with_subscriptions += 1
-                total_subscriptions += count
-
-        configured = total_subscriptions > 0
-        if configured:
-            next_action = "Use telec config validate after changing subscription settings."
-        else:
-            next_action = "Add subscriptions under ~/.teleclaude/people/<name>/teleclaude.yml"
-
-        return NotificationProjection(
-            configured=configured,
-            total_people=len(self._people_data),
-            people_with_subscriptions=people_with_subscriptions,
-            total_subscriptions=total_subscriptions,
-            next_action=next_action,
-        )
 
     def _current_context_key(self) -> str:
         """Return the cursor context key for the active subtab."""

@@ -154,11 +154,7 @@ class MessageOperationsMixin:
             logger.warning("send_message: skipping, no user_id in origin_metadata for session %s", session.session_id)
             return ""
 
-        try:
-            chat_id = int(str(user_id))
-        except (ValueError, TypeError):
-            logger.warning("send_message: invalid user_id %s for session %s", user_id, session.session_id)
-            return ""
+        chat_id = int(str(user_id))
 
         # Extract reply_markup and parse_mode from metadata
         reply_markup = metadata.reply_markup
@@ -566,5 +562,5 @@ class MessageOperationsMixin:
         parse_mode: str | None,
         reply_markup: InlineKeyboardMarkup | None,
     ) -> None:
-        """Obsolete."""
-        return
+        """Obsolete — forum-topic message edits are no longer supported."""
+        raise NotImplementedError("_edit_general_message_with_retry is obsolete")

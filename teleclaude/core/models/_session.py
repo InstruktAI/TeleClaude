@@ -1,6 +1,5 @@
 """Session model and related types for TeleClaude."""
 
-from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -9,7 +8,7 @@ from typing import TYPE_CHECKING, Optional, cast
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
-from ._types import JsonDict
+from ._types import JsonDict, SessionOriginMetadata
 
 if TYPE_CHECKING:
     from ._context import InlineKeyboardMarkup
@@ -41,7 +40,7 @@ class MessageMetadata:
     platform_message_id: str | None = None
     human_email: str | None = None
     human_role: str | None = None
-    origin_metadata: Mapping[str, object] | None = None
+    origin_metadata: SessionOriginMetadata | None = None
     system_role: str | None = None
     job: str | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
@@ -142,7 +141,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     tmux_session_name: str
     title: str
     last_input_origin: str | None = None
-    origin_metadata: dict[str, object] = field(default_factory=dict)  # guard: loose-dict - JSON blob from DB
+    origin_metadata: SessionOriginMetadata = field(default_factory=lambda: cast(SessionOriginMetadata, {}))
     system_role: str | None = None
     job: str | None = None
     created_at: datetime | None = None

@@ -378,9 +378,6 @@ class ConfigContentEditingMixin:
         if step.subtab == "people":
             # People step is complete if we have at least one person with 'admin' role.
             return any(p.role == "admin" for p in self._people_data)  # type: ignore[attr-defined]
-        if step.subtab == "notifications":
-            # Notifications are optional.
-            return True
         if step.subtab == "environment":
             return bool(self._env_data) and all(  # type: ignore[attr-defined]
                 status.is_set for status in self._env_data
