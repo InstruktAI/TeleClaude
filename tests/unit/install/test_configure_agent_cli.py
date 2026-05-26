@@ -326,6 +326,24 @@ def test_configure_codex_writes_hooks_json_with_managed_events(tmp_path: Path) -
     assert hooks["hooks"]["PreToolUse"][0].get("matcher") == ".*"
 
 
+def test_configure_agy_refuses_to_overwrite_invalid_settings(tmp_path: Path) -> None:
+    """An existing but malformed Antigravity settings file must stop the run, not be clobbered."""
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    settings_path = tmp_path / ".gemini" / "antigravity-cli" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    malformed = '{"colorScheme": "dark"'  # truncated JSON
+    settings_path.write_text(malformed, encoding="utf-8")
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        with pytest.raises(RuntimeError):
+            configure_agy(tmp_path)
+
+    assert settings_path.read_text(encoding="utf-8") == malformed
+
+
 def test_configure_codex_persists_managed_hook_trust_state(tmp_path: Path) -> None:
     """configure_codex must pre-trust the three TeleClaude codex hooks in config.toml.
 
