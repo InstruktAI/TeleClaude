@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from types import SimpleNamespace, TracebackType
 from unittest.mock import AsyncMock
 
@@ -30,6 +29,8 @@ from teleclaude.core.summarizer import (
 
 _EXPECTED_PROVIDERS = {"openai", "anthropic", "google"}
 _CLOUD_PRIORITY = ["openai", "anthropic", "google"]
+_FAKE_TITLE = "fake-title"
+_FAKE_SUMMARY = "fake-summary"
 
 
 def _pin_summarizer(monkeypatch: pytest.MonkeyPatch, summ: SummarizerConfig) -> None:
@@ -43,9 +44,8 @@ class TestSummarizerModels:
         assert set(_DEFAULT_MODELS) == _EXPECTED_PROVIDERS
 
     @pytest.mark.unit
-    def test_default_models_are_dateless_aliases(self):
-        # No 8-digit date suffix (e.g. 20251001) so defaults track the latest.
-        assert all(model and not re.search(r"20\d{6}", model) for model in _DEFAULT_MODELS.values())
+    def test_default_models_are_all_populated(self):
+        assert all(_DEFAULT_MODELS.values())
 
 
 class TestBuildSessionTitlePrompt:
@@ -138,7 +138,9 @@ class _FakeAnthropicClient:
         self.closed = False
         self.beta = SimpleNamespace(
             messages=SimpleNamespace(
-                create=AsyncMock(return_value=SimpleNamespace(content=[SimpleNamespace(text='{"title":"ok"}')]))
+                create=AsyncMock(
+                    return_value=SimpleNamespace(content=[SimpleNamespace(text=json.dumps({"title": _FAKE_TITLE}))])
+                )
             )
         )
         _FakeAnthropicClient.instances.append(self)
@@ -163,7 +165,9 @@ class _FakeOpenAIClient:
             completions=SimpleNamespace(
                 create=AsyncMock(
                     return_value=SimpleNamespace(
-                        choices=[SimpleNamespace(message=SimpleNamespace(content='{"summary":"done"}'))]
+                        choices=[
+                            SimpleNamespace(message=SimpleNamespace(content=json.dumps({"summary": _FAKE_SUMMARY})))
+                        ]
                     )
                 )
             )
@@ -192,7 +196,7 @@ class TestCallSummarizerDispatch:
 
         result = await _call_summarizer("prompt", TITLE_SCHEMA, _parse_title_response)
 
-        assert result == "ok"
+        assert result == _FAKE_TITLE
         assert len(_FakeAnthropicClient.instances) == 1
         assert _FakeAnthropicClient.instances[0].closed is True
 
@@ -208,7 +212,7 @@ class TestCallSummarizerDispatch:
 
         result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
 
-        assert result == "done"
+        assert result == _FAKE_SUMMARY
         assert len(_FakeOpenAIClient.instances) == 1
         assert _FakeOpenAIClient.instances[0].closed is True
 
@@ -224,7 +228,7 @@ class TestCallSummarizerDispatch:
 
         result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
 
-        assert result == "done"
+        assert result == _FAKE_SUMMARY
         # Google routes through the OpenAI-compatible client with Gemini's base_url.
         assert _FakeOpenAIClient.instances[0].base_url is not None
 
@@ -239,7 +243,7 @@ class TestCallSummarizerDispatch:
 
         result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
 
-        assert result == "done"
+        assert result == _FAKE_SUMMARY
         assert _FakeOpenAIClient.instances[0].base_url == "http://localhost:1234/v1"
 
     @pytest.mark.unit

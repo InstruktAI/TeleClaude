@@ -21,6 +21,17 @@ class TestAgentKeyParsing:
             build_config({"agents": {"default": "claude", "agy": {"enabled": True}}})
 
 
+class TestSummarizerParsing:
+    def test_unknown_provider_priority_is_rejected(self, build_config: BuildConfig) -> None:
+        with pytest.raises(ValueError):
+            build_config({"summarizer": {"provider_priority": ["bogus"]}})
+
+    def test_known_providers_are_accepted(self, build_config: BuildConfig) -> None:
+        built = build_config({"summarizer": {"provider_priority": ["google", "openai"]}})
+        assert built.summarizer is not None
+        assert built.summarizer.provider_priority == ["google", "openai"]
+
+
 class TestTelegramEnablement:
     def test_enabled_flag_flows_into_config(self, build_config: BuildConfig) -> None:
         built = build_config({"telegram": {"enabled": True}})

@@ -138,6 +138,7 @@ environment_variables:
   - ANTHROPIC_API_KEY
   - OPENAI_API_KEY
   - GOOGLE_API_KEY
+  - SUMMARIZER_LOCAL_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
   # Voice / TTS — wizard-managed via _ADAPTER_ENV_VARS["voice"]
   - ELEVENLABS_API_KEY
   # Redis transport — wizard-managed via _ADAPTER_ENV_VARS["redis"]

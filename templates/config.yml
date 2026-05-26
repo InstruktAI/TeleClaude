@@ -108,7 +108,7 @@ tts:
       voices:
         - name: narrator
           params:
-            temperature: 0.0
+            temperature: 0.1
             speed: 0.9
         - name: reporter
           params:

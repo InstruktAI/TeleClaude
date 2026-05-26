@@ -81,6 +81,28 @@ adapters.ai.openai_api_key:
   format_example: "sk-proj-..."
   validation_hint: Starts with sk-
 
+adapters.ai.google_api_key:
+  env_var: GOOGLE_API_KEY
+  description: API key for Google Gemini (tertiary summarizer fallback).
+  steps:
+    - Go to Google AI Studio.
+    - Open 'Get API key' and create a key.
+    - Copy the key.
+  url: https://aistudio.google.com/apikey
+  format_example: "AIza..."
+  validation_hint: Starts with AIza
+
+adapters.ai.summarizer_local_base_url:
+  env_var: SUMMARIZER_LOCAL_BASE_URL
+  description: OpenAI-compatible endpoint for a local summarizer (e.g. LM Studio). Tried first when local is enabled.
+  steps:
+    - Start your local server (e.g. LM Studio) and load an instruct model.
+    - Enable the server's OpenAI-compatible API.
+    - Use its base URL (LM Studio defaults to http://localhost:1234/v1).
+  url: https://lmstudio.ai/docs/app/api
+  format_example: "http://localhost:1234/v1"
+  validation_hint: An OpenAI-compatible /v1 base URL
+
 adapters.voice.elevenlabs_api_key:
   env_var: ELEVENLABS_API_KEY
   description: API key for ElevenLabs text-to-speech.
