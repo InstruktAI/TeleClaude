@@ -205,7 +205,22 @@ event_reliability:
   max_attempts: integer # cumulative retry ceiling before dead-letter transition
   sweep_interval_ms: integer # periodic stale-pending sweep cadence
   dlq_destination: string # dead-letter destination identity
+summarizer:
+  local: # OpenAI-compatible local provider (e.g. LM Studio); tried first when enabled
+    enabled: boolean
+    base_url: string # ${SUMMARIZER_LOCAL_BASE_URL}
+    model: string
+  provider_priority: list[string] # cloud fallback order: openai|anthropic|google
+  openai: { model: string } # dateless alias, e.g. gpt-5-nano
+  anthropic: { model: string } # e.g. claude-haiku-4-5
+  google: { model: string } # e.g. gemini-2.5-flash; uses Gemini's OpenAI-compatible endpoint
 ```
+
+Summary/title generation tries `local` (when `enabled` + `base_url`) first, then the
+cloud providers in `provider_priority`, each skipped silently when its API key
+(`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`) is absent. `local`/`openai`/
+`google` share the OpenAI SDK; `anthropic` uses its own. Empty summaries (e.g. all
+providers out of credit) suppress agent-stop TTS and leave generic session titles.
 
 ### Maintenance
 
