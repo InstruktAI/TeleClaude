@@ -9,7 +9,12 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel, Field
 
-from teleclaude.cli.tui.views.reflection import deserialize_value, reflect_schema
+from teleclaude.cli.tui.views.reflection import (
+    ReflectedField,
+    deserialize_value,
+    reflect_schema,
+    resolve_env_placeholders,
+)
 
 EXPECTED_PYDANTIC_KEYS = {"name", "count", "mode", "choices", "sub.enabled", "sub.token"}
 BLACKLISTED_KEY = "sub.announcements_channel_id"
@@ -76,6 +81,32 @@ def test_reflect_dataclass() -> None:
     priority_field = next(f for f in fields if f.key == "priority")
     assert priority_field.value == ["a", "b"]
     assert priority_field.field_type == list[str]
+
+
+SECRET_VAR = "DISCORD_BOT_TOKEN"
+SECRET_VALUE = "secret-123"
+LITERAL_LANG = "en_US"
+
+
+def test_resolve_env_placeholder_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ${VAR} field value resolves to the env value and records the backing variable."""
+    monkeypatch.setenv(SECRET_VAR, SECRET_VALUE)
+    field = ReflectedField(key="discord.token", name="Token", field_type=str, value=f"${{{SECRET_VAR}}}")
+
+    resolve_env_placeholders([field])
+
+    assert field.value == SECRET_VALUE
+    assert field.env_var == SECRET_VAR
+
+
+def test_resolve_env_placeholder_leaves_literals_untouched() -> None:
+    """A non-placeholder value is left as-is with no backing variable."""
+    field = ReflectedField(key="whatsapp.template_language", name="Lang", field_type=str, value=LITERAL_LANG)
+
+    resolve_env_placeholders([field])
+
+    assert field.value == LITERAL_LANG
+    assert field.env_var is None
 
 
 def test_deserialize_boolean_values() -> None:

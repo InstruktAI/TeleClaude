@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any, get_origin
 
 from textual.app import ComposeResult
@@ -37,7 +36,7 @@ from teleclaude.cli.tui.views._config_constants import (
 from teleclaude.cli.tui.views._project_actions import _load_raw_config, _resolve_config_path
 from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
-from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema
+from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema, resolve_env_placeholders
 from teleclaude.config import ComputerConfig
 from teleclaude.config.schema import PersonEntry
 
@@ -338,6 +337,7 @@ class ConfigContent(
         if cached is not None:
             return cached
         fields = self._build_reflected_fields(tab)
+        resolve_env_placeholders(fields)
         self._reflected_cache[tab] = fields
         return fields
 
@@ -365,9 +365,7 @@ class ConfigContent(
             adapters_obj = AdaptersConfig(
                 telegram=TelegramAdapterConfig(
                     enabled=telegram_data.get("enabled", False),
-                    # The token is the TELEGRAM_BOT_TOKEN env secret; config.yml only
-                    # references it as ${TELEGRAM_BOT_TOKEN}.
-                    bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+                    bot_token=telegram_data.get("bot_token", ""),
                 ),
                 discord=DiscordAdapterConfig(
                     enabled=discord_data.get("enabled", False),

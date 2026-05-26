@@ -28,6 +28,16 @@ from teleclaude.config.schema import PersonEntry
 if TYPE_CHECKING:
     from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
 
+# Reflected field keys prefixed with one of these map to that config.yml section.
+_SECTION_PREFIXES = ("computer", "telegram", "discord", "whatsapp")
+# Flat reflected keys that map to a (section, leaf) pair in config.yml.
+_FLAT_CONFIG_KEYS = {
+    "stt_enabled": ("stt", "enabled"),
+    "stt_service_priority": ("stt", "service_priority"),
+    "tts_enabled": ("tts", "enabled"),
+    "tts_service_priority": ("tts", "service_priority"),
+}
+
 
 class ConfigContentEditingMixin:
     """Cursor movement, inline editing, and guided-mode logic for ConfigContent."""
@@ -406,8 +416,19 @@ class ConfigContentEditingMixin:
 
                     self._save_reflected_field(f.key, items)
 
+    def _apply_field_to_raw_config(self, key: str, deserialized: object) -> None:
+        """Write a non-env field value into its config.yml section and leaf."""
+        if "." in key and key.split(".", 1)[0] in _SECTION_PREFIXES:
+            section_name, leaf = key.split(".", 1)
+        elif key in _FLAT_CONFIG_KEYS:
+            section_name, leaf = _FLAT_CONFIG_KEYS[key]
+        else:
+            return
+        section = self._raw_config.setdefault(section_name, {})  # type: ignore[attr-defined]
+        section[leaf] = deserialized
+
     def _save_reflected_field(self, key: str, raw_value: Any) -> None:
-        """Parse, validate, and write a reflected field value back to config.yml."""
+        """Parse, validate, and write a reflected field value back to config.yml or .env."""
         fields = self.reflected_fields  # type: ignore[attr-defined]
         f = next((field for field in fields if field.key == key), None)
         if f is None:
@@ -416,58 +437,13 @@ class ConfigContentEditingMixin:
         try:
             deserialized = deserialize_value(raw_value, f.field_type, f.choices)
 
-            # Map dynamic flat key path back to the self._raw_config nested tree
-            if key.startswith("computer."):
-                subkey = key.split(".", 1)[1]
-                if "computer" not in self._raw_config:  # type: ignore[attr-defined]
-                    self._raw_config["computer"] = {}  # type: ignore[attr-defined]
-                self._raw_config["computer"][subkey] = deserialized  # type: ignore[attr-defined]
-
-            elif key.startswith("telegram."):
-                subkey = key.split(".", 1)[1]
-                # The bot token is the TELEGRAM_BOT_TOKEN env secret, not a config.yml field.
-                if subkey == "bot_token":
-                    set_env_var("TELEGRAM_BOT_TOKEN", str(deserialized))
-                else:
-                    if "telegram" not in self._raw_config:  # type: ignore[attr-defined]
-                        self._raw_config["telegram"] = {}  # type: ignore[attr-defined]
-                    self._raw_config["telegram"][subkey] = deserialized  # type: ignore[attr-defined]
-
-            elif key.startswith("discord."):
-                subkey = key.split(".", 1)[1]
-                if "discord" not in self._raw_config:  # type: ignore[attr-defined]
-                    self._raw_config["discord"] = {}  # type: ignore[attr-defined]
-                self._raw_config["discord"][subkey] = deserialized  # type: ignore[attr-defined]
-
-            elif key.startswith("whatsapp."):
-                subkey = key.split(".", 1)[1]
-                if "whatsapp" not in self._raw_config:  # type: ignore[attr-defined]
-                    self._raw_config["whatsapp"] = {}  # type: ignore[attr-defined]
-                self._raw_config["whatsapp"][subkey] = deserialized  # type: ignore[attr-defined]
-
-            elif key == "stt_enabled":
-                if "stt" not in self._raw_config:  # type: ignore[attr-defined]
-                    self._raw_config["stt"] = {}  # type: ignore[attr-defined]
-                self._raw_config["stt"]["enabled"] = deserialized  # type: ignore[attr-defined]
-
-            elif key == "stt_service_priority":
-                if "stt" not in self._raw_config:  # type: ignore[attr-defined]
-                    self._raw_config["stt"] = {}  # type: ignore[attr-defined]
-                self._raw_config["stt"]["service_priority"] = deserialized  # type: ignore[attr-defined]
-
-            elif key == "tts_enabled":
-                if "tts" not in self._raw_config:  # type: ignore[attr-defined]
-                    self._raw_config["tts"] = {}  # type: ignore[attr-defined]
-                self._raw_config["tts"]["enabled"] = deserialized  # type: ignore[attr-defined]
-
-            elif key == "tts_service_priority":
-                if "tts" not in self._raw_config:  # type: ignore[attr-defined]
-                    self._raw_config["tts"] = {}  # type: ignore[attr-defined]
-                self._raw_config["tts"]["service_priority"] = deserialized  # type: ignore[attr-defined]
-
-            # Atomically write edits to config.yml
-            config_path = _resolve_config_path()
-            _write_raw_config(config_path, self._raw_config)  # type: ignore[attr-defined]
+            if f.env_var:
+                # ${VAR}-backed field: persist to .env, leave the placeholder in config.yml.
+                set_env_var(f.env_var, str(deserialized))
+            else:
+                self._apply_field_to_raw_config(key, deserialized)
+                config_path = _resolve_config_path()
+                _write_raw_config(config_path, self._raw_config)  # type: ignore[attr-defined]
 
             self._editing_var_name = None  # type: ignore[attr-defined]
             self._edit_buffer = ""  # type: ignore[attr-defined]

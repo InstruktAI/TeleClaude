@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 from dataclasses import dataclass
 from enum import Enum
 from types import UnionType
@@ -43,6 +44,23 @@ class ReflectedField:
     choices: list[str] | None = None  # Allowed choices if Enum or Literal
     description: str | None = None  # Description from field/metadata
     section: str = "General"  # Group name for accordion folding
+    env_var: str | None = None  # Backing environment variable when the config value is a ${VAR} reference
+
+
+def resolve_env_placeholders(fields: list[ReflectedField]) -> None:
+    """Resolve ``${VAR}`` field values to their environment value in place.
+
+    A config value like ``${DISCORD_BOT_TOKEN}`` is a reference to a ``.env`` secret,
+    not a literal to display or edit. Show the resolved environment value and record
+    the variable so the save path writes back to the environment, leaving the
+    placeholder in the config untouched.
+    """
+    for field in fields:
+        value = field.value
+        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+            var = value[2:-1]
+            field.env_var = var
+            field.value = os.environ.get(var, "")
 
 
 def _unpack_union(t: Any) -> list[Any]:
