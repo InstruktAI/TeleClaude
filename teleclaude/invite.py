@@ -172,15 +172,15 @@ async def send_invite_email(
             is not configured. Set to False in JSON output modes to keep stdout machine-parseable.
 
     Note:
-        If BREVO_SMTP_USER is not set, prints invite links to stdout instead of sending email
+        If SMTP_USERNAME is not set, prints invite links to stdout instead of sending email
         (unless print_links_if_missing_smtp=False).
 
     Raises:
         RuntimeError: If email sending fails
     """
     # Check for SMTP credentials
-    if not os.getenv("BREVO_SMTP_USER"):
-        logger.warning("BREVO_SMTP_USER not set — printing invite links instead of sending email")
+    if not os.getenv("SMTP_USERNAME"):
+        logger.warning("SMTP_USERNAME not set — printing invite links instead of sending email")
         if print_links_if_missing_smtp:
             print(f"\n=== Invite Links for {name} ({email}) ===")
             for platform, link in links.items():

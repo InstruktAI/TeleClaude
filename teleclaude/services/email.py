@@ -1,4 +1,4 @@
-"""Email delivery helpers via Brevo SMTP."""
+"""Email delivery helpers via an SMTP relay (e.g. Brevo)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,19 @@ import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import parseaddr
 
 from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
+
+_DEFAULT_SMTP_RELAY = "smtp-relay.brevo.com:587"
+
+
+def _parse_relay(relay: str) -> tuple[str, int]:
+    """Split a ``host:port`` relay string; default the port to 587."""
+    host, _, port_str = relay.partition(":")
+    return host, int(port_str) if port_str.isdigit() else 587
 
 
 async def send_email(
@@ -19,38 +28,34 @@ async def send_email(
     subject: str,
     html_body: str,
     text_body: str | None = None,
-    *,
-    smtp_host: str = "smtp-relay.brevo.com",
-    smtp_port: int = 587,
 ) -> None:
-    """Send email via Brevo SMTP.
+    """Send email via the configured SMTP relay.
 
-    Args:
-        to: Recipient email address
-        subject: Email subject line
-        html_body: HTML email body
-        text_body: Plain text alternative (optional, extracted from html if not provided)
-        smtp_host: SMTP server hostname
-        smtp_port: SMTP server port
+    Credentials and sender identity come from the environment:
+    ``SMTP_USERNAME``, ``SMTP_KEY``, ``SMTP_RELAY`` (``host:port``),
+    ``EMAIL_FROM`` (``Name <addr>``), and optional ``EMAIL_REPLYTO``.
 
     Raises:
         ValueError: If required credentials are missing
         RuntimeError: If SMTP delivery fails
     """
-    smtp_user = os.getenv("BREVO_SMTP_USER")
-    smtp_pass = os.getenv("BREVO_SMTP_PASS")
-    sender_email = os.getenv("BREVO_SENDER_EMAIL")
-    sender_name = os.getenv("BREVO_SENDER_NAME", "TeleClaude")
+    smtp_user = os.getenv("SMTP_USERNAME")
+    smtp_pass = os.getenv("SMTP_KEY")
+    email_from = os.getenv("EMAIL_FROM")
+    reply_to = os.getenv("EMAIL_REPLYTO")
+    smtp_host, smtp_port = _parse_relay(os.getenv("SMTP_RELAY", _DEFAULT_SMTP_RELAY))
 
-    if not smtp_user or not smtp_pass or not sender_email:
-        raise ValueError(
-            "Missing required Brevo SMTP credentials: BREVO_SMTP_USER, BREVO_SMTP_PASS, BREVO_SENDER_EMAIL must be set"
-        )
+    if not smtp_user or not smtp_pass or not email_from:
+        raise ValueError("Missing required SMTP credentials: SMTP_USERNAME, SMTP_KEY, EMAIL_FROM must be set")
+
+    sender_email = parseaddr(email_from)[1] or email_from
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"{sender_name} <{sender_email}>"
+    msg["From"] = email_from
     msg["To"] = to
+    if reply_to:
+        msg["Reply-To"] = reply_to
 
     if text_body:
         msg.attach(MIMEText(text_body, "plain"))

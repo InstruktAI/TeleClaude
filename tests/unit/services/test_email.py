@@ -40,49 +40,58 @@ async def _run_sync(func: object) -> None:
     func()
 
 
+_SMTP_USER = "smtp-user"
+_SMTP_KEY = "smtp-key"
+_SENDER_ADDR = "sender@example.com"
+_EMAIL_FROM = f"Sender Name <{_SENDER_ADDR}>"
+_REPLY_TO = "No Reply <no-reply@example.com>"
+_RECIPIENT = "person@example.com"
+
+
+def _set_smtp_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SMTP_USERNAME", _SMTP_USER)
+    monkeypatch.setenv("SMTP_KEY", _SMTP_KEY)
+    monkeypatch.setenv("EMAIL_FROM", _EMAIL_FROM)
+    monkeypatch.setenv("SMTP_RELAY", "smtp.test:2525")
+    monkeypatch.setenv("EMAIL_REPLYTO", _REPLY_TO)
+
+
 class TestSendEmail:
     @pytest.mark.unit
-    async def test_requires_brevo_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("BREVO_SMTP_USER", raising=False)
-        monkeypatch.delenv("BREVO_SMTP_PASS", raising=False)
-        monkeypatch.delenv("BREVO_SENDER_EMAIL", raising=False)
+    async def test_requires_smtp_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SMTP_USERNAME", raising=False)
+        monkeypatch.delenv("SMTP_KEY", raising=False)
+        monkeypatch.delenv("EMAIL_FROM", raising=False)
 
-        with pytest.raises(ValueError, match="Missing required Brevo SMTP credentials"):
-            await send_email("person@example.com", "Subject", "<p>Hello</p>")
+        with pytest.raises(ValueError, match="Missing required SMTP credentials"):
+            await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")
 
     @pytest.mark.unit
-    async def test_builds_plain_text_fallback_from_html(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("BREVO_SMTP_USER", "user")
-        monkeypatch.setenv("BREVO_SMTP_PASS", "pass")
-        monkeypatch.setenv("BREVO_SENDER_EMAIL", "sender@example.com")
-        monkeypatch.setenv("BREVO_SENDER_NAME", "TeleClaude Test")
+    async def test_sends_with_envelope_sender_replyto_and_text_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _set_smtp_env(monkeypatch)
         smtp = _RecordingSMTP("smtp.test", 2525, timeout=10)
 
         with (
             patch("teleclaude.services.email.asyncio.to_thread", new=AsyncMock(side_effect=_run_sync)),
             patch("teleclaude.services.email.smtplib.SMTP", return_value=smtp),
         ):
-            await send_email(
-                "person@example.com",
-                "Subject",
-                "<h1>Hello</h1><p>World</p>",
-                smtp_host="smtp.test",
-                smtp_port=2525,
-            )
+            await send_email(_RECIPIENT, "Subject", "<h1>Hello</h1><p>World</p>")
 
         assert smtp.started_tls is True
-        assert smtp.login_args == ("user", "pass")
+        assert smtp.login_args == (_SMTP_USER, _SMTP_KEY)
         assert smtp.sendmail_args is not None
-        assert smtp.sendmail_args[0] == "sender@example.com"
-        assert smtp.sendmail_args[1] == "person@example.com"
-        assert "HelloWorld" in smtp.sendmail_args[2]
-        assert "<h1>Hello</h1><p>World</p>" in smtp.sendmail_args[2]
+        # Envelope sender is the bare address parsed out of EMAIL_FROM.
+        assert smtp.sendmail_args[0] == _SENDER_ADDR
+        assert smtp.sendmail_args[1] == _RECIPIENT
+        message = smtp.sendmail_args[2]
+        assert "HelloWorld" in message
+        assert "<h1>Hello</h1><p>World</p>" in message
+        assert _REPLY_TO in message
+        assert _EMAIL_FROM in message
 
     @pytest.mark.unit
     async def test_wraps_smtp_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("BREVO_SMTP_USER", "user")
-        monkeypatch.setenv("BREVO_SMTP_PASS", "pass")
-        monkeypatch.setenv("BREVO_SENDER_EMAIL", "sender@example.com")
+        _set_smtp_env(monkeypatch)
         smtp = _RecordingSMTP("smtp.test", 2525, timeout=10)
 
         def _failing_login(user: str, password: str) -> None:
@@ -95,4 +104,4 @@ class TestSendEmail:
             patch("teleclaude.services.email.smtplib.SMTP", return_value=smtp),
         ):
             with pytest.raises(RuntimeError, match="SMTP delivery failed: bad login"):
-                await send_email("person@example.com", "Subject", "<p>Hello</p>")
+                await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")
