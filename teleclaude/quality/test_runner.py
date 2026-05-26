@@ -83,8 +83,10 @@ def run_pytest(args: list[str], cwd: Path | None = None) -> int:
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft < 4096:
             resource.setrlimit(resource.RLIMIT_NOFILE, (min(4096, hard), hard))
-    except Exception:
-        pass
+    except (OSError, ValueError) as exc:
+        # Best-effort: a low fd limit only risks "too many open files" under heavy
+        # xdist fan-out; surface it without aborting the run.
+        logger.warning("Could not raise file-descriptor limit for pytest: %s", exc)
     subprocess.run(["pkill", "-9", "-f", "pytest tests"], check=False)
     subprocess.run(["pkill", "-9", "-f", "uv run pytest"], check=False)
     proc = subprocess.Popen(

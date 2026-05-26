@@ -76,7 +76,7 @@ normalize_required_config_path() {
 
 require_config_files() {
     local env_path="${TELECLAUDE_ENV_PATH:-$PROJECT_ROOT/.env}"
-    local config_path="${TELECLAUDE_CONFIG_PATH:-$PROJECT_ROOT/config.yml}"
+    local config_path="${TELECLAUDE_CONFIG_PATH:-${TELECLAUDE_HOME:-$HOME/.teleclaude}/config.yml}"
     local normalized_env_path
     local normalized_config_path
     normalized_env_path="$(normalize_required_config_path "$env_path")"
