@@ -3,13 +3,10 @@
 import json
 import os
 from collections.abc import Callable
-from typing import Any, cast
-
-from anthropic import AsyncAnthropic
-from openai import AsyncOpenAI
-from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
+from typing import Any
 
 from teleclaude.config import config
+from teleclaude.services.summarizer_backends import summarize_anthropic, summarize_openai_compatible
 
 # Dateless model aliases so summaries track each provider's latest without config churn.
 _DEFAULT_MODELS = {"openai": "gpt-5-nano", "anthropic": "claude-haiku-4-5", "google": "gemini-2.5-flash"}
@@ -84,60 +81,6 @@ async def summarize_agent_output(agent_output: str) -> tuple[str | None, str]:
     return None, summary
 
 
-async def _summarize_via_openai_compatible(
-    prompt: str,
-    schema: dict[str, object],  # guard: loose-dict - JSON schema shape is dynamic.
-    parser: Callable[[str], Any],
-    *,
-    base_url: str | None,
-    api_key: str,
-    model: str,
-) -> Any:
-    """Call any OpenAI-compatible chat-completions endpoint (cloud OpenAI, LM Studio, Gemini)."""
-    response_format: ResponseFormatJSONSchema = {
-        "type": "json_schema",
-        "json_schema": {"name": "summary", "schema": schema, "strict": True},
-    }
-    async with AsyncOpenAI(api_key=api_key, base_url=base_url) as client:
-        response = await client.chat.completions.create(
-            model=model,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-            response_format=response_format,
-        )
-        text = cast(Any, response).choices[0].message.content or ""
-    return parser(text)
-
-
-async def _summarize_via_anthropic(
-    prompt: str,
-    schema: dict[str, object],  # guard: loose-dict - JSON schema shape is dynamic.
-    parser: Callable[[str], Any],
-    *,
-    api_key: str,
-    model: str,
-) -> Any:
-    """Call Anthropic's structured-output messages API."""
-    async with AsyncAnthropic(api_key=api_key) as client:
-        response = await client.beta.messages.create(
-            model=model,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-            betas=["structured-outputs-2025-11-13"],
-            output_format={
-                "type": "json_schema",
-                "schema": {
-                    "type": schema["type"],
-                    "properties": schema["properties"],
-                    "required": schema["required"],
-                    "additionalProperties": schema["additionalProperties"],
-                },
-            },
-        )
-        text = response.content[0].text  # type: ignore[union-attr]
-    return parser(text)
-
-
 def _provider_api_key(provider: str) -> str | None:
     return {
         "anthropic": os.getenv("ANTHROPIC_API_KEY"),
@@ -167,7 +110,7 @@ async def _call_summarizer(
 
     if summ and summ.local.enabled and summ.local.base_url and summ.local.model:
         try:
-            return await _summarize_via_openai_compatible(
+            return await summarize_openai_compatible(
                 prompt,
                 schema,
                 parser,
@@ -185,11 +128,11 @@ async def _call_summarizer(
             continue  # silent skip — provider not configured
         try:
             if provider == "anthropic":
-                return await _summarize_via_anthropic(
+                return await summarize_anthropic(
                     prompt, schema, parser, api_key=api_key, model=_summarizer_model("anthropic")
                 )
             base_url = _GOOGLE_OPENAI_BASE_URL if provider == "google" else None
-            return await _summarize_via_openai_compatible(
+            return await summarize_openai_compatible(
                 prompt, schema, parser, base_url=base_url, api_key=api_key, model=_summarizer_model(provider)
             )
         except Exception as e:

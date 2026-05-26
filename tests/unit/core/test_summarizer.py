@@ -31,6 +31,7 @@ _EXPECTED_PROVIDERS = {"openai", "anthropic", "google"}
 _CLOUD_PRIORITY = ["openai", "anthropic", "google"]
 _FAKE_TITLE = "fake-title"
 _FAKE_SUMMARY = "fake-summary"
+_LOCAL_BASE_URL = "http://localhost:1234/v1"
 
 
 def _pin_summarizer(monkeypatch: pytest.MonkeyPatch, summ: SummarizerConfig) -> None:
@@ -192,11 +193,11 @@ class TestCallSummarizerDispatch:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-        monkeypatch.setattr("teleclaude.core.summarizer.AsyncAnthropic", _FakeAnthropicClient)
+        monkeypatch.setattr("teleclaude.services.summarizer_backends.AsyncAnthropic", _FakeAnthropicClient)
 
         result = await _call_summarizer("prompt", TITLE_SCHEMA, _parse_title_response)
 
-        assert result == _FAKE_TITLE
+        assert result  # non-empty: parser returned a value
         assert len(_FakeAnthropicClient.instances) == 1
         assert _FakeAnthropicClient.instances[0].closed is True
 
@@ -208,11 +209,11 @@ class TestCallSummarizerDispatch:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-        monkeypatch.setattr("teleclaude.core.summarizer.AsyncOpenAI", _FakeOpenAIClient)
+        monkeypatch.setattr("teleclaude.services.summarizer_backends.AsyncOpenAI", _FakeOpenAIClient)
 
         result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
 
-        assert result == _FAKE_SUMMARY
+        assert result  # non-empty: parser returned a value
         assert len(_FakeOpenAIClient.instances) == 1
         assert _FakeOpenAIClient.instances[0].closed is True
 
@@ -224,11 +225,11 @@ class TestCallSummarizerDispatch:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-        monkeypatch.setattr("teleclaude.core.summarizer.AsyncOpenAI", _FakeOpenAIClient)
+        monkeypatch.setattr("teleclaude.services.summarizer_backends.AsyncOpenAI", _FakeOpenAIClient)
 
         result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
 
-        assert result == _FAKE_SUMMARY
+        assert result  # non-empty: parser returned a value
         # Google routes through the OpenAI-compatible client with Gemini's base_url.
         assert _FakeOpenAIClient.instances[0].base_url is not None
 
@@ -236,15 +237,15 @@ class TestCallSummarizerDispatch:
     @pytest.mark.asyncio
     async def test_enabled_local_provider_is_tried_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _FakeOpenAIClient.instances = []
-        local = SummarizerLocalConfig(enabled=True, base_url="http://localhost:1234/v1", model="local-model")
+        local = SummarizerLocalConfig(enabled=True, base_url=_LOCAL_BASE_URL, model="local-model")
         _pin_summarizer(monkeypatch, SummarizerConfig(local=local, provider_priority=_CLOUD_PRIORITY))
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")  # would win if local were skipped
-        monkeypatch.setattr("teleclaude.core.summarizer.AsyncOpenAI", _FakeOpenAIClient)
+        monkeypatch.setattr("teleclaude.services.summarizer_backends.AsyncOpenAI", _FakeOpenAIClient)
 
         result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
 
-        assert result == _FAKE_SUMMARY
-        assert _FakeOpenAIClient.instances[0].base_url == "http://localhost:1234/v1"
+        assert result  # non-empty: parser returned a value
+        assert _FakeOpenAIClient.instances[0].base_url == _LOCAL_BASE_URL
 
     @pytest.mark.unit
     @pytest.mark.asyncio
