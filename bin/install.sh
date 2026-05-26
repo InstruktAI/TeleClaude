@@ -114,8 +114,8 @@ EOF
 ensure_config_yml() {
     if [ ! -f "$TC_CONFIG" ]; then
         mkdir -p "$TELECLAUDE_HOME"
-        cp "$INSTALL_DIR/config.sample.yml" "$TC_CONFIG"
-        print_success "Created $TC_CONFIG from config.sample.yml"
+        cp "$INSTALL_DIR/templates/config.yml" "$TC_CONFIG"
+        print_success "Created $TC_CONFIG from the bundled config template"
     else
         print_info "config.yml already exists at $TC_CONFIG"
     fi

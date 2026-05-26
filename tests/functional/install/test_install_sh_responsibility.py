@@ -20,7 +20,7 @@ def _copy_checkout(tmp_path: Path) -> Path:
     project_root = tmp_path / "project_root"
     project_root.mkdir()
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".mypy_cache", ".pytest_cache", ".ruff_cache")
-    for file_name in ("Makefile", "pyproject.toml", "uv.lock", "config.sample.yml", ".env.sample", "mcp.json"):
+    for file_name in ("Makefile", "pyproject.toml", "uv.lock", ".env.sample", "mcp.json"):
         source = _REPO_ROOT / file_name
         if source.exists():
             shutil.copy2(source, project_root / file_name)

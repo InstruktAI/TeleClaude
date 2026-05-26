@@ -1,7 +1,7 @@
 # Provider guidance for configuration fields, keyed by config field path.
 # `env_var` ties a field to its ${ENV} secret so the same guidance shows in both
 # the Env subtab (by env var) and the reflected config tabs (by field key).
-# Every ${VAR} referenced in config.sample.yml should have an entry here.
+# Every ${VAR} referenced in templates/config.yml should have an entry here.
 
 adapters.telegram.bot_token:
   env_var: TELEGRAM_BOT_TOKEN

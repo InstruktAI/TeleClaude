@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Protocol, cast
 
 import pytest
@@ -13,10 +12,6 @@ from tests.unit.config.conftest import BuildConfig
 pytestmark = [
     pytest.mark.unit,
 ]
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_SAMPLE_CONFIG = _REPO_ROOT / "config.sample.yml"
-_CONFIG_SPEC = _REPO_ROOT / "docs" / "project" / "spec" / "teleclaude-config.md"
 
 
 class _RemoteComputerLike(Protocol):

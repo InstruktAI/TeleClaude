@@ -1,4 +1,4 @@
-"""Runtime config bootstrap: seed the machine-local config from the repo blueprint."""
+"""Runtime config bootstrap: seed the machine-local config from the bundled template."""
 
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ DeepMerge = Callable[[dict[str, object], dict[str, object]], dict[str, object]] 
 def resolve_runtime_config_path(blueprint_path: Path, deep_merge: DeepMerge) -> Path:
     """Return the runtime config path, seeding/merging from the blueprint.
 
-    The repo ``config.yml`` is a read-only blueprint (sane defaults + ${VAR}
-    placeholders). The machine-local ``~/.teleclaude/config.yml`` is the only file
-    the TUI/daemon read and write: it is seeded from the blueprint on first run,
-    and any blueprint keys missing from the runtime are merged in (runtime values
-    win; placeholders preserved). The blueprint itself is never written.
+    The bundled ``templates/config.yml`` is a read-only blueprint
+    (sane defaults + ${VAR} placeholders). The machine-local ``~/.teleclaude/config.yml``
+    is the only file the TUI/daemon read and write: it is seeded from the blueprint on
+    first run, and any blueprint keys missing from the runtime are merged in (runtime
+    values win; placeholders preserved). The blueprint itself is never written.
 
     An explicit ``TELECLAUDE_CONFIG_PATH`` (tests, alternate configs) is used
     verbatim and bypasses seeding.

@@ -939,7 +939,7 @@ def _build_config(
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.
-_config_path = resolve_runtime_config_path(_project_root / "config.yml", _deep_merge)
+_config_path = resolve_runtime_config_path(_project_root / "templates" / "config.yml", _deep_merge)
 
 if not _config_path.exists():
     raise FileNotFoundError(

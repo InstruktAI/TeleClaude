@@ -322,7 +322,7 @@ Severity guidance:
 When the delivery changes CLI subcommands, config keys, API endpoints, or user-facing behavior:
 
 1. CLI help text updated for new/changed subcommands.
-2. `config.sample.yml` updated if new config keys introduced.
+2. `templates/config.yml` updated if new config keys introduced.
 3. Teleclaude-config spec updated if config surface changed.
 4. README or relevant docs reflect current behavior.
 5. Breaking changes documented.
