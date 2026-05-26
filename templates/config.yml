@@ -1,0 +1,244 @@
+# Sample configuration file for TeleClaude. Copy this to `config.yml` and edit as needed.
+# expands ${ENV_VAR} from the environment after sourcing .env, allowing to keep secrets out of the config file.
+
+computer:
+  name: Mac # Unique computer identifier for multi-computer MCP communication
+  role: development # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
+  is_master: true # Master computer in case of multi computer mesh setup
+  timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
+  # user, default_working_dir, help_desk_dir, and host are derived at runtime
+  # (system login, project dir, help-desk subdir, detected LAN IP) — not editable here.
+  # Trusted directories
+  # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
+  trusted_dirs:
+    - name: Workspace
+      desc: Project workspace
+      path: ${HOME}/Workspace
+
+# Redis Configuration (essential for TeleClaude operation)
+redis:
+  url: ${REDIS_URL}
+  password: ${REDIS_PASSWORD}
+  # max_connections: 100
+  # socket_timeout: 60
+  # message_stream_maxlen: 10000
+  # output_stream_maxlen: 10000
+  # output_stream_ttl: 3600
+
+# Telegram admin adapter for mobile interaction with the platform.
+telegram:
+  enabled: false
+  # Bot token.
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+
+# Admin adapter that houses the administration of ALL computer and their projects,
+# So highly recommended to enable it for mobile interaction with the platform.
+discord:
+  enabled: false
+  # Bot token.
+  token: ${DISCORD_BOT_TOKEN}
+  # Guild (server) ID.
+  guild_id: ${DISCORD_GUILD_ID}
+  # All channel/category IDs below are auto-provisioned on startup.
+  # The bot creates the full structure (categories, forums, text channels)
+  # and persists IDs here. Do not edit manually.
+
+whatsapp:
+  # Customer/public facing Whatsapp business channel configuration. Disable if no need for public Whatsapp helpdesk/member-pa, or if this is not the master computer.
+  enabled: false
+  phone_number_id: ${WHATSAPP_PHONE_NUMBER_ID}
+  access_token: ${WHATSAPP_ACCESS_TOKEN}
+  webhook_secret: ${WHATSAPP_WEBHOOK_SECRET}
+  verify_token: ${WHATSAPP_VERIFY_TOKEN}
+  template_name: ${WHATSAPP_TEMPLATE_NAME}
+  template_language: en_US
+
+agents:
+  default: claude
+  claude:
+    enabled: true
+  gemini:
+    enabled: true
+  codex:
+    enabled: true
+
+# Speech-to-Text Configuration
+stt:
+  enabled: true
+  service_priority:
+    - parakeet # Local MLX (free, private, fast on Apple Silicon)
+    - openai # Cloud Whisper API (fallback) that needs OPENAI_API_KEY env var set
+  services:
+    parakeet:
+      enabled: true
+      # HuggingFace repo id or absolute path to a compatible MLX model directory.
+      # Example local path:
+      # ${HOME}/.cache/lm-studio/models/mlx-community/parakeet-tdt-0.6b-v3
+      model: mlx-community/parakeet-tdt-0.6b-v3
+    openai:
+      enabled: true
+
+# Text-to-Speech Configuration
+tts:
+  enabled: false
+  service_priority:
+    - voxcpm # Local MLX, greate voice quality. Size in mem:
+    - qwen3 # Local MLX, fun to test as has weird voices
+    - openai
+    - elevenlabs
+    - macos
+    - pyttsx3
+  events:
+    session_start:
+      enabled: true
+    agent_stop:
+      enabled: true
+  services:
+    voxcpm:
+      enabled: true
+      # Optional: local model path or HF repo id.
+      # Example local path:
+      # ${HOME}/.cache/lm-studio/models/mlx-community/voxcpm1.5
+      model: mlx-community/voxcpm1.5
+      params:
+        temperature: 0.5
+        speed: 1.1
+        cfg_scale: 3.0
+        ddpm_steps: 15
+      voices:
+        - name: narrator
+          params:
+            temperature: 0.1
+            speed: 0.9
+        - name: reporter
+          params:
+            temperature: 0.1
+            speed: 1.1
+        - name: excited
+          params:
+            temperature: 0.1
+            speed: 1.2
+    kokoro:
+      enabled: true
+      model: mlx-community/Kokoro-82M-bf16
+      voices:
+        - name: adam
+          voice_id: am_adam
+        - name: echo
+          voice_id: am_echo
+        - name: eric
+          voice_id: am_eric
+        - name: fenrir
+          voice_id: am_fenrir
+        - name: liam
+          voice_id: am_liam
+        - name: michael
+          voice_id: am_michael
+        - name: onyx
+          voice_id: am_onyx
+        - name: puck
+          voice_id: am_puck
+        - name: alloy
+          voice_id: af_alloy
+        - name: aoede
+          voice_id: af_aoede
+        - name: bella
+          voice_id: af_bella
+        - name: heart
+          voice_id: af_heart
+        - name: jessica
+          voice_id: af_jessica
+        - name: kore
+          voice_id: af_kore
+        - name: nicole
+          voice_id: af_nicole
+        - name: nova
+          voice_id: af_nova
+        - name: river
+          voice_id: af_river
+        - name: sarah
+          voice_id: af_sarah
+        - name: sky
+          voice_id: af_sky
+        - name: alice
+          voice_id: bf_alice
+        - name: emma
+          voice_id: bf_emma
+        - name: isabella
+          voice_id: bf_isabella
+        - name: lily
+          voice_id: bf_lily
+        - name: daniel
+          voice_id: bm_daniel
+        - name: fable
+          voice_id: bm_fable
+        - name: george
+          voice_id: bm_george
+        - name: lewis
+          voice_id: bm_lewis
+    qwen3:
+      enabled: true
+      model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
+      voices:
+        - name: serena
+        # - name: vivian
+        - name: uncle_fu
+        # - name: ryan
+        - name: aiden
+        - name: sohee
+        - name: eric
+        - name: dylan
+    elevenlabs:
+      enabled: true
+      voices:
+        - name: Rachel
+          voice_id: 21m00Tcm4TlvDq8ikWAM
+        - name: George
+          voice_id: JBFqnCBsd6RMkjVDRZzb
+        - name: Matilda
+          voice_id: XrExE9yKIg1WjnnlVkGX
+        - name: Adam
+          voice_id: pNInz6obpgDQGcFmaJgB
+        - name: Charlotte
+          voice_id: XB0fDUnXU5powFXDhCwa
+        - name: Brian
+          voice_id: nPczCjzI2devNBz1zQrb
+        - name: Dorothy
+          voice_id: ThT5KcBeYPX3keUQqHPh
+        - name: Charlie
+          voice_id: IKne3meq5aSn9XLyUdCD
+        - name: James
+          voice_id: ZQe5CZNOzWyzPSCn5a3c
+        - name: Lily
+          voice_id: pFZP5JQG7iQjIQuC4Bku
+        - name: Antoni
+          voice_id: ErXwobaYiN019PkySvjV
+        - name: Grace
+          voice_id: oWAxZDx7w5VEj9dCyTzz
+    openai:
+      enabled: true
+      voices:
+        - name: alloy
+        - name: echo
+        - name: fable
+        - name: nova
+        - name: onyx
+        - name: shimmer
+    macos:
+      enabled: true
+      voices:
+        - name: 'Samantha (Enhanced)'
+        - name: 'Daniel (Enhanced)'
+        - name: 'Ava (Premium)'
+        - name: 'Nathan (Enhanced)'
+        - name: 'Serena (Premium)'
+        - name: 'Tom (Enhanced)'
+        - name: 'Moira (Enhanced)'
+        - name: 'Karen (Premium)'
+        - name: 'Oliver (Enhanced)'
+        - name: 'Jamie (Premium)'
+        - name: 'Rishi (Enhanced)'
+        - name: 'Zoe (Premium)'
+    pyttsx3:
+      enabled: true
+      voices: []
