@@ -107,6 +107,227 @@ EOF
     fi
 }
 
+ensure_config_yml() {
+    if [ ! -f "$INSTALL_DIR/config.yml" ]; then
+        cp "$INSTALL_DIR/config.sample.yml" "$INSTALL_DIR/config.yml"
+        print_success "Created config.yml from config.sample.yml"
+    else
+        print_info "config.yml already exists"
+    fi
+}
+
+get_current_agent_enabled() {
+    local agent="$1"
+    local default_val="$2"
+    if [ -f "$INSTALL_DIR/config.yml" ]; then
+        "$PYTHON_CMD" -c "
+try:
+    lines = open('$INSTALL_DIR/config.yml').read().splitlines()
+    in_agents = False
+    in_agent = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('agents:'):
+            in_agents = True
+            continue
+        if in_agents:
+            if line and not line.startswith(' ') and not line.startswith('\t'):
+                in_agents = False
+                continue
+            if stripped.startswith('$agent:'):
+                in_agent = True
+                continue
+            if in_agent:
+                if stripped.startswith('enabled:'):
+                    print('y' if 'true' in stripped.lower() else 'n')
+                    import sys; sys.exit(0)
+                elif stripped.endswith(':') and not stripped.startswith('enabled:'):
+                    in_agent = False
+except Exception:
+    pass
+print('$default_val')
+" 2>/dev/null || echo "$default_val"
+    else
+        echo "$default_val"
+    fi
+}
+
+get_current_default_agent() {
+    local default_val="$1"
+    if [ -f "$INSTALL_DIR/config.yml" ]; then
+        "$PYTHON_CMD" -c "
+try:
+    lines = open('$INSTALL_DIR/config.yml').read().splitlines()
+    in_agents = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('agents:'):
+            in_agents = True
+            continue
+        if in_agents:
+            if line and not line.startswith(' ') and not line.startswith('\t'):
+                in_agents = False
+                continue
+            if stripped.startswith('default:'):
+                print(stripped.split(':', 1)[1].strip())
+                import sys; sys.exit(0)
+except Exception:
+    pass
+print('$default_val')
+" 2>/dev/null || echo "$default_val"
+    else
+        echo "$default_val"
+    fi
+}
+
+setup_agents_interactive() {
+    print_header "Interactive Agent Configuration"
+
+    ensure_config_yml
+
+    # Extract current values as defaults
+    local default_claude=$(get_current_agent_enabled "claude" "y")
+    local default_agy=$(get_current_agent_enabled "agy" "y")
+    # If legacy \"gemini\" is in old config.yml, use that for agy's default!
+    if [ -f "$INSTALL_DIR/config.yml" ] && grep -q "gemini:" "$INSTALL_DIR/config.yml"; then
+        default_agy=$(get_current_agent_enabled "gemini" "y")
+    fi
+    local default_codex=$(get_current_agent_enabled "codex" "y")
+    local current_default_agent=$(get_current_default_agent "claude")
+    if [ "$current_default_agent" = "gemini" ]; then
+        current_default_agent="agy"
+    fi
+
+    local claude_enabled=false
+    local agy_enabled=false
+    local codex_enabled=false
+
+    if confirm "Do you want to use Anthropic Claude Code?" "$default_claude"; then
+        claude_enabled=true
+        install_claude_code
+    fi
+
+    if confirm "Do you want to use Google Gemini/Antigravity?" "$default_agy"; then
+        agy_enabled=true
+        print_info "Installing Google Gemini/Antigravity (agy)..."
+        # Download and install agy safely without pipefail issues under set -e
+        local install_ok=0
+        curl -fsSL https://antigravity.google/install.sh > /tmp/agy_install.sh 2>> "$LOG_FILE" || install_ok=1
+        if [ $install_ok -eq 0 ]; then
+            bash /tmp/agy_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
+        fi
+
+        if [ $install_ok -eq 0 ]; then
+            print_success "Antigravity CLI (agy) installed"
+        else
+            print_warning "Failed to run agy installation script automatically. Make sure 'agy' is installed and in your PATH."
+        fi
+    fi
+
+    if confirm "Do you want to use OpenAI Codex?" "$default_codex"; then
+        codex_enabled=true
+    fi
+
+    # Determine default agent
+    local default_agent="claude"
+    local enabled_count=0
+    local enabled_list=()
+    [ "$claude_enabled" = true ] && { enabled_list+=("claude"); ((enabled_count++)); } || true
+    [ "$agy_enabled" = true ] && { enabled_list+=("agy"); ((enabled_count++)); } || true
+    [ "$codex_enabled" = true ] && { enabled_list+=("codex"); ((enabled_count++)); } || true
+
+    if [ $enabled_count -eq 0 ]; then
+        print_warning "No agents selected. Enabling Claude by default."
+        claude_enabled=true
+        default_agent="claude"
+    elif [ $enabled_count -eq 1 ]; then
+        default_agent="${enabled_list[0]}"
+    else
+        # More than one agent chosen, ask which one to have as default
+        # Present current default if it is in the enabled list, otherwise default to first enabled
+        local default_selection="$current_default_agent"
+        if [[ ! " ${enabled_list[*]} " =~ " ${default_selection} " ]]; then
+            default_selection="${enabled_list[0]}"
+        fi
+
+        if [ "$NON_INTERACTIVE" = true ]; then
+            default_agent="$default_selection"
+        else
+            while true; do
+                read -p "Which agent should be the default? ($(echo "${enabled_list[*]}" | sed 's/ /\//g')) [$default_selection]: " response || true
+                response="${response:-$default_selection}"
+                response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+                if [[ " ${enabled_list[*]} " =~ " ${response} " ]]; then
+                    default_agent="$response"
+                    break
+                fi
+                echo "Invalid selection. Please choose from: ${enabled_list[*]}"
+                if [ ! -t 0 ]; then
+                    default_agent="$default_selection"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    print_info "Updating config.yml agents settings..."
+    # Python code to update config.yml
+    "$PYTHON_CMD" -c "
+from pathlib import Path
+import sys
+
+def update_agents(path_str, claude_on, agy_on, codex_on, default_name):
+    path = Path(path_str)
+    if not path.exists():
+        return
+    content = path.read_text()
+    
+    # We rename 'gemini:' to 'agy:' if present to fully purge gemini references
+    content = content.replace('gemini:', 'agy:')
+    
+    lines = content.splitlines()
+    in_agents = False
+    current_agent = None
+    default_idx = None
+    
+    states = {
+        'claude': claude_on == 'true',
+        'agy': agy_on == 'true',
+        'codex': codex_on == 'true'
+    }
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('agents:'):
+            in_agents = True
+            continue
+        if in_agents:
+            if line and not line.startswith(' ') and not line.startswith('\t'):
+                in_agents = False
+                continue
+            if stripped.startswith('default:'):
+                default_idx = i
+                continue
+            if stripped.endswith(':') and not stripped.startswith('enabled:'):
+                name = stripped[:-1].strip()
+                current_agent = name if name in states else None
+                continue
+            if current_agent and stripped.startswith('enabled:'):
+                indent = len(line) - len(stripped)
+                val = 'true' if states[current_agent] else 'false'
+                lines[i] = ' ' * indent + f'enabled: {val}'
+                
+    if default_idx is not None:
+        indent = len(lines[default_idx]) - len(lines[default_idx].lstrip())
+        lines[default_idx] = ' ' * indent + f'default: {default_name}'
+        
+    path.write_text('\n'.join(lines) + '\n')
+
+update_agents('$INSTALL_DIR/config.yml', '$claude_enabled', '$agy_enabled', '$codex_enabled', '$default_agent')
+"
+    print_success "config.yml agents updated successfully (default: $default_agent)"
+}
+
 # Confirm action
 confirm() {
     local prompt_text="$1"
@@ -117,7 +338,7 @@ confirm() {
     fi
 
     local response
-    read -p "$prompt_text (y/n) [$default]: " response
+    read -p "$prompt_text (y/n) [$default]: " response || true
     response="${response:-$default}"
     [[ "$response" =~ ^[Yy]$ ]]
 }
@@ -285,9 +506,6 @@ install_system_deps() {
         # glow (for pretty markdown rendering in TUI)
         install_glow
     fi
-
-    # Claude Code
-    install_claude_code
 }
 
 # Install glow (markdown renderer)
@@ -528,6 +746,7 @@ main() {
 
     install_system_deps
     install_python_deps
+    setup_agents_interactive
     provision_logs
     install_global_cli
     ensure_teleclaude_yaml

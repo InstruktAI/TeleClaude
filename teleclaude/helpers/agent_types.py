@@ -14,6 +14,8 @@ class AgentName(str, Enum):
     def from_str(cls, value: str) -> "AgentName":
         """Parse a case-insensitive agent name into an enum member."""
         normalized = value.strip().lower()
+        if normalized == "agy":
+            return cls.GEMINI
         for member in cls:
             if member.value == normalized:
                 return member

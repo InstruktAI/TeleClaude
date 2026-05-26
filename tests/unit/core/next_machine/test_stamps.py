@@ -21,6 +21,12 @@ _SNIPPET_DIGEST = "snippet-digest"
 _DEPENDENCY = DependencyEntry(dep_slug="dep", roadmap_status="active")
 
 
+@pytest.fixture(autouse=True)
+def mock_git_provenance():
+    with patch("teleclaude.core.next_machine.provenance.get_origin_main_sha", return_value="mocked-sha"):
+        yield
+
+
 async def _make_db(tmp_path: Path) -> TodosDb:
     database = TodosDb(str(tmp_path / ".teleclaude" / "todos.db"))
     await database.initialize()

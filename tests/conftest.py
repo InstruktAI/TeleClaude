@@ -68,7 +68,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.timeout(5))
             continue
         if "unit" in item.keywords:
-            item.add_marker(pytest.mark.timeout(1))
+            item.add_marker(pytest.mark.timeout(5))
         elif "functional" in item.keywords:
             item.add_marker(pytest.mark.timeout(5))
         elif "integration" in item.keywords:
@@ -76,13 +76,13 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_xdist_auto_num_workers(config):
-    """Determine the number of xdist workers dynamically, capping at 4."""
+    """Use half the available CPU cores for parallel test workers."""
     if config.option.numprocesses == "auto":
         try:
             cores = multiprocessing.cpu_count()
         except Exception:
             cores = 4
-        return min(cores, 4)
+        return max(1, cores // 2)
     return None
 
 

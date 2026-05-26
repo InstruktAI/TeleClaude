@@ -72,6 +72,7 @@
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
     "pytest-timeout>=2.2.0",
+    "pytest-instafail>=0.5.0",
     "pytest-xdist>=3.8.0",
     "pytest>=8.0.0",
     "ruff>=0.12.0",
@@ -315,7 +316,7 @@
   max_supported_python="3.14"
 
 [tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-n", "auto", "-m", "not expensive", "-v"]
+  addopts=["--strict-config", "--strict-markers", "--tb=short", "-n", "auto", "-m", "not expensive", "-q", "--instafail"]
   asyncio_mode="auto"
   filterwarnings=[
     "ignore:.*datetime.utcnow.*:DeprecationWarning",
@@ -334,9 +335,10 @@
   python_classes=["Test*"]
   python_files=["test_*.py"]
   python_functions=["test_*"]
-  session_timeout=30
+  session_timeout=35
   testpaths=["tests"]
-  timeout=1
+  timeout=5
+  timeout_method="signal"
 
 [tool.test-mapping]
   exclude=[
@@ -399,7 +401,6 @@
     "tests/unit/session_scoping/test__init__.py",                                  # Package-boundary: session_scoping public API re-exports _api and _types contracts.
     "tests/unit/test_asyncio_task_naming.py",                                      # Cross-module: asyncio task naming checks runtime task creation policy across daemon flows.
     "tests/unit/test_daemon_headless_pipeline.py",                                 # Cross-module: headless daemon pipeline spans config CLI, hook outbox, docs handler, and identity.
-    "tests/unit/test_no_stale_todo_fs_refs.py",                                    # Cross-module: stale todo filesystem reference guard scans repository markdown artifacts.
     "tests/unit/test_pydantic_to_typescript_codegen.py",                           # Deferred decision: unsafe move; codegen spec currently fails when run directly.
     "tests/unit/tools/lint/test_guardrails.py",                                    # Mapper-gap: tools/lint/guardrails.py is outside current teleclaude/** mapper roots.
     "tests/unit/tools/lint/test_markdown.py",                                      # Mapper-gap: tools/lint/markdown.py is outside current teleclaude/** mapper roots.

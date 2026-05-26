@@ -79,6 +79,7 @@ class TestDiscoverTranscripts:
         os.utime(latest, (200, 200))
         _set_protocol_root(monkeypatch, AgentName.CLAUDE, claude_root, "*/*.jsonl")
         _set_protocol_root(monkeypatch, AgentName.GEMINI, tmp_path / "missing-gemini", "*/chats/*.json")
+        monkeypatch.setenv("TELECLAUDE_LEGACY_GEMINI_ROOT", str(tmp_path / "missing-legacy"))
 
         candidates = transcript_discovery.discover_transcripts([AgentName.CLAUDE, AgentName.GEMINI])
 
@@ -89,20 +90,17 @@ class TestDiscoverTranscripts:
 
 
 class TestAgentSpecificMetadata:
-    @pytest.mark.parametrize(
-        ("agent", "path", "session_id", "project"),
-        [
-            (AgentName.CLAUDE, Path("/tmp/workspace-demo/session-123.jsonl"), "session-123", "demo"),
-            (AgentName.GEMINI, Path("/tmp/run/chats/session-456.json"), "456", "gemini"),
-            (AgentName.CODEX, Path("/tmp/2025/02/abc123_rollout.jsonl"), "abc123", "codex"),
-        ],
-    )
-    def test_extract_session_id_and_project_follow_agent_rules(
-        self,
-        agent: AgentName,
-        path: Path,
-        session_id: str,
-        project: str,
-    ) -> None:
-        assert transcript_discovery.extract_session_id(path, agent) == session_id
-        assert transcript_discovery.extract_project(path, agent) == project
+    def test_claude_extraction_rules(self) -> None:
+        path = Path("/tmp/workspace-demo/session-123.jsonl")
+        assert transcript_discovery.extract_session_id(path, AgentName.CLAUDE) == "session-123"
+        assert transcript_discovery.extract_project(path, AgentName.CLAUDE) == "demo"
+
+    def test_gemini_extraction_rules(self) -> None:
+        path = Path("/tmp/run/chats/session-456.json")
+        assert transcript_discovery.extract_session_id(path, AgentName.GEMINI) == "456"
+        assert transcript_discovery.extract_project(path, AgentName.GEMINI) == "gemini"
+
+    def test_codex_extraction_rules(self) -> None:
+        path = Path("/tmp/2025/02/abc123_rollout.jsonl")
+        assert transcript_discovery.extract_session_id(path, AgentName.CODEX) == "abc123"
+        assert transcript_discovery.extract_project(path, AgentName.CODEX) == "codex"

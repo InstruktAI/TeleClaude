@@ -6,6 +6,12 @@
 @docs/third-party/a2a-protocol/task-lifecycle.md
 @docs/third-party/a2ui/overview.md
 @docs/third-party/ag-ui/overview.md
+@docs/third-party/antigravity-cli/commands.md
+@docs/third-party/antigravity-cli/hooks.md
+@docs/third-party/antigravity-cli/permissions.md
+@docs/third-party/antigravity-cli/policy-engine.md
+@docs/third-party/antigravity-cli/skills.md
+@docs/third-party/antigravity-cli/sub-agents.md
 @docs/third-party/art-of-hosting/chaordic-design.md
 @docs/third-party/art-of-hosting/harvesting.md
 @docs/third-party/art-of-hosting/methods.md
@@ -33,6 +39,10 @@
 @docs/third-party/image-generation/gemini-nano-banana.md
 @docs/third-party/image-generation/landscape.md
 @docs/third-party/json-schema-to-typescript/overview.md
+@docs/third-party/opencode/cli.md
+@docs/third-party/opencode/configuration.md
+@docs/third-party/opencode/plugins.md
+@docs/third-party/opencode/sessions.md
 @docs/third-party/playwright/config.md
 @docs/third-party/playwright/install.md
 @docs/third-party/playwright/selectors-and-assertions.md

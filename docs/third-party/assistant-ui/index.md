@@ -100,7 +100,7 @@ If the BFF replays transcript `tool_use` / `tool_result` blocks directly into th
   - `integration.md` (end-to-end integration contract)
   - `thread-mapping.md` (assistant-ui thread <-> TeleClaude session mapping)
   - `streaming.md` (WS/SSE bridge details)
-- `todos/person-identity-auth*/` updated to include web metadata injection at boundary.
+- `/todos/person-identity-auth` updated to include web metadata injection at boundary.
 
 ## Sources
 

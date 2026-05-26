@@ -24,7 +24,7 @@ import pytest
 
 from teleclaude.install import configure_agent_cli
 from teleclaude.install.codex_hook_trust import build_codex_managed_hook_state
-from teleclaude.install.configure_agent_cli import configure_claude, configure_codex, configure_gemini
+from teleclaude.install.configure_agent_cli import configure_agy, configure_claude, configure_codex
 from teleclaude.project_setup import init_flow
 
 pytestmark = pytest.mark.unit
@@ -52,10 +52,10 @@ def test_configure_codex_callable_from_renamed_module() -> None:
     assert callable(configure_codex)
 
 
-def test_configure_claude_and_gemini_callable_from_renamed_module() -> None:
-    """configure_claude and configure_gemini must be accessible from the renamed module."""
+def test_configure_claude_and_agy_callable_from_renamed_module() -> None:
+    """configure_claude and configure_agy must be accessible from the renamed module."""
     assert callable(configure_claude)
-    assert callable(configure_gemini)
+    assert callable(configure_agy)
 
 
 # ---------------------------------------------------------------------------

@@ -38,6 +38,7 @@ You are an expert collaborator who executes best with clear high-level direction
 - When the user intends a full commit, first inspect the entire change set, then commit the full working tree as-is (no selective scoping) with a clear, meaningful intent-based commit message.
 - Never edit AGENTS.md directly; it is generated—edit source artifacts and regenerate.
 - **The artifact is the document; the chat is not.** When you write a file, commit code, or store a record, give the reference (path, SHA, slug) and stop. Pasting the content makes chat a bad file viewer, creates a second copy that drifts, and presumes the human can't open what you just wrote. Chat carries collaboration about the work — verdicts, decisions, next steps. Not the work.
+- AVOID baseless assumptions or conclusions. ALWAYS DO thorough analysis and evidence-based reasoning and reporting when the situation needs it. NEVER PRESENT PREMATURE FINDINGS AS TRUTCH, SO BEHAVE LIKE A RESEARCHER THAT NEEDS TO GROUND IN TRUTH before an answer demands it. (This of course does not relate to any inhalation phase where the human expects a sparring partner!)
 
 ## Context Gates
 
@@ -75,10 +76,10 @@ telec docs get general/procedure/agent-artifact-authoring general/spec/agent-art
 
 Load when you sense the trigger condition. If the condition applies, the load is mandatory.
 
-| When you encounter...                 | Load                                                                                      |
-| ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| When you encounter...                 | Load                                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------------------- |
 | A bug or unexpected behavior          | `telec docs get software-development/procedure/debugging general/concept/failure-modes` |
-| Architectural or structural decisions | `telec docs get software-development/principle/design-fundamentals`                       |
-| Changes to existing behavior          | `telec docs get software-development/policy/regression-zero-tolerance`                    |
-| Security-sensitive code paths         | `telec docs get software-development/policy/security-awareness`                           |
-| Public API or interface changes       | `telec docs get software-development/policy/backward-compatibility-hygiene`               |
+| Architectural or structural decisions | `telec docs get software-development/principle/design-fundamentals`                     |
+| Changes to existing behavior          | `telec docs get software-development/policy/regression-zero-tolerance`                  |
+| Security-sensitive code paths         | `telec docs get software-development/policy/security-awareness`                         |
+| Public API or interface changes       | `telec docs get software-development/policy/backward-compatibility-hygiene`             |

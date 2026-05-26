@@ -80,11 +80,14 @@ else
   errors=$((errors + 1))
 fi
 
-# Gemini: file-based auth
-if [[ -f "$HOME/.gemini/oauth_creds.json" ]]; then
-  echo "  Gemini: OK ($HOME/.gemini/oauth_creds.json exists)"
+# Antigravity (agy): Keychain or legacy auth
+# Rationale: Antigravity CLI securely persists credentials in the macOS Keychain generic password keyring under Antigravity-specific service names, falling back to legacy plaintext JSON tokens if present.
+if security find-generic-password -s "Antigravity CLI-credentials" -w ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || \
+   security find-generic-password -s "Antigravity-credentials" -w ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || \
+   [[ -f "$HOME/.gemini/oauth_creds.json" ]]; then
+  echo "  Antigravity (agy): OK (Credential readable)"
 else
-  echo "  Gemini: MISSING — run 'gemini auth login'"
+  echo "  Antigravity (agy): MISSING — run 'agy auth login' from a GUI terminal session"
   errors=$((errors + 1))
 fi
 

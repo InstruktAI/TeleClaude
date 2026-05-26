@@ -1,5 +1,5 @@
 experiments:
   - name: threaded_output
-    agents: [gemini]
+    agents: [agy]
   - name: threaded_output
     adapters: [discord]

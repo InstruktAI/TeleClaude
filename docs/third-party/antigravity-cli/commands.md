@@ -1,0 +1,57 @@
+---
+description: Antigravity CLI (agy) Commands and Flags
+id: third-party/antigravity-cli/commands
+scope: project
+type: third-party
+---
+
+# Antigravity CLI (agy) Commands and Flags
+
+## Overview
+
+`agy` is the official Go-based terminal agent harness for Google's Antigravity 2.0 platform. Unlike the legacy Node-based Gemini CLI, the Go implementation uses modern, simplified CLI flags and stores session configurations in the system keyring.
+
+## Command-Line Usage
+
+```
+Usage of agy:
+  --add-dir                       Add a directory to the workspace (repeatable) (default [])
+  -c                              Short alias for --continue
+  --continue                      Continue the most recent conversation
+  --conversation                  Resume a previous conversation by ID
+  --dangerously-skip-permissions  Auto-approve all tool permission requests without prompting
+  -i                              Short alias for --prompt-interactive
+  --log-file                      Override CLI log file path
+  -p                              Short alias for --print
+  --print                         Run a single prompt non-interactively and print the response
+  --print-timeout                 Timeout for print mode wait (default 5m0s)
+  --prompt                        Alias for --print
+  --prompt-interactive            Run an initial prompt interactively and continue the session
+  --sandbox                       Run in a sandbox with terminal restrictions enabled
+```
+
+## Security Profiles and Permissions
+
+- **Auto-Approval**: To auto-approve tool permission requests without interactive prompts, use the `--dangerously-skip-permissions` flag (replaces legacy `--approval-mode=yolo`).
+- **Sandbox Mode**: Use the `--sandbox` flag along with `--add-dir <path>` to run in a restricted terminal environment.
+
+## Session Resumption
+
+- **Resume specific session**: Use `--conversation <session_id>` (replaces legacy `--resume <session_id>`).
+- **Continue latest session**: Use `--continue` or `-c` (replaces legacy `--resume latest` or `--continue`).
+
+## Model Selection
+
+- **Note**: The Go-based `agy` CLI does not accept model flags (e.g. `-m` or `--model`) directly via the command line. Model tiering and configurations are loaded via global settings files under `~/.gemini/antigravity-cli/settings.json` or managed dynamically in the TUI configuration adapter.
+
+## Custom command locations
+
+| Custom Commands   | Antigravity CLI Location (`agy`)      |
+| :---------------- | :------------------------------------ |
+| **User Global**   | `~/.gemini/antigravity-cli/commands/` |
+| **Project Local** | `.agents/commands/`                   |
+
+## Sources
+
+- https://antigravity.google/docs/gcli-migration
+- https://dev.to/google/antigravity-cli-2-0

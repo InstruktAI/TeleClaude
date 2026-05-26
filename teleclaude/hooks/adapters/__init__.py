@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+from teleclaude.hooks.adapters.agy import AgyAdapter
 from teleclaude.hooks.adapters.base import HookAdapter
 from teleclaude.hooks.adapters.claude import ClaudeAdapter
 from teleclaude.hooks.adapters.codex import CodexAdapter
-from teleclaude.hooks.adapters.gemini import GeminiAdapter
 
 __all__ = [
+    "AgyAdapter",
     "ClaudeAdapter",
     "CodexAdapter",
-    "GeminiAdapter",
     "get_adapter",
 ]
 
 _ADAPTERS: dict[str, HookAdapter] = {
     "claude": ClaudeAdapter(),
-    "gemini": GeminiAdapter(),
+    "agy": AgyAdapter(),
+    "gemini": AgyAdapter(),
     "codex": CodexAdapter(),
 }
 

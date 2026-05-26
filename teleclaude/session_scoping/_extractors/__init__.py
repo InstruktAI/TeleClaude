@@ -23,6 +23,6 @@ def resolve_extractor(agent_name: str) -> ExtractorFunction:
         return collect_codex_paths
     if normalized == "claude":
         return collect_claude_paths
-    if normalized == "gemini":
+    if normalized in ("gemini", "agy"):
         return collect_gemini_paths
     raise ValueError(f"Unknown agent '{agent_name}'")

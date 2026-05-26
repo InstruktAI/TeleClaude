@@ -56,7 +56,7 @@ async def send_keys(
         text: Text to send
         session_id: TeleClaude session ID (used for env var + TMPDIR injection on tmux recreation)
         working_dir: Working directory if creating new session (default: ~)
-        active_agent: Active agent name (e.g., "gemini") for agent-specific escaping
+        active_agent: Active agent name (e.g., "agy") for agent-specific escaping
 
     Returns:
         bool: True if command sent successfully, False on failure
@@ -178,7 +178,7 @@ async def _send_keys_tmux(
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
-    # Gemini CLI can't handle '!' character - escape it
+    # Antigravity CLI can't handle '!' character - escape it
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
@@ -276,7 +276,7 @@ async def _send_keys_tmux(
 
     # Submit via a DISCRETE send-keys C-m. paste-buffer -p emitted DECSET 2004
     # markers (\x1b[200~ ... \x1b[201~) around the content. All three agent
-    # CLIs (codex, claude code, gemini) enable bracketed-paste mode at startup
+    # CLIs (codex, claude code, agy) enable bracketed-paste mode at startup
     # and atomically buffer everything between the markers as a single 'paste'
     # event. The next Enter KeyEvent is unambiguously discrete → submit.
     #

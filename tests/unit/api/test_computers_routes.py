@@ -104,7 +104,6 @@ class TestComputersRoutes:
                             name="raspi",
                             user="pi",
                             host="raspi.local",
-                            bot_username="raspi_bot",
                         )
                     ],
                 ),
@@ -130,7 +129,7 @@ class TestComputersRoutes:
                 "host": "raspi.local",
                 "is_local": False,
                 "tmux_binary": None,
-                "bot_username": "raspi_bot",
+                "bot_username": None,
             },
         ]
 

@@ -9,16 +9,16 @@ import sys
 from pathlib import Path
 
 _MACOS_TMUX_BINARY = Path.home() / "Applications" / "TmuxLauncher.app" / "Contents" / "MacOS" / "tmux-launcher"
-_MACOS_AGENT_BINARIES: dict[str, Path] = {
+_MACOS_AGENT_BINARIES: dict[str, Path | str] = {
     "claude": Path.home() / "Applications" / "ClaudeLauncher.app" / "Contents" / "MacOS" / "claude-launcher",
-    "gemini": Path.home() / "Applications" / "GeminiLauncher.app" / "Contents" / "MacOS" / "gemini-launcher",
+    "gemini": "agy",
     "codex": Path.home() / "Applications" / "CodexLauncher.app" / "Contents" / "MacOS" / "codex-launcher",
 }
 
 _UNIX_TMUX_BINARY = "tmux"
 _UNIX_AGENT_BINARIES: dict[str, str] = {
     "claude": "claude",
-    "gemini": "gemini",
+    "gemini": "agy",
     "codex": "codex",
 }
 
@@ -44,5 +44,6 @@ def resolve_agent_binary(agent: str) -> str:
     if key not in _UNIX_AGENT_BINARIES:
         raise ValueError(f"Unknown agent '{agent}'")
     if _is_macos():
-        return str(_MACOS_AGENT_BINARIES[key])
+        val = _MACOS_AGENT_BINARIES[key]
+        return str(val) if isinstance(val, Path) else val
     return _UNIX_AGENT_BINARIES[key]

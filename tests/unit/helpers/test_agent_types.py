@@ -13,6 +13,7 @@ def test_agent_name_choices_match_declared_enum_order() -> None:
 
 def test_agent_name_from_str_normalizes_whitespace_and_case() -> None:
     assert AgentName.from_str("  GeMiNi  ") is AgentName.GEMINI
+    assert AgentName.from_str("  AgY  ") is AgentName.GEMINI
 
 
 def test_agent_name_members_compare_as_strings() -> None:

@@ -44,8 +44,28 @@
           0,
         ),
         tuple(
+          'dir',
+          '.gemini/antigravity-cli',
+          0,
+        ),
+        tuple(
           'file',
-          '.gemini/settings.json',
+          '.gemini/antigravity-cli/mcp_config.json',
+          'file',
+        ),
+        tuple(
+          'file',
+          '.gemini/antigravity-cli/settings.json',
+          'file',
+        ),
+        tuple(
+          'dir',
+          '.gemini/config',
+          0,
+        ),
+        tuple(
+          'file',
+          '.gemini/config/hooks.json',
           'file',
         ),
         tuple(
@@ -205,8 +225,28 @@
           0,
         ),
         tuple(
+          'dir',
+          '.gemini/antigravity-cli',
+          0,
+        ),
+        tuple(
           'file',
-          '.gemini/settings.json',
+          '.gemini/antigravity-cli/mcp_config.json',
+          'file',
+        ),
+        tuple(
+          'file',
+          '.gemini/antigravity-cli/settings.json',
+          'file',
+        ),
+        tuple(
+          'dir',
+          '.gemini/config',
+          0,
+        ),
+        tuple(
+          'file',
+          '.gemini/config/hooks.json',
           'file',
         ),
         tuple(

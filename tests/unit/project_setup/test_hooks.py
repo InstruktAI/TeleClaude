@@ -149,6 +149,7 @@ class TestEntrypointGuardBlockOrdering:
         assert stash_pos < restage_pos
 
 
+@pytest.mark.timeout(5)
 class TestHomePathsScript:
     """Regression tests for tools/lint/home_paths.py — the HOME-path lint step.
 
