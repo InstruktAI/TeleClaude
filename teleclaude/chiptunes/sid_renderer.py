@@ -88,6 +88,17 @@ class SIDRenderer:
 
         return array.array("h", samples).tobytes()
 
+    def apply_writes(self, writes: list[tuple[int, int]]) -> None:
+        """Apply register writes to the SID without producing output.
+
+        Used to replay init-time setup (master volume, filter, voice config)
+        into the chip state before playback begins, so tunes that configure
+        these only at init are not rendered silent.
+        """
+        for reg, val in writes:
+            if 0 <= reg < len(_REGISTER_MAP):
+                self._sid.write_register(_REGISTER_MAP[reg], val)
+
     def reset(self) -> None:
         """Reset the SID chip state."""
         self._sid.reset()  # type: ignore[no-untyped-call]

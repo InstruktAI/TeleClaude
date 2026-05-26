@@ -80,9 +80,11 @@ class _FakeDriver:
         self.play_calls = 0
         self.frame_rate_calls: list[bool] = []
         self.frame_rate_value = 50.0
+        self.init_writes: list[tuple[int, int]] = [(24, 15)]
 
-    def init_tune(self, subtune: int) -> None:
+    def init_tune(self, subtune: int) -> list[tuple[int, int]]:
         self.init_calls.append(subtune)
+        return self.init_writes
 
     def frame_rate(self, pal: bool) -> float:
         self.frame_rate_calls.append(pal)
@@ -99,10 +101,14 @@ class _FakeRenderer:
         self.pal = pal
         self.volume = volume
         self.frames: list[tuple[list[tuple[int, int]], float]] = []
+        self.applied_writes: list[tuple[int, int]] = []
 
     def render_frame(self, writes: list[tuple[int, int]], frame_duration_s: float) -> bytes:
         self.frames.append((writes, frame_duration_s))
         return b"\x01\x02"
+
+    def apply_writes(self, writes: list[tuple[int, int]]) -> None:
+        self.applied_writes.extend(writes)
 
 
 def _header(*, flags: int = 0, speed: int = 0, start_song: int = 1) -> SIDHeader:
@@ -227,6 +233,52 @@ class TestChiptunesPlayer:
         assert player.playback_position_seconds == pytest.approx(1.0 / 50.0)
         assert player.track_end_reason == "emulation_error"
         assert reasons == ["emulation_error"]
+
+    def test_emulation_loop_applies_init_writes_to_renderer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Init-time register writes (e.g. master volume) must reach the renderer."""
+
+        class _SingleFrameDriver(_FakeDriver):
+            def play_frame(self) -> list[tuple[int, int]]:
+                self.play_calls += 1
+                raise RuntimeError("track ended")
+
+        driver = _SingleFrameDriver(_header(flags=4))
+        driver.init_writes = [(24, 15), (4, 0x11)]  # $D418 master volume + voice1 control
+        renderer = _FakeRenderer(sample_rate=48000, pal=True, volume=1.0)
+        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
+        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
+        player = player_module.ChiptunesPlayer()
+        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
+
+        player._emulation_loop(_header(flags=4))
+
+        assert renderer.applied_writes == [(24, 15), (4, 0x11)]
+
+    def test_emulation_loop_zero_duration_does_not_fade(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A 0.0 duration means 'no listed length' and must not instantly fade the track."""
+        frames_rendered = 0
+
+        class _CountingDriver(_FakeDriver):
+            def play_frame(self) -> list[tuple[int, int]]:
+                nonlocal frames_rendered
+                self.play_calls += 1
+                frames_rendered += 1
+                if self.play_calls > 5:
+                    raise RuntimeError("stop")
+                return [(0, self.play_calls)]
+
+        driver = _CountingDriver(_header(flags=4))
+        renderer = _FakeRenderer(sample_rate=48000, pal=True, volume=1.0)
+        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
+        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
+        player = player_module.ChiptunesPlayer()
+        applied_fades: list[bytes] = []
+        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: applied_fades.append(pcm) or True)
+
+        player._emulation_loop(_header(flags=4), max_duration=0.0)
+
+        # Track ran multiple frames at full volume; it was not cut at t=0.
+        assert frames_rendered > 1
 
     def test_emulation_loop_uses_driver_frame_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         class _SingleFrameDriver(_FakeDriver):

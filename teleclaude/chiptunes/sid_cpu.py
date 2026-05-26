@@ -92,15 +92,21 @@ class SIDDriver:
         self._cpu = _CPU(self._mmu)
         self._cia_timer_period = 0
 
-    def init_tune(self, subtune: int = 0) -> None:
-        """Execute the SID init routine for a subtune (0-based)."""
+    def init_tune(self, subtune: int = 0) -> list[tuple[int, int]]:
+        """Execute the SID init routine for a subtune (0-based).
+
+        Returns the SID register writes made during init. These establish
+        chip state — master volume ($D418), filter, and voice setup — that
+        some tunes write only once at init. The caller must apply them to the
+        renderer; dropping them leaves the chip silent after the opening
+        envelope decays.
+        """
         self._cpu.r.a = subtune
         self._cpu.r.x = 0
         self._cpu.r.y = 0
         self._run_to_return(self._header.init_address)
         self._cia_timer_period = self._mmu.cia_timer_period()
-        # Discard any SID writes during init (they're part of setup, not audio)
-        self._mmu.flush_writes()
+        return self._mmu.flush_writes()
 
     def play_frame(self) -> list[tuple[int, int]]:
         """Execute one SID play frame and return captured register writes."""

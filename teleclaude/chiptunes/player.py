@@ -417,7 +417,10 @@ class ChiptunesPlayer:
                 pal=pal,
                 volume=self._volume,
             )
-            driver.init_tune(subtune)
+            # Init-time writes set master volume / filter / voice state that some
+            # tunes configure only once; replay them into the renderer so they
+            # are not rendered silent after the opening envelope decays.
+            renderer.apply_writes(driver.init_tune(subtune))
             frame_rate = driver.frame_rate(pal)
             frame_duration = 1.0 / frame_rate
             logger.debug("ChipTunes: emulation started (subtune=%d, pal=%s, frame_rate=%.3f)", subtune, pal, frame_rate)
@@ -455,7 +458,7 @@ class ChiptunesPlayer:
                         break
                     writes = driver.play_frame()
                     pcm = renderer.render_frame(writes, frame_duration)
-                    if max_duration is not None:
+                    if max_duration:  # 0.0 / None both mean "no listed duration" — never auto-fade
                         fade_start = max_duration  # fade AFTER the listed duration, not before
                         if playback_elapsed >= fade_start:
                             factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
