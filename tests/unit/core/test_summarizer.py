@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import json
+import re
 from types import SimpleNamespace, TracebackType
 from unittest.mock import AsyncMock
 
 import pytest
+
+from teleclaude.config import SummarizerConfig, SummarizerLocalConfig
 
 # _build_*_prompt and _parse_* helpers: pure functions tested directly because
 # the public async functions (generate_session_title, summarize_agent_output)
 # require a live LLM API call with API keys. Testing helpers pins the prompt
 # structure and parsing contracts without infrastructure.
 from teleclaude.core.summarizer import (
-    SUMMARY_MODEL_ANTHROPIC,
-    SUMMARY_MODEL_OPENAI,
+    _DEFAULT_MODELS,
     SUMMARY_SCHEMA,
     TITLE_SCHEMA,
     _build_agent_output_summary_prompt,
@@ -26,26 +28,24 @@ from teleclaude.core.summarizer import (
     summarize_agent_output,
 )
 
+_EXPECTED_PROVIDERS = {"openai", "anthropic", "google"}
+_CLOUD_PRIORITY = ["openai", "anthropic", "google"]
 
-class TestSummaryConstants:
-    @pytest.mark.unit
-    def test_anthropic_model_is_string(self):
-        assert SUMMARY_MODEL_ANTHROPIC == "claude-haiku-4-5-20251001"
 
-    @pytest.mark.unit
-    def test_openai_model_is_string(self):
-        assert isinstance(SUMMARY_MODEL_OPENAI, str)
-        assert len(SUMMARY_MODEL_OPENAI) > 0
+def _pin_summarizer(monkeypatch: pytest.MonkeyPatch, summ: SummarizerConfig) -> None:
+    """Pin the global summarizer config so dispatch tests are deterministic."""
+    monkeypatch.setattr("teleclaude.core.summarizer.config.summarizer", summ)
 
+
+class TestSummarizerModels:
     @pytest.mark.unit
-    def test_title_schema_has_required_fields(self):
-        assert "title" in TITLE_SCHEMA["properties"]  # type: ignore[operator]
-        assert "title" in TITLE_SCHEMA["required"]  # type: ignore[operator]
+    def test_covers_three_cloud_providers(self):
+        assert set(_DEFAULT_MODELS) == _EXPECTED_PROVIDERS
 
     @pytest.mark.unit
-    def test_summary_schema_has_required_fields(self):
-        assert "summary" in SUMMARY_SCHEMA["properties"]  # type: ignore[operator]
-        assert "summary" in SUMMARY_SCHEMA["required"]  # type: ignore[operator]
+    def test_default_models_are_dateless_aliases(self):
+        # No 8-digit date suffix (e.g. 20251001) so defaults track the latest.
+        assert all(model and not re.search(r"20\d{6}", model) for model in _DEFAULT_MODELS.values())
 
 
 class TestBuildSessionTitlePrompt:
@@ -130,81 +130,125 @@ class TestSummarizeAgentOutput:
             await summarize_agent_output("   ")
 
 
-class TestCallSummarizerLifecycle:
+class _FakeAnthropicClient:
+    instances: list[_FakeAnthropicClient] = []
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.closed = False
+        self.beta = SimpleNamespace(
+            messages=SimpleNamespace(
+                create=AsyncMock(return_value=SimpleNamespace(content=[SimpleNamespace(text='{"title":"ok"}')]))
+            )
+        )
+        _FakeAnthropicClient.instances.append(self)
+
+    async def __aenter__(self) -> _FakeAnthropicClient:
+        return self
+
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:
+        self.closed = True
+
+
+class _FakeOpenAIClient:
+    instances: list[_FakeOpenAIClient] = []
+
+    def __init__(self, api_key: str, base_url: str | None = None):
+        self.api_key = api_key
+        self.base_url = base_url
+        self.closed = False
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(
+                create=AsyncMock(
+                    return_value=SimpleNamespace(
+                        choices=[SimpleNamespace(message=SimpleNamespace(content='{"summary":"done"}'))]
+                    )
+                )
+            )
+        )
+        _FakeOpenAIClient.instances.append(self)
+
+    async def __aenter__(self) -> _FakeOpenAIClient:
+        return self
+
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:
+        self.closed = True
+
+
+class TestCallSummarizerDispatch:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_anthropic_client_is_closed_after_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        class FakeAnthropicClient:
-            instances: list[FakeAnthropicClient] = []
-
-            def __init__(self, api_key: str):
-                self.api_key = api_key
-                self.closed = False
-                self.beta = SimpleNamespace(
-                    messages=SimpleNamespace(
-                        create=AsyncMock(return_value=SimpleNamespace(content=[SimpleNamespace(text='{"title":"ok"}')]))
-                    )
-                )
-                FakeAnthropicClient.instances.append(self)
-
-            async def __aenter__(self) -> FakeAnthropicClient:
-                return self
-
-            async def __aexit__(
-                self,
-                exc_type: type[BaseException] | None,
-                exc: BaseException | None,
-                tb: TracebackType | None,
-            ) -> None:
-                self.closed = True
-
+        _FakeAnthropicClient.instances = []
+        _pin_summarizer(monkeypatch, SummarizerConfig(provider_priority=_CLOUD_PRIORITY))
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.setattr("teleclaude.core.summarizer.AsyncAnthropic", FakeAnthropicClient)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.setattr("teleclaude.core.summarizer.AsyncAnthropic", _FakeAnthropicClient)
 
         result = await _call_summarizer("prompt", TITLE_SCHEMA, _parse_title_response)
 
         assert result == "ok"
-        assert len(FakeAnthropicClient.instances) == 1
-        assert FakeAnthropicClient.instances[0].closed is True
+        assert len(_FakeAnthropicClient.instances) == 1
+        assert _FakeAnthropicClient.instances[0].closed is True
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_openai_client_is_closed_after_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        class FakeOpenAIClient:
-            instances: list[FakeOpenAIClient] = []
-
-            def __init__(self, api_key: str):
-                self.api_key = api_key
-                self.closed = False
-                self.chat = SimpleNamespace(
-                    completions=SimpleNamespace(
-                        create=AsyncMock(
-                            return_value=SimpleNamespace(
-                                choices=[SimpleNamespace(message=SimpleNamespace(content='{"summary":"done"}'))]
-                            )
-                        )
-                    )
-                )
-                FakeOpenAIClient.instances.append(self)
-
-            async def __aenter__(self) -> FakeOpenAIClient:
-                return self
-
-            async def __aexit__(
-                self,
-                exc_type: type[BaseException] | None,
-                exc: BaseException | None,
-                tb: TracebackType | None,
-            ) -> None:
-                self.closed = True
-
+        _FakeOpenAIClient.instances = []
+        _pin_summarizer(monkeypatch, SummarizerConfig(provider_priority=_CLOUD_PRIORITY))
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        monkeypatch.setattr("teleclaude.core.summarizer.AsyncOpenAI", FakeOpenAIClient)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.setattr("teleclaude.core.summarizer.AsyncOpenAI", _FakeOpenAIClient)
 
         result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
 
         assert result == "done"
-        assert len(FakeOpenAIClient.instances) == 1
-        assert FakeOpenAIClient.instances[0].closed is True
+        assert len(_FakeOpenAIClient.instances) == 1
+        assert _FakeOpenAIClient.instances[0].closed is True
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_missing_keys_are_skipped_to_reach_google(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeOpenAIClient.instances = []
+        _pin_summarizer(monkeypatch, SummarizerConfig(provider_priority=_CLOUD_PRIORITY))
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+        monkeypatch.setattr("teleclaude.core.summarizer.AsyncOpenAI", _FakeOpenAIClient)
+
+        result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
+
+        assert result == "done"
+        # Google routes through the OpenAI-compatible client with Gemini's base_url.
+        assert _FakeOpenAIClient.instances[0].base_url is not None
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_enabled_local_provider_is_tried_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeOpenAIClient.instances = []
+        local = SummarizerLocalConfig(enabled=True, base_url="http://localhost:1234/v1", model="local-model")
+        _pin_summarizer(monkeypatch, SummarizerConfig(local=local, provider_priority=_CLOUD_PRIORITY))
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")  # would win if local were skipped
+        monkeypatch.setattr("teleclaude.core.summarizer.AsyncOpenAI", _FakeOpenAIClient)
+
+        result = await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)
+
+        assert result == "done"
+        assert _FakeOpenAIClient.instances[0].base_url == "http://localhost:1234/v1"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_no_keys_and_no_local_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _pin_summarizer(monkeypatch, SummarizerConfig(provider_priority=_CLOUD_PRIORITY))
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError):
+            await _call_summarizer("prompt", SUMMARY_SCHEMA, _parse_summary_response)

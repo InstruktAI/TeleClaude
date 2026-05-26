@@ -9,8 +9,14 @@ from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 
-SUMMARY_MODEL_ANTHROPIC = "claude-haiku-4-5-20251001"
-SUMMARY_MODEL_OPENAI = "gpt-5-nano-2025-08-07"
+from teleclaude.config import config
+
+# Dateless model aliases so summaries track each provider's latest without config churn.
+_DEFAULT_MODELS = {"openai": "gpt-5-nano", "anthropic": "claude-haiku-4-5", "google": "gemini-2.5-flash"}
+# Gemini's OpenAI-compatible endpoint lets the google provider reuse the openai client.
+_GOOGLE_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+# Local OpenAI-compatible servers (LM Studio) ignore the key but the SDK requires one.
+_LOCAL_API_KEY_FALLBACK = "lm-studio"
 TITLE_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON schema definition
     "type": "object",
     "properties": {
@@ -78,66 +84,120 @@ async def summarize_agent_output(agent_output: str) -> tuple[str | None, str]:
     return None, summary
 
 
+async def _summarize_via_openai_compatible(
+    prompt: str,
+    schema: dict[str, object],  # guard: loose-dict - JSON schema shape is dynamic.
+    parser: Callable[[str], Any],
+    *,
+    base_url: str | None,
+    api_key: str,
+    model: str,
+) -> Any:
+    """Call any OpenAI-compatible chat-completions endpoint (cloud OpenAI, LM Studio, Gemini)."""
+    response_format: ResponseFormatJSONSchema = {
+        "type": "json_schema",
+        "json_schema": {"name": "summary", "schema": schema, "strict": True},
+    }
+    async with AsyncOpenAI(api_key=api_key, base_url=base_url) as client:
+        response = await client.chat.completions.create(
+            model=model,
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}],
+            response_format=response_format,
+        )
+        text = cast(Any, response).choices[0].message.content or ""
+    return parser(text)
+
+
+async def _summarize_via_anthropic(
+    prompt: str,
+    schema: dict[str, object],  # guard: loose-dict - JSON schema shape is dynamic.
+    parser: Callable[[str], Any],
+    *,
+    api_key: str,
+    model: str,
+) -> Any:
+    """Call Anthropic's structured-output messages API."""
+    async with AsyncAnthropic(api_key=api_key) as client:
+        response = await client.beta.messages.create(
+            model=model,
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}],
+            betas=["structured-outputs-2025-11-13"],
+            output_format={
+                "type": "json_schema",
+                "schema": {
+                    "type": schema["type"],
+                    "properties": schema["properties"],
+                    "required": schema["required"],
+                    "additionalProperties": schema["additionalProperties"],
+                },
+            },
+        )
+        text = response.content[0].text  # type: ignore[union-attr]
+    return parser(text)
+
+
+def _provider_api_key(provider: str) -> str | None:
+    return {
+        "anthropic": os.getenv("ANTHROPIC_API_KEY"),
+        "openai": os.getenv("OPENAI_API_KEY"),
+        "google": os.getenv("GOOGLE_API_KEY"),
+    }.get(provider)
+
+
+def _summarizer_model(provider: str) -> str:
+    configured = config.summarizer.models.get(provider) if config.summarizer else None
+    return configured or _DEFAULT_MODELS[provider]
+
+
 async def _call_summarizer(
     prompt: str,
     schema: dict[str, object],  # guard: loose-dict - JSON schema shape is dynamic.
     parser: Callable[[str], Any],
 ) -> Any:
-    """Call the summarizer API with the given prompt."""
+    """Summarize via the configured providers in order, skipping ones without a key.
 
+    The local OpenAI-compatible provider (e.g. LM Studio) is tried first when
+    enabled; then each cloud provider in ``provider_priority`` is tried, silently
+    skipped when its API key is absent.
+    """
+    summ = config.summarizer
     errors: list[str] = []
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if api_key:
+    if summ and summ.local.enabled and summ.local.base_url and summ.local.model:
         try:
-            async with AsyncAnthropic(api_key=api_key) as anthropic_client:
-                response = await anthropic_client.beta.messages.create(
-                    model=SUMMARY_MODEL_ANTHROPIC,
-                    max_tokens=200,
-                    messages=[{"role": "user", "content": prompt}],
-                    betas=["structured-outputs-2025-11-13"],
-                    output_format={
-                        "type": "json_schema",
-                        "schema": {
-                            "type": schema["type"],
-                            "properties": schema["properties"],
-                            "required": schema["required"],
-                            "additionalProperties": schema["additionalProperties"],
-                        },
-                    },
-                )
-                text = response.content[0].text  # type: ignore[union-attr]
-            return parser(text)
+            return await _summarize_via_openai_compatible(
+                prompt,
+                schema,
+                parser,
+                base_url=summ.local.base_url,
+                api_key=os.getenv("SUMMARIZER_LOCAL_API_KEY", _LOCAL_API_KEY_FALLBACK),
+                model=summ.local.model,
+            )
         except Exception as e:
-            errors.append(f"Anthropic: {e}")
+            errors.append(f"local: {e}")
 
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
+    priority = summ.provider_priority if (summ and summ.provider_priority) else ["openai", "anthropic", "google"]
+    for provider in priority:
+        api_key = _provider_api_key(provider)
+        if not api_key:
+            continue  # silent skip — provider not configured
         try:
-            async with AsyncOpenAI(api_key=openai_key) as openai_client:
-                response_format: ResponseFormatJSONSchema = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "summary",
-                        "schema": schema,
-                        "strict": True,
-                    },
-                }
-                oai_response = await openai_client.chat.completions.create(
-                    model=SUMMARY_MODEL_OPENAI,
-                    max_tokens=200,
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format=response_format,
+            if provider == "anthropic":
+                return await _summarize_via_anthropic(
+                    prompt, schema, parser, api_key=api_key, model=_summarizer_model("anthropic")
                 )
-                response_any = cast(Any, oai_response)
-                text = response_any.choices[0].message.content or ""
-            return parser(text)
+            base_url = _GOOGLE_OPENAI_BASE_URL if provider == "google" else None
+            return await _summarize_via_openai_compatible(
+                prompt, schema, parser, base_url=base_url, api_key=api_key, model=_summarizer_model(provider)
+            )
         except Exception as e:
-            errors.append(f"OpenAI: {e}")
+            errors.append(f"{provider}: {e}")
 
     if errors:
         raise RuntimeError(f"All summarizers failed: {'; '.join(errors)}")
-    raise RuntimeError("No summarizer available (missing API key)")
+    raise RuntimeError("No summarizer available (no provider key found)")
 
 
 async def _call_title_summarizer(prompt: str) -> str | None:

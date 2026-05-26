@@ -108,7 +108,7 @@ tts:
       voices:
         - name: narrator
           params:
-            temperature: 0.1
+            temperature: 0.0
             speed: 0.9
         - name: reporter
           params:
@@ -242,3 +242,23 @@ tts:
     pyttsx3:
       enabled: true
       voices: []
+
+# Summary & session-title generation. Providers are tried in order: the local
+# (OpenAI-compatible, e.g. LM Studio) provider first when enabled, then the
+# cloud providers in `provider_priority` — each skipped silently when its API
+# key is absent. Model ids use dateless aliases so they track the latest.
+summarizer:
+  local:
+    enabled: false
+    base_url: ${SUMMARIZER_LOCAL_BASE_URL} # OpenAI-compatible endpoint, e.g. http://localhost:1234/v1
+    model: '' # the model id loaded in your local server (e.g. an instruct model)
+  provider_priority:
+    - openai
+    - anthropic
+    - google
+  openai:
+    model: gpt-5-nano
+  anthropic:
+    model: claude-haiku-4-5
+  google:
+    model: gemini-2.5-flash

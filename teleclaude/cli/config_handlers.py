@@ -113,6 +113,18 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "OpenAI API key (summarizer fallback, Whisper STT, TTS)",
             "sk-proj-...",
         ),
+        EnvVarInfo(
+            "GOOGLE_API_KEY",
+            "ai",
+            "Google Gemini API key (summarizer fallback)",
+            "AIza...",
+        ),
+        EnvVarInfo(
+            "SUMMARIZER_LOCAL_BASE_URL",
+            "ai",
+            "Local OpenAI-compatible summarizer endpoint (e.g. LM Studio)",
+            "http://localhost:1234/v1",
+        ),
     ],
     "voice": [
         EnvVarInfo(

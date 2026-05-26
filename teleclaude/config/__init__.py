@@ -17,6 +17,9 @@ from dotenv import load_dotenv
 from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
 from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
+from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
+from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLocalConfig
+from teleclaude.config._summarizer import parse_summarizer_config as _parse_summarizer_config
 from teleclaude.constants import (
     AGENT_PROTOCOL,
     DIRECTORY_CHECK_INTERVAL,
@@ -362,6 +365,7 @@ class Config:
     tts: TTSConfig | None = None
     stt: STTConfig | None = None
     chiptunes: ChiptunesConfig | None = None
+    summarizer: SummarizerConfig | None = None
     experiments: list[ExperimentConfig] = field(default_factory=list)
     remote_computers: list[RemoteComputerConfig] = field(default_factory=list)
 
@@ -724,6 +728,7 @@ def _build_config(
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
     chiptunes_raw = raw.get("chiptunes", None)
+    summarizer_raw = raw.get("summarizer", None)
     experiments_raw = raw.get("experiments", [])
     agents_raw = dict(_require_agents_section(raw))
 
@@ -933,6 +938,7 @@ def _build_config(
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
+        summarizer=_parse_summarizer_config(summarizer_raw),  # type: ignore[arg-type]
         experiments=experiments,
         remote_computers=remote_computers,
     )
