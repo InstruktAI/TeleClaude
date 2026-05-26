@@ -26,7 +26,10 @@ from teleclaude.cli.tui.views._config_constants import (
     _SUBTABS,
     AdaptersConfig,
     AdapterSectionProjection,
+    BackupAdapterConfig,
     DiscordAdapterConfig,
+    EmailAdapterConfig,
+    FirecrawlAdapterConfig,
     Subtab,
     TelegramAdapterConfig,
     TtsSttConfig,
@@ -381,6 +384,24 @@ class ConfigContent(
                     template_name=whatsapp_data.get("template_name", ""),
                     template_language=whatsapp_data.get("template_language", "en_US"),
                 ),
+                # Email/Backup/Firecrawl are .env-only providers; the ${VAR} values
+                # resolve to their env values for display and save back to .env.
+                email=EmailAdapterConfig(
+                    email_from="${EMAIL_FROM}",
+                    email_replyto="${EMAIL_REPLYTO}",
+                    smtp_username="${SMTP_USERNAME}",
+                    smtp_key="${SMTP_KEY}",
+                    smtp_relay="${SMTP_RELAY}",
+                ),
+                backup=BackupAdapterConfig(
+                    aws_access_key_id="${AWS_ACCESS_KEY_ID}",
+                    aws_secret_access_key="${AWS_SECRET_ACCESS_KEY}",
+                    aws_s3_host="${AWS_S3_HOST}",
+                    aws_s3_region="${AWS_S3_REGION}",
+                    aws_s3_bucket="${AWS_S3_BUCKET}",
+                    backup_prefix="${TELECLAUDE_BACKUP_PREFIX}",
+                ),
+                firecrawl=FirecrawlAdapterConfig(api_key="${FIRECRAWL_API_KEY}"),
             )
             return reflect_schema(adapters_obj, section="Adapters")
 

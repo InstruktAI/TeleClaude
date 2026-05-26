@@ -20,7 +20,7 @@ class Subtab(StrEnum):
 
     COMPUTER = "Computer"
     PEOPLE = "People"
-    ADAPTERS = "Adapters"
+    ADAPTERS = "Providers"
     TTS_STT = "TTS/STT"
     ENV = "Env"
 
@@ -71,12 +71,42 @@ class WhatsAppAdapterConfig(BaseModel):
     template_language: str = Field(default="en_US")
 
 
+class EmailAdapterConfig(BaseModel):
+    """Email via SMTP relay (e.g. Brevo). All values are .env secrets/settings."""
+
+    email_from: str = Field(default="")
+    email_replyto: str = Field(default="")
+    smtp_username: str = Field(default="")
+    smtp_key: str = Field(default="")
+    smtp_relay: str = Field(default="")
+
+
+class BackupAdapterConfig(BaseModel):
+    """S3 backup target. Credentials are .env secrets."""
+
+    aws_access_key_id: str = Field(default="")
+    aws_secret_access_key: str = Field(default="")
+    aws_s3_host: str = Field(default="")
+    aws_s3_region: str = Field(default="")
+    aws_s3_bucket: str = Field(default="")
+    backup_prefix: str = Field(default="")
+
+
+class FirecrawlAdapterConfig(BaseModel):
+    """Firecrawl web-scraping provider."""
+
+    api_key: str = Field(default="")
+
+
 class AdaptersConfig(BaseModel):
-    """Unified configuration for platform adapters."""
+    """Unified configuration for platform providers."""
 
     discord: DiscordAdapterConfig = Field(default_factory=DiscordAdapterConfig)
     telegram: TelegramAdapterConfig = Field(default_factory=TelegramAdapterConfig)
     whatsapp: WhatsAppAdapterConfig = Field(default_factory=WhatsAppAdapterConfig)
+    email: EmailAdapterConfig = Field(default_factory=EmailAdapterConfig)
+    backup: BackupAdapterConfig = Field(default_factory=BackupAdapterConfig)
+    firecrawl: FirecrawlAdapterConfig = Field(default_factory=FirecrawlAdapterConfig)
 
 
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")
