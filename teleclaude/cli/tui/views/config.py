@@ -323,11 +323,26 @@ class ConfigContent(
         self._editing_person_field: str | None = None
         self._raw_config: dict[str, Any] = {}  # guard: loose-dict - raw config.yml tree
         self._list_element_idx: int = 0
+        self._reflected_cache: dict[Subtab, list[ReflectedField]] = {}
 
     @property
     def reflected_fields(self) -> list[ReflectedField]:
-        """Dynamically build the list of reflected fields for the active subtab."""
+        """Reflected fields for the active subtab, cached until the config reloads.
+
+        Reflection rebuilds typed objects and resolves type hints — too costly to
+        recompute on every render and keystroke, so results are memoized per subtab
+        and invalidated by refresh_data when the underlying config changes.
+        """
         tab = _SUBTABS[self.active_subtab]
+        cached = self._reflected_cache.get(tab)
+        if cached is not None:
+            return cached
+        fields = self._build_reflected_fields(tab)
+        self._reflected_cache[tab] = fields
+        return fields
+
+    def _build_reflected_fields(self, tab: Subtab) -> list[ReflectedField]:
+        """Construct the reflected fields for a subtab from the current raw config."""
         if tab == Subtab.COMPUTER:
             computer_data = self._raw_config.get("computer", {})
             computer_obj = ComputerConfig(
@@ -436,6 +451,7 @@ class ConfigContent(
 
     def refresh_data(self) -> None:
         """Reload env vars, people, derived projections, and config.yml from disk."""
+        self._reflected_cache.clear()
         try:
             self._raw_config = _load_raw_config(_resolve_config_path())  # type: ignore[assignment]
         except Exception as exc:
