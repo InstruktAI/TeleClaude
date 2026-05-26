@@ -607,7 +607,7 @@ class TestRustTestRunner:
         targets = runner.resolve_targets()
         runner.run(targets=targets)
 
-        assert pytest_calls == [[PYTHON_TEST, "-m", "not expensive", "-q"]]
+        assert pytest_calls == [[PYTHON_TEST, "-m", "not expensive"]]
         assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW, "--lib"], tmp_path)]
 
     def test_rust_only_scope_does_not_exit_when_no_python_companions(
