@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING, get_origin
+from typing import TYPE_CHECKING, Any, get_origin
 
 from teleclaude.cli.config_handlers import (
     EnvVarStatus,
@@ -18,8 +18,11 @@ from teleclaude.cli.tui.views._config_constants import (
     _GUIDED_STEPS,
     _SUBTABS,
     _VALID_ROLES,
+    Subtab,
     get_allowed_values_for_field,
 )
+from teleclaude.cli.tui.views._project_actions import _resolve_config_path, _write_raw_config
+from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
 from teleclaude.config.schema import PersonEntry
 
 if TYPE_CHECKING:
@@ -42,7 +45,16 @@ class ConfigContentEditingMixin:
         if self.is_editing:  # type: ignore[attr-defined]
             return
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab == "people":
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            fields = self.reflected_fields  # type: ignore[attr-defined]
+            if not fields:
+                return
+            next_cursor = max(0, min(self._current_cursor() + delta, len(fields) - 1))  # type: ignore[attr-defined]
+            self._set_current_cursor(next_cursor)  # type: ignore[attr-defined]
+            self._list_element_idx = 0  # type: ignore[attr-defined]
+            self.refresh(layout=True)  # type: ignore[attr-defined]
+            return
+        if tab == Subtab.PEOPLE:
             if self._expanded_person is not None:  # type: ignore[attr-defined]
                 self._person_field_cursor = max(  # type: ignore[attr-defined]
                     0,
@@ -76,7 +88,20 @@ class ConfigContentEditingMixin:
             return
 
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab == "people":
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            fields = self.reflected_fields  # type: ignore[attr-defined]
+            if fields:
+                cursor = self._current_cursor()  # type: ignore[attr-defined]
+                f = fields[max(0, min(cursor, len(fields) - 1))]
+                if f.field_type is bool:
+                    self._save_reflected_field(f.key, not f.value)
+                elif f.choices:
+                    self.cycle_enum_field(1)
+                else:
+                    self._begin_edit(f)
+            return
+
+        if tab == Subtab.PEOPLE:
             if self._expanded_person is None:  # type: ignore[attr-defined]
                 if self._people_data:  # type: ignore[attr-defined]
                     cursor = self._current_cursor()  # type: ignore[attr-defined]
@@ -105,11 +130,20 @@ class ConfigContentEditingMixin:
         if selected is not None:
             self._begin_edit(selected)
 
-    def _begin_edit(self, status: EnvVarStatus) -> None:
-        """Enter env-var editing mode for the provided status row."""
-        self._editing_var_name = status.info.name  # type: ignore[attr-defined]
-        self._edit_buffer = os.environ.get(status.info.name, "")  # type: ignore[attr-defined]
-        self._status_message = f"Editing {status.info.name}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
+    def _begin_edit(self, field_or_status: Any) -> None:
+        """Enter editing mode for reflected fields or env vars."""
+        if isinstance(field_or_status, ReflectedField):
+            self._editing_var_name = field_or_status.key  # type: ignore[attr-defined]
+            val = field_or_status.value
+            if isinstance(val, list):
+                self._edit_buffer = ",".join(val)  # type: ignore[attr-defined]
+            else:
+                self._edit_buffer = str(val if val is not None else "")  # type: ignore[attr-defined]
+            self._status_message = f"Editing {field_or_status.name}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
+        else:
+            self._editing_var_name = field_or_status.info.name  # type: ignore[attr-defined]
+            self._edit_buffer = os.environ.get(field_or_status.info.name, "")  # type: ignore[attr-defined]
+            self._status_message = f"Editing {field_or_status.info.name}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
         self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
@@ -270,11 +304,16 @@ class ConfigContentEditingMixin:
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
     def save_edit(self) -> None:
-        """Persist the current env-var edit."""
+        """Persist the current env-var or reflected field edit."""
         if not self.is_editing:  # type: ignore[attr-defined]
             return
         var_name = self._editing_var_name  # type: ignore[attr-defined]
         if var_name is None:
+            return
+
+        tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            self._save_reflected_field(var_name, self._edit_buffer)  # type: ignore[attr-defined]
             return
 
         try:
@@ -290,6 +329,156 @@ class ConfigContentEditingMixin:
         self._status_message = f"Saved {var_name} to {target_path}"  # type: ignore[attr-defined]
         self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh_data()  # type: ignore[attr-defined]
+
+    @property
+    def is_on_enum_field(self) -> bool:
+        """Whether left/right acts on the current field (enum, list, or bool)."""
+        if self.is_editing:  # type: ignore[attr-defined]
+            return False
+        tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            fields = self.reflected_fields  # type: ignore[attr-defined]
+            if not fields:
+                return False
+            cursor = self._current_cursor()  # type: ignore[attr-defined]
+            f = fields[max(0, min(cursor, len(fields) - 1))]
+            return bool(f.choices) or f.field_type is bool or f.field_type in (list[str], list)
+        if tab == Subtab.PEOPLE and self._expanded_person is not None:  # type: ignore[attr-defined]
+            field = self.person_editable_fields[self._person_field_cursor]  # type: ignore[attr-defined]
+            return get_allowed_values_for_field(field) is not None
+        return False
+
+    def cycle_enum_field(self, direction: int) -> None:
+        """Cycle the active enum/list/bool field in the requested direction."""
+        tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            fields = self.reflected_fields  # type: ignore[attr-defined]
+            if fields:
+                cursor = self._current_cursor()  # type: ignore[attr-defined]
+                f = fields[max(0, min(cursor, len(fields) - 1))]
+
+                # Booleans toggle between True/False.
+                if f.field_type is bool:
+                    self._save_reflected_field(f.key, not f.value)
+                    return
+
+                # If it's a Literal/Enum
+                if f.choices:
+                    current_val = str(f.value)
+                    idx = f.choices.index(current_val) if current_val in f.choices else -1
+                    next_val = f.choices[(idx + direction) % len(f.choices)]
+                    self._save_reflected_field(f.key, next_val)
+                    return
+
+                # If it's a list/array
+                elif f.field_type in (list[str], list):
+                    items = f.value or []
+                    if items:
+                        self._list_element_idx = (self._list_element_idx + direction) % len(items)  # type: ignore[attr-defined]
+                        self.refresh(layout=True)  # type: ignore[attr-defined]
+                    return
+
+        # Fallback to Person enum cycle
+        person = next((p for p in self._people_data if p.name == self._expanded_person), None)  # type: ignore[attr-defined]
+        if person is not None:
+            field = self.person_editable_fields[self._person_field_cursor]  # type: ignore[attr-defined]
+            self._cycle_person_enum(person, field, direction)
+
+    def reorder_reflected_list(self, direction: int) -> None:
+        """Shift the focused list element left (-1) or right (1)."""
+        tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            fields = self.reflected_fields  # type: ignore[attr-defined]
+            if fields:
+                cursor = self._current_cursor()  # type: ignore[attr-defined]
+                f = fields[max(0, min(cursor, len(fields) - 1))]
+                if f.field_type in (list[str], list):
+                    items = list(f.value or [])
+                    if not items:
+                        return
+
+                    idx = self._list_element_idx  # type: ignore[attr-defined]
+                    new_idx = (idx + direction) % len(items)
+
+                    # Swap elements
+                    items[idx], items[new_idx] = items[new_idx], items[idx]
+                    self._list_element_idx = new_idx  # type: ignore[attr-defined]
+
+                    self._save_reflected_field(f.key, items)
+
+    def _save_reflected_field(self, key: str, raw_value: Any) -> None:
+        """Parse, validate, and write a reflected field value back to config.yml."""
+        fields = self.reflected_fields  # type: ignore[attr-defined]
+        f = next((field for field in fields if field.key == key), None)
+        if f is None:
+            return
+
+        try:
+            deserialized = deserialize_value(raw_value, f.field_type, f.choices)
+
+            # Map dynamic flat key path back to the self._raw_config nested tree
+            if key.startswith("computer."):
+                subkey = key.split(".", 1)[1]
+                if "computer" not in self._raw_config:  # type: ignore[attr-defined]
+                    self._raw_config["computer"] = {}  # type: ignore[attr-defined]
+                self._raw_config["computer"][subkey] = deserialized  # type: ignore[attr-defined]
+
+            elif key.startswith("telegram."):
+                subkey = key.split(".", 1)[1]
+                # The bot token is the TELEGRAM_BOT_TOKEN env secret, not a config.yml field.
+                if subkey == "bot_token":
+                    set_env_var("TELEGRAM_BOT_TOKEN", str(deserialized))
+                else:
+                    if "telegram" not in self._raw_config:  # type: ignore[attr-defined]
+                        self._raw_config["telegram"] = {}  # type: ignore[attr-defined]
+                    self._raw_config["telegram"][subkey] = deserialized  # type: ignore[attr-defined]
+
+            elif key.startswith("discord."):
+                subkey = key.split(".", 1)[1]
+                if "discord" not in self._raw_config:  # type: ignore[attr-defined]
+                    self._raw_config["discord"] = {}  # type: ignore[attr-defined]
+                self._raw_config["discord"][subkey] = deserialized  # type: ignore[attr-defined]
+
+            elif key.startswith("whatsapp."):
+                subkey = key.split(".", 1)[1]
+                if "whatsapp" not in self._raw_config:  # type: ignore[attr-defined]
+                    self._raw_config["whatsapp"] = {}  # type: ignore[attr-defined]
+                self._raw_config["whatsapp"][subkey] = deserialized  # type: ignore[attr-defined]
+
+            elif key == "stt_enabled":
+                if "stt" not in self._raw_config:  # type: ignore[attr-defined]
+                    self._raw_config["stt"] = {}  # type: ignore[attr-defined]
+                self._raw_config["stt"]["enabled"] = deserialized  # type: ignore[attr-defined]
+
+            elif key == "stt_service_priority":
+                if "stt" not in self._raw_config:  # type: ignore[attr-defined]
+                    self._raw_config["stt"] = {}  # type: ignore[attr-defined]
+                self._raw_config["stt"]["service_priority"] = deserialized  # type: ignore[attr-defined]
+
+            elif key == "tts_enabled":
+                if "tts" not in self._raw_config:  # type: ignore[attr-defined]
+                    self._raw_config["tts"] = {}  # type: ignore[attr-defined]
+                self._raw_config["tts"]["enabled"] = deserialized  # type: ignore[attr-defined]
+
+            elif key == "tts_service_priority":
+                if "tts" not in self._raw_config:  # type: ignore[attr-defined]
+                    self._raw_config["tts"] = {}  # type: ignore[attr-defined]
+                self._raw_config["tts"]["service_priority"] = deserialized  # type: ignore[attr-defined]
+
+            # Atomically write edits to config.yml
+            config_path = _resolve_config_path()
+            _write_raw_config(config_path, self._raw_config)  # type: ignore[attr-defined]
+
+            self._editing_var_name = None  # type: ignore[attr-defined]
+            self._edit_buffer = ""  # type: ignore[attr-defined]
+            self._status_message = f"Saved {f.name} successfully."  # type: ignore[attr-defined]
+            self._status_is_error = False  # type: ignore[attr-defined]
+            self.refresh_data()  # type: ignore[attr-defined]
+
+        except Exception as exc:
+            self._status_message = f"Failed to save {f.name}: {exc}"  # type: ignore[attr-defined]
+            self._status_is_error = True  # type: ignore[attr-defined]
+            self.refresh(layout=True)  # type: ignore[attr-defined]
 
     def cancel_edit(self) -> None:
         """Cancel the current env-var or person-field edit."""
@@ -351,7 +540,7 @@ class ConfigContentEditingMixin:
             self.active_adapter_tab = _ADAPTER_TABS.index(step.adapter_tab)  # type: ignore[attr-defined]
         self._clamp_current_cursor()  # type: ignore[attr-defined]
         # Auto-position cursor on the first unset var so guidance expands
-        if step.subtab in ("adapters", "environment"):
+        if step.subtab in (Subtab.ADAPTERS, Subtab.ENV):
             rows = self._selectable_env_rows()  # type: ignore[attr-defined]
             for idx, status in enumerate(rows):
                 if not status.is_set:
@@ -372,13 +561,13 @@ class ConfigContentEditingMixin:
     def _is_current_guided_step_complete(self) -> bool:
         """Return whether the active guided step is already complete."""
         step = _GUIDED_STEPS[self._guided_step_index]  # type: ignore[attr-defined]
-        if step.subtab == "adapters":
-            # Adapter steps are non-blocking; we store by contract, validation is feedback only.
+        if step.subtab in (Subtab.ADAPTERS, Subtab.COMPUTER, Subtab.TTS_STT):
+            # Non-blocking or immediately considered complete
             return True
-        if step.subtab == "people":
-            # People step is complete if we have at least one person with 'admin' role.
+        if step.subtab == Subtab.PEOPLE:
+            # People step is complete with at least one admin-role person.
             return any(p.role == "admin" for p in self._people_data)  # type: ignore[attr-defined]
-        if step.subtab == "environment":
+        if step.subtab == Subtab.ENV:
             return bool(self._env_data) and all(  # type: ignore[attr-defined]
                 status.is_set for status in self._env_data
             )

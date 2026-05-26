@@ -19,6 +19,26 @@ def _write_lines(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _assert_user_then_assistant(
+    entries: list[Mapping[str, object]],
+    *,
+    user_text: str,
+    user_timestamp: str,
+    assistant_block_types: list[str],
+) -> list[Mapping[str, object]]:
+    """Assert the normalized user-then-assistant shape; return the assistant blocks."""
+    assert entries[0] == {
+        "type": "user",
+        "timestamp": user_timestamp,
+        "message": {"role": "user", "content": [{"type": "input_text", "text": user_text}]},
+    }
+    assistant_message = cast(Mapping[str, object], entries[1]["message"])
+    assistant_content = cast(list[Mapping[str, object]], assistant_message["content"])
+    assert assistant_message["role"] == "assistant"
+    assert [block["type"] for block in assistant_content] == assistant_block_types
+    return assistant_content
+
+
 class TestJsonlIteration:
     def test_iter_jsonl_entries_skips_blank_and_invalid_lines(self, tmp_path: Path) -> None:
         transcript = tmp_path / "session.jsonl"
@@ -93,27 +113,50 @@ class TestAgentSpecificIterators:
 
         entries = list(transcript_iterators._iter_gemini_entries(transcript))
 
-        assert entries[0] == {
-            "type": "user",
-            "timestamp": "2024-01-01T00:00:00Z",
-            "message": {"role": "user", "content": [{"type": "input_text", "text": "Question"}]},
-        }
-        assistant_message = cast(Mapping[str, object], entries[1]["message"])
-        assistant_content = cast(list[Mapping[str, object]], assistant_message["content"])
-
-        assert assistant_message["role"] == "assistant"
-        assert [block["type"] for block in assistant_content] == [
-            "thinking",
-            "text",
-            "tool_use",
-            "tool_result",
-            "tool_use",
-            "tool_result",
-        ]
+        assistant_content = _assert_user_then_assistant(
+            entries,
+            user_text="Question",
+            user_timestamp="2024-01-01T00:00:00Z",
+            assistant_block_types=["thinking", "text", "tool_use", "tool_result", "tool_use", "tool_result"],
+        )
         assert assistant_content[3]["content"] == "Hit"
         assert assistant_content[5]["content"] == "Fallback"
         # The session-meta header, two `$set` mutation records, and the `info` record must be ignored.
         assert len(entries) == 2
+
+    def test_iter_gemini_entries_normalizes_agy_records(self, tmp_path: Path) -> None:
+        """Antigravity (agy) JSONL uses a `source`-tagged schema (USER_EXPLICIT /
+        MODEL / SYSTEM), wraps user text in <USER_REQUEST>, stamps `created_at`, and
+        carries tool calls under `tool_calls`. SYSTEM records are skipped.
+        """
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text(
+            "\n".join(
+                [
+                    '{"type":"USER_INPUT","source":"USER_EXPLICIT","created_at":"2026-05-26T10:00:00Z",'
+                    '"content":"<USER_REQUEST>\\ndo the thing\\n</USER_REQUEST>\\n<ADDITIONAL_METADATA>\\nnoise\\n</ADDITIONAL_METADATA>"}',
+                    '{"type":"CONVERSATION_HISTORY","source":"SYSTEM","created_at":"2026-05-26T10:00:01Z","content":null}',
+                    '{"type":"PLANNER_RESPONSE","source":"MODEL","created_at":"2026-05-26T10:00:02Z",'
+                    '"thinking":"reasoning","content":"On it.","tool_calls":[{"name":"view_file","args":{"AbsolutePath":"\\"/tmp/x\\""}}]}',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        entries = list(transcript_iterators._iter_gemini_entries(transcript))
+
+        assert len(entries) == 2
+        assistant_content = _assert_user_then_assistant(
+            entries,
+            user_text="do the thing",
+            user_timestamp="2026-05-26T10:00:00Z",
+            assistant_block_types=["thinking", "text", "tool_use"],
+        )
+        assert entries[1]["timestamp"] == "2026-05-26T10:00:02Z"
+        assert assistant_content[2]["name"] == "view_file"
+        # JSON-stringified arg values are unwrapped.
+        assert assistant_content[2]["input"] == {"AbsolutePath": "/tmp/x"}
 
     def test_iter_gemini_entries_normalizes_user_assistant_and_tool_results(self, tmp_path: Path) -> None:
         transcript = tmp_path / "gemini.json"

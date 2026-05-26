@@ -3,30 +3,108 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
+from types import UnionType
 from typing import Any, Literal, Union, get_args, get_origin
 
+from pydantic import BaseModel, Field
 from rich.style import Style
 
 from teleclaude.cli.config_handlers import EnvVarStatus
-from teleclaude.cli.tui.config_components.guidance import get_guidance_for_env
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 from teleclaude.config.schema import PersonEntry
 
-_SUBTABS = ("adapters", "people", "environment")
+
+class Subtab(StrEnum):
+    """Config-view subtab identifiers."""
+
+    COMPUTER = "Computer"
+    PEOPLE = "People"
+    ADAPTERS = "Adapters"
+    TTS_STT = "TTS/STT"
+    ENV = "Env"
+
+
+# Ordered tabs for index-based navigation (active_subtab).
+_SUBTABS = tuple(Subtab)
+
+
+class TtsSttConfig(BaseModel):
+    """Pydantic model for dynamic reflection of TTS/STT configurations."""
+
+    stt_enabled: bool = Field(default=True, description="Enable Speech-to-Text")
+    stt_service_priority: list[str] = Field(
+        default_factory=lambda: ["parakeet", "openai"],
+        description="Speech-to-Text engine priorities",
+    )
+    tts_enabled: bool = Field(default=False, description="Enable Text-to-Speech")
+    tts_service_priority: list[str] = Field(
+        default_factory=lambda: ["voxcpm", "kokoro", "qwen3", "openai", "elevenlabs", "macos", "pyttsx3"],
+        description="Text-to-Speech engine priorities",
+    )
+
+
+class TelegramAdapterConfig(BaseModel):
+    """Telegram admin adapter configuration. The token is the TELEGRAM_BOT_TOKEN env secret."""
+
+    enabled: bool = Field(default=False, description="Enable for customers and personal agents")
+    bot_token: str = Field(default="")
+
+
+class DiscordAdapterConfig(BaseModel):
+    """Discord admin adapter configuration."""
+
+    enabled: bool = Field(default=False, description="Enable for admins")
+    token: str = Field(default="")
+    guild_id: str = Field(default="")
+
+
+class WhatsAppAdapterConfig(BaseModel):
+    """WhatsApp business adapter configuration."""
+
+    enabled: bool = Field(default=False, description="Enable for customers and personal agents")
+    phone_number_id: str = Field(default="")
+    access_token: str = Field(default="")
+    webhook_secret: str = Field(default="")
+    verify_token: str = Field(default="")
+    template_name: str = Field(default="")
+    template_language: str = Field(default="en_US")
+
+
+class AdaptersConfig(BaseModel):
+    """Unified configuration for platform adapters."""
+
+    discord: DiscordAdapterConfig = Field(default_factory=DiscordAdapterConfig)
+    telegram: TelegramAdapterConfig = Field(default_factory=TelegramAdapterConfig)
+    whatsapp: WhatsAppAdapterConfig = Field(default_factory=WhatsAppAdapterConfig)
+
+
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")
 _VALID_ROLES = ("admin", "member", "contributor", "newcomer")
-_ADAPTER_TABS = ("telegram", "discord", "ai_keys", "whatsapp")
+
+
+class AdapterTab(StrEnum):
+    """Adapter sub-tab identifiers."""
+
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+    AI_KEYS = "ai_keys"
+    WHATSAPP = "whatsapp"
+
+
+# Ordered adapter tabs for index-based navigation (active_adapter_tab).
+_ADAPTER_TABS = tuple(AdapterTab)
 _ADAPTER_LABELS = {
-    "telegram": "Telegram",
-    "discord": "Discord",
-    "ai_keys": "AI + Voice",
-    "whatsapp": "WhatsApp",
+    AdapterTab.TELEGRAM: "Telegram",
+    AdapterTab.DISCORD: "Discord",
+    AdapterTab.AI_KEYS: "AI + Voice",
+    AdapterTab.WHATSAPP: "WhatsApp",
 }
 _ADAPTER_ENV_KEYS = {
-    "telegram": ("telegram",),
-    "discord": ("discord",),
-    "ai_keys": ("ai", "voice"),
-    "whatsapp": ("whatsapp",),
+    AdapterTab.TELEGRAM: ("telegram",),
+    AdapterTab.DISCORD: ("discord",),
+    AdapterTab.AI_KEYS: ("ai", "voice"),
+    AdapterTab.WHATSAPP: ("whatsapp",),
 }
 
 # Styles
@@ -53,7 +131,7 @@ AdapterStatus = Literal["configured", "partial", "unconfigured"]
 class AdapterSectionProjection:
     """Computed adapter section state for rendering and guided flow."""
 
-    key: str
+    key: AdapterTab
     label: str
     env_statuses: list[EnvVarStatus]
     status: AdapterStatus
@@ -65,18 +143,17 @@ class AdapterSectionProjection:
 class GuidedStep:
     """Deterministic guided mode step."""
 
-    subtab: str
+    subtab: Subtab
     title: str
     adapter_tab: str | None = None
 
 
 _GUIDED_STEPS: tuple[GuidedStep, ...] = (
-    GuidedStep(subtab="people", title="Admin Setup"),
-    GuidedStep(subtab="adapters", adapter_tab="telegram", title="Configure Telegram"),
-    GuidedStep(subtab="adapters", adapter_tab="discord", title="Configure Discord"),
-    GuidedStep(subtab="adapters", adapter_tab="ai_keys", title="Configure AI + Voice"),
-    GuidedStep(subtab="adapters", adapter_tab="whatsapp", title="Configure WhatsApp"),
-    GuidedStep(subtab="environment", title="Review Environment"),
+    GuidedStep(subtab=Subtab.COMPUTER, title="System Identity"),
+    GuidedStep(subtab=Subtab.PEOPLE, title="Admin Setup"),
+    GuidedStep(subtab=Subtab.ADAPTERS, title="Configure Adapters"),
+    GuidedStep(subtab=Subtab.TTS_STT, title="Configure TTS/STT"),
+    GuidedStep(subtab=Subtab.ENV, title="Review Environment"),
 )
 
 
@@ -112,25 +189,11 @@ def project_adapter_sections(env_data: list[EnvVarStatus]) -> list[AdapterSectio
     return sections
 
 
-def completion_summary(
-    adapter_sections: list[AdapterSectionProjection],
-    *,
-    has_people: bool,
-    environment_configured: bool,
-) -> tuple[int, int]:
-    """Return configured/total summary across adapter and core sections."""
-    configured = sum(1 for section in adapter_sections if section.status == "configured")
-    configured += int(has_people)
-    configured += int(environment_configured)
-    total = len(adapter_sections) + 2
-    return configured, total
-
-
 def get_allowed_values_for_field(field_name: str) -> list[str] | None:
     """Extract Literal allowed values from PersonEntry schema or Union annotations."""
 
     def unpack_union(t: Any) -> list[Any]:
-        if get_origin(t) in (Union, getattr(Union, "_UnionGenericAlias", None), getattr(Union, "UnionType", None)):
+        if get_origin(t) in (Union, UnionType):
             return list(get_args(t))
         return [t]
 
@@ -175,11 +238,11 @@ __all__ = [
     "_WARN",
     "AdapterSectionProjection",
     "AdapterStatus",
+    "AdapterTab",
     "GuidedStep",
+    "Subtab",
     "_normal_style",
     "classify_adapter_status",
-    "completion_summary",
     "get_allowed_values_for_field",
-    "get_guidance_for_env",
     "project_adapter_sections",
 ]

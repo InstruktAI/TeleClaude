@@ -352,15 +352,118 @@ def _build_gemini_assistant_blocks(
     return blocks
 
 
+# Antigravity CLI (agy) transcript records are tagged by an uppercase ``source``
+# enum rather than the legacy ``type: user|gemini`` discriminator.
+_AGY_SOURCES: frozenset[str] = frozenset({"USER_EXPLICIT", "MODEL", "SYSTEM"})
+_AGY_USER_REQUEST_RE = re.compile(r"<USER_REQUEST>(.*?)</USER_REQUEST>", re.DOTALL)
+
+
+def _extract_agy_user_request(content: object) -> str:
+    """Pull the user's text out of an agy USER_INPUT envelope.
+
+    agy wraps the prompt in ``<USER_REQUEST>...</USER_REQUEST>`` and appends
+    ``<ADDITIONAL_METADATA>`` / ``<USER_SETTINGS_CHANGE>`` blocks; only the
+    request body is the user's input.
+    """
+    if not isinstance(content, str):
+        return ""
+    match = _AGY_USER_REQUEST_RE.search(content)
+    text = match.group(1) if match else content
+    return text.strip()
+
+
+def _clean_agy_tool_args(args: JsonDict) -> JsonDict:
+    """Unwrap agy's JSON-stringified tool-arg values (e.g. ``'"\\"/path\\""'``)."""
+    cleaned: JsonDict = {}
+    for key, value in args.items():
+        if isinstance(value, str):
+            try:
+                cleaned[key] = json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                cleaned[key] = value
+        else:
+            cleaned[key] = value
+    return cleaned
+
+
+def _build_agy_assistant_blocks(message: JsonDict) -> list[JsonDict]:
+    """Build normalized assistant blocks from an agy MODEL-source record."""
+    blocks: list[JsonDict] = []
+
+    thinking = message.get("thinking")
+    if isinstance(thinking, str) and thinking.strip():
+        blocks.append({"type": "thinking", "thinking": thinking})
+
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        blocks.append({"type": "text", "text": content})
+
+    for tool_call in _coerce_dict_list(message.get("tool_calls")):
+        name = tool_call.get("name") or "tool"
+        args = tool_call.get("args")
+        input_payload = _clean_agy_tool_args(args) if isinstance(args, dict) else {}
+        blocks.append({"type": "tool_use", "name": name, "input": input_payload})
+
+    return blocks
+
+
+def _normalize_agy_entry(message: JsonDict) -> JsonDict | None:
+    """Normalize an agy transcript record into a transcript entry, or None to skip.
+
+    SYSTEM-source records (conversation history, system messages, checkpoints)
+    are not user/assistant turns and are skipped.
+    """
+    source = message.get("source")
+    timestamp = message.get("created_at")
+
+    if source == "USER_EXPLICIT":
+        text = _extract_agy_user_request(message.get("content"))
+        if not text:
+            return None
+        return cast(
+            JsonDict,
+            {
+                "type": "user",
+                "timestamp": timestamp,
+                "message": {"role": "user", "content": [{"type": "input_text", "text": text}]},
+            },
+        )
+
+    if source == "MODEL":
+        blocks = _build_agy_assistant_blocks(message)
+        if not blocks:
+            return None
+        return cast(
+            JsonDict,
+            {
+                "type": "assistant",
+                "timestamp": timestamp,
+                "message": {"role": "assistant", "content": blocks},
+            },
+        )
+
+    return None
+
+
 def _iter_gemini_entries(
     path: Path,
 ) -> Iterable[JsonDict]:
-    """Yield normalized entries from Gemini session files (JSONL or legacy JSON).
+    """Yield normalized entries from Gemini/agy session files.
+
+    Routes each record by schema: agy records carry an uppercase ``source``
+    discriminator (``USER_EXPLICIT``/``MODEL``/``SYSTEM``); legacy Gemini
+    records use ``type: user|gemini``.
 
     guard: allow-string-compare
     """
 
     for message in _iter_gemini_records(path):
+        if message.get("source") in _AGY_SOURCES:
+            entry = _normalize_agy_entry(message)
+            if entry is not None:
+                yield entry
+            continue
+
         msg_type = message.get("type")
 
         if msg_type == "user":

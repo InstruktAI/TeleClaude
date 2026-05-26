@@ -475,7 +475,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--agent",
         required=True,
-        choices=AgentName.choices(),
+        choices=(*AgentName.choices(), "agy"),
         help="Agent name for adapter selection",
     )
     parser.add_argument(
@@ -835,15 +835,16 @@ def _handle_user_prompt_submit(
     prompt_value = data.get("prompt")
     prompt_text = prompt_value if isinstance(prompt_value, str) else ""
     if not prompt_text.strip():
-        logger.warning(
-            "Dropped empty user_prompt_submit hook event",
+        logger.debug(
+            "Allowing empty user_prompt_submit hook event",
             agent=agent,
             session_id=session_id,
             native_session_id=(raw_native_session_id or ""),
             hook_event_name=str(data.get("hook_event_name") or ""),
             raw_event_type=event_type,
         )
-        return True
+        _reset_checkpoint_flags(session_id)
+        return False
     if _is_system_injected_user_prompt(agent, prompt_text):
         logger.debug(
             "Dropped system-injected user_prompt_submit",
@@ -853,6 +854,61 @@ def _handle_user_prompt_submit(
         return True
     _reset_checkpoint_flags(session_id)
     return False
+
+
+def _maybe_synthesize_session_start(
+    *,
+    adapter: object,
+    event_type: str,
+    session_id: str,
+    raw_native_session_id: str | None,
+    raw_native_log_file: str | None,
+    cwd: str | None,
+    context: _ReceiverOutboxContext,
+) -> None:
+    """Seed a synthetic session_start for CLIs that emit no native one.
+
+    Antigravity (agy) opens a conversation with PreInvocation, not SessionStart.
+    The daemon only creates/binds a session row on session_start, so the first
+    activity event of an unbound conversation enqueues a synthetic session_start
+    (ahead of the activity event) carrying the native id, transcript path, and
+    cwd. The session_start machinery (row creation, native binding, AGENT_READY,
+    context injection) then runs unchanged.
+    """
+    if not getattr(adapter, "synthesizes_session_start", False):
+        return
+    if event_type == AgentHookEvents.AGENT_SESSION_START or not raw_native_session_id:
+        return
+    # Already bound to a session row → a session_start has already been seeded.
+    if _find_session_id_by_native(raw_native_session_id) is not None:
+        return
+
+    synthetic: JsonDict = {
+        "session_id": raw_native_session_id,
+        "native_session_id": raw_native_session_id,
+        "agent_name": context.agent,
+        "received_at": datetime.now(UTC).isoformat(),
+        "synthetic_session_start": True,
+    }
+    if raw_native_log_file:
+        synthetic["transcript_path"] = raw_native_log_file
+        synthetic["native_log_file"] = raw_native_log_file
+    if cwd:
+        synthetic["cwd"] = cwd
+
+    logger.debug(
+        "Synthesizing session_start from first activity",
+        agent=context.agent,
+        session_id=session_id,
+        native_session_id=raw_native_session_id,
+        trigger_event=event_type,
+    )
+    enqueue_hook_event(
+        session_id,
+        AgentHookEvents.AGENT_SESSION_START,
+        synthetic,
+        outbox_db=context.outbox_db,
+    )
 
 
 def _maybe_emit_additional_context(
@@ -910,6 +966,7 @@ def _maybe_emit_checkpoint_response(
 def main() -> None:
     """Parse a hook event and enqueue it for daemon processing."""
     args = _parse_args()
+    args.agent = AgentName.from_str(args.agent).value
 
     logger.debug(
         "Hook receiver start",
@@ -983,6 +1040,16 @@ def main() -> None:
         data["native_session_id"] = raw_native_session_id
     if raw_native_log_file:
         data["native_log_file"] = raw_native_log_file
+
+    _maybe_synthesize_session_start(
+        adapter=adapter,
+        event_type=event_type,
+        session_id=teleclaude_session_id,
+        raw_native_session_id=raw_native_session_id,
+        raw_native_log_file=raw_native_log_file,
+        cwd=getattr(args, "cwd", None),
+        context=outbox_context,
+    )
 
     if raw_native_session_id or raw_native_log_file:
         try:

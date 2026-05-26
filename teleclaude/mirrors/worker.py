@@ -180,10 +180,21 @@ class MirrorWorker:
         return result
 
     def backfill_sync(self) -> ReconcileResult:
-        """Remove stale mirror rows and repopulate canonical rows from transcripts."""
+        """Remove stale mirror rows and repopulate canonical rows from transcripts.
+
+        Tombstones are cleared first: they cache "this transcript has no
+        conversation" keyed by file size/mtime, so a parser/format fix (e.g. new
+        agy transcript schema) cannot invalidate them on its own. A backfill is an
+        explicit "re-evaluate everything", so stale negatives must be forgotten.
+        """
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
+                try:
+                    conn.execute("DELETE FROM mirror_tombstones")
+                except sqlite3.OperationalError as exc:
+                    if "no such table" not in str(exc).lower():
+                        raise
                 rows = conn.execute("SELECT id, agent, source_identity, metadata FROM mirrors").fetchall()
                 delete_ids: list[int] = []
                 for row in rows:

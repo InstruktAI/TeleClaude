@@ -16,6 +16,7 @@ class ClaudeAdapter(HookAdapter):
     agent_name: str = "claude"
     mint_events: frozenset[AgentHookEventType] = frozenset({AgentHookEvents.AGENT_SESSION_START})
     supports_hook_checkpoint: bool = True
+    synthesizes_session_start: bool = False
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""

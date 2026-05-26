@@ -73,6 +73,9 @@ class HookAdapter(Protocol):
     agent_name: str
     mint_events: frozenset[AgentHookEventType]
     supports_hook_checkpoint: bool
+    # True when the CLI emits no native session-start hook, so TeleClaude must
+    # synthesize a session_start from the first activity event of a conversation.
+    synthesizes_session_start: bool
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Parse agent-specific input into (raw_input, raw_event_type, raw_data).

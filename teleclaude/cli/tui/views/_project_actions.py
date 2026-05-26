@@ -8,6 +8,8 @@ from typing import Protocol, TypedDict, cast
 
 import yaml
 
+from teleclaude.paths import TELECLAUDE_HOME
+
 
 class NewProjectResultLike(Protocol):
     """Duck-typed project modal result used by the view helpers."""
@@ -50,7 +52,7 @@ def _resolve_config_path() -> Path:
     env_path = os.getenv("TELECLAUDE_CONFIG_PATH")
     if env_path:
         return Path(env_path).expanduser().resolve()
-    return Path.cwd() / "config.yml"
+    return TELECLAUDE_HOME / "config.yml"
 
 
 def _load_raw_config(path: Path) -> RootConfigData:

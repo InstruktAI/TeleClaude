@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, get_origin
 
 from textual.app import ComposeResult
@@ -24,12 +25,20 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _SUBTABS,
+    AdaptersConfig,
     AdapterSectionProjection,
-    get_allowed_values_for_field,
+    DiscordAdapterConfig,
+    Subtab,
+    TelegramAdapterConfig,
+    TtsSttConfig,
+    WhatsAppAdapterConfig,
     project_adapter_sections,
 )
+from teleclaude.cli.tui.views._project_actions import _load_raw_config, _resolve_config_path
 from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
+from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema
+from teleclaude.config import ComputerConfig
 from teleclaude.config.schema import PersonEntry
 
 __all__ = ["ConfigContent", "ConfigView"]
@@ -149,9 +158,20 @@ class ConfigView(Widget, can_focus=True):
         self.active_adapter_tab = msg.idx
 
     def on_key(self, event: Key) -> None:
-        """Forward editing keystrokes to the content widget."""
+        """Forward editing keystrokes or list reordering keys to the content widget."""
         content = self._content_or_none()
-        if content is None or not content.is_editing:
+        if content is None:
+            return
+
+        if not content.is_editing:
+            if event.key == "left_square_bracket":
+                content.reorder_reflected_list(-1)
+                event.stop()
+                return
+            if event.key == "right_square_bracket":
+                content.reorder_reflected_list(1)
+                event.stop()
+                return
             return
 
         if event.key == "backspace":
@@ -301,6 +321,70 @@ class ConfigContent(
         self._expanded_person: str | None = None
         self._person_field_cursor: int = 0
         self._editing_person_field: str | None = None
+        self._raw_config: dict[str, Any] = {}  # guard: loose-dict - raw config.yml tree
+        self._list_element_idx: int = 0
+
+    @property
+    def reflected_fields(self) -> list[ReflectedField]:
+        """Dynamically build the list of reflected fields for the active subtab."""
+        tab = _SUBTABS[self.active_subtab]
+        if tab == Subtab.COMPUTER:
+            computer_data = self._raw_config.get("computer", {})
+            computer_obj = ComputerConfig(
+                name=computer_data.get("name", "Mac"),
+                user=computer_data.get("user", ""),
+                role=computer_data.get("role", "development"),
+                timezone=computer_data.get("timezone", "Europe/Amsterdam"),
+                default_working_dir=computer_data.get("default_working_dir", ""),
+                help_desk_dir=computer_data.get("help_desk_dir", ""),
+                is_master=computer_data.get("is_master", True),
+                trusted_dirs=[],
+                host=computer_data.get("host", None),
+            )
+            return reflect_schema(computer_obj, prefix="computer", section="Computer")
+
+        if tab == Subtab.ADAPTERS:
+            telegram_data = self._raw_config.get("telegram", {})
+            discord_data = self._raw_config.get("discord", {})
+            whatsapp_data = self._raw_config.get("whatsapp", {})
+            adapters_obj = AdaptersConfig(
+                telegram=TelegramAdapterConfig(
+                    enabled=telegram_data.get("enabled", False),
+                    # The token is the TELEGRAM_BOT_TOKEN env secret; config.yml only
+                    # references it as ${TELEGRAM_BOT_TOKEN}.
+                    bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+                ),
+                discord=DiscordAdapterConfig(
+                    enabled=discord_data.get("enabled", False),
+                    token=discord_data.get("token", ""),
+                    guild_id=discord_data.get("guild_id", ""),
+                ),
+                whatsapp=WhatsAppAdapterConfig(
+                    enabled=whatsapp_data.get("enabled", False),
+                    phone_number_id=whatsapp_data.get("phone_number_id", ""),
+                    access_token=whatsapp_data.get("access_token", ""),
+                    webhook_secret=whatsapp_data.get("webhook_secret", ""),
+                    verify_token=whatsapp_data.get("verify_token", ""),
+                    template_name=whatsapp_data.get("template_name", ""),
+                    template_language=whatsapp_data.get("template_language", "en_US"),
+                ),
+            )
+            return reflect_schema(adapters_obj, section="Adapters")
+
+        if tab == Subtab.TTS_STT:
+            stt_data = self._raw_config.get("stt", {})
+            tts_data = self._raw_config.get("tts", {})
+            tts_stt_obj = TtsSttConfig(
+                stt_enabled=stt_data.get("enabled", True),
+                stt_service_priority=stt_data.get("service_priority", ["parakeet", "openai"]),
+                tts_enabled=tts_data.get("enabled", False),
+                tts_service_priority=tts_data.get(
+                    "service_priority", ["voxcpm", "kokoro", "qwen3", "openai", "elevenlabs", "macos", "pyttsx3"]
+                ),
+            )
+            return reflect_schema(tts_stt_obj, section="TTS/STT")
+
+        return []
 
     @property
     def guided_mode(self) -> bool:
@@ -350,26 +434,15 @@ class ConfigContent(
             fields = base_fields
         return fields
 
-    @property
-    def is_on_enum_field(self) -> bool:
-        """Whether the cursor is on any Literal/enum-backed field."""
-        tab = _SUBTABS[self.active_subtab]
-        if tab != "people" or self._expanded_person is None or self.is_editing:
-            return False
-        field = self.person_editable_fields[self._person_field_cursor]
-        return get_allowed_values_for_field(field) is not None
-
-    def cycle_enum_field(self, direction: int) -> None:
-        """Cycle the current enum-backed field in the requested direction."""
-        if not self.is_on_enum_field:
-            return
-        person = next((p for p in self._people_data if p.name == self._expanded_person), None)
-        if person is not None:
-            field = self.person_editable_fields[self._person_field_cursor]
-            self._cycle_person_enum(person, field, direction)
-
     def refresh_data(self) -> None:
-        """Reload env vars, people, and derived projections from disk."""
+        """Reload env vars, people, derived projections, and config.yml from disk."""
+        try:
+            self._raw_config = _load_raw_config(_resolve_config_path())  # type: ignore[assignment]
+        except Exception as exc:
+            self._raw_config = {}
+            self._status_message = f"Failed to load config.yml: {exc}"
+            self._status_is_error = True
+
         try:
             self._env_data = check_env_vars()
         except Exception as exc:
@@ -410,7 +483,7 @@ class ConfigContent(
     def _current_context_key(self) -> str:
         """Return the cursor context key for the active subtab."""
         tab = _SUBTABS[self.active_subtab]
-        if tab == "adapters":
+        if tab == Subtab.ADAPTERS:
             return f"adapter:{_ADAPTER_TABS[self.active_adapter_tab]}"
         return tab
 
@@ -424,12 +497,12 @@ class ConfigContent(
     def _selectable_env_rows(self) -> list[EnvVarStatus]:
         """Return the env rows available for the active subtab."""
         tab = _SUBTABS[self.active_subtab]
-        if tab == "adapters":
+        if tab == Subtab.ADAPTERS:
             section = self._get_active_adapter_section()
             if section is None:
                 return []
             return section.env_statuses
-        if tab == "environment":
+        if tab == Subtab.ENV:
             return self._env_data
         return []
 
@@ -444,13 +517,20 @@ class ConfigContent(
     def _clamp_current_cursor(self) -> None:
         """Clamp the cursor to the available rows in the active context."""
         tab = _SUBTABS[self.active_subtab]
-        if tab == "people":
+        if tab == Subtab.PEOPLE:
             count = len(self._people_data)
             if count:
                 self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))
             else:
                 self._set_current_cursor(0)
             self._person_field_cursor = max(0, min(self._person_field_cursor, len(self.person_editable_fields) - 1))
+            return
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            count = len(self.reflected_fields)
+            if count:
+                self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))
+            else:
+                self._set_current_cursor(0)
             return
         rows = self._selectable_env_rows()
         if not rows:

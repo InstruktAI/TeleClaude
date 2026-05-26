@@ -72,13 +72,57 @@ TeleClaude installs hooks to intercept lifecycle events. Below is the mapping be
 ### Antigravity CLI (`agy`) Mapping
 
 - `PreInvocation` → `event_type = "user_prompt_submit"`
-  - Used to pre-inject memory context or domain-baseline instructions via `additionalContext` or `injectSteps`.
-- `PreToolUse` → `event_type = "tool_use"`
-  - Drives live tool execution indicators in the TeleClaude TUI.
-- `Stop` → `event_type = "stop"`
-  - Turn completion signal. Triggers checkpoint evaluations and updates `last_message_sent_at` in the database.
+- `PreToolUse` → `event_type = "tool_use"` (drives live tool indicators in the TUI)
+- `Stop` → `event_type = "agent_stop"` (turn completion; triggers checkpoint evaluation)
+
+### Synthetic session_start
+
+`agy` exposes **no** `SessionStart` hook — a conversation opens with `PreInvocation`.
+TeleClaude therefore synthesizes an internal `session_start` from the first activity
+event of an unbound conversation (see `AgyAdapter.synthesizes_session_start` and the
+receiver's `_maybe_synthesize_session_start`). The synthetic event creates/binds the
+session row and runs the normal session-start machinery before the activity event is
+processed.
+
+### Payload schema (observed)
+
+`agy` hook payloads use non-canonical field names and **carry no prompt/assistant
+text** — that content is read from the transcript by the projection layer. The
+`AgyAdapter.normalize_payload` maps `conversationId → session_id` and
+`transcriptPath → transcript_path`.
+
+`PreInvocation`:
+
+```json
+{
+  "conversationId": "<uuid>",
+  "artifactDirectoryPath": "~/.gemini/antigravity-cli/brain/<uuid>",
+  "transcriptPath": "~/.gemini/antigravity-cli/brain/<uuid>/.system_generated/logs/transcript.jsonl",
+  "initialNumSteps": 1,
+  "invocationNum": 0,
+  "workspacePaths": ["<cwd>"]
+}
+```
+
+`Stop`:
+
+```json
+{
+  "conversationId": "<uuid>",
+  "transcriptPath": "<path>",
+  "error": "",
+  "executionNum": 0,
+  "fullyIdle": true,
+  "terminationReason": "NO_TOOL_CALL",
+  "workspacePaths": ["<cwd>"]
+}
+```
+
+`conversationId` doubles as the `agy --conversation <id>` resume identifier. The
+payload shapes above were captured from the `agy` runtime — Google's published docs
+do not yet document hook payload schemas.
 
 ## Sources
 
+- https://antigravity.google/docs/hooks
 - https://geminicli.com/docs/hooks
-- https://antigravity.google/docs/gcli-migrationks/reference

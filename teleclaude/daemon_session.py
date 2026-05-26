@@ -16,7 +16,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.agent_readiness import wait_for_agent_ready
-from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -384,10 +383,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
             t1 = time.time()
             try:
-                if agent_name == AgentName.CODEX.value:
-                    await self._await_codex_readiness(session, session_id, ready_future)
-                else:
-                    await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+                await self._await_agent_readiness(session, session_id, agent_name, ready_future)
             except TimeoutError:
                 logger.warning(
                     "agent_then_message readiness timeout: session=%s timeout_s=%.1f — session kept alive",
@@ -431,32 +427,33 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
         return {"status": "success", "message": "Message injected after agent start"}
 
-    async def _await_codex_readiness(
+    async def _await_agent_readiness(
         self,
         session: Session,
         session_id: str,
+        agent_name: str,
         ready_future: asyncio.Future[None],
     ) -> None:
-        """Race Codex's broken native SessionStart hook against the pane-quiet detector.
+        """Open the launch gate on whichever readiness signal arrives first.
 
-        Codex CLI v0.130+ does not fire its native `SessionStart` hook on cold
-        thread_spawn (the hook arrives combined with the first `user_prompt_submit`),
-        so the hook-only `ready_future` would time out for ~55% of dispatches. The
-        pane-quiet detector (the proven `wait_for_agent_ready` polling loop using
-        the `CodexReadinessProfile`'s live-prompt-marker detection) races the hook
-        subscription.
+        Uniform across every agent — there is no per-agent branch at the call
+        site. CLIs differ in how (or whether) they announce readiness: Claude
+        emits a reliable native session_start; Codex fires it late or combined
+        with the first prompt; agy never fires one at all. So the pane-quiet
+        detector (`wait_for_agent_ready` with the agent's readiness profile)
+        always races the native-hook `ready_future`, and the launch proceeds on
+        the first to complete.
 
-        When the pane detector wins, synthesize a `session_start` event with
-        `source="startup"` (matching Codex's real-shape contract) but with empty
-        native fields — `native_session_id` and `native_log_file` get back-filled
-        idempotently when the real hook eventually arrives along with the first
-        user prompt.
+        When the pane detector wins (hook absent or late), synthesize a
+        `session_start` with `source="startup"` and empty native fields; the real
+        hook, if the agent has one, back-fills `native_session_id`/
+        `native_log_file` idempotently later.
 
         Raises TimeoutError if both detectors fail within `AGENT_PROMPT_READY_TIMEOUT_S`.
         """
         pane_task = asyncio.create_task(
             wait_for_agent_ready(
-                AgentName.CODEX.value,
+                agent_name,
                 session,
                 AGENT_PROMPT_READY_TIMEOUT_S,
                 AGENT_START_STABILIZE_QUIET_S,
@@ -482,7 +479,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
         if hook_won:
-            logger.debug("codex readiness: native hook won the race session=%s", session_id)
+            logger.debug("agent readiness: native hook won the race agent=%s session=%s", agent_name, session_id)
             return
 
         pane_won = False
@@ -490,16 +487,18 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             ready, _tail = pane_task.result()
             pane_won = ready
             logger.debug(
-                "codex readiness: pane task completed ready=%s session=%s",
+                "agent readiness: pane task completed ready=%s agent=%s session=%s",
                 ready,
+                agent_name,
                 session_id,
             )
 
         if not pane_won:
-            raise TimeoutError("codex readiness: pane and hook both failed within timeout")
+            raise TimeoutError(f"agent readiness: pane and hook both failed within timeout (agent={agent_name})")
 
         logger.info(
-            "Synthetic session_start emitted for Codex (pane-quiet detector) session=%s",
+            "Synthetic session_start emitted via pane-quiet detector agent=%s session=%s",
+            agent_name,
             session_id,
         )
         synthetic_payload = AgentSessionStartPayload(
@@ -519,11 +518,12 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         # cancelled by a cancelled wrapper) and proceed — pane readiness is verified.
         try:
             await asyncio.wait_for(asyncio.shield(ready_future), timeout=2.0)
-            logger.debug("codex readiness: synthetic AGENT_READY observed session=%s", session_id)
+            logger.debug("agent readiness: synthetic AGENT_READY observed agent=%s session=%s", agent_name, session_id)
         except (TimeoutError, asyncio.CancelledError) as exc:
             logger.debug(
-                "codex readiness: synthetic AGENT_READY not observed (%s) — proceeding session=%s",
+                "agent readiness: synthetic AGENT_READY not observed (%s) — proceeding agent=%s session=%s",
                 type(exc).__name__,
+                agent_name,
                 session_id,
             )
 

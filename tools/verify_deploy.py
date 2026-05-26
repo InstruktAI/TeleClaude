@@ -124,12 +124,12 @@ def main():  # type: ignore[no-untyped-def]
         # Check Context7
         check_json_config(claude_config, ["context7"])
 
-    # Gemini
-    gemini_config = home / ".gemini/settings.json"
-    if check_file(gemini_config, "Gemini Config"):
-        check_json_config(gemini_config, ["teleclaude"])
+    # Antigravity (agy) — hooks live in a dedicated hooks.json, not settings.json
+    agy_hooks = home / ".gemini/config/hooks.json"
+    if check_file(agy_hooks, "Antigravity Hooks"):
+        check_json_config(agy_hooks, ["teleclaude"])
     else:
-        log_warn("Gemini config not found (is Gemini installed?)")
+        log_warn("Antigravity hooks not found (is agy installed?)")
 
     # Codex
     codex_config = home / ".codex/config.toml"

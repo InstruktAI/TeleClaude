@@ -20,6 +20,7 @@ visibility: 'public'
 - **Types for unions/aliases** - Use `type` for unions, intersections, mapped types
 - **Discriminated unions for state** - Tagged unions with literal discriminant
 - **Const assertions for literals** - Use `as const` for readonly literal types
+- **Grouped identifiers** - A fixed set of related identifiers lives in one `as const` object (or string-literal union), referenced by member — never inlined literals at call sites. See `code-quality-practices` → State and Data.
 
 ```typescript
 // Discriminated union example

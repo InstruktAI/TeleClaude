@@ -9,6 +9,7 @@ from rich.style import Style
 from rich.text import Text
 
 from teleclaude.cli.config_handlers import EnvVarStatus
+from teleclaude.cli.tui.config_components.guidance import FieldGuidance, guidance_registry
 from teleclaude.cli.tui.views._config_constants import (
     _DIM,
     _FAIL,
@@ -22,11 +23,11 @@ from teleclaude.cli.tui.views._config_constants import (
     _TAB_INACTIVE,
     _VALID_ROLES,
     _WARN,
+    Subtab,
     _normal_style,
-    completion_summary,
     get_allowed_values_for_field,
-    get_guidance_for_env,
 )
+from teleclaude.cli.tui.views.reflection import ReflectedField
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
@@ -45,9 +46,8 @@ class ConfigContentRenderMixin:
         @property
         def person_editable_fields(self) -> list[str]: ...
 
-    def _render_guidance(self, result: Text, env_name: str) -> None:
-        """Render inline guidance block for the given env var."""
-        guidance = get_guidance_for_env(env_name)
+    def _render_guidance_block(self, result: Text, guidance: FieldGuidance | None) -> None:
+        """Render the inline guidance block for a resolved guidance entry."""
         if guidance is None:
             return
         result.append("      ┌─ Guidance\n", style=_SEP)
@@ -82,18 +82,7 @@ class ConfigContentRenderMixin:
         result.append("\n")
 
     def _render_header(self, result: Text) -> None:
-        """Render the setup progress and any active status messages."""
-        env_complete = (  # type: ignore[attr-defined]
-            all(status.is_set for status in self._env_data) if self._env_data else True
-        )
-        configured, total = completion_summary(
-            self._adapter_sections,  # type: ignore[attr-defined]
-            has_people=bool(self._people_data),  # type: ignore[attr-defined]
-            environment_configured=env_complete,
-        )
-        summary_style = _OK if configured == total else _WARN
-        result.append(f"Setup Progress: {configured}/{total} sections configured\n", style=summary_style)
-
+        """Render the guided-step indicator and any active status messages."""
         if self._guided_mode:  # type: ignore[attr-defined]
             step = _GUIDED_STEPS[self._guided_step_index]  # type: ignore[attr-defined]
             result.append(
@@ -162,7 +151,7 @@ class ConfigContentRenderMixin:
             result.append(f"{status.info.name}\n", style=row_style)
             result.append(f"      {status.info.description}\n", style=_DIM)
             if selected:
-                self._render_guidance(result, status.info.name)
+                self._render_guidance_block(result, guidance_registry.get_for_env(status.info.name))
 
     def _render_people(self, result: Text) -> None:
         """Render configured people and any expanded editable fields."""
@@ -290,7 +279,108 @@ class ConfigContentRenderMixin:
             result.append(f"{status.info.name}", style=row_style)
             result.append(f" ({status.info.adapter})\n", style=_DIM)
             if selected:
-                self._render_guidance(result, status.info.name)
+                self._render_guidance_block(result, guidance_registry.get_for_env(status.info.name))
+
+    def _render_reflected_field(
+        self, result: Text, f: ReflectedField, *, selected: bool, prefix: str, row_style: Style
+    ) -> None:
+        """Render one reflected field row: bool toggle, list, enum, or text."""
+        if self._editing_var_name == f.key:  # type: ignore[attr-defined]
+            result.append(f"    {prefix} {f.name} = {self._edit_buffer}█\n", style=row_style)  # type: ignore[attr-defined]
+            result.append("        Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
+            return
+
+        if f.field_type is bool:
+            # A boolean is always a valid state (true or false), so it is always "set".
+            result.append(f"    {prefix} ✔ ", style=_OK)
+            result.append(f"{f.name}: ", style=_DIM)
+            result.append(" TRUE ", style=Style(bold=True, reverse=True) if f.value else _DIM)
+            result.append(" ", style=row_style)
+            result.append(" FALSE ", style=Style(bold=True, reverse=True) if not f.value else _DIM)
+            result.append("  (← → toggle)\n" if selected else "\n", style=_DIM)
+
+        elif f.field_type in (list[str], list):
+            items = f.value or []
+            result.append(f"    {prefix} {'✔' if items else '○'} ", style=_OK if items else _DIM)
+            result.append(f"{f.name}:", style=_DIM)
+            if selected and items:
+                self._list_element_idx = max(0, min(self._list_element_idx, len(items) - 1))  # type: ignore[attr-defined]
+                result.append("  (← → select · [ ] reorder)\n", style=_DIM)
+                for item_idx, item in enumerate(items):
+                    active = item_idx == self._list_element_idx  # type: ignore[attr-defined]
+                    marker = "▶" if active else " "
+                    result.append(
+                        f"        {marker} {item}\n", style=Style(bold=True, reverse=True) if active else row_style
+                    )
+            elif items:
+                result.append(f" {', '.join(items)}\n", style=row_style)
+            else:
+                result.append(" (empty)\n", style=_DIM)
+
+        elif f.choices:
+            result.append(f"    {prefix} {'✔' if f.value else '○'} ", style=_OK if f.value else _DIM)
+            result.append(f"{f.name}: ", style=_DIM)
+            result.append(f"{f.value or '(not set)'}", style=row_style)
+            result.append("  (← → cycle)\n" if selected else "\n", style=_DIM)
+
+        else:
+            value = str(f.value if f.value is not None else "")
+            result.append(f"    {prefix} {'✔' if value else '○'} ", style=_OK if value else _DIM)
+            result.append(f"{f.name}: ", style=_DIM)
+            result.append(f"{value or '(not set)'}\n", style=row_style)
+
+        if f.description:
+            result.append(f"        {f.description}\n", style=_DIM)
+        if selected:
+            self._render_guidance_block(result, guidance_registry.get_for_field_key(f.key))
+
+    def _render_reflected_fields(self, result: Text) -> None:
+        """Render the dynamically reflected fields for the active subtab."""
+        fields = self.reflected_fields  # type: ignore[attr-defined]
+        if not fields:
+            result.append("\n  No properties found for this subtab\n", style=_DIM)
+            return
+
+        cursor = self._current_cursor()  # type: ignore[attr-defined]
+        active_field = fields[max(0, min(cursor, len(fields) - 1))]
+        active_section = active_field.section
+
+        # Group fields by section preserving order
+        sections: dict[str, list[ReflectedField]] = {}
+        for f in fields:
+            sections.setdefault(f.section, []).append(f)
+
+        for sec_name, sec_fields in sections.items():
+            result.append("\n")
+            is_active = sec_name == active_section
+
+            if is_active:
+                result.append(f"  ▼ {sec_name}\n", style=Style(bold=True))
+
+                for f in sec_fields:
+                    f_idx = fields.index(f)
+                    selected = f_idx == cursor
+                    prefix = "▶" if selected else " "
+                    row_style = Style(reverse=True) if selected else _normal_style()
+                    row = result.plain.count("\n")
+                    self._row_click_map[row] = ("reflected_row", f.key)  # type: ignore[attr-defined]
+                    self._render_reflected_field(result, f, selected=selected, prefix=prefix, row_style=row_style)
+            else:
+                summary_parts = []
+                for f in sec_fields:
+                    if f.field_type is bool:
+                        val_str = "yes" if f.value else "no"
+                    elif f.field_type in (list[str], list):
+                        val_str = f"[{len(f.value or [])}]"
+                    else:
+                        val_str = str(f.value if f.value is not None else "")
+                        if len(val_str) > 15:
+                            val_str = val_str[:12] + "..."
+                    summary_parts.append(f"{f.name}={val_str}")
+                summary_str = ", ".join(summary_parts)
+                if len(summary_str) > 50:
+                    summary_str = summary_str[:47] + "..."
+                result.append(f"  ▶ {sec_name} ({summary_str})\n", style=_DIM)
 
     def render(self) -> Text:
         """Render the current config content for the active subtab."""
@@ -303,11 +393,11 @@ class ConfigContentRenderMixin:
         self._render_header(result)
 
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab == "adapters":
-            self._render_adapters(result)
-        elif tab == "people":
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+            self._render_reflected_fields(result)
+        elif tab == Subtab.PEOPLE:
             self._render_people(result)
-        elif tab == "environment":
+        elif tab == Subtab.ENV:
             self._render_environment(result)
 
         return result
@@ -327,8 +417,15 @@ class ConfigContentRenderMixin:
             return
 
         action_type = action[0]
-        if action_type == "adapter_tab":
-            self.post_message(self.AdapterTabSelected(action[1]))  # type: ignore[attr-defined]
+        if action_type == "reflected_row":
+            field_key = action[1]
+            fields = self.reflected_fields  # type: ignore[attr-defined]
+            for i, f in enumerate(fields):
+                if f.key == field_key:
+                    self._set_current_cursor(i)  # type: ignore[attr-defined]
+                    # Same as Enter: toggle bool, cycle enum, or edit text.
+                    self.activate_current()  # type: ignore[attr-defined]
+                    break
         elif action_type == "env_row":
             env_name = action[1]
             rows = self._selectable_env_rows()  # type: ignore[attr-defined]

@@ -10,6 +10,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
+from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import schedule_debounced_delivery
 from teleclaude.core.db import db
@@ -38,6 +39,7 @@ from teleclaude.events.envelope import EventVisibility
 from teleclaude.session_scoping._git import read_head_sha
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
+from teleclaude.utils.transcript import extract_last_user_message_with_timestamp
 
 from ._fanout import _FanoutMixin
 from ._helpers import (
@@ -363,6 +365,28 @@ class AgentCoordinator(
                 runner=lambda: self._speak_session_start(context.session_id),
             )
 
+    async def _backfill_prompt_from_transcript(self, session: object) -> str | None:
+        """Recover the last user message from the transcript.
+
+        Agent-agnostic: used when a CLI's hook payload omits the prompt body
+        (the field name and transcript schema are resolved at the bottom of the
+        stack by the per-agent extractor). Returns None when no transcript is
+        bound yet or no user text is present.
+        """
+        transcript_path = getattr(session, "native_log_file", None)
+        active_agent = getattr(session, "active_agent", None)
+        if not transcript_path or not active_agent:
+            return None
+        try:
+            agent_name = AgentName.from_str(active_agent)
+        except ValueError:
+            return None
+        extracted = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript_path, agent_name)
+        if not extracted:
+            return None
+        text = extracted[0]
+        return text or None
+
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
 
@@ -379,7 +403,16 @@ class AgentCoordinator(
 
         prompt_text = payload.prompt or ""
         if not prompt_text.strip():
-            logger.debug("Empty prompt detected, skipping user input persistence for session %s", session_id)
+            # Some CLIs (e.g. agy) carry no prompt in the hook payload — the
+            # canonical text lives in the transcript. Backfill agent-agnostically.
+            prompt_text = await self._backfill_prompt_from_transcript(session) or ""
+        if not prompt_text.strip():
+            # Transcript not flushed yet; let the projection cadence reflect it.
+            logger.debug("No prompt text available yet for session %s; deferring to projection", session_id)
+            if session.lifecycle_status == "headless":
+                await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
+            else:
+                await polling_coordinator.schedule_session_projection(session_id, self.client)
             return
 
         # System-injected checkpoint — not real user input, skip entirely

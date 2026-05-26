@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 import time
 from dataclasses import dataclass
@@ -18,7 +17,6 @@ from teleclaude.events.pipeline import Pipeline, failing_stage_from_exception
 from teleclaude.events.producer import emit_event
 
 logger = get_logger(__name__)
-_stdlib_logger = logging.getLogger(__name__)
 
 STREAM_NAME = "teleclaude:events"
 CONSUMER_GROUP = "event-processor"
@@ -133,7 +131,6 @@ class EventProcessor:
         self._pending_info = await self._read_pending_info()
         pending_depth = len(self._pending_info)
         logger.debug("event_processor_pending", pending=pending_depth, stream=self._stream, group=self._group)
-        self._structured_info("event_processor_pending", pending=pending_depth)
 
         if include_current_consumer:
             await self._recover_current_consumer_pending()
@@ -208,7 +205,6 @@ class EventProcessor:
             idle_threshold_ms=self._idle_threshold_ms,
             consumer=self._consumer,
         )
-        self._structured_info("event_processor_reclaim", pending=pending_depth, reclaim=len(messages))
         await self._process_entries([(self._stream, messages)])
 
     async def _process_entries(self, entries: Any) -> None:
@@ -252,7 +248,6 @@ class EventProcessor:
             entry_id=entry_id,
             consumer=state.consumer_id or self._consumer,
         )
-        self._structured_info("event_processor_retry", pending=len(self._pending_info), retry=state.attempt_count)
 
         if state.attempt_count < self._max_attempts:
             logger.exception("EventProcessor failed to process entry", entry_id=entry_id)
@@ -285,12 +280,6 @@ class EventProcessor:
             dead_letter=1,
             entry_id=entry_id,
             destination=self._dlq_destination,
-        )
-        self._structured_info(
-            "event_processor_dead_letter",
-            pending=len(self._pending_info),
-            retry=state.attempt_count,
-            dead_letter=1,
         )
         try:
             await self._redis.xack(self._stream, self._group, entry_id)
@@ -419,6 +408,3 @@ class EventProcessor:
             return int(value)
         except ValueError:
             return None
-
-    def _structured_info(self, message: str, **fields: int) -> None:
-        _stdlib_logger.info(message, extra=fields)

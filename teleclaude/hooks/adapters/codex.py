@@ -26,6 +26,7 @@ class CodexAdapter(HookAdapter):
         }
     )
     supports_hook_checkpoint: bool = True
+    synthesizes_session_start: bool = False
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin and resolve the raw event from the payload."""

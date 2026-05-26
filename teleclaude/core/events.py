@@ -74,18 +74,18 @@ class AgentHookEvents:
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,
                 }
             ),
+            # agy exposes no SessionStart hook; session_start is synthesized from
+            # the first activity event (see AgyAdapter.synthesizes_session_start).
+            # PostInvocation/PostToolUse/SessionEnd are real agy events we catalog
+            # but do not ingest.
             "gemini": MappingProxyType(
                 {
-                    "AfterAgent": AGENT_STOP,
-                    "AfterModel": TOOL_USE,
-                    "AfterTool": None,
-                    "BeforeAgent": USER_PROMPT_SUBMIT,
-                    "BeforeModel": None,
-                    "BeforeTool": None,
-                    "BeforeToolSelection": None,
-                    "PreCompress": None,
+                    "PreInvocation": USER_PROMPT_SUBMIT,
+                    "PreToolUse": TOOL_USE,
+                    "Stop": AGENT_STOP,
                     "SessionEnd": None,
-                    "SessionStart": AGENT_SESSION_START,
+                    "PostInvocation": None,
+                    "PostToolUse": None,
                 }
             ),
             "codex": MappingProxyType(

@@ -27,6 +27,8 @@ class AgentName(str, Enum):
     def from_str(cls, value: str) -> AgentName:
         """Convert a string to AgentName, raising ValueError on unknown values."""
         normalized = value.strip().lower()
+        if normalized == "agy":
+            return cls.GEMINI
         for member in cls:
             if member.value == normalized:
                 return member
@@ -44,7 +46,9 @@ KNOWN_AGENT_IDS: tuple[str, ...] = AgentName.choices()
 
 _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     AgentName.CLAUDE.value: "\u276f",
-    AgentName.GEMINI.value: "Type your message or @path/to/file",
+    # agy renders a footer status line ("? for shortcuts") whenever its input
+    # prompt is idle and ready; it disappears while the agent is working.
+    AgentName.GEMINI.value: "? for shortcuts",
     AgentName.CODEX.value: "\n\u203a ",
 }
 
@@ -171,7 +175,7 @@ def get_agent_command(
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' --resume abc123'
 
         >>> get_agent_command("gemini", thinking_mode="med", interactive=True)
-        'gemini --yolo -m gemini-3-flash-preview -i'
+        'agy --dangerously-skip-permissions -i'
     """
     agent_cfg = _get_agent_config(agent)
     base_cmd = agent_cfg.get_command(profile).strip()

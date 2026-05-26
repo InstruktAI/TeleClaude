@@ -1134,8 +1134,13 @@ class TestEventProcessorObservabilitySpecs:
         }
         structured_pairs: list[tuple[str, object]] = []
         for record in caplog.records:
+            # Structured logging puts the key/value pairs in the record's `kv`
+            # dict; unpack it alongside any top-level extras.
+            kv = getattr(record, "kv", None)
+            if isinstance(kv, dict):
+                structured_pairs.extend(kv.items())
             for key, value in record.__dict__.items():
-                if key in standard_fields or key.startswith("_"):
+                if key in standard_fields or key == "kv" or key.startswith("_"):
                     continue
                 structured_pairs.append((key, value))
 

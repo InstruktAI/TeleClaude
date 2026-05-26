@@ -4,7 +4,9 @@ Config is loaded at module import time and available globally via:
     from teleclaude.config import config
 """
 
+import getpass
 import os
+import socket
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,7 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
 from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
 from teleclaude.constants import (
@@ -41,6 +44,22 @@ if not _dotenv_path.is_absolute():
 load_dotenv(_dotenv_path)
 WORKING_DIR = str(_project_root)
 os.environ.setdefault("WORKING_DIR", WORKING_DIR)
+
+
+def detect_lan_ip() -> str:
+    """Return this host's primary LAN IPv4, falling back to loopback.
+
+    Opens a UDP socket toward a public address and reads the local endpoint the
+    OS would route through; no packets are sent.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        return str(sock.getsockname()[0])
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        sock.close()
 
 
 @dataclass
@@ -381,10 +400,11 @@ class Config:
 DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration structure
     "computer": {
         "name": "unknown",
-        "user": "unknown",
+        # Empty/None sentinels mark fields the loader derives at runtime.
+        "user": "",
         "role": "general",
         "timezone": "Europe/Amsterdam",
-        "default_working_dir": "~",
+        "default_working_dir": "",
         "is_master": False,
         "trusted_dirs": [],
         "host": None,
@@ -820,22 +840,18 @@ def _build_config(
     return Config(
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index]
-            user=str(comp_raw["user"]),  # type: ignore[index]
+            # Derived, not user-editable: system login, project dir, and the
+            # detected LAN address (host is required by get_computer_info).
+            user=str(comp_raw["user"] or getpass.getuser()),  # type: ignore[index]
             role=str(comp_raw["role"]),  # type: ignore[index]
             timezone=str(comp_raw["timezone"]),  # type: ignore[index]
-            default_working_dir=str(
-                comp_raw["default_working_dir"],  # type: ignore[index]
-            ),
+            default_working_dir=str(comp_raw["default_working_dir"] or WORKING_DIR),  # type: ignore[index]
             help_desk_dir=str(Path.home() / HELP_DESK_SUBDIR),
             is_master=bool(comp_raw["is_master"]),  # type: ignore[index]
             trusted_dirs=_parse_trusted_dirs(
                 list(comp_raw["trusted_dirs"]),  # type: ignore[index]
             ),
-            host=(
-                str(comp_raw["host"])  # type: ignore[index]
-                if comp_raw["host"]  # type: ignore[index]
-                else None
-            ),
+            host=str(comp_raw["host"] or detect_lan_ip()),  # type: ignore[index]
             tmux_binary=resolve_tmux_binary(),
         ),
         polling=PollingConfig(
@@ -921,11 +937,8 @@ def _build_config(
     )
 
 
-# Load config.yml from project root (required)
-_config_env_path = os.getenv("TELECLAUDE_CONFIG_PATH")
-_config_path = Path(_config_env_path).expanduser() if _config_env_path else _project_root / "config.yml"
-if not _config_path.is_absolute():
-    _config_path = (_project_root / _config_path).resolve()
+# Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.
+_config_path = resolve_runtime_config_path(_project_root / "config.yml", _deep_merge)
 
 if not _config_path.exists():
     raise FileNotFoundError(

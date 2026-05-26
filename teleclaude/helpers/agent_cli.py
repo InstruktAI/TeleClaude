@@ -88,7 +88,7 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "tools_map": {"web_search": "web_search"},
     },
     "gemini": {
-        "flags": "--yolo --allowed-mcp-server-names _none_",
+        "flags": "--dangerously-skip-permissions",
         "model_flags": _AGENT_MODEL_FLAGS["gemini"],
         "output_format": "-o json",
         "schema_arg": "",
@@ -290,7 +290,7 @@ def _run_agent(
             cmd_parts.append(prompt)
 
     elif agent == AgentName.GEMINI:
-        # Gemini reads stdin natively; -p "" makes it ignore stdin.
+        # Antigravity CLI reads stdin natively; -p "" makes it ignore stdin.
         # Only pass -p when using arg mode with actual content.
         if not use_stdin:
             if prompt_flag:
@@ -334,7 +334,7 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
         "model_flags": _AGENT_MODEL_FLAGS["claude"],
     },
     "gemini": {
-        "flags": "--yolo --allowed-mcp-server-names _none_",
+        "flags": "--dangerously-skip-permissions",
         "model_flags": _AGENT_MODEL_FLAGS["gemini"],
     },
     "codex": {

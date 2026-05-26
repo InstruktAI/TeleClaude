@@ -589,7 +589,7 @@ async def poll_and_send_output(
 
     Tmux is a liveness and visible-activity signal only. Durable payloads —
     including tool activity — come from the agent's native hooks (Claude
-    PreToolUse, Gemini BeforeTool, Codex PreToolUse). Transcript-path binding is
+    PreToolUse, agy PreToolUse, Codex PreToolUse). Transcript-path binding is
     opportunistic from polling and scheduled projection because some agent
     versions omit transcript_path on early lifecycle events.
 

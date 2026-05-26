@@ -129,7 +129,7 @@ PY_EXTENSION = ".py"
 RECEIVER_TOKEN = "receiver"
 RECEIVER_FILE = "receiver.py"
 RECEIVER_CLAUDE_FILE = "receiver_claude.py"
-RECEIVER_GEMINI_FILE = "receiver_gemini.py"
+RECEIVER_AGY_FILE = "receiver_agy.py"
 MATCHER_KEY = "matcher"
 MATCHER_ALL = "*"
 NOTIFY_KEY = "notify"
@@ -167,12 +167,12 @@ def _extract_receiver_script(command: str | list[object]) -> str | None:
     for part in parts:
         if part.endswith(PY_EXTENSION) and RECEIVER_TOKEN in part:
             # Normalize all receiver variants to a single token for dedup:
-            # - legacy receiver.py / receiver_claude.py / receiver_gemini.py
+            # - legacy receiver.py / receiver_claude.py / receiver_agy.py
             # - current receiver/__main__.py (package form)
             if (
                 part.endswith(RECEIVER_FILE)
                 or part.endswith(RECEIVER_CLAUDE_FILE)
-                or part.endswith(RECEIVER_GEMINI_FILE)
+                or part.endswith(RECEIVER_AGY_FILE)
                 or part.endswith("receiver/__main__.py")
             ):
                 return RECEIVER_TOKEN
@@ -305,22 +305,6 @@ def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
         receiver_invocation,
         "claude",
         _filter_receiver_handled_events(AgentHookEvents.HOOK_EVENT_MAP["claude"]),
-    )
-
-
-def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
-    """Return TeleClaude hook definitions for Gemini CLI."""
-    # Installer contract:
-    # - Tool lane comes from BeforeTool only.
-    # - AfterModel is reasoning-only and must not be mapped to tool_use.
-    gemini_events = dict(AgentHookEvents.HOOK_EVENT_MAP["gemini"])
-    gemini_events.pop("AfterModel", None)
-    gemini_events["BeforeTool"] = AgentHookEvents.TOOL_USE
-    return _build_hook_map(
-        receiver_invocation,
-        "gemini",
-        _filter_receiver_handled_events(gemini_events),
-        include_metadata=True,
     )
 
 
@@ -544,18 +528,85 @@ def configure_claude(repo_root: Path) -> None:
     _ensure_json_mcp_servers(Path.home() / ".claude.json", managed_mcp_servers, "Claude")
 
 
-def configure_gemini(repo_root: Path) -> None:
-    """Configure Gemini CLI hooks."""
+def configure_agy(repo_root: Path) -> None:
+    """Configure Antigravity CLI (agy) hooks, settings, and MCP."""
     repo_root = resolve_state_root(repo_root)
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    if not receiver_script.exists():
+        print(f"Warning: Antigravity receiver not found at {receiver_script}")
+        return
+
+    os.chmod(receiver_script, 0o755)
+
+    agy_dir = Path.home() / ".gemini" / "antigravity-cli"
+    agy_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Merge static settings overrides into ~/.gemini/antigravity-cli/settings.json
+    settings_path = agy_dir / "settings.json"
+    settings = _load_json_settings(settings_path, label="Antigravity")
+    if settings is None:
+        settings = {}
+    overrides = _load_settings_overrides("gemini")
+    if overrides:
+        settings = _deep_merge(settings, overrides)
+
+    with open(settings_path, "w") as f:
+        json.dump(settings, f, indent=2)
+    print(f"Antigravity settings configured in {settings_path}")
+
+    # 2. Translates MCP settings and writes to ~/.gemini/antigravity-cli/mcp_config.json
+    mcp_config_path = agy_dir / "mcp_config.json"
+    mcp_config = _load_json_settings(mcp_config_path, label="Antigravity MCP")
+    if mcp_config is None:
+        mcp_config = {}
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
-    _configure_json_agent_hooks(
-        repo_root,
-        "gemini",
-        Path.home() / ".gemini" / "settings.json",
-        _gemini_hook_map,
-        enable_hooks_flag=True,
-    )
-    _ensure_json_mcp_servers(Path.home() / ".gemini" / "settings.json", managed_mcp_servers, "Gemini")
+    existing_mcp_servers = mcp_config.get("mcpServers", {})
+    if not isinstance(existing_mcp_servers, dict):
+        existing_mcp_servers = {}
+
+    changed = False
+    for name, spec in managed_mcp_servers.items():
+        if existing_mcp_servers.get(name) != spec:
+            existing_mcp_servers[name] = spec
+            changed = True
+
+    if changed or not mcp_config:
+        mcp_config["mcpServers"] = existing_mcp_servers
+        with open(mcp_config_path, "w") as f:
+            json.dump(mcp_config, f, indent=2)
+        print(f"Antigravity MCP configured in {mcp_config_path}")
+
+    # 3. Automatically writes Modular Hooks config file to ~/.gemini/config/hooks.json under "teleclaude" group
+    hooks_dir = Path.home() / ".gemini" / "config"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hooks_path = hooks_dir / "hooks.json"
+
+    hooks_data = _load_json_settings(hooks_path, label="Antigravity Hooks")
+    if hooks_data is None:
+        hooks_data = {}
+
+    receiver_invocation = _build_hook_invocation(receiver_script)
+
+    # agy exposes no SessionStart hook — its lifecycle is PreInvocation /
+    # PostInvocation / PreToolUse / PostToolUse / Stop. TeleClaude synthesizes
+    # session_start from the first activity event (see AgyAdapter), so only the
+    # events agy actually fires are installed here.
+    agy_events_mapping = {
+        "PreInvocation": "user_prompt_submit",
+        "PreToolUse": "tool_use",
+        "Stop": "agent_stop",
+    }
+
+    teleclaude_hooks = {
+        event_name: [{"type": "command", "command": _build_hook_command(receiver_invocation, "gemini", event_arg)}]
+        for event_name, event_arg in agy_events_mapping.items()
+    }
+
+    hooks_data["teleclaude"] = teleclaude_hooks
+
+    with open(hooks_path, "w") as f:
+        json.dump(hooks_data, f, indent=2)
+    print(f"Antigravity hooks configured in {hooks_path}")
 
 
 def configure_codex(
@@ -729,7 +780,7 @@ def main() -> None:
     install_shell_environment()
     install_env_symlink(repo_root)
     configure_claude(repo_root)
-    configure_gemini(repo_root)
+    configure_agy(repo_root)
     configure_codex(repo_root)
 
 

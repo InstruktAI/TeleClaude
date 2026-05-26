@@ -62,6 +62,7 @@ class TestNormalizeAgentName:
     @pytest.mark.unit
     def test_case_insensitive(self):
         assert normalize_agent_name("GEMINI") == "gemini"
+        assert normalize_agent_name("AGY") == "gemini"
 
     @pytest.mark.unit
     def test_unknown_raises(self):
@@ -97,18 +98,14 @@ class TestAgentNameMetadataSpec:
             assert isinstance(marker, str)
             assert len(marker) > 0
 
-    @pytest.mark.parametrize(
-        "agent_name, expected_marker",
-        [
-            (AgentName.GEMINI, "Type your message or @path/to/file"),
-            (AgentName.CLAUDE, "\u276f"),
-            (AgentName.CODEX, "\n\u203a "),
-        ],
-    )
-    def test_agent_name_returns_correct_marker(self, agent_name: AgentName, expected_marker: str) -> None:
-        """SC-1: Each agent must return its specific TUI marker.
+    def test_gemini_returns_correct_marker(self) -> None:
+        """SC-1: gemini (agy) must return its idle-prompt footer marker."""
+        assert AgentName.GEMINI.prompt_marker == "? for shortcuts"
 
-        Note: Exact string assertions are permitted here per testing policy
-        as markers are execution-significant (runtime behavior depends on match).
-        """
-        assert getattr(agent_name, "prompt_marker", None) == expected_marker
+    def test_claude_returns_correct_marker(self) -> None:
+        """SC-1: claude must return its specific TUI marker."""
+        assert AgentName.CLAUDE.prompt_marker == "\u276f"
+
+    def test_codex_returns_correct_marker(self) -> None:
+        """SC-1: codex must return its specific TUI marker."""
+        assert AgentName.CODEX.prompt_marker == "\n\u203a "

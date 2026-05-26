@@ -3,12 +3,11 @@
 
 computer:
   name: Mac # Unique computer identifier for multi-computer MCP communication
-  user: ${USER} # System user running the daemon
   role: development # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
-  default_working_dir: ${WORKING_DIR}
   is_master: true # Master computer in case of multi computer mesh setup
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
-  host: null # Optional hostname/IP for SSH remote execution (null = local computer)
+  # user, default_working_dir, help_desk_dir, and host are derived at runtime
+  # (system login, project dir, help-desk subdir, detected LAN IP) — not editable here.
   # Trusted directories
   # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
   trusted_dirs:
@@ -25,6 +24,12 @@ redis:
   # message_stream_maxlen: 10000
   # output_stream_maxlen: 10000
   # output_stream_ttl: 3600
+
+# Telegram admin adapter for mobile interaction with the platform.
+telegram:
+  enabled: false
+  # Bot token.
+  bot_token: ${TELEGRAM_BOT_TOKEN}
 
 # Admin adapter that houses the administration of ALL computer and their projects,
 # So highly recommended to enable it for mobile interaction with the platform.
@@ -52,7 +57,7 @@ agents:
   default: claude
   claude:
     enabled: true
-  gemini:
+  agy:
     enabled: true
   codex:
     enabled: true

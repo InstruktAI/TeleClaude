@@ -124,6 +124,12 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
     ],
     "redis": [
         EnvVarInfo(
+            "REDIS_URL",
+            "redis",
+            "Redis connection URL (multi-computer transport)",
+            "redis://localhost:6379",
+        ),
+        EnvVarInfo(
             "REDIS_PASSWORD",
             "redis",
             "Redis password (multi-computer transport)",

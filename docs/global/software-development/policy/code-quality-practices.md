@@ -34,6 +34,7 @@ visibility: 'public'
 - Assign explicit ownership to state and its lifecycle (**Encapsulation**).
 - Default to immutable data. Keep mutable state in a single owner (**Immutability Preference**).
 - Avoid implicit global state or import-time side effects.
+- A fixed set of related identifiers (states, modes, tab/section names, dispatch keys) is owned by one named, namespaced type and referenced by member — never inlined as a literal at call sites. Inlined copies drift (casing, typos) and make illegal states representable. Bindings: Python → `StrEnum`; TypeScript → `as const` object or string-literal union (never `enum`).
 
 ### Duplication and Abstraction
 
@@ -69,7 +70,8 @@ visibility: 'public'
 ### Naming and Comments
 
 - Name for semantics, not origin. Names must make sense to someone who never saw the feature request or ticket that motivated the change.
-- Comments describe the present, never the past. No "removed X", "used to do Y", "added for Z". Git is the history; comments explain what is here now.
+- Comments describe the present, never the past. No "removed X", "used to do Y", "added for Z", and no reference to the bug, ticket, incident, or motivation that prompted the code. Git history and ADRs own the "why it changed"; comments explain what is here now.
+- Comments and docstrings do not restate policy or shared rules. Describe what the code is; the policy is the single owner of the rule — reference it if needed, never duplicate it.
 - When removing code, remove it completely. No `_unused` renames, no `// removed` comments, no re-exports for backward compatibility unless explicitly required.
 
 ### Testing Alignment

@@ -50,24 +50,19 @@ async def _await_restart_readiness(
     session: Session,
     ready_future: asyncio.Future[None],
 ) -> None:
-    """Wait for an agent restart to become ready, racing pane-quiet for Codex.
+    """Wait for an agent restart to become ready: race pane-quiet vs native hook.
 
-    Codex CLI v0.130+ doesn't fire its native SessionStart hook on cold launch
-    or resume, so the hook-only path times out for ~55% of dispatches. For
-    Codex, race the proven `wait_for_agent_ready` pane-quiet detector against
-    the hook subscription; for Claude and Gemini, keep the existing single-path
-    AGENT_READY subscription.
+    Uniform across every agent. CLIs differ in readiness signalling — Claude
+    fires a reliable AGENT_READY hook, Codex fires it late, agy never fires one —
+    so the `wait_for_agent_ready` pane-quiet detector always races the hook
+    subscription and the gate opens on whichever wins.
 
     Raises TimeoutError when neither detector wins within
     ``AGENT_PROMPT_READY_TIMEOUT_S``.
     """
-    if agent != AgentName.CODEX.value:
-        await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
-        return
-
     pane_task = asyncio.create_task(
         wait_for_agent_ready(
-            AgentName.CODEX.value,
+            agent,
             session,
             AGENT_PROMPT_READY_TIMEOUT_S,
             _RESTART_QUIET_S,
@@ -94,7 +89,7 @@ async def _await_restart_readiness(
         ready, _tail = pane_task.result()
         pane_won = ready
     if not (hook_won or pane_won):
-        raise TimeoutError("codex restart readiness: pane and hook both failed within timeout")
+        raise TimeoutError(f"agent restart readiness: pane and hook both failed within timeout (agent={agent})")
 
 
 @with_session
