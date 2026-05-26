@@ -240,4 +240,4 @@ async def send_invite_email(
     # Send email
     subject = f"Welcome to {org_name} — Your Personal AI Assistant"
     await send_email(email, subject, html_body, text_body)
-    logger.info("Invite email sent to %s for %s", email, name)
+    logger.info("Invite email sent")

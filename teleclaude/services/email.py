@@ -71,9 +71,9 @@ async def send_email(
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
                 server.sendmail(sender_email, to, msg.as_string())
-            logger.info("Email sent to %s: %s", to, subject)
+            logger.info("Email sent")
         except Exception as e:
-            logger.error("SMTP delivery failed to %s: %s", to, e)
+            logger.error("SMTP delivery failed: %s", e)
             raise RuntimeError(f"SMTP delivery failed: {e}") from e
 
     await asyncio.to_thread(_send_smtp)

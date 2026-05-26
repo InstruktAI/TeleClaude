@@ -210,3 +210,44 @@ adapters.whatsapp.business_number:
   url: https://business.facebook.com/
   format_example: "+1234567890"
   validation_hint: "E.164 format: + followed by country code and number"
+
+email.email_from:
+  env_var: EMAIL_FROM
+  description: Sender identity for outbound email, as "Name <address>".
+  format_example: "Instrukt ai <app@instrukt.ai>"
+email.email_replyto:
+  env_var: EMAIL_REPLYTO
+  description: Reply-To header for outbound email.
+  format_example: "NOREPLY <no-reply@instrukt.ai>"
+email.smtp_username:
+  env_var: SMTP_USERNAME
+  description: Username for the SMTP relay.
+email.smtp_key:
+  env_var: SMTP_KEY
+  description: API key / password for the SMTP relay.
+email.smtp_relay:
+  env_var: SMTP_RELAY
+  description: SMTP relay endpoint as host:port.
+  format_example: "smtp-relay.brevo.com:587"
+backup.aws_access_key_id:
+  env_var: AWS_ACCESS_KEY_ID
+  description: Access key id for the S3 backup target.
+backup.aws_secret_access_key:
+  env_var: AWS_SECRET_ACCESS_KEY
+  description: Secret access key for the S3 backup target.
+backup.aws_s3_host:
+  env_var: AWS_S3_HOST
+  description: S3 endpoint host for the backup target.
+backup.aws_s3_region:
+  env_var: AWS_S3_REGION
+  description: S3 region for the backup target.
+backup.aws_s3_bucket:
+  env_var: AWS_S3_BUCKET
+  description: S3 bucket name for backups.
+backup.backup_prefix:
+  env_var: TELECLAUDE_BACKUP_PREFIX
+  description: Key prefix under which backups are stored.
+firecrawl.api_key:
+  env_var: FIRECRAWL_API_KEY
+  description: API key for Firecrawl web scraping.
+  url: https://www.firecrawl.dev/app/api-keys

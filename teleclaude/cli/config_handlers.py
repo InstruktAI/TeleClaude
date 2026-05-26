@@ -192,6 +192,24 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "+1234567890",
         ),
     ],
+    "email": [
+        EnvVarInfo("EMAIL_FROM", "email", "Sender identity (Name <addr>)", "Instrukt ai <app@instrukt.ai>"),
+        EnvVarInfo("EMAIL_REPLYTO", "email", "Reply-To header", "NOREPLY <no-reply@instrukt.ai>"),
+        EnvVarInfo("SMTP_USERNAME", "email", "SMTP relay username", "922ed8001@smtp-brevo.com"),
+        EnvVarInfo("SMTP_KEY", "email", "SMTP relay key/password", "xsmtpsib-..."),
+        EnvVarInfo("SMTP_RELAY", "email", "SMTP relay host:port", "smtp-relay.brevo.com:587"),
+    ],
+    "backup": [
+        EnvVarInfo("AWS_ACCESS_KEY_ID", "backup", "S3 access key id", "AKIA..."),
+        EnvVarInfo("AWS_SECRET_ACCESS_KEY", "backup", "S3 secret access key", "..."),
+        EnvVarInfo("AWS_S3_HOST", "backup", "S3 endpoint host", "s3.eu-central-1.amazonaws.com"),
+        EnvVarInfo("AWS_S3_REGION", "backup", "S3 region", "eu-central-1"),
+        EnvVarInfo("AWS_S3_BUCKET", "backup", "S3 bucket name", "my-teleclaude-backups"),
+        EnvVarInfo("TELECLAUDE_BACKUP_PREFIX", "backup", "Key prefix for backups", "teleclaude/"),
+    ],
+    "firecrawl": [
+        EnvVarInfo("FIRECRAWL_API_KEY", "firecrawl", "Firecrawl API key (web scraping)", "fc-..."),
+    ],
 }
 
 
