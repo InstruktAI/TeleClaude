@@ -16,6 +16,10 @@ NC='\033[0m'
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_FILE="${INSTALL_DIR}/install.log"
 
+# Runtime config lives under TELECLAUDE_HOME; the repo ships only the blueprint.
+TELECLAUDE_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
+TC_CONFIG="${TELECLAUDE_HOME}/config.yml"
+
 PYTHON_MIN_VERSION="3.11"
 
 NON_INTERACTIVE=false
@@ -108,21 +112,22 @@ EOF
 }
 
 ensure_config_yml() {
-    if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-        cp "$INSTALL_DIR/config.sample.yml" "$INSTALL_DIR/config.yml"
-        print_success "Created config.yml from config.sample.yml"
+    if [ ! -f "$TC_CONFIG" ]; then
+        mkdir -p "$TELECLAUDE_HOME"
+        cp "$INSTALL_DIR/config.sample.yml" "$TC_CONFIG"
+        print_success "Created $TC_CONFIG from config.sample.yml"
     else
-        print_info "config.yml already exists"
+        print_info "config.yml already exists at $TC_CONFIG"
     fi
 }
 
 get_current_agent_enabled() {
     local agent="$1"
     local default_val="$2"
-    if [ -f "$INSTALL_DIR/config.yml" ]; then
+    if [ -f "$TC_CONFIG" ]; then
         "$PYTHON_CMD" -c "
 try:
-    lines = open('$INSTALL_DIR/config.yml').read().splitlines()
+    lines = open('$TC_CONFIG').read().splitlines()
     in_agents = False
     in_agent = False
     for line in lines:
@@ -154,10 +159,10 @@ print('$default_val')
 
 get_current_default_agent() {
     local default_val="$1"
-    if [ -f "$INSTALL_DIR/config.yml" ]; then
+    if [ -f "$TC_CONFIG" ]; then
         "$PYTHON_CMD" -c "
 try:
-    lines = open('$INSTALL_DIR/config.yml').read().splitlines()
+    lines = open('$TC_CONFIG').read().splitlines()
     in_agents = False
     for line in lines:
         stripped = line.strip()
@@ -320,7 +325,7 @@ def update_agents(path_str, claude_on, agy_on, codex_on, default_name):
         
     path.write_text('\n'.join(lines) + '\n')
 
-update_agents('$INSTALL_DIR/config.yml', '$claude_enabled', '$agy_enabled', '$codex_enabled', '$default_agent')
+update_agents('$TC_CONFIG', '$claude_enabled', '$agy_enabled', '$codex_enabled', '$default_agent')
 "
     print_success "config.yml agents updated successfully (default: $default_agent)"
 }
