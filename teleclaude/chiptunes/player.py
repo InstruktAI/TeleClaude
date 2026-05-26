@@ -41,6 +41,27 @@ def _apply_fade(pcm: bytes, factor: float) -> bytes:
     return samples.tobytes()
 
 
+def _reinitialize_portaudio() -> bool:
+    """Re-enumerate audio devices by cycling PortAudio.
+
+    sounddevice caches the device list when PortAudio first initializes. A
+    long-lived process that outlives a default-device change (headphones
+    unplugged, output switched) keeps seeing the old devices, so opening a
+    stream fails — on macOS with CoreAudio -10851 / PortAudio -9986, and the
+    open can hang rather than raise. Terminating and re-initializing PortAudio
+    forces a fresh device enumeration against the current hardware.
+    """
+    if not _sounddevice_available:
+        return False
+    try:
+        sd._terminate()  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType]
+        sd._initialize()  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType]
+        return True
+    except Exception as exc:
+        logger.warning("PortAudio reinitialize failed: %s", exc)
+        return False
+
+
 def _get_default_output_device() -> int | None:  # used by ChiptunesPlayer._open_stream and _device_monitor_loop
     """Return the current default output device index, or None on failure."""
     if not _sounddevice_available:
@@ -283,24 +304,31 @@ class ChiptunesPlayer:
                 return False
             if self._stream is not None:
                 return True
-            try:
-                stream = sd.RawOutputStream(
-                    samplerate=_SAMPLE_RATE,
-                    channels=1,
-                    dtype="int16",
-                    blocksize=blocksize,
-                    latency="high",
-                    callback=self._stream_callback,
-                )
-                self._stream = stream
-                self._stream_device_id = _get_default_output_device()
-                stream.start()
-                self._start_device_monitor()
-                return True
-            except Exception as exc:
-                logger.error("Failed to open audio stream: %s", exc)
-                self._stream = None
-                return False
+            # First attempt uses the cached device list; on failure, re-enumerate
+            # PortAudio devices once and retry — recovers from a stale default
+            # device after the process outlives a hardware change.
+            for attempt in range(2):
+                try:
+                    stream = sd.RawOutputStream(
+                        samplerate=_SAMPLE_RATE,
+                        channels=1,
+                        dtype="int16",
+                        blocksize=blocksize,
+                        latency="high",
+                        callback=self._stream_callback,
+                    )
+                    self._stream = stream
+                    self._stream_device_id = _get_default_output_device()
+                    stream.start()
+                    self._start_device_monitor()
+                    return True
+                except Exception as exc:
+                    logger.error("Failed to open audio stream (attempt %d/2): %s", attempt + 1, exc)
+                    self._stream = None
+                    if attempt == 0 and _reinitialize_portaudio():
+                        continue
+                    return False
+            return False
 
     def _close_stream(self) -> None:
         """Stop and release the active output stream."""
@@ -352,6 +380,9 @@ class ChiptunesPlayer:
                 old_stream.close()  # type: ignore
             except Exception as exc:
                 logger.debug("Old stream cleanup on device switch: %s", exc)
+            # Re-enumerate devices before reopening: PortAudio's cached list still
+            # points at the old default, so opening directly would fail or hang.
+            _reinitialize_portaudio()
             # Open new stream on the new default device
             if not self._open_stream():
                 logger.warning("Failed to reopen stream after device change")

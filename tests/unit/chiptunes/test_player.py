@@ -39,6 +39,40 @@ class _RecordingThread:
         return False
 
 
+class _FakeStream:
+    def start(self) -> None:
+        return None
+
+    def stop(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class _FakeSd:
+    """Stand-in for the sounddevice module with controllable open failures."""
+
+    def __init__(self, *, fail_times: int = 0) -> None:
+        self._fail_times = fail_times
+        self.open_calls = 0
+        self.terminate_calls = 0
+        self.initialize_calls = 0
+        self.default = SimpleNamespace(device=(0, 1))
+
+    def RawOutputStream(self, **_kwargs: object) -> _FakeStream:  # mirrors sounddevice API
+        self.open_calls += 1
+        if self.open_calls <= self._fail_times:
+            raise RuntimeError("PortAudio error [PaErrorCode -9986]")
+        return _FakeStream()
+
+    def _terminate(self) -> None:
+        self.terminate_calls += 1
+
+    def _initialize(self) -> None:
+        self.initialize_calls += 1
+
+
 class _FakeDriver:
     def __init__(self, header: SIDHeader) -> None:
         self.header = header
@@ -242,3 +276,42 @@ class TestChiptunesPlayer:
         assert player.track_end_reason == "track_completed"
         assert reasons == ["track_completed"]
         assert 395 <= driver.play_calls <= 410
+
+    def test_reinitialize_portaudio_cycles_when_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _FakeSd()
+        monkeypatch.setattr(player_module, "_sounddevice_available", True)
+        monkeypatch.setattr(player_module, "sd", fake)
+
+        assert player_module._reinitialize_portaudio() is True
+        assert fake.terminate_calls == 1
+        assert fake.initialize_calls == 1
+
+    def test_reinitialize_portaudio_noop_when_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(player_module, "_sounddevice_available", False)
+
+        assert player_module._reinitialize_portaudio() is False
+
+    def test_open_stream_retries_after_portaudio_reinit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _FakeSd(fail_times=1)
+        monkeypatch.setattr(player_module, "_sounddevice_available", True)
+        monkeypatch.setattr(player_module, "sd", fake)
+        player = player_module.ChiptunesPlayer()
+        player._stream_blocksize = 256
+        monkeypatch.setattr(player, "_start_device_monitor", lambda: None)
+
+        assert player._open_stream() is True
+        assert fake.open_calls == 2  # first fails, reinit, second succeeds
+        assert fake.terminate_calls == 1
+        assert fake.initialize_calls == 1
+
+    def test_open_stream_gives_up_after_single_reinit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _FakeSd(fail_times=99)
+        monkeypatch.setattr(player_module, "_sounddevice_available", True)
+        monkeypatch.setattr(player_module, "sd", fake)
+        player = player_module.ChiptunesPlayer()
+        player._stream_blocksize = 256
+        monkeypatch.setattr(player, "_start_device_monitor", lambda: None)
+
+        assert player._open_stream() is False
+        assert fake.open_calls == 2  # initial attempt plus exactly one retry
+        assert fake.terminate_calls == 1

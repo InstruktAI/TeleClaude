@@ -120,13 +120,16 @@ class TestWorkerProcess:
 
         assert worker_module._is_unplayable(track) is True
 
-    def test_pick_random_track_rejects_and_prunes_rsid(self, tmp_path: Path) -> None:
+    def test_pick_random_track_rejects_and_prunes_rsid(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         playable = tmp_path / "playable.sid"
         playable.write_bytes(b"PSIDmore")
         rsid = tmp_path / "rsid.sid"
         rsid.write_bytes(b"RSIDmore")
         worker = _WorkerProcess(tmp_path / "music", volume=0.4)
         worker._track_list = [rsid, playable]
+        # Always draw index 0: the RSID candidate is picked first, exercising the
+        # reject-and-prune path deterministically regardless of list order.
+        monkeypatch.setattr(worker_module.random, "randrange", lambda _n: 0)
 
         assert worker._pick_random_track() == playable
         # The RSID candidate is pruned from the cached list, never returned.
