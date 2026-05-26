@@ -162,6 +162,18 @@ before importing TeleClaude so runtime state cannot fall through to the real
 
 ### Daemon runtime config keys (`config.yml`)
 
+The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
+The repository `config.sample.yml` is the read-only blueprint: `make install` seeds the
+runtime file from it on first run, and the daemon bootstrap (`teleclaude.config._bootstrap`)
+merges any blueprint keys missing from the runtime file (runtime values win, `${VAR}`
+placeholders preserved). The TUI, daemon, and installer read and write only the runtime
+file; the blueprint is never mutated. `make install` writes opted-in agents' `enabled`
+state into the runtime file. `TELECLAUDE_CONFIG_PATH` overrides the path verbatim (tests).
+
+The `agents` config key for the Antigravity agent is `gemini`; its binary resolves to
+`agy` via `resolve_agent_binary`. The installer heals any legacy `agy:` key back to
+`gemini:` so the parser (which accepts only `claude`/`gemini`/`codex`) does not reject it.
+
 These keys are loaded by the daemon runtime config parser in `teleclaude/config/__init__.py`.
 
 ```yaml
