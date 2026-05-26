@@ -9,11 +9,9 @@ contract.
 from __future__ import annotations
 
 import logging
-import os
-import signal
+import resource
 import subprocess
 import sys
-import time
 import tomllib
 from pathlib import Path
 
@@ -69,68 +67,24 @@ def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[st
     return sorted(targets)
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-
-
-def _descendants(pid: int) -> list[int]:
-    try:
-        out = subprocess.check_output(["pgrep", "-P", str(pid)], text=True)
-    except subprocess.CalledProcessError:
-        return []
-    kids = [int(p) for p in out.split()]
-    return kids + [g for k in kids for g in _descendants(k)]
-
-
-def _kill_tree(root_pid: int, *, grace_seconds: float = 3.0) -> None:
-    """Kill ``root_pid`` and every descendant; survives reparenting and forks during shutdown."""
-    captured = {root_pid, *_descendants(root_pid)}
-    try:
-        os.killpg(os.getpgid(root_pid), signal.SIGTERM)
-    except (ProcessLookupError, PermissionError):
-        for pid in captured:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-    deadline = time.monotonic() + grace_seconds
-    while time.monotonic() < deadline:
-        if not any(_alive(p) for p in captured):
-            return
-        time.sleep(0.1)
-    for _ in range(3):
-        survivors = {p for p in captured if _alive(p)} | set(_descendants(root_pid))
-        if not survivors:
-            return
-        for pid in survivors:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        captured |= survivors
-        time.sleep(0.1)
-
-
-def run_pytest(args: list[str], cwd: Path | None = None, *, wall_seconds: int = 35) -> int:
+def run_pytest(args: list[str], cwd: Path | None = None) -> int:
     """Run pytest with the given arguments. Returns exit code.
 
-    Three-layer hang defense: per-test ``timeout = 1`` (pyproject) catches a
-    runaway test body; ``session_timeout = 30`` (pyproject) catches an
-    accumulating soft hang between tests when pytest is still responsive;
-    ``wall_seconds`` is the hard OS-level kill that survives even if pytest's
-    own teardown wedges (the failure mode that produced the 20-minute hang in
-    ``tests/unit/deployment/test_handler.py`` before ``b8eea1e06``).
+    Two-layer hang defense: per-test ``timeout = 1`` (pyproject) catches a
+    runaway test body; ``session_timeout = 35`` (pyproject) catches an
+    accumulating soft hang between tests when pytest is still responsive,
+    capping total wall clock while still allowing pytest to print its summary.
 
-    Sweeps zombie pytest trees from prior runs before invoking, and
-    process-group-kills on wall-clock expiry so xdist workers and any
-    asyncio-spawned subprocesses go down with their parent.
+    Sweeps zombie pytest trees from prior runs before invoking.
 
     Justified subprocess: pytest is an external tool invocation.
     """
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 4096:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (min(4096, hard), hard))
+    except Exception:
+        pass
     subprocess.run(["pkill", "-9", "-f", "pytest tests"], check=False)
     subprocess.run(["pkill", "-9", "-f", "uv run pytest"], check=False)
     proc = subprocess.Popen(
@@ -138,11 +92,7 @@ def run_pytest(args: list[str], cwd: Path | None = None, *, wall_seconds: int = 
         cwd=str(cwd) if cwd else None,
         start_new_session=True,
     )
-    try:
-        return proc.wait(timeout=wall_seconds)
-    except subprocess.TimeoutExpired:
-        _kill_tree(proc.pid)
-        raise RuntimeError(f"pytest exceeded {wall_seconds}s wall clock — likely a teardown hang") from None
+    return proc.wait()
 
 
 class TestRunner:
@@ -226,7 +176,6 @@ class TestRunner:
             args.append("--snapshot-update")
         if not self._include_expensive:
             args.extend(["-m", "not expensive"])
-        args.append("-q")
         return args
 
     def run(self, targets: list[str] | None = None) -> None:
