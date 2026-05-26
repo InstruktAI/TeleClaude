@@ -147,12 +147,19 @@ environment_variables:
   # Runtime state root + log control
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
   - TELECLAUDE_LOG_LEVEL
-  # Email delivery (SMTP)
-  - SMTP_HOST
-  - SMTP_PORT
-  - SMTP_USER
-  - SMTP_PASS
+  # Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields)
   - EMAIL_FROM
+  - EMAIL_REPLYTO
+  - SMTP_USERNAME
+  - SMTP_KEY
+  - SMTP_RELAY # host:port
+  - AWS_ACCESS_KEY_ID
+  - AWS_SECRET_ACCESS_KEY
+  - AWS_S3_HOST
+  - AWS_S3_REGION
+  - AWS_S3_BUCKET
+  - TELECLAUDE_BACKUP_PREFIX
+  - FIRECRAWL_API_KEY
 ```
 
 `TELECLAUDE_HOME` is consumed by `teleclaude.paths` before path constants are
