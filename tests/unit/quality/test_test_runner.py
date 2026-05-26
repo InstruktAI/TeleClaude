@@ -6,6 +6,7 @@ with automatic worktree scoping and companion file mapping.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -267,6 +268,40 @@ class TestExitBehavior:
 
         assert exit_code == 0
         assert popen_calls == [(["uv", "run", "pytest", "tests/unit", "-q"], str(tmp_path), True)]
+
+    def test_fd_limit_failure_is_non_fatal_and_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A failed file-descriptor raise logs a warning but still runs pytest."""
+        popen_calls: list[list[str]] = []
+
+        class _FakeProc:
+            pid = 1
+
+            def wait(self, timeout: int | None = None) -> int:
+                return 0
+
+        def _raise_setrlimit(*_args: object, **_kwargs: object) -> None:
+            raise OSError("cannot raise limit")
+
+        def _capture_popen(cmd: list[str], **_kwargs: object) -> _FakeProc:
+            popen_calls.append(list(cmd))
+            return _FakeProc()
+
+        def _stub_run(*_args: object, **_kwargs: object) -> CompletedProcess[str]:
+            return CompletedProcess(args=[], returncode=0)
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.resource.getrlimit", lambda _res: (1024, 8192))
+        monkeypatch.setattr("teleclaude.quality.test_runner.resource.setrlimit", _raise_setrlimit)
+        monkeypatch.setattr("teleclaude.quality.test_runner.subprocess.Popen", _capture_popen)
+        monkeypatch.setattr("teleclaude.quality.test_runner.subprocess.run", _stub_run)
+
+        with caplog.at_level(logging.WARNING, logger="teleclaude.quality.test_runner"):
+            exit_code = run_pytest(["tests/unit"], cwd=tmp_path)
+
+        assert exit_code == 0
+        assert popen_calls  # pytest was still invoked despite the fd-limit failure
+        assert any(record.levelno == logging.WARNING for record in caplog.records)
 
     def test_exits_nonzero_when_pytest_reports_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits non-zero when the underlying pytest invocation returns failure."""

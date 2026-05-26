@@ -70,7 +70,7 @@ def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[st
 def run_pytest(args: list[str], cwd: Path | None = None) -> int:
     """Run pytest with the given arguments. Returns exit code.
 
-    Two-layer hang defense: per-test ``timeout = 1`` (pyproject) catches a
+    Two-layer hang defense: per-test ``timeout = 5`` (pyproject) catches a
     runaway test body; ``session_timeout = 35`` (pyproject) catches an
     accumulating soft hang between tests when pytest is still responsive,
     capping total wall clock while still allowing pytest to print its summary.
