@@ -120,6 +120,36 @@ class TestWorkerProcess:
 
         assert worker_module._is_unplayable(track) is True
 
+    def test_pick_random_track_rejects_and_prunes_rsid(self, tmp_path: Path) -> None:
+        playable = tmp_path / "playable.sid"
+        playable.write_bytes(b"PSIDmore")
+        rsid = tmp_path / "rsid.sid"
+        rsid.write_bytes(b"RSIDmore")
+        worker = _WorkerProcess(tmp_path / "music", volume=0.4)
+        worker._track_list = [rsid, playable]
+
+        assert worker._pick_random_track() == playable
+        # The RSID candidate is pruned from the cached list, never returned.
+        assert rsid not in worker._track_list
+        assert worker._pick_random_track() == playable
+
+    def test_discover_tracks_does_not_open_files(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        music_dir = tmp_path / "music"
+        music_dir.mkdir()
+        (music_dir / "a.sid").write_bytes(b"PSIDmore")
+        (music_dir / "b.sid").write_bytes(b"RSIDmore")
+        monkeypatch.setattr(worker_module, "disliked_paths", set)
+
+        def _fail_open(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("discovery must not open SID files")
+
+        monkeypatch.setattr(worker_module, "_is_unplayable", _fail_open)
+        worker = _WorkerProcess(music_dir, volume=0.4)
+
+        discovered = worker._discover_tracks()
+
+        assert set(discovered) == {music_dir / "a.sid", music_dir / "b.sid"}
+
     def test_start_plays_first_track_and_emits_event(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         track = tmp_path / "Lazy_Jones.sid"
         worker = _make_worker(monkeypatch, tmp_path, tracks=[track])

@@ -441,15 +441,25 @@ class _WorkerProcess:
     def _pick_random_track(self) -> Path | None:
         if self._track_list is None:
             self._track_list = self._discover_tracks()
-        if not self._track_list:
-            return None
-        return random.choice(self._track_list)
+        tracks = self._track_list
+        # Check RSID magic lazily on the picked candidate only. Opening all
+        # ~60k SID files upfront just to reject the ~6% RSID ones costs seconds;
+        # picking-then-checking converges in ~1 try and self-prunes the cache.
+        while tracks:
+            idx = random.randrange(len(tracks))
+            candidate = tracks[idx]
+            if _is_unplayable(candidate):
+                tracks[idx] = tracks[-1]
+                tracks.pop()
+                continue
+            return candidate
+        return None
 
     def _discover_tracks(self) -> list[Path]:
         if not self._music_dir.exists():
             return []
         blocked = disliked_paths()
-        return [p for p in self._music_dir.rglob("*.sid") if not _is_unplayable(p) and str(p) not in blocked]
+        return [p for p in self._music_dir.rglob("*.sid") if str(p) not in blocked]
 
     def invalidate_track_cache(self) -> None:
         """Clear the cached track list so dislike changes take effect."""
