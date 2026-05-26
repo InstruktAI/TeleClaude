@@ -7,7 +7,7 @@
 
 Checks:
 1. Required binaries (node, python, pip, etc.)
-2. Agent runtimes (claude, gemini, codex)
+2. Agent runtimes (claude, agy, codex)
 3. Config files existence and validity
 4. MCP injection status (teleclaude, context7)
 5. Environment variables
@@ -103,7 +103,7 @@ def main():  # type: ignore[no-untyped-def]
     # 2. Agent Runtimes
     print(f"{BLUE}--- Agent Runtimes ---{NC}")
     check_binary("claude")
-    check_binary("gemini", required=False)
+    check_binary("agy", required=False)  # Gemini agent resolves to the Antigravity (agy) binary
     check_binary("codex", required=False)  # Likely a wrapper or alias
     print("")
 

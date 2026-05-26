@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
+import pytest
 from pydantic import BaseModel, Field
 
 from teleclaude.cli.tui.views.reflection import deserialize_value, reflect_schema
@@ -87,15 +88,23 @@ def test_deserialize_boolean_values() -> None:
 
 
 def test_deserialize_integer_values() -> None:
-    """It properly deserializes integer inputs."""
+    """It deserializes valid integers and rejects invalid input."""
     assert deserialize_value("123", int) == 123
-    assert deserialize_value("not-an-int", int) == 0
+    with pytest.raises(ValueError):
+        deserialize_value("not-an-int", int)
 
 
 def test_deserialize_float_values() -> None:
-    """It properly deserializes float inputs."""
+    """It deserializes valid floats and rejects invalid input."""
     assert deserialize_value("12.34", float) == 12.34
-    assert deserialize_value("not-a-float", float) == 0.0
+    with pytest.raises(ValueError):
+        deserialize_value("not-a-float", float)
+
+
+def test_deserialize_choice_rejects_unknown() -> None:
+    """It rejects a value outside the allowed choices instead of coercing."""
+    with pytest.raises(ValueError):
+        deserialize_value("maybe", Literal, choices=["yes", "no"])
 
 
 def test_deserialize_list_values() -> None:

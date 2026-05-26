@@ -57,7 +57,7 @@ agents:
   default: claude
   claude:
     enabled: true
-  agy:
+  gemini:
     enabled: true
   codex:
     enabled: true

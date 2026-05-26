@@ -874,6 +874,7 @@ def _build_config(
             dlq_destination="teleclaude:events:dlq",
         ),
         telegram=TelegramConfig(
+            enabled=bool(telegram_raw.get("enabled", False)) if isinstance(telegram_raw, dict) else False,
             trusted_bots=[str(b) for b in telegram_raw.get("trusted_bots", [])]
             if isinstance(telegram_raw, dict)
             else [],

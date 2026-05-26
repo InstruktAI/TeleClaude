@@ -187,15 +187,11 @@ setup_agents_interactive() {
 
     # Extract current values as defaults
     local default_claude=$(get_current_agent_enabled "claude" "y")
-    local default_agy=$(get_current_agent_enabled "agy" "y")
-    # If legacy \"gemini\" is in old config.yml, use that for agy's default!
-    if [ -f "$INSTALL_DIR/config.yml" ] && grep -q "gemini:" "$INSTALL_DIR/config.yml"; then
-        default_agy=$(get_current_agent_enabled "gemini" "y")
-    fi
+    local default_agy=$(get_current_agent_enabled "gemini" "y")
     local default_codex=$(get_current_agent_enabled "codex" "y")
     local current_default_agent=$(get_current_default_agent "claude")
-    if [ "$current_default_agent" = "gemini" ]; then
-        current_default_agent="agy"
+    if [ "$current_default_agent" = "agy" ]; then
+        current_default_agent="gemini"
     fi
 
     local claude_enabled=false
@@ -233,7 +229,7 @@ setup_agents_interactive() {
     local enabled_count=0
     local enabled_list=()
     [ "$claude_enabled" = true ] && { enabled_list+=("claude"); ((enabled_count++)); } || true
-    [ "$agy_enabled" = true ] && { enabled_list+=("agy"); ((enabled_count++)); } || true
+    [ "$agy_enabled" = true ] && { enabled_list+=("gemini"); ((enabled_count++)); } || true
     [ "$codex_enabled" = true ] && { enabled_list+=("codex"); ((enabled_count++)); } || true
 
     if [ $enabled_count -eq 0 ]; then
@@ -281,10 +277,11 @@ def update_agents(path_str, claude_on, agy_on, codex_on, default_name):
     if not path.exists():
         return
     content = path.read_text()
-    
-    # We rename 'gemini:' to 'agy:' if present to fully purge gemini references
-    content = content.replace('gemini:', 'agy:')
-    
+
+    # The config key is 'gemini' (binary resolves to agy); heal any config that
+    # a prior installer wrote with the unparseable 'agy:' key.
+    content = content.replace('agy:', 'gemini:')
+
     lines = content.splitlines()
     in_agents = False
     current_agent = None
@@ -292,7 +289,7 @@ def update_agents(path_str, claude_on, agy_on, codex_on, default_name):
     
     states = {
         'claude': claude_on == 'true',
-        'agy': agy_on == 'true',
+        'gemini': agy_on == 'true',
         'codex': codex_on == 'true'
     }
     

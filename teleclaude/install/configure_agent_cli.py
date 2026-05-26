@@ -156,6 +156,20 @@ def _load_json_settings(
         return None
 
 
+def _load_user_json_or_refuse(
+    path: Path, *, label: str
+) -> dict[str, object]:  # guard: loose-dict - settings are dynamic JSON
+    """Load an existing user-owned JSON file, refusing to clobber it when malformed.
+
+    A missing file yields an empty mapping (safe to create); an existing file
+    that fails to parse stops the run so the user's content is never overwritten.
+    """
+    data = _load_json_settings(path, label=label)
+    if data is None:
+        raise RuntimeError(f"Refusing to overwrite invalid {label} file at {path}; fix or remove it, then re-run.")
+    return data
+
+
 def _extract_receiver_script(command: str | list[object]) -> str | None:
     if isinstance(command, list):
         parts = [str(part) for part in command]
@@ -543,9 +557,7 @@ def configure_agy(repo_root: Path) -> None:
 
     # 1. Merge static settings overrides into ~/.gemini/antigravity-cli/settings.json
     settings_path = agy_dir / "settings.json"
-    settings = _load_json_settings(settings_path, label="Antigravity")
-    if settings is None:
-        settings = {}
+    settings = _load_user_json_or_refuse(settings_path, label="Antigravity")
     overrides = _load_settings_overrides("gemini")
     if overrides:
         settings = _deep_merge(settings, overrides)
@@ -556,9 +568,7 @@ def configure_agy(repo_root: Path) -> None:
 
     # 2. Translates MCP settings and writes to ~/.gemini/antigravity-cli/mcp_config.json
     mcp_config_path = agy_dir / "mcp_config.json"
-    mcp_config = _load_json_settings(mcp_config_path, label="Antigravity MCP")
-    if mcp_config is None:
-        mcp_config = {}
+    mcp_config = _load_user_json_or_refuse(mcp_config_path, label="Antigravity MCP")
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     existing_mcp_servers = mcp_config.get("mcpServers", {})
     if not isinstance(existing_mcp_servers, dict):
@@ -581,9 +591,7 @@ def configure_agy(repo_root: Path) -> None:
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hooks_path = hooks_dir / "hooks.json"
 
-    hooks_data = _load_json_settings(hooks_path, label="Antigravity Hooks")
-    if hooks_data is None:
-        hooks_data = {}
+    hooks_data = _load_user_json_or_refuse(hooks_path, label="Antigravity Hooks")
 
     receiver_invocation = _build_hook_invocation(receiver_script)
 

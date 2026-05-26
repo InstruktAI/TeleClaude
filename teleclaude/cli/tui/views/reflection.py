@@ -189,17 +189,17 @@ def deserialize_value(value_str: str | bool | list[str], ftype: Any, choices: li
         try:
             return int(value_str)
         except ValueError:
-            return 0
+            raise ValueError(f"'{value_str}' is not a valid integer") from None
     if ftype is float:
         try:
             return float(value_str)
         except ValueError:
-            return 0.0
+            raise ValueError(f"'{value_str}' is not a valid number") from None
     if ftype == list[str] or ftype is list or get_origin(ftype) is list:
         return [item.strip() for item in value_str.split(",") if item.strip()]
     if ftype is Literal or ftype is Enum:
         if choices and value_str not in choices:
-            return choices[0]
+            raise ValueError(f"'{value_str}' is not one of: {', '.join(choices)}")
         return value_str
 
     return value_str

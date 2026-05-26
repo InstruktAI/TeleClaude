@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Protocol, cast
-from unittest.mock import patch
 
 import pytest
 
 import teleclaude.config as config_module
-from teleclaude.config import Config
+from tests.unit.config.conftest import BuildConfig
 
 pytestmark = [
     pytest.mark.unit,
@@ -30,37 +29,9 @@ def _remote_computers_from_config(built_config: object) -> list[_RemoteComputerL
     return cast(list[_RemoteComputerLike], object.__getattribute__(built_config, "remote_computers"))
 
 
-def _build_test_config(overrides: dict[str, object]) -> Config:  # guard: loose-dict - YAML-style test input
-    raw = config_module._deep_merge(
-        config_module.DEFAULT_CONFIG,
-        {
-            "computer": {
-                "name": "local-box",
-                "user": "dev",
-                "role": "builder",
-                "host": "localhost",
-                "default_working_dir": "/workspace/teleclaude",
-            },
-            "agents": {
-                "default": "claude",
-                "claude": {"enabled": True},
-                "gemini": {"enabled": False},
-                "codex": {"enabled": False},
-            },
-        },
-    )
-    raw = config_module._deep_merge(raw, overrides)
-
-    with (
-        patch.object(config_module, "resolve_tmux_binary", return_value="tmux"),
-        patch.object(config_module, "resolve_agent_binary", side_effect=lambda name: f"/usr/bin/{name}"),
-    ):
-        return config_module._build_config(raw)
-
-
 class TestRemoteComputerParsing:
-    def test_build_config_parses_remote_computers_into_structured_entries(self) -> None:
-        built = _build_test_config(
+    def test_build_config_parses_remote_computers_into_structured_entries(self, build_config: BuildConfig) -> None:
+        built = build_config(
             {
                 "remote_computers": {
                     "builder-box": {
@@ -81,17 +52,23 @@ class TestRemoteComputerParsing:
         assert remote_computers[0].user == "alice"
         assert remote_computers[1].host == "relay.local"
 
-    def test_build_config_defaults_remote_computers_to_empty_list_when_section_missing(self) -> None:
-        built = _build_test_config({})
+    def test_build_config_defaults_remote_computers_to_empty_list_when_section_missing(
+        self, build_config: BuildConfig
+    ) -> None:
+        built = build_config({})
         assert _remote_computers_from_config(built) == []
 
-    def test_build_config_defaults_remote_computers_to_empty_list_when_section_empty(self) -> None:
-        built = _build_test_config({"remote_computers": {}})
+    def test_build_config_defaults_remote_computers_to_empty_list_when_section_empty(
+        self, build_config: BuildConfig
+    ) -> None:
+        built = build_config({"remote_computers": {}})
         assert _remote_computers_from_config(built) == []
 
-    def test_build_config_rejects_non_mapping_remote_entries_with_descriptive_error(self) -> None:
+    def test_build_config_rejects_non_mapping_remote_entries_with_descriptive_error(
+        self, build_config: BuildConfig
+    ) -> None:
         with pytest.raises(ValueError) as exc_info:
-            _build_test_config({"remote_computers": {"builder-box": "alice@builder.local"}})
+            build_config({"remote_computers": {"builder-box": "alice@builder.local"}})
 
         message = str(exc_info.value)
         assert "remote_computers" in message
@@ -102,8 +79,8 @@ class TestEventReliabilityConfig:
     def test_default_config_does_not_expose_event_reliability_controls(self) -> None:
         assert "event_reliability" not in config_module.DEFAULT_CONFIG
 
-    def test_build_config_ignores_event_reliability_overrides(self) -> None:
-        built = _build_test_config(
+    def test_build_config_ignores_event_reliability_overrides(self, build_config: BuildConfig) -> None:
+        built = build_config(
             {
                 "event_reliability": {
                     "idle_threshold_ms": 12_000,
