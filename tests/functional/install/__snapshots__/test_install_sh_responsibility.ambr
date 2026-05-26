@@ -114,6 +114,11 @@
           'TMP/project_root/teleclaude/install/wrappers/teleclaude-shell',
         ),
         tuple(
+          'file',
+          '.teleclaude/config.yml',
+          'file',
+        ),
+        tuple(
           'dir',
           '.teleclaude/docs',
           0,
@@ -293,6 +298,11 @@
           'symlink',
           '.teleclaude/bin/teleclaude-shell',
           'TMP/project_root/teleclaude/install/wrappers/teleclaude-shell',
+        ),
+        tuple(
+          'file',
+          '.teleclaude/config.yml',
+          'file',
         ),
         tuple(
           'dir',

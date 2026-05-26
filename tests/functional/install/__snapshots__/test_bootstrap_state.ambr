@@ -82,6 +82,11 @@
           'TMP/project_root/teleclaude/install/wrappers/teleclaude-shell',
         ),
         tuple(
+          'file',
+          'config.yml',
+          'file',
+        ),
+        tuple(
           'dir',
           'docs',
           0,
@@ -143,7 +148,7 @@
     'project_outputs': dict({
       '.env': False,
       'bin/teleclaude-wrapper.sh': True,
-      'config.yml': True,
+      'config.yml': False,
       'teleclaude.yml': True,
     }),
     'returncode': 0,
@@ -280,6 +285,11 @@
           'TMP/project_root/teleclaude/install/wrappers/teleclaude-shell',
         ),
         tuple(
+          'file',
+          'config.yml',
+          'file',
+        ),
+        tuple(
           'dir',
           'docs',
           0,
@@ -341,7 +351,7 @@
     'project_outputs': dict({
       '.env': False,
       'bin/teleclaude-wrapper.sh': True,
-      'config.yml': True,
+      'config.yml': False,
       'teleclaude.yml': True,
     }),
     'returncode': 0,
