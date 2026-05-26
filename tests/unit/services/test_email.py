@@ -46,6 +46,10 @@ _SENDER_ADDR = "sender@example.com"
 _EMAIL_FROM = f"Sender Name <{_SENDER_ADDR}>"
 _REPLY_TO = "No Reply <no-reply@example.com>"
 _RECIPIENT = "person@example.com"
+_HTML_BODY = "<h1>Hello</h1><p>World</p>"
+_TEXT_FALLBACK = "HelloWorld"
+_MISSING_CREDS_MSG = "Missing required SMTP credentials"
+_LOGIN_ERROR = "bad login"
 
 
 def _set_smtp_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -63,7 +67,7 @@ class TestSendEmail:
         monkeypatch.delenv("SMTP_KEY", raising=False)
         monkeypatch.delenv("EMAIL_FROM", raising=False)
 
-        with pytest.raises(ValueError, match="Missing required SMTP credentials"):
+        with pytest.raises(ValueError, match=_MISSING_CREDS_MSG):
             await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")
 
     @pytest.mark.unit
@@ -75,7 +79,7 @@ class TestSendEmail:
             patch("teleclaude.services.email.asyncio.to_thread", new=AsyncMock(side_effect=_run_sync)),
             patch("teleclaude.services.email.smtplib.SMTP", return_value=smtp),
         ):
-            await send_email(_RECIPIENT, "Subject", "<h1>Hello</h1><p>World</p>")
+            await send_email(_RECIPIENT, "Subject", _HTML_BODY)
 
         assert smtp.started_tls is True
         assert smtp.login_args == (_SMTP_USER, _SMTP_KEY)
@@ -84,8 +88,8 @@ class TestSendEmail:
         assert smtp.sendmail_args[0] == _SENDER_ADDR
         assert smtp.sendmail_args[1] == _RECIPIENT
         message = smtp.sendmail_args[2]
-        assert "HelloWorld" in message
-        assert "<h1>Hello</h1><p>World</p>" in message
+        assert _TEXT_FALLBACK in message
+        assert _HTML_BODY in message
         assert _REPLY_TO in message
         assert _EMAIL_FROM in message
 
@@ -95,7 +99,7 @@ class TestSendEmail:
         smtp = _RecordingSMTP("smtp.test", 2525, timeout=10)
 
         def _failing_login(user: str, password: str) -> None:
-            raise RuntimeError("bad login")
+            raise RuntimeError(_LOGIN_ERROR)
 
         smtp.login = _failing_login
 
@@ -103,5 +107,5 @@ class TestSendEmail:
             patch("teleclaude.services.email.asyncio.to_thread", new=AsyncMock(side_effect=_run_sync)),
             patch("teleclaude.services.email.smtplib.SMTP", return_value=smtp),
         ):
-            with pytest.raises(RuntimeError, match="SMTP delivery failed: bad login"):
+            with pytest.raises(RuntimeError, match=f"SMTP delivery failed: {_LOGIN_ERROR}"):
                 await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")

@@ -9,12 +9,16 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel, Field
 
+from teleclaude.cli.tui.views._config_constants import EmailAdapterConfig
 from teleclaude.cli.tui.views.reflection import (
     ReflectedField,
     deserialize_value,
     reflect_schema,
     resolve_env_placeholders,
 )
+
+PROVIDER_SECRET_VAR = "SMTP_KEY"
+PROVIDER_SECRET_VALUE = "relay-key-xyz"
 
 EXPECTED_PYDANTIC_KEYS = {"name", "count", "mode", "choices", "sub.enabled", "sub.token"}
 BLACKLISTED_KEY = "sub.announcements_channel_id"
@@ -97,6 +101,17 @@ def test_resolve_env_placeholder_reads_environment(monkeypatch: pytest.MonkeyPat
 
     assert field.value == SECRET_VALUE
     assert field.env_var == SECRET_VAR
+
+
+def test_provider_var_field_resolves_to_env_and_records_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Providers ${VAR} field resolves to its env value and records the backing var for .env save."""
+    monkeypatch.setenv(PROVIDER_SECRET_VAR, PROVIDER_SECRET_VALUE)
+    fields = reflect_schema(EmailAdapterConfig(smtp_key=f"${{{PROVIDER_SECRET_VAR}}}"), section="Providers")
+    resolve_env_placeholders(fields)
+
+    field = next(f for f in fields if f.key == "smtp_key")
+    assert field.env_var == PROVIDER_SECRET_VAR
+    assert field.value == PROVIDER_SECRET_VALUE
 
 
 def test_resolve_env_placeholder_leaves_literals_untouched() -> None:
