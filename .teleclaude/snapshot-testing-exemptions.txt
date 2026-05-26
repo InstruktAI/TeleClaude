@@ -368,7 +368,6 @@ tests/unit/scripts/test_release_changelog.py
 tests/unit/scripts/test_release_consolidator.py
 tests/unit/services/project_catalog/test_service.py
 tests/unit/services/test_discord.py
-tests/unit/services/test_email.py
 tests/unit/services/test_log_bug_hunter_service.py
 tests/unit/services/test_maintenance_service.py
 tests/unit/services/test_monitoring_service.py

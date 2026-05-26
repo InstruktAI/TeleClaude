@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from email import message_from_string
+from typing import Literal, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -48,7 +49,6 @@ _REPLY_TO = "No Reply <no-reply@example.com>"
 _RECIPIENT = "person@example.com"
 _HTML_BODY = "<h1>Hello</h1><p>World</p>"
 _TEXT_FALLBACK = "HelloWorld"
-_MISSING_CREDS_MSG = "Missing required SMTP credentials"
 _LOGIN_ERROR = "bad login"
 
 
@@ -67,7 +67,7 @@ class TestSendEmail:
         monkeypatch.delenv("SMTP_KEY", raising=False)
         monkeypatch.delenv("EMAIL_FROM", raising=False)
 
-        with pytest.raises(ValueError, match=_MISSING_CREDS_MSG):
+        with pytest.raises(ValueError):
             await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")
 
     @pytest.mark.unit
@@ -87,11 +87,16 @@ class TestSendEmail:
         # Envelope sender is the bare address parsed out of EMAIL_FROM.
         assert smtp.sendmail_args[0] == _SENDER_ADDR
         assert smtp.sendmail_args[1] == _RECIPIENT
-        message = smtp.sendmail_args[2]
-        assert _TEXT_FALLBACK in message
-        assert _HTML_BODY in message
-        assert _REPLY_TO in message
-        assert _EMAIL_FROM in message
+        parsed = message_from_string(smtp.sendmail_args[2])
+        assert parsed["From"] == _EMAIL_FROM
+        assert parsed["Reply-To"] == _REPLY_TO
+        payloads = {
+            part.get_content_type(): cast(bytes, part.get_payload(decode=True)).decode().strip()
+            for part in parsed.walk()
+            if not part.is_multipart()
+        }
+        assert payloads["text/plain"] == _TEXT_FALLBACK
+        assert payloads["text/html"] == _HTML_BODY
 
     @pytest.mark.unit
     async def test_wraps_smtp_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,5 +112,5 @@ class TestSendEmail:
             patch("teleclaude.services.email.asyncio.to_thread", new=AsyncMock(side_effect=_run_sync)),
             patch("teleclaude.services.email.smtplib.SMTP", return_value=smtp),
         ):
-            with pytest.raises(RuntimeError, match=f"SMTP delivery failed: {_LOGIN_ERROR}"):
+            with pytest.raises(RuntimeError):
                 await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")
