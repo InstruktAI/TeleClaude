@@ -21,13 +21,9 @@ from teleclaude.cli.tui.theme import (
     is_dark_mode,
     resolve_haze,
 )
+from teleclaude.cli.tui.widgets.banner import banner_pipe_columns
 
 logger = get_logger(__name__)
-
-# Columns where the banner's support pipes ("feet") land. Must stay in lockstep
-# with banner.py's pipe_positions so a foot reads as one continuous column from
-# the banner art down to the tab-bar floor.
-PIPE_COLUMNS = {13, 70}
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
@@ -108,6 +104,7 @@ class BoxTabBar(TelecMixin, Widget):
     """
 
     active_tab = reactive("sessions")
+    banner_compact = reactive(False)
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -128,8 +125,20 @@ class BoxTabBar(TelecMixin, Widget):
                 return self._cached_render
             return self.build_render_frame()
         except Exception:
-            logger.exception("BoxTabBar render crashed")
-            return Group()
+            # Compositing (sky/entity/animation) is the fragile part; a failure there
+            # must not blank the tab bar and strand navigation. Fall back to plain,
+            # clickable tab labels that preserve the three-row layout.
+            logger.exception("BoxTabBar render crashed; using plain-label fallback")
+            return self._render_fallback()
+
+    def _render_fallback(self) -> Group:
+        """Render plain tab labels across the three rows when compositing fails."""
+        labels = Text()
+        for col, _width, label, is_active, _tab_id in self._build_tab_specs(tab_gap=1):
+            if col > len(labels.plain) + 1:
+                labels.append(" " * (col - len(labels.plain) - 1))
+            labels.append(label, style="reverse" if is_active else "")
+        return Group(Text(), labels, Text())
 
     def build_render_frame(self, scene: HeaderSceneFrame | None = None) -> Group:
         """Build the current tab bar frame without consulting the cached widget render."""
@@ -143,6 +152,7 @@ class BoxTabBar(TelecMixin, Widget):
 
         pane_bg = resolve_haze(get_terminal_background())
         pipe_color = resolve_haze(get_neutral_color("muted"))
+        pipe_columns = banner_pipe_columns(is_compact=self.banner_compact, total_width=width)
 
         num_rows = 3  # sky, label, transition
         tab_gap = 1
@@ -169,6 +179,7 @@ class BoxTabBar(TelecMixin, Widget):
                 sky_fallback,
                 pane_bg,
                 pipe_color,
+                pipe_columns,
                 active_tab_bg,
                 active_tab_fg,
                 inactive_tab_bg,
@@ -233,6 +244,7 @@ class BoxTabBar(TelecMixin, Widget):
         sky_fallback: str,
         pane_bg: str,
         pipe_color: str,
+        pipe_columns: set[int],
         active_tab_bg: str,
         active_tab_fg: str,
         inactive_tab_bg: str,
@@ -252,10 +264,14 @@ class BoxTabBar(TelecMixin, Widget):
                     self._transition_cell(x, global_y, cell, engine, scene, entity_z_scan, sky_color, pane_bg, z70, z80)
                 )
             elif y_offset == 0:
-                row_cells.append(self._sky_cell(x, global_y, engine, scene, entity_z_scan, sky_color, pipe_color))
+                row_cells.append(
+                    self._sky_cell(x, global_y, engine, scene, entity_z_scan, sky_color, pipe_color, pipe_columns)
+                )
             else:
                 row_cells.append(
-                    self._label_cell(x, global_y, cell, engine, scene, entity_z_scan, sky_color, pipe_color, z60, z80)
+                    self._label_cell(
+                        x, global_y, cell, engine, scene, entity_z_scan, sky_color, pipe_color, pipe_columns, z60, z80
+                    )
                 )
         append_cells(row_text, row_cells)
         return row_text
@@ -306,9 +322,10 @@ class BoxTabBar(TelecMixin, Widget):
         entity_z_scan: list[int],
         sky_color: str,
         pipe_color: str,
+        pipe_columns: set[int],
     ) -> Cell:
         final_bg = sky_color
-        is_pipe = x in PIPE_COLUMNS
+        is_pipe = x in pipe_columns
         fg_char = "\u2551" if is_pipe else " "
         fg_color: str | None = pipe_color if is_pipe else None
         if scene is not None:
@@ -349,13 +366,14 @@ class BoxTabBar(TelecMixin, Widget):
         entity_z_scan: list[int],
         sky_color: str,
         pipe_color: str,
+        pipe_columns: set[int],
         z60: int,
         z80: int,
     ) -> Cell:
         char, in_tab, active_tab_under, tab_bg, tab_fg = cell
         # A foot column with no tab over it extends the banner's support pipe down
         # to rest on the transition-row floor instead of stopping in mid-air.
-        is_foot = (not in_tab) and (x in PIPE_COLUMNS)
+        is_foot = (not in_tab) and (x in pipe_columns)
         final_bg = (tab_bg or sky_color) if in_tab else sky_color
         fg_char = "║" if is_foot else char
         fg_color: str | None = pipe_color if is_foot else None
@@ -403,6 +421,11 @@ class BoxTabBar(TelecMixin, Widget):
 
     def watch_active_tab(self, _value: str) -> None:
         """Refresh when the active tab selection changes."""
+        self.clear_cached_render()
+        self.refresh()
+
+    def watch_banner_compact(self, _value: bool) -> None:
+        """Re-plant the feet to match the banner when it switches compact/full."""
         self.clear_cached_render()
         self.refresh()
 

@@ -59,6 +59,19 @@ LOGO_WIDTH = 40
 SPRITES_URL = "https://github.com/InstruktAI/TeleClaude/tree/main/teleclaude/cli/tui/animations/sprites"
 
 
+def banner_pipe_columns(*, is_compact: bool, total_width: int) -> set[int]:
+    """Columns where the banner's support feet land, for the current mode and width.
+
+    Single source of truth so the tab bar below can plant matching feet. Compact
+    (logo) mode right-aligns a 40-wide plate, so its feet shift with the pad; full
+    mode is fixed against the 85-wide plate.
+    """
+    if is_compact:
+        pad = max(0, total_width - LOGO_WIDTH)
+        return {pad + 6, pad + 34}
+    return {13, 70}
+
+
 def _to_color(c: str | int | None) -> str | None:
     """Helper to ensure Style receives a valid color string or None."""
     if isinstance(c, str) and len(c) > 1:
@@ -397,7 +410,7 @@ class Banner(TelecMixin, Widget):
             dark_mode=dark_mode,
             z_levels=z_levels,
             sky_fallback=sky_fallback,
-            pipe_positions={13, 70},
+            pipe_positions=banner_pipe_columns(is_compact=False, total_width=total_width),
             pipe_color=pipe_color,
             z_threshold=Z50,
         )
@@ -440,7 +453,7 @@ class Banner(TelecMixin, Widget):
             dark_mode=dark_mode,
             z_levels=z_levels,
             sky_fallback=sky_fallback,
-            pipe_positions={pad + 6, pad + 34},
+            pipe_positions=banner_pipe_columns(is_compact=True, total_width=total_width),
             pipe_color=pipe_color,
             z_threshold=Z50,
         )

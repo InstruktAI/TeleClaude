@@ -317,6 +317,8 @@ class TelecAppMediaMixin:
         is_compact = banner_panes in (4, 6)
         try:
             self.query_one(Banner).is_compact = is_compact  # type: ignore[attr-defined]
+            # Keep the tab-bar feet aligned with the banner's mode-dependent pipes.
+            self.query_one(BoxTabBar).banner_compact = is_compact  # type: ignore[attr-defined]
         except Exception:
             pass
 

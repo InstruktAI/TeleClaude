@@ -3,23 +3,56 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
-from textual.screen import ModalScreen, Screen
-from textual.widget import Widget
+from textual import events
+from textual.widgets import Input
 
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
+    ChiptunesStatusDTO,
     ComputerDTO,
     JobDTO,
     ProjectDTO,
     ProjectWithTodosDTO,
     SessionDTO,
+    SettingsDTO,
+    TTSSettingsDTO,
     TuiBootstrapDataDTO,
     TuiBootstrapDTO,
     TuiBootstrapErrorDTO,
 )
+from teleclaude.cli.tui import app as app_module
 from teleclaude.cli.tui.app import TelecApp, _AppMediaState, _AppRuntimeState
+from teleclaude.cli.tui.widgets.modals import CreateSlugModal
+
+_PASTED_TEXT = "pasted-slug"
+
+
+class _PasteStubAPI:
+    """Minimal API stub so TelecApp can mount under run_test."""
+
+    def __init__(self) -> None:
+        self.connect = AsyncMock(return_value=None)
+        self.close = AsyncMock(return_value=None)
+
+    def start_websocket(self, *, callback: object, subscriptions: object = None, on_connect: object = None) -> None:
+        del callback, subscriptions, on_connect
+
+    async def get_tui_bootstrap(self, requested: list[object]) -> TuiBootstrapDTO:
+        return TuiBootstrapDTO(
+            requested=requested,
+            data=TuiBootstrapDataDTO(
+                computers=[ComputerDTO(name="local", status="online", user="test", host="localhost", is_local=True)],
+                projects_with_todos=[],
+                sessions=[],
+                availability={},
+                jobs=[],
+                settings=SettingsDTO(tts=TTSSettingsDTO(enabled=False)),
+                chiptunes=ChiptunesStatusDTO(),
+            ),
+        )
 
 
 class _Timer:
@@ -167,22 +200,26 @@ async def test_successful_subset_refresh_does_not_clear_unrelated_pending_retry(
 
 
 @pytest.mark.unit
-def test_open_modal_makes_input_surface_active(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A pushed popup counts as an input surface, so control-surface guards stand down."""
-    app = object.__new__(TelecApp)
-    modal = object.__new__(ModalScreen)
-    monkeypatch.setattr(TelecApp, "screen", property(lambda _self: modal))
-    monkeypatch.setattr(TelecApp, "focused", property(lambda _self: None))
+@pytest.mark.asyncio
+async def test_paste_into_open_modal_reaches_the_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The control-surface paste guard must stand down for popups: paste lands in the field."""
+    monkeypatch.setattr(app_module, "load_state", lambda: {})
+    monkeypatch.setattr(app_module, "save_state", lambda _state: None)
+    monkeypatch.setattr(app_module.signal, "signal", lambda *_args, **_kwargs: None)
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
 
-    assert app._input_surface_active() is True
+    app = TelecApp(api=_PasteStubAPI(), start_view=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        modal = CreateSlugModal()
+        await app.push_screen(modal)
+        await pilot.pause()
 
+        slug_input = modal.query_one("#slug-input", Input)
+        assert slug_input.has_focus  # modal auto-focuses the field
 
-@pytest.mark.unit
-def test_bare_control_surface_is_not_input_active(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No popup and a non-input focus means bindings may fire — guard stays armed."""
-    app = object.__new__(TelecApp)
-    base_screen = object.__new__(Screen)
-    monkeypatch.setattr(TelecApp, "screen", property(lambda _self: base_screen))
-    monkeypatch.setattr(TelecApp, "focused", property(lambda _self: Widget()))
+        app.post_message(events.Paste(_PASTED_TEXT))
+        await pilot.pause()
 
-    assert app._input_surface_active() is False
+        assert slug_input.value == _PASTED_TEXT

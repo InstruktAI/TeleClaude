@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import pytest
+from textual.app import App, ComposeResult
+from textual.widgets import Static
 
 from teleclaude.api_models import AgentAvailabilityDTO
+from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.widgets.telec_footer import FooterActionButton, TelecFooter
+
+
+class _FooterHost(App[None]):
+    def compose(self) -> ComposeResult:
+        yield TelecFooter(id="telec-footer", agent_availability={"claude": _make_info(available=True)})
 
 
 def _make_info(*, available: bool = True) -> AgentAvailabilityDTO:
@@ -112,14 +120,35 @@ def test_build_agent_pill_no_availability_info_shows_cross() -> None:
 # --- TelecFooter.refresh_theme ---
 
 
+def _painted_styles(host: _FooterHost) -> list[str]:
+    """The styles actually painted on the claude agent token's first row."""
+    strip = host.query_one("#footer-agent-claude", Static).render_line(0)
+    return [str(segment.style) for segment in strip]
+
+
 @pytest.mark.unit
-def test_refresh_theme_rebuilds_controls_and_hint_rows(monkeypatch: pytest.MonkeyPatch) -> None:
-    footer = TelecFooter()
-    calls: list[str] = []
-    monkeypatch.setattr(footer, "_refresh_controls", lambda: calls.append("controls"))
-    monkeypatch.setattr(footer, "_refresh_hint_rows", lambda: calls.append("hints"))
-    footer.refresh_theme()
-    assert calls == ["controls", "hints"]
+@pytest.mark.asyncio
+async def test_refresh_theme_repaints_agent_pill_for_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A dark/light swap must repaint the mounted footer tokens, not leave stale colors."""
+    host = _FooterHost()
+    try:
+        async with host.run_test() as pilot:
+            monkeypatch.setenv("APPEARANCE_MODE", "dark")
+            theme.refresh_mode()
+            host.query_one(TelecFooter).refresh_theme()
+            await pilot.pause()
+            dark_styles = _painted_styles(host)
+
+            monkeypatch.setenv("APPEARANCE_MODE", "light")
+            theme.refresh_mode()
+            host.query_one(TelecFooter).refresh_theme()
+            await pilot.pause()
+            light_styles = _painted_styles(host)
+
+            assert dark_styles != light_styles
+    finally:
+        monkeypatch.delenv("APPEARANCE_MODE", raising=False)
+        theme.refresh_mode()
 
 
 # --- FooterActionButton ---

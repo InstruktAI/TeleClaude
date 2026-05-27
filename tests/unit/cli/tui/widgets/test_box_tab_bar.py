@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 from rich.console import Group
 
-from teleclaude.cli.tui.widgets.box_tab_bar import PIPE_COLUMNS, BoxTabBar, _to_color
+from teleclaude.cli.tui.widgets.banner import banner_pipe_columns
+from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar, _to_color
 
 # --- _to_color ---
 
@@ -119,37 +120,53 @@ def test_tab_cell_returns_space_at_y_offset_0() -> None:
     assert char == " "
 
 
-# --- BoxTabBar._label_cell foot extension ---
+# --- BoxTabBar foot rendering (banner support pipes) ---
+
+
+def _label_row(bar: BoxTabBar) -> str:
+    """Render the tab bar and return the middle (label) row as plain text."""
+    rows = list(bar.build_render_frame().renderables)
+    return rows[1].plain  # type: ignore[union-attr]
+
+
+def _sky_row(bar: BoxTabBar) -> str:
+    rows = list(bar.build_render_frame().renderables)
+    return rows[0].plain  # type: ignore[union-attr]
 
 
 @pytest.mark.unit
-def test_label_cell_extends_foot_pipe_when_no_tab_covers_column() -> None:
-    """A foot column with no tab over it draws the support pipe down to the floor."""
+def test_right_foot_extends_to_label_row_in_full_mode() -> None:
+    """The uncovered right foot descends from the sky row into the label row."""
     bar = BoxTabBar()
-    foot_x = max(PIPE_COLUMNS)
-    cell = (" ", False, False, None, None)  # not in any tab
-    char, fg, _bg = bar._label_cell(foot_x, 8, cell, None, None, [], "#000000", "#808080", 60, 80)
-    assert char == "║"
-    assert fg == "#808080"
+    bar.banner_compact = False
+    width = bar.size.width or 80
+    right_foot = max(banner_pipe_columns(is_compact=False, total_width=width))
+    assert _sky_row(bar)[right_foot] == "║"
+    assert _label_row(bar)[right_foot] == "║"
 
 
 @pytest.mark.unit
-def test_label_cell_draws_nothing_off_foot_columns() -> None:
+def test_left_foot_stands_on_tab_not_extended_in_label_row() -> None:
+    """The left foot lands inside the first tab, so the label row shows the tab, not a pipe."""
     bar = BoxTabBar()
-    off_x = max(PIPE_COLUMNS) + 1
-    cell = (" ", False, False, None, None)
-    char, _fg, _bg = bar._label_cell(off_x, 8, cell, None, None, [], "#000000", "#808080", 60, 80)
-    assert char == " "
+    bar.banner_compact = False
+    left_foot = min(banner_pipe_columns(is_compact=False, total_width=bar.size.width or 80))
+    assert _label_row(bar)[left_foot] != "║"
 
 
 @pytest.mark.unit
-def test_label_cell_does_not_overdraw_foot_when_tab_present() -> None:
-    """A foot column covered by a tab keeps the tab label, not a pipe."""
+def test_feet_follow_compact_mode_columns() -> None:
+    """Switching to compact mode moves the feet to the logo's pipe columns."""
     bar = BoxTabBar()
-    foot_x = max(PIPE_COLUMNS)
-    cell = ("X", True, False, "#FFFFFF", "#000000")  # inside a tab
-    char, _fg, _bg = bar._label_cell(foot_x, 8, cell, None, None, [], "#000000", "#808080", 60, 80)
-    assert char == "X"
+    width = bar.size.width or 80
+    full_foot = max(banner_pipe_columns(is_compact=False, total_width=width))
+    compact_foot = max(banner_pipe_columns(is_compact=True, total_width=width))
+    assert full_foot != compact_foot  # guards the regression: columns must differ by mode
+
+    bar.banner_compact = True
+    label = _label_row(bar)
+    assert label[compact_foot] == "║"
+    assert label[full_foot] == " "
 
 
 @pytest.mark.unit
@@ -160,3 +177,17 @@ def test_render_uses_cached_group_when_present(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(bar, "_render_tabs", lambda: (_ for _ in ()).throw(AssertionError("unexpected render")))
 
     assert bar.render() is cached
+
+
+@pytest.mark.unit
+def test_render_falls_back_to_plain_labels_on_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A compositing crash must keep the clickable tab labels, not blank the bar."""
+    bar = BoxTabBar()
+
+    def _boom(*_args: object, **_kwargs: object) -> Group:
+        raise RuntimeError("compositing exploded")
+
+    monkeypatch.setattr(bar, "build_render_frame", _boom)
+    rows = list(bar.render().renderables)
+    assert len(rows) == 3  # three-row layout preserved
+    assert "AI Sessions" in rows[1].plain  # type: ignore[union-attr]
