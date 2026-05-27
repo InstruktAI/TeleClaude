@@ -838,7 +838,12 @@ def _build_config(
     whatsapp_template_name = os.getenv("WHATSAPP_TEMPLATE_NAME") or whatsapp_template_name
     whatsapp_template_language = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE") or whatsapp_template_language
 
-    whatsapp_enabled = whatsapp_enabled_flag or bool(whatsapp_phone_number_id and whatsapp_access_token)
+    # The explicit `enabled` flag is authoritative. Presence of credentials must
+    # never force-enable the adapter — config-shipped ${VAR} placeholders are
+    # non-empty strings, so an `or credentials` clause would enable WhatsApp
+    # regardless of `enabled: false`. Credential sufficiency is enforced at adapter
+    # start, not here.
+    whatsapp_enabled = whatsapp_enabled_flag
 
     remote_computers = _parse_remote_computers(raw.get("remote_computers"))
 

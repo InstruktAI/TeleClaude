@@ -40,3 +40,25 @@ class TestTelegramEnablement:
     def test_defaults_to_disabled_when_absent(self, build_config: BuildConfig) -> None:
         built = build_config({})
         assert built.telegram.enabled is False
+
+
+class TestWhatsAppEnablement:
+    def test_enabled_flag_is_authoritative_even_with_credentials(self, build_config: BuildConfig) -> None:
+        # enabled:false must stay disabled even when credentials are present —
+        # presence of (placeholder) creds must never force-enable the adapter.
+        built = build_config(
+            {
+                "whatsapp": {
+                    "enabled": False,
+                    "phone_number_id": "${WHATSAPP_PHONE_NUMBER_ID}",
+                    "access_token": "${WHATSAPP_ACCESS_TOKEN}",
+                }
+            }
+        )
+        assert built.whatsapp is not None
+        assert built.whatsapp.enabled is False
+
+    def test_enabled_flag_flows_into_config(self, build_config: BuildConfig) -> None:
+        built = build_config({"whatsapp": {"enabled": True}})
+        assert built.whatsapp is not None
+        assert built.whatsapp.enabled is True
