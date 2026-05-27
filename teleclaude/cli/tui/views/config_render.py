@@ -22,7 +22,6 @@ from teleclaude.cli.tui.views._config_constants import (
     _TAB_ACTIVE,
     _TAB_INACTIVE,
     _VALID_ROLES,
-    _WARN,
     Subtab,
     _normal_style,
     get_allowed_values_for_field,
@@ -30,7 +29,6 @@ from teleclaude.cli.tui.views._config_constants import (
 from teleclaude.cli.tui.views.reflection import ReflectedField
 
 if TYPE_CHECKING:
-    from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
     from teleclaude.config.schema import PersonEntry
 
 
@@ -38,7 +36,6 @@ class ConfigContentRenderMixin:
     """Rendering, on_click, and watch_* methods for ConfigContent."""
 
     if TYPE_CHECKING:
-        _adapter_sections: list[AdapterSectionProjection]
         _env_data: list[EnvVarStatus]
         _guided_step_index: int
         _people_data: list[PersonEntry]
@@ -96,65 +93,6 @@ class ConfigContentRenderMixin:
         if self._status_message:  # type: ignore[attr-defined]
             status_style = _FAIL if self._status_is_error else _DIM  # type: ignore[attr-defined]
             result.append(f"{self._status_message}\n", style=status_style)  # type: ignore[attr-defined]
-
-    def _status_style(self, status: object) -> Style:
-        """Map adapter status values to Rich styles."""
-        if status == "configured":
-            return _OK
-        if status == "partial":
-            return _WARN
-        return _FAIL
-
-    def _render_adapters(self, result: Text) -> None:
-        """Render the adapter overview cards and active adapter vars."""
-        result.append("\n")
-        result.append("  Adapter Cards\n", style=Style(bold=True))
-
-        for idx, section in enumerate(self._adapter_sections):  # type: ignore[attr-defined]
-            selected = idx == self.active_adapter_tab  # type: ignore[attr-defined]
-            prefix = "▶" if selected else " "
-            card_style = Style(reverse=True) if selected else _normal_style()
-            row = result.plain.count("\n")
-            self._row_click_map[row] = ("adapter_tab", idx)  # type: ignore[attr-defined]
-            result.append(f"  {prefix} {section.label:<11} ", style=card_style)
-            result.append(section.status.upper(), style=self._status_style(section.status))
-            result.append(f"  ({section.configured_count}/{section.total_count})\n", style=_DIM)
-
-        section = self._get_active_adapter_section()  # type: ignore[attr-defined]
-        if section is None:
-            result.append("\n  No adapters available\n", style=_DIM)
-            return
-
-        result.append("\n")
-        result.append(f"  {section.label} Variables\n", style=Style(bold=True))
-        if not section.env_statuses:
-            result.append("  No environment variables registered for this adapter\n", style=_DIM)
-            return
-
-        cursor = self._current_cursor()  # type: ignore[attr-defined]
-        for idx, status in enumerate(section.env_statuses):
-            selected = idx == cursor
-            row_style = Style(reverse=True) if selected else _normal_style()
-            prefix = "▶" if selected else " "
-
-            row = result.plain.count("\n")
-            self._row_click_map[row] = ("env_row", status.info.name)  # type: ignore[attr-defined]
-
-            if self._editing_var_name == status.info.name:  # type: ignore[attr-defined]
-                result.append(
-                    f"  {prefix} {status.info.name} = {self._edit_buffer}\n",
-                    style=row_style,
-                )  # type: ignore[attr-defined]
-                result.append("      Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
-                continue
-
-            icon = "✔" if status.is_set else "✖"
-            icon_style = _OK if status.is_set else _FAIL
-            result.append(f"  {prefix} {icon} ", style=icon_style)
-            result.append(f"{status.info.name}\n", style=row_style)
-            result.append(f"      {status.info.description}\n", style=_DIM)
-            if selected:
-                self._render_guidance_block(result, guidance_registry.get_for_env(status.info.name))
 
     def _render_people(self, result: Text) -> None:
         """Render configured people and any expanded editable fields."""
