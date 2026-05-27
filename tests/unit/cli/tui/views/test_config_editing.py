@@ -114,7 +114,7 @@ class TestAdapterWriteBlock:
         host = ConfigContentEditingMixin()
         host._raw_config = {"whatsapp": {"enabled": False}}
 
-        reason = host._adapter_write_block_reason("whatsapp.enabled", True)
+        reason = host._section_write_block_reason("whatsapp.enabled", True)
 
         assert reason is not None
 
@@ -122,19 +122,19 @@ class TestAdapterWriteBlock:
         host = ConfigContentEditingMixin()
         host._raw_config = {"whatsapp": {"phone_number_id": "123", "access_token": "tok"}}
 
-        assert host._adapter_write_block_reason("whatsapp.enabled", True) is None
+        assert host._section_write_block_reason("whatsapp.enabled", True) is None
 
     def test_disabling_adapter_is_never_blocked(self) -> None:
         host = ConfigContentEditingMixin()
         host._raw_config = {"whatsapp": {}}
 
-        assert host._adapter_write_block_reason("whatsapp.enabled", False) is None
+        assert host._section_write_block_reason("whatsapp.enabled", False) is None
 
     def test_non_adapter_key_is_not_gated(self) -> None:
         host = ConfigContentEditingMixin()
         host._raw_config = {"computer": {}}
 
-        assert host._adapter_write_block_reason("computer.name", "box") is None
+        assert host._section_write_block_reason("computer.name", "box") is None
 
     def test_null_adapter_section_is_handled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # A present-but-null section (`whatsapp:` with no body) must not crash;
@@ -144,7 +144,7 @@ class TestAdapterWriteBlock:
         host = ConfigContentEditingMixin()
         host._raw_config = {"whatsapp": None}
 
-        assert host._adapter_write_block_reason("whatsapp.enabled", True) is not None
+        assert host._section_write_block_reason("whatsapp.enabled", True) is not None
 
     def test_save_refuses_to_persist_a_blocked_edit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)

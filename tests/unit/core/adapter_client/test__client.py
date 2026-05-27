@@ -99,7 +99,7 @@ def _fake_validator_env(**values: str) -> AbstractContextManager[MagicMock]:
     def _getenv(key: str, default: str = "") -> str:
         return values.get(key, default)
 
-    return patch("teleclaude.config.adapter_validation.os.getenv", side_effect=_getenv)
+    return patch("teleclaude.config.validation.os.getenv", side_effect=_getenv)
 
 
 class TestStart:

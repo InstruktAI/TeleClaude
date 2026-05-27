@@ -14,7 +14,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config import config
-from teleclaude.config.adapter_validation import validate_adapter_config
+from teleclaude.config.validation import missing_required_fields
 from teleclaude.transport.redis_transport import RedisTransport
 
 from ._channels import _ChannelsMixin
@@ -166,7 +166,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             if cfg is None or not bool(getattr(cfg, "enabled", False)):
                 self.adapter_status[name] = AdapterStatusReport(AdapterStatus.DISABLED)
                 continue
-            missing = validate_adapter_config(name, cfg)
+            missing = missing_required_fields(name, cfg)
             if missing:
                 logger.warning("Adapter %s is enabled but not configured: missing %s", name, ", ".join(missing))
                 self.adapter_status[name] = AdapterStatusReport(AdapterStatus.MISCONFIGURED, missing=tuple(missing))

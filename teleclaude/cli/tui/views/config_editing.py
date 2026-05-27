@@ -24,8 +24,8 @@ from teleclaude.cli.tui.views._config_constants import (
 from teleclaude.cli.tui.views._project_actions import _resolve_config_path, _write_raw_config
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
 from teleclaude.config._coerce import as_bool
-from teleclaude.config.adapter_validation import adapter_names, validate_adapter_config
 from teleclaude.config.schema import PersonEntry
+from teleclaude.config.validation import missing_required_fields, validated_sections
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
@@ -452,25 +452,25 @@ class ConfigContentEditingMixin:
             node = child
         node[path[-1]] = deserialized
 
-    def _adapter_write_block_reason(self, key: str, deserialized: object) -> str | None:
+    def _section_write_block_reason(self, key: str, deserialized: object) -> str | None:
         """Reason to refuse persisting this edit, or None if it may be written.
 
-        Integrity gate: never persist an adapter section that is enabled while its
-        required credentials are missing. Reuses the same validator the daemon
-        runs at startup so the two surfaces cannot disagree.
+        Integrity gate: never persist a config section that is enabled while its
+        required fields are missing. Reuses the same validator the daemon runs at
+        startup so the two surfaces cannot disagree.
         """
         if "." not in key:
             return None
-        adapter, field_name = key.split(".", 1)
-        if adapter not in adapter_names():
+        section_name, field_name = key.split(".", 1)
+        if section_name not in validated_sections():
             return None
-        section = dict(self._raw_config.get(adapter) or {})  # type: ignore[attr-defined]
+        section = dict(self._raw_config.get(section_name) or {})  # type: ignore[attr-defined]
         section[field_name] = deserialized
         if not as_bool(section.get("enabled", False)):
             return None  # disabled (or being disabled) never blocks
-        missing = validate_adapter_config(adapter, section)
+        missing = missing_required_fields(section_name, section)
         if missing:
-            return f"{adapter} is enabled but not configured: fill {', '.join(missing)} (or disable it)."
+            return f"{section_name} is enabled but not configured: fill {', '.join(missing)} (or disable it)."
         return None
 
     def _save_reflected_field(self, key: str, raw_value: Any) -> None:
@@ -487,7 +487,7 @@ class ConfigContentEditingMixin:
                 # ${VAR}-backed field: persist to .env, leave the placeholder in config.yml.
                 set_env_var(f.env_var, str(deserialized))
             else:
-                block_reason = self._adapter_write_block_reason(key, deserialized)
+                block_reason = self._section_write_block_reason(key, deserialized)
                 if block_reason is not None:
                     self._status_message = block_reason  # type: ignore[attr-defined]
                     self._status_is_error = True  # type: ignore[attr-defined]
