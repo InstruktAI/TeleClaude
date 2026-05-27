@@ -156,7 +156,6 @@ tests/unit/core/agent_coordinator/test__fanout.py
 tests/unit/core/agent_coordinator/test__helpers.py
 tests/unit/core/command_handlers/test__agent.py
 tests/unit/core/command_handlers/test__message.py
-tests/unit/core/command_handlers/test__session.py
 tests/unit/core/db/test___init__.py
 tests/unit/core/db/test__base.py
 tests/unit/core/db/test__hooks.py

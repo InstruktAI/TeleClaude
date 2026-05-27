@@ -23,6 +23,26 @@ from teleclaude.core.models import (
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 
+_PARENT_ID = "parent-1"
+_LOCAL = "local"
+_LIFECYCLE_ACTIVE = "active"
+_LIFECYCLE_HEADLESS = "headless"
+_LIFECYCLE_INITIALIZING = "initializing"
+_LIFECYCLE_CLOSING = "closing"
+_LIFECYCLE_CLOSED = "closed"
+_ROLE_CUSTOMER = "customer"
+_THINKING_SLOW = "slow"
+_OUTPUT_SUMMARY = "summary"
+_TMUX_BINARY = "/usr/bin/tmux"
+_HEADLESS_SESSION_ID = "headless-001"
+_NATIVE_SESSION_ID = "native-123"
+_NATIVE_LOG_PATH = "/tmp/native.log"
+_EMPTY = ""
+_STATUS_SUCCESS = "success"
+_STATUS_ERROR = "error"
+_MESSAGES_WORLD = "world"
+_MESSAGES_TRANSCRIPT = "# transcript"
+
 
 def make_session(
     *,
@@ -100,7 +120,7 @@ class TestCreateSession:
         await _session.create_session(cmd, SimpleNamespace())
 
         create_call = db.create_session.await_args
-        assert create_call.kwargs["initiator_session_id"] == "parent-1"
+        assert create_call.kwargs["initiator_session_id"] == _PARENT_ID
         assert create_call.kwargs["detached"] is True
 
     @pytest.mark.unit
@@ -149,7 +169,7 @@ class TestCreateSession:
         await _session.create_session(cmd, SimpleNamespace())
 
         create_call = db.create_session.await_args
-        assert create_call.kwargs["initiator_session_id"] == "parent-1"
+        assert create_call.kwargs["initiator_session_id"] == _PARENT_ID
         assert create_call.kwargs["detached"] is False
         register_listener.assert_awaited_once()
 
@@ -203,7 +223,7 @@ class TestCreateSession:
         assert create_call.kwargs["project_path"] == str(help_desk)
         assert create_call.kwargs["subdir"] is None
         assert create_call.kwargs["working_slug"] is None
-        assert create_call.kwargs["lifecycle_status"] == "initializing"
+        assert create_call.kwargs["lifecycle_status"] == _LIFECYCLE_INITIALIZING
         assert result["tmux_session_name"].startswith(_session.TMUX_SESSION_PREFIX)
 
     @pytest.mark.unit
@@ -253,12 +273,12 @@ class TestCreateSession:
         result = await _session.create_session(cmd, SimpleNamespace())
 
         create_call = db.create_session.await_args
-        assert create_call.kwargs["session_id"] == "headless-001"
-        assert create_call.kwargs["tmux_session_name"] == ""
-        assert create_call.kwargs["lifecycle_status"] == "headless"
-        assert create_call.kwargs["native_session_id"] == "native-123"
-        assert create_call.kwargs["native_log_file"] == "/tmp/native.log"
-        assert result["tmux_session_name"] == ""
+        assert create_call.kwargs["session_id"] == _HEADLESS_SESSION_ID
+        assert create_call.kwargs["tmux_session_name"] == _EMPTY
+        assert create_call.kwargs["lifecycle_status"] == _LIFECYCLE_HEADLESS
+        assert create_call.kwargs["native_session_id"] == _NATIVE_SESSION_ID
+        assert create_call.kwargs["native_log_file"] == _NATIVE_LOG_PATH
+        assert result["tmux_session_name"] == _EMPTY
 
     @pytest.mark.unit
     async def test_headless_terminal_customers_are_jailed_to_help_desk(
@@ -309,11 +329,11 @@ class TestCreateSession:
         assert create_call.kwargs["project_path"] == str(help_desk)
         assert create_call.kwargs["subdir"] is None
         assert create_call.kwargs["working_slug"] is None
-        assert create_call.kwargs["tmux_session_name"] == ""
-        assert create_call.kwargs["lifecycle_status"] == "headless"
+        assert create_call.kwargs["tmux_session_name"] == _EMPTY
+        assert create_call.kwargs["lifecycle_status"] == _LIFECYCLE_HEADLESS
         assert create_call.kwargs["system_role"] is None
-        assert create_call.kwargs["human_role"] == "customer"
-        assert result["tmux_session_name"] == ""
+        assert create_call.kwargs["human_role"] == _ROLE_CUSTOMER
+        assert result["tmux_session_name"] == _EMPTY
 
 
 class TestSessionListing:
@@ -330,10 +350,10 @@ class TestSessionListing:
         result = await _session.list_sessions()
 
         assert len(result) == 1
-        assert result[0].thinking_mode == "slow"
-        assert result[0].status == "active"
-        assert result[0].computer == "local"
-        assert result[0].last_output_summary == "summary"
+        assert result[0].thinking_mode == _THINKING_SLOW
+        assert result[0].status == _LIFECYCLE_ACTIVE
+        assert result[0].computer == _LOCAL
+        assert result[0].last_output_summary == _OUTPUT_SUMMARY
 
     @pytest.mark.unit
     async def test_list_projects_filters_missing_directories(
@@ -405,8 +425,8 @@ class TestComputerInfo:
 
         info = await _session.get_computer_info()
 
-        assert info.name == "local"
-        assert info.tmux_binary == "/usr/bin/tmux"
+        assert info.name == _LOCAL
+        assert info.tmux_binary == _TMUX_BINARY
         assert info.system_stats is not None
         assert info.system_stats["memory"]["total_gb"] == 16.0
         assert info.system_stats["disk"]["free_gb"] == 50.0
@@ -423,7 +443,7 @@ class TestGetSessionData:
             await _session.get_session_data(GetSessionDataCommand(session_id="missing")),
         )
 
-        assert result["status"] == "error"
+        assert result["status"] == _STATUS_ERROR
         assert isinstance(result["error"], str)
         assert result["error"] != ""
 
@@ -446,8 +466,8 @@ class TestGetSessionData:
             await _session.get_session_data(GetSessionDataCommand(session_id=session.session_id, tail_chars=5)),
         )
 
-        assert result["status"] == "success"
-        assert result["messages"] == "world"
+        assert result["status"] == _STATUS_SUCCESS
+        assert result["messages"] == _MESSAGES_WORLD
         assert "\x1b" not in str(result["messages"])
         tmux_bridge.capture_pane.assert_awaited_once_with(
             session.tmux_session_name,
@@ -476,8 +496,8 @@ class TestGetSessionData:
             await _session.get_session_data(GetSessionDataCommand(session_id=session.session_id, tail_chars=200)),
         )
 
-        assert result["status"] == "success"
-        assert result["messages"] == "# transcript"
+        assert result["status"] == _STATUS_SUCCESS
+        assert result["messages"] == _MESSAGES_TRANSCRIPT
 
 
 class TestEndSession:
@@ -494,17 +514,16 @@ class TestEndSession:
 
         result = await _session.end_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
 
-        assert result["status"] == "success"
+        assert result["status"] == _STATUS_SUCCESS
         event_bus.emit.assert_called_once()
         assert event_bus.emit.call_args.args[0] == TeleClaudeEvents.SESSION_CLOSED
         terminate_session.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_closing_session_without_closed_at_is_finalized(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # A session stuck in "closing" with no closed_at is NOT terminal: it must be
-        # finalized via terminate_session (so closed_at is actually set), not replayed —
-        # otherwise it stays hidden-but-unclosed and resurfaces from cached snapshots.
-        session = make_session(lifecycle_status="closing", closed_at=None)
+        # "closing" with no closed_at is NOT terminal — finalize via terminate_session
+        # (sets closed_at) instead of replaying, else it resurfaces from cached snapshots.
+        session = make_session(lifecycle_status=_LIFECYCLE_CLOSING, closed_at=None)
         db = SimpleNamespace(get_session=AsyncMock(return_value=session))
         event_bus = SimpleNamespace(emit=MagicMock())
         terminate_session = AsyncMock(return_value=True)
@@ -515,7 +534,26 @@ class TestEndSession:
 
         result = await _session.end_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
 
-        assert result["status"] == "success"
+        assert result["status"] == _STATUS_SUCCESS
+        terminate_session.assert_awaited_once()
+        event_bus.emit.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_in_flight_close_returns_success_without_replay(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # terminate_session returns False when a close is already in flight: report
+        # success (the in-progress close finalizes) and do NOT replay the closed event.
+        session = make_session(lifecycle_status=_LIFECYCLE_CLOSING, closed_at=None)
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        event_bus = SimpleNamespace(emit=MagicMock())
+        terminate_session = AsyncMock(return_value=False)
+
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_session, "event_bus", event_bus)
+        monkeypatch.setattr(_session, "terminate_session", terminate_session)
+
+        result = await _session.end_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
+
+        assert result["status"] == _STATUS_SUCCESS
         terminate_session.assert_awaited_once()
         event_bus.emit.assert_not_called()
 
@@ -523,17 +561,15 @@ class TestEndSession:
 class TestCloseSession:
     @pytest.mark.unit
     async def test_closing_session_without_closed_at_is_finalized(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # close_session is the actual TUI 'k' / `telec sessions end` path. A session
-        # stuck in "closing" with no closed_at must be finalized via terminate_session,
-        # not treated as terminal — otherwise it stays unclosed and resurfaces.
-        session = make_session(lifecycle_status="closing", closed_at=None)
+        # close_session is the actual TUI 'k' / `telec sessions end` path.
+        session = make_session(lifecycle_status=_LIFECYCLE_CLOSING, closed_at=None)
         db = SimpleNamespace(get_session=AsyncMock(return_value=session))
         event_bus = SimpleNamespace(emit=MagicMock())
         terminate_session = AsyncMock(return_value=True)
-        config = SimpleNamespace(computer=SimpleNamespace(name="local"))
+        config = SimpleNamespace(computer=SimpleNamespace(name=_LOCAL))
 
         monkeypatch.setattr(_session, "db", db)
-        monkeypatch.setattr(_utils, "db", db)
+        monkeypatch.setattr(_utils, "db", db)  # close_session resolves the session via @with_session
         monkeypatch.setattr(_session, "event_bus", event_bus)
         monkeypatch.setattr(_session, "terminate_session", terminate_session)
         monkeypatch.setattr(_session, "config", config)
@@ -543,12 +579,12 @@ class TestCloseSession:
         terminate_session.assert_awaited_once()
 
     @pytest.mark.unit
-    async def test_closed_session_replays_without_terminating(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        session = make_session(lifecycle_status="closed", closed_at=datetime.now(UTC))
+    async def test_truly_closed_replays_without_terminating(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = make_session(lifecycle_status=_LIFECYCLE_CLOSED, closed_at=datetime.now(UTC))
         db = SimpleNamespace(get_session=AsyncMock(return_value=session))
         event_bus = SimpleNamespace(emit=MagicMock())
         terminate_session = AsyncMock(return_value=True)
-        config = SimpleNamespace(computer=SimpleNamespace(name="local"))
+        config = SimpleNamespace(computer=SimpleNamespace(name=_LOCAL))
 
         monkeypatch.setattr(_session, "db", db)
         monkeypatch.setattr(_utils, "db", db)
