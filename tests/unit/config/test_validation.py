@@ -6,7 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from teleclaude.config.validation import is_unresolved_placeholder, missing_required_fields
+from teleclaude.config.validation import (
+    is_section_available,
+    is_unresolved_placeholder,
+    missing_required_fields,
+)
 
 
 @pytest.mark.unit
@@ -59,3 +63,27 @@ class TestValidateAdapterConfig:
 
     def test_unknown_adapter_has_no_requirements(self) -> None:
         assert missing_required_fields("nonexistent", SimpleNamespace()) == []
+
+
+@pytest.mark.unit
+class TestIsSectionAvailable:
+    def test_available_when_enabled_and_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SMTP_USERNAME", "u")
+        monkeypatch.setenv("SMTP_KEY", "k")
+        monkeypatch.setenv("EMAIL_FROM", "a@b.c")
+        assert is_section_available("email", SimpleNamespace(enabled=True)) is True
+
+    def test_unavailable_when_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SMTP_USERNAME", "u")
+        monkeypatch.setenv("SMTP_KEY", "k")
+        monkeypatch.setenv("EMAIL_FROM", "a@b.c")
+        assert is_section_available("email", SimpleNamespace(enabled=False)) is False
+
+    def test_unavailable_when_enabled_but_unconfigured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SMTP_USERNAME", raising=False)
+        monkeypatch.delenv("SMTP_KEY", raising=False)
+        monkeypatch.delenv("EMAIL_FROM", raising=False)
+        assert is_section_available("email", SimpleNamespace(enabled=True)) is False
+
+    def test_unavailable_when_cfg_is_none(self) -> None:
+        assert is_section_available("email", None) is False

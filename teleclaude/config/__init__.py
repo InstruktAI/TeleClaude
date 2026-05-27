@@ -263,6 +263,17 @@ class WhatsAppConfig:
 
 
 @dataclass
+class EmailConfig:
+    """Email (SMTP) sending capability. Credentials live in .env; this is the toggle.
+
+    Off by default — explicit opt-in like every other capability. Required-field
+    validation and the send gate enforce that an enabled email is configured.
+    """
+
+    enabled: bool = False
+
+
+@dataclass
 class TTSServiceVoiceConfig:
     """Voice configuration for a TTS service."""
 
@@ -389,6 +400,7 @@ class Config:
     default_agent: str
     terminal: TerminalConfig
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
+    email: EmailConfig = field(default_factory=EmailConfig)
     tts: TTSConfig | None = None
     stt: STTConfig | None = None
     chiptunes: ChiptunesConfig | None = None
@@ -796,6 +808,9 @@ def _build_config(
 
     remote_computers = _parse_remote_computers(raw.get("remote_computers"))
 
+    email_raw = raw.get("email")
+    email_enabled = _as_bool(email_raw.get("enabled", False)) if isinstance(email_raw, dict) else False
+
     return Config(
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index]
@@ -889,6 +904,7 @@ def _build_config(
             template_language=whatsapp_template_language,
             qos=WhatsAppQoSConfig(),
         ),
+        email=EmailConfig(enabled=email_enabled),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]

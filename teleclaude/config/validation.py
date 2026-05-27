@@ -88,3 +88,15 @@ def missing_required_fields(section: str, cfg: object) -> list[str]:
 def validated_sections() -> frozenset[str]:
     """Config sections that carry required-field requirements (callers gate on these)."""
     return frozenset(_REQUIRED_FIELDS)
+
+
+def is_section_available(section: str, cfg: object) -> bool:
+    """Return True when a section is enabled AND fully configured.
+
+    The single gate downstream callers use before relying on a service/provider
+    (e.g. email senders). ``cfg`` is a parsed config object or section dict.
+    """
+    if cfg is None:
+        return False
+    enabled = cfg.get("enabled", False) if isinstance(cfg, dict) else getattr(cfg, "enabled", False)
+    return bool(enabled) and not missing_required_fields(section, cfg)

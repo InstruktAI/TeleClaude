@@ -12,6 +12,9 @@ from email.utils import parseaddr
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
+from teleclaude.config.validation import is_section_available
+
 logger = get_logger(__name__)
 
 _DEFAULT_SMTP_RELAY = "smtp-relay.brevo.com:587"
@@ -36,17 +39,20 @@ async def send_email(
     ``EMAIL_FROM`` (``Name <addr>``), and optional ``EMAIL_REPLYTO``.
 
     Raises:
-        ValueError: If required credentials are missing
-        RuntimeError: If SMTP delivery fails
+        RuntimeError: If email is disabled/unconfigured, or SMTP delivery fails
     """
-    smtp_user = os.getenv("SMTP_USERNAME")
-    smtp_pass = os.getenv("SMTP_KEY")
-    email_from = os.getenv("EMAIL_FROM")
+    # Single availability gate, shared with adapters: enabled flag + required creds.
+    if not is_section_available("email", getattr(config, "email", None)):
+        raise RuntimeError(
+            "Email is disabled or not configured (set email.enabled and SMTP_USERNAME / SMTP_KEY / EMAIL_FROM)"
+        )
+
+    # Presence guaranteed by the availability gate above; defaults keep types str.
+    smtp_user = os.getenv("SMTP_USERNAME", "")
+    smtp_pass = os.getenv("SMTP_KEY", "")
+    email_from = os.getenv("EMAIL_FROM", "")
     reply_to = os.getenv("EMAIL_REPLYTO")
     smtp_host, smtp_port = _parse_relay(os.getenv("SMTP_RELAY", _DEFAULT_SMTP_RELAY))
-
-    if not smtp_user or not smtp_pass or not email_from:
-        raise ValueError("Missing required SMTP credentials: SMTP_USERNAME, SMTP_KEY, EMAIL_FROM must be set")
 
     sender_email = parseaddr(email_from)[1] or email_from
 

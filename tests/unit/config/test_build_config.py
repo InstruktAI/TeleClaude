@@ -60,6 +60,14 @@ _RELOAD_BASE_CONFIG = (
 )
 
 
+class TestEmailEnablement:
+    def test_defaults_to_disabled(self, build_config: BuildConfig) -> None:
+        assert build_config({}).email.enabled is False
+
+    def test_enabled_flag_flows_into_config(self, build_config: BuildConfig) -> None:
+        assert build_config({"email": {"enabled": True}}).email.enabled is True
+
+
 class TestAgentKeyParsing:
     def test_gemini_is_an_accepted_agent_key(self, build_config: BuildConfig) -> None:
         built = build_config({"agents": {"default": "claude", GEMINI_AGENT_KEY: {"enabled": True}}})
