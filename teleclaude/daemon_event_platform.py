@@ -6,12 +6,13 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.channels.worker import run_subscription_worker
-from teleclaude.config import config, config_path
+from teleclaude.config import config
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import get_db
@@ -470,7 +471,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)  # type: ignore[arg-type]
         bridge = EventBusBridge(dispatcher)
         delivery_worker = WebhookDeliveryWorker()
-        project_cfg_path = config_path.parent / "teleclaude.yml"
+        # The daemon's own (mother) project config lives at its working dir, NOT next
+        # to the global runtime config.yml in ~/.teleclaude (that path holds the GLOBAL
+        # teleclaude.yml — people/event_domains — which is not a ProjectConfig).
+        project_cfg_path = Path(config.computer.default_working_dir) / "teleclaude.yml"
         project_config = load_project_config(project_cfg_path)
 
         # Load contracts from DB
