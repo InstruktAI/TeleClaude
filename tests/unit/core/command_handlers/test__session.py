@@ -601,3 +601,43 @@ class TestCloseSession:
 
         terminate_session.assert_not_awaited()
         event_bus.emit.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_stale_remote_name_but_locally_present_closes_locally(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # computer_name drifted (e.g. host renamed Mac->MozBook) but the tmux session is
+        # live on this host: close locally instead of forwarding to a phantom peer.
+        session = make_session(lifecycle_status=_LIFECYCLE_ACTIVE, closed_at=None)  # computer_name="local"
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        terminate_session = AsyncMock(return_value=True)
+        forward_command = AsyncMock()
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_utils, "db", db)
+        monkeypatch.setattr(_session, "event_bus", SimpleNamespace(emit=MagicMock()))
+        monkeypatch.setattr(_session, "terminate_session", terminate_session)
+        monkeypatch.setattr(_session, "forward_command", forward_command)
+        monkeypatch.setattr(_session, "config", SimpleNamespace(computer=SimpleNamespace(name="MozBook")))
+        monkeypatch.setattr(_session.tmux_bridge, "session_exists", AsyncMock(return_value=True))
+
+        await _session.close_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
+
+        forward_command.assert_not_awaited()
+        terminate_session.assert_awaited_once()
+
+    @pytest.mark.unit
+    async def test_remote_name_and_not_locally_present_forwards(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = make_session(lifecycle_status=_LIFECYCLE_ACTIVE, closed_at=None)
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        terminate_session = AsyncMock(return_value=True)
+        forward_command = AsyncMock()
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_utils, "db", db)
+        monkeypatch.setattr(_session, "event_bus", SimpleNamespace(emit=MagicMock()))
+        monkeypatch.setattr(_session, "terminate_session", terminate_session)
+        monkeypatch.setattr(_session, "forward_command", forward_command)
+        monkeypatch.setattr(_session, "config", SimpleNamespace(computer=SimpleNamespace(name="MozBook")))
+        monkeypatch.setattr(_session.tmux_bridge, "session_exists", AsyncMock(return_value=False))
+
+        await _session.close_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
+
+        forward_command.assert_awaited_once()
+        terminate_session.assert_not_awaited()

@@ -591,19 +591,32 @@ async def close_session(
     If the session's computer_name differs from the local computer, the command
     is forwarded via the remote transport mechanism instead of handling locally.
     """
+    # Route to a remote peer only when the stored name says remote AND the session is
+    # not actually present on this host. computer_name is frozen at creation and can
+    # drift (host rename / config-name correction), so trusting it alone would forward a
+    # locally-running session to a phantom peer and leave it un-closable. Local tmux
+    # presence is the ground truth for locality.
     local_computer = config.computer.name
     if session.computer_name and session.computer_name != local_computer:
-        logger.info(
-            "Forwarding close_session to remote computer %s for session %s",
-            session.computer_name,
-            session.session_id,
+        # Stored name says remote — but verify against ground truth before forwarding.
+        # computer_name is frozen at creation and can drift (host rename / config-name
+        # correction); forwarding a locally-running session to a phantom peer leaves it
+        # un-closable. A live local tmux session means it is local, regardless of the name.
+        locally_present = bool(session.tmux_session_name) and await tmux_bridge.session_exists(
+            session.tmux_session_name, log_missing=False
         )
-        await forward_command(
-            _cmd,
-            target_computer=session.computer_name,
-            client=client,
-        )
-        return
+        if not locally_present:
+            logger.info(
+                "Forwarding close_session to remote computer %s for session %s",
+                session.computer_name,
+                session.session_id,
+            )
+            await forward_command(
+                _cmd,
+                target_computer=session.computer_name,
+                client=client,
+            )
+            return
 
     # closed_at is the sole "finalized" signal. A session marked only
     # lifecycle_status="closing" with no closed_at is a stuck/in-flight close — NOT
