@@ -200,7 +200,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 examples=[
                     "telec sessions run --command /next-build --args my-slug",
-                    "telec sessions run --command /next-build --args my-slug --detach",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
