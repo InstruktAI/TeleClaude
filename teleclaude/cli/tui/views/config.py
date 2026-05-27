@@ -32,6 +32,7 @@ from teleclaude.cli.tui.views._config_constants import (
     FirecrawlAdapterConfig,
     ProvidersConfig,
     Subtab,
+    SummarizerTabConfig,
     TelegramAdapterConfig,
     TtsSttConfig,
     WhatsAppAdapterConfig,
@@ -411,6 +412,27 @@ class ConfigContent(
             )
             return reflect_schema(providers_obj, section="Providers")
 
+        if tab == Subtab.SUMMARIZER:
+            summ_data = self._raw_config.get("summarizer", {})
+            summ = summ_data if isinstance(summ_data, dict) else {}
+            local = summ.get("local", {}) if isinstance(summ.get("local"), dict) else {}
+
+            def _model(provider: str) -> str:
+                section = summ.get(provider, {})
+                return section.get("model", "") if isinstance(section, dict) else ""
+
+            summarizer_obj = SummarizerTabConfig(
+                local_enabled=local.get("enabled", False),
+                # ${VAR}-backed: resolves to the env value and saves to .env.
+                local_base_url="${SUMMARIZER_LOCAL_BASE_URL}",
+                local_model=local.get("model", ""),
+                provider_priority=summ.get("provider_priority", []),
+                openai_model=_model("openai"),
+                anthropic_model=_model("anthropic"),
+                google_model=_model("google"),
+            )
+            return reflect_schema(summarizer_obj, section="Summarizer")
+
         if tab == Subtab.TTS_STT:
             stt_data = self._raw_config.get("stt", {})
             tts_data = self._raw_config.get("tts", {})
@@ -566,7 +588,7 @@ class ConfigContent(
                 self._set_current_cursor(0)
             self._person_field_cursor = max(0, min(self._person_field_cursor, len(self.person_editable_fields) - 1))
             return
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
             count = len(self.reflected_fields)
             if count:
                 self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))

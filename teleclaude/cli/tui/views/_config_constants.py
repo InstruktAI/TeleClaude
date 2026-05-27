@@ -22,6 +22,7 @@ class Subtab(StrEnum):
     PEOPLE = "People"
     ADAPTERS = "Adapters"
     PROVIDERS = "Providers"
+    SUMMARIZER = "Summarizer"
     TTS_STT = "TTS/STT"
     ENV = "Env"
 
@@ -115,6 +116,22 @@ class ProvidersConfig(BaseModel):
     firecrawl: FirecrawlAdapterConfig = Field(default_factory=FirecrawlAdapterConfig)
 
 
+class SummarizerTabConfig(BaseModel):
+    """Summary/title provider settings, surfaced in the Summarizer subtab.
+
+    local_base_url is the ${SUMMARIZER_LOCAL_BASE_URL} env secret; the rest persist
+    to the config.yml summarizer section.
+    """
+
+    local_enabled: bool = Field(default=False, description="Use a local OpenAI-compatible summarizer first")
+    local_base_url: str = Field(default="")
+    local_model: str = Field(default="")
+    provider_priority: list[str] = Field(default_factory=list)
+    openai_model: str = Field(default="")
+    anthropic_model: str = Field(default="")
+    google_model: str = Field(default="")
+
+
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")
 _VALID_ROLES = ("admin", "member", "contributor", "newcomer")
 
@@ -189,6 +206,7 @@ _GUIDED_STEPS: tuple[GuidedStep, ...] = (
     GuidedStep(subtab=Subtab.PEOPLE, title="Admin Setup"),
     GuidedStep(subtab=Subtab.ADAPTERS, title="Configure Adapters"),
     GuidedStep(subtab=Subtab.PROVIDERS, title="Configure Providers"),
+    GuidedStep(subtab=Subtab.SUMMARIZER, title="Configure Summarizer"),
     GuidedStep(subtab=Subtab.TTS_STT, title="Configure TTS/STT"),
     GuidedStep(subtab=Subtab.ENV, title="Review Environment"),
 )

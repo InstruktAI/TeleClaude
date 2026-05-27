@@ -95,8 +95,8 @@ def test_project_adapter_sections_labels_match_adapter_labels() -> None:
 
 @pytest.mark.unit
 def test_subtabs_contains_expected_tabs() -> None:
-    # Subtabs: Computer, People, Adapters, Providers, TTS/STT, Env (6 tabs)
-    assert len(_SUBTABS) == 6
+    # Subtabs: Computer, People, Adapters, Providers, Summarizer, TTS/STT, Env (7 tabs)
+    assert len(_SUBTABS) == 7
 
 
 @pytest.mark.unit
