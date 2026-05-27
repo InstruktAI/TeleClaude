@@ -91,6 +91,27 @@ class TestDiscoverPeers:
         ]
 
 
+class TestTransportRegistration:
+    @pytest.mark.unit
+    def test_transport_lives_off_the_adapter_registry(self):
+        client = AdapterClient()
+        # Fresh runtime: no transport, and redis is never an entry in self.adapters.
+        assert client.transport is None
+        assert "redis" not in client.adapters
+
+        transport = _make_transport_adapter()
+        client.transport = transport
+
+        assert client._get_transport_adapter() is transport
+        assert "redis" not in client.adapters
+
+    @pytest.mark.unit
+    def test_get_transport_adapter_raises_when_absent(self):
+        client = AdapterClient()
+        with pytest.raises(RuntimeError):
+            client._get_transport_adapter()
+
+
 class TestRemoteExecutionRequests:
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -106,7 +127,7 @@ class TestRemoteExecutionRequests:
         client = AdapterClient()
         transport = _make_transport_adapter()
         metadata = MessageMetadata()
-        client.register_adapter("redis", transport)
+        client.transport = transport
 
         result = await client.send_request("remote-pc", "list_projects", metadata, session_id="sess-1")
 
@@ -126,7 +147,7 @@ class TestRemoteExecutionRequests:
     async def test_send_response_delegates_to_transport(self):
         client = AdapterClient()
         transport = _make_transport_adapter()
-        client.register_adapter("redis", transport)
+        client.transport = transport
 
         result = await client.send_response("msg-1", "response-payload")
 
@@ -146,7 +167,7 @@ class TestRemoteExecutionRequests:
     async def test_read_response_delegates_to_transport(self):
         client = AdapterClient()
         transport = _make_transport_adapter()
-        client.register_adapter("redis", transport)
+        client.transport = transport
 
         result = await client.read_response("msg-1", timeout=5.0, target_computer="remote")
 

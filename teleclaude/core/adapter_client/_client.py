@@ -49,7 +49,10 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             task_registry: Optional TaskRegistry for tracking background tasks
         """
         self.task_registry = task_registry
-        self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
+        self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance (UI adapters only)
+        # Redis is a transport, not an adapter: kept off the adapter registry so
+        # adapter counts, UI resolution, and headless detection stay honest.
+        self.transport: RedisTransport | None = None
         self.is_shutting_down = False
         self.subscribe_session_events()
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
@@ -152,11 +155,11 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             self.adapters["whatsapp"] = whatsapp
             logger.info("Started whatsapp adapter")
 
-        # Redis adapter
+        # Redis transport (NOT an adapter — lives on self.transport, off the registry)
         logger.info("[STARTUP] Starting Redis transport (usually <1s)")
         redis = RedisTransport(self, task_registry=self.task_registry)
         await redis.start()  # Raises if fails → daemon crashes
-        self.adapters["redis"] = redis  # Register ONLY after success
+        self.transport = redis
         logger.info("Started redis transport")
 
         # Log status but do not crash - daemon can run in TUI-only/headless mode
@@ -166,7 +169,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
 
     async def stop(self) -> None:
-        """Stop all registered adapters."""
+        """Stop all registered adapters and the transport."""
         tasks = []
         for adapter_type, adapter in self.adapters.items():
             logger.info("Stopping %s adapter...", adapter_type)
@@ -181,6 +184,14 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
                 logger.error("Failed to stop %s adapter: %s", adapter_type, result)
             else:
                 logger.info("%s adapter stopped", adapter_type)
+
+        # Transport is not in the adapter registry; stop it explicitly.
+        if self.transport is not None:
+            logger.info("Stopping redis transport...")
+            try:
+                await self.transport.stop()
+            except Exception as exc:
+                logger.error("Failed to stop redis transport: %s", exc)
 
     async def _fanout_excluding(
         self,

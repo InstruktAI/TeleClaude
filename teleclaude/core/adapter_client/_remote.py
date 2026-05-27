@@ -9,6 +9,7 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
     from teleclaude.adapters.base_adapter import BaseAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
 logger = get_logger(__name__)
 
@@ -18,6 +19,7 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
 
     if TYPE_CHECKING:
         adapters: dict[str, "BaseAdapter"]
+        transport: "RedisTransport | None"
 
     async def discover_peers(
         self, redis_enabled: bool | None = None
@@ -53,8 +55,14 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
 
         all_peers: list[dict[str, object]] = []  # guard: loose-dict - Adapter peer data
 
-        # Collect peers from all adapters
-        for adapter_type, adapter in self.adapters.items():
+        # Peer discovery is a transport (Redis) capability; the transport lives
+        # off the adapter registry, so include it alongside any adapters.
+        peer_sources: list[tuple[str, BaseAdapter]] = list(self.adapters.items())
+        if self.transport is not None:
+            peer_sources.append(("redis", self.transport))
+
+        # Collect peers from all sources
+        for adapter_type, adapter in peer_sources:
             logger.debug("Calling discover_peers() on %s adapter", adapter_type)
             try:
                 peers = await adapter.discover_peers()  # Returns list[PeerInfo]
@@ -166,16 +174,11 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
         return await transport.read_response(message_id, timeout, target_computer)
 
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
-        """Get first adapter that supports remote execution.
-
-        Returns:
-            Adapter implementing RemoteExecutionProtocol
+        """Return the Redis transport that backs remote execution.
 
         Raises:
-            RuntimeError: If no transport adapter available
+            RuntimeError: If the transport is not available
         """
-        for adapter in self.adapters.values():
-            if isinstance(adapter, RemoteExecutionProtocol):
-                return adapter
-
-        raise RuntimeError("No transport adapter available for remote execution")
+        if self.transport is None:
+            raise RuntimeError("No transport adapter available for remote execution")
+        return self.transport

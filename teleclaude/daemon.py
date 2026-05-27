@@ -292,7 +292,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.cache = DaemonCache(
             on_stale_read=TeleClaudeDaemon._make_stale_read_callback(
                 local_computer_name=config.computer.name,
-                get_adapter=lambda: self.client.adapters.get("redis"),
+                get_adapter=lambda: self.client.transport,
             )
         )
         logger.info("DaemonCache initialized")
@@ -729,13 +729,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
 
             # Wire Redis transport into channels API routes
-            redis_adapter = self.client.adapters.get("redis")
-            if redis_adapter:
+            redis_adapter = self.client.transport
+            if redis_adapter is not None:
                 from teleclaude.channels.api_routes import set_redis_transport  # startup boundary
-                from teleclaude.transport.redis_transport import RedisTransport as _RT  # startup boundary
 
-                if isinstance(redis_adapter, _RT):
-                    set_redis_transport(redis_adapter)
+                set_redis_transport(redis_adapter)
 
             await self._start_workflow_bridge()
             await self._start_identity_bridge()
@@ -963,7 +961,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         # startup boundary lazy imports to keep cold import cheap
         from teleclaude.transport.redis_transport import RedisTransport  # startup boundary
 
-        redis_adapter = self.client.adapters.get("redis")
+        redis_adapter = self.client.transport
         if not isinstance(redis_adapter, RedisTransport):
             raise RuntimeError(
                 "Workflow bridge requires the v1 RedisTransport adapter to be configured before bridge startup."
@@ -1018,7 +1016,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         # startup boundary lazy imports to keep cold import cheap
         from teleclaude.transport.redis_transport import RedisTransport  # startup boundary
 
-        redis_adapter = self.client.adapters.get("redis")
+        redis_adapter = self.client.transport
         if not isinstance(redis_adapter, RedisTransport):
             raise RuntimeError(
                 "Identity bridge requires the v1 RedisTransport adapter to be configured before bridge startup."

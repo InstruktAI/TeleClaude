@@ -112,11 +112,13 @@ class TestStart:
         ):
             await client.start()
 
+        # Redis is a transport, not an adapter: it lives on client.transport and
+        # is never an entry in the adapter registry.
         assert client.adapters == {
             "discord": discord_adapter,
             "telegram": telegram_adapter,
-            "redis": redis_adapter,
         }
+        assert client.transport is redis_adapter
         discord_ctor.assert_called_once_with(client, task_registry=registry)
         telegram_ctor.assert_called_once_with(client)
         redis_ctor.assert_called_once_with(client, task_registry=registry)
