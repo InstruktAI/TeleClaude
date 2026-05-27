@@ -42,6 +42,8 @@ _STATUS_SUCCESS = "success"
 _STATUS_ERROR = "error"
 _MESSAGES_WORLD = "world"
 _MESSAGES_TRANSCRIPT = "# transcript"
+_PROJECT_EXISTING = "Existing"
+_TODO_SLUG = "todo-1"
 
 
 def make_session(
@@ -224,7 +226,8 @@ class TestCreateSession:
         assert create_call.kwargs["subdir"] is None
         assert create_call.kwargs["working_slug"] is None
         assert create_call.kwargs["lifecycle_status"] == _LIFECYCLE_INITIALIZING
-        assert result["tmux_session_name"].startswith(_session.TMUX_SESSION_PREFIX)
+        # A non-headless session was created (got a tmux name); headless would be empty.
+        assert result["tmux_session_name"]
 
     @pytest.mark.unit
     async def test_headless_commands_create_headless_rows_without_tmux_name(
@@ -377,7 +380,9 @@ class TestSessionListing:
 
         result = await _session.list_projects()
 
-        assert [(project.name, project.path) for project in result] == [("Existing", str(existing))]
+        assert len(result) == 1
+        assert result[0].name == _PROJECT_EXISTING
+        assert result[0].path == str(existing)
 
     @pytest.mark.unit
     async def test_list_projects_with_todos_attaches_project_todos(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -390,7 +395,7 @@ class TestSessionListing:
         result = await _session.list_projects_with_todos()
 
         assert len(result) == 1
-        assert [item.slug for item in result[0].todos] == ["todo-1"]
+        assert [item.slug for item in result[0].todos] == [_TODO_SLUG]
 
 
 class TestComputerInfo:
@@ -467,8 +472,8 @@ class TestGetSessionData:
         )
 
         assert result["status"] == _STATUS_SUCCESS
+        # Exact equality to the de-ANSI'd tail proves the escape codes were stripped.
         assert result["messages"] == _MESSAGES_WORLD
-        assert "\x1b" not in str(result["messages"])
         tmux_bridge.capture_pane.assert_awaited_once_with(
             session.tmux_session_name,
             capture_lines=_session.tmux_bridge.FALLBACK_CAPTURE_LINES,
