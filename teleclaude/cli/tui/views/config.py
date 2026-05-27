@@ -44,6 +44,7 @@ from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
 from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema, resolve_env_placeholders
 from teleclaude.config import ComputerConfig
+from teleclaude.config._summarizer import KNOWN_CLOUD_PROVIDERS
 from teleclaude.config.schema import PersonEntry
 
 __all__ = ["ConfigContent", "ConfigView"]
@@ -441,12 +442,17 @@ class ConfigContent(
                 section = summ.get(provider, {})
                 return section.get("model", "") if isinstance(section, dict) else ""
 
+            # Always present every known cloud provider in the order list, preserving the
+            # configured order and appending any missing ones, so none can be lost from the list.
+            configured_order = [str(p) for p in summ.get("provider_priority", []) if p]
+            provider_order = configured_order + [p for p in KNOWN_CLOUD_PROVIDERS if p not in configured_order]
+
             summarizer_obj = SummarizerTabConfig(
                 local_enabled=local.get("enabled", False),
                 # ${VAR}-backed: resolves to the env value and saves to .env.
                 local_base_url="${SUMMARIZER_LOCAL_BASE_URL}",
                 local_model=local.get("model", ""),
-                provider_priority=summ.get("provider_priority", []),
+                provider_priority=provider_order,
                 openai_model=_model("openai"),
                 anthropic_model=_model("anthropic"),
                 google_model=_model("google"),

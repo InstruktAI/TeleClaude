@@ -193,9 +193,9 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
         ),
     ],
     "email": [
-        EnvVarInfo("EMAIL_FROM", "email", "Sender identity (Name <addr>)", "Instrukt ai <app@instrukt.ai>"),
-        EnvVarInfo("EMAIL_REPLYTO", "email", "Reply-To header", "NOREPLY <no-reply@instrukt.ai>"),
-        EnvVarInfo("SMTP_USERNAME", "email", "SMTP relay username", "922ed8001@smtp-brevo.com"),
+        EnvVarInfo("EMAIL_FROM", "email", "Sender identity (Name <addr>)", "Some Name <app@doma.in>"),
+        EnvVarInfo("EMAIL_REPLYTO", "email", "Reply-To header", "noreply <no-reply@doma.in>"),
+        EnvVarInfo("SMTP_USERNAME", "email", "SMTP relay username", "1234abcd@smtp-brevo.com"),
         EnvVarInfo("SMTP_KEY", "email", "SMTP relay key/password", "xsmtpsib-..."),
         EnvVarInfo("SMTP_RELAY", "email", "SMTP relay host:port", "smtp-relay.brevo.com:587"),
     ],

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-_KNOWN_CLOUD_PROVIDERS = ("openai", "anthropic", "google")
+KNOWN_CLOUD_PROVIDERS = ("openai", "anthropic", "google")
 
 
 @dataclass
@@ -12,7 +12,7 @@ class SummarizerLocalConfig:
     """Local (OpenAI-compatible) summarizer provider, e.g. LM Studio."""
 
     enabled: bool = False
-    base_url: str | None = None  # OpenAI-compatible endpoint, e.g. http://localhost:1234/v1
+    base_url: str | None = "http://localhost:1234/v1"  # OpenAI-compatible endpoint
     model: str | None = None
 
 
@@ -45,14 +45,14 @@ def parse_summarizer_config(
     )
     priority_obj = raw.get("provider_priority", [])
     priority = [str(p) for p in priority_obj if p] if isinstance(priority_obj, list) else []
-    unknown = [p for p in priority if p not in _KNOWN_CLOUD_PROVIDERS]
+    unknown = [p for p in priority if p not in KNOWN_CLOUD_PROVIDERS]
     if unknown:
         raise ValueError(
             f"Invalid config key `config.yml:summarizer.provider_priority`: unknown provider(s) "
-            f"{', '.join(unknown)}. Allowed values: {', '.join(_KNOWN_CLOUD_PROVIDERS)}."
+            f"{', '.join(unknown)}. Allowed values: {', '.join(KNOWN_CLOUD_PROVIDERS)}."
         )
     models: dict[str, str] = {}
-    for provider in _KNOWN_CLOUD_PROVIDERS:
+    for provider in KNOWN_CLOUD_PROVIDERS:
         provider_obj = raw.get(provider)
         if isinstance(provider_obj, dict) and provider_obj.get("model"):
             models[provider] = str(provider_obj["model"])

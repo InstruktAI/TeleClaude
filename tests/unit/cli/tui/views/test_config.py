@@ -8,8 +8,9 @@ This file covers module-level availability plus the Adapters/Providers subtab sp
 from __future__ import annotations
 
 import pytest
+from rich.text import Text
 
-from teleclaude.cli.tui.config_components.guidance import guidance_registry
+from teleclaude.cli.tui.config_components.guidance import FieldGuidance, guidance_registry
 from teleclaude.cli.tui.views._config_constants import _SUBTABS, Subtab
 from teleclaude.cli.tui.views.config import ConfigContent, ConfigView
 
@@ -40,6 +41,9 @@ _AI_FIELD_ENV = {
 _GOOGLE_KEY_FIELD = "ai.google_api_key"
 _GOOGLE_KEY_VAR = "GOOGLE_API_KEY"
 _GOOGLE_KEY_VALUE = "AIza-saved"
+_KNOWN_CLOUD_PROVIDERS = {"openai", "anthropic", "google"}
+_PROVIDER_PRIORITY_FIELD = "provider_priority"
+_CONFIGURED_PROVIDER = "google"
 
 
 def _sections(content: ConfigContent, tab: Subtab) -> set[str]:
@@ -140,3 +144,30 @@ def test_ai_provider_field_saves_to_env_not_config(monkeypatch: pytest.MonkeyPat
     assert (_GOOGLE_KEY_VAR, _GOOGLE_KEY_VALUE) in calls
     # The secret must not leak into the config.yml tree.
     assert "ai" not in content._raw_config
+
+
+@pytest.mark.unit
+def test_summarizer_provider_order_includes_all_known_providers() -> None:
+    content = ConfigContent()
+    content._raw_config = {"summarizer": {"provider_priority": [_CONFIGURED_PROVIDER]}}
+    content.active_subtab = _SUBTABS.index(Subtab.SUMMARIZER)
+    field = next(f for f in content.reflected_fields if f.key == _PROVIDER_PRIORITY_FIELD)
+    assert set(field.value) == _KNOWN_CLOUD_PROVIDERS
+    # Configured order is preserved first; missing providers append.
+    assert field.value[0] == _CONFIGURED_PROVIDER
+
+
+@pytest.mark.unit
+def test_guidance_block_suppressed_when_no_actionable_content() -> None:
+    content = ConfigContent()
+    result = Text()
+    content._render_guidance_block(result, FieldGuidance(description="description only, no steps"))
+    assert not result.plain
+
+
+@pytest.mark.unit
+def test_guidance_block_renders_when_it_has_steps() -> None:
+    content = ConfigContent()
+    result = Text()
+    content._render_guidance_block(result, FieldGuidance(description="d", steps=["do the thing"]))
+    assert result.plain

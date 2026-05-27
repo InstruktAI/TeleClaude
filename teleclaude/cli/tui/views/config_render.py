@@ -47,8 +47,11 @@ class ConfigContentRenderMixin:
         def person_editable_fields(self) -> list[str]: ...
 
     def _render_guidance_block(self, result: Text, guidance: FieldGuidance | None) -> None:
-        """Render the inline guidance block for a resolved guidance entry."""
+        """Render the inline guidance block, only when it has actionable content."""
         if guidance is None:
+            return
+        # Suppress the frame entirely when there is nothing to show (no steps/link/example/hint).
+        if not (guidance.steps or guidance.url or guidance.format_example or guidance.validation_hint):
             return
         result.append("      ┌─ Guidance\n", style=_SEP)
         for idx, step in enumerate(guidance.steps, 1):
