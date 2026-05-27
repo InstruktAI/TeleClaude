@@ -103,6 +103,18 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             (adapter_type, adapter) for adapter_type, adapter in self.adapters.items() if isinstance(adapter, UiAdapter)
         ]
 
+    def _resolve_ui_targets(self, include_adapters: set[str] | None = None) -> list[tuple[str, UiAdapter]]:
+        """Registered UI adapters, optionally narrowed to ``include_adapters``.
+
+        The single resolver for "which UI adapters does this operation target".
+        An empty result is normal (headless, or the targeted adapter is disabled/
+        absent) and callers treat it as a no-op rather than an error.
+        """
+        targets = self._ui_adapters()
+        if include_adapters is not None:
+            targets = [(t, a) for t, a in targets if t in include_adapters]
+        return targets
+
     async def _broadcast_to_ui_adapters(
         self,
         session: "Session",
@@ -116,13 +128,9 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         writes from clobbering each other — each adapter reads the previous
         adapter's writes before persisting its own changes.
         """
-        ui_adapters = self._ui_adapters()
-        if include_adapters is not None:
-            ui_adapters = [
-                (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
-            ]
+        ui_adapters = self._resolve_ui_targets(include_adapters)
         if not ui_adapters:
-            logger.warning("No UI adapters available for %s (session %s)", operation, session.session_id)
+            logger.debug("No UI adapters available for %s (session %s)", operation, session.session_id)
             return []
 
         output: list[tuple[str, object]] = []

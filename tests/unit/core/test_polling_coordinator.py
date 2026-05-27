@@ -325,6 +325,43 @@ class TestProjectSessionFromTranscript:
         )
 
     @pytest.mark.unit
+    async def test_reflection_failure_does_not_block_projection_watermark(self):
+        # If the (best-effort) admin mirror fails, the projection watermark must
+        # still advance — otherwise the same user turn re-fires every poll.
+        session = Session(
+            session_id=SESSION_USER_1,
+            computer_name="local",
+            tmux_session_name="tmux-user-1",
+            title="Untitled",
+            active_agent="codex",
+            native_log_file=NATIVE_LOG_FILE,
+            last_input_origin=TERMINAL_ORIGIN,
+        )
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        adapter_client = AsyncMock()
+        adapter_client.broadcast_user_input = AsyncMock(side_effect=RuntimeError("no UI adapters"))
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=(SHIP_IT, transcript_ts),
+            ),
+            patch("teleclaude.core.polling_coordinator.extract_recent_transcript_turns", return_value=[]),
+            patch("teleclaude.core.polling_coordinator._build_transcript_output_update", return_value=None),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            await project_session_from_transcript(session, adapter_client)  # must not raise
+
+        mock_db.update_session.assert_awaited_once_with(
+            SESSION_USER_1,
+            last_message_sent=SHIP_IT,
+            last_message_sent_at=transcript_ts,
+            last_projected_at=transcript_ts,
+        )
+
+    @pytest.mark.unit
     async def test_non_projector_timestamp_does_not_suppress_transcript_truth(self):
         """Regression: non-projector writes to last_message_sent_at must not suppress projection.
 

@@ -52,6 +52,8 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         def _ui_adapters(self) -> list[tuple[str, UiAdapter]]: ...
 
+        def _resolve_ui_targets(self, include_adapters: set[str] | None = None) -> list[tuple[str, UiAdapter]]: ...
+
         async def _fanout_excluding(
             self,
             session: "Session",
@@ -64,6 +66,11 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         async def dispatch_session_status(self, session_id: str, status: str) -> None: ...
 
         async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> None: ...
+
+    @staticmethod
+    def _is_terminal(session: "Session") -> bool:
+        """True when the session is closing/closed — channel work is moot."""
+        return bool(session.closed_at) or session.lifecycle_status in _TERMINAL_SESSION_STATUSES
 
     async def _run_ui_lane(
         self,
@@ -260,7 +267,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
             if fresh:
                 session = fresh
 
-            if session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
+            if self._is_terminal(session):
                 logger.debug(
                     "Skipping ensure_ui_channels for terminal session %s (status=%s)",
                     session_id,
@@ -268,17 +275,11 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return session
 
-            ui_adapters = [
-                (adapter_type, adapter)
-                for adapter_type, adapter in self.adapters.items()
-                if isinstance(adapter, UiAdapter)
-            ]
-            if include_adapters is not None:
-                ui_adapters = [
-                    (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
-                ]
+            ui_adapters = self._resolve_ui_targets(include_adapters)
             if not ui_adapters:
-                raise ValueError("No UI adapters registered")
+                # No targeted UI adapter present (headless, or the adapter is
+                # disabled/absent). Provisioning nothing is valid — never raise.
+                return session
 
             for _, adapter in ui_adapters:
                 session = await adapter.ensure_channel(session)
@@ -306,7 +307,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
             if fresh:
                 session = fresh
 
-            if session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
+            if self._is_terminal(session):
                 logger.debug(
                     "Skipping ensure_output_lanes_ready for terminal session %s (status=%s)",
                     session_id,
@@ -314,17 +315,9 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return session
 
-            ui_adapters = [
-                (adapter_type, adapter)
-                for adapter_type, adapter in self.adapters.items()
-                if isinstance(adapter, UiAdapter)
-            ]
-            if include_adapters is not None:
-                ui_adapters = [
-                    (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
-                ]
+            ui_adapters = self._resolve_ui_targets(include_adapters)
             if not ui_adapters:
-                raise ValueError("No UI adapters registered")
+                return session  # no targeted UI adapter present — no-op, never raise
 
             for _, adapter in ui_adapters:
                 session = await adapter.ensure_output_lane_ready(session, trigger=trigger)  # type: ignore[arg-type]

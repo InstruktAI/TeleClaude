@@ -414,7 +414,13 @@ async def _project_user_reflection(
     # (worker/orchestrator/integrator) remain visible so the admin sees both
     # sides of the conversation in Discord.
     if source != InputOrigin.DISCORD.value:
-        await adapter_client.broadcast_user_input(session, user_text, source)
+        # The admin mirror is best-effort: a reflection failure (e.g. the Discord
+        # adapter is absent) must never abort the poll or block the projection
+        # watermark below, or the same user turn re-fires every cycle.
+        try:
+            await adapter_client.broadcast_user_input(session, user_text, source)
+        except Exception as exc:
+            logger.debug("Skipping user-input reflection for session %s: %s", session.session_id, exc)
 
     if transcript_dt is not None:
         await db.update_session(

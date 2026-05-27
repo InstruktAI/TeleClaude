@@ -181,15 +181,16 @@ class TestEnsureUiChannels:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_raises_when_no_ui_adapters_registered(self):
+    async def test_no_ui_adapters_is_a_noop_not_an_error(self):
+        # Headless / adapter-absent is valid: provisioning nothing returns the
+        # session unchanged instead of raising (which would crash-loop the poller).
         client = AdapterClient()
         session = _make_session()
 
-        with (
-            patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)),
-            pytest.raises(ValueError),
-        ):
-            await client.ensure_ui_channels(session)
+        with patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)):
+            result = await client.ensure_ui_channels(session)
+
+        assert result is session
 
 
 class TestSendGeneralMessage:

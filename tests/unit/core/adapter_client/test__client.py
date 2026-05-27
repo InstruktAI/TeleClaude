@@ -47,6 +47,20 @@ class TestInit:
         assert client.task_registry is registry
 
 
+class TestResolveUiTargets:
+    @pytest.mark.unit
+    def test_returns_registered_ui_adapters(self) -> None:
+        client = AdapterClient()
+        client.register_adapter("discord", _make_ui_adapter())
+        assert [t for t, _ in client._resolve_ui_targets()] == ["discord"]
+
+    @pytest.mark.unit
+    def test_include_filter_narrows_to_empty_when_unmatched(self) -> None:
+        client = AdapterClient()
+        client.register_adapter("discord", _make_ui_adapter())
+        assert client._resolve_ui_targets(include_adapters={"telegram"}) == []
+
+
 class TestMarkShuttingDown:
     @pytest.mark.unit
     def test_sets_shutdown_flag(self):
