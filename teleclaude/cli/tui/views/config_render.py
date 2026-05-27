@@ -332,7 +332,11 @@ class ConfigContentRenderMixin:
         if f.description:
             result.append(f"        {f.description}\n", style=_DIM)
         if selected:
-            self._render_guidance_block(result, guidance_registry.get_for_field_key(f.key))
+            # Env-backed ${VAR} fields carry guidance keyed by the env var, not the field key.
+            guidance = guidance_registry.get_for_env(f.env_var) if f.env_var else None
+            if guidance is None:
+                guidance = guidance_registry.get_for_field_key(f.key)
+            self._render_guidance_block(result, guidance)
 
     def _render_reflected_fields(self, result: Text) -> None:
         """Render the dynamically reflected fields for the active subtab."""
