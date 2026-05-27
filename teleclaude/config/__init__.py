@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._coerce import as_bool as _as_bool
@@ -46,7 +46,25 @@ _dotenv_path = Path(_env_path).expanduser() if _env_path else _project_root / ".
 if not _dotenv_path.is_absolute():
     _dotenv_path = (_project_root / _dotenv_path).resolve()
 
-load_dotenv(_dotenv_path)
+# Variables present before any .env load are shell-provided and keep precedence;
+# .env-sourced variables are refreshed from the file on every (re)load.
+_PRE_DOTENV_ENV_KEYS = frozenset(os.environ)
+
+
+def _refresh_dotenv() -> None:
+    """Apply the .env file to os.environ so config reload observes out-of-process edits.
+
+    Shell-provided variables keep precedence over .env; .env-sourced variables are
+    refreshed from the file on each call. This is what lets reload_config() pick up
+    ${VAR}-backed values the TUI writes to .env (Redis creds, summarizer base URL, keys).
+    """
+    for key, value in dotenv_values(_dotenv_path).items():
+        if value is None or key in _PRE_DOTENV_ENV_KEYS:
+            continue
+        os.environ[key] = value
+
+
+_refresh_dotenv()
 WORKING_DIR = str(_project_root)
 os.environ.setdefault("WORKING_DIR", WORKING_DIR)
 
@@ -880,6 +898,7 @@ RESTART_REQUIRED_SECTIONS = frozenset({"redis", "telegram", "discord", "whatsapp
 
 def _load_config_from_disk(path: Path) -> Config:
     """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
+    _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
     with open(path, encoding="utf-8") as f:
         raw_user_config = yaml.safe_load(f)
 

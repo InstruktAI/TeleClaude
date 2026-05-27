@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +16,30 @@ pytestmark = [pytest.mark.unit]
 GEMINI_AGENT_KEY = "gemini"
 
 _SUMMARIZER_SECTION = "summarizer"
+_ENV_REF_VAR = "TELECLAUDE_RELOAD_TEST_BASE_URL"
+_ENV_REF_FIRST = "http://first:1234/v1"
+_ENV_REF_SECOND = "http://second:1234/v1"
+_RELOAD_ENV_CONFIG = (
+    "computer:\n"
+    "  name: local-box\n"
+    "  user: dev\n"
+    "  role: builder\n"
+    "  host: localhost\n"
+    "  default_working_dir: /workspace/teleclaude\n"
+    "agents:\n"
+    "  default: claude\n"
+    "  claude:\n"
+    "    enabled: true\n"
+    "  gemini:\n"
+    "    enabled: false\n"
+    "  codex:\n"
+    "    enabled: false\n"
+    "summarizer:\n"
+    "  provider_priority: [openai]\n"
+    "  local:\n"
+    "    enabled: true\n"
+    "    base_url: ${" + _ENV_REF_VAR + "}\n"
+)
 _RELOAD_BASE_CONFIG = (
     "computer:\n"
     "  name: local-box\n"
@@ -134,3 +159,30 @@ class TestReloadConfig:
         finally:
             config_module.config.__dict__.clear()
             config_module.config.__dict__.update(saved)
+
+    def test_reload_reflects_dotenv_edit_in_place(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        env_file = tmp_path / ".env"
+        cfg = tmp_path / "config.yml"
+        env_file.write_text(f"{_ENV_REF_VAR}={_ENV_REF_FIRST}\n", encoding="utf-8")
+        cfg.write_text(_RELOAD_ENV_CONFIG, encoding="utf-8")
+        monkeypatch.setattr(config_module, "_dotenv_path", env_file)
+        monkeypatch.setattr(config_module, "_config_path", cfg)
+        monkeypatch.delenv(_ENV_REF_VAR, raising=False)
+        saved = dict(config_module.config.__dict__)
+        try:
+            with (
+                patch.object(config_module, "resolve_tmux_binary", return_value="tmux"),
+                patch.object(config_module, "resolve_agent_binary", side_effect=lambda name: f"/usr/bin/{name}"),
+            ):
+                self._seed_singleton(cfg)
+                assert config_module.config.summarizer is not None
+                assert config_module.config.summarizer.local.base_url == _ENV_REF_FIRST
+                # An out-of-process .env edit (as the TUI does) must be reflected by reload.
+                env_file.write_text(f"{_ENV_REF_VAR}={_ENV_REF_SECOND}\n", encoding="utf-8")
+                config_module.reload_config()
+            assert config_module.config.summarizer is not None
+            assert config_module.config.summarizer.local.base_url == _ENV_REF_SECOND
+        finally:
+            config_module.config.__dict__.clear()
+            config_module.config.__dict__.update(saved)
+            os.environ.pop(_ENV_REF_VAR, None)
