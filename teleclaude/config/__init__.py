@@ -49,19 +49,26 @@ if not _dotenv_path.is_absolute():
 # Variables present before any .env load are shell-provided and keep precedence;
 # .env-sourced variables are refreshed from the file on every (re)load.
 _PRE_DOTENV_ENV_KEYS = frozenset(os.environ)
+# Keys currently sourced from .env, so a reload can drop ones deleted from the file.
+_dotenv_managed_keys: set[str] = set()
 
 
 def _refresh_dotenv() -> None:
     """Apply the .env file to os.environ so config reload observes out-of-process edits.
 
-    Shell-provided variables keep precedence over .env; .env-sourced variables are
-    refreshed from the file on each call. This is what lets reload_config() pick up
-    ${VAR}-backed values the TUI writes to .env (Redis creds, summarizer base URL, keys).
+    Shell-provided variables (captured before the first load) keep precedence over .env.
+    .env-sourced variables are refreshed each call, and ones removed from the file are
+    dropped from os.environ — so reload_config() reflects both edits and deletions of
+    the ${VAR}-backed values the TUI writes to .env (Redis creds, summarizer URL, keys).
     """
-    for key, value in dotenv_values(_dotenv_path).items():
-        if value is None or key in _PRE_DOTENV_ENV_KEYS:
-            continue
-        os.environ[key] = value
+    values = dotenv_values(_dotenv_path)
+    current = {k for k, v in values.items() if v is not None and k not in _PRE_DOTENV_ENV_KEYS}
+    for key in _dotenv_managed_keys - current:
+        os.environ.pop(key, None)
+    for key in current:
+        os.environ[key] = str(values[key])
+    _dotenv_managed_keys.clear()
+    _dotenv_managed_keys.update(current)
 
 
 _refresh_dotenv()

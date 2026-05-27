@@ -167,6 +167,8 @@ class TestReloadConfig:
         cfg.write_text(_RELOAD_ENV_CONFIG, encoding="utf-8")
         monkeypatch.setattr(config_module, "_dotenv_path", env_file)
         monkeypatch.setattr(config_module, "_config_path", cfg)
+        # Isolate the dotenv-managed-key tracker so the temp .env does not evict real keys.
+        monkeypatch.setattr(config_module, "_dotenv_managed_keys", set())
         monkeypatch.delenv(_ENV_REF_VAR, raising=False)
         saved = dict(config_module.config.__dict__)
         try:
@@ -182,6 +184,32 @@ class TestReloadConfig:
                 config_module.reload_config()
             assert config_module.config.summarizer is not None
             assert config_module.config.summarizer.local.base_url == _ENV_REF_SECOND
+        finally:
+            config_module.config.__dict__.clear()
+            config_module.config.__dict__.update(saved)
+            os.environ.pop(_ENV_REF_VAR, None)
+
+    def test_reload_drops_dotenv_key_removed_from_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        env_file = tmp_path / ".env"
+        cfg = tmp_path / "config.yml"
+        env_file.write_text(f"{_ENV_REF_VAR}={_ENV_REF_FIRST}\n", encoding="utf-8")
+        cfg.write_text(_RELOAD_ENV_CONFIG, encoding="utf-8")
+        monkeypatch.setattr(config_module, "_dotenv_path", env_file)
+        monkeypatch.setattr(config_module, "_config_path", cfg)
+        monkeypatch.setattr(config_module, "_dotenv_managed_keys", set())
+        monkeypatch.delenv(_ENV_REF_VAR, raising=False)
+        saved = dict(config_module.config.__dict__)
+        try:
+            with (
+                patch.object(config_module, "resolve_tmux_binary", return_value="tmux"),
+                patch.object(config_module, "resolve_agent_binary", side_effect=lambda name: f"/usr/bin/{name}"),
+            ):
+                self._seed_singleton(cfg)
+                assert _ENV_REF_VAR in os.environ
+                # Removing the key from .env must drop it from os.environ on reload.
+                env_file.write_text("", encoding="utf-8")
+                config_module.reload_config()
+            assert _ENV_REF_VAR not in os.environ
         finally:
             config_module.config.__dict__.clear()
             config_module.config.__dict__.update(saved)
