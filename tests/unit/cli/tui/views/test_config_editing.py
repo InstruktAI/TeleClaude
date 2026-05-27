@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -134,3 +135,23 @@ class TestAdapterWriteBlock:
         host._raw_config = {"computer": {}}
 
         assert host._adapter_write_block_reason("computer.name", "box") is None
+
+    def test_save_refuses_to_persist_a_blocked_edit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
+        monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
+        write = MagicMock()
+        monkeypatch.setattr("teleclaude.cli.tui.views.config_editing._write_raw_config", write)
+
+        host = ConfigContentEditingMixin()
+        host._raw_config = {"whatsapp": {"enabled": False}}
+        host._editing_var_name = None
+        host._edit_buffer = ""
+        host.refresh_data = MagicMock()
+        host.reflected_fields = [
+            SimpleNamespace(key="whatsapp.enabled", field_type=bool, choices=None, env_var=None, name="enabled")
+        ]
+
+        host._save_reflected_field("whatsapp.enabled", True)
+
+        write.assert_not_called()  # the broken section is never persisted
+        assert host._status_is_error is True

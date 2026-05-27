@@ -464,7 +464,7 @@ class ConfigContentEditingMixin:
         adapter, field_name = key.split(".", 1)
         if adapter not in adapter_names():
             return None
-        section = dict(self._raw_config.get(adapter, {}))  # type: ignore[attr-defined]
+        section = dict(self._raw_config.get(adapter) or {})  # type: ignore[attr-defined]
         section[field_name] = deserialized
         if not as_bool(section.get("enabled", False)):
             return None  # disabled (or being disabled) never blocks
