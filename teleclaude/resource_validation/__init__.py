@@ -30,6 +30,7 @@ from teleclaude.resource_validation._models import (
     get_errors,
 )
 from teleclaude.resource_validation._snippet import (
+    INCLUDE_DIRECTIVE_RE,
     _extract_markdown_link_url,
     _extract_sources_section,
     _infer_type_from_path,
@@ -56,6 +57,7 @@ from teleclaude.resource_validation._snippet import (
 
 __all__ = [
     # Public API
+    "INCLUDE_DIRECTIVE_RE",
     "REPO_ROOT",
     # Re-exported internals
     "_ARTIFACT_REF_ORDER",
@@ -361,6 +363,9 @@ def validate_artifact(post: frontmatter.Post, path: str, *, kind: str, project_r
     refs = _extract_artifact_required_reads(post.content.splitlines())
     if refs:
         validate_artifact_refs_exist(refs, path, project_root=project_root)
+    include_refs = INCLUDE_DIRECTIVE_RE.findall(post.content)
+    if include_refs:
+        validate_artifact_refs_exist(include_refs, path, project_root=project_root)
     if kind == "skill":
         name = post.metadata.get("name")
         dirname = Path(path).parent.name

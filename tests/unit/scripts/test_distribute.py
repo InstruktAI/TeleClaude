@@ -133,6 +133,25 @@ def test_expand_inline_refs_inlines_referenced_snippet_transitively(
     assert result == snapshot
 
 
+def test_include_directive_inlines_snippet_body(tmp_path: Path) -> None:
+    """An @include directive in the body inlines the referenced snippet's content."""
+    _write_snippet(tmp_path, "docs/snip.md", _POLICY_A_ID, "## Rules\n\nResolve the slug.")
+    content = "# Cmd\n\n## Steps\n\n<!-- @include: docs/snip.md -->\n\nFollow the procedure.\n"
+
+    result = expand_inline_refs(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
+
+    assert "Resolve the slug." in result
+    assert "@include" not in result
+
+
+def test_include_directive_missing_target_raises(tmp_path: Path) -> None:
+    """A missing @include target raises during expansion rather than emitting a broken artifact."""
+    content = "# Cmd\n\n## Steps\n\n<!-- @include: docs/missing.md -->\n"
+
+    with pytest.raises(ValueError, match="@include not found"):
+        expand_inline_refs(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
+
+
 def test_needs_domain_baseline_domain_resolves_from_flagged_procedure(tmp_path: Path) -> None:
     """A command referencing a procedure with needs_domain_baseline yields that procedure's domain."""
     proc = tmp_path / "docs" / "proc.md"

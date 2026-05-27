@@ -47,6 +47,7 @@ from teleclaude.snippet_validation import (
 )
 
 _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
+INCLUDE_DIRECTIVE_RE = re.compile(r"<!--\s*@include:\s*(.+?\.md)\s*-->")
 _THIRD_PARTY_TYPE = "third-party"
 _THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
 _ROADMAP_STATUS_VALUES = (

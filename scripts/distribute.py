@@ -41,14 +41,13 @@ if str(_REPO_ROOT) not in sys.path:
 from teleclaude.docs_index import write_third_party_index_yaml
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
-from teleclaude.resource_validation import resolve_ref_path, validate_artifact
+from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 
 Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
-INCLUDE_DIRECTIVE_RE = re.compile(r"<!--\s*@include:\s*(.+?\.md)\s*-->")
 CONTEXT_PRESERVATION_START = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->"
 CONTEXT_PRESERVATION_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
 
