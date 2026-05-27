@@ -16,6 +16,7 @@ from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Input, TabbedContent, TabPane
 from textual.widgets._tabbed_content import ContentTabs
@@ -367,7 +368,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
 
     def on_paste(self, event: events.Paste) -> None:
         """Discard bracketed-paste events that reach the TUI control surface."""
-        if self._focused_widget_is_paste_safe():
+        if self._input_surface_active():
             return
         self._last_paste_at = _t.monotonic()
         event.prevent_default()
@@ -379,7 +380,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         if self._paste_guard_replay_count > 0:
             self._paste_guard_replay_count -= 1
             return
-        if self._focused_widget_is_paste_safe():
+        if self._input_surface_active():
             return
 
         event.prevent_default()
@@ -395,6 +396,18 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             return
 
         self._schedule_guarded_key_flush()
+
+    def _input_surface_active(self) -> bool:
+        """True when an input surface is active, so control-surface guards stand down.
+
+        Bindings must only fire on the bare control surface — when no popup is open
+        and no text field is active. A pushed ModalScreen counts as a popup; the
+        focused-widget walk covers text fields (Textual ``Input``, any ``paste_safe``
+        widget, the config inline editor).
+        """
+        if isinstance(self.screen, ModalScreen):
+            return True
+        return self._focused_widget_is_paste_safe()
 
     def _focused_widget_is_paste_safe(self) -> bool:
         """Return whether the focused widget explicitly accepts paste or key bursts."""
@@ -925,6 +938,11 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         # Refresh config content — its Rich styles depend on dark/light mode
         for widget in self.query(ConfigContent):
             widget.refresh()
+
+        # Footer colors (agent pills, pane-theming cells, binding-key highlights)
+        # are baked into child Static widgets — rebuild them for the new mode.
+        for widget in self.query(TelecFooter):
+            widget.refresh_theme()
 
     def on_resize(self, event: object) -> None:
         """Force sky animation to reposition celestials on terminal resize."""

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from rich.console import Group
 
-from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar, _to_color
+from teleclaude.cli.tui.widgets.box_tab_bar import PIPE_COLUMNS, BoxTabBar, _to_color
 
 # --- _to_color ---
 
@@ -117,6 +117,39 @@ def test_tab_cell_returns_space_at_y_offset_0() -> None:
         inactive_tab_fg="#CCC",
     )
     assert char == " "
+
+
+# --- BoxTabBar._label_cell foot extension ---
+
+
+@pytest.mark.unit
+def test_label_cell_extends_foot_pipe_when_no_tab_covers_column() -> None:
+    """A foot column with no tab over it draws the support pipe down to the floor."""
+    bar = BoxTabBar()
+    foot_x = max(PIPE_COLUMNS)
+    cell = (" ", False, False, None, None)  # not in any tab
+    char, fg, _bg = bar._label_cell(foot_x, 8, cell, None, None, [], "#000000", "#808080", 60, 80)
+    assert char == "║"
+    assert fg == "#808080"
+
+
+@pytest.mark.unit
+def test_label_cell_draws_nothing_off_foot_columns() -> None:
+    bar = BoxTabBar()
+    off_x = max(PIPE_COLUMNS) + 1
+    cell = (" ", False, False, None, None)
+    char, _fg, _bg = bar._label_cell(off_x, 8, cell, None, None, [], "#000000", "#808080", 60, 80)
+    assert char == " "
+
+
+@pytest.mark.unit
+def test_label_cell_does_not_overdraw_foot_when_tab_present() -> None:
+    """A foot column covered by a tab keeps the tab label, not a pipe."""
+    bar = BoxTabBar()
+    foot_x = max(PIPE_COLUMNS)
+    cell = ("X", True, False, "#FFFFFF", "#000000")  # inside a tab
+    char, _fg, _bg = bar._label_cell(foot_x, 8, cell, None, None, [], "#000000", "#808080", 60, 80)
+    assert char == "X"
 
 
 @pytest.mark.unit

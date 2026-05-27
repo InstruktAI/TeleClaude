@@ -109,6 +109,19 @@ def test_build_agent_pill_no_availability_info_shows_cross() -> None:
     assert "\u2718" in pill.plain  # ✘ when no info present
 
 
+# --- TelecFooter.refresh_theme ---
+
+
+@pytest.mark.unit
+def test_refresh_theme_rebuilds_controls_and_hint_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    footer = TelecFooter()
+    calls: list[str] = []
+    monkeypatch.setattr(footer, "_refresh_controls", lambda: calls.append("controls"))
+    monkeypatch.setattr(footer, "_refresh_hint_rows", lambda: calls.append("hints"))
+    footer.refresh_theme()
+    assert calls == ["controls", "hints"]
+
+
 # --- FooterActionButton ---
 
 

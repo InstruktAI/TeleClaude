@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from textual.screen import ModalScreen, Screen
+from textual.widget import Widget
 
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
@@ -162,3 +164,25 @@ async def test_successful_subset_refresh_does_not_clear_unrelated_pending_retry(
     assert app._runtime_state.bootstrap_retry_timer is projects_timer
     assert projects_timer is not None
     assert projects_timer.stopped is False
+
+
+@pytest.mark.unit
+def test_open_modal_makes_input_surface_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pushed popup counts as an input surface, so control-surface guards stand down."""
+    app = object.__new__(TelecApp)
+    modal = object.__new__(ModalScreen)
+    monkeypatch.setattr(TelecApp, "screen", property(lambda _self: modal))
+    monkeypatch.setattr(TelecApp, "focused", property(lambda _self: None))
+
+    assert app._input_surface_active() is True
+
+
+@pytest.mark.unit
+def test_bare_control_surface_is_not_input_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No popup and a non-input focus means bindings may fire — guard stays armed."""
+    app = object.__new__(TelecApp)
+    base_screen = object.__new__(Screen)
+    monkeypatch.setattr(TelecApp, "screen", property(lambda _self: base_screen))
+    monkeypatch.setattr(TelecApp, "focused", property(lambda _self: Widget()))
+
+    assert app._input_surface_active() is False

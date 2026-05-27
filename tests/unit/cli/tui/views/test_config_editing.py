@@ -43,6 +43,28 @@ def test_append_edit_character_does_nothing_when_not_editing() -> None:
 
 
 @pytest.mark.unit
+def test_append_edit_text_appends_pasted_text() -> None:
+    host = _make_editing_host(editing=True)
+    host._edit_buffer = "ab"
+    host.append_edit_text("cd")
+    assert host._edit_buffer == "abcd"
+
+
+@pytest.mark.unit
+def test_append_edit_text_flattens_newlines() -> None:
+    host = _make_editing_host(editing=True)
+    host.append_edit_text("line1\nline2\r\nline3")
+    assert host._edit_buffer == "line1 line2 line3"
+
+
+@pytest.mark.unit
+def test_append_edit_text_does_nothing_when_not_editing() -> None:
+    host = _make_editing_host(editing=False)
+    host.append_edit_text("paste")
+    assert host._edit_buffer == ""
+
+
+@pytest.mark.unit
 def test_backspace_edit_removes_last_character() -> None:
     host = _make_editing_host(editing=True)
     host._edit_buffer = "abc"

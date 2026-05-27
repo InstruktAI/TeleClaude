@@ -301,6 +301,11 @@ class TelecFooter(Widget):
     def _set_token(self, selector: str, label: Text | str) -> None:
         self.query_one(selector, Static).update(label)
 
+    def refresh_theme(self) -> None:
+        """Rebuild mode-dependent color content after a dark/light theme swap."""
+        self._refresh_controls()
+        self._refresh_hint_rows()
+
     def _refresh_controls(self) -> None:
         if not self.is_mounted:
             return

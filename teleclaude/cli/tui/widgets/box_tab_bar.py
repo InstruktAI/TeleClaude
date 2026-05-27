@@ -24,6 +24,11 @@ from teleclaude.cli.tui.theme import (
 
 logger = get_logger(__name__)
 
+# Columns where the banner's support pipes ("feet") land. Must stay in lockstep
+# with banner.py's pipe_positions so a foot reads as one continuous column from
+# the banner art down to the tab-bar floor.
+PIPE_COLUMNS = {13, 70}
+
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
     from teleclaude.cli.tui.header_frames import HeaderSceneFrame
@@ -249,7 +254,9 @@ class BoxTabBar(TelecMixin, Widget):
             elif y_offset == 0:
                 row_cells.append(self._sky_cell(x, global_y, engine, scene, entity_z_scan, sky_color, pipe_color))
             else:
-                row_cells.append(self._label_cell(x, global_y, cell, engine, scene, entity_z_scan, sky_color, z60, z80))
+                row_cells.append(
+                    self._label_cell(x, global_y, cell, engine, scene, entity_z_scan, sky_color, pipe_color, z60, z80)
+                )
         append_cells(row_text, row_cells)
         return row_text
 
@@ -301,7 +308,7 @@ class BoxTabBar(TelecMixin, Widget):
         pipe_color: str,
     ) -> Cell:
         final_bg = sky_color
-        is_pipe = x in {13, 70}
+        is_pipe = x in PIPE_COLUMNS
         fg_char = "\u2551" if is_pipe else " "
         fg_color: str | None = pipe_color if is_pipe else None
         if scene is not None:
@@ -341,13 +348,17 @@ class BoxTabBar(TelecMixin, Widget):
         scene: HeaderSceneFrame | None,
         entity_z_scan: list[int],
         sky_color: str,
+        pipe_color: str,
         z60: int,
         z80: int,
     ) -> Cell:
         char, in_tab, active_tab_under, tab_bg, tab_fg = cell
+        # A foot column with no tab over it extends the banner's support pipe down
+        # to rest on the transition-row floor instead of stopping in mid-air.
+        is_foot = (not in_tab) and (x in PIPE_COLUMNS)
         final_bg = (tab_bg or sky_color) if in_tab else sky_color
-        fg_char = char
-        fg_color = None
+        fg_char = "║" if is_foot else char
+        fg_color: str | None = pipe_color if is_foot else None
         if scene is not None:
             hit = scene.scan_tab_entity(
                 x,
