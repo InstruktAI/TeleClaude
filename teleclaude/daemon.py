@@ -690,6 +690,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             if startup_elapsed >= SLOW_STARTUP_WARNING_S:
                 logger.warning("Daemon startup was slow: %.3fs", startup_elapsed)
 
+            # Reattach to a chiptunes worker that survived this daemon restart so
+            # the mirrored playback state (and the UI) reflects what is playing.
+            if hasattr(self, "chiptunes_manager"):
+                self.chiptunes_manager.reattach()
+
             # Start periodic cleanup task (runs every hour)
             self.cleanup_task = asyncio.create_task(
                 self.maintenance_service.periodic_cleanup(), name="periodic-cleanup"

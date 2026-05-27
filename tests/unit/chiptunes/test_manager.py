@@ -274,6 +274,37 @@ class TestChiptunesManagerIPC:
         assert any(msg.get("cmd") == "next" and msg.get("command_id") == "cmd-abc" for msg in fake_worker.received)
         manager._disconnect()
 
+    def test_reattach_pulls_state_from_running_worker(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        fake_worker: _FakeWorkerServer,
+    ) -> None:
+        sock_path = fake_worker._socket_path
+        manager = _make_manager(monkeypatch, tmp_path, sock_path)
+        monkeypatch.setattr(manager_module.ChiptunesManager, "_worker_alive", staticmethod(lambda: True))
+
+        manager.reattach()
+        threading.Event().wait(0.2)
+
+        assert manager._sock is not None
+        assert manager.enabled is True
+        assert any(msg.get("cmd") == "capture_state" for msg in fake_worker.received)
+        manager._disconnect()
+
+    def test_reattach_is_noop_when_no_worker_running(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
+        monkeypatch.setattr(manager_module.ChiptunesManager, "_worker_alive", staticmethod(lambda: False))
+
+        manager.reattach()
+
+        assert manager._sock is None
+        assert manager.enabled is False
+
 
 @pytest.mark.unit
 class TestChiptunesManagerProperties:

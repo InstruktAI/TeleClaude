@@ -101,6 +101,21 @@ class ChiptunesManager:
         """Go back to the previous track."""
         self._send_cmd({"cmd": "prev"})
 
+    def reattach(self) -> None:
+        """Reconnect to an already-running worker and pull its live state.
+
+        The worker is an independent process that keeps playing across daemon
+        restarts. After a restart this manager starts empty and disconnected, so
+        the UI would show 'nothing playing' and pause/like/next would have no
+        effect. Reattaching reconnects to the live worker and requests a state
+        snapshot so the mirrored state reflects what is actually playing.
+        """
+        if not self._worker_alive():
+            return
+        self._enabled = True
+        self._connect()
+        self._send_cmd({"cmd": "capture_state"})
+
     def enqueue_command(self, command_id: str, action: CommandAction) -> None:
         """Enqueue a user command for asynchronous execution."""
         self._enabled = True
