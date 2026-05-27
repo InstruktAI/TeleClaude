@@ -136,6 +136,16 @@ class TestAdapterWriteBlock:
 
         assert host._adapter_write_block_reason("computer.name", "box") is None
 
+    def test_null_adapter_section_is_handled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A present-but-null section (`whatsapp:` with no body) must not crash;
+        # enabling it with no creds still blocks.
+        monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
+        monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
+        host = ConfigContentEditingMixin()
+        host._raw_config = {"whatsapp": None}
+
+        assert host._adapter_write_block_reason("whatsapp.enabled", True) is not None
+
     def test_save_refuses_to_persist_a_blocked_edit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
         monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
