@@ -66,10 +66,7 @@ class SIDRenderer:
         Returns:
             Raw int16 little-endian PCM bytes.
         """
-        # Apply register writes (map integer offsets to WritableRegister enum)
-        for reg, val in writes:
-            if 0 <= reg < len(_REGISTER_MAP):
-                self._sid.write_register(_REGISTER_MAP[reg], val)
+        self._write_registers(writes)
 
         # Clock the SID for frame_duration_s
         samples: list[int] = self._sid.clock(timedelta(seconds=frame_duration_s))
@@ -95,6 +92,10 @@ class SIDRenderer:
         into the chip state before playback begins, so tunes that configure
         these only at init are not rendered silent.
         """
+        self._write_registers(writes)
+
+    def _write_registers(self, writes: list[tuple[int, int]]) -> None:
+        """Map SID register offsets (0-24) to the WritableRegister enum and write them."""
         for reg, val in writes:
             if 0 <= reg < len(_REGISTER_MAP):
                 self._sid.write_register(_REGISTER_MAP[reg], val)

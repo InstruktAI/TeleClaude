@@ -130,7 +130,7 @@ class TestSIDDriver:
         with pytest.raises(ValueError):
             sid_cpu.SIDDriver(_header(load_address=0xFFFF, payload=b"\xaa\xbb"))
 
-    def test_init_tune_sets_registers_and_discards_init_writes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_init_tune_returns_init_writes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sid_cpu, "_py65emu_available", True)
         monkeypatch.setattr(sid_cpu, "_CPU", _ScriptedCPU)
         _ScriptedCPU.script = [
@@ -139,13 +139,17 @@ class TestSIDDriver:
         ]
         driver = sid_cpu.SIDDriver(_header())
 
-        driver.init_tune(2)
+        init_writes = driver.init_tune(2)
         cpu = cast(_ScriptedCPU, driver._cpu)
 
         assert cpu.r.a == 2
         assert cpu.r.x == 0
         assert cpu.r.y == 0
         assert cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]
+        # init_tune must return the init-time SID writes (offset 0 = $D400) so the
+        # caller can replay them into the renderer — not discard them.
+        assert init_writes == [(0, 0x7F)]
+        # The driver's internal buffer is drained (writes were returned, not buffered).
         assert not driver._mmu.flush_writes()
 
     def test_play_frame_returns_captured_sid_writes(self, monkeypatch: pytest.MonkeyPatch) -> None:

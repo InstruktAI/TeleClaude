@@ -272,13 +272,17 @@ class TestChiptunesPlayer:
         monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
         monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
         player = player_module.ChiptunesPlayer()
-        applied_fades: list[bytes] = []
-        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: applied_fades.append(pcm) or True)
+        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
+        # Discriminator: under the old `if max_duration is not None` the fade would
+        # start at t=0 and _apply_fade would be called every frame. The fix must
+        # leave it untouched for a 0.0 duration.
+        fade_calls: list[float] = []
+        monkeypatch.setattr(player_module, "_apply_fade", lambda pcm, factor: fade_calls.append(factor) or pcm)
 
         player._emulation_loop(_header(flags=4), max_duration=0.0)
 
-        # Track ran multiple frames at full volume; it was not cut at t=0.
-        assert frames_rendered > 1
+        assert frames_rendered > 1  # track was not cut at t=0
+        assert fade_calls == []  # no fade applied for a 0.0 (no-duration) track
 
     def test_emulation_loop_uses_driver_frame_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         class _SingleFrameDriver(_FakeDriver):

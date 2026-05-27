@@ -35,12 +35,17 @@ import threading
 import time
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.chiptunes.dislikes import disliked_paths
 from teleclaude.chiptunes.player import ChiptunesPlayer
 from teleclaude.chiptunes.sid_parser import parse_sid_file
 from teleclaude.chiptunes.songlengths import load_songlengths, lookup_duration
 from teleclaude.chiptunes.types import ChiptunesPlayback, ChiptunesState, coerce_chiptunes_state
+from teleclaude.logging_config import setup_logging
 from teleclaude.paths import CHIPTUNES_STATE_PATH
+
+logger = get_logger(__name__)
 
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
@@ -339,12 +344,7 @@ class _WorkerProcess:
             except (ValueError, OSError):
                 default_subtune = 0
             duration = lookup_duration(self._songlengths, track, subtune=default_subtune)
-            start_message = (
-                f"[CHIPTUNES] START: {track_label} | duration={duration:.1f}s"
-                if duration
-                else f"[CHIPTUNES] START: {track_label} | duration=UNKNOWN"
-            )
-            print(start_message, flush=True)
+            logger.info("chiptunes_track_start", track=track_label, duration_s=duration)
             self._emit("track_start", track=track_label, sid_path=str(track))
 
             player.play(
@@ -590,6 +590,10 @@ class _WorkerProcess:
 
 
 def _run() -> None:
+    # Standalone subprocess (not daemon-owned): configure logging once at start
+    # with its own source so logs land in chiptunes-worker.log, not the daemon's
+    # teleclaude.log. Without this the logger has no handler and output is dropped.
+    setup_logging(source="chiptunes-worker")
     parser = argparse.ArgumentParser()
     parser.add_argument("--music-dir", required=True)
     parser.add_argument("--volume", type=float, default=1.0)

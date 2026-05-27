@@ -463,10 +463,10 @@ class ChiptunesPlayer:
                         if playback_elapsed >= fade_start:
                             factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
                             if factor <= 0.0:
-                                print(
-                                    f"[CHIPTUNES] FADE COMPLETE: "
-                                    f"elapsed={playback_elapsed:.1f}s max_duration={max_duration}",
-                                    flush=True,
+                                logger.debug(
+                                    "chiptunes_fade_complete",
+                                    elapsed_s=round(playback_elapsed, 1),
+                                    max_duration_s=max_duration,
                                 )
                                 done = True
                                 break
@@ -483,8 +483,7 @@ class ChiptunesPlayer:
                 if done:
                     break
             except Exception as exc:
-                print(f"[CHIPTUNES] EMULATION ERROR: {exc}", flush=True)
-                logger.warning("Emulation error (skipping track): %s", exc)
+                logger.warning("chiptunes_emulation_error", error=str(exc))
                 self._notify_track_end("emulation_error")
                 break
             # Adaptive pacing: yield CPU when buffer is healthy.
@@ -496,8 +495,11 @@ class ChiptunesPlayer:
 
         self._playing = False
         reason = self._last_track_end_reason or ("stopped" if self._stop_event.is_set() else "track_completed")
-        print(
-            f"[CHIPTUNES] END: reason={reason} elapsed={playback_elapsed:.1f}s max_duration={max_duration}", flush=True
+        logger.info(
+            "chiptunes_track_end",
+            reason=reason,
+            elapsed_s=round(playback_elapsed, 1),
+            max_duration_s=max_duration,
         )
         if not self._stop_event.is_set() and self._last_track_end_reason is None:
             self._notify_track_end("track_completed")
