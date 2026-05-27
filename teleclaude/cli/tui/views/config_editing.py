@@ -55,7 +55,7 @@ class ConfigContentEditingMixin:
         if self.is_editing:  # type: ignore[attr-defined]
             return
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             fields = self.reflected_fields  # type: ignore[attr-defined]
             if not fields:
                 return
@@ -98,7 +98,7 @@ class ConfigContentEditingMixin:
             return
 
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             fields = self.reflected_fields  # type: ignore[attr-defined]
             if fields:
                 cursor = self._current_cursor()  # type: ignore[attr-defined]
@@ -322,7 +322,7 @@ class ConfigContentEditingMixin:
             return
 
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             self._save_reflected_field(var_name, self._edit_buffer)  # type: ignore[attr-defined]
             return
 
@@ -346,7 +346,7 @@ class ConfigContentEditingMixin:
         if self.is_editing:  # type: ignore[attr-defined]
             return False
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             fields = self.reflected_fields  # type: ignore[attr-defined]
             if not fields:
                 return False
@@ -361,7 +361,7 @@ class ConfigContentEditingMixin:
     def cycle_enum_field(self, direction: int) -> None:
         """Cycle the active enum/list/bool field in the requested direction."""
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             fields = self.reflected_fields  # type: ignore[attr-defined]
             if fields:
                 cursor = self._current_cursor()  # type: ignore[attr-defined]
@@ -397,7 +397,7 @@ class ConfigContentEditingMixin:
     def reorder_reflected_list(self, direction: int) -> None:
         """Shift the focused list element left (-1) or right (1)."""
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             fields = self.reflected_fields  # type: ignore[attr-defined]
             if fields:
                 cursor = self._current_cursor()  # type: ignore[attr-defined]
@@ -537,7 +537,7 @@ class ConfigContentEditingMixin:
     def _is_current_guided_step_complete(self) -> bool:
         """Return whether the active guided step is already complete."""
         step = _GUIDED_STEPS[self._guided_step_index]  # type: ignore[attr-defined]
-        if step.subtab in (Subtab.ADAPTERS, Subtab.COMPUTER, Subtab.TTS_STT):
+        if step.subtab in (Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.COMPUTER, Subtab.TTS_STT):
             # Non-blocking or immediately considered complete
             return True
         if step.subtab == Subtab.PEOPLE:

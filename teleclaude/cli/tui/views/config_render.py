@@ -393,7 +393,7 @@ class ConfigContentRenderMixin:
         self._render_header(result)
 
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             self._render_reflected_fields(result)
         elif tab == Subtab.PEOPLE:
             self._render_people(result)

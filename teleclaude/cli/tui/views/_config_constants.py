@@ -20,7 +20,8 @@ class Subtab(StrEnum):
 
     COMPUTER = "Computer"
     PEOPLE = "People"
-    ADAPTERS = "Providers"
+    ADAPTERS = "Adapters"
+    PROVIDERS = "Providers"
     TTS_STT = "TTS/STT"
     ENV = "Env"
 
@@ -99,11 +100,16 @@ class FirecrawlAdapterConfig(BaseModel):
 
 
 class AdaptersConfig(BaseModel):
-    """Unified configuration for platform providers."""
+    """Messaging-platform adapters."""
 
     discord: DiscordAdapterConfig = Field(default_factory=DiscordAdapterConfig)
     telegram: TelegramAdapterConfig = Field(default_factory=TelegramAdapterConfig)
     whatsapp: WhatsAppAdapterConfig = Field(default_factory=WhatsAppAdapterConfig)
+
+
+class ProvidersConfig(BaseModel):
+    """Service providers (email, backup, web scraping)."""
+
     email: EmailAdapterConfig = Field(default_factory=EmailAdapterConfig)
     backup: BackupAdapterConfig = Field(default_factory=BackupAdapterConfig)
     firecrawl: FirecrawlAdapterConfig = Field(default_factory=FirecrawlAdapterConfig)
@@ -182,6 +188,7 @@ _GUIDED_STEPS: tuple[GuidedStep, ...] = (
     GuidedStep(subtab=Subtab.COMPUTER, title="System Identity"),
     GuidedStep(subtab=Subtab.PEOPLE, title="Admin Setup"),
     GuidedStep(subtab=Subtab.ADAPTERS, title="Configure Adapters"),
+    GuidedStep(subtab=Subtab.PROVIDERS, title="Configure Providers"),
     GuidedStep(subtab=Subtab.TTS_STT, title="Configure TTS/STT"),
     GuidedStep(subtab=Subtab.ENV, title="Review Environment"),
 )

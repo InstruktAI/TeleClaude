@@ -30,6 +30,7 @@ from teleclaude.cli.tui.views._config_constants import (
     DiscordAdapterConfig,
     EmailAdapterConfig,
     FirecrawlAdapterConfig,
+    ProvidersConfig,
     Subtab,
     TelegramAdapterConfig,
     TtsSttConfig,
@@ -384,8 +385,13 @@ class ConfigContent(
                     template_name=whatsapp_data.get("template_name", ""),
                     template_language=whatsapp_data.get("template_language", "en_US"),
                 ),
-                # Email/Backup/Firecrawl are .env-only providers; the ${VAR} values
-                # resolve to their env values for display and save back to .env.
+            )
+            return reflect_schema(adapters_obj, section="Adapters")
+
+        if tab == Subtab.PROVIDERS:
+            # Email/Backup/Firecrawl are .env-only providers; the ${VAR} values
+            # resolve to their env values for display and save back to .env.
+            providers_obj = ProvidersConfig(
                 email=EmailAdapterConfig(
                     email_from="${EMAIL_FROM}",
                     email_replyto="${EMAIL_REPLYTO}",
@@ -403,7 +409,7 @@ class ConfigContent(
                 ),
                 firecrawl=FirecrawlAdapterConfig(api_key="${FIRECRAWL_API_KEY}"),
             )
-            return reflect_schema(adapters_obj, section="Adapters")
+            return reflect_schema(providers_obj, section="Providers")
 
         if tab == Subtab.TTS_STT:
             stt_data = self._raw_config.get("stt", {})
@@ -560,7 +566,7 @@ class ConfigContent(
                 self._set_current_cursor(0)
             self._person_field_cursor = max(0, min(self._person_field_cursor, len(self.person_editable_fields) - 1))
             return
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.TTS_STT):
+        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.TTS_STT):
             count = len(self.reflected_fields)
             if count:
                 self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))
