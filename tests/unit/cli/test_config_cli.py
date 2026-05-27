@@ -7,6 +7,7 @@ from contextlib import ExitStack
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.config_cli import (
     PersonInfo,
@@ -157,23 +158,22 @@ def _patch_invite_flow(*, links: dict[str, str | None], email_sent: bool) -> obj
     return stack
 
 
-def test_invite_relays_links_when_email_not_delivered(capsys: pytest.CaptureFixture[str]) -> None:
+def test_invite_relays_links_when_email_not_delivered(
+    capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion
+) -> None:
     links = {"telegram": "https://t.me/bot?start=tok-1", "discord": None, "whatsapp": None}
     with _patch_invite_flow(links=links, email_sent=False):
         handle_config_cli(["invite", "Alice"])
-    out = capsys.readouterr().out
-    assert "email not delivered" in out
-    assert "https://t.me/bot?start=tok-1" in out
+    assert capsys.readouterr().out == snapshot
 
 
 def test_invite_reports_no_links_when_email_not_delivered_and_none_generated(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion
 ) -> None:
     links: dict[str, str | None] = {"telegram": None, "discord": None, "whatsapp": None}
     with _patch_invite_flow(links=links, email_sent=False):
         handle_config_cli(["invite", "Alice"])
-    out = capsys.readouterr().out
-    assert "no invite links could be generated" in out
+    assert capsys.readouterr().out == snapshot
 
 
 def test_invite_json_returns_links_when_email_not_delivered(capsys: pytest.CaptureFixture[str]) -> None:

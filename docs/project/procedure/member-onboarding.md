@@ -20,7 +20,7 @@ Send a new member an email containing deep links to start a private conversation
 ## Preconditions
 
 - At least one adapter is configured (Telegram bot token, Discord bot, or WhatsApp Business number).
-- Email delivery is configured (Brevo SMTP credentials in env: `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, `BREVO_SENDER_EMAIL`).
+- Email delivery is optional. When `email.enabled` is set and SMTP credentials are present in env (`SMTP_USERNAME`, `SMTP_KEY`, `EMAIL_FROM`), the invite is emailed. When email is disabled or unconfigured, `invite` instead prints the generated links so the admin can relay them to the member manually.
 - Each person gets a single `invite_token` stored in their per-person config (`~/.teleclaude/people/{name}/teleclaude.yml`). The same token is embedded in all platform links.
   - Generated on `people add` (automatic) or `invite` (manual resend).
   - Format: `inv_` + 16 random hex chars (e.g., `inv_a8f3b2c9d1e4f071`).
@@ -59,7 +59,7 @@ Adding a person automatically:
 telec config invite "John Doe"
 ```
 
-For existing people who lost their email or need a fresh link. Generates a new token (invalidating the old one), sends the email again.
+For existing people who lost their email or need a fresh link. Generates a new token (invalidating the old one), sends the email again. If email is disabled or unconfigured, the command prints the generated links instead so the admin can share them directly; `--json` always returns the links as machine data.
 
 ### 1c. Expertise assessment
 
