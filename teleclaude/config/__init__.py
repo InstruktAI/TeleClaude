@@ -7,7 +7,7 @@ Config is loaded at module import time and available globally via:
 import getpass
 import os
 import socket
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._coerce import as_bool as _as_bool
+from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
 from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
 from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
@@ -402,84 +403,6 @@ class Config:
 
 
 # Default configuration values (single source of truth for user-configurable keys)
-DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration structure
-    "computer": {
-        "name": "unknown",
-        # Empty/None sentinels mark fields the loader derives at runtime.
-        "user": "",
-        "role": "general",
-        "timezone": "Europe/Amsterdam",
-        "default_working_dir": "",
-        "is_master": False,
-        "trusted_dirs": [],
-        "host": None,
-    },
-    "remote_computers": {},
-    "redis": {
-        "url": "redis://localhost:6379",
-        "password": None,
-        "max_connections": REDIS_MAX_CONNECTIONS,
-        "socket_timeout": REDIS_SOCKET_TIMEOUT,
-        "message_stream_maxlen": REDIS_MESSAGE_STREAM_MAXLEN,
-        "output_stream_maxlen": REDIS_OUTPUT_STREAM_MAXLEN,
-        "output_stream_ttl": REDIS_OUTPUT_STREAM_TTL,
-    },
-    "telegram": {
-        "enabled": False,
-        "trusted_bots": [],
-    },
-    "discord": {
-        "enabled": False,
-        "token": None,
-        "guild_id": None,
-        "help_desk_channel_id": None,
-        "escalation_channel_id": None,
-        "all_sessions_channel_id": None,
-        "operator_chat_channel_id": None,
-        "announcements_channel_id": None,
-        "general_channel_id": None,
-        "categories": None,
-    },
-    "whatsapp": {
-        "enabled": False,
-        "phone_number_id": None,
-        "access_token": None,
-        "webhook_secret": None,
-        "verify_token": None,
-        "template_name": None,
-        "template_language": "en_US",
-    },
-    "tts": {
-        "enabled": False,
-        "events": {
-            "session_start": {
-                "enabled": False,
-                "message": None,
-            },
-        },
-        "services": {
-            "pyttsx3": {
-                "enabled": True,
-                "voices": [],
-            },
-            "macos": {
-                "enabled": False,
-                "voices": [],
-            },
-            "openai": {
-                "enabled": False,
-                "voices": [],
-            },
-            "elevenlabs": {
-                "enabled": False,
-                "voices": [],
-            },
-        },
-    },
-    "experiments": [],
-}
-
-
 def _deep_merge(
     base: dict[str, object],  # guard: loose-dict - YAML config merge
     override: dict[str, object],  # guard: loose-dict - YAML config merge
@@ -950,6 +873,39 @@ def _build_config(
     )
 
 
+# Connection-bound sections whose changes require a daemon restart to take effect.
+# Every other section is applied live by reload_config() via in-place singleton mutation.
+RESTART_REQUIRED_SECTIONS = frozenset({"redis", "telegram", "discord", "whatsapp"})
+
+
+def _load_config_from_disk(path: Path) -> Config:
+    """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
+    with open(path, encoding="utf-8") as f:
+        raw_user_config = yaml.safe_load(f)
+
+    user_config: Any = expand_env_vars(raw_user_config) if isinstance(raw_user_config, dict) else {}
+    if isinstance(user_config, dict):
+        _validate_disallowed_runtime_keys(user_config)
+
+    experiments_path = path.parent / "experiments.yml"
+    if experiments_path.exists():
+        with open(experiments_path, encoding="utf-8") as f:
+            raw_experiments_config = yaml.safe_load(f)
+        if isinstance(raw_experiments_config, dict) and isinstance(user_config, dict):
+            experiments_config: Any = expand_env_vars(raw_experiments_config)
+            if "experiments" in experiments_config:
+                user_config.setdefault("experiments", [])
+                exp_list = experiments_config["experiments"]
+                if isinstance(exp_list, list):
+                    user_config["experiments"].extend(exp_list)
+
+    if isinstance(user_config, dict):
+        _validate_disallowed_runtime_keys(user_config)
+
+    merged = _deep_merge(DEFAULT_CONFIG, user_config)  # type: ignore[arg-type]
+    return _build_config(merged)
+
+
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.
 _config_path = resolve_runtime_config_path(_project_root / "templates" / "config.yml", _deep_merge)
 
@@ -960,38 +916,19 @@ if not _config_path.exists():
         "(e.g., tests/integration/config.yml) or run 'telec config wizard' to create it."
     )
 
-with open(_config_path, encoding="utf-8") as f:
-    _raw_user_config = yaml.safe_load(f)  # type: ignore[misc]
-
-# Expand environment variables
-_user_config: Any = expand_env_vars(_raw_user_config) if isinstance(_raw_user_config, dict) else {}
-if isinstance(_user_config, dict):
-    _validate_disallowed_runtime_keys(_user_config)
-
-# Load optional experiments.yml from same directory as config.yml
-_experiments_path = _config_path.parent / "experiments.yml"
-if _experiments_path.exists():
-    with open(_experiments_path, encoding="utf-8") as f:
-        _raw_experiments_config = yaml.safe_load(f)
-    if isinstance(_raw_experiments_config, dict):
-        # Expand env vars in experiments config too
-        _experiments_config: Any = expand_env_vars(_raw_experiments_config)
-        # Merge into user config (experiments leaf)
-        if "experiments" in _experiments_config:
-            if "experiments" not in _user_config:
-                _user_config["experiments"] = []
-
-            exp_list = _experiments_config["experiments"]
-            if isinstance(exp_list, list):
-                # Standard logger not yet available here, but we can add a log entry to DEFAULT_CONFIG or similar
-                # Actually, config.py defines 'config' at the end.
-                _user_config["experiments"].extend(exp_list)
-
-if isinstance(_user_config, dict):
-    _validate_disallowed_runtime_keys(_user_config)
-
-# Merge with defaults and build typed config
-_merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]
-
-config = _build_config(_merged)
+config = _load_config_from_disk(_config_path)
 config_path = _config_path
+
+
+def reload_config() -> list[str]:
+    """Re-read config from disk and apply it to the live ``config`` singleton in place.
+
+    The singleton's identity is preserved, so every ``from teleclaude.config import config``
+    holder observes the new values without re-importing. Returns the names of the top-level
+    sections that changed. Sections in ``RESTART_REQUIRED_SECTIONS`` hold connections opened
+    at startup and need a daemon restart to take effect; all others apply live.
+    """
+    fresh = _load_config_from_disk(_config_path)
+    changed = [f.name for f in fields(Config) if getattr(config, f.name) != getattr(fresh, f.name)]
+    config.__dict__.update(fresh.__dict__)
+    return changed
