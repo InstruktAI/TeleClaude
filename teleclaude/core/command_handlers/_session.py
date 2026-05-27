@@ -588,8 +588,10 @@ async def close_session(
 ) -> None:
     """Close session - kill tmux, delete DB record, clean up resources.
 
-    If the session's computer_name differs from the local computer, the command
-    is forwarded via the remote transport mechanism instead of handling locally.
+    Routing: when the stored computer_name names a different host, the command is
+    forwarded to that remote peer — but only if the session is not actually present
+    locally. A live local tmux session means it is local (computer_name may have
+    drifted via a host/config rename), so it is closed here regardless of the name.
     """
     # Route to a remote peer only when the stored name says remote AND the session is
     # not actually present on this host. computer_name is frozen at creation and can
