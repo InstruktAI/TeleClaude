@@ -36,16 +36,19 @@ def test_changed_is_false_until_a_watched_file_changes(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_changed_detects_a_newly_created_watched_file(tmp_path: Path) -> None:
-    missing = tmp_path / ".env"  # absent at construction
+def test_changed_detects_create_and_delete_of_optional_watched_file(tmp_path: Path) -> None:
+    # Models the optional sibling experiments.yml: create and delete must both register.
+    optional = tmp_path / "experiments.yml"  # absent at construction
 
     async def _noop() -> None: ...
 
-    watcher = ConfigWatcher([missing], _noop)
+    watcher = ConfigWatcher([optional], _noop)
 
     assert watcher._changed() is False
-    missing.write_text("X=1\n", encoding="utf-8")
-    assert watcher._changed() is True
+    optional.write_text("experiments: []\n", encoding="utf-8")
+    assert watcher._changed() is True  # created
+    optional.unlink()
+    assert watcher._changed() is True  # deleted
 
 
 @pytest.mark.unit

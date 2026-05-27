@@ -208,3 +208,52 @@ async def test_todos_phase_transition_hook_ignores_non_finalize_ready_phase(
         _instances.pop(db_path, None)
         if todos_db is not None:
             await todos_db.close()
+
+
+class TestOnConfigFilesChanged:
+    """The config-watcher glue: hot-reload live sections, restart for the rest."""
+
+    def _daemon(self) -> daemon.TeleClaudeDaemon:
+        instance = daemon.TeleClaudeDaemon.__new__(daemon.TeleClaudeDaemon)
+        instance.tts_manager = SimpleNamespace(reload=MagicMock())
+        instance.request_shutdown = MagicMock()
+        return instance
+
+    @pytest.mark.unit
+    async def test_no_change_does_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(daemon, "reload_config", lambda: [])
+        instance = self._daemon()
+        await instance._on_config_files_changed()
+        instance.tts_manager.reload.assert_not_called()
+        instance.request_shutdown.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_hot_only_change_applies_without_restart(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(daemon, "reload_config", lambda: ["summarizer"])
+        instance = self._daemon()
+        await instance._on_config_files_changed()
+        instance.tts_manager.reload.assert_not_called()
+        instance.request_shutdown.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_tts_change_reloads_manager_without_restart(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(daemon, "reload_config", lambda: ["tts"])
+        instance = self._daemon()
+        await instance._on_config_files_changed()
+        instance.tts_manager.reload.assert_called_once()
+        instance.request_shutdown.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_restart_required_change_requests_shutdown(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(daemon, "reload_config", lambda: ["redis"])
+        instance = self._daemon()
+        await instance._on_config_files_changed()
+        instance.request_shutdown.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_mixed_hot_and_restart_required_requests_shutdown(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(daemon, "reload_config", lambda: ["summarizer", "redis"])
+        instance = self._daemon()
+        await instance._on_config_files_changed()
+        instance.tts_manager.reload.assert_not_called()
+        instance.request_shutdown.assert_called_once()

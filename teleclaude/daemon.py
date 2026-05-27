@@ -717,10 +717,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
             logger.info("Poller watch task started")
 
-            # Watch the runtime config files; the handler hot-reloads live sections and
-            # restarts only when a connection-bound section changed.
+            # Watch every file the config loader reads — config.yml, the sibling
+            # experiments.yml, and .env — so any edit triggers the reload decision.
+            # The handler hot-reloads live sections and restarts only when a
+            # connection-bound section changed.
+            config_watch_paths = [config_path, config_path.parent / "experiments.yml", dotenv_path]
             self.config_watch_task = asyncio.create_task(
-                ConfigWatcher([config_path, dotenv_path], self._on_config_files_changed).run(),
+                ConfigWatcher(config_watch_paths, self._on_config_files_changed).run(),
                 name="config-watch",
             )
             self.config_watch_task.add_done_callback(self._log_background_task_exception("config_watch"))

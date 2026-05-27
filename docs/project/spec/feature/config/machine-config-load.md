@@ -146,8 +146,18 @@ And _build_config raises ValueError downstream because the required `agents` sec
   with no opt-out. Importing the module reads files from disk, can raise
   `FileNotFoundError` or `ValueError`, and binds globals. Tests must point
   `TELECLAUDE_CONFIG_PATH` at a fixture before any code imports the module.
-- **One-shot read; no hot reload.** There is no watcher. Editing `config.yml`
-  after the daemon has started has no effect until the process restarts.
+- **Hot reload via the daemon ConfigWatcher.** The import-time load is still
+  one-shot, but the running daemon owns an in-process `ConfigWatcher`
+  (`teleclaude/core/config_watcher.py`) that watches `config.yml`,
+  `experiments.yml`, and `.env` (debounced async mtime poll). On a change it
+  calls `reload_config()`, which re-reads from disk and mutates the live `config`
+  singleton in place (identity preserved). Changed sections in
+  `HOT_RELOADABLE_SECTIONS` (`summarizer`, `stt`, `tts`) take effect immediately
+  — `tts` additionally via `TTSManager.reload()`. Any other changed section
+  (`restart_required_sections`, the safe default) triggers a graceful
+  `request_shutdown()`; launchd `KeepAlive` relaunches the daemon, which reads
+  the fresh config at startup. There is no longer a launchd `WatchPaths` entry;
+  the in-process watcher owns the decision.
 - **`_validate_disallowed_runtime_keys` is called twice** (lines 967 and 989).
   The second call is redundant: `experiments.yml` merging only mutates the
   `experiments` list, never `computer.tmux_binary`. The duplicate is harmless
