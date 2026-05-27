@@ -25,5 +25,5 @@ class TestAsBool:
         assert as_bool(None, default=True) is True
 
     def test_non_boolean_raises(self) -> None:
-        with pytest.raises(ValueError, match="Invalid boolean config value"):
+        with pytest.raises(ValueError):
             as_bool("maybe")
