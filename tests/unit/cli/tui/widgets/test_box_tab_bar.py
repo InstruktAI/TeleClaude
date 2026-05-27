@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from rich.console import Group
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.tui.widgets.banner import banner_pipe_columns
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar, _to_color
@@ -123,50 +124,34 @@ def test_tab_cell_returns_space_at_y_offset_0() -> None:
 # --- BoxTabBar foot rendering (banner support pipes) ---
 
 
-def _label_row(bar: BoxTabBar) -> str:
-    """Render the tab bar and return the middle (label) row as plain text."""
-    rows = list(bar.build_render_frame().renderables)
-    return rows[1].plain  # type: ignore[union-attr]
-
-
-def _sky_row(bar: BoxTabBar) -> str:
-    rows = list(bar.build_render_frame().renderables)
-    return rows[0].plain  # type: ignore[union-attr]
+def _rendered_rows(bar: BoxTabBar) -> list[str]:
+    """Render the tab bar and return its three rows as plain text."""
+    return [row.plain for row in bar.build_render_frame().renderables]  # type: ignore[union-attr]
 
 
 @pytest.mark.unit
-def test_right_foot_extends_to_label_row_in_full_mode() -> None:
-    """The uncovered right foot descends from the sky row into the label row."""
+def test_full_mode_render_snapshot(snapshot: SnapshotAssertion) -> None:
+    """Full mode: the right foot descends into the label row; the left stands on the first tab."""
     bar = BoxTabBar()
     bar.banner_compact = False
-    width = bar.size.width or 80
-    right_foot = max(banner_pipe_columns(is_compact=False, total_width=width))
-    assert _sky_row(bar)[right_foot] == "║"
-    assert _label_row(bar)[right_foot] == "║"
+    assert _rendered_rows(bar) == snapshot
 
 
 @pytest.mark.unit
-def test_left_foot_stands_on_tab_not_extended_in_label_row() -> None:
-    """The left foot lands inside the first tab, so the label row shows the tab, not a pipe."""
+def test_compact_mode_render_snapshot(snapshot: SnapshotAssertion) -> None:
+    """Compact mode: the feet follow the logo's shifted pipe columns."""
     bar = BoxTabBar()
-    bar.banner_compact = False
-    left_foot = min(banner_pipe_columns(is_compact=False, total_width=bar.size.width or 80))
-    assert _label_row(bar)[left_foot] != "║"
-
-
-@pytest.mark.unit
-def test_feet_follow_compact_mode_columns() -> None:
-    """Switching to compact mode moves the feet to the logo's pipe columns."""
-    bar = BoxTabBar()
-    width = bar.size.width or 80
-    full_foot = max(banner_pipe_columns(is_compact=False, total_width=width))
-    compact_foot = max(banner_pipe_columns(is_compact=True, total_width=width))
-    assert full_foot != compact_foot  # guards the regression: columns must differ by mode
-
     bar.banner_compact = True
-    label = _label_row(bar)
-    assert label[compact_foot] == "║"
-    assert label[full_foot] == " "
+    assert _rendered_rows(bar) == snapshot
+
+
+@pytest.mark.unit
+def test_feet_columns_differ_between_modes() -> None:
+    """Regression guard: the banner feet move when the banner switches mode."""
+    width = 80
+    full = banner_pipe_columns(is_compact=False, total_width=width)
+    compact = banner_pipe_columns(is_compact=True, total_width=width)
+    assert full != compact
 
 
 @pytest.mark.unit
@@ -180,7 +165,9 @@ def test_render_uses_cached_group_when_present(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.unit
-def test_render_falls_back_to_plain_labels_on_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_falls_back_to_plain_labels_on_crash(
+    snapshot: SnapshotAssertion, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A compositing crash must keep the clickable tab labels, not blank the bar."""
     bar = BoxTabBar()
 
@@ -188,6 +175,6 @@ def test_render_falls_back_to_plain_labels_on_crash(monkeypatch: pytest.MonkeyPa
         raise RuntimeError("compositing exploded")
 
     monkeypatch.setattr(bar, "build_render_frame", _boom)
-    rows = list(bar.render().renderables)
+    rows = [row.plain for row in bar.render().renderables]  # type: ignore[union-attr]
     assert len(rows) == 3  # three-row layout preserved
-    assert "AI Sessions" in rows[1].plain  # type: ignore[union-attr]
+    assert rows == snapshot

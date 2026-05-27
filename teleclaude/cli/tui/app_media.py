@@ -7,6 +7,7 @@ import time
 
 from instrukt_ai_logging import get_logger
 from textual import work
+from textual.css.query import NoMatches
 
 from teleclaude.api_models import ChiptunesStatusDTO, SettingsPatchDTO, TTSSettingsPatchDTO
 from teleclaude.chiptunes.dislikes import is_disliked, remove_dislike, save_dislike
@@ -319,7 +320,9 @@ class TelecAppMediaMixin:
             self.query_one(Banner).is_compact = is_compact  # type: ignore[attr-defined]
             # Keep the tab-bar feet aligned with the banner's mode-dependent pipes.
             self.query_one(BoxTabBar).banner_compact = is_compact  # type: ignore[attr-defined]
-        except Exception:
+        except NoMatches:
+            # Header widgets are not mounted yet (early startup/teardown); the next
+            # compactness update will reconcile. Other errors must surface.
             pass
 
     # --- Animation management ---
