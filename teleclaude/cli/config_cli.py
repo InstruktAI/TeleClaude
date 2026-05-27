@@ -252,7 +252,7 @@ def _people_add(args: list[str], use_json: bool) -> None:
                 links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
 
                 # Send email
-                await send_invite_email(name, email, links, print_links_if_missing_smtp=not use_json)
+                await send_invite_email(name, email, links)
                 return True
             except Exception as e:
                 logger.warning("Auto-invite failed for %s: %s", name, e)
@@ -574,7 +574,7 @@ def _handle_invite(args: list[str]) -> None:
 
         # Send email
         try:
-            await send_invite_email(name, person.email, links, print_links_if_missing_smtp=not use_json)
+            await send_invite_email(name, person.email, links)
             email_sent = True
         except Exception as e:
             logger.warning("Failed to send invite email: %s", e)
