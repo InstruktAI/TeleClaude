@@ -104,7 +104,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _get_event_redis_client(self) -> object | None:
         """Return the Redis client backing the event platform."""
-        redis_adapter = self.client.adapters.get("redis")
+        redis_adapter = self.client.transport
         if not isinstance(redis_adapter, RedisTransport):
             return None
         return await redis_adapter._get_redis()
@@ -489,7 +489,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
 
         # Built-in deployment channel handler.
-        redis_transport = self.client.adapters.get("redis")
+        redis_transport = self.client.transport
         _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None
         configure_deployment_handler(_get_redis_fn)
         handler_registry.register("deployment_update", handle_deployment_event)
@@ -538,7 +538,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
 
         if project_config.channel_subscriptions:
-            redis_adapter = self.client.adapters.get("redis")
+            redis_adapter = self.client.transport
             if isinstance(redis_adapter, RedisTransport):
                 try:
                     redis_client = await redis_adapter._get_redis()

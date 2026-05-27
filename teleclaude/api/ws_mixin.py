@@ -204,7 +204,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
     def _trigger_initial_refresh(self) -> None:
         """Kick off background cache refresh for remote computers on first UI connect."""
-        adapter = self.client.adapters.get("redis")
+        adapter = self.client.transport
         if not isinstance(adapter, RedisTransport):
             return
         coro = self._refresh_remote_cache_and_notify()
@@ -215,7 +215,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _refresh_remote_cache_and_notify(self) -> None:
         """Refresh remote cache snapshot and notify clients to refresh projects."""
-        adapter = self.client.adapters.get("redis")
+        adapter = self.client.transport
         if not isinstance(adapter, RedisTransport):
             return
         await adapter.refresh_remote_snapshot()
@@ -225,7 +225,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         """Pull remote data immediately after subscription."""
         if computer == "local":
             return
-        adapter = self.client.adapters.get("redis")
+        adapter = self.client.transport
         if not isinstance(adapter, RedisTransport):
             return
 

@@ -134,7 +134,7 @@ class DaemonLifecycle:
         if repaired_output_count:
             logger.info("Repaired final output delivery for %d session(s)", repaired_output_count)
 
-        redis_transport_cache = self.client.adapters.get("redis")
+        redis_transport_cache = self.client.transport
         if redis_transport_cache and hasattr(redis_transport_cache, "cache"):
             redis_transport_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]
             logger.info("Wired cache to Redis transport")

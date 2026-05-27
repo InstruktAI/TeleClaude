@@ -45,7 +45,7 @@ async def forward_command(
 ) -> None:
     """Forward a command to a remote computer via redis transport."""
     session_id = getattr(cmd, "session_id", "unknown")
-    transport = client.adapters.get("redis")
+    transport = client.transport
     if transport is None or not hasattr(transport, "send_system_command"):
         raise ValueError(f"Redis transport not available — cannot forward to {target_computer}")
     await transport.send_system_command(  # type: ignore[attr-defined]
