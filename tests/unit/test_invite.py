@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -95,10 +96,11 @@ class TestResolveBots:
 
 class TestSendInviteEmail:
     @pytest.mark.asyncio
-    async def test_prints_links_when_smtp_is_not_configured(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        monkeypatch.delenv("BREVO_SMTP_USER", raising=False)
+    async def test_delegates_delivery_to_the_gated_send_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Invite delivery goes through send_email, which owns the availability gate;
+        # there is no separate link-printing fallback.
+        send = AsyncMock()
+        monkeypatch.setattr(invite, "send_email", send)
 
         await invite.send_invite_email(
             name="Morris",
@@ -106,6 +108,5 @@ class TestSendInviteEmail:
             links={"telegram": "https://t.me/demo", "discord": None, "whatsapp": None},
         )
 
-        output = capsys.readouterr().out
-        assert "Invite Links for Morris" in output
-        assert "Telegram: https://t.me/demo" in output
+        send.assert_awaited_once()
+        assert send.await_args.args[0] == "morris@example.com"

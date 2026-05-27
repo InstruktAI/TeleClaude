@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.config import config as _config
 from teleclaude.services.email import send_email
 
 
@@ -58,16 +59,29 @@ def _set_smtp_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EMAIL_FROM", _EMAIL_FROM)
     monkeypatch.setenv("SMTP_RELAY", "smtp.test:2525")
     monkeypatch.setenv("EMAIL_REPLYTO", _REPLY_TO)
+    monkeypatch.setattr(_config.email, "enabled", True)
 
 
 class TestSendEmail:
     @pytest.mark.unit
-    async def test_requires_smtp_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_raises_when_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Enabled flag is authoritative: even with creds present, disabled email refuses to send.
+        monkeypatch.setenv("SMTP_USERNAME", _SMTP_USER)
+        monkeypatch.setenv("SMTP_KEY", _SMTP_KEY)
+        monkeypatch.setenv("EMAIL_FROM", _EMAIL_FROM)
+        monkeypatch.setattr(_config.email, "enabled", False)
+
+        with pytest.raises(RuntimeError):
+            await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")
+
+    @pytest.mark.unit
+    async def test_raises_when_enabled_but_unconfigured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_config.email, "enabled", True)
         monkeypatch.delenv("SMTP_USERNAME", raising=False)
         monkeypatch.delenv("SMTP_KEY", raising=False)
         monkeypatch.delenv("EMAIL_FROM", raising=False)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(RuntimeError):
             await send_email(_RECIPIENT, "Subject", "<p>Hello</p>")
 
     @pytest.mark.unit

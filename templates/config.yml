@@ -53,6 +53,12 @@ whatsapp:
   template_name: ${WHATSAPP_TEMPLATE_NAME}
   template_language: en_US
 
+email:
+  # Outbound email (SMTP relay). Enable to send member invites etc. by email;
+  # when disabled or the SMTP_* secrets are unset, invite links are printed instead.
+  # Credentials live in .env: SMTP_USERNAME, SMTP_KEY, EMAIL_FROM (+ optional SMTP_RELAY, EMAIL_REPLYTO).
+  enabled: false
+
 agents:
   default: claude
   claude:
