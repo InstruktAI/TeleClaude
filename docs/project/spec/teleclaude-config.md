@@ -134,7 +134,7 @@ environment_variables:
   - WHATSAPP_TEMPLATE_NAME
   - WHATSAPP_TEMPLATE_LANGUAGE
   - WHATSAPP_BUSINESS_NUMBER
-  # AI keys — wizard-managed via _ADAPTER_ENV_VARS["ai"]
+  # AI keys — wizard-managed via _ADAPTER_ENV_VARS["ai"]; also editable in the Providers subtab (AI section)
   - ANTHROPIC_API_KEY
   - OPENAI_API_KEY
   - GOOGLE_API_KEY
@@ -147,7 +147,7 @@ environment_variables:
   # Runtime state root + log control
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
   - TELECLAUDE_LOG_LEVEL
-  # Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields)
+  # AI keys / Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields, saved to .env)
   - EMAIL_FROM
   - EMAIL_REPLYTO
   - SMTP_USERNAME

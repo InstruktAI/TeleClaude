@@ -32,6 +32,14 @@ _LOCAL_BASE_URL_FIELD = "local_base_url"
 _LOCAL_BASE_URL_VALUE = "http://localhost:1234/v1"
 _OPENAI_MODEL_FIELD = "openai_model"
 _OPENAI_MODEL_VALUE = "gpt-5-test"
+_AI_FIELD_ENV = {
+    "ai.anthropic_api_key": "ANTHROPIC_API_KEY",
+    "ai.openai_api_key": "OPENAI_API_KEY",
+    "ai.google_api_key": "GOOGLE_API_KEY",
+}
+_GOOGLE_KEY_FIELD = "ai.google_api_key"
+_GOOGLE_KEY_VAR = "GOOGLE_API_KEY"
+_GOOGLE_KEY_VALUE = "AIza-saved"
 
 
 def _sections(content: ConfigContent, tab: Subtab) -> set[str]:
@@ -103,3 +111,32 @@ def test_summarizer_model_saves_to_nested_config_section() -> None:
 @pytest.mark.unit
 def test_summarizer_base_url_guidance_is_reachable_by_env_var() -> None:
     assert guidance_registry.get_for_env(_LOCAL_BASE_URL_VAR) is not None
+
+
+@pytest.mark.unit
+def test_ai_provider_fields_are_env_backed() -> None:
+    content = ConfigContent()
+    content._raw_config = {}
+    content.active_subtab = _SUBTABS.index(Subtab.PROVIDERS)
+    field_env = {f.key: f.env_var for f in content.reflected_fields if f.key in _AI_FIELD_ENV}
+    assert field_env == _AI_FIELD_ENV
+
+
+@pytest.mark.unit
+def test_ai_provider_field_saves_to_env_not_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.views.config_editing.set_env_var",
+        lambda name, value: calls.append((name, value)),
+    )
+    content = ConfigContent()
+    content._raw_config = {}
+    content.active_subtab = _SUBTABS.index(Subtab.PROVIDERS)
+    monkeypatch.setattr(content, "refresh_data", lambda: None)
+    monkeypatch.setattr(content, "refresh", lambda **_kwargs: None)
+
+    content._save_reflected_field(_GOOGLE_KEY_FIELD, _GOOGLE_KEY_VALUE)
+
+    assert (_GOOGLE_KEY_VAR, _GOOGLE_KEY_VALUE) in calls
+    # The secret must not leak into the config.yml tree.
+    assert "ai" not in content._raw_config

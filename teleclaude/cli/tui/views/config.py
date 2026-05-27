@@ -8,7 +8,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.css.query import NoMatches, WrongType
-from textual.events import Key
+from textual.events import Key, Paste
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -161,6 +161,20 @@ class ConfigView(Widget, can_focus=True):
     def on_config_content_adapter_tab_selected(self, msg: ConfigContent.AdapterTabSelected) -> None:
         """Sync the outer adapter tab index from a click inside the content."""
         self.active_adapter_tab = msg.idx
+
+    @property
+    def paste_safe(self) -> bool:
+        """Accept paste/key bursts only while an inline field is being edited."""
+        content = self._content_or_none()
+        return content is not None and content.is_editing
+
+    def on_paste(self, event: Paste) -> None:
+        """Insert pasted text into the active edit buffer; ignore otherwise."""
+        content = self._content_or_none()
+        if content is None or not content.is_editing:
+            return
+        content.append_edit_text(event.text)
+        event.stop()
 
     def on_key(self, event: Key) -> None:
         """Forward editing keystrokes or list reordering keys to the content widget."""

@@ -306,6 +306,16 @@ class ConfigContentEditingMixin:
         self._edit_buffer = f"{self._edit_buffer}{char}"  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
+    def append_edit_text(self, text: str) -> None:
+        """Append pasted text to the active edit buffer, flattening newlines (values are single-line)."""
+        if not self.is_editing:  # type: ignore[attr-defined]
+            return
+        cleaned = " ".join(text.splitlines())
+        if not cleaned:
+            return
+        self._edit_buffer = f"{self._edit_buffer}{cleaned}"  # type: ignore[attr-defined]
+        self.refresh(layout=True)  # type: ignore[attr-defined]
+
     def backspace_edit(self) -> None:
         """Delete the final character from the active edit buffer."""
         if not self.is_editing:  # type: ignore[attr-defined]
