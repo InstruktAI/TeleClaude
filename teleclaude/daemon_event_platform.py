@@ -70,6 +70,16 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def daemon_project_config_path() -> Path:
+    """Path to the daemon's own (mother) project ``teleclaude.yml``.
+
+    It lives at the daemon's working dir — NOT next to the global runtime
+    ``config.yml`` in ``~/.teleclaude`` (that dir holds the GLOBAL teleclaude.yml
+    with people/event_domains, which is not a ProjectConfig).
+    """
+    return Path(config.computer.default_working_dir) / "teleclaude.yml"
+
+
 @dataclass
 class _EventPlatformStatus:
     redis_configured: bool
@@ -471,11 +481,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)  # type: ignore[arg-type]
         bridge = EventBusBridge(dispatcher)
         delivery_worker = WebhookDeliveryWorker()
-        # The daemon's own (mother) project config lives at its working dir, NOT next
-        # to the global runtime config.yml in ~/.teleclaude (that path holds the GLOBAL
-        # teleclaude.yml — people/event_domains — which is not a ProjectConfig).
-        project_cfg_path = Path(config.computer.default_working_dir) / "teleclaude.yml"
-        project_config = load_project_config(project_cfg_path)
+        project_config = load_project_config(daemon_project_config_path())
 
         # Load contracts from DB
         await contract_registry.load_from_db()

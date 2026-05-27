@@ -6,6 +6,7 @@ import asyncio
 import logging as _logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -13,6 +14,14 @@ import pytest
 
 import teleclaude.daemon_event_platform as daemon_event_platform
 from teleclaude.config import config as _config
+
+
+@pytest.mark.unit
+def test_daemon_project_config_path_resolves_to_working_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The daemon's project config is at its working dir — NOT ~/.teleclaude (config.yml's dir),
+    # which holds the GLOBAL teleclaude.yml and is not a ProjectConfig.
+    monkeypatch.setattr(daemon_event_platform.config.computer, "default_working_dir", "/srv/proj")
+    assert daemon_event_platform.daemon_project_config_path() == Path("/srv/proj") / "teleclaude.yml"
 
 
 class _RecorderDaemon(daemon_event_platform._DaemonEventPlatformMixin):
@@ -126,8 +135,8 @@ async def test_start_event_processor_passes_reliability_config(monkeypatch: pyte
             return None
 
     daemon_instance = _MinimalDaemon()
-    daemon_instance.shutdown_event = asyncio.Event()  # type: ignore[assignment]
-    daemon_instance.shutdown_event.set()  # type: ignore[attr-defined]
+    daemon_instance.shutdown_event = asyncio.Event()
+    daemon_instance.shutdown_event.set()
     monkeypatch.setattr(daemon_event_platform, "EventProcessor", FakeEventProcessor)
 
     reliability = _config.event_reliability
@@ -142,8 +151,8 @@ async def test_start_event_processor_passes_reliability_config(monkeypatch: pyte
     reliability.sweep_interval_ms = 1_500
     reliability.dlq_destination = "test:dlq"
     try:
-        daemon_instance._start_event_processor(redis_client=object(), pipeline=object())  # type: ignore[arg-type]
-        await daemon_instance._event_processor_task  # type: ignore[attr-defined]
+        daemon_instance._start_event_processor(redis_client=object(), pipeline=object())
+        await daemon_instance._event_processor_task
     finally:
         (
             reliability.idle_threshold_ms,
@@ -164,7 +173,7 @@ async def test_start_internal_event_bus_configures_singleton_with_daemon_role(
 ) -> None:
     redis_client = object()
     daemon_instance = _MinimalDaemon()
-    daemon_instance.shutdown_event = asyncio.Event()  # type: ignore[assignment]
+    daemon_instance.shutdown_event = asyncio.Event()
     captured: dict[str, object] = {}  # guard: loose-dict - Test captures heterogeneous call fields.
 
     class _FakeBus:
@@ -179,7 +188,7 @@ async def test_start_internal_event_bus_configures_singleton_with_daemon_role(
     monkeypatch.setattr(daemon_event_platform, "configure_event_bus", _configure_event_bus)
 
     daemon_instance._start_internal_event_bus(redis_client)
-    await daemon_instance._internal_event_bus_task  # type: ignore[attr-defined]
+    await daemon_instance._internal_event_bus_task
 
     assert captured["role"] == "daemon"
     assert captured["redis_client"] is redis_client
@@ -230,7 +239,7 @@ class TestStartupRedisAvailabilitySpecs:
                 return None
 
         daemon_instance = _UnreachableRedisDaemon()
-        daemon_instance.shutdown_event = SimpleNamespace(is_set=lambda: True)  # type: ignore[assignment]
+        daemon_instance.shutdown_event = SimpleNamespace(is_set=lambda: True)
 
         original_url = config.redis.url
         config.redis.url = "redis://configured.example:6379"
