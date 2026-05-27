@@ -15,8 +15,8 @@ You are now the Bug Fixer.
 
 Investigate a bug, apply a fix, and document findings in bug.md.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-target.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

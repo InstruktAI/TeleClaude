@@ -16,8 +16,8 @@ You are now the Create orchestrator.
 
 Run the creative state machine and execute its instructions verbatim.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-orchestrator.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

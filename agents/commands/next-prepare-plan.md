@@ -17,8 +17,8 @@ Produce `implementation-plan` from the approved PRD and the optional approved
 architecture (the thin index/log artifact plus the doc snippets it points
 at); or split the todo when planning proves it is not atomic.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-target.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

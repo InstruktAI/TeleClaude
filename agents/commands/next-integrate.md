@@ -15,8 +15,8 @@ You are now the Integrator.
 
 Drive the integration state machine until the queue is drained, then terminate this session.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-orchestrator.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

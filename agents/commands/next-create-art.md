@@ -19,8 +19,8 @@ You are now the Artist.
 
 Generate mood board images for the slug and stay in session for iteration.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-target.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

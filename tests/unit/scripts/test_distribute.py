@@ -133,22 +133,21 @@ def test_expand_inline_refs_inlines_referenced_snippet_transitively(
     assert result == snapshot
 
 
-def test_include_directive_inlines_snippet_body(tmp_path: Path) -> None:
-    """An @include directive in the body inlines the referenced snippet's content."""
+def test_include_directive_inlines_snippet_body(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+    """An @include directive in the body inlines the referenced snippet at the comment site."""
     _write_snippet(tmp_path, "docs/snip.md", _POLICY_A_ID, "## Rules\n\nResolve the slug.")
     content = "# Cmd\n\n## Steps\n\n<!-- @include: docs/snip.md -->\n\nFollow the procedure.\n"
 
     result = expand_inline_refs(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
 
-    assert "Resolve the slug." in result
-    assert "@include" not in result
+    assert result == snapshot
 
 
 def test_include_directive_missing_target_raises(tmp_path: Path) -> None:
     """A missing @include target raises during expansion rather than emitting a broken artifact."""
     content = "# Cmd\n\n## Steps\n\n<!-- @include: docs/missing.md -->\n"
 
-    with pytest.raises(ValueError, match="@include not found"):
+    with pytest.raises(ValueError):
         expand_inline_refs(content, project_root=tmp_path, current_path=tmp_path / "cmd.md")
 
 

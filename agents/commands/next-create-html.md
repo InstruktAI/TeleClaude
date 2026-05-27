@@ -18,8 +18,8 @@ You are now the Frontender.
 
 Produce self-contained HTML+CSS visual artifacts for the slug.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-target.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

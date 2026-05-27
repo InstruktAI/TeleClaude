@@ -15,8 +15,8 @@ You are now the Reviewer.
 
 Review code changes against the PRD, prepared artifacts, and architecture context, then produce a verdict.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-target.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

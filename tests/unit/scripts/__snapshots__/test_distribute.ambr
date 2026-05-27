@@ -82,6 +82,19 @@
   
   '''
 # ---
+# name: test_include_directive_inlines_snippet_body
+  '''
+  # Cmd
+  
+  ## Steps
+  
+  ## Rules
+  
+  Resolve the slug.
+  
+  Follow the procedure.
+  '''
+# ---
 # name: test_inflate_domain_baseline_appends_progressive_index
   '''
   # Policy A

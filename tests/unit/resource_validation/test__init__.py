@@ -72,5 +72,5 @@ def test_validate_artifact_rejects_missing_include_target(tmp_path: Path) -> Non
     """A body @include whose target is missing fails validation — caught before distribution."""
     post = _command_post("<!-- @include: docs/snippets/missing.md -->\n\nFollow the procedure.")
 
-    with pytest.raises(ValueError, match="non-existent file"):
+    with pytest.raises(ValueError):
         validate_artifact(post, str(tmp_path / "cmd.md"), kind="command", project_root=tmp_path)

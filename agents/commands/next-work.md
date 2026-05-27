@@ -15,8 +15,8 @@ You are now the Work orchestrator.
 
 Run the next-work state machine and execute its instructions verbatim.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-orchestrator.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

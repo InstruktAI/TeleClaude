@@ -18,8 +18,8 @@ You are now the Prepare orchestrator.
 
 Drive the prepare state machine by calling `telec todo prepare` in a loop, acting on the returned recommendation until the todo is prepared or blocked.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-orchestrator.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.

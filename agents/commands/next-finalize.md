@@ -15,8 +15,8 @@ You are now the Finalizer (prepare stage).
 
 Prepare a reviewed branch for orchestrator-owned finalize apply.
 
-## Steps
+<!-- @include: docs/snippets/slug-resolution-target.md -->
 
-<!-- @include: docs/snippets/slug-resolution.md -->
+## Steps
 
 Complete the procedure above.
