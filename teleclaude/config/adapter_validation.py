@@ -55,9 +55,13 @@ _ADAPTER_CREDS: dict[str, tuple[_CredSpec, ...]] = {
 
 
 def _resolve_cred(cfg: object, spec: _CredSpec) -> str:
-    """Resolve a credential to its effective value (config field, else env)."""
+    """Resolve a credential to its effective value (config field, else env).
+
+    ``cfg`` may be a parsed config object (startup) or a raw config-section dict
+    (config TUI, pre-persist) — both are read through one path.
+    """
     if spec.config_attr is not None:
-        raw = getattr(cfg, spec.config_attr, None)
+        raw = cfg.get(spec.config_attr) if isinstance(cfg, dict) else getattr(cfg, spec.config_attr, None)
         if not is_unresolved_placeholder(raw):
             return str(raw).strip()
     if spec.env_var:
@@ -68,7 +72,13 @@ def _resolve_cred(cfg: object, spec: _CredSpec) -> str:
 def validate_adapter_config(name: str, cfg: object) -> list[str]:
     """Return the required credential labels that are missing/unconfigured.
 
-    An empty list means the adapter is fully configured. Adapters with no
-    credential requirements always return an empty list.
+    ``cfg`` is either a parsed adapter config object or a raw config-section
+    dict. An empty list means fully configured; adapters with no credential
+    requirements always return an empty list.
     """
     return [spec.label for spec in _ADAPTER_CREDS.get(name, ()) if not _resolve_cred(cfg, spec)]
+
+
+def adapter_names() -> frozenset[str]:
+    """Adapter names that carry credential requirements (for callers that gate on them)."""
+    return frozenset(_ADAPTER_CREDS)

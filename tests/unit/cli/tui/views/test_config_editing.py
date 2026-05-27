@@ -101,3 +101,36 @@ def test_clear_edit_buffer_does_nothing_when_not_editing() -> None:
     host._edit_buffer = "hello"
     host.clear_edit_buffer()
     assert host._edit_buffer == "hello"
+
+
+@pytest.mark.unit
+class TestAdapterWriteBlock:
+    """Write-time integrity gate: never persist an enabled-but-unconfigured adapter."""
+
+    def test_enabling_adapter_without_credentials_is_blocked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID", raising=False)
+        monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
+        host = ConfigContentEditingMixin()
+        host._raw_config = {"whatsapp": {"enabled": False}}
+
+        reason = host._adapter_write_block_reason("whatsapp.enabled", True)
+
+        assert reason is not None
+
+    def test_enabling_adapter_with_credentials_is_allowed(self) -> None:
+        host = ConfigContentEditingMixin()
+        host._raw_config = {"whatsapp": {"phone_number_id": "123", "access_token": "tok"}}
+
+        assert host._adapter_write_block_reason("whatsapp.enabled", True) is None
+
+    def test_disabling_adapter_is_never_blocked(self) -> None:
+        host = ConfigContentEditingMixin()
+        host._raw_config = {"whatsapp": {}}
+
+        assert host._adapter_write_block_reason("whatsapp.enabled", False) is None
+
+    def test_non_adapter_key_is_not_gated(self) -> None:
+        host = ConfigContentEditingMixin()
+        host._raw_config = {"computer": {}}
+
+        assert host._adapter_write_block_reason("computer.name", "box") is None
