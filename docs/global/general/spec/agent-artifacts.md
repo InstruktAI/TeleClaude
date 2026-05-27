@@ -176,8 +176,8 @@ the mandatory sections, it should not be included.
   are transformed into inline content and do not appear in emitted files. A
   `## Required reads` ref is **hoisted** to the top of the compiled artifact. To
   land a snippet at a specific point in the body instead — adjacent to the step
-  that needs it — use an `<!-- @include: path.md -->` directive there rather than
-  filing the ref under Required reads.
+  that needs it — place an `@include` directive (`@include: <path>` inside an HTML
+  comment) at that point rather than filing the ref under Required reads.
 
 ### Runtime support matrix
 
