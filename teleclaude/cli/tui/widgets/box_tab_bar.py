@@ -261,7 +261,20 @@ class BoxTabBar(TelecMixin, Widget):
             sky_color = self._sky_color(engine, x, global_y, sky_fallback, scene)
             if y_offset == 2:
                 row_cells.append(
-                    self._transition_cell(x, global_y, cell, engine, scene, entity_z_scan, sky_color, pane_bg, z70, z80)
+                    self._transition_cell(
+                        x,
+                        global_y,
+                        cell,
+                        engine,
+                        scene,
+                        entity_z_scan,
+                        sky_color,
+                        pane_bg,
+                        pipe_color,
+                        pipe_columns,
+                        z70,
+                        z80,
+                    )
                 )
             elif y_offset == 0:
                 row_cells.append(
@@ -286,15 +299,21 @@ class BoxTabBar(TelecMixin, Widget):
         entity_z_scan: list[int],
         sky_color: str,
         pane_bg: str,
+        pipe_color: str,
+        pipe_columns: set[int],
         z70: int,
         z80: int,
     ) -> Cell:
         _char, in_tab, active_tab_under, tab_bg, _tab_fg = cell
-        top_half = (
-            tab_bg or pane_bg
-            if in_tab
-            else blend_colors(self._sky_color(engine, x, global_y - 1, sky_color, scene), "#ffffff", 0.05)
-        )
+        # An uncovered foot column lands the pipe on the floor: the upper-half-block's
+        # top (foreground) is the pipe color, its bottom (background) the ground.
+        is_foot = (not in_tab) and (x in pipe_columns)
+        if is_foot:
+            top_half = pipe_color
+        elif in_tab:
+            top_half = tab_bg or pane_bg
+        else:
+            top_half = blend_colors(self._sky_color(engine, x, global_y - 1, sky_color, scene), "#ffffff", 0.05)
         if scene is not None:
             hit = scene.scan_tab_entity(x, global_y, z_min=z80 if active_tab_under else z70, scene_bg=pane_bg)
             if hit:

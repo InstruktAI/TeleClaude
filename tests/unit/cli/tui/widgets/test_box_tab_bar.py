@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from rich.console import Group
+from rich.text import Text
 from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.tui.widgets.banner import banner_pipe_columns
@@ -124,9 +127,22 @@ def test_tab_cell_returns_space_at_y_offset_0() -> None:
 # --- BoxTabBar foot rendering (banner support pipes) ---
 
 
+def _rows_as_text(bar: BoxTabBar) -> list[Text]:
+    """Render the tab bar; its three rows are Rich Text."""
+    return [cast(Text, row) for row in bar.build_render_frame().renderables]
+
+
 def _rendered_rows(bar: BoxTabBar) -> list[str]:
     """Render the tab bar and return its three rows as plain text."""
-    return [row.plain for row in bar.build_render_frame().renderables]  # type: ignore[union-attr]
+    return [row.plain for row in _rows_as_text(bar)]
+
+
+def _foreground_at(text: Text, col: int) -> str | None:
+    """The foreground color token of the span covering ``col`` (e.g. '#909090')."""
+    for span in text.spans:
+        if span.start <= col < span.end:
+            return str(span.style).split(" on ")[0]
+    return None
 
 
 @pytest.mark.unit
@@ -152,6 +168,23 @@ def test_feet_columns_differ_between_modes() -> None:
     full = banner_pipe_columns(is_compact=False, total_width=width)
     compact = banner_pipe_columns(is_compact=True, total_width=width)
     assert full != compact
+
+
+@pytest.mark.unit
+def test_foot_pipe_color_continues_into_floor_row() -> None:
+    """The foot lands on the surface: the floor cell's top half is the pipe color.
+
+    Plain-text snapshots cannot capture this — the floor glyph is always the
+    upper-half block — so assert color continuity from the sky pipe into the floor.
+    """
+    bar = BoxTabBar()
+    bar.banner_compact = False
+    sky, _label, floor = _rows_as_text(bar)
+    foot = max(banner_pipe_columns(is_compact=False, total_width=bar.size.width or 80))
+
+    floor_fg = _foreground_at(floor, foot)
+    assert floor_fg is not None
+    assert floor_fg == _foreground_at(sky, foot)  # same pipe color from sky down to the floor
 
 
 @pytest.mark.unit
