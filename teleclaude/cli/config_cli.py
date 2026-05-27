@@ -596,7 +596,4 @@ def _handle_invite(args: list[str]) -> None:
         if result["email_sent"]:
             print(f"Invite sent to {person.email} for {name}")
         else:
-            print(f"Invite links for {name} (email delivery failed):")
-            for platform, link in result["links"].items():
-                if link:
-                    print(f"  {platform}: {link}")
+            print(f"Invite for {name}: email not delivered — enable and configure email, then retry.")
