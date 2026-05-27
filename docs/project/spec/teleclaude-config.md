@@ -209,7 +209,7 @@ telegram:
   enabled: boolean
   trusted_bots: list[string] # explicit entries merged with non-null fleet bot_username values
 email:
-  enabled: boolean # outbound SMTP; creds in .env (SMTP_USERNAME/SMTP_KEY/EMAIL_FROM). Disabled/unconfigured → invite links printed instead.
+  enabled: boolean # outbound SMTP; creds in .env (SMTP_USERNAME/SMTP_KEY/EMAIL_FROM). Disabled/unconfigured → email not sent (callers gate on availability).
 agents:
   default: string
   claude|gemini|codex:

@@ -54,8 +54,8 @@ whatsapp:
   template_language: en_US
 
 email:
-  # Outbound email (SMTP relay). Enable to send member invites etc. by email;
-  # when disabled or the SMTP_* secrets are unset, invite links are printed instead.
+  # Outbound email (SMTP relay). Enable to send member invites etc. by email.
+  # When disabled or unconfigured, email is simply not sent (callers gate on availability).
   # Credentials live in .env: SMTP_USERNAME, SMTP_KEY, EMAIL_FROM (+ optional SMTP_RELAY, EMAIL_REPLYTO).
   enabled: false
 
