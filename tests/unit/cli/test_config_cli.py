@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import json
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -117,3 +119,67 @@ def test_handle_config_cli_routes_to_invite_handler() -> None:
     with patch("teleclaude.cli.config_cli._handle_invite") as mock_invite:
         handle_config_cli(["invite", "Alice"])
     mock_invite.assert_called_once_with(["Alice"])
+
+
+# ---------------------------------------------------------------------------
+# _handle_invite — email-not-delivered link relay
+# ---------------------------------------------------------------------------
+
+
+def _patch_invite_flow(*, links: dict[str, str | None], email_sent: bool) -> object:
+    """Patch the invite dependencies so the handler runs without I/O.
+
+    email_sent=False is driven by send_invite_email raising (email disabled/unconfigured).
+    """
+    stack = ExitStack()
+    stack.enter_context(
+        patch(
+            "teleclaude.cli.config_cli.list_people",
+            return_value=[PersonInfo(name="Alice", role="admin", email="alice@example.com")],
+        )
+    )
+    stack.enter_context(patch("teleclaude.cli.config_cli.set_invite_token", return_value="tok-1"))
+    stack.enter_context(
+        patch("teleclaude.cli.config_cli.resolve_telegram_bot_username", new=AsyncMock(return_value="bot"))
+    )
+    stack.enter_context(
+        patch("teleclaude.cli.config_cli.resolve_discord_bot_user_id", new=AsyncMock(return_value="42"))
+    )
+    stack.enter_context(patch("teleclaude.cli.config_cli.generate_invite_links", return_value=links))
+    if email_sent:
+        stack.enter_context(patch("teleclaude.cli.config_cli.send_invite_email", new=AsyncMock(return_value=None)))
+    else:
+        stack.enter_context(
+            patch(
+                "teleclaude.cli.config_cli.send_invite_email", new=AsyncMock(side_effect=RuntimeError("email disabled"))
+            )
+        )
+    return stack
+
+
+def test_invite_relays_links_when_email_not_delivered(capsys: pytest.CaptureFixture[str]) -> None:
+    links = {"telegram": "https://t.me/bot?start=tok-1", "discord": None, "whatsapp": None}
+    with _patch_invite_flow(links=links, email_sent=False):
+        handle_config_cli(["invite", "Alice"])
+    out = capsys.readouterr().out
+    assert "email not delivered" in out
+    assert "https://t.me/bot?start=tok-1" in out
+
+
+def test_invite_reports_no_links_when_email_not_delivered_and_none_generated(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    links: dict[str, str | None] = {"telegram": None, "discord": None, "whatsapp": None}
+    with _patch_invite_flow(links=links, email_sent=False):
+        handle_config_cli(["invite", "Alice"])
+    out = capsys.readouterr().out
+    assert "no invite links could be generated" in out
+
+
+def test_invite_json_returns_links_when_email_not_delivered(capsys: pytest.CaptureFixture[str]) -> None:
+    links = {"telegram": "https://t.me/bot?start=tok-1", "discord": None, "whatsapp": None}
+    with _patch_invite_flow(links=links, email_sent=False):
+        handle_config_cli(["invite", "Alice", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["email_sent"] is False
+    assert payload["links"]["telegram"] == "https://t.me/bot?start=tok-1"

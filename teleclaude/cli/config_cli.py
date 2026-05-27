@@ -596,4 +596,9 @@ def _handle_invite(args: list[str]) -> None:
         if result["email_sent"]:
             print(f"Invite sent to {person.email} for {name}")
         else:
-            print(f"Invite for {name}: email not delivered — enable and configure email, then retry.")
+            available = {platform: url for platform, url in result["links"].items() if url}
+            if available:
+                relay = "\n".join(f"  {platform}: {url}" for platform, url in available.items())
+                print(f"Invite for {name}: email not delivered — share these links directly:\n{relay}")
+            else:
+                print(f"Invite for {name}: email not delivered and no invite links could be generated.")
