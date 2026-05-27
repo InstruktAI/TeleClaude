@@ -605,7 +605,11 @@ async def close_session(
         )
         return
 
-    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+    # closed_at is the sole "finalized" signal. A session marked only
+    # lifecycle_status="closing" with no closed_at is a stuck/in-flight close — NOT
+    # terminal. It must fall through to terminate_session so closed_at actually gets
+    # set; otherwise the row is hidden but never finalized and resurfaces from caches.
+    if session.closed_at or session.lifecycle_status == "closed":
         logger.info("Session %s already terminal; replaying close_completed", session.session_id)
         event_bus.emit(
             _cmd.completion_event,  # type: ignore[arg-type]
@@ -648,7 +652,12 @@ async def end_session(
     if not session:
         return {"status": "error", "message": f"Session {cmd.session_id} not found"}
 
-    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+    # closed_at is the sole "finalized" signal. A session marked only
+    # lifecycle_status="closing" with no closed_at is a stuck/in-flight close
+    # (e.g. a prior close interrupted before finalize) — NOT terminal. It must
+    # fall through to terminate_session so closed_at actually gets set; otherwise
+    # the row is hidden but never finalized and resurfaces from cached snapshots.
+    if session.closed_at or session.lifecycle_status == "closed":
         logger.info("Session %s already terminal; replaying session_closed", cmd.session_id)
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSED,
@@ -668,7 +677,9 @@ async def end_session(
         delete_db=False,
     )
     if not terminated:
-        return {"status": "error", "message": f"Session {cmd.session_id} not found"}
+        # The session exists (fetched above); terminate_session returns False only
+        # when a close is already in flight — benign, that close will finalize.
+        return {"status": "success", "message": f"Session {cmd.session_id} close already in progress"}
 
     return {
         "status": "success",

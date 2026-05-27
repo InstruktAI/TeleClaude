@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.core.command_handlers import _session
+from teleclaude.core.command_handlers import _session, _utils
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import (
     ProjectInfo,
@@ -498,3 +498,65 @@ class TestEndSession:
         event_bus.emit.assert_called_once()
         assert event_bus.emit.call_args.args[0] == TeleClaudeEvents.SESSION_CLOSED
         terminate_session.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_closing_session_without_closed_at_is_finalized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A session stuck in "closing" with no closed_at is NOT terminal: it must be
+        # finalized via terminate_session (so closed_at is actually set), not replayed —
+        # otherwise it stays hidden-but-unclosed and resurfaces from cached snapshots.
+        session = make_session(lifecycle_status="closing", closed_at=None)
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        event_bus = SimpleNamespace(emit=MagicMock())
+        terminate_session = AsyncMock(return_value=True)
+
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_session, "event_bus", event_bus)
+        monkeypatch.setattr(_session, "terminate_session", terminate_session)
+
+        result = await _session.end_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
+
+        assert result["status"] == "success"
+        terminate_session.assert_awaited_once()
+        event_bus.emit.assert_not_called()
+
+
+class TestCloseSession:
+    @pytest.mark.unit
+    async def test_closing_session_without_closed_at_is_finalized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # close_session is the actual TUI 'k' / `telec sessions end` path. A session
+        # stuck in "closing" with no closed_at must be finalized via terminate_session,
+        # not treated as terminal — otherwise it stays unclosed and resurfaces.
+        session = make_session(lifecycle_status="closing", closed_at=None)
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        event_bus = SimpleNamespace(emit=MagicMock())
+        terminate_session = AsyncMock(return_value=True)
+        config = SimpleNamespace(computer=SimpleNamespace(name="local"))
+
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_utils, "db", db)
+        monkeypatch.setattr(_session, "event_bus", event_bus)
+        monkeypatch.setattr(_session, "terminate_session", terminate_session)
+        monkeypatch.setattr(_session, "config", config)
+
+        await _session.close_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
+
+        terminate_session.assert_awaited_once()
+
+    @pytest.mark.unit
+    async def test_closed_session_replays_without_terminating(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = make_session(lifecycle_status="closed", closed_at=datetime.now(UTC))
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        event_bus = SimpleNamespace(emit=MagicMock())
+        terminate_session = AsyncMock(return_value=True)
+        config = SimpleNamespace(computer=SimpleNamespace(name="local"))
+
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_utils, "db", db)
+        monkeypatch.setattr(_session, "event_bus", event_bus)
+        monkeypatch.setattr(_session, "terminate_session", terminate_session)
+        monkeypatch.setattr(_session, "config", config)
+
+        await _session.close_session(CloseSessionCommand(session_id=session.session_id), SimpleNamespace())
+
+        terminate_session.assert_not_awaited()
+        event_bus.emit.assert_called_once()
