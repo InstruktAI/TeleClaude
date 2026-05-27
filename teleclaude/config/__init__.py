@@ -914,9 +914,16 @@ def _build_config(
     )
 
 
-# Connection-bound sections whose changes require a daemon restart to take effect.
-# Every other section is applied live by reload_config() via in-place singleton mutation.
-RESTART_REQUIRED_SECTIONS = frozenset({"redis", "telegram", "discord", "whatsapp"})
+# Sections whose consumers re-read config at call-time, so a reload applies live via
+# in-place singleton mutation (tts additionally needs TTSManager.reload()). This is a
+# safe allowlist: any changed section NOT listed requires a daemon restart, because its
+# consumers captured the value at startup and would otherwise silently ignore the change.
+HOT_RELOADABLE_SECTIONS = frozenset({"summarizer", "stt", "tts"})
+
+
+def restart_required_sections(changed: list[str]) -> list[str]:
+    """Return the changed sections that need a daemon restart (everything not hot-reloadable)."""
+    return [section for section in changed if section not in HOT_RELOADABLE_SECTIONS]
 
 
 def _load_config_from_disk(path: Path) -> Config:
@@ -960,6 +967,7 @@ if not _config_path.exists():
 
 config = _load_config_from_disk(_config_path)
 config_path = _config_path
+dotenv_path = _dotenv_path  # public alias; the config watcher watches config_path + dotenv_path
 
 
 def reload_config() -> list[str]:
@@ -967,8 +975,8 @@ def reload_config() -> list[str]:
 
     The singleton's identity is preserved, so every ``from teleclaude.config import config``
     holder observes the new values without re-importing. Returns the names of the top-level
-    sections that changed. Sections in ``RESTART_REQUIRED_SECTIONS`` hold connections opened
-    at startup and need a daemon restart to take effect; all others apply live.
+    sections that changed. Changed sections in ``HOT_RELOADABLE_SECTIONS`` take effect live;
+    any other changed section needs a daemon restart (see ``restart_required_sections``).
     """
     fresh = _load_config_from_disk(_config_path)
     changed = [f.name for f in fields(Config) if getattr(config, f.name) != getattr(fresh, f.name)]

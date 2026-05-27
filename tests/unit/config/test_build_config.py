@@ -122,8 +122,16 @@ class TestWhatsAppEnablement:
 
 
 class TestReloadConfig:
-    def test_restart_required_sections_are_connection_bound(self) -> None:
-        assert config_module.RESTART_REQUIRED_SECTIONS == frozenset({"redis", "telegram", "discord", "whatsapp"})
+    def test_hot_reloadable_sections_are_call_time_read(self) -> None:
+        assert config_module.HOT_RELOADABLE_SECTIONS == frozenset({"summarizer", "stt", "tts"})
+
+    def test_restart_required_sections_excludes_hot_and_keeps_the_rest(self) -> None:
+        # Safe default: anything not hot-reloadable needs a restart.
+        changed = ["summarizer", "redis", "tts", "telegram"]
+        assert config_module.restart_required_sections(changed) == ["redis", "telegram"]
+
+    def test_restart_required_sections_empty_when_all_hot(self) -> None:
+        assert config_module.restart_required_sections(["summarizer", "tts", "stt"]) == []
 
     def _seed_singleton(self, cfg: Path) -> None:
         config_module.config.__dict__.update(config_module._load_config_from_disk(cfg).__dict__)

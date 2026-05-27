@@ -94,3 +94,18 @@ async def test_run_speech_job_promotes_fallback_voice(monkeypatch: pytest.Monkey
     await manager._run_speech_job(job)
 
     assign_voice.assert_awaited_once_with("session-1", VoiceConfig(service_name="macos", voice="macos"))
+
+
+def test_reload_picks_up_config_tts_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Start disabled, then flip config.tts to an enabled config and reload — the manager's
+    # cached config + enabled flag must reflect the new value without re-instantiation.
+    monkeypatch.setattr(tts_manager.config, "tts", TTSConfig(enabled=False, events={}, services={}))
+    manager = tts_manager.TTSManager()
+    assert manager.enabled is False
+
+    enabled_cfg = _config()
+    monkeypatch.setattr(tts_manager.config, "tts", enabled_cfg)
+    manager.reload()
+
+    assert manager.enabled is True
+    assert manager.tts_config is enabled_cfg

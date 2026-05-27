@@ -41,9 +41,9 @@
     <true/>
     <key>AbandonProcessGroup</key>
     <true/>
-    <key>WatchPaths</key>
-    <array>
-        <string>{{WORKING_DIR}}/config.yml</string>
-    </array>
+    <!-- No WatchPaths: the daemon owns config reloads via its in-process ConfigWatcher,
+         which hot-reloads live sections and self-restarts (KeepAlive relaunches) only for
+         connection-bound changes. A launchd WatchPaths here would blindly restart on every
+         config edit, preempting the hot path. -->
 </dict>
 </plist>

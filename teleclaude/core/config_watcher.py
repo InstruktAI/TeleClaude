@@ -1,0 +1,74 @@
+"""Daemon-owned watcher over the runtime config files.
+
+A single watcher over a fixed scope (``config.yml`` + ``.env``). It only *detects*
+changes (debounced mtime poll, matching the daemon's other periodic tasks) and hands
+off to an injected handler, which owns the hot-reload-vs-restart decision.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from pathlib import Path
+
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
+
+_DEFAULT_POLL_INTERVAL_S = 2.0
+
+
+class ConfigWatcher:
+    """Polls config-file mtimes and invokes a handler once per detected change."""
+
+    def __init__(
+        self,
+        paths: list[Path],
+        on_change: Callable[[], Awaitable[None]],
+        *,
+        poll_interval_s: float = _DEFAULT_POLL_INTERVAL_S,
+    ) -> None:
+        self._paths = paths
+        self._on_change = on_change
+        self._poll_interval_s = poll_interval_s
+        self._mtimes = self._snapshot()
+
+    def _snapshot(self) -> dict[Path, float | None]:
+        snapshot: dict[Path, float | None] = {}
+        for path in self._paths:
+            try:
+                snapshot[path] = path.stat().st_mtime
+            except OSError:
+                snapshot[path] = None
+        return snapshot
+
+    def _changed(self) -> bool:
+        current = self._snapshot()
+        if current != self._mtimes:
+            self._mtimes = current
+            return True
+        return False
+
+    async def run(self) -> None:
+        """Poll until cancelled; invoke the handler once per detected change.
+
+        The poll interval is the debounce window: edits that settle within one interval
+        coalesce into a single handler invocation, so multi-field TUI saves do not thrash.
+        """
+        logger.info(
+            "Config watcher started (paths=%s, interval=%.0fs)",
+            [str(path) for path in self._paths],
+            self._poll_interval_s,
+        )
+        try:
+            while True:
+                await asyncio.sleep(self._poll_interval_s)
+                if not self._changed():
+                    continue
+                try:
+                    await self._on_change()
+                except Exception:
+                    logger.exception("Config-change handler failed; continuing to watch")
+        except asyncio.CancelledError:
+            logger.info("Config watcher stopped")
+            raise

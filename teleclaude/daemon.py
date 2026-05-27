@@ -49,7 +49,14 @@ from teleclaude.chiptunes.types import ChiptunesState
 _record_import_timing("teleclaude.chiptunes.manager", _t)
 
 _t = time.perf_counter()
-from teleclaude.config import config  # config.py loads .env at import time
+from teleclaude.config import (  # config.py loads .env at import time
+    config,
+    config_path,
+    dotenv_path,
+    reload_config,
+    restart_required_sections,
+)
+from teleclaude.core.config_watcher import ConfigWatcher
 
 _record_import_timing("teleclaude.config", _t)
 
@@ -369,6 +376,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._hook_outbox_claim_paused_sessions: set[str] = set()
         self.resource_monitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
+        self.config_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
@@ -709,6 +717,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
             logger.info("Poller watch task started")
 
+            # Watch the runtime config files; the handler hot-reloads live sections and
+            # restarts only when a connection-bound section changed.
+            self.config_watch_task = asyncio.create_task(
+                ConfigWatcher([config_path, dotenv_path], self._on_config_files_changed).run(),
+                name="config-watch",
+            )
+            self.config_watch_task.add_done_callback(self._log_background_task_exception("config_watch"))
+            logger.info("Config watcher started (config.yml + .env)")
+
             self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker(), name="hook-outbox-worker")
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
@@ -803,6 +820,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         await self._await_task_attr("_event_processor_task", "EventProcessor stopped", timeout=5.0)
 
         for attr_name, log_message in (
+            ("config_watch_task", "Config watcher stopped"),
             ("resource_monitor_task", "Resource monitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
             ("launchd_watch_task", "Launchd watch task stopped"),
@@ -917,6 +935,26 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         loop.call_soon_threadsafe(self.shutdown_event.set)
         loop.call_soon_threadsafe(self.monitoring_service.log_resource_snapshot, f"shutdown:{reason}")
+
+    async def _on_config_files_changed(self) -> None:
+        """Apply a config.yml/.env change: hot-reload live sections, restart for the rest.
+
+        reload_config() updates the in-memory singleton; hot-reloadable sections take
+        effect immediately (tts also needs its manager to re-read). If any changed section
+        is not hot-reloadable, request a graceful shutdown — launchd KeepAlive relaunches
+        the daemon, which reads the fresh config at startup.
+        """
+        changed = reload_config()
+        if not changed:
+            return
+        if "tts" in changed:
+            self.tts_manager.reload()
+        restart = restart_required_sections(changed)
+        if restart:
+            logger.info("Config change in restart-required section(s) %s; restarting to apply", sorted(restart))
+            self.request_shutdown(f"config-change:{','.join(sorted(restart))}")
+        else:
+            logger.info("Config hot-reloaded live: %s", sorted(changed))
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Wrapper around polling_coordinator.schedule_polling (creates background task).
