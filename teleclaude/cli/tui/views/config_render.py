@@ -89,7 +89,7 @@ class ConfigContentRenderMixin:
         if self._guided_mode:  # type: ignore[attr-defined]
             step = _GUIDED_STEPS[self._guided_step_index]  # type: ignore[attr-defined]
             result.append(
-                (f"Guided Step {self._guided_step_index + 1}/{len(_GUIDED_STEPS)}: {step.title}\n"),
+                (f"Guided Step {self._guided_step_index + 1}/{len(_GUIDED_STEPS)}: {step.step_label}\n"),
                 style=_INFO,
             )
 
@@ -400,7 +400,7 @@ class ConfigContentRenderMixin:
         self._render_header(result)
 
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
+        if tab in (Subtab.INFRA, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
             self._render_reflected_fields(result)
         elif tab == Subtab.PEOPLE:
             self._render_people(result)

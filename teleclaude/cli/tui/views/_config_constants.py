@@ -18,7 +18,7 @@ from teleclaude.config.schema import PersonEntry
 class Subtab(StrEnum):
     """Config-view subtab identifiers."""
 
-    COMPUTER = "Computer"
+    INFRA = "Infra"
     PEOPLE = "People"
     ADAPTERS = "Adapters"
     PROVIDERS = "Providers"
@@ -106,6 +106,13 @@ class AIKeysConfig(BaseModel):
     anthropic_api_key: str = Field(default="", description="Anthropic API key (Claude summarizer)")
     openai_api_key: str = Field(default="", description="OpenAI API key (Whisper STT, summarizer fallback)")
     google_api_key: str = Field(default="", description="Google API key (Gemini agent, Nano Banana, summarizer)")
+
+
+class RedisInfraConfig(BaseModel):
+    """Redis connection — essential infrastructure. Values are .env secrets."""
+
+    url: str = Field(default="", description="Redis connection URL (redis://host:port)")
+    password: str = Field(default="", description="Redis password (blank if the server has no auth)")
 
 
 class AdaptersConfig(BaseModel):
@@ -208,18 +215,18 @@ class GuidedStep:
     """Deterministic guided mode step."""
 
     subtab: Subtab
-    title: str
+    step_label: str
     adapter_tab: str | None = None
 
 
 _GUIDED_STEPS: tuple[GuidedStep, ...] = (
-    GuidedStep(subtab=Subtab.COMPUTER, title="System Identity"),
-    GuidedStep(subtab=Subtab.PEOPLE, title="Admin Setup"),
-    GuidedStep(subtab=Subtab.ADAPTERS, title="Configure Adapters"),
-    GuidedStep(subtab=Subtab.PROVIDERS, title="Configure Providers"),
-    GuidedStep(subtab=Subtab.SUMMARIZER, title="Configure Summarizer"),
-    GuidedStep(subtab=Subtab.TTS_STT, title="Configure TTS/STT"),
-    GuidedStep(subtab=Subtab.ENV, title="Review Environment"),
+    GuidedStep(subtab=Subtab.INFRA, step_label="Configure Infrastructure"),
+    GuidedStep(subtab=Subtab.PEOPLE, step_label="Admin Setup"),
+    GuidedStep(subtab=Subtab.ADAPTERS, step_label="Configure UI Adapters"),
+    GuidedStep(subtab=Subtab.PROVIDERS, step_label="Configure Providers"),
+    GuidedStep(subtab=Subtab.SUMMARIZER, step_label="Configure Summarizer"),
+    GuidedStep(subtab=Subtab.TTS_STT, step_label="Configure TTS/STT"),
+    GuidedStep(subtab=Subtab.ENV, step_label="Review Environment"),
 )
 
 

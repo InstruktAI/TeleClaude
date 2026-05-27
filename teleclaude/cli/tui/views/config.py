@@ -32,6 +32,7 @@ from teleclaude.cli.tui.views._config_constants import (
     EmailAdapterConfig,
     FirecrawlAdapterConfig,
     ProvidersConfig,
+    RedisInfraConfig,
     Subtab,
     SummarizerTabConfig,
     TelegramAdapterConfig,
@@ -364,7 +365,7 @@ class ConfigContent(
 
     def _build_reflected_fields(self, tab: Subtab) -> list[ReflectedField]:
         """Construct the reflected fields for a subtab from the current raw config."""
-        if tab == Subtab.COMPUTER:
+        if tab == Subtab.INFRA:
             computer_data = self._raw_config.get("computer", {})
             computer_obj = ComputerConfig(
                 name=computer_data.get("name", "Mac"),
@@ -377,7 +378,12 @@ class ConfigContent(
                 trusted_dirs=[],
                 host=computer_data.get("host", None),
             )
-            return reflect_schema(computer_obj, prefix="computer", section="Computer")
+            fields = reflect_schema(computer_obj, prefix="computer", section="Computer")
+            # Redis is essential infrastructure; its credentials are ${VAR}-backed
+            # and save to .env. Surfaced here as a mandatory wizard step.
+            redis_obj = RedisInfraConfig(url="${REDIS_URL}", password="${REDIS_PASSWORD}")
+            fields.extend(reflect_schema(redis_obj, prefix="redis", section="Redis"))
+            return fields
 
         if tab == Subtab.ADAPTERS:
             telegram_data = self._raw_config.get("telegram", {})
@@ -614,7 +620,7 @@ class ConfigContent(
                 self._set_current_cursor(0)
             self._person_field_cursor = max(0, min(self._person_field_cursor, len(self.person_editable_fields) - 1))
             return
-        if tab in (Subtab.COMPUTER, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
+        if tab in (Subtab.INFRA, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
             count = len(self.reflected_fields)
             if count:
                 self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))

@@ -78,6 +78,14 @@ class ValidationResult:
 # --- Adapter env var registry ---
 
 _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
+    "system": [
+        EnvVarInfo(
+            "TELECLAUDE_LOG_LEVEL",
+            "system",
+            "Daemon log level (DEBUG, INFO, WARNING, ERROR)",
+            "INFO",
+        ),
+    ],
     "telegram": [
         EnvVarInfo(
             "TELEGRAM_BOT_TOKEN",

@@ -10,8 +10,9 @@ from __future__ import annotations
 import pytest
 from rich.text import Text
 
+from teleclaude.cli.config_handlers import _ADAPTER_ENV_VARS
 from teleclaude.cli.tui.config_components.guidance import FieldGuidance, guidance_registry
-from teleclaude.cli.tui.views._config_constants import _SUBTABS, Subtab
+from teleclaude.cli.tui.views._config_constants import _GUIDED_STEPS, _SUBTABS, Subtab
 from teleclaude.cli.tui.views.config import ConfigContent, ConfigView
 
 _ADAPTER_SECTIONS = {"discord", "telegram", "whatsapp"}
@@ -44,6 +45,12 @@ _GOOGLE_KEY_VALUE = "AIza-saved"
 _KNOWN_CLOUD_PROVIDERS = {"openai", "anthropic", "google"}
 _PROVIDER_PRIORITY_FIELD = "provider_priority"
 _CONFIGURED_PROVIDER = "google"
+_INFRA_SECTIONS = {"Computer", "Redis"}
+_REDIS_URL_FIELD = "redis.url"
+_REDIS_URL_VAR = "REDIS_URL"
+_REDIS_PASSWORD_FIELD = "redis.password"
+_REDIS_PASSWORD_VAR = "REDIS_PASSWORD"
+_LOG_LEVEL_VAR = "TELECLAUDE_LOG_LEVEL"
 
 
 def _sections(content: ConfigContent, tab: Subtab) -> set[str]:
@@ -171,3 +178,48 @@ def test_guidance_block_renders_when_it_has_steps() -> None:
     result = Text()
     content._render_guidance_block(result, FieldGuidance(description="d", steps=["do the thing"]))
     assert result.plain
+
+
+@pytest.mark.unit
+def test_infra_subtab_has_computer_and_redis_sections() -> None:
+    content = ConfigContent()
+    content._raw_config = {}
+    sections = {field.section for field in content._build_reflected_fields(Subtab.INFRA)}
+    assert sections == _INFRA_SECTIONS
+
+
+@pytest.mark.unit
+def test_infra_redis_fields_are_env_backed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_REDIS_URL_VAR, "redis://localhost:6379")
+    content = ConfigContent()
+    content._raw_config = {}
+    content.active_subtab = _SUBTABS.index(Subtab.INFRA)
+    redis_keys = {_REDIS_URL_FIELD, _REDIS_PASSWORD_FIELD}
+    field_env = {f.key: f.env_var for f in content.reflected_fields if f.key in redis_keys}
+    assert field_env == {_REDIS_URL_FIELD: _REDIS_URL_VAR, _REDIS_PASSWORD_FIELD: _REDIS_PASSWORD_VAR}
+
+
+@pytest.mark.unit
+def test_infra_step_incomplete_without_redis_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(_REDIS_URL_VAR, raising=False)
+    content = ConfigContent()
+    content._raw_config = {}
+    content._guided_mode = True
+    content._guided_step_index = _GUIDED_STEPS.index(next(s for s in _GUIDED_STEPS if s.subtab == Subtab.INFRA))
+    assert content._is_current_guided_step_complete() is False
+
+
+@pytest.mark.unit
+def test_infra_step_complete_with_redis_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_REDIS_URL_VAR, "redis://localhost:6379")
+    content = ConfigContent()
+    content._raw_config = {}
+    content._guided_mode = True
+    content._guided_step_index = _GUIDED_STEPS.index(next(s for s in _GUIDED_STEPS if s.subtab == Subtab.INFRA))
+    assert content._is_current_guided_step_complete() is True
+
+
+@pytest.mark.unit
+def test_log_level_is_registered_as_env_var() -> None:
+    system_vars = {info.name for info in _ADAPTER_ENV_VARS.get("system", [])}
+    assert _LOG_LEVEL_VAR in system_vars

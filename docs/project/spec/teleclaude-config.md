@@ -141,12 +141,16 @@ environment_variables:
   - SUMMARIZER_LOCAL_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
   # Voice / TTS — wizard-managed via _ADAPTER_ENV_VARS["voice"]
   - ELEVENLABS_API_KEY
-  # Redis transport — wizard-managed via _ADAPTER_ENV_VARS["redis"]
+  # Redis transport — essential infrastructure. Editable in the Infra subtab (Redis section)
+  # as ${VAR}-backed fields, and a mandatory guided-wizard step (the Infra step is not
+  # complete until REDIS_URL is set). Also listed via _ADAPTER_ENV_VARS["redis"].
   - REDIS_URL
   - REDIS_PASSWORD
   # Runtime state root + log control
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
-  - TELECLAUDE_LOG_LEVEL
+  - TELECLAUDE_LOG_LEVEL # daemon log level; listed in the Env subtab via _ADAPTER_ENV_VARS["system"]
+  # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
+  # commented out in .env / .env.sample and is NOT part of make install yet.
   # AI keys / Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields, saved to .env)
   - EMAIL_FROM
   - EMAIL_REPLYTO
