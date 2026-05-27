@@ -1,8 +1,9 @@
 """Core adapter runtime composing channel, output, and remote mixins."""
 
 import asyncio
-import os
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -13,6 +14,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config import config
+from teleclaude.config.adapter_validation import validate_adapter_config
 from teleclaude.transport.redis_transport import RedisTransport
 
 from ._channels import _ChannelsMixin
@@ -26,6 +28,25 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
+
+
+class AdapterStatus(StrEnum):
+    """Outcome of evaluating a configured adapter at startup."""
+
+    DISABLED = "disabled"  # enabled: false — not started, not surfaced
+    MISCONFIGURED = "misconfigured"  # enabled but required credentials missing
+    ERROR = "error"  # enabled + configured, but start()/connection failed
+    OK = "ok"  # started and registered
+
+
+@dataclass(frozen=True)
+class AdapterStatusReport:
+    """Per-adapter startup outcome, queryable for user surfacing."""
+
+    status: AdapterStatus
+    missing: tuple[str, ...] = ()  # unconfigured credential labels (MISCONFIGURED)
+    error: str | None = None  # failure detail (ERROR)
+
 
 _OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
 _OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
@@ -53,6 +74,8 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         # Redis is a transport, not an adapter: kept off the adapter registry so
         # adapter counts, UI resolution, and headless detection stay honest.
         self.transport: RedisTransport | None = None
+        # Per-adapter startup outcome (disabled/misconfigured/error/ok), surfaced to the user.
+        self.adapter_status: dict[str, AdapterStatusReport] = {}
         self.is_shutting_down = False
         self.subscribe_session_events()
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
@@ -110,59 +133,55 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         return output
 
     async def start(self) -> None:
-        """Start adapters and register ONLY successful ones.
+        """Evaluate and start each UI adapter through one three-state path.
 
-        INVARIANT: self.adapters contains ONLY successfully started adapters.
+        Per adapter, surfaced once here and never crashing the daemon:
+        - DISABLED        (enabled: false)            → skipped silently
+        - MISCONFIGURED   (enabled, missing creds)    → WARNING; not started, not routed
+        - ERROR           (configured, start failed)  → ERROR; left unregistered (degraded)
+        - OK                                          → started and registered
 
-        This eliminates ALL defensive checks because:
-        - Adapter in registry → start() succeeded → internal state is valid
-        - Metadata exists → contract guarantees it's valid
-        - Trust the contract, let bugs fail fast
-
-        Raises:
-            Exception: If adapter start() fails (daemon crashes - this is intentional)
-            ValueError: If no adapters started
+        Outcomes are recorded in self.adapter_status for user surfacing. The Redis
+        transport is required infrastructure (not a UI adapter) and is started
+        separately; its failure remains fatal.
         """
-        # Discord adapter (guard for tests that patch config with older/minimal objects)
-        discord_cfg = getattr(config, "discord", None)
-        if discord_cfg is not None and bool(getattr(discord_cfg, "enabled", False)):
-            logger.info("[STARTUP] Starting Discord adapter (usually 2-8s)")
-            discord = DiscordAdapter(self, task_registry=self.task_registry)
-            await discord.start()  # Raises if fails -> daemon crashes
-            self.adapters["discord"] = discord  # Register ONLY after success
-            logger.info("Started discord adapter")
+        adapter_specs: list[tuple[str, object, Callable[[], BaseAdapter]]] = [
+            (
+                "discord",
+                getattr(config, "discord", None),
+                lambda: DiscordAdapter(self, task_registry=self.task_registry),
+            ),
+            ("telegram", getattr(config, "telegram", None), lambda: TelegramAdapter(self)),
+            ("whatsapp", getattr(config, "whatsapp", None), lambda: WhatsAppAdapter(self)),
+        ]
+        for name, cfg, factory in adapter_specs:
+            if cfg is None or not bool(getattr(cfg, "enabled", False)):
+                self.adapter_status[name] = AdapterStatusReport(AdapterStatus.DISABLED)
+                continue
+            missing = validate_adapter_config(name, cfg)
+            if missing:
+                logger.warning("Adapter %s is enabled but not configured: missing %s", name, ", ".join(missing))
+                self.adapter_status[name] = AdapterStatusReport(AdapterStatus.MISCONFIGURED, missing=tuple(missing))
+                continue
+            logger.info("[STARTUP] Starting %s adapter (usually 2-8s)", name)
+            try:
+                adapter = factory()
+                await adapter.start()
+            except Exception as exc:
+                logger.error("Adapter %s is configured but failed to start: %s", name, exc)
+                self.adapter_status[name] = AdapterStatusReport(AdapterStatus.ERROR, error=str(exc))
+                continue
+            self.adapters[name] = adapter
+            self.adapter_status[name] = AdapterStatusReport(AdapterStatus.OK)
+            logger.info("Started %s adapter", name)
 
-        # Telegram adapter
-        # Check for env token presence (adapter authenticates from env)
-        telegram_cfg = getattr(config, "telegram", None)
-        if telegram_cfg is not None and getattr(telegram_cfg, "enabled", False) and os.getenv("TELEGRAM_BOT_TOKEN"):
-            logger.info("[STARTUP] Starting Telegram adapter (usually 2-8s)")
-            telegram = TelegramAdapter(self)
-            await telegram.start()  # Raises if fails → daemon crashes
-            self.adapters["telegram"] = telegram  # Register ONLY after success
-            logger.info("Started telegram adapter")
-
-        whatsapp_cfg = getattr(config, "whatsapp", None)
-        if (
-            whatsapp_cfg is not None
-            and bool(getattr(whatsapp_cfg, "enabled", False))
-            and getattr(whatsapp_cfg, "phone_number_id", None)
-            and getattr(whatsapp_cfg, "access_token", None)
-        ):
-            logger.info("[STARTUP] Starting WhatsApp adapter (usually 2-8s)")
-            whatsapp = WhatsAppAdapter(self)
-            await whatsapp.start()
-            self.adapters["whatsapp"] = whatsapp
-            logger.info("Started whatsapp adapter")
-
-        # Redis transport (NOT an adapter — lives on self.transport, off the registry)
+        # Redis transport (NOT an adapter — required infrastructure; failure is fatal)
         logger.info("[STARTUP] Starting Redis transport (usually <1s)")
         redis = RedisTransport(self, task_registry=self.task_registry)
-        await redis.start()  # Raises if fails → daemon crashes
+        await redis.start()
         self.transport = redis
         logger.info("Started redis transport")
 
-        # Log status but do not crash - daemon can run in TUI-only/headless mode
         if not self.adapters:
             logger.info("Daemon running in TUI-only/headless mode (no UI adapters started)")
         else:

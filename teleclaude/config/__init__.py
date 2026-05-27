@@ -15,6 +15,7 @@ import yaml
 from dotenv import load_dotenv
 
 from teleclaude.config._bootstrap import resolve_runtime_config_path
+from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
 from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
@@ -600,7 +601,7 @@ def _parse_tts_config(
         return None
 
     return TTSConfig(
-        enabled=bool(raw_tts.get("enabled", False)),
+        enabled=_as_bool(raw_tts.get("enabled", False)),
         service_priority=_parse_service_priority(raw_tts.get("service_priority", [])),
         events=_parse_tts_events(raw_tts.get("events", {})),
         services=_parse_tts_services(raw_tts.get("services", {})),
@@ -620,7 +621,7 @@ def _parse_tts_events(raw_events: object) -> dict[str, TTSEventConfig]:
     for event_name, event_data in raw_events.items():
         if isinstance(event_data, dict):
             events[event_name] = TTSEventConfig(
-                enabled=bool(event_data.get("enabled", False)),
+                enabled=_as_bool(event_data.get("enabled", False)),
                 message=str(event_data.get("message", "")) if event_data.get("message") else None,
             )
     return events
@@ -648,7 +649,7 @@ def _parse_tts_service(service_data: object) -> TTSServiceConfig | None:
     raw_params = service_data.get("params")
     params = dict(raw_params) if isinstance(raw_params, dict) else None
     return TTSServiceConfig(
-        enabled=bool(service_data.get("enabled", False)),
+        enabled=_as_bool(service_data.get("enabled", False)),
         voices=voices if voices else None,
         model=str(service_data.get("model")) if service_data.get("model") else None,
         params=params,
@@ -681,7 +682,7 @@ def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  #
     if not raw_stt:
         return None
 
-    stt_enabled = bool(raw_stt.get("enabled", False))
+    stt_enabled = _as_bool(raw_stt.get("enabled", False))
     service_priority_raw = raw_stt.get("service_priority", [])
     services_raw = raw_stt.get("services", {})
 
@@ -694,7 +695,7 @@ def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  #
         for service_name, service_data in services_raw.items():
             if isinstance(service_data, dict):
                 services[service_name] = STTServiceConfig(
-                    enabled=bool(service_data.get("enabled", False)),
+                    enabled=_as_bool(service_data.get("enabled", False)),
                     model=str(service_data.get("model")) if service_data.get("model") else None,
                 )
 
@@ -771,7 +772,7 @@ def _build_config(
             non_interactive_flag=str(protocol["non_interactive_flag"]),
             resume_template=str(protocol["resume_template"]),
             continue_template=str(protocol.get("continue_template", "")),  # Optional field
-            enabled=bool(user_agent_config.get("enabled", True)),
+            enabled=_as_bool(user_agent_config.get("enabled", True)),
         )
 
     if not any(agent_cfg.enabled for agent_cfg in agents_registry.values()):
@@ -829,7 +830,7 @@ def _build_config(
         whatsapp_verify_token = str(whatsapp_raw.get("verify_token")) if whatsapp_raw.get("verify_token") else None
         whatsapp_template_name = str(whatsapp_raw.get("template_name")) if whatsapp_raw.get("template_name") else None
         whatsapp_template_language = str(whatsapp_raw.get("template_language") or "en_US")
-        whatsapp_enabled_flag = bool(whatsapp_raw.get("enabled", False))
+        whatsapp_enabled_flag = _as_bool(whatsapp_raw.get("enabled", False))
 
     whatsapp_phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID") or whatsapp_phone_number_id
     whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN") or whatsapp_access_token
@@ -884,14 +885,14 @@ def _build_config(
             dlq_destination="teleclaude:events:dlq",
         ),
         telegram=TelegramConfig(
-            enabled=bool(telegram_raw.get("enabled", False)) if isinstance(telegram_raw, dict) else False,
+            enabled=_as_bool(telegram_raw.get("enabled", False)) if isinstance(telegram_raw, dict) else False,
             trusted_bots=[str(b) for b in telegram_raw.get("trusted_bots", [])]
             if isinstance(telegram_raw, dict)
             else [],
             qos=TelegramQoSConfig(),
         ),
         discord=DiscordConfig(
-            enabled=bool(discord_raw.get("enabled", False)) if isinstance(discord_raw, dict) else False,
+            enabled=_as_bool(discord_raw.get("enabled", False)) if isinstance(discord_raw, dict) else False,
             token=(
                 str(discord_raw.get("token")) if isinstance(discord_raw, dict) and discord_raw.get("token") else None
             ),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,7 +10,7 @@ import pytest
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.core.adapter_client._client import AdapterClient
+from teleclaude.core.adapter_client._client import AdapterClient, AdapterStatus
 
 
 def _make_ui_adapter() -> MagicMock:
@@ -78,53 +79,97 @@ class TestRegisterAdapter:
         assert client.adapters["telegram"] is adapter_2
 
 
+def _fake_validator_env(**values: str) -> AbstractContextManager[MagicMock]:
+    """Patch the validator's env lookup with the given VAR→value mapping."""
+
+    def _getenv(key: str, default: str = "") -> str:
+        return values.get(key, default)
+
+    return patch("teleclaude.config.adapter_validation.os.getenv", side_effect=_getenv)
+
+
 class TestStart:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_starts_and_registers_enabled_adapters(self):
+    async def test_starts_enabled_and_configured_adapters(self):
         registry = MagicMock()
         client = AdapterClient(task_registry=registry)
         config = SimpleNamespace(
-            discord=SimpleNamespace(enabled=True),
-            telegram=SimpleNamespace(enabled=True),
+            discord=SimpleNamespace(enabled=True, token="discord-token"),
+            telegram=SimpleNamespace(enabled=True),  # token resolves from env
             whatsapp=SimpleNamespace(enabled=False, phone_number_id=None, access_token=None),
-            redis=SimpleNamespace(enabled=True),
         )
         discord_adapter = _make_ui_adapter()
         telegram_adapter = _make_ui_adapter()
         redis_adapter = _make_base_adapter()
 
-        def fake_getenv(key: str) -> str | None:
-            if key == "TELEGRAM_BOT_TOKEN":
-                return "telegram-token"
-            return None
-
         with (
             patch("teleclaude.core.adapter_client._client.config", config),
-            patch("teleclaude.core.adapter_client._client.os.getenv", side_effect=fake_getenv),
-            patch(
-                "teleclaude.core.adapter_client._client.DiscordAdapter", return_value=discord_adapter
-            ) as discord_ctor,
-            patch(
-                "teleclaude.core.adapter_client._client.TelegramAdapter", return_value=telegram_adapter
-            ) as telegram_ctor,
-            patch("teleclaude.core.adapter_client._client.RedisTransport", return_value=redis_adapter) as redis_ctor,
+            _fake_validator_env(TELEGRAM_BOT_TOKEN="telegram-token"),
+            patch("teleclaude.core.adapter_client._client.DiscordAdapter", return_value=discord_adapter),
+            patch("teleclaude.core.adapter_client._client.TelegramAdapter", return_value=telegram_adapter),
+            patch("teleclaude.core.adapter_client._client.RedisTransport", return_value=redis_adapter),
         ):
             await client.start()
 
-        # Redis is a transport, not an adapter: it lives on client.transport and
-        # is never an entry in the adapter registry.
-        assert client.adapters == {
-            "discord": discord_adapter,
-            "telegram": telegram_adapter,
-        }
+        # Redis is a transport, not an adapter — it lives on client.transport.
+        assert client.adapters == {"discord": discord_adapter, "telegram": telegram_adapter}
         assert client.transport is redis_adapter
-        discord_ctor.assert_called_once_with(client, task_registry=registry)
-        telegram_ctor.assert_called_once_with(client)
-        redis_ctor.assert_called_once_with(client, task_registry=registry)
+        assert client.adapter_status["discord"].status == AdapterStatus.OK
+        assert client.adapter_status["telegram"].status == AdapterStatus.OK
+        assert client.adapter_status["whatsapp"].status == AdapterStatus.DISABLED
         discord_adapter.start.assert_awaited_once()
         telegram_adapter.start.assert_awaited_once()
-        redis_adapter.start.assert_awaited_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_enabled_but_unconfigured_adapter_is_warned_not_started(self):
+        client = AdapterClient(task_registry=MagicMock())
+        config = SimpleNamespace(
+            discord=SimpleNamespace(enabled=True, token=None),  # no token, env empty → misconfigured
+            telegram=SimpleNamespace(enabled=False),
+            whatsapp=SimpleNamespace(enabled=False, phone_number_id=None, access_token=None),
+        )
+        with (
+            patch("teleclaude.core.adapter_client._client.config", config),
+            _fake_validator_env(),  # no env creds
+            patch("teleclaude.core.adapter_client._client.DiscordAdapter") as discord_ctor,
+            patch("teleclaude.core.adapter_client._client.RedisTransport", return_value=_make_base_adapter()),
+        ):
+            await client.start()
+
+        discord_ctor.assert_not_called()  # never constructed/started
+        assert "discord" not in client.adapters
+        report = client.adapter_status["discord"]
+        assert report.status == AdapterStatus.MISCONFIGURED
+        assert report.missing == ("token",)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_configured_adapter_that_fails_to_start_does_not_crash_daemon(self):
+        client = AdapterClient(task_registry=MagicMock())
+        config = SimpleNamespace(
+            discord=SimpleNamespace(enabled=True, token="discord-token"),
+            telegram=SimpleNamespace(enabled=False),
+            whatsapp=SimpleNamespace(enabled=False, phone_number_id=None, access_token=None),
+        )
+        start_error = "gateway 429"
+        failing = _make_ui_adapter()
+        failing.start = AsyncMock(side_effect=RuntimeError(start_error))
+        redis_adapter = _make_base_adapter()
+
+        with (
+            patch("teleclaude.core.adapter_client._client.config", config),
+            _fake_validator_env(),
+            patch("teleclaude.core.adapter_client._client.DiscordAdapter", return_value=failing),
+            patch("teleclaude.core.adapter_client._client.RedisTransport", return_value=redis_adapter),
+        ):
+            await client.start()  # must NOT raise
+
+        assert "discord" not in client.adapters  # left unregistered (degraded)
+        assert client.adapter_status["discord"].status == AdapterStatus.ERROR
+        assert client.adapter_status["discord"].error == start_error
+        assert client.transport is redis_adapter  # transport still came up
 
 
 class TestStop:
