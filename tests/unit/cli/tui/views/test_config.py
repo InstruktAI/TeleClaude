@@ -223,3 +223,16 @@ def test_infra_step_complete_with_redis_url(monkeypatch: pytest.MonkeyPatch) -> 
 def test_log_level_is_registered_as_env_var() -> None:
     system_vars = {info.name for info in _ADAPTER_ENV_VARS.get("system", [])}
     assert _LOG_LEVEL_VAR in system_vars
+
+
+@pytest.mark.unit
+def test_adapter_tab_actions_are_gated_to_adapters_subtab(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Adapter-tab cycling is allowed on the Adapters subtab, not on Infra (index 0)."""
+    view = ConfigView()
+    # No focused content: the gate falls through to the named-subtab check.
+    monkeypatch.setattr(view, "_content_or_none", lambda: None)
+    # set_reactive bypasses watchers (which would query the unmounted DOM).
+    view.set_reactive(ConfigView.active_subtab, _SUBTABS.index(Subtab.ADAPTERS))
+    assert view.check_action("next_adapter_tab", ()) is True
+    view.set_reactive(ConfigView.active_subtab, _SUBTABS.index(Subtab.INFRA))
+    assert view.check_action("next_adapter_tab", ()) is False

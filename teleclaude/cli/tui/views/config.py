@@ -121,7 +121,7 @@ class ConfigView(Widget, can_focus=True):
             content = self._content_or_none()
             if content is not None and content.is_on_enum_field:
                 return True
-            return self.active_subtab == 0
+            return self.active_subtab == _SUBTABS.index(Subtab.ADAPTERS)
         return True
 
     def watch_active_subtab(self, _value: int) -> None:
@@ -276,7 +276,7 @@ class ConfigView(Widget, can_focus=True):
         if content is not None and content.is_on_enum_field:
             content.cycle_enum_field(1)
             return
-        if self.active_subtab == 0:
+        if self.active_subtab == _SUBTABS.index(Subtab.ADAPTERS):
             self.active_adapter_tab = (self.active_adapter_tab + 1) % len(_ADAPTER_TABS)
             self._sync_content()
 
@@ -286,7 +286,7 @@ class ConfigView(Widget, can_focus=True):
         if content is not None and content.is_on_enum_field:
             content.cycle_enum_field(-1)
             return
-        if self.active_subtab == 0:
+        if self.active_subtab == _SUBTABS.index(Subtab.ADAPTERS):
             self.active_adapter_tab = (self.active_adapter_tab - 1) % len(_ADAPTER_TABS)
             self._sync_content()
 
