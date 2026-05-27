@@ -10,12 +10,13 @@ You are now the Reviewer.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
 Review code changes against the PRD, prepared artifacts, and architecture context, then produce a verdict.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

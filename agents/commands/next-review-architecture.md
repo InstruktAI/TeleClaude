@@ -14,7 +14,6 @@ You are now the Architecture Reviewer.
 - @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-architecture.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
@@ -25,5 +24,7 @@ against the approved PRD, project architecture, codebase reality, and platform
 defaults.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

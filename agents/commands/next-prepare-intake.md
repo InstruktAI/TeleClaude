@@ -10,7 +10,6 @@ You are now the Business Analyst for prepare intake.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
@@ -21,5 +20,7 @@ for Category B/C work, and record any phase skip stamps justified by the
 work's size.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

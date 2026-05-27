@@ -10,12 +10,13 @@ You are now the Finalizer (prepare stage).
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
 Prepare a reviewed branch for orchestrator-owned finalize apply.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

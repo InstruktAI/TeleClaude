@@ -48,6 +48,7 @@ Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
+INCLUDE_DIRECTIVE_RE = re.compile(r"<!--\s*@include:\s*(.+?\.md)\s*-->")
 CONTEXT_PRESERVATION_START = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->"
 CONTEXT_PRESERVATION_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
 
@@ -563,6 +564,41 @@ def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool 
     return EXEC_DIRECTIVE_RE.sub(_run, content)
 
 
+def expand_include_directives(
+    content: str,
+    *,
+    project_root: Path,
+    current_path: Path,
+    warn_only: bool = False,
+) -> str:
+    """Expand ``<!-- @include: path.md -->`` directives by inlining the snippet body at that point.
+
+    Unlike a ``## Required reads`` ``@``-ref — which is hoisted to the top of the
+    compiled artifact — an ``@include`` lands the snippet exactly where the comment
+    sits, keeping the content adjacent to the instruction that needs it. The
+    included body is recursively expanded so it may itself carry ``@``-refs.
+    """
+
+    def _render(match: re.Match[str]) -> str:
+        ref = match.group(1)
+        resolved = resolve_ref_path(ref, root_path=project_root, current_path=current_path)
+        if not resolved or not resolved.exists():
+            msg = f"@include not found: {ref}"
+            if warn_only:
+                print(f"WARNING: {msg}")
+                return match.group(0)
+            raise ValueError(msg)
+        post = frontmatter.loads(resolved.read_text(encoding="utf-8"))
+        return expand_inline_refs(
+            post.content,
+            project_root=project_root,
+            current_path=resolved,
+            warn_only=warn_only,
+        ).strip()
+
+    return INCLUDE_DIRECTIVE_RE.sub(_render, content)
+
+
 def _progressive_block(resolved: Path, *, project_root: Path, warn_only: bool) -> str | None:
     """Render a baseline-progressive ref as its index + activatable list.
 
@@ -664,9 +700,24 @@ def expand_inline_refs(
         return expanded_body
 
     expanded = _expand_document(content, current_path=current_path, depth=20)
-    if EXEC_DIRECTIVE_RE.search(expanded):
-        expanded = expand_exec_directives(expanded, project_root=project_root, warn_only=warn_only)
-    return expanded
+    return _expand_point_directives(expanded, project_root=project_root, current_path=current_path, warn_only=warn_only)
+
+
+def _expand_point_directives(
+    content: str,
+    *,
+    project_root: Path,
+    current_path: Path,
+    warn_only: bool = False,
+) -> str:
+    """Run the in-place directive passes (``@include`` then ``@exec``) over expanded content."""
+    if INCLUDE_DIRECTIVE_RE.search(content):
+        content = expand_include_directives(
+            content, project_root=project_root, current_path=current_path, warn_only=warn_only
+        )
+    if EXEC_DIRECTIVE_RE.search(content):
+        content = expand_exec_directives(content, project_root=project_root, warn_only=warn_only)
+    return content
 
 
 def _inflate_domain_baseline(baseline_src: Path, domain_src: Path, *, project_root: Path) -> str:

@@ -10,7 +10,6 @@ You are now the Architect for prepare architecture.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
@@ -22,5 +21,7 @@ artifact that indexes which snippets were touched and why so downstream
 implementation planning can rely on it.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

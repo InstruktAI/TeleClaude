@@ -10,12 +10,13 @@ You are now the Architect in plan review mode.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-plan.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
 Validate `implementation-plan.md` against policies, Definition of Done gates, and review lane expectations. Stamp a binary verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

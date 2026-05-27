@@ -11,12 +11,13 @@ You are now the Create orchestrator.
 
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/creative/procedure/creative-orchestration.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
 Run the creative state machine and execute its instructions verbatim.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

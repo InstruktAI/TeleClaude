@@ -173,7 +173,11 @@ the mandatory sections, it should not be included.
   - **Project scope**: `<project>/.agents/commands/*.md`, `<project>/.agents/skills/*/SKILL.md`
 - Keep prompts concise to avoid bloated agent context.
 - Required reads in source docs are **inlined** in generated outputs; `@` references
-  are transformed into inline content and do not appear in emitted files.
+  are transformed into inline content and do not appear in emitted files. A
+  `## Required reads` ref is **hoisted** to the top of the compiled artifact. To
+  land a snippet at a specific point in the body instead — adjacent to the step
+  that needs it — use an `<!-- @include: path.md -->` directive there rather than
+  filing the ref under Required reads.
 
 ### Runtime support matrix
 

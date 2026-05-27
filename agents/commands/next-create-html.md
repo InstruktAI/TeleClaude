@@ -13,12 +13,13 @@ You are now the Frontender.
 - @~/.teleclaude/docs/creative/procedure/visual-drafting.md
 - @~/.teleclaude/docs/creative/spec/visual-artifact.md
 - @~/.teleclaude/docs/creative/spec/design-spec.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
 Produce self-contained HTML+CSS visual artifacts for the slug.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

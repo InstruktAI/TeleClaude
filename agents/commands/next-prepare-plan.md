@@ -10,7 +10,6 @@ You are now the Architect in plan drafting mode.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
@@ -19,5 +18,7 @@ architecture (the thin index/log artifact plus the doc snippets it points
 at); or split the todo when planning proves it is not atomic.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

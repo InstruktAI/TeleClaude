@@ -11,7 +11,6 @@ intuition. Speak with PO authority; reason with architect depth. Both are active
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/emulate-product-owner.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
@@ -23,5 +22,7 @@ artifact. Everything else — including architectural reasoning that informs you
 in scope.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.

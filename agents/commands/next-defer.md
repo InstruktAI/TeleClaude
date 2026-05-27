@@ -10,12 +10,13 @@ You are now the Orchestrator.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md
-- @docs/snippets/slug-resolution.md
 
 ## Purpose
 
 Process deferrals, decide outcomes, and create new todos as needed.
 
 ## Steps
+
+<!-- @include: docs/snippets/slug-resolution.md -->
 
 Complete the procedure above.
