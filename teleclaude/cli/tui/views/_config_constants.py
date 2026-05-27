@@ -50,54 +50,62 @@ class TelegramAdapterConfig(BaseModel):
     """Telegram admin adapter configuration. The token is the TELEGRAM_BOT_TOKEN env secret."""
 
     enabled: bool = Field(default=False, description="Enable for customers and personal agents")
-    bot_token: str = Field(default="")
+    bot_token: str = Field(default="", description="Telegram Bot API token from @BotFather")
 
 
 class DiscordAdapterConfig(BaseModel):
     """Discord admin adapter configuration."""
 
     enabled: bool = Field(default=False, description="Enable for admins")
-    token: str = Field(default="")
-    guild_id: str = Field(default="")
+    token: str = Field(default="", description="Discord bot token from the Developer Portal")
+    guild_id: str = Field(default="", description="Discord server (guild) ID")
 
 
 class WhatsAppAdapterConfig(BaseModel):
     """WhatsApp business adapter configuration."""
 
     enabled: bool = Field(default=False, description="Enable for customers and personal agents")
-    phone_number_id: str = Field(default="")
-    access_token: str = Field(default="")
-    webhook_secret: str = Field(default="")
-    verify_token: str = Field(default="")
-    template_name: str = Field(default="")
-    template_language: str = Field(default="en_US")
+    phone_number_id: str = Field(default="", description="Meta WhatsApp business phone number ID")
+    access_token: str = Field(default="", description="Meta system-user access token")
+    webhook_secret: str = Field(default="", description="App secret for webhook signature verification")
+    verify_token: str = Field(default="", description="Shared token for webhook challenge-response")
+    template_name: str = Field(default="", description="Approved template for 24h-window messages")
+    template_language: str = Field(default="en_US", description="Template language code")
 
 
 class EmailAdapterConfig(BaseModel):
     """Email via SMTP relay (e.g. Brevo). All values are .env secrets/settings."""
 
-    email_from: str = Field(default="")
-    email_replyto: str = Field(default="")
-    smtp_username: str = Field(default="")
-    smtp_key: str = Field(default="")
-    smtp_relay: str = Field(default="")
+    email_from: str = Field(default="", description="Sender identity (Name <addr>)")
+    email_replyto: str = Field(default="", description="Reply-To header")
+    smtp_username: str = Field(default="", description="SMTP relay username")
+    smtp_key: str = Field(default="", description="SMTP relay key / password")
+    smtp_relay: str = Field(default="", description="SMTP relay host:port")
 
 
 class BackupAdapterConfig(BaseModel):
     """S3 backup target. Credentials are .env secrets."""
 
-    aws_access_key_id: str = Field(default="")
-    aws_secret_access_key: str = Field(default="")
-    aws_s3_host: str = Field(default="")
-    aws_s3_region: str = Field(default="")
-    aws_s3_bucket: str = Field(default="")
-    backup_prefix: str = Field(default="")
+    aws_access_key_id: str = Field(default="", description="S3 access key id")
+    aws_secret_access_key: str = Field(default="", description="S3 secret access key")
+    aws_s3_host: str = Field(default="", description="S3 endpoint host")
+    aws_s3_region: str = Field(default="", description="S3 region")
+    aws_s3_bucket: str = Field(default="", description="S3 bucket name")
+    backup_prefix: str = Field(default="", description="Key prefix for backups")
 
 
 class FirecrawlAdapterConfig(BaseModel):
     """Firecrawl web-scraping provider."""
 
-    api_key: str = Field(default="")
+    api_key: str = Field(default="", description="Firecrawl API key (web scraping)")
+
+
+class AIKeysConfig(BaseModel):
+    """LLM provider API keys (summarizer, agents, Gemini/Nano Banana image gen)."""
+
+    anthropic_api_key: str = Field(default="", description="Anthropic API key (Claude summarizer)")
+    openai_api_key: str = Field(default="", description="OpenAI API key (Whisper STT, summarizer fallback)")
+    google_api_key: str = Field(default="", description="Google API key (Gemini agent, Nano Banana, summarizer)")
 
 
 class AdaptersConfig(BaseModel):
@@ -109,8 +117,9 @@ class AdaptersConfig(BaseModel):
 
 
 class ProvidersConfig(BaseModel):
-    """Service providers (email, backup, web scraping)."""
+    """Service providers (LLM keys, email, backup, web scraping)."""
 
+    ai: AIKeysConfig = Field(default_factory=AIKeysConfig)
     email: EmailAdapterConfig = Field(default_factory=EmailAdapterConfig)
     backup: BackupAdapterConfig = Field(default_factory=BackupAdapterConfig)
     firecrawl: FirecrawlAdapterConfig = Field(default_factory=FirecrawlAdapterConfig)
@@ -124,12 +133,14 @@ class SummarizerTabConfig(BaseModel):
     """
 
     local_enabled: bool = Field(default=False, description="Use a local OpenAI-compatible summarizer first")
-    local_base_url: str = Field(default="")
-    local_model: str = Field(default="")
-    provider_priority: list[str] = Field(default_factory=list)
-    openai_model: str = Field(default="")
-    anthropic_model: str = Field(default="")
-    google_model: str = Field(default="")
+    local_base_url: str = Field(default="", description="Local OpenAI-compatible endpoint (e.g. LM Studio)")
+    local_model: str = Field(default="", description="Model id loaded in the local server")
+    provider_priority: list[str] = Field(
+        default_factory=list, description="Cloud fallback order: openai/anthropic/google"
+    )
+    openai_model: str = Field(default="", description="OpenAI model for summaries")
+    anthropic_model: str = Field(default="", description="Anthropic model for summaries")
+    google_model: str = Field(default="", description="Google Gemini model for summaries")
 
 
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")

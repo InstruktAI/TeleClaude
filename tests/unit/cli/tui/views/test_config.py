@@ -14,7 +14,7 @@ from teleclaude.cli.tui.views._config_constants import _SUBTABS, Subtab
 from teleclaude.cli.tui.views.config import ConfigContent, ConfigView
 
 _ADAPTER_SECTIONS = {"discord", "telegram", "whatsapp"}
-_PROVIDER_SECTIONS = {"email", "backup", "firecrawl"}
+_PROVIDER_SECTIONS = {"ai", "email", "backup", "firecrawl"}
 _SMTP_KEY_VAR = "SMTP_KEY"
 _SMTP_KEY_FIELD = "email.smtp_key"
 _SMTP_TEST_VALUE = "sk-live-test"

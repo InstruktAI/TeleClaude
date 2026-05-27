@@ -26,6 +26,7 @@ from teleclaude.cli.tui.views._config_constants import (
     _SUBTABS,
     AdaptersConfig,
     AdapterSectionProjection,
+    AIKeysConfig,
     BackupAdapterConfig,
     DiscordAdapterConfig,
     EmailAdapterConfig,
@@ -393,6 +394,11 @@ class ConfigContent(
             # Email/Backup/Firecrawl are .env-only providers; the ${VAR} values
             # resolve to their env values for display and save back to .env.
             providers_obj = ProvidersConfig(
+                ai=AIKeysConfig(
+                    anthropic_api_key="${ANTHROPIC_API_KEY}",
+                    openai_api_key="${OPENAI_API_KEY}",
+                    google_api_key="${GOOGLE_API_KEY}",
+                ),
                 email=EmailAdapterConfig(
                     email_from="${EMAIL_FROM}",
                     email_replyto="${EMAIL_REPLYTO}",
