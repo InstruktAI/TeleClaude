@@ -134,8 +134,10 @@ And both feature_x and feature_y become queryable via is_experiment_enabled
 ### Cross-context references
 
 - v1 does NOT emit any event when experiment matching toggles or when
-  `experiments.yml` changes — there is no watcher. Consumers query
-  `is_experiment_enabled` synchronously per use site.
+  `experiments.yml` changes. The running daemon's in-process `ConfigWatcher` does
+  watch `experiments.yml` and reloads edits into `Config.experiments` (via
+  `reload_config()`), but no `config.effective.updated` event is emitted — consumers
+  query `is_experiment_enabled` synchronously per use site against the live singleton.
 - Consumed wherever feature gating exists. Sample caller pattern:
   `if config.is_experiment_enabled("feature_x", agent=agent_name): …`.
 - The v2 `config` bounded context (see `docs/project/spec/domain/config.md`)

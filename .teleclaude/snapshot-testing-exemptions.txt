@@ -386,7 +386,6 @@ tests/unit/test_context_selector.py
 tests/unit/test_daemon_event_platform.py
 tests/unit/test_daemon_headless_pipeline.py
 tests/unit/test_daemon_session.py
-tests/unit/test_daemon.py
 tests/unit/test_distribute.py
 tests/unit/test_docs_index.py
 tests/unit/test_invite.py

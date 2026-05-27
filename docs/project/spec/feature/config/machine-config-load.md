@@ -124,9 +124,11 @@ And _build_config raises ValueError downstream because the required `agents` sec
 ### Cross-context references
 
 - v1 does NOT emit the `config.effective.updated` event described in
-  `docs/project/spec/domain/config.md`. The machine config is read once at
-  import time; there is no filesystem watcher and no event signalling.
-  Consumers reload only by restarting the process.
+  `docs/project/spec/domain/config.md`. The initial machine config is read once
+  at import time. While the daemon runs, an in-process `ConfigWatcher` re-reads on
+  file change and hot-reloads the live `config` singleton in place (or self-restarts
+  for connection-bound sections) — see the "Known caveats" hot-reload note — but no
+  event is emitted; consumers observe the mutated singleton, not a signal.
 - Consumed transitively by every module that imports `teleclaude.config` —
   daemon (`teleclaude/daemon.py`), CLI (`teleclaude/cli/`), transport
   adapters (Telegram, Discord, WhatsApp), `agent_runtime`, `output_poller`,
