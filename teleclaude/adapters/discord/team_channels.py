@@ -68,11 +68,15 @@ class TeamChannelsMixin:
         guild: object,
         category: object | None,
         people: list[object],
+        *,
+        create: bool = True,
     ) -> None:
         """Create a private text channel per person under the Team category.
 
         Each channel is only visible to the person (matched by their Discord
         user ID from per-person config) and the bot. Everyone else is denied.
+        When ``create`` is False, resolves existing channels but never creates —
+        team channels are provisioned by the master computer only.
         """
         if category is None:
             return
@@ -92,7 +96,9 @@ class TeamChannelsMixin:
             except (AttributeError, OSError, TypeError, ValueError) as exc:
                 logger.warning("Failed to resolve Discord user_id for person %s: %s", name, exc)
 
-            ch_id = await self._find_or_create_private_text_channel(guild, category, slug, discord_user_id)
+            ch_id = await self._find_or_create_private_text_channel(
+                guild, category, slug, discord_user_id, create=create
+            )
             if ch_id is not None:
                 person_folder = str(PEOPLE_DIR / name)
                 self._team_channel_map[ch_id] = person_folder
@@ -111,14 +117,20 @@ class TeamChannelsMixin:
         category: object | None,
         name: str,
         owner_user_id: int | None,
+        *,
+        create: bool = True,
     ) -> int | None:
         """Find or create a text channel with private permissions.
 
-        Denies @everyone view access, allows only the owner and the bot.
+        Denies @everyone view access, allows only the owner and the bot. When
+        ``create`` is False, resolves an existing channel but never creates.
         """
         existing_channel_id = find_existing_text_channel_id(guild, name, self._parse_optional_int)
         if existing_channel_id is not None:
             return existing_channel_id
+
+        if not create:
+            return None
 
         # Build permission overwrites for a private channel
         overwrites = self._build_private_overwrites(guild, owner_user_id)
@@ -128,12 +140,12 @@ class TeamChannelsMixin:
             return None
 
         try:
-            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            create_channel = self._require_async_callable(create_fn, label="guild.create_text_channel")
             # guard: loose-dict - dynamic kwargs; category key conditionally added
             kwargs: dict[str, object] = {"name": name, "overwrites": overwrites}
             if category is not None:
                 kwargs["category"] = category
-            channel = await create(**kwargs)
+            channel = await create_channel(**kwargs)
             ch_id = self._parse_optional_int(getattr(channel, "id", None))
             if ch_id is not None:
                 logger.info("Created private Discord text channel: %s (id=%s)", name, ch_id)

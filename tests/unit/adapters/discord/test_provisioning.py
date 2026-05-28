@@ -12,10 +12,16 @@ from teleclaude.adapters.discord.provisioning import ProvisioningMixin
 pytestmark = pytest.mark.unit
 
 
+def _parse_optional_int(value: object) -> int | None:
+    return int(str(value).strip()) if value is not None and str(value).strip().isdigit() else None
+
+
 class DummyProvisioning(ProvisioningMixin):
     def __init__(self) -> None:
         self._guild_id = 123
         self._require_async_callable = lambda fn, *, label: fn
+        self._parse_optional_int = _parse_optional_int
+        self._is_forum_channel = lambda channel: True
         self._client = SimpleNamespace(
             get_guild=lambda guild_id: None, fetch_guild=AsyncMock(return_value="fetched-guild")
         )
@@ -48,6 +54,42 @@ async def test_resolve_guild_fetches_when_cache_misses_and_returns_none_on_failu
     )
 
     assert await adapter._resolve_guild() is None
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_forum_returns_none_without_creating_when_create_disabled() -> None:
+    adapter = DummyProvisioning()
+    guild = SimpleNamespace(channels=[], create_forum=AsyncMock())
+
+    result = await adapter._find_or_create_forum(guild, None, "Customer Sessions", "topic", create=False)
+
+    assert result is None
+    guild.create_forum.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_forum_resolves_existing_forum_when_create_disabled() -> None:
+    adapter = DummyProvisioning()
+    guild = SimpleNamespace(
+        channels=[SimpleNamespace(name="Customer Sessions", id="42")],
+        create_forum=AsyncMock(),
+    )
+
+    result = await adapter._find_or_create_forum(guild, None, "Customer Sessions", "topic", create=False)
+
+    assert result == 42
+    guild.create_forum.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_text_channel_returns_none_without_creating_when_create_disabled() -> None:
+    adapter = DummyProvisioning()
+    guild = SimpleNamespace(channels=[], create_text_channel=AsyncMock())
+
+    result = await adapter._find_or_create_text_channel(guild, None, "general", create=False)
+
+    assert result is None
+    guild.create_text_channel.assert_not_called()
 
 
 def test_persist_discord_channel_ids_merges_categories_and_scalar_fields(tmp_path: Path) -> None:

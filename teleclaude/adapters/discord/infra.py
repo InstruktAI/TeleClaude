@@ -104,13 +104,17 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     # =========================================================================
 
     async def _ensure_discord_infrastructure(self) -> None:
-        """Auto-provision the full Discord channel structure.
+        """Auto-provision the Discord channel structure for this computer.
 
-        Creates categories with their channels:
-        - Operations: #announcements (text), #general (text)
-        - Help Desk: #customer-sessions (forum), #escalations (forum), #operator-chat (text)
-        - Projects - {computer}: #unknown (catch-all forum), per-project forums (ordered by trusted_dirs)
-        - Team: per-person text channels (from people config)
+        Shared categories — Operations (#announcements, #general), Help Desk
+        (#customer-sessions, #escalations, #operator-chat), and Team (per-person
+        text channels) — are generic across the guild and provisioned by the
+        master computer only. Non-master computers resolve these by name but
+        never create them, so a shared Discord app cannot accrue duplicates.
+
+        The per-computer category — Projects - {computer} (#unknown catch-all
+        forum plus per-project forums ordered by trusted_dirs) — is always
+        provisioned by every computer; its name is unique per machine.
 
         Idempotent: validates stored IDs before trusting them. When a cached ID
         is stale, only searches by name — never creates — to prevent duplicates.
@@ -124,33 +128,36 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             logger.warning("Cannot auto-provision Discord channels: guild %s not found", self._guild_id)
             return
 
+        is_master = config.computer.is_master
         changes: dict[str, int | dict[str, int]] = {}
         cat_changes: dict[str, int] = {}
         existing_cats = config.discord.categories or {}
 
-        # --- Category: Operations ---
-        ops_cat = await self._ensure_category(guild, "Operations", existing_cats, cat_changes)
+        # --- Category: Operations (shared — master provisions, others resolve) ---
+        ops_cat = await self._ensure_category(guild, "Operations", existing_cats, cat_changes, create=is_master)
 
         self._announcements_channel_id = await self._validate_channel_id(self._announcements_channel_id)
         if self._announcements_channel_id is None:
-            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "announcements")
+            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "announcements", create=is_master)
             if ch_id is not None:
                 self._announcements_channel_id = ch_id
                 changes["announcements_channel_id"] = ch_id
 
         self._general_channel_id = await self._validate_channel_id(self._general_channel_id)
         if self._general_channel_id is None:
-            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "general")
+            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "general", create=is_master)
             if ch_id is not None:
                 self._general_channel_id = ch_id
                 changes["general_channel_id"] = ch_id
 
-        # --- Category: Help Desk ---
-        hd_cat = await self._ensure_category(guild, "Help Desk", existing_cats, cat_changes)
+        # --- Category: Help Desk (shared — master provisions, others resolve) ---
+        hd_cat = await self._ensure_category(guild, "Help Desk", existing_cats, cat_changes, create=is_master)
 
         self._help_desk_channel_id = await self._validate_channel_id(self._help_desk_channel_id)
         if self._help_desk_channel_id is None:
-            forum_id = await self._find_or_create_forum(guild, hd_cat, "Customer Sessions", "Customer support sessions")
+            forum_id = await self._find_or_create_forum(
+                guild, hd_cat, "Customer Sessions", "Customer support sessions", create=is_master
+            )
             if forum_id is not None:
                 self._help_desk_channel_id = forum_id
                 changes["help_desk_channel_id"] = forum_id
@@ -158,7 +165,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         self._escalation_channel_id = await self._validate_channel_id(self._escalation_channel_id)
         if self._escalation_channel_id is None:
             forum_id = await self._find_or_create_forum(
-                guild, hd_cat, "Escalations", "Human-admin escalation relay threads"
+                guild, hd_cat, "Escalations", "Human-admin escalation relay threads", create=is_master
             )
             if forum_id is not None:
                 self._escalation_channel_id = forum_id
@@ -166,7 +173,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
 
         self._operator_chat_channel_id = await self._validate_channel_id(self._operator_chat_channel_id)
         if self._operator_chat_channel_id is None:
-            ch_id = await self._find_or_create_text_channel(guild, hd_cat, "operator-chat")
+            ch_id = await self._find_or_create_text_channel(guild, hd_cat, "operator-chat", create=is_master)
             if ch_id is not None:
                 self._operator_chat_channel_id = ch_id
                 changes["operator_chat_channel_id"] = ch_id
@@ -197,12 +204,12 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         # Build project-path-to-forum mapping for session routing
         self._build_project_forum_map()
 
-        # --- Category: Team (from people config) ---
+        # --- Category: Team (shared — master provisions, others resolve) ---
         try:
             global_cfg = load_global_config()
             if global_cfg.people:
-                team_cat = await self._ensure_category(guild, "Team", existing_cats, cat_changes)
-                await self._ensure_team_channels(guild, team_cat, global_cfg.people)  # type: ignore[arg-type]
+                team_cat = await self._ensure_category(guild, "Team", existing_cats, cat_changes, create=is_master)
+                await self._ensure_team_channels(guild, team_cat, global_cfg.people, create=is_master)  # type: ignore[arg-type]
                 logger.info("Team channels provisioned: %d entries in _team_channel_map", len(self._team_channel_map))
             else:
                 logger.info("No people in global config — skipping team channel provisioning")
@@ -224,13 +231,16 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         cat_changes: dict[str, int],
         *,
         key: str | None = None,
+        create: bool = True,
     ) -> object | None:
         """Resolve a category idempotently: cached ID, then name search, then create.
 
         Always searches by name before creating. Creation only happens when a
         conclusive search confirms the category genuinely does not exist in Discord.
         If the search is inconclusive (cache empty, API unavailable), refuses to
-        create to prevent duplicates.
+        create to prevent duplicates. When ``create`` is False, resolves an
+        existing category by name but never creates — shared categories are
+        provisioned by the master computer only.
         """
         key = key if key is not None else name.lower().replace(" ", "_")
 
@@ -250,6 +260,9 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             if cat_id is not None:
                 cat_changes[key] = cat_id
             return cat
+
+        if not create:
+            return None
 
         # 3. If lookup was inconclusive, refuse to create — we can't confirm absence.
         if not conclusive:

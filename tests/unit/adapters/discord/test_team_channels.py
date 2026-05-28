@@ -60,6 +60,22 @@ async def test_find_or_create_private_text_channel_returns_existing_matching_tex
 
 
 @pytest.mark.asyncio
+async def test_find_or_create_private_text_channel_returns_none_without_creating_when_create_disabled() -> None:
+    adapter = DummyTeamChannels()
+    guild = SimpleNamespace(
+        default_role="everyone",
+        get_member=lambda user_id: None,
+        channels=[],
+        create_text_channel=AsyncMock(),
+    )
+
+    channel_id = await adapter._find_or_create_private_text_channel(guild, "team-category", "bob", 9, create=False)
+
+    assert channel_id is None
+    guild.create_text_channel.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_find_or_create_private_text_channel_creates_channel_with_overwrites_and_category() -> None:
     adapter = DummyTeamChannels()
     guild = SimpleNamespace(

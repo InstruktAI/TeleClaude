@@ -116,10 +116,14 @@ class ProvisioningMixin:
             logger.warning("Failed to create Discord category '%s': %s", name, exc)
             return None
 
-    async def _find_or_create_forum(self, guild: object, category: object | None, name: str, topic: str) -> int | None:
+    async def _find_or_create_forum(
+        self, guild: object, category: object | None, name: str, topic: str, *, create: bool = True
+    ) -> int | None:
         """Find an existing forum by name, or create one under the category.
 
-        Refuses to create when the guild channel cache is not populated.
+        Refuses to create when the guild channel cache is not populated. When
+        ``create`` is False, resolves an existing forum by name but never
+        creates — shared forums are provisioned by the master computer only.
         """
         channels = getattr(guild, "channels", None)
         if channels is None:
@@ -133,6 +137,9 @@ class ProvisioningMixin:
                 if found_id is not None:
                     logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
                     return found_id
+
+        if not create:
+            return None
 
         # Cache is populated and forum not found — safe to create.
         create_fn = getattr(guild, "create_forum", None)
@@ -154,15 +161,22 @@ class ProvisioningMixin:
             logger.warning("Failed to create Discord forum '%s': %s", name, exc)
             return None
 
-    async def _find_or_create_text_channel(self, guild: object, category: object | None, name: str) -> int | None:
+    async def _find_or_create_text_channel(
+        self, guild: object, category: object | None, name: str, *, create: bool = True
+    ) -> int | None:
         """Find an existing text channel by name, or create one under the category.
 
-        Refuses to create when the guild channel cache is not populated.
+        Refuses to create when the guild channel cache is not populated. When
+        ``create`` is False, resolves an existing channel by name but never
+        creates — shared channels are provisioned by the master computer only.
         """
         existing_channel_id = find_existing_text_channel_id(guild, name, self._parse_optional_int)
         if existing_channel_id is not None:
             logger.debug("Found existing Discord text channel: %s (id=%s)", name, existing_channel_id)
             return existing_channel_id
+
+        if not create:
+            return None
 
         # Cache is populated and channel not found — safe to create.
         create_fn = getattr(guild, "create_text_channel", None)

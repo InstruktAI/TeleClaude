@@ -37,6 +37,128 @@ class DummyInfrastructure(InfrastructureMixin):
         return True
 
 
+@pytest.mark.asyncio
+async def test_ensure_category_skips_creation_when_create_disabled_and_absent() -> None:
+    adapter = DummyInfrastructure()
+    adapter._find_or_create_category = AsyncMock()
+    guild = SimpleNamespace(categories=[SimpleNamespace(name="Other", id=1)])
+
+    result = await adapter._ensure_category(guild, "Help Desk", {}, {}, create=False)
+
+    assert result is None
+    adapter._find_or_create_category.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_category_resolves_existing_when_create_disabled() -> None:
+    adapter = DummyInfrastructure()
+    adapter._find_or_create_category = AsyncMock()
+    existing_cat = SimpleNamespace(name="Help Desk", id=77)
+    guild = SimpleNamespace(categories=[existing_cat])
+    cat_changes: dict[str, int] = {}
+
+    result = await adapter._ensure_category(guild, "Help Desk", {}, cat_changes, create=False)
+
+    assert result is existing_cat
+    assert cat_changes == {"help_desk": 77}
+    adapter._find_or_create_category.assert_not_called()
+
+
+def _wire_infrastructure_spies(adapter: DummyInfrastructure) -> None:
+    adapter._guild_id = 123
+    adapter._announcements_channel_id = None
+    adapter._general_channel_id = None
+    adapter._help_desk_channel_id = None
+    adapter._escalation_channel_id = None
+    adapter._operator_chat_channel_id = None
+    adapter._all_sessions_channel_id = None
+    adapter._team_channel_map = {}
+    adapter._resolve_guild = AsyncMock(return_value=SimpleNamespace())
+    adapter._validate_channel_id = AsyncMock(return_value=None)
+    adapter._ensure_category = AsyncMock(return_value=SimpleNamespace(id=1))
+    adapter._find_or_create_forum = AsyncMock(return_value=None)
+    adapter._find_or_create_text_channel = AsyncMock(return_value=None)
+    adapter._ensure_project_forums = AsyncMock()
+    adapter._sync_project_forum_positions = AsyncMock()
+    adapter._build_project_forum_map = MagicMock()
+    adapter._ensure_team_channels = AsyncMock()
+    adapter._persist_discord_channel_ids = MagicMock()
+
+
+def _create_flags_by_name(mock: AsyncMock, name_index: int) -> dict[object, bool]:
+    return {call.args[name_index]: call.kwargs.get("create", True) for call in mock.await_args_list}
+
+
+@pytest.mark.asyncio
+async def test_ensure_infrastructure_non_master_never_creates_shared_channels() -> None:
+    adapter = DummyInfrastructure()
+    _wire_infrastructure_spies(adapter)
+    fake_config = SimpleNamespace(
+        discord=SimpleNamespace(categories={}),
+        computer=SimpleNamespace(name="WorkerMac", is_master=False),
+    )
+    fake_people = SimpleNamespace(people=[SimpleNamespace(name="Alice")])
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config", fake_config),
+        patch("teleclaude.adapters.discord.infra.load_global_config", return_value=fake_people),
+    ):
+        await adapter._ensure_discord_infrastructure()
+
+    category_create = _create_flags_by_name(adapter._ensure_category, 1)
+    forum_create = _create_flags_by_name(adapter._find_or_create_forum, 2)
+    text_create = _create_flags_by_name(adapter._find_or_create_text_channel, 2)
+
+    assert category_create["Operations"] is False
+    assert category_create["Help Desk"] is False
+    assert category_create["Team"] is False
+    assert category_create["Projects - WorkerMac"] is True
+
+    assert forum_create["Customer Sessions"] is False
+    assert forum_create["Escalations"] is False
+    assert forum_create["Unknown"] is True
+
+    assert text_create["announcements"] is False
+    assert text_create["general"] is False
+    assert text_create["operator-chat"] is False
+
+    assert adapter._ensure_team_channels.await_args.kwargs.get("create", True) is False
+    adapter._ensure_project_forums.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_infrastructure_master_creates_shared_channels() -> None:
+    adapter = DummyInfrastructure()
+    _wire_infrastructure_spies(adapter)
+    fake_config = SimpleNamespace(
+        discord=SimpleNamespace(categories={}),
+        computer=SimpleNamespace(name="MasterMac", is_master=True),
+    )
+    fake_people = SimpleNamespace(people=[SimpleNamespace(name="Alice")])
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config", fake_config),
+        patch("teleclaude.adapters.discord.infra.load_global_config", return_value=fake_people),
+    ):
+        await adapter._ensure_discord_infrastructure()
+
+    category_create = _create_flags_by_name(adapter._ensure_category, 1)
+    forum_create = _create_flags_by_name(adapter._find_or_create_forum, 2)
+    text_create = _create_flags_by_name(adapter._find_or_create_text_channel, 2)
+
+    assert category_create["Operations"] is True
+    assert category_create["Help Desk"] is True
+    assert category_create["Team"] is True
+
+    assert forum_create["Customer Sessions"] is True
+    assert forum_create["Escalations"] is True
+
+    assert text_create["announcements"] is True
+    assert text_create["operator-chat"] is True
+
+    assert adapter._ensure_team_channels.await_args.kwargs.get("create", True) is True
+
+
 def test_extract_forum_thread_result_handles_tuple_and_thread_object() -> None:
     adapter = DummyInfrastructure()
     thread = SimpleNamespace(id=1)
