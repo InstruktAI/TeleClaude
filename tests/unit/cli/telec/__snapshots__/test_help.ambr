@@ -23,7 +23,6 @@
   
   Examples:
     telec sessions run --command /next-build --args my-slug
-    telec sessions run --command /next-build --args my-slug --detach
   
   '''
 # ---
