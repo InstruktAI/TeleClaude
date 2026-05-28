@@ -488,8 +488,14 @@ install_system_deps() {
             install_package socat
         fi
 
-        # Redis (conditional native install)
-        if confirm "Do you want to install and start a local Redis server?" "y"; then
+        # Redis (conditional native install) — skip when a remote Redis is already
+        # configured in .env. A local server is only needed when no REDIS_URL is set
+        # (or it points at localhost); a configured remote endpoint needs nothing here.
+        local configured_redis_url=""
+        [ -f "$INSTALL_DIR/.env" ] && configured_redis_url="$(grep -E '^REDIS_URL=.+' "$INSTALL_DIR/.env" | head -1)"
+        if [ -n "$configured_redis_url" ] && ! echo "$configured_redis_url" | grep -qE 'localhost|127\.0\.0\.1'; then
+            print_success "Remote Redis already configured (REDIS_URL in .env) — skipping local Redis install"
+        elif confirm "Do you want to install and start a local Redis server?" "y"; then
             if command -v redis-server &> /dev/null; then
                 print_success "Redis already installed"
             else
