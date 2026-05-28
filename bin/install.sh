@@ -492,11 +492,12 @@ install_system_deps() {
         # configured in .env. A local server is only needed when no REDIS_URL is set
         # or its host is loopback; a configured remote endpoint needs nothing here.
         # Classification (loopback vs remote) lives in bin/init/redis_locality.sh.
-        local redis_url_value=""
+        local redis_url_value="" redis_host=""
         [ -f "$INSTALL_DIR/.env" ] && redis_url_value="$(grep -E '^REDIS_URL=.+' "$INSTALL_DIR/.env" | head -1)"
         redis_url_value="${redis_url_value#REDIS_URL=}"
-        if [ -n "$redis_url_value" ] && ! redis_url_is_local "$redis_url_value"; then
-            print_success "Remote Redis already configured (REDIS_URL host=$(redis_url_host "$redis_url_value")) — skipping local Redis install"
+        [ -n "$redis_url_value" ] && redis_host="$(redis_url_host "$redis_url_value")"
+        if [ -n "$redis_host" ] && ! redis_host_is_loopback "$redis_host"; then
+            print_success "Remote Redis already configured (REDIS_URL host=$redis_host) — skipping local Redis install"
         elif confirm "Do you want to install and start a local Redis server?" "y"; then
             if command -v redis-server &> /dev/null; then
                 print_success "Redis already installed"

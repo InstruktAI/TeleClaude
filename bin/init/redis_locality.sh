@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # REDIS_URL locality classification, shared by install.sh and its tests.
 #
-# redis_url_host  <url-value>  -> prints the lowercased host (scheme, credentials,
-#                                 port, path, and IPv6 brackets stripped).
-# redis_url_is_local <url-value> -> exit 0 when the host is a loopback endpoint
-#                                 (localhost any-case, IPv6 ::1, or 127.0.0.0/8),
-#                                 exit 1 for a remote host or an empty/host-less URL.
+# redis_url_host  <url-value>     -> prints the lowercased host (scheme, credentials,
+#                                    port, path, and IPv6 brackets stripped). Empty when
+#                                    the URL carries no host (e.g. "redis://" or "").
+# redis_host_is_loopback <host>   -> exit 0 when host is localhost, IPv6 ::1, or a
+#                                    numeric 127.0.0.0/8 address; exit 1 otherwise.
+#
+# The skip-local-Redis decision belongs to the caller: skip only when the parsed
+# host is non-empty AND not loopback (a genuinely remote endpoint). A host-less URL
+# is neither remote nor loopback, so it must fall through to the local prompt.
 
 redis_url_host() {
     local value="$1"
@@ -24,12 +28,12 @@ redis_url_host() {
     printf '%s' "$host" | tr '[:upper:]' '[:lower:]'
 }
 
-redis_url_is_local() {
-    local host
-    host="$(redis_url_host "$1")"
-    [ -z "$host" ] && return 1
+redis_host_is_loopback() {
+    local host="$1"
     case "$host" in
-        localhost | ::1 | 127.*) return 0 ;;
-        *) return 1 ;;
+        localhost | ::1) return 0 ;;
     esac
+    # Numeric IPv4 loopback only (127.0.0.0/8) — not arbitrary "127.*" hostnames.
+    [[ "$host" =~ ^127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] && return 0
+    return 1
 }
