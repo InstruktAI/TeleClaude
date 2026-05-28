@@ -23,7 +23,8 @@ class Subtab(StrEnum):
     ADAPTERS = "Adapters"
     PROVIDERS = "Providers"
     SUMMARIZER = "Summarizer"
-    TTS_STT = "TTS/STT"
+    STT = "STT"
+    TTS = "TTS"
     ENV = "Env"
 
 
@@ -31,14 +32,19 @@ class Subtab(StrEnum):
 _SUBTABS = tuple(Subtab)
 
 
-class TtsSttConfig(BaseModel):
-    """Pydantic model for dynamic reflection of TTS/STT configurations."""
+class SttConfig(BaseModel):
+    """Pydantic model for dynamic reflection of Speech-to-Text configuration."""
 
     stt_enabled: bool = Field(default=True, description="Enable Speech-to-Text")
     stt_service_priority: list[str] = Field(
         default_factory=lambda: ["parakeet", "openai"],
         description="Speech-to-Text engine priorities",
     )
+
+
+class TtsConfig(BaseModel):
+    """Pydantic model for dynamic reflection of Text-to-Speech configuration."""
+
     tts_enabled: bool = Field(default=False, description="Enable Text-to-Speech")
     tts_service_priority: list[str] = Field(
         default_factory=lambda: ["voxcpm", "kokoro", "qwen3", "openai", "elevenlabs", "macos", "pyttsx3"],
@@ -225,7 +231,8 @@ _GUIDED_STEPS: tuple[GuidedStep, ...] = (
     GuidedStep(subtab=Subtab.ADAPTERS, step_label="Configure UI Adapters"),
     GuidedStep(subtab=Subtab.PROVIDERS, step_label="Configure Providers"),
     GuidedStep(subtab=Subtab.SUMMARIZER, step_label="Configure Summarizer"),
-    GuidedStep(subtab=Subtab.TTS_STT, step_label="Configure TTS/STT"),
+    GuidedStep(subtab=Subtab.STT, step_label="Configure Speech-to-Text"),
+    GuidedStep(subtab=Subtab.TTS, step_label="Configure Text-to-Speech"),
     GuidedStep(subtab=Subtab.ENV, step_label="Review Environment"),
 )
 
