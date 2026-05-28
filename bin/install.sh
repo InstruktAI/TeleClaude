@@ -490,22 +490,13 @@ install_system_deps() {
 
         # Redis (conditional native install) — skip when a remote Redis is already
         # configured in .env. A local server is only needed when no REDIS_URL is set
-        # (or its host is local); a configured remote endpoint needs nothing here.
-        # The host is parsed exactly so a remote host that merely contains "localhost"
-        # (e.g. redis://cache.localhost.example) is not mistaken for a local endpoint.
-        local redis_url_line="" redis_host=""
-        [ -f "$INSTALL_DIR/.env" ] && redis_url_line="$(grep -E '^REDIS_URL=.+' "$INSTALL_DIR/.env" | head -1)"
-        if [ -n "$redis_url_line" ]; then
-            local redis_url_value="${redis_url_line#REDIS_URL=}"
-            redis_url_value="${redis_url_value%\"}" && redis_url_value="${redis_url_value#\"}"
-            redis_url_value="${redis_url_value%\'}" && redis_url_value="${redis_url_value#\'}"
-            local redis_hostport="${redis_url_value#*://}" # drop scheme://
-            redis_hostport="${redis_hostport##*@}"         # drop user:pass@ credentials
-            redis_hostport="${redis_hostport%%/*}"         # drop /path
-            redis_host="${redis_hostport%%:*}"             # drop :port
-        fi
-        if [ -n "$redis_host" ] && [ "$redis_host" != "localhost" ] && [ "$redis_host" != "127.0.0.1" ]; then
-            print_success "Remote Redis already configured (REDIS_URL host=$redis_host) — skipping local Redis install"
+        # or its host is loopback; a configured remote endpoint needs nothing here.
+        # Classification (loopback vs remote) lives in bin/init/redis_locality.sh.
+        local redis_url_value=""
+        [ -f "$INSTALL_DIR/.env" ] && redis_url_value="$(grep -E '^REDIS_URL=.+' "$INSTALL_DIR/.env" | head -1)"
+        redis_url_value="${redis_url_value#REDIS_URL=}"
+        if [ -n "$redis_url_value" ] && ! redis_url_is_local "$redis_url_value"; then
+            print_success "Remote Redis already configured (REDIS_URL host=$(redis_url_host "$redis_url_value")) — skipping local Redis install"
         elif confirm "Do you want to install and start a local Redis server?" "y"; then
             if command -v redis-server &> /dev/null; then
                 print_success "Redis already installed"
@@ -748,6 +739,7 @@ setup_git_filters(Path('$INSTALL_DIR'))
 }
 
 # Load modular install steps
+source "$INSTALL_DIR/bin/init/redis_locality.sh"
 source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
 source "$INSTALL_DIR/bin/init/link_shared_scripts.sh"
 
