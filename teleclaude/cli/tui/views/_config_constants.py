@@ -23,8 +23,7 @@ class Subtab(StrEnum):
     ADAPTERS = "Adapters"
     PROVIDERS = "Providers"
     SUMMARIZER = "Summarizer"
-    STT = "STT"
-    TTS = "TTS"
+    TTS_STT = "TTS/STT"
     ENV = "Env"
 
 
@@ -231,8 +230,7 @@ _GUIDED_STEPS: tuple[GuidedStep, ...] = (
     GuidedStep(subtab=Subtab.ADAPTERS, step_label="Configure UI Adapters"),
     GuidedStep(subtab=Subtab.PROVIDERS, step_label="Configure Providers"),
     GuidedStep(subtab=Subtab.SUMMARIZER, step_label="Configure Summarizer"),
-    GuidedStep(subtab=Subtab.STT, step_label="Configure Speech-to-Text"),
-    GuidedStep(subtab=Subtab.TTS, step_label="Configure Text-to-Speech"),
+    GuidedStep(subtab=Subtab.TTS_STT, step_label="Configure TTS/STT"),
     GuidedStep(subtab=Subtab.ENV, step_label="Review Environment"),
 )
 

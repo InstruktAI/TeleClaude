@@ -466,23 +466,20 @@ class ConfigContent(
             )
             return reflect_schema(summarizer_obj, section="Summarizer")
 
-        if tab == Subtab.STT:
+        if tab == Subtab.TTS_STT:
             stt_data = self._raw_config.get("stt", {})
+            tts_data = self._raw_config.get("tts", {})
             stt_obj = SttConfig(
                 stt_enabled=stt_data.get("enabled", True),
                 stt_service_priority=stt_data.get("service_priority", ["parakeet", "openai"]),
             )
-            return reflect_schema(stt_obj, section="STT")
-
-        if tab == Subtab.TTS:
-            tts_data = self._raw_config.get("tts", {})
             tts_obj = TtsConfig(
                 tts_enabled=tts_data.get("enabled", False),
                 tts_service_priority=tts_data.get(
                     "service_priority", ["voxcpm", "kokoro", "qwen3", "openai", "elevenlabs", "macos", "pyttsx3"]
                 ),
             )
-            return reflect_schema(tts_obj, section="TTS")
+            return reflect_schema(stt_obj, section="STT") + reflect_schema(tts_obj, section="TTS")
 
         return []
 
@@ -626,7 +623,7 @@ class ConfigContent(
                 self._set_current_cursor(0)
             self._person_field_cursor = max(0, min(self._person_field_cursor, len(self.person_editable_fields) - 1))
             return
-        if tab in (Subtab.INFRA, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.STT, Subtab.TTS):
+        if tab in (Subtab.INFRA, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
             count = len(self.reflected_fields)
             if count:
                 self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))
