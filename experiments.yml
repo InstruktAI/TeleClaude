@@ -1,5 +1,1 @@
-experiments:
-  - name: threaded_output
-    agents: [agy]
-  - name: threaded_output
-    adapters: [discord]
+experiments: []
