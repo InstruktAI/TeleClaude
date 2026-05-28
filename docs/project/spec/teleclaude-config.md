@@ -191,6 +191,7 @@ These keys are loaded by the daemon runtime config parser in `teleclaude/config/
 ```yaml
 computer:
   name: string
+  is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
   user: string
   role: string
   default_working_dir: string

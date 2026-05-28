@@ -116,9 +116,11 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         forum plus per-project forums ordered by trusted_dirs) — is always
         provisioned by every computer; its name is unique per machine.
 
-        Idempotent: validates stored IDs before trusting them. When a cached ID
-        is stale, only searches by name — never creates — to prevent duplicates.
-        Persists all created IDs to config.yml.
+        Idempotent: validates stored IDs before trusting them, then resolves by
+        name. Creation, where allowed, happens only after a conclusive name-search
+        finds nothing — so a stale cached ID never spawns a duplicate, and a
+        non-master never creates a shared channel. Persists provisioned IDs to
+        config.yml.
         """
         if self._client is None or self._guild_id is None:
             return
@@ -213,6 +215,9 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
                 logger.info("Team channels provisioned: %d entries in _team_channel_map", len(self._team_channel_map))
             else:
                 logger.info("No people in global config — skipping team channel provisioning")
+        # Team provisioning is best-effort: it runs after the shared and per-computer
+        # categories are already provisioned, and its failure (e.g. a malformed people
+        # config) must not abort that completed work or crash the daemon on startup.
         except Exception as exc:
             logger.warning("Failed to provision team category: %s", exc, exc_info=True)
 

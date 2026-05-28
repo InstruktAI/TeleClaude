@@ -92,6 +92,20 @@ async def test_find_or_create_text_channel_returns_none_without_creating_when_cr
     guild.create_text_channel.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_find_or_create_text_channel_resolves_existing_channel_when_create_disabled() -> None:
+    adapter = DummyProvisioning()
+    guild = SimpleNamespace(
+        channels=[SimpleNamespace(name="general", type=SimpleNamespace(value=0), id="42")],
+        create_text_channel=AsyncMock(),
+    )
+
+    result = await adapter._find_or_create_text_channel(guild, None, "general", create=False)
+
+    assert result == 42
+    guild.create_text_channel.assert_not_called()
+
+
 def test_persist_discord_channel_ids_merges_categories_and_scalar_fields(tmp_path: Path) -> None:
     adapter = DummyProvisioning()
     config_path = tmp_path / "config.yml"
