@@ -11,8 +11,9 @@ visibility: 'public'
 ## Rules
 
 - API reads return cached data immediately.
-- Cache refresh is asynchronous and driven by TTL/digest invalidation.
+- Cache refresh is asynchronous and driven by TTL invalidation (presence) and cross-computer ``cluster.*`` events (state).
 - Cache updates are published to WebSocket subscribers.
+- Cross-computer state propagates via the unified ``cluster.*`` Redis pub/sub namespace; every state mutation publishes a typed envelope, every daemon subscribes, and the local cache is the materialized view. See `project/adr/0013-unified-cluster-events`.
 - Session state is updated via events, not polling.
 - Cache is read-only to API handlers; no direct DB reads in handlers.
 
