@@ -194,6 +194,7 @@ from teleclaude.tts.manager import TTSManager
 _record_import_timing("teleclaude.tts.manager", _t)
 
 _t = time.perf_counter()
+from teleclaude.transport.cluster_bridge import ClusterBridge, ClusterEnvelope
 from teleclaude.transport.identity_bridge import IdentityBridge, IdentityEnvelope
 from teleclaude.transport.workflow_bridge import WorkflowBridge, WorkflowEnvelope
 
@@ -391,6 +392,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._workflow_bridge: WorkflowBridge | None = None
         self._identity_bridge_task: asyncio.Task[object] | None = None
         self._identity_bridge: IdentityBridge | None = None
+        self._cluster_bridge_task: asyncio.Task[object] | None = None
+        self._cluster_bridge: ClusterBridge | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
         self.lifecycle = DaemonLifecycle(
@@ -757,6 +760,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
             await self._start_workflow_bridge()
             await self._start_identity_bridge()
+            await self._start_cluster_bridge()
 
             self.resource_monitor_task = asyncio.create_task(
                 self.monitoring_service.resource_monitor_loop(), name="resource-monitor"
@@ -810,6 +814,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if identity_bridge is not None:
             await identity_bridge.stop()
         await self._await_task_attr("_identity_bridge_task", "Identity Redis bridge stopped", timeout=5.0)
+
+        cluster_bridge = getattr(self, "_cluster_bridge", None)
+        if cluster_bridge is not None:
+            await cluster_bridge.stop()
+        await self._await_task_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
         await self._await_task_attr("webhook_delivery_task", "Webhook delivery worker stopped", timeout=5.0)
         await self._await_task_attr(
@@ -1087,6 +1096,50 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             channel=envelope.channel,
             idempotency_key=envelope.idempotency_key,
             principal_kind=envelope.principal_kind,
+        )
+
+    async def _start_cluster_bridge(self) -> None:
+        """Attach the cross-computer ``cluster.*`` subscriber to the daemon loop.
+
+        Mirrors :meth:`_start_workflow_bridge` — reuses the shared
+        ``RedisTransport`` adapter. The dispatch sink is currently
+        observational; the next commit wires cache writes so that every
+        peer's ``cluster.*`` event materializes into the local cache.
+        """
+        # startup boundary lazy imports to keep cold import cheap
+        from teleclaude.transport.redis_transport import RedisTransport  # startup boundary
+
+        redis_adapter = self.client.transport
+        if not isinstance(redis_adapter, RedisTransport):
+            raise RuntimeError(
+                "Cluster bridge requires the v1 RedisTransport adapter to be configured before bridge startup."
+            )
+
+        def _factory() -> Any:
+            return redis_adapter.redis
+
+        bridge = ClusterBridge(
+            redis_factory=_factory,
+            dispatch=self._dispatch_cluster_event,
+        )
+        self._cluster_bridge = bridge
+        self._cluster_bridge_task = asyncio.create_task(bridge.run(), name="cluster-bridge")
+        self._cluster_bridge_task.add_done_callback(self._log_background_task_exception("cluster_bridge"))
+        logger.info("Cluster Redis bridge attached to shared RedisTransport")
+
+    def _dispatch_cluster_event(self, envelope: ClusterEnvelope) -> None:
+        """Log a decoded cluster envelope.
+
+        The skeleton dispatch is observational. The next commit replaces this
+        with per-category cache writers that materialize cross-computer state
+        into the local ``DaemonCache``.
+        """
+        logger.info(
+            "Cluster event observed",
+            channel=envelope.channel,
+            idempotency_key=envelope.idempotency_key,
+            origin=envelope.origin,
+            category=envelope.category,
         )
 
 
