@@ -87,16 +87,19 @@ def pytest_xdist_auto_num_workers(config):
     return None
 
 
-@pytest.fixture(autouse=True)
-def _reap_subprocess_leaks():
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
     """Guarantee no test leaves attached subprocess descendants behind.
 
-    Snapshots worker descendants at setup; reaps any new descendants in teardown.
-    Runs first in the autouse chain so its teardown executes last (LIFO), after any
-    other fixture has had a chance to clean up cooperatively. The per-test timeout
-    is still the sole authority that flags a slow test; this fixture only ensures
-    pytest can actually finish and print that flag instead of deadlocking on a
-    leaked child holding the worker's stdout pipe.
+    Implemented as a hookwrapper on ``pytest_runtest_protocol`` — not as an autouse
+    fixture — because pytest's same-scope autouse fixture ordering is not
+    source-order: an autouse fixture declared first in a file is not guaranteed to
+    set up first or tear down last. ``pytest_runtest_protocol`` wraps the entire
+    test lifecycle (setup + call + teardown) from outside the fixture system, so
+    the snapshot is taken before any fixture setup and the reap happens after every
+    fixture teardown. The per-test timeout remains the sole flagging authority;
+    this hook only ensures the worker can finish and print that flag instead of
+    deadlocking on a leaked child holding its stdout pipe.
     """
     before = snapshot_descendants()
     yield
