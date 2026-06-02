@@ -114,6 +114,13 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
     async def discover_peers(self) -> list[PeerInfo]:
         """Discover peers via Redis heartbeat keys.
 
+        Identity (``user``/``host``/``role``/``tmux_binary``/``bot_username``/
+        ``system_stats``) is read directly from the heartbeat payload — every
+        daemon publishes its full :class:`ComputerInfo` in the heartbeat key
+        (see ``_heartbeat.py``), so no separate ``get_computer_info`` round-
+        trip is needed. This removes the historical timeout failure mode that
+        could silently drop peers when the request/response leg was unhappy.
+
         Returns:
             List of PeerInfo instances with peer computer information. Returns
             empty list on error to allow graceful degradation when Redis is
@@ -137,19 +144,17 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             )
 
             peers: list[PeerInfo] = []
-            for key in keys:  # pyright: ignore[reportGeneralTypeIssues]  # pyright: ignore[reportGeneralTypeIssues]
-                heartbeat = await self._load_peer_heartbeat(redis_client, key)
-                if heartbeat is None:
+            for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
+                loaded = await self._load_peer_heartbeat(redis_client, key)
+                if loaded is None:
                     continue
 
-                computer_name, last_seen_dt = heartbeat
+                computer_name, last_seen_dt, info = loaded
                 if computer_name == self.computer_name:
                     logger.trace("Skipping self heartbeat: %s", computer_name)
                     continue
 
-                peer = await self._load_peer_info(computer_name, last_seen_dt)
-                if peer is not None:
-                    peers.append(peer)
+                peers.append(self._build_peer_info(computer_name, last_seen_dt, info))
 
             return sorted(peers, key=lambda p: p.name)
 
@@ -158,8 +163,8 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             self._schedule_reconnect("discover_peers", e)
             return []
 
-    async def _load_peer_heartbeat(self, redis_client: Redis, key: bytes) -> tuple[str, datetime] | None:
-        """Load one heartbeat entry and return its computer name and last-seen timestamp."""
+    async def _load_peer_heartbeat(self, redis_client: Redis, key: bytes) -> tuple[str, datetime, JsonDict] | None:
+        """Load one heartbeat entry and return name, last-seen, and full info dict."""
         data_bytes: object = await redis_client.get(key)
         if not data_bytes:
             return None
@@ -177,42 +182,7 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             logger.warning("Invalid timestamp for %s, using now: %s", info.get("computer_name"), last_seen_str)
             last_seen_dt = datetime.now(UTC)
 
-        return computer_name, last_seen_dt
-
-    async def _load_peer_info(self, computer_name: str, last_seen_dt: datetime) -> PeerInfo | None:
-        """Request detailed computer info for one peer."""
-        logger.trace("Requesting computer_info from %s", computer_name)
-        try:
-            message_id = await self.send_request(computer_name, "get_computer_info", MessageMetadata())
-            response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer_name)
-            envelope_obj: object = json.loads(response_data.strip())
-            if not isinstance(envelope_obj, dict):
-                return None
-
-            envelope: JsonDict = envelope_obj
-            status = envelope.get("status")
-            if status == "error":
-                error_msg = envelope.get("error")
-                logger.warning("Computer %s returned error: %s", computer_name, error_msg)
-                if "Unknown redis command: get_computer_info" in str(error_msg):
-                    return PeerInfo(
-                        name=computer_name,
-                        status="online",
-                        last_seen=last_seen_dt,
-                        adapter_type="redis",
-                    )
-                return None
-
-            computer_info = envelope.get("data")
-            if not computer_info or not isinstance(computer_info, dict):
-                logger.warning("Invalid response data from %s: %s", computer_name, type(computer_info))
-                return None
-
-            logger.debug("Redis response accepted", target=computer_name, request_id=message_id[:15])
-            return self._build_peer_info(computer_name, last_seen_dt, computer_info)
-        except _PEER_EXCEPTIONS as e:
-            logger.warning("Failed to get info from %s: %s", computer_name, e)
-            return None
+        return computer_name, last_seen_dt, info
 
     def _build_peer_info(self, computer_name: str, last_seen_dt: datetime, computer_info: JsonDict) -> PeerInfo:
         """Construct a `PeerInfo` instance from a response payload."""

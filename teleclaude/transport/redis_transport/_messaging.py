@@ -212,15 +212,15 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 return
-            if cmd_name in {"list_sessions", "list_projects", "list_projects_with_todos", "get_computer_info"}:
+            if cmd_name in {"list_sessions", "list_projects", "list_projects_with_todos"}:
+                # ``get_computer_info`` round-trip removed — identity now ships in the heartbeat
+                # payload (see ``_heartbeat.py``); peers read it directly in ``discover_peers``.
                 if cmd_name == "list_sessions":
                     payload = [s.to_dict() for s in await command_handlers.list_sessions()]
                 elif cmd_name == "list_projects":
                     payload = [project.to_dict() for project in await command_handlers.list_projects()]
-                elif cmd_name == "list_projects_with_todos":
-                    payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
                 else:
-                    payload = (await command_handlers.get_computer_info()).to_dict()
+                    payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
 
                 response_json = json.dumps({"status": "success", "data": payload})
                 await self.send_response(message_id, response_json)
