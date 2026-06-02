@@ -337,7 +337,7 @@ def _make_category(id: int) -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_find_or_create_forum_creates_new_when_same_name_lives_in_another_categorys() -> None:
+async def test_find_or_create_forum_creates_new_when_same_name_lives_in_another_category() -> None:
     adapter = DummyInfrastructure()
     foreign_forum = _make_forum(id=10, name="TeleClaude", category_id=MOZBOOK_CAT_ID)
     created_forum = SimpleNamespace(id=20)
