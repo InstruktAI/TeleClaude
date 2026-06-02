@@ -142,6 +142,47 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         """Pull sessions for currently interested computers."""
         await self._pull_initial_sessions()
 
+    async def pull_remote_sessions(self, computer: str) -> None:
+        """Pull sessions from a specific remote computer via Redis.
+
+        Used at cold-start bootstrap (``refresh_remote_snapshot``) and when a
+        client expresses interest in a peer's sessions. The cache write goes
+        through ``update_session(..., from_cluster=True)`` so the bootstrap
+        path does NOT re-publish each pulled session as if the local daemon
+        had originated it — peers continue to own their events.
+        """
+        if not self.cache:
+            logger.warning("Cache unavailable, skipping sessions pull from %s", computer)
+            return
+
+        logger.debug("Pulling sessions from %s", computer)
+
+        try:
+            message_id = await self.send_request(computer, "list_sessions", MessageMetadata())
+            response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
+            envelope = self._parse_envelope(computer, response_data, "sessions")
+            if envelope is None:
+                return
+
+            if envelope.get("status") == "error":
+                await self._handle_error_status(computer, envelope.get("error", "unknown error"))
+                return
+
+            data = self._extract_response_data(envelope, computer, "sessions")
+            if data is None:
+                return
+
+            count = 0
+            for session_obj in data:
+                snapshot = SessionSnapshot.from_dict(session_obj)
+                snapshot.computer = computer
+                self.cache.update_session(snapshot, from_cluster=True)
+                count += 1
+            logger.info("Pulled %d sessions from %s", count, computer)
+
+        except _PULL_EXCEPTIONS as e:
+            logger.warning("Failed to pull sessions from %s: %s", computer, e)
+
     async def pull_remote_projects(self, computer: str) -> None:
         """Pull projects from a remote computer via Redis.
 

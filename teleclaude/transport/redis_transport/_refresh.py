@@ -80,6 +80,11 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
             _ = computer
             raise NotImplementedError
 
+        async def pull_remote_sessions(self, computer: str) -> None:
+            """Pull sessions from one peer (bootstrap path)."""
+            _ = computer
+            raise NotImplementedError
+
         def _log_task_exception(self, task: asyncio.Task[object]) -> None:
             """Log an exception from an untracked background task."""
             _ = task
@@ -112,6 +117,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         for peer in peers:
             try:
                 self._schedule_refresh(_RefreshRequest(peer.name, "projects", "startup", force=True))
+                self._schedule_refresh(_RefreshRequest(peer.name, "sessions", "startup", force=True))
             except _REFRESH_EXCEPTIONS as e:
                 logger.warning("Failed to refresh snapshot from %s: %s", peer.name, e)
 
@@ -177,8 +183,6 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         return True
 
     def _refresh_key(self, computer: str, data_type: str, project_path: str | None) -> str:
-        if data_type == "sessions":
-            return "sessions:global"
         if project_path:
             return f"{computer}:{data_type}:{project_path}"
         return f"{computer}:{data_type}"
@@ -200,7 +204,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         if data_type == "todos":
             return self.pull_remote_projects_with_todos(computer)
         if data_type == "sessions":
-            return self.pull_interested_sessions()
+            return self.pull_remote_sessions(computer)
         return None
 
     def _spawn_refresh_task(self, coro: Awaitable[None], *, key: str) -> asyncio.Task[object]:

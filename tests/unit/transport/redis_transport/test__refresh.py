@@ -21,14 +21,10 @@ def transport() -> RedisTransport:
 
 class TestRefreshKey:
     @pytest.mark.unit
-    def test_sessions_always_returns_global_key(self, transport: RedisTransport) -> None:
+    def test_sessions_keyed_per_computer(self, transport: RedisTransport) -> None:
+        """Sessions are now pulled per peer (was: global) so coalescing must key per peer too."""
         key = transport._refresh_key("any-computer", "sessions", None)
-        assert key == "sessions:global"
-
-    @pytest.mark.unit
-    def test_sessions_with_project_path_still_returns_global(self, transport: RedisTransport) -> None:
-        key = transport._refresh_key("any-computer", "sessions", "/repo/project")
-        assert key == "sessions:global"
+        assert key == "any-computer:sessions"
 
     @pytest.mark.unit
     def test_projects_without_path_returns_computer_datatype(self, transport: RedisTransport) -> None:
@@ -85,8 +81,8 @@ class TestBuildRefreshCoro:
         coro.close()
 
     @pytest.mark.unit
-    def test_sessions_returns_pull_interested_sessions_coro(self, transport: RedisTransport) -> None:
-        transport.pull_interested_sessions = AsyncMock()
+    def test_sessions_returns_pull_remote_sessions_coro(self, transport: RedisTransport) -> None:
+        transport.pull_remote_sessions = AsyncMock()
         coro = transport._build_refresh_coro("remote", "sessions", None)
         assert coro is not None
         coro.close()
