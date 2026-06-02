@@ -18,16 +18,7 @@ from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
 
-_REFRESH_EXCEPTIONS = (
-    RedisError,
-    TimeoutError,
-    OSError,
-    RuntimeError,
-    ValueError,
-    TypeError,
-    AttributeError,
-    json.JSONDecodeError,
-)
+_REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError)
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis

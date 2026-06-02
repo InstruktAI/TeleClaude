@@ -4,14 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.tui import session_launcher
-
-# Named-constants for protocol-identifier assertions (snapshot-testing policy).
-EXPECTED_LOCAL_INNER = "local-tmux attach -t tc_demo"
-EXPECTED_PEER_SSH_TARGET = "ssh -t morriz@mozbook.local"
-EXPECTED_PEER_TMUX_INNER = "/opt/tmux attach -t tc_demo"
 
 
 @pytest.mark.unit
@@ -65,7 +61,10 @@ def test_attach_tmux_from_result_requires_a_tmux_session_name(monkeypatch: pytes
 
 
 @pytest.mark.unit
-def test_attach_tmux_session_wraps_remote_peer_in_ssh(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_attach_tmux_session_wraps_remote_peer_in_ssh(
+    monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+) -> None:
+    """The rendered split-window command is the cross-computer attach contract — snapshot it."""
     monkeypatch.setenv("TMUX", "1")
     monkeypatch.setattr(session_launcher.config, "computer", SimpleNamespace(name="MozMini", tmux_binary="local-tmux"))
     run = Mock()
@@ -89,17 +88,17 @@ def test_attach_tmux_session_wraps_remote_peer_in_ssh(monkeypatch: pytest.Monkey
     attached = session_launcher.attach_tmux_session("tc_demo", stdscr, computer="MozBook", cache=cache)
 
     assert attached is True
-    cmd = run.call_args.args[0]
-    assert cmd[:5] == ["local-tmux", "split-window", "-h", "-p", "60"]
-    inner = cmd[5]
-    # SSH wrap binds the remote tmux server to the peer's binary path.
-    assert EXPECTED_PEER_SSH_TARGET in inner
-    assert EXPECTED_PEER_TMUX_INNER in inner
+    assert run.call_args.args[0] == snapshot
 
 
 @pytest.mark.unit
-def test_attach_tmux_session_falls_back_to_local_when_peer_identity_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """If the cache has no identity for the peer yet, treat as local (no half-formed SSH command)."""
+def test_attach_tmux_session_remote_with_missing_identity_returns_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remote attach must NOT silently fall back to local when peer identity hasn't propagated.
+
+    Silent fallback would point the local tmux client at a session name that lives on a
+    different machine — misleading-feedback regression. The attach must return False so
+    the caller can render a status message and retry once the heartbeat catches up.
+    """
     monkeypatch.setenv("TMUX", "1")
     monkeypatch.setattr(session_launcher.config, "computer", SimpleNamespace(name="MozMini", tmux_binary="local-tmux"))
     run = Mock()
@@ -114,7 +113,7 @@ def test_attach_tmux_session_falls_back_to_local_when_peer_identity_missing(monk
         SimpleNamespace(name="MozBook", is_local=False, user=None, host=None, tmux_binary=None)
     ]
 
-    session_launcher.attach_tmux_session("tc_demo", stdscr, computer="MozBook", cache=cache)
+    attached = session_launcher.attach_tmux_session("tc_demo", stdscr, computer="MozBook", cache=cache)
 
-    inner = run.call_args.args[0][5]
-    assert inner == EXPECTED_LOCAL_INNER
+    assert attached is False
+    run.assert_not_called()

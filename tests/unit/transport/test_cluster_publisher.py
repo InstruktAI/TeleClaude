@@ -6,6 +6,8 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
+from syrupy.matchers import path_type
 
 from teleclaude.transport.cluster_publisher import ClusterPublisher
 
@@ -33,7 +35,12 @@ def _publisher(redis: AsyncMock, *, origin: str = TEST_ORIGIN) -> ClusterPublish
 
 class TestPublish:
     @pytest.mark.unit
-    async def test_publishes_envelope_to_channel(self, fake_redis: AsyncMock) -> None:
+    async def test_publishes_envelope_to_channel(self, fake_redis: AsyncMock, snapshot: SnapshotAssertion) -> None:
+        """Envelope shape is the cross-computer contract — snapshot it at the publish boundary.
+
+        ``idempotency_key`` (uuid) and ``emitted_at`` (timestamp) are replaced with
+        type-tokens so the snapshot stays deterministic across runs.
+        """
         publisher = _publisher(fake_redis)
 
         ok = await publisher.publish(TEST_CHANNEL, TEST_PAYLOAD)
@@ -44,11 +51,7 @@ class TestPublish:
         assert channel == TEST_CHANNEL
 
         envelope = json.loads(body)
-        assert envelope["channel"] == TEST_CHANNEL
-        assert envelope["origin"] == TEST_ORIGIN
-        assert envelope["payload"] == TEST_PAYLOAD
-        assert isinstance(envelope["idempotency_key"], str) and envelope["idempotency_key"]
-        assert isinstance(envelope["emitted_at"], str) and envelope["emitted_at"]
+        assert envelope == snapshot(matcher=path_type({"idempotency_key": (str,), "emitted_at": (str,)}))
 
     @pytest.mark.unit
     async def test_each_publish_gets_unique_idempotency_key(self, fake_redis: AsyncMock) -> None:

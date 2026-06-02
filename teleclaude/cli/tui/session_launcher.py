@@ -8,29 +8,46 @@ import shlex
 import subprocess
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.config import config
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
+logger = get_logger(__name__)
+
+
+class RemotePeerIdentityUnavailableError(RuntimeError):
+    """Raised when a peer's ComputerInfo hasn't propagated yet.
+
+    Fail-fast for the cross-computer attach surface: if the user asked to
+    attach to a peer session but the peer's user/host/tmux_binary aren't in
+    the cache, we cannot build an honest SSH command — and silently falling
+    back to a local attach (which targets the wrong tmux server) is a
+    misleading-feedback regression. The caller decides how to surface this
+    to the user.
+    """
+
 
 def _resolve_peer_target(cache: DaemonCache | None, computer: str | None) -> tuple[str, str, str] | None:
     """Return ``(user, host, tmux_binary)`` when ``computer`` is a known remote peer.
 
-    Returns ``None`` when the session is local (no remote SSH-wrap needed) or
-    when the peer's identity hasn't been populated yet (no usable target —
-    fall back to local attach).
+    Returns ``None`` when the session is local (no remote SSH-wrap needed).
+    Raises :class:`RemotePeerIdentityUnavailableError` when the session is
+    remote but the peer's identity hasn't propagated yet — the caller must
+    decide whether to surface or retry, not silently degrade.
     """
     if computer is None or computer == config.computer.name:
         return None
     if cache is None:
-        return None
+        raise RemotePeerIdentityUnavailableError(f"cache unavailable; cannot resolve peer {computer!r}")
     info = next((c for c in cache.get_computers() if c.name == computer), None)
     if info is None or info.is_local:
-        return None
+        raise RemotePeerIdentityUnavailableError(f"peer {computer!r} not in cache yet")
     if not info.user or not info.host or not info.tmux_binary:
-        return None
+        raise RemotePeerIdentityUnavailableError(f"peer {computer!r} cache entry missing user/host/tmux_binary")
     return info.user, info.host, info.tmux_binary
 
 
@@ -48,7 +65,10 @@ def attach_tmux_session(
     relying on SSH key auth between computers (documented prerequisite — see
     ``project/procedure/multi-computer-setup``).
 
-    Returns True if a split was opened.
+    Returns True if a split was opened. Returns False — and logs a warning
+    naming the peer — when the requested attach is remote but the peer's
+    identity hasn't propagated yet; the caller can re-render with a status
+    message and retry once the heartbeat populates ComputerInfo.
     """
     if not tmux_session_name:
         return False
@@ -57,7 +77,17 @@ def attach_tmux_session(
         return False
 
     local_tmux = config.computer.tmux_binary
-    remote_target = _resolve_peer_target(cache, computer)
+    try:
+        remote_target = _resolve_peer_target(cache, computer)
+    except RemotePeerIdentityUnavailableError as exc:
+        logger.warning(
+            "Remote attach unavailable; not falling back to local tmux",
+            computer=computer,
+            session=tmux_session_name,
+            reason=str(exc),
+        )
+        return False
+
     if remote_target is None:
         inner = f"{local_tmux} attach -t {tmux_session_name}"
     else:

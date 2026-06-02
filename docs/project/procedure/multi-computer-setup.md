@@ -27,12 +27,12 @@ Set up a distributed TeleClaude deployment across multiple computers.
 4. Configure SSH keychain using the ssh-agent-keychain procedure. Verify each peer can `ssh user@peerhost` without a prompt before continuing — the TUI's remote-attach path requires it.
 5. Verify `make status` on all nodes.
 6. Use `telec computers` to confirm network discovery. Each peer should appear with non-null `user`, `host`, and `tmux_binary` — these flow through the heartbeat payload (see `project/adr/0013-unified-cluster-events`).
-7. From the TUI on any peer, sessions/projects/todos from every other peer appear automatically as the cluster.* events flow. No subscription action required.
+7. From the TUI on any peer, **sessions** from every other peer appear automatically via the live `cluster.session.*` event stream. Projects and todos appear after the daemon's bootstrap snapshot completes (within a few seconds of connect). No subscription action required for any category.
 
 ## Outputs
 
 - Multi-node TeleClaude deployment with Redis discovery working.
-- Every peer's sessions, projects, and todos visible in the TUI from any peer.
+- Every peer's sessions visible in the TUI in real time; projects and todos visible after bootstrap.
 - One Telegram master configured and verified.
 
 ## Recovery

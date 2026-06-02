@@ -41,6 +41,28 @@ Concretely:
 - **Bootstrap snapshot survives** for cold-start cache prefill: `refresh_remote_snapshot` schedules `pull_remote_projects_with_todos(peer)` and `pull_remote_sessions(peer)` for every peer at daemon connect. After bootstrap, request/response is unused for steady-state.
 - **The "interest" gate, digest comparison, and `get_computer_info` round-trip are all retired.** Categories propagate symmetrically; the heartbeat is presence-only with full identity.
 
+### Delivery scope
+
+The decision above defines the target architecture. Implementation lands in stages so each commit stays daemon-up and reviewable.
+
+**Wired in this push (commits 3451a2cba .. 7646f936f):**
+
+- Heartbeat enrichment + crash hotfix.
+- `ClusterBridge` + `ClusterPublisher` infrastructure subscribed/wired in the daemon.
+- `cluster.session.{created|updated|closed}` publish on cache writes; bridge dispatch routes session envelopes back into the cache.
+- Bootstrap snapshot pulls sessions per peer alongside projects on daemon connect.
+- Discovery uses heartbeat-only identity; `get_computer_info` round-trip removed.
+- TUI tmux attach SSH-wraps remote sessions using cache-resident identity.
+
+**Tracked but not yet wired (future commits, same envelope shape):**
+
+- `cluster.project.{registered|unregistered}` — projects still propagate via the bootstrap pull + workflow_bridge invalidation; the live publish/apply path is not in this push.
+- `cluster.todo.{created|updated|deleted|phase_changed}` — todos similarly rely on bootstrap + workflow_bridge today.
+- `cluster.computer.updated` — computer presence still flows through heartbeat keys (the primary path); a complementary event-level update is the long-term direction but not required for the current symptom.
+- `cluster.session.create_request|created|create_failed` request/response over events, for the TUI-to-peer "create session on MozBook" flow.
+
+The narrowing is intentional: sessions are the cross-computer aggregate with the strongest user-visible win, and shipping one category cleanly proves the pattern. Subsequent commits repeat the same plumbing for the remaining categories using this commit set as the template.
+
 ## Consequences
 
 **Positive:**

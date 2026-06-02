@@ -166,10 +166,13 @@ class DaemonCache:
     def _publish_cluster(self, channel: str, payload: dict[str, object]) -> None:  # guard: loose-dict - event payload
         """Schedule a fire-and-forget publish to a ``cluster.*`` channel.
 
-        No-op when no publisher is attached. Safe to call from sync writers
-        as long as an event loop is running (the daemon case); if no loop is
-        running (some tests), the publish is silently dropped — matching the
-        adapter-boundaries policy of never blocking the cache on transport.
+        No-op when no publisher is attached (single-computer / test contexts).
+        When a publisher IS attached but no event loop is running, the cache
+        write is committed and the publish is dropped — but it logs a WARN
+        with channel context so the loss is observable rather than silent.
+        In production the daemon always runs cache writers from async
+        contexts, so this branch should be unreachable; if it ever fires the
+        warning surfaces an invariant violation worth investigating.
         """
         publisher = self._cluster_publisher
         if publisher is None:
@@ -177,6 +180,11 @@ class DaemonCache:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
+            logger.warning(
+                "Cluster publish dropped: no running event loop",
+                channel=channel,
+                origin=publisher.origin,
+            )
             return
         loop.create_task(publisher.publish(channel, payload))
 
