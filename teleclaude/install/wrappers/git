@@ -26,12 +26,13 @@
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Commit-producing subcmds (commit, cherry-pick, rebase, merge) are gated:
-#   commit (any branch)              → use 'telec code commit'. Trusted external
-#                                      tools may bypass with TELECLAUDE_TRUSTED_TOOL=1
-#                                      (logged as event=bypass reason=trusted_tool).
+#   commit (any branch)              → use 'telec code commit'.
 #   cherry-pick/rebase/merge on main → integrator role bypass, otherwise
 #                                       set TELECLAUDE_OVERRIDE_APPROVED=1
 #   cherry-pick/rebase/merge on other branches → pass through
+#
+# Trusted external tools may set TELECLAUDE_TRUSTED_TOOL=1 to step aside the
+# wrapper entirely (all gates). Logged as event=bypass reason=trusted_tool.
 #
 # Identity source: $TMPDIR/teleclaude_identity.json (written by daemon).
 # Fields: system_role, human_role, session_id.
@@ -79,6 +80,13 @@ fi
 
 # Declare _real_git_bin once for the session
 _real_git_bin="$(_find_real_git_fast)"
+
+# Trusted external tool bypass — step aside entirely. The caller owns its
+# own commit/push/rebase discipline. Logged so the audit trail captures it.
+if [ "${TELECLAUDE_TRUSTED_TOOL:-}" = "1" ]; then
+    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=bypass reason=trusted_tool args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    exec "$_real_git_bin" "$@"
+fi
 
 _real_git() {
     # Disable all auto-stash for every git invocation through the wrapper.
@@ -584,11 +592,6 @@ MSG
 fi
 
 if [ "$_subcmd" = "commit" ]; then
-    if [ "${TELECLAUDE_TRUSTED_TOOL:-}" = "1" ]; then
-        { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=bypass reason=trusted_tool subcmd=$_subcmd role=$_role cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
-        _real_git "$@"
-        exit $?
-    fi
     _log_block commit_redirect
     cat >&2 <<'MSG'
 ERROR: Use 'telec code commit' instead of 'git commit'.
