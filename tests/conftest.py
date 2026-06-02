@@ -32,6 +32,7 @@ from teleclaude.core import db as db_module
 from teleclaude.core import session_cleanup, session_utils
 from teleclaude.core.command_registry import reset_command_service
 from teleclaude.core.event_bus import event_bus
+from teleclaude.quality.subprocess_reaper import reap_new_descendants, snapshot_descendants
 from teleclaude.runtime import binaries as binaries_mod
 
 
@@ -84,6 +85,22 @@ def pytest_xdist_auto_num_workers(config):
             cores = 4
         return max(1, cores // 2)
     return None
+
+
+@pytest.fixture(autouse=True)
+def _reap_subprocess_leaks():
+    """Guarantee no test leaves attached subprocess descendants behind.
+
+    Snapshots worker descendants at setup; reaps any new descendants in teardown.
+    Runs first in the autouse chain so its teardown executes last (LIFO), after any
+    other fixture has had a chance to clean up cooperatively. The per-test timeout
+    is still the sole authority that flags a slow test; this fixture only ensures
+    pytest can actually finish and print that flag instead of deadlocking on a
+    leaked child holding the worker's stdout pipe.
+    """
+    before = snapshot_descendants()
+    yield
+    reap_new_descendants(before)
 
 
 @pytest.fixture(autouse=True)
