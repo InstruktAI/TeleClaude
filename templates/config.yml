@@ -35,7 +35,6 @@ summarizer:
     base_url: ${SUMMARIZER_LLM_BASE_URL} # OpenAI-compatible endpoint, e.g. http://localhost:1234/v1
     model: ${SUMMARIZER_LLM_MODEL} # the model id loaded in your local server (e.g. an instruct model)
   provider_priority:
-    - local
     - openai
     - anthropic
     - google

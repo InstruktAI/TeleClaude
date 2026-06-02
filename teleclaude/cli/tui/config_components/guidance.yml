@@ -93,7 +93,7 @@ adapters.ai.google_api_key:
   validation_hint: Starts with AIza
 
 adapters.ai.summarizer_local_base_url:
-  env_var: SUMMARIZER_LOCAL_BASE_URL
+  env_var: SUMMARIZER_LLM_BASE_URL
   description: OpenAI-compatible endpoint for a local summarizer (e.g. LM Studio). Tried first when local is enabled.
   steps:
     - Start your local server (e.g. LM Studio) and load an instruct model.

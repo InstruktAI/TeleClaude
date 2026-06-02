@@ -140,7 +140,7 @@ class ProvidersConfig(BaseModel):
 class SummarizerTabConfig(BaseModel):
     """Summary/title provider settings, surfaced in the Summarizer subtab.
 
-    local_base_url is the ${SUMMARIZER_LOCAL_BASE_URL} env secret; the rest persist
+    local_base_url is the ${SUMMARIZER_LLM_BASE_URL} env secret; the rest persist
     to the config.yml summarizer section.
     """
 

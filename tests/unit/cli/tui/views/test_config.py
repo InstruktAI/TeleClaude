@@ -29,7 +29,7 @@ _SUMMARIZER_FIELDS = {
     "anthropic_model",
     "google_model",
 }
-_LOCAL_BASE_URL_VAR = "SUMMARIZER_LOCAL_BASE_URL"
+_LOCAL_BASE_URL_VAR = "SUMMARIZER_LLM_BASE_URL"
 _LOCAL_BASE_URL_FIELD = "local_base_url"
 _LOCAL_BASE_URL_VALUE = "http://localhost:1234/v1"
 _OPENAI_MODEL_FIELD = "openai_model"

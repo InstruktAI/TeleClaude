@@ -128,10 +128,16 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "AIza...",
         ),
         EnvVarInfo(
-            "SUMMARIZER_LOCAL_BASE_URL",
+            "SUMMARIZER_LLM_BASE_URL",
             "ai",
             "Local OpenAI-compatible summarizer endpoint (e.g. LM Studio)",
             "http://localhost:1234/v1",
+        ),
+        EnvVarInfo(
+            "SUMMARIZER_LLM_MODEL",
+            "ai",
+            "Local summarizer model id loaded in the local server",
+            "qwen3.5-0.8b",
         ),
     ],
     "voice": [
@@ -415,11 +421,56 @@ def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
 # --- Validation ---
 
 
+def _is_env_var_required(info: EnvVarInfo, app_config: Any | None) -> bool:
+    """Whether this env var is required by the currently enabled adapters/services.
+
+    Returns True only when the corresponding adapter/service has an active enable
+    flag in config.yml. Groups without a config-level enable flag (`backup`,
+    `firecrawl`, `system`, and cloud summarizer API keys) are treated as opt-in:
+    their absence is silently OK because the runtime falls through.
+    """
+    group = info.adapter
+    if group == "redis":
+        return True
+    if app_config is None:
+        return False
+    if group == "telegram":
+        return bool(getattr(app_config.telegram, "enabled", False))
+    if group == "discord":
+        return bool(getattr(app_config.discord, "enabled", False))
+    if group == "whatsapp":
+        return bool(getattr(app_config.whatsapp, "enabled", False))
+    if group == "email":
+        email_cfg = getattr(app_config, "email", None)
+        return bool(getattr(email_cfg, "enabled", False)) if email_cfg else False
+    if group == "voice":
+        # ELEVENLABS_API_KEY required only when ElevenLabs is an enabled TTS or STT service.
+        for section_attr in ("tts", "stt"):
+            section = getattr(app_config, section_attr, None)
+            if not section or not getattr(section, "enabled", False):
+                continue
+            services = getattr(section, "services", None) or {}
+            elevenlabs = services.get("elevenlabs")
+            if elevenlabs and getattr(elevenlabs, "enabled", False):
+                return True
+        return False
+    if group == "ai":
+        # Local summarizer vars are gated by summarizer.local.enabled.
+        # Cloud provider keys (ANTHROPIC/OPENAI/GOOGLE) are optional fallbacks —
+        # the summarizer skips a provider silently when its key is absent.
+        if info.name in ("SUMMARIZER_LLM_BASE_URL", "SUMMARIZER_LLM_MODEL"):
+            summarizer = getattr(app_config, "summarizer", None)
+            local = getattr(summarizer, "local", None) if summarizer else None
+            return bool(local and getattr(local, "enabled", False))
+        return False
+    return False
+
+
 def validate_all() -> list[ValidationResult]:
     """Run full-system validation: schema + cross-reference + env vars."""
     results: list[ValidationResult] = []
 
-    # Validate global config
+    # Validate global config (people, subscriptions, env_allow_list)
     try:
         config = get_global_config()
         results.append(ValidationResult(area="global", passed=True))
@@ -433,6 +484,28 @@ def validate_all() -> list[ValidationResult]:
             )
         )
         return results
+
+    # Validate the runtime app config (~/.teleclaude/config.yml: adapters,
+    # summarizer, agents, etc.). Import-time validation raises on schema errors;
+    # we capture them as a result rather than letting them crash the validator.
+    app_config: Any | None = None
+    try:
+        import importlib
+
+        import teleclaude.config as _tc_config
+
+        importlib.reload(_tc_config)
+        app_config = _tc_config.config
+        results.append(ValidationResult(area="config.yml", passed=True))
+    except Exception as e:
+        results.append(
+            ValidationResult(
+                area="config.yml",
+                passed=False,
+                errors=[str(e)],
+                suggestions=["Check ~/.teleclaude/config.yml for schema errors"],
+            )
+        )
 
     # Validate each person config
     for person in config.people:
@@ -460,9 +533,10 @@ def validate_all() -> list[ValidationResult]:
                 )
             )
 
-    # Validate environment variables
+    # Validate environment variables — filtered by adapter enablement so
+    # disabled adapters (whatsapp, email when off) don't false-positive.
     env_status = check_env_vars()
-    missing = [s for s in env_status if not s.is_set]
+    missing = [s for s in env_status if not s.is_set and _is_env_var_required(s.info, app_config)]
     if missing:
         results.append(
             ValidationResult(

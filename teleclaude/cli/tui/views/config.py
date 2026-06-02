@@ -457,7 +457,7 @@ class ConfigContent(
             summarizer_obj = SummarizerTabConfig(
                 local_enabled=local.get("enabled", False),
                 # ${VAR}-backed: resolves to the env value and saves to .env.
-                local_base_url="${SUMMARIZER_LOCAL_BASE_URL}",
+                local_base_url="${SUMMARIZER_LLM_BASE_URL}",
                 local_model=local.get("model", ""),
                 provider_priority=provider_order,
                 openai_model=_model("openai"),

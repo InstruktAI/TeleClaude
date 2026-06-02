@@ -138,7 +138,8 @@ environment_variables:
   - ANTHROPIC_API_KEY
   - OPENAI_API_KEY
   - GOOGLE_API_KEY
-  - SUMMARIZER_LOCAL_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
+  - SUMMARIZER_LLM_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
+  - SUMMARIZER_LLM_MODEL # model id loaded in the local server
   # Voice / TTS — wizard-managed via _ADAPTER_ENV_VARS["voice"]
   - ELEVENLABS_API_KEY
   # Redis transport — essential infrastructure. Editable in the Infra subtab (Redis section)
@@ -223,8 +224,8 @@ event_reliability:
 summarizer:
   local: # OpenAI-compatible local provider (e.g. LM Studio); tried first when enabled
     enabled: boolean
-    base_url: string # ${SUMMARIZER_LOCAL_BASE_URL}
-    model: string
+    base_url: string # ${SUMMARIZER_LLM_BASE_URL}
+    model: string # ${SUMMARIZER_LLM_MODEL}
   provider_priority: list[string] # cloud fallback order: openai|anthropic|google
   openai: { model: string } # dateless alias, e.g. gpt-5-nano
   anthropic: { model: string } # e.g. claude-haiku-4-5

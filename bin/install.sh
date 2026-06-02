@@ -729,6 +729,16 @@ run_macos_permissions_probe() {
     run_macos_setup_action "permissions-probe" || true
 }
 
+validate_config() {
+    print_header "Validating config.yml"
+    if "$INSTALL_DIR/bin/telec" config validate; then
+        print_success "config.yml is valid"
+    else
+        print_error "config.yml validation failed — fix the errors above and re-run install"
+        exit 1
+    fi
+}
+
 configure_agent_cli() {
     print_header "Configuring Agent CLI"
     print_info "Running bin/init/configure_agent_cli.py..."
@@ -778,6 +788,7 @@ main() {
     install_system_deps
     install_python_deps
     setup_agents_interactive
+    validate_config
     provision_logs
     install_global_cli
     ensure_teleclaude_yaml
