@@ -25,11 +25,26 @@ redis:
   # output_stream_maxlen: 10000
   # output_stream_ttl: 3600
 
-# Telegram admin adapter for mobile interaction with the platform.
-telegram:
-  enabled: false
-  # Bot token.
-  bot_token: ${TELEGRAM_BOT_TOKEN}
+# Agent summary & session-title generation. Providers are tried in order: the local
+# (OpenAI-compatible, e.g. LM Studio) provider first when enabled, then the
+# cloud providers in `provider_priority` — each skipped silently when its API
+# key is absent.
+summarizer:
+  local:
+    enabled: false
+    base_url: ${SUMMARIZER_LLM_BASE_URL} # OpenAI-compatible endpoint, e.g. http://localhost:1234/v1
+    model: ${SUMMARIZER_LLM_MODEL} # the model id loaded in your local server (e.g. an instruct model)
+  provider_priority:
+    - local
+    - openai
+    - anthropic
+    - google
+  openai:
+    model: gpt-5-nano
+  anthropic:
+    model: claude-haiku-4-5
+  google:
+    model: gemini-2.5-flash
 
 # Admin adapter that houses the administration of ALL computer and their projects,
 # So highly recommended to enable it for mobile interaction with the platform.
@@ -46,8 +61,14 @@ discord:
   # creates its own per-computer "Projects - {name}" category and forums.
   # Provisioned IDs are persisted here. Do not edit manually.
 
+# Telegram adapter for public helpdesk and member alerting
+telegram:
+  enabled: false
+  # Bot token.
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+
+# WhatsApp adapter for public helpdesk and member alerting
 whatsapp:
-  # Customer/public facing Whatsapp business channel configuration. Disable if no need for public Whatsapp helpdesk/member-pa, or if this is not the master computer.
   enabled: false
   phone_number_id: ${WHATSAPP_PHONE_NUMBER_ID}
   access_token: ${WHATSAPP_ACCESS_TOKEN}
@@ -65,13 +86,13 @@ email:
 agents:
   default: claude
   claude:
-    enabled: true
-  gemini:
-    enabled: true
+    enabled: # true
   codex:
-    enabled: true
+    enabled: # true
+  gemini:
+    enabled: # true
 
-# Speech-to-Text Configuration
+# Speech-to-Text Configuration. Used by adapter voice input handlers.
 stt:
   enabled: true
   service_priority:
@@ -84,8 +105,9 @@ stt:
       # Example local path:
       # ${HOME}/.cache/lm-studio/models/mlx-community/parakeet-tdt-0.6b-v3
       model: mlx-community/parakeet-tdt-0.6b-v3
+    # OpenAI Whisper API as fallback when no local model is available. Requires OPENAI_API_KEY in env.
     openai:
-      enabled: true
+      enabled: false
 
 # Text-to-Speech Configuration
 tts:
@@ -251,23 +273,3 @@ tts:
     pyttsx3:
       enabled: true
       voices: []
-
-# Summary & session-title generation. Providers are tried in order: the local
-# (OpenAI-compatible, e.g. LM Studio) provider first when enabled, then the
-# cloud providers in `provider_priority` — each skipped silently when its API
-# key is absent. Model ids use dateless aliases so they track the latest.
-summarizer:
-  local:
-    enabled: false
-    base_url: ${SUMMARIZER_LOCAL_BASE_URL} # OpenAI-compatible endpoint, e.g. http://localhost:1234/v1
-    model: '' # the model id loaded in your local server (e.g. an instruct model)
-  provider_priority:
-    - openai
-    - anthropic
-    - google
-  openai:
-    model: gpt-5-nano
-  anthropic:
-    model: claude-haiku-4-5
-  google:
-    model: gemini-2.5-flash

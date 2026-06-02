@@ -121,40 +121,42 @@ ensure_config_yml() {
     fi
 }
 
+_yaml_python() {
+    if [ -x "$INSTALL_DIR/.venv/bin/python" ]; then
+        echo "$INSTALL_DIR/.venv/bin/python"
+    else
+        echo "$PYTHON_CMD"
+    fi
+}
+
 get_current_agent_enabled() {
     local agent="$1"
-    local default_val="$2"
-    if [ -f "$TC_CONFIG" ]; then
-        "$PYTHON_CMD" -c "
-try:
-    lines = open('$TC_CONFIG').read().splitlines()
-    in_agents = False
-    in_agent = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith('agents:'):
-            in_agents = True
-            continue
-        if in_agents:
-            if line and not line.startswith(' ') and not line.startswith('\t'):
-                in_agents = False
-                continue
-            if stripped.startswith('$agent:'):
-                in_agent = True
-                continue
-            if in_agent:
-                if stripped.startswith('enabled:'):
-                    print('y' if 'true' in stripped.lower() else 'n')
-                    import sys; sys.exit(0)
-                elif stripped.endswith(':') and not stripped.startswith('enabled:'):
-                    in_agent = False
-except Exception:
-    pass
-print('$default_val')
-" 2>/dev/null || echo "$default_val"
-    else
-        echo "$default_val"
+    if [ ! -f "$TC_CONFIG" ]; then
+        echo "unset"
+        return
     fi
+    "$(_yaml_python)" -c "
+import sys
+try:
+    import yaml
+except ImportError:
+    print('unset'); sys.exit(0)
+try:
+    with open('$TC_CONFIG') as f:
+        data = yaml.safe_load(f) or {}
+    agent_cfg = (data.get('agents') or {}).get('$agent')
+    if not isinstance(agent_cfg, dict):
+        print('unset'); sys.exit(0)
+    if 'enabled' not in agent_cfg:
+        print('unset'); sys.exit(0)
+    val = agent_cfg.get('enabled')
+    if isinstance(val, bool):
+        print('true' if val else 'false')
+    else:
+        print('unset')
+except Exception:
+    print('unset')
+" 2>/dev/null || echo "unset"
 }
 
 get_current_default_agent() {
@@ -185,48 +187,66 @@ print('$default_val')
     fi
 }
 
+_resolve_agent_enabled() {
+    # Resolve agent on/off: honor explicit true/false in config; only prompt when unset.
+    # Args: <agent-key> <prompt-text>
+    # Echoes "true" or "false" on stdout — status messages go to stderr so callers
+    # using $(...) capture only the data value.
+    local agent="$1"
+    local prompt_text="$2"
+    local current
+    current=$(get_current_agent_enabled "$agent")
+    case "$current" in
+        true|false)
+            print_info "$agent already configured (enabled=$current); not asking again" >&2
+            echo "$current"
+            return
+            ;;
+    esac
+    if confirm "$prompt_text" "y" >&2; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
 setup_agents_interactive() {
     print_header "Interactive Agent Configuration"
 
     ensure_config_yml
 
-    # Extract current values as defaults
-    local default_claude=$(get_current_agent_enabled "claude" "y")
-    local default_agy=$(get_current_agent_enabled "gemini" "y")
-    local default_codex=$(get_current_agent_enabled "codex" "y")
     local current_default_agent=$(get_current_default_agent "claude")
     if [ "$current_default_agent" = "agy" ]; then
         current_default_agent="gemini"
     fi
 
-    local claude_enabled=false
-    local agy_enabled=false
-    local codex_enabled=false
+    local claude_enabled
+    local agy_enabled
+    local codex_enabled
+    claude_enabled=$(_resolve_agent_enabled "claude" "Do you want to use Anthropic Claude Code?")
+    agy_enabled=$(_resolve_agent_enabled "gemini" "Do you want to use Google Gemini/Antigravity?")
+    codex_enabled=$(_resolve_agent_enabled "codex" "Do you want to use OpenAI Codex?")
 
-    if confirm "Do you want to use Anthropic Claude Code?" "$default_claude"; then
-        claude_enabled=true
+    if [ "$claude_enabled" = true ]; then
         install_claude_code
     fi
 
-    if confirm "Do you want to use Google Gemini/Antigravity?" "$default_agy"; then
-        agy_enabled=true
-        print_info "Installing Google Gemini/Antigravity (agy)..."
-        # Download and install agy safely without pipefail issues under set -e
-        local install_ok=0
-        curl -fsSL https://antigravity.google/install.sh > /tmp/agy_install.sh 2>> "$LOG_FILE" || install_ok=1
-        if [ $install_ok -eq 0 ]; then
-            bash /tmp/agy_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
-        fi
-
-        if [ $install_ok -eq 0 ]; then
-            print_success "Antigravity CLI (agy) installed"
+    if [ "$agy_enabled" = true ]; then
+        if command -v agy &> /dev/null; then
+            print_info "Antigravity CLI (agy) already installed"
         else
-            print_warning "Failed to run agy installation script automatically. Make sure 'agy' is installed and in your PATH."
+            print_info "Installing Google Gemini/Antigravity (agy)..."
+            local install_ok=0
+            curl -fsSL https://antigravity.google/install.sh > /tmp/agy_install.sh 2>> "$LOG_FILE" || install_ok=1
+            if [ $install_ok -eq 0 ]; then
+                bash /tmp/agy_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
+            fi
+            if [ $install_ok -eq 0 ]; then
+                print_success "Antigravity CLI (agy) installed"
+            else
+                print_warning "Failed to run agy installation script automatically. Make sure 'agy' is installed and in your PATH."
+            fi
         fi
-    fi
-
-    if confirm "Do you want to use OpenAI Codex?" "$default_codex"; then
-        codex_enabled=true
     fi
 
     # Determine default agent
@@ -251,7 +271,11 @@ setup_agents_interactive() {
             default_selection="${enabled_list[0]}"
         fi
 
-        if [ "$NON_INTERACTIVE" = true ]; then
+        # If the saved default is valid in the current enabled set, keep it — don't re-ask.
+        if [[ " ${enabled_list[*]} " =~ " ${current_default_agent} " ]]; then
+            default_agent="$current_default_agent"
+            print_info "Default agent already configured ($default_agent); not asking again"
+        elif [ "$NON_INTERACTIVE" = true ]; then
             default_agent="$default_selection"
         else
             while true; do
@@ -336,7 +360,8 @@ confirm() {
     local default="${2:-n}"
 
     if [ "$NON_INTERACTIVE" = true ]; then
-        return 0 # Always assume yes in non-interactive mode
+        [[ "$default" =~ ^[Yy]$ ]]
+        return
     fi
 
     local response
@@ -449,7 +474,7 @@ install_system_deps() {
     # tmux
     if command -v tmux &> /dev/null; then
         TMUX_VERSION=$(tmux -V | awk '{print $2}')
-        print_success "tmux $TMUX_VERSION already installed"
+        print_info "tmux $TMUX_VERSION already installed"
     else
         print_info "Installing tmux..."
         install_package tmux
@@ -457,7 +482,7 @@ install_system_deps() {
 
     # jq (for JSON manipulation)
     if command -v jq &> /dev/null; then
-        print_success "jq already installed"
+        print_info "jq already installed"
     else
         print_info "Installing jq..."
         install_package jq
@@ -465,7 +490,7 @@ install_system_deps() {
 
     # ripgrep (fast file search, used by format.sh for CLAUDE.md cleanup)
     if command -v rg &> /dev/null; then
-        print_success "ripgrep already installed"
+        print_info "ripgrep already installed"
     else
         print_info "Installing ripgrep..."
         install_package ripgrep
@@ -474,7 +499,7 @@ install_system_deps() {
     if [ "$CI_MODE" = false ]; then
         # ffmpeg (for voice transcription)
         if command -v ffmpeg &> /dev/null; then
-            print_success "ffmpeg already installed"
+            print_info "ffmpeg already installed"
         else
             print_info "Installing ffmpeg..."
             install_package ffmpeg
@@ -482,7 +507,7 @@ install_system_deps() {
 
         # socat (for MCP socket bridge)
         if command -v socat &> /dev/null; then
-            print_success "socat already installed"
+            print_info "socat already installed"
         else
             print_info "Installing socat..."
             install_package socat
@@ -496,10 +521,10 @@ install_system_deps() {
         [ -f "$INSTALL_DIR/.env" ] && redis_url_value="$(grep -E '^REDIS_URL=.+' "$INSTALL_DIR/.env" | head -1)"
         redis_url_value="${redis_url_value#REDIS_URL=}"
         if redis_url_skips_local_install "$redis_url_value"; then
-            print_success "Remote Redis already configured (REDIS_URL host=$(redis_url_host "$redis_url_value")) — skipping local Redis install"
+            print_info "Remote Redis already configured (REDIS_URL host=$(redis_url_host "$redis_url_value")) — skipping local Redis install"
         elif confirm "Do you want to install and start a local Redis server?" "y"; then
             if command -v redis-server &> /dev/null; then
-                print_success "Redis already installed"
+                print_info "Redis already installed"
             else
                 print_info "Installing Redis..."
                 install_package redis
@@ -513,54 +538,49 @@ install_system_deps() {
             fi
             print_success "Redis service management delegated to OS"
         fi
-        # glow (for pretty markdown rendering in TUI)
-        install_glow
+
+        # macOS-only optional GUI casks (LM Studio: local summarizer; Handy: STT)
+        install_macos_casks
     fi
 }
 
-# Install glow (markdown renderer)
-install_glow() {
-    if command -v glow &> /dev/null; then
-        print_success "glow already installed"
+# Install optional macOS GUI apps via brew cask. Skips silently if not on macOS,
+# if Homebrew is missing, or if the cask is already installed.
+install_macos_casks() {
+    if [ "$OS" != "macos" ]; then
+        return 0
+    fi
+    if ! command -v brew &> /dev/null; then
+        print_warning "Homebrew not found; skipping macOS cask prompts"
         return 0
     fi
 
-    print_info "Installing glow (markdown renderer)..."
+    _maybe_install_cask "lm-studio" "Install LM Studio (local LLM server for summarizer)?"
+    _maybe_install_cask "handy" "Install Handy (macOS speech-to-text app)?"
+}
 
-    case "$DISTRO" in
-        macos)
-            if command -v brew &> /dev/null; then
-                brew install glow >> "$LOG_FILE" 2>&1
-                print_success "glow installed via brew"
-            else
-                print_warning "Homebrew not found, skipping glow"
-            fi
-            ;;
-        ubuntu|debian)
-            # glow is not in default apt repos, use snap if available
-            if command -v snap &> /dev/null; then
-                sudo snap install glow >> "$LOG_FILE" 2>&1
-                print_success "glow installed via snap"
-            else
-                print_warning "snap not found, skipping glow (install manually: sudo snap install glow)"
-            fi
-            ;;
-        arch|manjaro)
-            # Available in community repo
-            sudo pacman -S --noconfirm glow >> "$LOG_FILE" 2>&1
-            print_success "glow installed via pacman"
-            ;;
-        *)
-            print_warning "Skipping glow on $DISTRO (install manually from https://github.com/charmbracelet/glow)"
-            ;;
-    esac
+_maybe_install_cask() {
+    local cask="$1"
+    local prompt_text="$2"
+    if brew list --cask "$cask" &> /dev/null; then
+        print_info "$cask cask already installed"
+        return 0
+    fi
+    if confirm "$prompt_text" "y"; then
+        print_info "Installing $cask via brew cask..."
+        if brew install --cask "$cask" >> "$LOG_FILE" 2>&1; then
+            print_success "$cask installed"
+        else
+            print_warning "Failed to install $cask cask (see $LOG_FILE)"
+        fi
+    fi
 }
 
 # Install Claude Code
 install_claude_code() {
     if command -v claude &> /dev/null; then
         CLAUDE_VERSION=$(claude --version 2>&1 || echo "unknown")
-        print_success "Claude Code already installed ($CLAUDE_VERSION)"
+        print_info "Claude Code already installed ($CLAUDE_VERSION)"
         return 0
     fi
 
@@ -576,7 +596,7 @@ install_claude_code() {
 # Install uv if needed
 install_uv() {
     if command -v uv >/dev/null 2>&1; then
-        print_success "uv already installed"
+        print_info "uv already installed"
         return 0
     fi
 

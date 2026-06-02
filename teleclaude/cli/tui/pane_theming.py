@@ -149,7 +149,7 @@ class PaneThemingMixin:
         self._set_tui_pane_background()
 
     def _set_doc_pane_background(self, pane_id: str, *, agent: str = "") -> None:
-        """Apply styling for doc preview panes (glow/less).
+        """Apply styling for doc preview panes (less).
 
         Follows the 5-state paradigm:
         - Levels 0, 1: unstyled (NO_COLOR handled via command prefix)

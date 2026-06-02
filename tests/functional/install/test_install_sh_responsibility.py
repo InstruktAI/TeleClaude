@@ -114,7 +114,7 @@ fi
         "rg",
         "ffmpeg",
         "socat",
-        "glow",
+        "redis-server",
         "claude",
         "brew",
         "apt-get",
