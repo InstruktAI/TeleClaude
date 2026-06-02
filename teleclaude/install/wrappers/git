@@ -26,8 +26,9 @@
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Commit-producing subcmds (commit, cherry-pick, rebase, merge) are gated:
-#   commit (any branch)              → use 'telec code commit'. No env-var
-#                                      bypass exists on the commit branch.
+#   commit (any branch)              → use 'telec code commit'. Trusted external
+#                                      tools may bypass with TELECLAUDE_TRUSTED_TOOL=1
+#                                      (logged as event=bypass reason=trusted_tool).
 #   cherry-pick/rebase/merge on main → integrator role bypass, otherwise
 #                                       set TELECLAUDE_OVERRIDE_APPROVED=1
 #   cherry-pick/rebase/merge on other branches → pass through
@@ -583,9 +584,14 @@ MSG
 fi
 
 if [ "$_subcmd" = "commit" ]; then
+    if [ "${TELECLAUDE_TRUSTED_TOOL:-}" = "1" ]; then
+        { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper event=bypass reason=trusted_tool subcmd=$_subcmd role=$_role cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+        _real_git "$@"
+        exit $?
+    fi
     _log_block commit_redirect
     cat >&2 <<'MSG'
-ERROR: Use 'telec code commit' instead of 'git commit'. There is no bypass.
+ERROR: Use 'telec code commit' instead of 'git commit'.
 
 telec code commit owns staging, scoping, the pathspec commit, and the
 mandated trailer.
