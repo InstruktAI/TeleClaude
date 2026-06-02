@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -9,6 +10,12 @@ import pytest
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.cache import CachedItem, DaemonCache
+from teleclaude.transport.cluster_publisher import ClusterPublisher
+
+# Protocol identifiers (named-constant form per snapshot-testing policy).
+SESSION_CREATED_CHANNEL = "cluster.session.created"
+SESSION_UPDATED_CHANNEL = "cluster.session.updated"
+SESSION_CLOSED_CHANNEL = "cluster.session.closed"
 
 
 class TestCachedItem:
@@ -177,3 +184,114 @@ class TestDaemonCache:
         assert cache.apply_todos_snapshot("local", {"/p": [after]}) is True
         cached = cache.get_todos("local", "/p")
         assert cached[0].version_total == 2
+
+
+class _RecordingPublisher(ClusterPublisher):
+    """Stub publisher that records publish calls instead of touching Redis."""
+
+    def __init__(self) -> None:
+        async def _no_redis() -> object:
+            raise AssertionError("redis_provider should not be invoked in unit tests")
+
+        super().__init__(origin="MozMini", redis_provider=_no_redis)
+        self.calls: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - test capture
+
+    async def publish(
+        self,
+        channel: str,
+        payload: dict[str, object],  # guard: loose-dict - matches base signature
+    ) -> bool:
+        self.calls.append((channel, payload))
+        return True
+
+
+def _make_session(session_id: str = "sess-001", computer: str = "MozMini") -> MagicMock:
+    session = MagicMock()
+    session.session_id = session_id
+    session.computer = computer
+    session.title = "test"
+    session.to_dict.return_value = {"session_id": session_id, "computer": computer, "title": "test"}
+    return session
+
+
+class TestClusterPublish:
+    @pytest.mark.unit
+    async def test_update_session_without_publisher_is_silent(self) -> None:
+        cache = DaemonCache()
+        session = _make_session()
+
+        # Must not raise even with no publisher attached.
+        cache.update_session(session)
+
+        assert cache.get_sessions() == [session]
+
+    @pytest.mark.unit
+    async def test_update_session_publishes_created_channel_for_new_session(self) -> None:
+        cache = DaemonCache()
+        publisher = _RecordingPublisher()
+        cache.attach_cluster_publisher(publisher)
+        session = _make_session()
+
+        cache.update_session(session)
+        await asyncio.sleep(0)  # let the create_task drain
+
+        assert len(publisher.calls) == 1
+        channel, payload = publisher.calls[0]
+        assert channel == SESSION_CREATED_CHANNEL
+        assert payload["session_id"] == session.session_id
+
+    @pytest.mark.unit
+    async def test_update_session_publishes_updated_channel_for_existing_session(self) -> None:
+        cache = DaemonCache()
+        publisher = _RecordingPublisher()
+        cache.attach_cluster_publisher(publisher)
+        session = _make_session()
+
+        cache.update_session(session)
+        cache.update_session(session)
+        await asyncio.sleep(0)
+
+        assert publisher.calls[0][0] == SESSION_CREATED_CHANNEL
+        assert publisher.calls[1][0] == SESSION_UPDATED_CHANNEL
+
+    @pytest.mark.unit
+    async def test_update_session_from_cluster_does_not_republish(self) -> None:
+        """Round-trip back-leg must not re-emit, or events loop indefinitely."""
+        cache = DaemonCache()
+        publisher = _RecordingPublisher()
+        cache.attach_cluster_publisher(publisher)
+        session = _make_session()
+
+        cache.update_session(session, from_cluster=True)
+        await asyncio.sleep(0)
+
+        assert publisher.calls == []
+
+    @pytest.mark.unit
+    async def test_remove_session_publishes_closed_channel(self) -> None:
+        cache = DaemonCache()
+        publisher = _RecordingPublisher()
+        cache.attach_cluster_publisher(publisher)
+        session = _make_session()
+        cache.update_session(session, from_cluster=True)  # seed without publish
+
+        cache.remove_session(session.session_id)
+        await asyncio.sleep(0)
+
+        assert len(publisher.calls) == 1
+        channel, payload = publisher.calls[0]
+        assert channel == SESSION_CLOSED_CHANNEL
+        assert payload == {"session_id": session.session_id}
+
+    @pytest.mark.unit
+    async def test_remove_session_from_cluster_does_not_republish(self) -> None:
+        cache = DaemonCache()
+        publisher = _RecordingPublisher()
+        cache.attach_cluster_publisher(publisher)
+        session = _make_session()
+        cache.update_session(session, from_cluster=True)
+
+        cache.remove_session(session.session_id, from_cluster=True)
+        await asyncio.sleep(0)
+
+        assert publisher.calls == []

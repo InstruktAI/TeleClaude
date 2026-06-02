@@ -18,6 +18,7 @@ from teleclaude.config import config
 from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent
 from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
+from teleclaude.transport.cluster_publisher import ClusterPublisher
 
 logger = get_logger(__name__)
 
@@ -147,6 +148,37 @@ class DaemonCache:
         # Structure: {data_type: {computer1, computer2, ...}}
         # Examples: {"sessions": {"raspi", "macbook"}, "projects": {"raspi"}}
         self._interest: dict[str, set[str]] = {}
+
+        # Cluster publisher (cross-computer events). Attached after RedisTransport
+        # is wired; None during single-computer and test contexts.
+        self._cluster_publisher: ClusterPublisher | None = None
+
+    def attach_cluster_publisher(self, publisher: ClusterPublisher) -> None:
+        """Wire the cross-computer publisher into the cache.
+
+        Called from the daemon once the Redis transport is available. After
+        attachment, mutating writers fire-and-forget ``cluster.*`` events so
+        peers can materialize the same state into their local caches.
+        """
+        self._cluster_publisher = publisher
+        logger.info("Cluster publisher attached to DaemonCache")
+
+    def _publish_cluster(self, channel: str, payload: dict[str, object]) -> None:  # guard: loose-dict - event payload
+        """Schedule a fire-and-forget publish to a ``cluster.*`` channel.
+
+        No-op when no publisher is attached. Safe to call from sync writers
+        as long as an event loop is running (the daemon case); if no loop is
+        running (some tests), the publish is silently dropped — matching the
+        adapter-boundaries policy of never blocking the cache on transport.
+        """
+        publisher = self._cluster_publisher
+        if publisher is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(publisher.publish(channel, payload))
 
     def _signal_stale_read(self, resource_type: str, computer: str) -> None:
         """Signal a stale read to the callback, suppressing any exceptions.
@@ -397,11 +429,16 @@ class DaemonCache:
     def update_session(
         self,
         session: SessionSnapshot,
+        *,
+        from_cluster: bool = False,
     ) -> None:
         """Update session info in cache.
 
         Args:
             session: Session snapshot object
+            from_cluster: Internal flag — set by the cluster bridge when
+                materializing a remote event. Suppresses the re-publish that
+                would otherwise loop the event back through Redis.
         """
         session_id = session.session_id
         is_new = session_id not in self._sessions
@@ -417,17 +454,24 @@ class DaemonCache:
         # Activity events (user input, tool use, agent output) flow through AgentActivityEvent.
         event = CacheEvent.SESSION_STARTED.value if is_new else CacheEvent.SESSION_UPDATED.value
         self._notify(event, session)
+        if not from_cluster:
+            channel = "cluster.session.created" if is_new else "cluster.session.updated"
+            self._publish_cluster(channel, session.to_dict())
 
-    def remove_session(self, session_id: str) -> None:
+    def remove_session(self, session_id: str, *, from_cluster: bool = False) -> None:
         """Remove session from cache.
 
         Args:
             session_id: Session ID to remove
+            from_cluster: Internal flag set by the cluster bridge to suppress
+                re-publish (see :meth:`update_session`).
         """
         if session_id in self._sessions:
             self._sessions.pop(session_id)
             logger.debug("Removed session from cache: %s", session_id)
             self._notify("session_closed", {"session_id": session_id})
+            if not from_cluster:
+                self._publish_cluster("cluster.session.closed", {"session_id": session_id})
 
     def set_projects(self, computer: str, projects: list[ProjectInfo]) -> None:
         """Set projects for a computer.

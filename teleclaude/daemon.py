@@ -116,7 +116,7 @@ from teleclaude.core.lifecycle import DaemonLifecycle
 _record_import_timing("teleclaude.core.lifecycle", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.models import Session
+from teleclaude.core.models import Session, SessionSnapshot
 
 _record_import_timing("teleclaude.core.models", _t)
 
@@ -195,6 +195,7 @@ _record_import_timing("teleclaude.tts.manager", _t)
 
 _t = time.perf_counter()
 from teleclaude.transport.cluster_bridge import ClusterBridge, ClusterEnvelope
+from teleclaude.transport.cluster_publisher import ClusterPublisher
 from teleclaude.transport.identity_bridge import IdentityBridge, IdentityEnvelope
 from teleclaude.transport.workflow_bridge import WorkflowBridge, WorkflowEnvelope
 
@@ -1125,22 +1126,61 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._cluster_bridge = bridge
         self._cluster_bridge_task = asyncio.create_task(bridge.run(), name="cluster-bridge")
         self._cluster_bridge_task.add_done_callback(self._log_background_task_exception("cluster_bridge"))
+
+        async def _redis_provider() -> Any:
+            return await redis_adapter.get_redis()
+
+        publisher = ClusterPublisher(origin=config.computer.name, redis_provider=_redis_provider)
+        self.cache.attach_cluster_publisher(publisher)
         logger.info("Cluster Redis bridge attached to shared RedisTransport")
 
     def _dispatch_cluster_event(self, envelope: ClusterEnvelope) -> None:
-        """Log a decoded cluster envelope.
+        """Materialize a cross-computer event into the local cache.
 
-        The skeleton dispatch is observational. The next commit replaces this
-        with per-category cache writers that materialize cross-computer state
-        into the local ``DaemonCache``.
+        Every daemon also receives its own ``cluster.*`` events back via Redis
+        pub/sub. Self-published events are short-circuited: the local cache
+        was already updated by the originating writer, and the WebSocket
+        fanout fired then — re-applying here would just double-emit.
+
+        Remote-origin events are written via cache writers with
+        ``from_cluster=True`` so the dispatch path mutates state without
+        re-publishing, closing the round-trip loop on peers.
         """
-        logger.info(
-            "Cluster event observed",
-            channel=envelope.channel,
-            idempotency_key=envelope.idempotency_key,
-            origin=envelope.origin,
-            category=envelope.category,
-        )
+        if envelope.origin == config.computer.name:
+            return
+
+        category = envelope.category
+        if category == "session":
+            self._apply_session_envelope(envelope)
+            return
+        if category is not None:
+            # Project / todo / computer categories land in subsequent commits.
+            logger.debug(
+                "Cluster event ignored (category not yet wired)",
+                channel=envelope.channel,
+                category=category,
+                origin=envelope.origin,
+            )
+
+    def _apply_session_envelope(self, envelope: ClusterEnvelope) -> None:
+        """Translate a ``cluster.session.*`` envelope into a cache mutation."""
+        if envelope.channel == "cluster.session.closed":
+            session_id_raw = envelope.payload.get("session_id")
+            if isinstance(session_id_raw, str) and session_id_raw:
+                self.cache.remove_session(session_id_raw, from_cluster=True)
+            return
+
+        try:
+            snapshot = SessionSnapshot.from_dict(envelope.payload)
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Discarding malformed session envelope",
+                channel=envelope.channel,
+                origin=envelope.origin,
+                error=str(exc),
+            )
+            return
+        self.cache.update_session(snapshot, from_cluster=True)
 
 
 def _install_event_wait_tracer() -> None:
