@@ -199,23 +199,44 @@ def test_redis_password_is_optional() -> None:
     assert _is_env_var_required(_info("REDIS_PASSWORD", "redis"), None) is False
 
 
-# app_config absent: every non-redis group falls back to "not required"
+# app_config absent: every non-redis group falls through the early return
 
 
-def test_non_redis_groups_are_optional_when_app_config_missing() -> None:
-    for group in ("telegram", "discord", "whatsapp", "email", "voice", "ai", "backup", "system"):
-        assert _is_env_var_required(_info("X", group), None) is False
+def test_non_redis_group_is_optional_when_app_config_missing() -> None:
+    assert _is_env_var_required(_info("TELEGRAM_BOT_TOKEN", "telegram"), None) is False
 
 
-# telegram / discord / whatsapp / email: gated by config.<adapter>.enabled
+# telegram / discord / whatsapp / email: each is its own SUT branch
 
 
-@pytest.mark.parametrize("group,attr", [("telegram", "telegram"), ("discord", "discord"), ("whatsapp", "whatsapp")])
-def test_simple_adapter_required_when_enabled(group: str, attr: str) -> None:
-    enabled_cfg = _config(**{attr: SimpleNamespace(enabled=True)})
-    disabled_cfg = _config(**{attr: SimpleNamespace(enabled=False)})
-    assert _is_env_var_required(_info("X", group), enabled_cfg) is True
-    assert _is_env_var_required(_info("X", group), disabled_cfg) is False
+def test_telegram_required_when_enabled() -> None:
+    cfg = _config(telegram=SimpleNamespace(enabled=True))
+    assert _is_env_var_required(_info("TELEGRAM_BOT_TOKEN", "telegram"), cfg) is True
+
+
+def test_telegram_optional_when_disabled() -> None:
+    cfg = _config(telegram=SimpleNamespace(enabled=False))
+    assert _is_env_var_required(_info("TELEGRAM_BOT_TOKEN", "telegram"), cfg) is False
+
+
+def test_discord_required_when_enabled() -> None:
+    cfg = _config(discord=SimpleNamespace(enabled=True))
+    assert _is_env_var_required(_info("DISCORD_BOT_TOKEN", "discord"), cfg) is True
+
+
+def test_discord_optional_when_disabled() -> None:
+    cfg = _config(discord=SimpleNamespace(enabled=False))
+    assert _is_env_var_required(_info("DISCORD_BOT_TOKEN", "discord"), cfg) is False
+
+
+def test_whatsapp_required_when_enabled() -> None:
+    cfg = _config(whatsapp=SimpleNamespace(enabled=True))
+    assert _is_env_var_required(_info("WHATSAPP_PHONE_NUMBER_ID", "whatsapp"), cfg) is True
+
+
+def test_whatsapp_optional_when_disabled() -> None:
+    cfg = _config(whatsapp=SimpleNamespace(enabled=False))
+    assert _is_env_var_required(_info("WHATSAPP_PHONE_NUMBER_ID", "whatsapp"), cfg) is False
 
 
 def test_email_required_when_enabled() -> None:
@@ -276,16 +297,14 @@ def test_summarizer_local_vars_optional_when_local_disabled() -> None:
     assert _is_env_var_required(_info("SUMMARIZER_LLM_BASE_URL", "ai"), cfg) is False
 
 
-def test_summarizer_cloud_keys_always_optional() -> None:
-    cfg_local_on = _config(summarizer=SimpleNamespace(local=SimpleNamespace(enabled=True)))
-    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"):
-        assert _is_env_var_required(_info(key, "ai"), cfg_local_on) is False
+def test_summarizer_cloud_key_is_optional() -> None:
+    cfg = _config(summarizer=SimpleNamespace(local=SimpleNamespace(enabled=True)))
+    assert _is_env_var_required(_info("ANTHROPIC_API_KEY", "ai"), cfg) is False
 
 
-# backup / firecrawl / system: no enable flag → always opt-in
+# Groups with no enable flag (backup / firecrawl / system) fall through the
+# function's final `return False` — one representative test covers the path.
 
 
-def test_unflagged_groups_are_always_optional() -> None:
-    cfg = _config()
-    for group in ("backup", "firecrawl", "system"):
-        assert _is_env_var_required(_info("X", group), cfg) is False
+def test_unflagged_group_is_optional() -> None:
+    assert _is_env_var_required(_info("AWS_ACCESS_KEY_ID", "backup"), _config()) is False
