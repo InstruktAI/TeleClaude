@@ -119,29 +119,43 @@ class ProvisioningMixin:
     async def _find_or_create_forum(
         self, guild: object, category: object | None, name: str, topic: str, *, create: bool = True
     ) -> int | None:
-        """Find an existing forum by name, or create one under the category.
+        """Find an existing forum by name within the category, or create one under it.
 
-        Refuses to create when the guild channel cache is not populated. When
-        ``create`` is False, resolves an existing forum by name but never
-        creates — shared forums are provisioned by the master computer only.
+        Scope is the set of forums in ``guild.channels`` whose ``category_id``
+        matches the target category — the same projection ``CategoryChannel.channels``
+        derives from. A same-name forum living in another category is invisible
+        here and will not be reclaimed. When ``create`` is False, resolves in
+        scope but never creates — shared forums are provisioned by the master
+        computer only.
         """
-        channels = getattr(guild, "channels", None)
-        if channels is None:
-            logger.warning("Guild channel cache not populated; refusing to create forum '%s'", name)
+        if category is None:
+            logger.warning("No category provided; refusing to find or create forum '%s'", name)
             return None
 
-        for ch in channels:
+        guild_channels = getattr(guild, "channels", None)
+        if guild_channels is None:
+            logger.warning("Guild channel cache not populated; refusing to find or create forum '%s'", name)
+            return None
+
+        category_id = self._parse_optional_int(getattr(category, "id", None))
+        target_name = name.lower()
+        for ch in guild_channels:
+            if not self._is_forum_channel(ch):
+                continue
+            ch_cat_id = self._parse_optional_int(getattr(ch, "category_id", None))
+            if ch_cat_id != category_id:
+                continue
             ch_name = getattr(ch, "name", None)
-            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and self._is_forum_channel(ch):
-                found_id = self._parse_optional_int(getattr(ch, "id", None))
-                if found_id is not None:
-                    logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
-                    return found_id
+            if not isinstance(ch_name, str) or ch_name.lower() != target_name:
+                continue
+            found_id = self._parse_optional_int(getattr(ch, "id", None))
+            if found_id is not None:
+                logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
+                return found_id
 
         if not create:
             return None
 
-        # Cache is populated and forum not found — safe to create.
         create_fn = getattr(guild, "create_forum", None)
         if not callable(create_fn):
             logger.warning("Guild has no create_forum method; cannot create '%s'", name)
@@ -149,10 +163,7 @@ class ProvisioningMixin:
 
         try:
             create_forum = self._require_async_callable(create_fn, label="guild.create_forum")
-            if category is not None:
-                forum = await create_forum(name=name, topic=topic, category=category)
-            else:
-                forum = await create_forum(name=name, topic=topic)
+            forum = await create_forum(name=name, topic=topic, category=category)
             forum_id = self._parse_optional_int(getattr(forum, "id", None))
             if forum_id is not None:
                 logger.info("Created Discord forum: %s (id=%s)", name, forum_id)
