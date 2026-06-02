@@ -729,6 +729,16 @@ run_macos_permissions_probe() {
     run_macos_setup_action "permissions-probe" || true
 }
 
+ensure_env_file() {
+    # Seed .env from .env.sample on fresh installs so REDIS_URL (and other
+    # defaults) are visible to validate_config and to subsequent runtime
+    # imports of teleclaude.config, which loads .env at module-import time.
+    if [ ! -f "$INSTALL_DIR/.env" ] && [ -f "$INSTALL_DIR/.env.sample" ]; then
+        cp "$INSTALL_DIR/.env.sample" "$INSTALL_DIR/.env"
+        print_success ".env seeded from .env.sample"
+    fi
+}
+
 validate_config() {
     print_header "Validating config.yml"
     if "$INSTALL_DIR/bin/telec" config validate; then
@@ -788,6 +798,7 @@ main() {
     install_system_deps
     install_python_deps
     setup_agents_interactive
+    ensure_env_file
     validate_config
     provision_logs
     install_global_cli
