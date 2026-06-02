@@ -295,3 +295,31 @@ class TestClusterPublish:
         await asyncio.sleep(0)
 
         assert publisher.calls == []
+
+    @pytest.mark.unit
+    def test_publish_cluster_without_running_loop_logs_warning_and_drops(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When a publisher is attached but no event loop is running, the publish is dropped — but loudly.
+
+        Production cache writers always run under asyncio; this branch should be unreachable.
+        If it ever fires (e.g. an unforeseen sync entry point), the warning surfaces the loss
+        so it isn't silent.
+        """
+        cache = DaemonCache()
+        publisher = _RecordingPublisher()
+        cache.attach_cluster_publisher(publisher)
+        session = _make_session()
+
+        # Note: this test is intentionally sync — no event loop is running.
+        with caplog.at_level("WARNING"):
+            cache.update_session(session)
+
+        # Local cache write still succeeded (publish loss must not block the cache contract).
+        assert cache.get_sessions() == [session]
+        # The publish was NOT silently dropped — a WARNING records the channel + origin.
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert warnings, "expected a WARNING when publishing without a running loop"
+        msg = warnings[-1].getMessage()
+        assert "Cluster publish dropped: no running event loop" in msg
+        assert publisher.calls == []
