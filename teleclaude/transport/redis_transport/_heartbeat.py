@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
+from teleclaude.core import command_handlers
+
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
@@ -55,12 +57,18 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
                 await self._handle_redis_error("Heartbeat failed", e)
 
     async def _send_heartbeat(self) -> None:
-        """Send minimal Redis key with TTL as heartbeat (presence ping + interest advertising)."""
+        """Publish full ComputerInfo + presence timestamp to the heartbeat key.
+
+        The heartbeat is the cluster-wide source of identity for this computer:
+        peers read it directly and never need a separate ``get_computer_info``
+        round-trip. ``last_seen`` + TTL still drive presence detection.
+        """
         logger.trace("Sent heartbeat for %s", self.computer_name)
         key = f"computer:{self.computer_name}:heartbeat"
 
-        # Payload with interest advertising
+        info_dict = (await command_handlers.get_computer_info()).to_dict()
         payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
+            **info_dict,
             "computer_name": self.computer_name,
             "last_seen": datetime.now(UTC).isoformat(),
         }

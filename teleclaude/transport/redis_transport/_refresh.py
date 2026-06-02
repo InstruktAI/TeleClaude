@@ -18,7 +18,16 @@ from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
 
-_REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError)
+_REFRESH_EXCEPTIONS = (
+    RedisError,
+    TimeoutError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    json.JSONDecodeError,
+)
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -234,6 +243,9 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
             try:
                 data_bytes: object = await redis_client.get(key)
+                # Heartbeat key TTL (60s) can expire between SCAN and GET — skip vanished keys.
+                if not data_bytes:
+                    continue
                 data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
                 info_obj: object = json.loads(data_str)
                 info = cast(JsonDict, info_obj)
@@ -249,6 +261,8 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                     host=cast("str | None", info.get("host")),
                     role=cast("str | None", info.get("role")),
                     system_stats=cast(SystemStats | None, info.get("system_stats")),
+                    tmux_binary=cast("str | None", info.get("tmux_binary")),
+                    bot_username=cast("str | None", info.get("bot_username")),
                 )
                 self.cache.update_computer(computer_info)
 

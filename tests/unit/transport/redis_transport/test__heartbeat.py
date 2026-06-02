@@ -93,3 +93,23 @@ class TestSendHeartbeat:
         _, _, payload_str = mock_redis.setex.call_args.args
         payload = json.loads(payload_str)
         assert payload["projects_digest"] == "abc123"
+
+    @pytest.mark.unit
+    async def test_payload_includes_identity_fields_from_get_computer_info(
+        self, transport: RedisTransport
+    ) -> None:
+        """Heartbeat must carry full ComputerInfo so peers can resolve user/host/role.
+
+        Previously peers had to round-trip via ``get_computer_info`` request/response;
+        this regression-guards against silent regression to the minimal payload.
+        """
+        mock_redis = AsyncMock()
+        transport._get_redis = AsyncMock(return_value=mock_redis)
+        transport._cache = None
+
+        await transport._send_heartbeat()
+
+        _, _, payload_str = mock_redis.setex.call_args.args
+        payload = json.loads(payload_str)
+        for key in ("user", "host", "role", "tmux_binary", "bot_username", "system_stats"):
+            assert key in payload, f"heartbeat payload is missing identity field {key!r}"
