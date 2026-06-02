@@ -318,3 +318,234 @@ async def test_pin_launcher_thread_logs_unexpected_failures(caplog: pytest.LogCa
     warning_records = [record for record in caplog.records if record.levelno == logging.WARNING]
     assert len(warning_records) == 1
     assert warning_records[0].args == (42, 99, pin_error)
+
+
+# Per-computer forum scoping: discord.CategoryChannel.channels derives from
+# guild.channels filtered by category_id, so tests model the same shape —
+# every forum in the guild carries the category_id it actually belongs to.
+
+MOZMINI_CAT_ID = 200
+MOZBOOK_CAT_ID = 300
+
+
+def _make_forum(*, id: int, name: str, category_id: int, position: int = 0) -> SimpleNamespace:
+    return SimpleNamespace(id=id, name=name, category_id=category_id, position=position, edit=AsyncMock())
+
+
+def _make_category(id: int) -> SimpleNamespace:
+    return SimpleNamespace(id=id)
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_forum_creates_new_when_same_name_lives_in_another_categorys() -> None:
+    adapter = DummyInfrastructure()
+    foreign_forum = _make_forum(id=10, name="TeleClaude", category_id=MOZBOOK_CAT_ID)
+    created_forum = SimpleNamespace(id=20)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    guild = SimpleNamespace(
+        channels=[foreign_forum],
+        create_forum=AsyncMock(return_value=created_forum),
+    )
+
+    forum_id = await adapter._find_or_create_forum(guild, mozmini_cat, "TeleClaude", "Sessions for TeleClaude")
+
+    assert forum_id == 20
+    guild.create_forum.assert_awaited_once_with(
+        name="TeleClaude", topic="Sessions for TeleClaude", category=mozmini_cat
+    )
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_forum_returns_existing_forum_in_target_category() -> None:
+    adapter = DummyInfrastructure()
+    own_forum = _make_forum(id=20, name="TeleClaude", category_id=MOZMINI_CAT_ID)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    guild = SimpleNamespace(channels=[own_forum], create_forum=AsyncMock())
+
+    forum_id = await adapter._find_or_create_forum(guild, mozmini_cat, "TeleClaude", "Sessions for TeleClaude")
+
+    assert forum_id == 20
+    guild.create_forum.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_forum_skips_creation_when_create_disabled_and_absent() -> None:
+    adapter = DummyInfrastructure()
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    guild = SimpleNamespace(channels=[], create_forum=AsyncMock())
+
+    forum_id = await adapter._find_or_create_forum(
+        guild, mozmini_cat, "Customer Sessions", "Customer support sessions", create=False
+    )
+
+    assert forum_id is None
+    guild.create_forum.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_forum_refuses_without_category() -> None:
+    adapter = DummyInfrastructure()
+    guild = SimpleNamespace(channels=[], create_forum=AsyncMock())
+
+    forum_id = await adapter._find_or_create_forum(guild, None, "TeleClaude", "Sessions for TeleClaude")
+
+    assert forum_id is None
+    guild.create_forum.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_validate_forum_in_category_accepts_forum_in_target_category() -> None:
+    adapter = DummyInfrastructure()
+    own_forum = _make_forum(id=20, name="TeleClaude", category_id=MOZMINI_CAT_ID)
+    adapter._get_channel = AsyncMock(return_value=own_forum)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+
+    assert await adapter._validate_forum_in_category(20, mozmini_cat) == 20
+
+
+@pytest.mark.asyncio
+async def test_validate_forum_in_category_rejects_forum_in_other_category() -> None:
+    adapter = DummyInfrastructure()
+    foreign_forum = _make_forum(id=10, name="TeleClaude", category_id=MOZBOOK_CAT_ID)
+    adapter._get_channel = AsyncMock(return_value=foreign_forum)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+
+    assert await adapter._validate_forum_in_category(10, mozmini_cat) is None
+
+
+@pytest.mark.asyncio
+async def test_validate_forum_in_category_rejects_missing_channel() -> None:
+    adapter = DummyInfrastructure()
+    adapter._get_channel = AsyncMock(return_value=None)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+
+    assert await adapter._validate_forum_in_category(999, mozmini_cat) is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_forums_keeps_stored_forum_in_own_category() -> None:
+    adapter = DummyInfrastructure()
+    own_forum = _make_forum(id=20, name="TeleClaude", category_id=MOZMINI_CAT_ID)
+    adapter._get_channel = AsyncMock(return_value=own_forum)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    trusted_dir = SimpleNamespace(name="TeleClaude", desc="App", path="/repo/app", discord_forum=20)
+    computer = SimpleNamespace(name="mozmini", get_all_trusted_dirs=lambda: [trusted_dir])
+    guild = SimpleNamespace(channels=[own_forum], create_forum=AsyncMock())
+    persist = MagicMock()
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config.computer", computer),
+        patch.object(adapter, "_persist_project_forum_ids", persist),
+    ):
+        await adapter._ensure_project_forums(guild, mozmini_cat)
+
+    assert trusted_dir.discord_forum == 20
+    guild.create_forum.assert_not_awaited()
+    persist.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_forums_recreates_stored_forum_in_foreign_category() -> None:
+    adapter = DummyInfrastructure()
+    foreign_forum = _make_forum(id=10, name="TeleClaude", category_id=MOZBOOK_CAT_ID)
+    created_forum = SimpleNamespace(id=42)
+    adapter._get_channel = AsyncMock(return_value=foreign_forum)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    trusted_dir = SimpleNamespace(name="TeleClaude", desc="App", path="/repo/app", discord_forum=10)
+    computer = SimpleNamespace(name="mozmini", get_all_trusted_dirs=lambda: [trusted_dir])
+    guild = SimpleNamespace(channels=[foreign_forum], create_forum=AsyncMock(return_value=created_forum))
+    persist = MagicMock()
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config.computer", computer),
+        patch.object(adapter, "_persist_project_forum_ids", persist),
+    ):
+        await adapter._ensure_project_forums(guild, mozmini_cat)
+
+    assert trusted_dir.discord_forum == 42
+    guild.create_forum.assert_awaited_once_with(name="TeleClaude", topic="App", category=mozmini_cat)
+    persist.assert_called_once_with([("TeleClaude", 42)])
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_forums_creates_when_stored_id_missing() -> None:
+    adapter = DummyInfrastructure()
+    created_forum = SimpleNamespace(id=42)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    trusted_dir = SimpleNamespace(name="TeleClaude", desc="App", path="/repo/app", discord_forum=None)
+    computer = SimpleNamespace(name="mozmini", get_all_trusted_dirs=lambda: [trusted_dir])
+    guild = SimpleNamespace(channels=[], create_forum=AsyncMock(return_value=created_forum))
+    persist = MagicMock()
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config.computer", computer),
+        patch.object(adapter, "_persist_project_forum_ids", persist),
+    ):
+        await adapter._ensure_project_forums(guild, mozmini_cat)
+
+    assert trusted_dir.discord_forum == 42
+    persist.assert_called_once_with([("TeleClaude", 42)])
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_forums_skips_when_category_missing() -> None:
+    adapter = DummyInfrastructure()
+    trusted_dir = SimpleNamespace(name="TeleClaude", desc="App", path="/repo/app", discord_forum=20)
+    computer = SimpleNamespace(name="mozmini", get_all_trusted_dirs=lambda: [trusted_dir])
+    guild = SimpleNamespace(channels=[], create_forum=AsyncMock())
+    persist = MagicMock()
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config.computer", computer),
+        patch.object(adapter, "_persist_project_forum_ids", persist),
+    ):
+        await adapter._ensure_project_forums(guild, None)
+
+    assert trusted_dir.discord_forum == 20  # unchanged
+    guild.create_forum.assert_not_awaited()
+    persist.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_project_forum_positions_leaves_foreign_forum_alone() -> None:
+    adapter = DummyInfrastructure()
+    foreign_forum = _make_forum(id=10, name="TeleClaude", category_id=MOZBOOK_CAT_ID, position=5)
+    adapter._get_channel = AsyncMock(return_value=foreign_forum)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    trusted_dir = SimpleNamespace(name="TeleClaude", desc="App", path="/repo/app", discord_forum=10)
+    computer = SimpleNamespace(name="mozmini", get_all_trusted_dirs=lambda: [trusted_dir])
+
+    with patch("teleclaude.adapters.discord.infra.config.computer", computer):
+        await adapter._sync_project_forum_positions(mozmini_cat)
+
+    foreign_forum.edit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_project_forum_positions_reorders_local_forum_without_moving() -> None:
+    adapter = DummyInfrastructure()
+    own_forum = _make_forum(id=20, name="TeleClaude", category_id=MOZMINI_CAT_ID, position=7)
+    adapter._get_channel = AsyncMock(return_value=own_forum)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    trusted_dir = SimpleNamespace(name="TeleClaude", desc="App", path="/repo/app", discord_forum=20)
+    computer = SimpleNamespace(name="mozmini", get_all_trusted_dirs=lambda: [trusted_dir])
+
+    with patch("teleclaude.adapters.discord.infra.config.computer", computer):
+        await adapter._sync_project_forum_positions(mozmini_cat)
+
+    own_forum.edit.assert_awaited_once_with(position=0)
+
+
+@pytest.mark.asyncio
+async def test_sync_project_forum_positions_no_op_when_already_ordered() -> None:
+    adapter = DummyInfrastructure()
+    own_forum = _make_forum(id=20, name="TeleClaude", category_id=MOZMINI_CAT_ID, position=0)
+    adapter._get_channel = AsyncMock(return_value=own_forum)
+    mozmini_cat = _make_category(MOZMINI_CAT_ID)
+    trusted_dir = SimpleNamespace(name="TeleClaude", desc="App", path="/repo/app", discord_forum=20)
+    computer = SimpleNamespace(name="mozmini", get_all_trusted_dirs=lambda: [trusted_dir])
+
+    with patch("teleclaude.adapters.discord.infra.config.computer", computer):
+        await adapter._sync_project_forum_positions(mozmini_cat)
+
+    own_forum.edit.assert_not_awaited()

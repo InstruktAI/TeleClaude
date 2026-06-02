@@ -99,6 +99,29 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             return None
         return channel_id
 
+    async def _validate_forum_in_category(self, channel_id: int | None, category: object | None) -> int | None:
+        """Return channel_id only if the forum still belongs to this computer's category.
+
+        Per-computer forums are owned exclusively by their creating computer. A
+        stored ID whose forum has moved to another category — or no longer exists
+        — must be discarded so re-provisioning creates a fresh forum here.
+        """
+        if channel_id is None or category is None:
+            return None
+        category_id = self._parse_optional_int(getattr(category, "id", None))
+        if category_id is None:
+            return None
+        ch = await self._get_channel(channel_id)
+        if ch is None or not self._is_forum_channel(ch):
+            return None
+        ch_cat_id = self._parse_optional_int(getattr(ch, "category_id", None))
+        if ch_cat_id is None:
+            ch_category = getattr(ch, "category", None)
+            ch_cat_id = self._parse_optional_int(getattr(ch_category, "id", None))
+        if ch_cat_id != category_id:
+            return None
+        return channel_id
+
     # =========================================================================
     # Infrastructure Provisioning
     # =========================================================================
@@ -191,7 +214,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         )
 
         # "Unknown" is the catch-all forum for sessions that don't match any project
-        self._all_sessions_channel_id = await self._validate_channel_id(self._all_sessions_channel_id)
+        self._all_sessions_channel_id = await self._validate_forum_in_category(self._all_sessions_channel_id, proj_cat)
         if self._all_sessions_channel_id is None:
             forum_id = await self._find_or_create_forum(
                 guild, proj_cat, "Unknown", "Sessions from unrecognized project paths"
@@ -572,36 +595,41 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         return "Maximum number pinned threads in this channel reached" in str(exc)
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
-        """Create a forum for each trusted dir that lacks a valid discord_forum ID."""
+        """Create a forum in this computer's category for each trusted dir.
+
+        A stored ``discord_forum`` ID is honored only when the forum still lives
+        in our category. Forums that have been moved or deleted are discarded
+        and re-created here, never reclaimed from another computer's category.
+        """
+        if category is None:
+            logger.warning("Skipping project forum provisioning: Projects category is unavailable")
+            return
+
         trusted_dirs = config.computer.get_all_trusted_dirs()
         project_changes: list[tuple[str, int | None]] = []
 
         for td in trusted_dirs:
             stale_cleared = False
             if td.discord_forum is not None:
-                if await self._validate_channel_id(td.discord_forum) is None:
-                    td.discord_forum = None
-                    stale_cleared = True
-                else:
+                if await self._validate_forum_in_category(td.discord_forum, category) is not None:
                     continue
+                td.discord_forum = None
+                stale_cleared = True
             forum_id = await self._find_or_create_forum(guild, category, td.name, td.desc or f"Sessions for {td.name}")
             if forum_id is not None:
                 td.discord_forum = forum_id
                 project_changes.append((td.name, forum_id))
             elif stale_cleared:
-                # Re-provisioning failed; persist None so the stale ID is removed from config.yml
-                # and the restart cycle (reload stale → clear → fail → repeat) is broken.
                 project_changes.append((td.name, None))
 
         if project_changes:
             self._persist_project_forum_ids(project_changes)
 
-    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel edit dict
     async def _sync_project_forum_positions(self, category: object | None) -> None:
-        """Move forums into the category and set positions to match trusted_dirs order.
+        """Reorder project forums within this computer's category to match trusted_dirs.
 
-        Ensures all project forums belong to the correct category and that
-        most important projects (first in trusted_dirs) appear at the top.
+        Touches only forums that already live in our category. Foreign-category
+        forums are skipped — placement is owned exclusively by ``_ensure_project_forums``.
         """
         if category is None:
             return
@@ -619,27 +647,20 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             if channel is None:
                 continue
 
-            edit_fn = getattr(channel, "edit", None)
-            if not callable(edit_fn):
+            ch_cat_id = self._parse_optional_int(getattr(channel, "category_id", None))
+            if ch_cat_id != category_id:
                 continue
 
-            ch_cat_id = self._parse_optional_int(getattr(channel, "category_id", None))
+            edit_fn = getattr(channel, "edit", None)
+            if not callable(edit_fn):
+                position += 1
+                continue
+
             current_pos = getattr(channel, "position", None)
-
-            needs_move = ch_cat_id != category_id
-            needs_reorder = current_pos != position
-
-            if needs_move or needs_reorder:
+            if current_pos != position:
                 try:
-                    # guard: loose-dict - dynamic kwargs; category key conditionally added
-                    kwargs: dict[str, object] = {"position": position}
-                    if needs_move:
-                        kwargs["category"] = category
-                    await self._require_async_callable(edit_fn, label="forum sync")(**kwargs)
-                    if needs_move:
-                        logger.info("Moved forum '%s' into category %s at position %d", td.name, category_id, position)
-                    elif needs_reorder:
-                        logger.debug("Reordered forum '%s' to position %d", td.name, position)
+                    await self._require_async_callable(edit_fn, label="forum sync")(position=position)
+                    logger.debug("Reordered forum '%s' to position %d", td.name, position)
                 except Exception as exc:
-                    logger.debug("Failed to sync forum '%s': %s", td.name, exc)
+                    logger.debug("Failed to reorder forum '%s': %s", td.name, exc)
             position += 1

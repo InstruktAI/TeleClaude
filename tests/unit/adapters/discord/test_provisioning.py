@@ -59,9 +59,10 @@ async def test_resolve_guild_fetches_when_cache_misses_and_returns_none_on_failu
 @pytest.mark.asyncio
 async def test_find_or_create_forum_returns_none_without_creating_when_create_disabled() -> None:
     adapter = DummyProvisioning()
+    help_desk_cat = SimpleNamespace(id=7)
     guild = SimpleNamespace(channels=[], create_forum=AsyncMock())
 
-    result = await adapter._find_or_create_forum(guild, None, "Customer Sessions", "topic", create=False)
+    result = await adapter._find_or_create_forum(guild, help_desk_cat, "Customer Sessions", "topic", create=False)
 
     assert result is None
     guild.create_forum.assert_not_called()
@@ -70,12 +71,13 @@ async def test_find_or_create_forum_returns_none_without_creating_when_create_di
 @pytest.mark.asyncio
 async def test_find_or_create_forum_resolves_existing_forum_when_create_disabled() -> None:
     adapter = DummyProvisioning()
+    help_desk_cat = SimpleNamespace(id=7)
     guild = SimpleNamespace(
-        channels=[SimpleNamespace(name="Customer Sessions", id="42")],
+        channels=[SimpleNamespace(name="Customer Sessions", id="42", category_id=7)],
         create_forum=AsyncMock(),
     )
 
-    result = await adapter._find_or_create_forum(guild, None, "Customer Sessions", "topic", create=False)
+    result = await adapter._find_or_create_forum(guild, help_desk_cat, "Customer Sessions", "topic", create=False)
 
     assert result == 42
     guild.create_forum.assert_not_called()
