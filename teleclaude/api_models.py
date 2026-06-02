@@ -40,6 +40,11 @@ class CreateSessionResponseDTO(BaseModel):
     status: Literal["success", "error"]
     session_id: str
     tmux_session_name: str
+    # Identifies which computer owns the session's tmux server. Consumers
+    # (TUI attach, CLI revive) use this to decide between a local tmux split
+    # and an SSH-wrapped attach. ``None`` means "treat as local" — preserves
+    # behavior for older clients that don't read this field.
+    computer: str | None = None
     agent: Literal["claude", "gemini", "codex"] | None = None
     error: str | None = None
 
