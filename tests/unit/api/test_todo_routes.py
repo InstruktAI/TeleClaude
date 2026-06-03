@@ -142,6 +142,31 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_todo_show_route_accepts_include_artifact_content(self, tmp_path: Path) -> None:
+        """The show route keeps artifact bodies behind an explicit query flag."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap(_MY_SLUG)
+            await database.write_state(_MY_SLUG, {"lifecycle_phase": "draft"})
+            await database.write_artifact(_MY_SLUG, ARTIFACT_PRD, "prd body")
+
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                default_payload = await todo_routes.todo_show(_MY_SLUG, cwd=_REPO_CWD)
+                content_payload = await todo_routes.todo_show(
+                    _MY_SLUG,
+                    cwd=_REPO_CWD,
+                    include_artifact_content=True,
+                )
+
+            assert "artifact_content" not in default_payload
+            assert content_payload["artifacts"] == [ARTIFACT_PRD]
+            assert content_payload["artifact_content"] == {ARTIFACT_PRD: "prd body"}
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_todo_create_uses_default_cwd_when_request_omits_it(self) -> None:
         """Todo creation falls back to the configured default working directory."""
         config_stub = SimpleNamespace(computer=SimpleNamespace(default_working_dir=_REPO_CWD))

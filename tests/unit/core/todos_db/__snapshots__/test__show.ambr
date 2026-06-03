@@ -1,0 +1,334 @@
+# serializer version: 1
+# name: test_show_payload_default_omits_artifact_bodies
+  dict({
+    'approvals': dict({
+      'architecture_approved': dict({
+        'approved': False,
+        'approved_at': '',
+        'caller_session_id': '',
+      }),
+      'architecture_skipped': None,
+      'drift_reviewed': dict({
+      }),
+      'plan_approved': dict({
+        'approved': False,
+        'approved_at': '',
+        'caller_session_id': '',
+      }),
+      'prd_approved': dict({
+        'approved': False,
+        'approved_at': '',
+        'caller_session_id': '',
+      }),
+    }),
+    'artifact_state': dict({
+      'prd': dict({
+        'approved': False,
+        'async_provenance_complete': False,
+        'codebase_sha_at_write': '',
+        'confirmed': False,
+        'dependency_set_at_write': list([
+        ]),
+        'digest': '9938be87d35f2a7a2b80237e8dc71806b209aaea8252f12c1b12949f61d40476',
+        'owned_snippet_digests': dict({
+        }),
+        'produced_at': 'TIMESTAMP',
+        'referenced_paths': list([
+        ]),
+        'referenced_snippet_digests': dict({
+        }),
+        'updated_by': '',
+        'upstream_digests': dict({
+        }),
+      }),
+    }),
+    'artifacts': list([
+      'prd',
+    ]),
+    'audit': dict({
+      'architecture_drafting': dict({
+        'completed_at': '',
+        'started_at': '',
+      }),
+      'architecture_review': dict({
+        'baseline_commit': '',
+        'completed_at': '',
+        'rounds': 0,
+        'started_at': '',
+        'verdict': '',
+      }),
+      'plan_drafting': dict({
+        'completed_at': '',
+        'started_at': '',
+      }),
+      'plan_review': dict({
+        'baseline_commit': '',
+        'completed_at': '',
+        'rounds': 0,
+        'started_at': '',
+        'verdict': '',
+      }),
+      'prd_drafting': dict({
+        'completed_at': '',
+        'started_at': '',
+      }),
+      'requirements_review': dict({
+        'baseline_commit': '',
+        'completed_at': '',
+        'rounds': 0,
+        'started_at': '',
+        'verdict': '',
+      }),
+    }),
+    'current': dict({
+      'phase': 'draft',
+      'state': 'pending',
+    }),
+    'drift': dict({
+    }),
+    'events': list([
+    ]),
+    'next_commands': dict({
+      'read_artifact': 'telec todo artifacts read show-rich <artifact>',
+      'show_with_bodies': 'telec todo show show-rich --include-artifact-content',
+    }),
+    'reviews': dict({
+      'architecture_review': dict({
+        'approved_digest': '',
+        'baseline_commit': '',
+        'cleared_by_substantive_drift': False,
+        'reviewed_at': '',
+        'rounds': 0,
+        'verdict': '',
+      }),
+      'build_review': dict({
+        'baseline_commit': '',
+        'dispatch_head': '',
+        'reviewed_at': '',
+        'round': 0,
+        'verdict': '',
+      }),
+      'plan_review': dict({
+        'approved_digest': '',
+        'baseline_commit': '',
+        'cleared_by_substantive_drift': False,
+        'reviewed_at': '',
+        'rounds': 0,
+        'verdict': '',
+      }),
+      'requirements_review': dict({
+        'approved_digest': '',
+        'baseline_commit': '',
+        'cleared_by_substantive_drift': False,
+        'reviewed_at': '',
+        'rounds': 0,
+        'verdict': '',
+      }),
+    }),
+    'roadmap': dict({
+      'created_at': 'TIMESTAMP',
+      'delivered_at': None,
+      'delivered_commit': None,
+      'deps': list([
+      ]),
+      'description': None,
+      'group_slug': None,
+      'ready_since': None,
+      'status': 'active',
+      'updated_at': 'TIMESTAMP',
+    }),
+    'slug': 'show-rich',
+    'stage': 'draft',
+    'state': dict({
+      'deferrals_processed': False,
+      'integration_phase': None,
+      'kind': 'todo',
+      'lifecycle_phase': 'draft',
+      'phase': 'pending',
+      'schema_version': 4,
+    }),
+    'work': dict({
+      'build_completed_at': '',
+      'build_gate_claim_at': '',
+      'build_start_base_sha': '',
+      'finalize': dict({
+        'branch': '',
+        'ready_at': '',
+        'sha': '',
+        'status': 'pending',
+        'worker_session_id': '',
+      }),
+    }),
+  })
+# ---
+# name: test_show_payload_include_artifact_content_restores_bodies
+  dict({
+    'approvals': dict({
+      'architecture_approved': dict({
+        'approved': False,
+        'approved_at': '',
+        'caller_session_id': '',
+      }),
+      'architecture_skipped': None,
+      'drift_reviewed': dict({
+      }),
+      'plan_approved': dict({
+        'approved': False,
+        'approved_at': '',
+        'caller_session_id': '',
+      }),
+      'prd_approved': dict({
+        'approved': False,
+        'approved_at': '',
+        'caller_session_id': '',
+      }),
+    }),
+    'artifact_content': dict({
+      'prd': 'artifact body',
+    }),
+    'artifact_state': dict({
+      'prd': dict({
+        'approved': False,
+        'async_provenance_complete': False,
+        'codebase_sha_at_write': '',
+        'confirmed': False,
+        'dependency_set_at_write': list([
+        ]),
+        'digest': '9938be87d35f2a7a2b80237e8dc71806b209aaea8252f12c1b12949f61d40476',
+        'owned_snippet_digests': dict({
+        }),
+        'produced_at': 'TIMESTAMP',
+        'referenced_paths': list([
+        ]),
+        'referenced_snippet_digests': dict({
+        }),
+        'updated_by': '',
+        'upstream_digests': dict({
+        }),
+      }),
+    }),
+    'artifacts': list([
+      'prd',
+    ]),
+    'audit': dict({
+      'architecture_drafting': dict({
+        'completed_at': '',
+        'started_at': '',
+      }),
+      'architecture_review': dict({
+        'baseline_commit': '',
+        'completed_at': '',
+        'rounds': 0,
+        'started_at': '',
+        'verdict': '',
+      }),
+      'plan_drafting': dict({
+        'completed_at': '',
+        'started_at': '',
+      }),
+      'plan_review': dict({
+        'baseline_commit': '',
+        'completed_at': '',
+        'rounds': 0,
+        'started_at': '',
+        'verdict': '',
+      }),
+      'prd_drafting': dict({
+        'completed_at': '',
+        'started_at': '',
+      }),
+      'requirements_review': dict({
+        'baseline_commit': '',
+        'completed_at': '',
+        'rounds': 0,
+        'started_at': '',
+        'verdict': '',
+      }),
+    }),
+    'current': dict({
+      'phase': 'draft',
+      'state': 'pending',
+    }),
+    'drift': dict({
+    }),
+    'events': list([
+    ]),
+    'next_commands': dict({
+      'read_artifact': 'telec todo artifacts read show-rich <artifact>',
+      'show_with_bodies': 'telec todo show show-rich --include-artifact-content',
+    }),
+    'reviews': dict({
+      'architecture_review': dict({
+        'approved_digest': '',
+        'baseline_commit': '',
+        'cleared_by_substantive_drift': False,
+        'reviewed_at': '',
+        'rounds': 0,
+        'verdict': '',
+      }),
+      'build_review': dict({
+        'baseline_commit': '',
+        'dispatch_head': '',
+        'reviewed_at': '',
+        'round': 0,
+        'verdict': '',
+      }),
+      'plan_review': dict({
+        'approved_digest': '',
+        'baseline_commit': '',
+        'cleared_by_substantive_drift': False,
+        'reviewed_at': '',
+        'rounds': 0,
+        'verdict': '',
+      }),
+      'requirements_review': dict({
+        'approved_digest': '',
+        'baseline_commit': '',
+        'cleared_by_substantive_drift': False,
+        'reviewed_at': '',
+        'rounds': 0,
+        'verdict': '',
+      }),
+    }),
+    'roadmap': dict({
+      'created_at': 'TIMESTAMP',
+      'delivered_at': None,
+      'delivered_commit': None,
+      'deps': list([
+      ]),
+      'description': None,
+      'group_slug': None,
+      'ready_since': None,
+      'status': 'active',
+      'updated_at': 'TIMESTAMP',
+    }),
+    'slug': 'show-rich',
+    'stage': 'draft',
+    'state': dict({
+      'deferrals_processed': False,
+      'integration_phase': None,
+      'kind': 'todo',
+      'lifecycle_phase': 'draft',
+      'phase': 'pending',
+      'schema_version': 4,
+    }),
+    'work': dict({
+      'build_completed_at': '',
+      'build_gate_claim_at': '',
+      'build_start_base_sha': '',
+      'finalize': dict({
+        'branch': '',
+        'ready_at': '',
+        'sha': '',
+        'status': 'pending',
+        'worker_session_id': '',
+      }),
+    }),
+  })
+# ---
+# name: test_show_payload_next_commands_present
+  dict({
+    'read_artifact': 'telec todo artifacts read show-rich <artifact>',
+    'show_with_bodies': 'telec todo show show-rich --include-artifact-content',
+  })
+# ---

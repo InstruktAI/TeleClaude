@@ -11,7 +11,7 @@ from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
 from ._roadmap import TodosDbRoadmapMixin
 from ._roadmap_soft_delete import TodosDbRoadmapSoftDeleteMixin
-from ._rows import ArtifactVersionRow, RoadmapRow
+from ._rows import ArtifactMetadataRow, ArtifactVersionRow, RoadmapRow
 from ._state import TodosDbStateMixin
 
 
@@ -81,6 +81,7 @@ def get_todos_db_sync(project_root_or_cwd: str | Path) -> TodosDb:
 
 
 __all__ = [
+    "ArtifactMetadataRow",
     "ArtifactVersionRow",
     "RoadmapRow",
     "TodosDb",

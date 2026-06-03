@@ -739,11 +739,14 @@ async def todo_show(
     slug: str,
     cwd: str | None = None,
     include_removed: bool = False,
+    include_artifact_content: bool = False,
 ) -> ShowPayload:
     """Return full show payload for a slug."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    payload = await assemble_show_payload(todos_db, slug, include_removed=include_removed)
+    payload = await assemble_show_payload(
+        todos_db, slug, include_removed=include_removed, include_artifact_content=include_artifact_content
+    )
     if payload is None:
         raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found")
     return payload

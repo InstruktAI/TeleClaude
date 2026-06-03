@@ -20,7 +20,7 @@ from teleclaude.core.todos_db._models import (
     TodoArtifactVersion,
     TodoRoadmap,
 )
-from teleclaude.core.todos_db._rows import ArtifactRemovalResult, ArtifactVersionRow
+from teleclaude.core.todos_db._rows import ArtifactMetadataRow, ArtifactRemovalResult, ArtifactVersionRow
 
 logger = get_logger(__name__)
 
@@ -302,6 +302,25 @@ class TodosDbArtifactsMixin:
                 select(TodoArtifact.name).where(TODO_ARTIFACT_TABLE.c.id == row_id).order_by(TODO_ARTIFACT_TABLE.c.name)
             )
             return [str(name) for name in result.all()]
+
+    async def artifact_metadata(self, slug: str) -> list[ArtifactMetadataRow]:
+        """Return current artifact metadata for a slug, ordered by artifact name."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                return []
+            result = await session.exec(
+                select(TodoArtifact).where(TODO_ARTIFACT_TABLE.c.id == row_id).order_by(TODO_ARTIFACT_TABLE.c.name)
+            )
+            return [
+                ArtifactMetadataRow(
+                    name=artifact.name,
+                    digest=artifact.digest,
+                    updated_by=artifact.updated_by or "",
+                    updated_at=artifact.updated_at or "",
+                )
+                for artifact in result.all()
+            ]
 
     async def artifact_versions(self, slug: str, name: str, *, limit: int = 50) -> list[ArtifactVersionRow]:
         """Return version history for an artifact, newest first. Empty list for unknown slug."""

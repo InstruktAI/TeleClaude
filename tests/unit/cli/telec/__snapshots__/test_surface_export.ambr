@@ -548,24 +548,13 @@
   
   ### `telec todo show`
   
-  Show full state payload for a todo
+  Show diagnostic state payload for a todo; artifact bodies are omitted by default
   
-  **Usage:** `telec todo show <slug> [--include-removed]`
+  **Usage:** `telec todo show <slug> [--include-artifact-content]`
   
   **Flags:**
   
-  - `--include-removed`: Also search soft-removed entries
-  
-  ### `telec todo reactivate`
-  
-  Restore a soft-removed todo
-  
-  **Usage:** `telec todo reactivate <slug>`
-  
-  **Notes:**
-  
-  - Resolves the slug against soft-removed rows and restores the uniquely matching entry.
-  - On success: status reverts to prev_status and outgoing dependencies are replayed.
+  - `--include-artifact-content`: Include artifact body content under artifact_content in the payload
   
   ### `telec todo stamp`
   

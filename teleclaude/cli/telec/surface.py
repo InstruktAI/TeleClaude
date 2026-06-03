@@ -684,10 +684,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 },
             ),
             "show": CommandDef(
-                desc="Show full state payload for a todo",
-                args="<slug> [--include-removed]",
-                flags=[_H, Flag("--include-removed", desc="Also search soft-removed entries")],
-                examples=["telec todo show my-slug", "telec todo show my-slug --include-removed"],
+                desc="Show diagnostic state payload for a todo; artifact bodies are omitted by default",
+                args="<slug> [--include-removed] [--include-artifact-content]",
+                flags=[
+                    _H,
+                    Flag("--include-removed", desc="Also search soft-removed entries"),
+                    Flag(
+                        "--include-artifact-content",
+                        desc="Include artifact body content under artifact_content in the payload",
+                    ),
+                ],
+                examples=[
+                    "telec todo show my-slug",
+                    "telec todo show my-slug --include-removed",
+                    "telec todo show my-slug --include-artifact-content",
+                ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "reactivate": CommandDef(

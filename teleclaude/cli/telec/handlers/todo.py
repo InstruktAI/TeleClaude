@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from teleclaude.api_models import TodoDumpRequest
+from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
 from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
@@ -899,28 +900,9 @@ _STAMP_REASON_FLAGS = {
 }
 
 
-# ── Show and reactivate handlers ───────────────────────────────────────────
-
-
-def _handle_todo_show(args: list[str]) -> None:
-    """Handle telec todo show <slug> [--include-removed] — display full todo state payload."""
-    include_removed = "--include-removed" in args
-    clean_args = [a for a in args if a != "--include-removed"]
-    if not clean_args or clean_args[0].startswith("-"):
-        print("Usage: telec todo show <slug> [--include-removed]")
-        raise SystemExit(1)
-
-    slug = clean_args[0]
-    params = {"include_removed": "true"} if include_removed else None
-    result = tool_api_request("GET", f"/todos/{slug}/show", params=params)
-
-    if isinstance(result, dict) and "slug" in result:
-        print(_json.dumps(result, indent=2))
-    elif isinstance(result, dict) and result.get("detail"):
-        print(f"Error: {result['detail']}")
-        raise SystemExit(1)
-    else:
-        print(result)
+# ── Reactivate handler ─────────────────────────────────────────────────────
+# _handle_todo_show is imported from _todo_show.py (combines --include-removed
+# and --include-artifact-content per the enrich-todo-show-payload merge).
 
 
 def _handle_todo_reactivate(args: list[str]) -> None:
