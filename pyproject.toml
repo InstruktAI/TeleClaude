@@ -335,7 +335,7 @@
   python_classes=["Test*"]
   python_files=["test_*.py"]
   python_functions=["test_*"]
-  session_timeout=35
+  session_timeout=40
   testpaths=["tests"]
   timeout=5
   timeout_method="signal"

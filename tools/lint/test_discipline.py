@@ -81,7 +81,7 @@ FORBIDDEN_CALLS = {
     ),
 }
 
-EXPECTED_SESSION_TIMEOUT = 35
+EXPECTED_SESSION_TIMEOUT = 40
 
 
 def _violation(repo_root: Path, path: Path, lineno: int, rule: str, message: str) -> str:

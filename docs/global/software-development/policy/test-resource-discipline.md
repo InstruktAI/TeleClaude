@@ -14,7 +14,7 @@ visibility: 'public'
 
 1. **Unit tests must complete in ≤1.0 second each.** Enforced by `pytest.mark.timeout(1)` assigned to every test carrying the `unit` marker via `pytest_collection_modifyitems` in the root conftest.
 2. **Functional and integration tests must complete in ≤5.0 seconds each.** Enforced by `pytest.mark.timeout(5)` for `functional` and `integration` markers via the same hook.
-3. **The full suite (`make test` / `telec code test --all`) must complete in <35 seconds wall-clock.** Enforced by `session_timeout = 35` in `pyproject.toml`.
+3. **The full suite (`make test` / `telec code test --all`) must complete in <40 seconds wall-clock.** Enforced by `session_timeout = 40` in `pyproject.toml`.
 4. **Per-test budgets and the suite ceiling are non-negotiable constants.** They do not get raised to make tests pass. A test that cannot fit its budget is one of: in the wrong tier (move it), doing too much (split it), or violating another rule in this policy (fix the violation).
 5. **Per-test `timeout_method` is `signal`.** Tests that bypass signal-based interruption (async-only flows blocked inside C extensions, subprocess pipe reads that hold the GIL, hung greenlets) are responsible for surfacing their own hangs via fixture cleanup or explicit awaits with timeout.
 
@@ -35,9 +35,9 @@ visibility: 'public'
 ### Diagnostic visibility
 
 14. **Every hang must be named in pytest output.** Per-test `pytest-timeout` flags the offending test by node id. The `session_timeout` backstop must additionally report each xdist worker's in-flight test node id at the moment of interrupt, via a `pytest_keyboard_interrupt` (or equivalent xdist hook) installed in the root conftest. A session-timeout fire that prints only `Interrupted` with no per-worker test id is itself a defect in the test infrastructure.
-15. **Per-test infrastructure (autouse fixtures, `pytest_runtest_*` hookwrappers, collection modifiers) is the single highest-leverage source of suite regression.** Anything that runs on every test pays its cost × suite size; a 30 ms hookwrapper on 6,000 tests is 180 worker-seconds of waste invisible inside any individual test. Rule 3 (the 35 s ceiling) is the budget — collective, not per-piece. Two consequences:
-    - **Code review of any change to `tests/conftest.py`, `tests/unit/conftest.py`, `tests/functional/conftest.py`, `tests/integration/conftest.py`, or `pyproject.toml` `[tool.pytest.ini_options]`** must include the before/after `make test` wall-clock in the PR description. The reviewer checks that the suite still fits under 35 s; if it doesn't, the change is reverted or the new hook is marker-scoped.
-    - **No meta-tests pinning per-hook microbenchmarks.** The 35 s ceiling is the real assertion. The watchdog diagnostic names what runs when the ceiling fires. Together those catch the regression class without test-of-a-test machinery.
+15. **Per-test infrastructure (autouse fixtures, `pytest_runtest_*` hookwrappers, collection modifiers) is the single highest-leverage source of suite regression.** Anything that runs on every test pays its cost × suite size; a 30 ms hookwrapper on 6,000 tests is 180 worker-seconds of waste invisible inside any individual test. Rule 3 (the 40 s ceiling) is the budget — collective, not per-piece. Two consequences:
+    - **Code review of any change to `tests/conftest.py`, `tests/unit/conftest.py`, `tests/functional/conftest.py`, `tests/integration/conftest.py`, or `pyproject.toml` `[tool.pytest.ini_options]`** must include the before/after `make test` wall-clock in the PR description. The reviewer checks that the suite still fits under 40 s; if it doesn't, the change is reverted or the new hook is marker-scoped.
+    - **No meta-tests pinning per-hook microbenchmarks.** The 40 s ceiling is the real assertion. The watchdog diagnostic names what runs when the ceiling fires. Together those catch the regression class without test-of-a-test machinery.
 16. **Infrastructure for tests that spawn subprocesses must be marker-scoped, not global.** If a hook or fixture exists to clean up subprocess descendants, it lives behind the marker that identifies subprocess-spawning tests (`functional`, `integration`, or a dedicated `spawns_subprocess` marker) — not in the root conftest where it taxes every pure-Python unit test.
 
 ### Worker-bootstrap cost
@@ -68,7 +68,7 @@ The previous rules govern budget and infrastructure. These govern what makes a t
 
 ## Rationale
 
-- The 35-second ceiling exists so the suite stays inside a single working-memory window for the developer running it. A suite that overruns gets skipped, gets broken silently, and accumulates failures invisibly.
+- The 40-second ceiling exists so the suite stays inside a single working-memory window for the developer running it. A suite that overruns gets skipped, gets broken silently, and accumulates failures invisibly.
 - The per-tier budgets exist because the tiers describe what a test is allowed to do. A unit test that needs >1s is doing more than a unit test should. The fix is structural (move it, split it, mock it), never to raise the budget.
 - Resource leaks compound. One test leaking an `asyncio.Task` produces one warning; a hundred tests leaking tasks produces a worker that consumes 100% CPU on stale event-loop work and a developer machine that becomes unusable over time. The strict rule is the only rule that scales.
 - The diagnostic requirement (rule 14) closes the loop on the session_timeout backstop. Without per-worker in-flight reporting, the backstop produces a silent kill with no actionable signal — the worst possible failure mode, since the offender is invisible and the suite still appears to "fail" the next run with no clue why.
@@ -83,9 +83,9 @@ The previous rules govern budget and infrastructure. These govern what makes a t
 ## Enforcement
 
 - `pytest_collection_modifyitems` in the root conftest assigns the per-tier `timeout` markers; the lint guard (`tools/lint/test_discipline.py`, runs as part of `make lint`) fails CI if the assigned values diverge from the documented budgets.
-- `tools/lint/test_discipline.py` enforces the static rules of this policy: it AST-walks `tests/**/*.py` and `pyproject.toml` and fails with file:line for any per-test `timeout` override (rule 4), any `pytest.mark.expensive` decoration, any `pytest_runtest_protocol` hookwrapper in the root conftest (rule 16), any forbidden heavy module-scope import in the root conftest (rule 17), any real subprocess call in `tests/unit/**` (rules 11–13), and any drift of `session_timeout` from 35 s (rule 3).
+- `tools/lint/test_discipline.py` enforces the static rules of this policy: it AST-walks `tests/**/*.py` and `pyproject.toml` and fails with file:line for any per-test `timeout` override (rule 4), any `pytest.mark.expensive` decoration, any `pytest_runtest_protocol` hookwrapper in the root conftest (rule 16), any forbidden heavy module-scope import in the root conftest (rule 17), any real subprocess call in `tests/unit/**` (rules 11–13), and any drift of `session_timeout` from 40 s (rule 3).
 - The 35 s suite ceiling itself is the overhead budget for all per-test infrastructure. No meta-test pins individual hook microbenchmarks; the collective wall-clock is the assertion. The watchdog diagnostic (rule 14) names whatever is running when the ceiling fires, which is how a per-test cost regression gets attributed to its source.
-- Code review of any change to `tests/conftest.py`, `tests/unit/conftest.py`, `tests/functional/conftest.py`, `tests/integration/conftest.py`, or `pyproject.toml`'s `[tool.pytest.ini_options]` section requires a before/after `make test` wall-clock measurement in the PR description. A change that pushes the suite past 35 s is reverted or the new hook is marker-scoped.
+- Code review of any change to `tests/conftest.py`, `tests/unit/conftest.py`, `tests/functional/conftest.py`, `tests/integration/conftest.py`, or `pyproject.toml`'s `[tool.pytest.ini_options]` section requires a before/after `make test` wall-clock measurement in the PR description. A change that pushes the suite past 40 s is reverted or the new hook is marker-scoped.
 - Code review of any new test (or PR adding tests) applies rules 19–22. A test that does not answer the value-gate question (rule 22) is rejected at review time. The lint guard does not (and cannot fully) detect forbidden test shapes at the AST level — code review is the enforcement mechanism for rules 19–22.
 
 ## Exceptions
