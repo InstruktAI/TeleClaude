@@ -8,9 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.core.next_machine.lifecycle import derive_lifecycle_drift
+from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state,
     mark_phase_state,
+    read_phase_state,
     stamp_artifact,
     validate_mark_phase_preconditions,
 )
@@ -130,38 +133,61 @@ def test_apply_prepared_state_stamps_legacy_requirements_without_fabricating_prd
     assert requirements.get("digest") == _digest(requirements_content)
 
 
-def test_apply_prepared_state_preserves_complete_async_provenance(seeded_db: TodosDb) -> None:
+async def test_apply_prepared_state_keeps_prepped_todo_off_the_prepare_bounce(seeded_db: TodosDb) -> None:
     """Prepped fast-track must not downgrade async provenance already established.
 
-    The dump route records full async provenance (snippet/dependency anchors +
-    async_provenance_complete) before the prepared fast-track runs.  If the
-    fast-track's sync-subset write reset those, upstream-snippet and
-    dependency-graph drift would fail-safe to ``pending`` and bounce the work
-    machine back to prepare on a freshly-created prepped todo.
+    The dump route records full async provenance (referenced-snippet and
+    dependency anchors + async_provenance_complete) before the prepared
+    fast-track runs.  If the fast-track's sync-subset write reset those, the
+    upstream-snippet and dependency-graph drift classes — which consume
+    ``referenced_snippet_digests`` and ``dependency_set_at_write`` — fail-safe to
+    ``pending`` and bounce a freshly-created prepped todo back to prepare on its
+    first ``telec todo work``.  This drives the real ordering (full async
+    provenance, then fast-track) and asserts the work-entry drift check stays
+    clean.
     """
     cwd = str(seeded_db._db_path.parent.parent)
     plan_content = "# Plan\n\n- [ ] Do the work.\n"
     seeded_db.write_artifact_sync("slug-a", "implementation-plan", plan_content)
 
-    writer = StateWriter(TodoState.defaults().model_dump(exclude_none=True))
-    writer.state.kind = "prepped"
-    entry = writer.state.artifacts.implementation_plan
-    entry.digest = _digest(plan_content)
-    entry.produced_at = "2026-01-01T00:00:00+00:00"
-    entry.async_provenance_complete = True
-    entry.owned_snippet_digests = {"snip": "abc"}
-    writer.commit_sync(seeded_db, "slug-a")
+    # Mimic the dump route: establish full async provenance for the plan first.
+    pre = StateWriter(TodoState.defaults().model_dump(exclude_none=True))
+    pre.state.kind = "prepped"
+    await sync_artifact_provenance(
+        seeded_db,
+        pre,
+        "slug-a",
+        "implementation-plan",
+        repo_root=cwd,
+        artifact_body=plan_content,
+        snippet_digest_fn=lambda _: "",
+    )
+    pre.commit_sync(seeded_db, "slug-a")
+    seeded_plan = pre.state.artifacts.implementation_plan
+    assert seeded_plan.async_provenance_complete is True
+    expected_refs = dict(seeded_plan.referenced_snippet_digests)
+    expected_deps = list(seeded_plan.dependency_set_at_write)
 
     with (
         patch(f"{_STATE_IO}.resolve_state_root", return_value=Path(cwd)),
         patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
         patch(f"{_STATE_IO}.run_git_command", return_value=(0, "abc123\n", "")),
     ):
-        state = apply_prepared_state(cwd, "slug-a")
+        apply_prepared_state(cwd, "slug-a")
+        post = StateWriter(read_phase_state(cwd, "slug-a"))
+        drift = await derive_lifecycle_drift(
+            "slug-a",
+            post.state,
+            repo_root=cwd,
+            todos_db=seeded_db,
+            snippet_digest_fn=lambda _: "",
+            writer=None,
+        )
 
-    artifacts = state.get("artifacts", {})
-    assert isinstance(artifacts, dict)
-    plan = artifacts.get("implementation_plan", {})
-    assert isinstance(plan, dict)
-    assert plan.get("async_provenance_complete") is True
-    assert plan.get("owned_snippet_digests") == {"snip": "abc"}
+    plan = post.state.artifacts.implementation_plan
+    # The fast-track preserved the exact anchors the work-entry drift consumes.
+    assert plan.async_provenance_complete is True
+    assert plan.referenced_snippet_digests == expected_refs
+    assert plan.dependency_set_at_write == expected_deps
+    # And the work machine has no reason to bounce back to prepare.
+    assert "pending" not in set(drift.get("implementation-plan", {}).values())
