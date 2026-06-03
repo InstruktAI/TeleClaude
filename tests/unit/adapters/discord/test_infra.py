@@ -192,6 +192,128 @@ def test_resolve_parent_forum_id_prefers_parent_id_then_parent_object() -> None:
 
 
 @pytest.mark.asyncio
+async def test_find_or_create_forum_ignores_same_name_forum_in_other_category() -> None:
+    adapter = DummyInfrastructure()
+    target_category = SimpleNamespace(id=2)
+    other_category_forum = SimpleNamespace(id=10, name="App", category_id=1)
+    created_forum = SimpleNamespace(id=20)
+    guild = SimpleNamespace(
+        channels=[other_category_forum],
+        create_forum=AsyncMock(return_value=created_forum),
+    )
+
+    forum_id = await adapter._find_or_create_forum(guild, target_category, "App", "Sessions for App")
+
+    assert forum_id == 20
+    guild.create_forum.assert_awaited_once_with(name="App", topic="Sessions for App", category=target_category)
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_forum_reads_current_category_channels_first() -> None:
+    adapter = DummyInfrastructure()
+    project_forum = SimpleNamespace(id=20, name="App")
+    target_category = SimpleNamespace(id=2, channels=[project_forum])
+    other_category_forum = SimpleNamespace(id=10, name="App", category_id=1)
+    guild = SimpleNamespace(channels=[other_category_forum], create_forum=AsyncMock())
+
+    forum_id = await adapter._find_or_create_forum(guild, target_category, "App", "Sessions for App")
+
+    assert forum_id == 20
+    guild.create_forum.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_forums_rejects_stored_forum_from_other_category() -> None:
+    adapter = DummyInfrastructure()
+    target_category = SimpleNamespace(id=2)
+    foreign_forum = SimpleNamespace(id=10, name="App", category_id=1)
+    created_forum = SimpleNamespace(id=20)
+    trusted_dir = SimpleNamespace(name="App", desc="Application", path="/repo/app", discord_forum=10)
+    computer = SimpleNamespace(name="mac-mini", get_all_trusted_dirs=lambda: [trusted_dir])
+    guild = SimpleNamespace(channels=[foreign_forum], create_forum=AsyncMock(return_value=created_forum))
+    adapter._get_channel = AsyncMock(return_value=foreign_forum)
+    persist_project_forum_ids = MagicMock()
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config.computer", computer),
+        patch.object(adapter, "_persist_project_forum_ids", persist_project_forum_ids),
+    ):
+        await adapter._ensure_project_forums(guild, target_category)
+
+    assert trusted_dir.discord_forum == 20
+    guild.create_forum.assert_awaited_once_with(name="App", topic="Application", category=target_category)
+    persist_project_forum_ids.assert_called_once_with([("App", 20)])
+
+
+@pytest.mark.asyncio
+async def test_validate_project_forum_id_rejects_non_forum_channels() -> None:
+    adapter = DummyInfrastructure()
+    target_category = SimpleNamespace(id=2)
+    channel = SimpleNamespace(id=10, category_id=2)
+    adapter._get_channel = AsyncMock(return_value=channel)
+    adapter._is_forum_channel = lambda candidate: False
+
+    validated = await adapter._validate_project_forum_id(10, target_category)
+
+    assert validated is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_discord_infrastructure_withholds_project_routing_without_category() -> None:
+    adapter = DummyInfrastructure()
+    adapter._guild_id = 1
+    adapter._help_desk_channel_id = None
+    adapter._all_sessions_channel_id = 10
+    adapter._escalation_channel_id = None
+    adapter._operator_chat_channel_id = None
+    adapter._announcements_channel_id = None
+    adapter._general_channel_id = None
+    adapter._project_forum_map = {"/repo/app": 10}
+    adapter._forum_project_map = {10: "/repo/app"}
+    adapter._team_channel_map = {}
+    guild = SimpleNamespace()
+
+    async def ensure_category(
+        guild_arg: object,
+        name: str,
+        existing: dict[str, int],
+        cat_changes: dict[str, int],
+        *,
+        key: str | None = None,
+    ) -> object | None:
+        if name == "Projects - mac-mini":
+            return None
+        return SimpleNamespace(id=1)
+
+    adapter._resolve_guild = AsyncMock(return_value=guild)
+    adapter._ensure_category = AsyncMock(side_effect=ensure_category)
+    adapter._validate_channel_id = AsyncMock(return_value=None)
+    adapter._find_or_create_text_channel = AsyncMock(return_value=None)
+    adapter._find_or_create_forum = AsyncMock(return_value=99)
+    adapter._ensure_project_forums = AsyncMock()
+    adapter._sync_project_forum_positions = AsyncMock()
+    adapter._persist_discord_channel_ids = MagicMock()
+
+    computer = SimpleNamespace(name="mac-mini")
+    discord_config = SimpleNamespace(categories={})
+    global_config = SimpleNamespace(people=[])
+
+    with (
+        patch("teleclaude.adapters.discord.infra.config", SimpleNamespace(computer=computer, discord=discord_config)),
+        patch("teleclaude.adapters.discord.infra.load_global_config", return_value=global_config),
+    ):
+        await adapter._ensure_discord_infrastructure()
+
+    unknown_calls = [call for call in adapter._find_or_create_forum.await_args_list if call.args[2] == "Unknown"]
+    assert adapter._all_sessions_channel_id is None
+    assert adapter._project_forum_map == {}
+    assert adapter._forum_project_map == {}
+    assert unknown_calls == []
+    adapter._ensure_project_forums.assert_not_awaited()
+    adapter._sync_project_forum_positions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_build_session_launcher_view_uses_enabled_agents_for_button_labels_and_ids(
     snapshot: SnapshotAssertion,
 ) -> None:

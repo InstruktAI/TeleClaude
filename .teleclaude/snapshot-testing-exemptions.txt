@@ -31,7 +31,6 @@ tests/integration/test_event_bus_cross_process.py
 tests/unit/adapters/discord/test_channel_ops.py
 tests/unit/adapters/discord/test_gateway_handlers.py
 tests/unit/adapters/discord/test_headless_title.py
-tests/unit/adapters/discord/test_infra.py
 tests/unit/adapters/discord/test_input_handlers.py
 tests/unit/adapters/discord/test_message_ops.py
 tests/unit/adapters/discord/test_provisioning.py
