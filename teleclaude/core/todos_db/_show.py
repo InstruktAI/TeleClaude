@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
+from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 from teleclaude.core.todos_db._models import TodoStateModel
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.todos_db._models import TodoRoadmap
+    from teleclaude.core.todos_db._rows import ArtifactMetadataRow
 
 
 # Map derived phase value → human-readable phase label for CurrentBlock.phase.
@@ -75,6 +79,8 @@ _PREPARE_VALUES: frozenset[str] = frozenset(
     }
 )
 
+_EVENTS_INLINE_LIMIT = 20
+
 
 # ── Typed payload shapes ────────────────────────────────────────────────────
 
@@ -107,7 +113,18 @@ class ShowPayload(TypedDict, total=False):
     previous: str
     current: CurrentBlock
     next: str
-    artifacts: dict[str, str]
+    roadmap: dict[str, StateValue]
+    state: dict[str, StateValue]
+    approvals: dict[str, StateValue]
+    reviews: dict[str, StateValue]
+    drift: dict[str, StateValue]
+    work: dict[str, StateValue]
+    artifact_state: dict[str, dict[str, StateValue]]
+    audit: dict[str, StateValue]
+    events: list[dict[str, StateValue]] | dict[str, StateValue]
+    next_commands: dict[str, str]
+    artifacts: list[str]
+    artifact_content: dict[str, str]
 
 
 # ── Derivation helpers ──────────────────────────────────────────────────────
@@ -174,6 +191,128 @@ def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> C
         block["round"] = review_round
 
     return block
+
+
+def _derive_roadmap_block(row: TodoRoadmap | None, deps: dict[str, list[str]], slug: str) -> dict[str, StateValue]:
+    """Project persisted roadmap facts for ``slug``."""
+    block: dict[str, StateValue] = {"deps": cast(StateValue, deps.get(slug, []))}
+    if row is None:
+        return block
+
+    block.update(
+        {
+            "status": row.status,
+            "ready_since": row.ready_since,
+            "group_slug": row.group_slug,
+            "description": row.description,
+            "delivered_at": row.delivered_at,
+            "delivered_commit": row.delivered_commit,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+        }
+    )
+    return block
+
+
+def _derive_state_block(state_model: TodoState) -> dict[str, StateValue]:
+    """Project authoritative lifecycle state facts."""
+    return {
+        "schema_version": state_model.schema_version,
+        "kind": state_model.kind,
+        "phase": state_model.phase,
+        "lifecycle_phase": state_model.lifecycle_phase,
+        "integration_phase": state_model.integration_phase,
+        "deferrals_processed": state_model.deferrals_processed,
+    }
+
+
+def _derive_approvals_block(state_model: TodoState) -> dict[str, StateValue]:
+    """Project prepare approvals, skips, and drift stamps."""
+    return cast(dict[str, StateValue], state_model.approvals.model_dump())
+
+
+def _derive_reviews_block(state_model: TodoState) -> dict[str, StateValue]:
+    """Project prepare and build review verdict state."""
+    return {
+        "requirements_review": state_model.requirements_review.model_dump(),
+        "architecture_review": state_model.architecture_review.model_dump(),
+        "plan_review": state_model.plan_review.model_dump(),
+        "build_review": state_model.build_review.model_dump(),
+    }
+
+
+def _derive_drift_block(state_model: TodoState) -> dict[str, StateValue]:
+    """Project stored drift review stamps."""
+    return {
+        artifact: cast(StateValue, stamp.model_dump())
+        for artifact, stamp in state_model.approvals.drift_reviewed.items()
+    }
+
+
+def _derive_work_block(state_model: TodoState) -> dict[str, StateValue]:
+    """Project work-phase progress facts."""
+    return {
+        "build_start_base_sha": state_model.build_start_base_sha,
+        "build_completed_at": state_model.build_completed_at,
+        "build_gate_claim_at": state_model.build_gate_claim_at,
+        "finalize": state_model.finalize.model_dump(),
+    }
+
+
+def _derive_artifact_state_block(
+    state_model: TodoState,
+    artifact_rows: list[ArtifactMetadataRow],
+) -> dict[str, dict[str, StateValue]]:
+    """Project per-artifact provenance metadata without body content."""
+    artifacts = state_model.artifacts
+    block: dict[str, dict[str, StateValue]] = {}
+    for artifact_row in artifact_rows:
+        artifact_name = artifact_row["name"]
+        state_key = artifact_name_to_state_key(artifact_name)
+        entry = getattr(artifacts, state_key, None)
+        metadata: dict[str, StateValue]
+        if entry is not None:
+            metadata = cast(dict[str, StateValue], entry.model_dump())
+            if not metadata.get("digest"):
+                metadata["digest"] = artifact_row["digest"]
+            if not metadata.get("produced_at"):
+                metadata["produced_at"] = artifact_row["updated_at"]
+        else:
+            metadata = {
+                "digest": artifact_row["digest"],
+                "produced_at": artifact_row["updated_at"],
+                "upstream_digests": {},
+                "codebase_sha_at_write": "",
+                "referenced_paths": [],
+                "owned_snippet_digests": {},
+                "referenced_snippet_digests": {},
+                "dependency_set_at_write": [],
+                "async_provenance_complete": False,
+            }
+        metadata["updated_by"] = artifact_row["updated_by"]
+        block[artifact_name] = metadata
+    return block
+
+
+def _derive_audit_block(state_model: TodoState) -> dict[str, StateValue]:
+    """Project bounded typed audit state."""
+    return cast(dict[str, StateValue], state_model.audit.model_dump())
+
+
+def _derive_events_block(state_model: TodoState) -> list[dict[str, StateValue]] | dict[str, StateValue]:
+    """Project events inline when short, otherwise count plus bounded tail."""
+    events = [cast(dict[str, StateValue], event.model_dump()) for event in state_model.events]
+    if len(events) <= _EVENTS_INLINE_LIMIT:
+        return events
+    return cast(dict[str, StateValue], {"count": len(events), "tail": events[-_EVENTS_INLINE_LIMIT:]})
+
+
+def _derive_next_commands_block(slug: str) -> dict[str, str]:
+    """Project machine-readable follow-up command hints."""
+    return {
+        "read_artifact": f"telec todo artifacts read {slug} <artifact>",
+        "show_with_bodies": f"telec todo show {slug} --include-artifact-content",
+    }
 
 
 def _derive_previous(current_value: str) -> str | None:
@@ -253,6 +392,15 @@ async def _build_blocked_by(
     return blockers if blockers else None
 
 
+async def _find_roadmap_row(todos_db: TodosDb, slug: str) -> TodoRoadmap | None:
+    """Return the active/icebox/delivered roadmap row that backs the show payload."""
+    rows = await todos_db._list_roadmap_models(include_icebox=True, include_delivered=True)
+    for row in rows:
+        if row.slug == slug:
+            return row
+    return None
+
+
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
@@ -273,6 +421,8 @@ async def assemble_show_payload(
     todos_db: TodosDb,
     slug: str,
     include_removed: bool = False,
+    *,
+    include_artifact_content: bool = False,
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
     state = await todos_db.read_state(slug)
@@ -292,6 +442,7 @@ async def assemble_show_payload(
                 return None
             is_delivered = True
 
+    state_model = TodoState.model_validate(state)
     project_root = _project_root_from_db(todos_db)
     worktree_cwd = _worktree_cwd_for(project_root, slug)
     current_value = await _derive_phase_value(state, todos_db, slug, worktree_cwd)
@@ -315,6 +466,17 @@ async def assemble_show_payload(
         payload["description"] = description
 
     deps = await todos_db.load_deps()
+    roadmap_row = await _find_roadmap_row(todos_db, slug)
+    payload["roadmap"] = _derive_roadmap_block(roadmap_row, deps, slug)
+    payload["state"] = _derive_state_block(state_model)
+    payload["approvals"] = _derive_approvals_block(state_model)
+    payload["reviews"] = _derive_reviews_block(state_model)
+    payload["drift"] = _derive_drift_block(state_model)
+    payload["work"] = _derive_work_block(state_model)
+    payload["audit"] = _derive_audit_block(state_model)
+    payload["events"] = _derive_events_block(state_model)
+    payload["next_commands"] = _derive_next_commands_block(slug)
+
     if deps.get(slug):
         all_dep_slugs: set[str] = set()
         _collect_dep_slugs(slug, deps, all_dep_slugs)
@@ -345,15 +507,15 @@ async def assemble_show_payload(
     if next_phase:
         payload["next"] = next_phase
 
-    artifact_names = await todos_db.list_artifacts(slug)
-    if artifact_names:
-        artifacts: dict[str, str] = {}
+    artifact_rows = await todos_db.artifact_metadata(slug)
+    artifact_names = [row["name"] for row in artifact_rows]
+    payload["artifacts"] = list(artifact_names)
+    payload["artifact_state"] = _derive_artifact_state_block(state_model, artifact_rows)
+    if include_artifact_content:
+        artifact_content: dict[str, str] = {}
         for name in artifact_names:
-            content = await todos_db.read_artifact(slug, name)
-            if content:
-                artifacts[name] = content
-        if artifacts:
-            payload["artifacts"] = artifacts
+            artifact_content[name] = await todos_db.read_artifact(slug, name)
+        payload["artifact_content"] = artifact_content
 
     return payload
 

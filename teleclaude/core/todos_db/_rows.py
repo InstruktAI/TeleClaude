@@ -29,6 +29,15 @@ class ArtifactVersionRow(TypedDict):
     created_at: str
 
 
+class ArtifactMetadataRow(TypedDict):
+    """Current metadata for one stored artifact body."""
+
+    name: str
+    digest: str
+    updated_by: str
+    updated_at: str
+
+
 class ArtifactRemovalResult(TypedDict):
     """Result from deleting one named todo artifact."""
 

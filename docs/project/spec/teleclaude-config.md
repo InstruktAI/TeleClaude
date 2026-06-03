@@ -235,6 +235,12 @@ cloud providers in `provider_priority`, each skipped silently when its API key
 `google` share the OpenAI SDK; `anthropic` uses its own. Empty summaries (e.g. all
 providers out of credit) suppress agent-stop TTS and leave generic session titles.
 
+Each machine owns its local `config.yml`, so `trusted_dirs[].discord_forum` is a
+local machine binding. Discord provisioning must only reuse a project forum when
+the channel resolves as a forum inside that machine's `Projects - {computer.name}`
+category. If that category cannot be resolved, project forum routing must be
+withheld rather than reusing stale local forum IDs.
+
 ### Maintenance
 
 This spec must be updated whenever a documented config key or env var is added, renamed, or removed.

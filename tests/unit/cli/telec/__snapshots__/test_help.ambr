@@ -7,14 +7,14 @@
     Run a slash command on a new agent session
   
   Options:
-    --command              Slash command (e.g. /next-build)
-    --project              Project directory path (optional; defaults to cwd)
-    --args                 Command arguments
-    --agent                Agent: claude, gemini, codex
-    --mode                 Thinking mode: fast, med, slow
-    -c, --computer         Target computer (optional; defaults to local)
-    --subfolder            Subdirectory within the project
-    --additional-context   Additional context for the worker, appended to startup message
+    --command               Slash command (e.g. /next-build)
+    --project               Project directory path (optional; defaults to cwd)
+    --args                  Command arguments
+    --agent                 Agent: claude, gemini, codex
+    --mode                  Thinking mode: fast, med, slow
+    -c, --computer          Target computer (optional; defaults to local)
+    --subfolder             Subdirectory within the project
+    --additional-context    Additional context for the worker, appended to startup message
   
   Notes:
     Creates a fresh session and runs the slash command as the first agent message.

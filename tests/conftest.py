@@ -60,8 +60,15 @@ except Exception:
     pass
 
 
+_DB_BACKED_UNIT_TIMEOUT_PATHS = {
+    ("tests", "unit", "api", "test_todo_routes.py"),
+    ("tests", "unit", "cli", "telec", "handlers", "test_todo.py"),
+    ("tests", "unit", "core", "todos_db", "test__show.py"),
+}
+
+
 def pytest_collection_modifyitems(config, items):
-    """Set per-marker timeouts: unit=1s, functional/integration=5s."""
+    """Set per-marker timeouts: unit=1s, DB-backed unit=10s, functional/integration=5s."""
     for item in items:
         if item.get_closest_marker("timeout") is not None:
             continue
@@ -73,6 +80,9 @@ def pytest_collection_modifyitems(config, items):
         # These tests run the real SQLite schema and migration chain in fixture setup.
         if rel_path.parts[:4] == ("tests", "unit", "core", "db"):
             item.add_marker(pytest.mark.timeout(5))
+            continue
+        if rel_path.parts in _DB_BACKED_UNIT_TIMEOUT_PATHS:
+            item.add_marker(pytest.mark.timeout(10))
             continue
         if "unit" in item.keywords:
             item.add_marker(pytest.mark.timeout(1))

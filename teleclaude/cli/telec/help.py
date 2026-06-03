@@ -111,7 +111,7 @@ def _usage_node_leaf(path: list[str], node: CommandDef) -> str:
         lines.append("\nOptions:")
         for f in visible:
             flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
-            lines.append(f"{flag_label:<25s}{f.desc}")
+            lines.append(f"{flag_label:<25s} {f.desc}")
 
     notes = node.notes or [f"Use this command to {node.desc.lower()}."]
     lines.append("\nNotes:")
@@ -244,7 +244,7 @@ def _append_flag_section(lines: list[str], label: str, flags: list[Flag]) -> Non
     lines.append(f"\n{label}:")
     for flag in flags:
         flag_label = f"  {flag.short}, {flag.long}" if flag.short else f"  {flag.long}"
-        lines.append(f"{flag_label:<25s}{flag.desc}")
+        lines.append(f"{flag_label:<25s} {flag.desc}")
 
 
 def _append_examples(lines: list[str], examples: list[str]) -> None:
@@ -349,7 +349,7 @@ def _usage_leaf(cmd_name: str, sub_name: str) -> str:
         lines.append("\nOptions:")
         for f in visible:
             flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
-            lines.append(f"{flag_label:<25s}{f.desc}")
+            lines.append(f"{flag_label:<25s} {f.desc}")
 
     notes = sub.notes or [f"Use this command to {sub.desc.lower()}."]
     lines.append("\nNotes:")

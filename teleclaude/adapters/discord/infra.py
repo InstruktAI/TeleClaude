@@ -213,21 +213,29 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             key=f"projects_{computer_name_slug}",
         )
 
-        # "Unknown" is the catch-all forum for sessions that don't match any project
-        self._all_sessions_channel_id = await self._validate_forum_in_category(self._all_sessions_channel_id, proj_cat)
-        if self._all_sessions_channel_id is None:
-            forum_id = await self._find_or_create_forum(
-                guild, proj_cat, "Unknown", "Sessions from unrecognized project paths"
+        if proj_cat is None:
+            logger.warning("Skipping project forum routing: Projects category is unavailable")
+            self._all_sessions_channel_id = None
+            self._project_forum_map = {}
+            self._forum_project_map = {}
+        else:
+            # "Unknown" is the catch-all forum for sessions that don't match any project
+            self._all_sessions_channel_id = await self._validate_project_forum_id(
+                self._all_sessions_channel_id, proj_cat
             )
-            if forum_id is not None:
-                self._all_sessions_channel_id = forum_id
-                changes["all_sessions_channel_id"] = forum_id
+            if self._all_sessions_channel_id is None:
+                forum_id = await self._find_or_create_forum(
+                    guild, proj_cat, "Unknown", "Sessions from unrecognized project paths"
+                )
+                if forum_id is not None:
+                    self._all_sessions_channel_id = forum_id
+                    changes["all_sessions_channel_id"] = forum_id
 
-        await self._ensure_project_forums(guild, proj_cat)
-        await self._sync_project_forum_positions(proj_cat)
+            await self._ensure_project_forums(guild, proj_cat)
+            await self._sync_project_forum_positions(proj_cat)
 
-        # Build project-path-to-forum mapping for session routing
-        self._build_project_forum_map()
+            # Build project-path-to-forum mapping for session routing
+            self._build_project_forum_map()
 
         # --- Category: Team (shared — master provisions, others resolve) ---
         try:
@@ -594,13 +602,25 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             return True
         return "Maximum number pinned threads in this channel reached" in str(exc)
 
-    async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
-        """Create a forum in this computer's category for each trusted dir.
+    async def _validate_project_forum_id(self, forum_id: int | None, category: object) -> int | None:
+        """Return a stored project forum ID only when it belongs to this computer's category."""
+        if forum_id is None:
+            return None
+        if await self._trusted_dir_forum_is_current(forum_id, category):
+            return forum_id
+        return None
 
-        A stored ``discord_forum`` ID is honored only when the forum still lives
-        in our category. Forums that have been moved or deleted are discarded
-        and re-created here, never reclaimed from another computer's category.
-        """
+    async def _trusted_dir_forum_is_current(self, forum_id: int, category: object) -> bool:
+        """Validate that a stored forum ID still points at this computer's project category."""
+        channel = await self._get_channel(forum_id)
+        return (
+            channel is not None
+            and self._is_forum_channel(channel)
+            and self._channel_matches_category(channel, category)
+        )
+
+    async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
+        """Create a forum for each trusted dir that lacks a valid discord_forum ID."""
         if category is None:
             logger.warning("Skipping project forum provisioning: Projects category is unavailable")
             return
@@ -611,7 +631,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         for td in trusted_dirs:
             stale_cleared = False
             if td.discord_forum is not None:
-                if await self._validate_forum_in_category(td.discord_forum, category) is not None:
+                if await self._trusted_dir_forum_is_current(td.discord_forum, category):
                     continue
                 td.discord_forum = None
                 stale_cleared = True
