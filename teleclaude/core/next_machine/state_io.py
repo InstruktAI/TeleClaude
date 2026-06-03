@@ -124,6 +124,16 @@ def _sync_artifact_provenance_subset_from_db(
     if not digest:
         clear_artifact_provenance(writer, slug, artifact_name)
         return ""
+    # Never downgrade already-complete async provenance. The sync subset clears the
+    # snippet/dependency anchors and resets async_provenance_complete, which makes
+    # upstream-snippet and dependency-graph drift fail-safe to `pending`. When full
+    # async provenance was already established for this exact digest (the dump route
+    # syncs it before the prepared fast-track runs), preserve it as-is.
+    state_key = next((key for key, name in _RECONCILE_ARTIFACT_NAMES.items() if name == artifact_name), None)
+    if state_key is not None:
+        entry = getattr(writer.state.artifacts, state_key)
+        if entry.async_provenance_complete and entry.digest == digest:
+            return digest
     artifact_body = todos_db.read_artifact_sync(slug, artifact_name)  # type: ignore[attr-defined]
     sync_artifact_provenance_sync_subset(
         writer,

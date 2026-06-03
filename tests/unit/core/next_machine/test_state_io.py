@@ -14,6 +14,7 @@ from teleclaude.core.next_machine.state_io import (
     stamp_artifact,
     validate_mark_phase_preconditions,
 )
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.todos import TodoState
 
@@ -127,3 +128,40 @@ def test_apply_prepared_state_stamps_legacy_requirements_without_fabricating_prd
     assert isinstance(requirements, dict)
     assert prd.get("digest", "") == ""
     assert requirements.get("digest") == _digest(requirements_content)
+
+
+def test_apply_prepared_state_preserves_complete_async_provenance(seeded_db: TodosDb) -> None:
+    """Prepped fast-track must not downgrade async provenance already established.
+
+    The dump route records full async provenance (snippet/dependency anchors +
+    async_provenance_complete) before the prepared fast-track runs.  If the
+    fast-track's sync-subset write reset those, upstream-snippet and
+    dependency-graph drift would fail-safe to ``pending`` and bounce the work
+    machine back to prepare on a freshly-created prepped todo.
+    """
+    cwd = str(seeded_db._db_path.parent.parent)
+    plan_content = "# Plan\n\n- [ ] Do the work.\n"
+    seeded_db.write_artifact_sync("slug-a", "implementation-plan", plan_content)
+
+    writer = StateWriter(TodoState.defaults().model_dump(exclude_none=True))
+    writer.state.kind = "prepped"
+    entry = writer.state.artifacts.implementation_plan
+    entry.digest = _digest(plan_content)
+    entry.produced_at = "2026-01-01T00:00:00+00:00"
+    entry.async_provenance_complete = True
+    entry.owned_snippet_digests = {"snip": "abc"}
+    writer.commit_sync(seeded_db, "slug-a")
+
+    with (
+        patch(f"{_STATE_IO}.resolve_state_root", return_value=Path(cwd)),
+        patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
+        patch(f"{_STATE_IO}.run_git_command", return_value=(0, "abc123\n", "")),
+    ):
+        state = apply_prepared_state(cwd, "slug-a")
+
+    artifacts = state.get("artifacts", {})
+    assert isinstance(artifacts, dict)
+    plan = artifacts.get("implementation_plan", {})
+    assert isinstance(plan, dict)
+    assert plan.get("async_provenance_complete") is True
+    assert plan.get("owned_snippet_digests") == {"snip": "abc"}
