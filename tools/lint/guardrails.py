@@ -36,6 +36,12 @@ _STARTUP_BOUNDARY_IMPORT_ALLOWLIST = frozenset(
         "teleclaude/daemon.py",
         "teleclaude/daemon_event_platform.py",
         "teleclaude/core/adapter_client/_client.py",
+        # Per software-development/policy/test-resource-discipline rule 17:
+        # the root conftest defers heavy module imports (db, config,
+        # state_store, runtime.binaries, session_*, psutil) into the autouse
+        # fixture bodies that use them. Each deferred import carries the same
+        # `# startup boundary` reason as the daemon entry points.
+        "tests/conftest.py",
     }
 )
 _STARTUP_BOUNDARY_IMPORT_REASON = "startup boundary"

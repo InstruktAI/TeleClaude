@@ -9,7 +9,6 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
-from syrupy.assertion import SnapshotAssertion
 
 import teleclaude.project_setup.domain_seeds as domain_seeds
 import teleclaude.project_setup.init_flow as init_flow
@@ -272,10 +271,13 @@ def test_init_project_does_not_spawn_subprocesses(tmp_path: Path, monkeypatch: p
     assert spy_calls == [], f"init_project leaked subprocess calls: {spy_calls}"
 
 
-def test_init_project_writes_no_global_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
-) -> None:
-    """Project init must not write machine-global agent or launcher state."""
+def test_init_project_writes_no_global_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Project init must not write machine-global agent or launcher state.
+
+    Behavioral assertion: each global root contains zero files after init_project
+    returns. Per ``software-development/policy/test-structure`` rule 6, the
+    earlier inventory-snapshot form is replaced with a direct emptiness check.
+    """
     fake_home = tmp_path / "fakehome"
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -305,17 +307,12 @@ def test_init_project_writes_no_global_files(
 
     init_flow.init_project(project_root)
 
-    inventory = []
-    for root in global_roots:
-        inventory.append(
-            {
-                "root": root.relative_to(fake_home).as_posix(),
-                "files": [
-                    (path.relative_to(root).as_posix(), path.stat().st_size)
-                    for path in sorted(root.rglob("*"))
-                    if path.is_file()
-                ],
-            }
-        )
-
-    assert inventory == snapshot
+    leaked_files = {
+        root.relative_to(fake_home).as_posix(): [
+            path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+        ]
+        for root in global_roots
+    }
+    assert all(not files for files in leaked_files.values()), (
+        f"init_project wrote files into machine-global roots: {leaked_files}"
+    )

@@ -27,7 +27,7 @@ _DEPENDENCY = DependencyEntry(dep_slug="dep", roadmap_status="active")
 _EMPTY = ""
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 async def test_sync_artifact_provenance_populates_full_drift_evidence() -> None:

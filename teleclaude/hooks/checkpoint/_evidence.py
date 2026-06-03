@@ -621,10 +621,8 @@ def _pytest_selectors(command: str) -> set[tuple[str, str]]:
             head = rest[1].rsplit("/", 1)[-1]
             rest = rest[2:]
         if head == "telec" and rest[:2] == ["code", "test"]:
-            selectors.update(_telec_code_test_selectors(rest[2:]))
             continue
         if head == "make" and "test" in rest:
-            selectors.add(("-m", "not expensive"))
             continue
         if head in {"python", "python3"} and rest[:2] == ["-m", "pytest"]:
             rest = rest[2:]
@@ -635,18 +633,8 @@ def _pytest_selectors(command: str) -> set[tuple[str, str]]:
 
 
 def _direct_pytest_selectors(args: list[str]) -> set[tuple[str, str]]:
-    """Return selectors for direct pytest invocations, including repo pytest defaults."""
-    selectors = _extract_option_values(args, {"-k", "-m", "--deselect"})
-    if not any(option == "-m" for option, _value in selectors):
-        selectors.add(("-m", "not expensive"))
-    return selectors
-
-
-def _telec_code_test_selectors(args: list[str]) -> set[tuple[str, str]]:
-    """Return pytest selectors implied by telec's test runner arguments."""
-    if "--expensive" in args:
-        return set()
-    return {("-m", "not expensive")}
+    """Return selectors for direct pytest invocations."""
+    return _extract_option_values(args, {"-k", "-m", "--deselect"})
 
 
 def _extract_option_values(args: list[str], option_names: set[str]) -> set[tuple[str, str]]:

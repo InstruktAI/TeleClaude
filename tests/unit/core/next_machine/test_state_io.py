@@ -17,7 +17,7 @@ from teleclaude.core.next_machine.state_io import (
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.todos import TodoState
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 _STATE_IO = "teleclaude.core.next_machine.state_io"
 

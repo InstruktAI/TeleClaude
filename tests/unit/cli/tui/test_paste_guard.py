@@ -39,7 +39,7 @@ class _ActionCalls:
     remove_artifact: int = 0
     new_project: int = 0
     new_todo: int = 0
-    notifications: list[dict[str, object]] = field(default_factory=list)
+    notifications: list[dict[str, object]] = field(default_factory=list)  # guard: loose-dict
 
 
 class _StubAPI:
@@ -146,7 +146,6 @@ def _send_driver_key(app: TelecApp, key: str) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.timeout(60)
 async def test_paste_on_preparation_surface_does_not_fire_remove_binding(
     monkeypatch: pytest.MonkeyPatch,
     snapshot: SnapshotAssertion,
@@ -161,7 +160,6 @@ async def test_paste_on_preparation_surface_does_not_fire_remove_binding(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.timeout(60)
 async def test_burst_keys_on_preparation_surface_do_not_fire_new_item_binding(
     monkeypatch: pytest.MonkeyPatch,
     snapshot: SnapshotAssertion,
@@ -178,7 +176,6 @@ async def test_burst_keys_on_preparation_surface_do_not_fire_new_item_binding(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.timeout(60)
 async def test_single_manual_key_on_preparation_surface_fires_without_burst_latency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -191,7 +188,6 @@ async def test_single_manual_key_on_preparation_surface_fires_without_burst_late
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.timeout(60)
 async def test_threshold_sized_key_group_is_replayed_without_notification(monkeypatch: pytest.MonkeyPatch) -> None:
     async with _running_preparation_app(monkeypatch) as (app, pilot, _prep, calls):
         for _ in range(_BURST_THRESHOLD):

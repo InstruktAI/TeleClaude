@@ -8,7 +8,7 @@ from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION, 
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 def _upcycle_v2_phase(old_phase: str) -> dict[str, StateValue]:

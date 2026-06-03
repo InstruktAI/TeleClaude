@@ -11,7 +11,7 @@ from teleclaude.core.next_machine.state_io import stamp_artifact, stamp_verdict
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.todos import TodoState
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

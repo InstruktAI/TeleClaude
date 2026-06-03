@@ -139,32 +139,7 @@ class TestDirectlyTouchedTestFiles:
 
 
 # ---------------------------------------------------------------------------
-# R2.3 — Expensive tests excluded by default
-# ---------------------------------------------------------------------------
-
-
-class TestExpensiveTestExclusion:
-    """Expensive tests are excluded by default; opt-in required to run them."""
-
-    def test_default_pytest_args_exclude_expensive_marker(self, tmp_path: Path) -> None:
-        """Default test runner args include -m 'not expensive' to exclude slow tests."""
-        runner = TestRunner(project_root=tmp_path)
-        pytest_args = runner.build_pytest_args(targets=["tests/unit"])
-
-        args_str = " ".join(pytest_args)
-        assert "not expensive" in args_str, f"Default args do not exclude expensive tests: {args_str}"
-
-    def test_include_expensive_flag_removes_exclusion(self, tmp_path: Path) -> None:
-        """When include_expensive=True, the expensive exclusion is not present."""
-        runner = TestRunner(project_root=tmp_path, include_expensive=True)
-        pytest_args = runner.build_pytest_args(targets=["tests/unit"])
-
-        args_str = " ".join(pytest_args)
-        assert "not expensive" not in args_str
-
-
-# ---------------------------------------------------------------------------
-# R2.4 — Non-worktree context runs full test suite
+# R2.3 — Non-worktree context runs full test suite
 # ---------------------------------------------------------------------------
 
 
@@ -642,7 +617,7 @@ class TestRustTestRunner:
         targets = runner.resolve_targets()
         runner.run(targets=targets)
 
-        assert pytest_calls == [[PYTHON_TEST, "-m", "not expensive"]]
+        assert pytest_calls == [[PYTHON_TEST]]
         assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW, "--lib"], tmp_path)]
 
     def test_rust_only_scope_does_not_exit_when_no_python_companions(

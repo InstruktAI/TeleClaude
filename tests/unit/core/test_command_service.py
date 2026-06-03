@@ -97,7 +97,6 @@ class TestCommandRoleMap:
         assert not hasattr(CommandService, "run_slash_command")
 
     @pytest.mark.unit
-    @pytest.mark.timeout(5)
     def test_production_code_contains_no_run_slash_command_ast_references(self) -> None:
         """No production module defines or references run_slash_command after the edge migration."""
         offenders: list[str] = []

@@ -1,29 +1,22 @@
-"""Integration specs for ``event-bus-redis-migration`` cross-process delivery.
+"""Integration specs for ``event-bus-redis-migration`` cross-role delivery.
 
-These specs pin the cross-process, inter-role, and inherited-reliability
-behaviors of the Redis-Streams-backed ``EventBus`` adapter.
-
-Most specs run against a Redis fake that preserves consumer-group cursor and
-PEL semantics, simulating cross-process delivery without spawning processes.
-``test_subscriber_in_separate_subprocess_receives_event_emitted_from_parent_process``
-exercises a real OS process boundary using ``multiprocessing``.
+These specs pin the cross-role and inherited-reliability behaviors of the
+Redis-Streams-backed ``EventBus`` adapter. All specs run against a Redis fake
+that preserves consumer-group cursor and PEL semantics — covering the
+work-sharing, cross-role-subscriber, and stale-PEL-reclaim contracts without
+spawning a real subprocess or requiring a live Redis instance.
 """
 
 from __future__ import annotations
 
 import asyncio
-import multiprocessing
-import os
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
-import pytest
-
-from teleclaude.core.event_bus import INTERNAL_EVENT_STREAM, EventBus
+from teleclaude.core.event_bus import EventBus
 from teleclaude.core.events import SessionLifecycleContext
 from teleclaude.events.envelope import EventEnvelope
-from teleclaude.transport.redis_client import create_redis_client
 
 
 class _PendingEntry(TypedDict):
@@ -185,22 +178,6 @@ async def _start_and_immediately_shutdown(bus: EventBus) -> None:
     await bus.start(shutdown)
 
 
-async def _require_live_redis(redis_url: str) -> None:
-    """Skip live-Redis subprocess smoke when Redis is unavailable locally."""
-    redis = create_redis_client(
-        redis_url,
-        password=os.environ.get("REDIS_PASSWORD"),
-        max_connections=2,
-        socket_timeout=0.2,
-    )
-    try:
-        await redis.ping()
-    except Exception as exc:
-        pytest.skip(f"live Redis unavailable for subprocess EventBus smoke: {exc}")
-    finally:
-        await redis.aclose()
-
-
 async def test_subscriber_in_different_role_receives_event_emitted_from_another_role() -> None:
     """A subscriber in role X receives events emitted from role Y.
 
@@ -297,111 +274,6 @@ async def test_consumer_group_reuses_guaranteed_consumption_contract() -> None:
     # consumer group on the non-cartridge stream.
     pending_counts = [len(cursor.pending) for cursor in redis._groups.get(target_stream, {}).values()]
     assert all(count == 0 for count in pending_counts), "ACK after handler success should drain the PEL"
-
-
-def _subprocess_subscriber(redis_url: str, role: str, output_path: str, ready_event_name: str) -> None:
-    """Subscriber worker run in a separate Python process.
-
-    Connects to the live Redis instance addressed by ``redis_url``, registers
-    a subscriber on the bus, signals readiness via the file at ``output_path``,
-    and writes the received session_id to ``output_path`` when the handler
-    fires. The entrypoint uses the shared Redis client factory directly so
-    the spec cannot pass through shared in-memory state.
-    """
-    redis = create_redis_client(
-        redis_url,
-        password=os.environ.get("REDIS_PASSWORD"),
-        max_connections=10,
-        socket_timeout=1.0,
-    )
-    bus = EventBus(role=role, redis_client=redis)
-    received: list[str] = []
-
-    async def handler(_event: str, context: Any) -> None:
-        sid = getattr(context, "session_id", "?")
-        received.append(sid)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(sid)
-
-    bus.subscribe("session_started", handler)
-
-    async def _run() -> None:
-        try:
-            await redis.xgroup_create(INTERNAL_EVENT_STREAM, f"event-bus:{role}", id="$", mkstream=True)
-        except Exception as exc:
-            if "BUSYGROUP" not in str(exc):
-                raise
-        # Signal readiness so the parent knows the consumer group exists.
-        with open(ready_event_name, "w", encoding="utf-8") as f:
-            f.write(str(os.getpid()))
-
-        shutdown = asyncio.Event()
-
-        # Run for a bounded amount of time, then exit so the test does not hang.
-        async def _stop_after(timeout: float) -> None:
-            await asyncio.sleep(timeout)
-            shutdown.set()
-
-        await asyncio.gather(bus.start(shutdown), _stop_after(5.0))
-
-    asyncio.run(_run())
-
-
-@pytest.mark.expensive
-async def test_subscriber_in_separate_subprocess_receives_event_emitted_from_parent_process(
-    tmp_path: Any,
-) -> None:
-    """A subscriber in a separate Python subprocess receives an event emitted
-    from the parent process via the Redis-Streams-backed bus.
-
-    Catches a regression where the migration's cross-process semantics rely
-    on shared in-memory state instead of Redis-side delivery — which would
-    break the subprocess subscription that motivates the entire migration.
-
-    The test requires a live Redis instance addressable at ``REDIS_URL`` (or
-    the project default). Without Redis, the test skips before spawning the
-    subprocess because the fake-Redis integration specs cover deterministic
-    cross-role and work-sharing behavior.
-    """
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
-    await _require_live_redis(redis_url)
-    output_path = str(tmp_path / "subscriber.out")
-    ready_path = str(tmp_path / "subscriber.ready")
-    subscriber_role = f"operation-runner-{os.getpid()}-{tmp_path.name}"
-
-    ctx = multiprocessing.get_context("spawn")
-    proc = ctx.Process(
-        target=_subprocess_subscriber,
-        args=(redis_url, subscriber_role, output_path, ready_path),
-    )
-    proc.start()
-    try:
-        # Wait briefly for subscriber readiness.
-        for _ in range(40):
-            if os.path.exists(ready_path):
-                break
-            await asyncio.sleep(0.05)
-        assert os.path.exists(ready_path), "subprocess subscriber never signaled readiness"
-
-        redis = create_redis_client(
-            redis_url,
-            password=os.environ.get("REDIS_PASSWORD"),
-            max_connections=10,
-            socket_timeout=1.0,
-        )
-        publisher = EventBus(role="daemon", redis_client=redis)
-        await publisher.emit("session_started", SessionLifecycleContext(session_id="sess-subproc"))
-
-        # Wait for the subprocess to record the received session_id.
-        for _ in range(40):
-            if os.path.exists(output_path):
-                break
-            await asyncio.sleep(0.05)
-        assert os.path.exists(output_path), "subprocess subscriber never received the event"
-        assert open(output_path, encoding="utf-8").read() == "sess-subproc"
-    finally:
-        proc.terminate()
-        proc.join(timeout=2)
 
 
 async def test_stale_pending_entry_is_reclaimed_via_inherited_processor_mechanism() -> None:

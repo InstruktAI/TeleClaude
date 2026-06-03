@@ -7,7 +7,7 @@ import pytest
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, normalize_mark_phase
 from teleclaude.types.todos import ApprovalStamp, TodoState
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 def test_normalize_mark_phase_clears_downstream_v2_approvals_but_keeps_artifact_history() -> None:

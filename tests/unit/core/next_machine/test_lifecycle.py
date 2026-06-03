@@ -24,7 +24,7 @@ from teleclaude.core.next_machine.lifecycle import (
 from teleclaude.types.lifecycle import LifecycleStage
 from teleclaude.types.todos import ApprovalStamp, DriftReviewedStamp, SkipStamp, TodoState
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 def _approved(at: str = "2026-01-01T00:00:00+00:00") -> ApprovalStamp:

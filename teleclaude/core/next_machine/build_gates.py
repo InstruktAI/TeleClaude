@@ -210,7 +210,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
         else:
             test_result = _run_pytest_in_child_process(
                 worktree_cwd,
-                [*test_targets, "-m", "not expensive", "-q"],
+                [*test_targets, "-q"],
                 timeout_seconds=_PYTEST_GATE_TIMEOUT_SECONDS,
             )
         if test_result is not None and test_result.returncode != 0:
@@ -220,7 +220,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
             if 1 <= failure_count <= 2:
                 retry_result = _run_pytest_in_child_process(
                     worktree_cwd,
-                    ["--lf", "-m", "not expensive", "-q"],
+                    ["--lf", "-q"],
                     timeout_seconds=_PYTEST_RETRY_TIMEOUT_SECONDS,
                 )
                 if retry_result.returncode == 0:

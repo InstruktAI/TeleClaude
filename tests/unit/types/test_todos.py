@@ -21,7 +21,7 @@ _MISSING_STATUS_ENTRY = {"dep_slug": _DEPENDENCY_SLUG}
 _UNKNOWN_STATUS_ENTRY = {"dep_slug": _DEPENDENCY_SLUG, "roadmap_status": "unknown"}
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 def test_artifact_entry_defaults_to_empty_drift_provenance() -> None:

@@ -21,7 +21,7 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.prepare_steps import DRIFT_ANALYZER_RECOMMENDED_MODE, _prepare_dispatch
 from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 _STEPS = "teleclaude.core.next_machine.prepare_steps"
 _DISPATCHED = "DISPATCHED"

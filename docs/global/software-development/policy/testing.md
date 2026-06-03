@@ -8,6 +8,10 @@ visibility: 'public'
 
 # Testing — Policy
 
+> Time budgets, resource discipline, and the no-real-subprocess-in-unit rule are
+> defined in `software-development/policy/test-resource-discipline`. That snippet
+> is authoritative for per-tier timeouts, zero-leak rules, and test placement.
+
 ## Rules
 
 1. **Use pre-commit hooks as the primary verification path**

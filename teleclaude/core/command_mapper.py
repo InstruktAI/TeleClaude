@@ -319,7 +319,7 @@ class CommandMapper:
             payload_actor_name = str(payload_actor_name_obj).strip() if payload_actor_name_obj is not None else ""
             payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
             payload_transcription_id = (
-                int(payload_transcription_id_obj) if payload_transcription_id_obj is not None else None
+                int(cast(int | str, payload_transcription_id_obj)) if payload_transcription_id_obj is not None else None
             )
             payload_notice_message_id = (
                 str(payload_notice_message_id_obj).strip() if payload_notice_message_id_obj is not None else ""

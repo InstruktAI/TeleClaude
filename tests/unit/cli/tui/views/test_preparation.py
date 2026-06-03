@@ -130,7 +130,6 @@ def test_todo_fingerprint_changes_when_ready_since_changes() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(60)
 async def test_preparation_view_renders_active_rows_without_band_separators() -> None:
     app = _PreparationHarness()
 
@@ -145,7 +144,6 @@ async def test_preparation_view_renders_active_rows_without_band_separators() ->
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(60)
 async def test_preparation_view_keyboard_preview_and_edit_file_rows() -> None:
     project_path = "/tmp/project"
     expected_doc_id = "artifact:/tmp/project:todo-1:requirements"

@@ -1,9 +1,8 @@
 """Test runner — the ``telec code test`` implementation.
 
-Context-aware test execution with companion file mapping, expensive test
-exclusion, and multi-language test dispatch (pytest + vitest). See design doc
-``software-development/design/workspace-scoping`` for the scoping
-contract.
+Context-aware test execution with companion file mapping and multi-language
+test dispatch (pytest + vitest). See design doc
+``software-development/design/workspace-scoping`` for the scoping contract.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.quality import test_watchdog
 from teleclaude.quality.scope import (
     CargoWorkspaceError,
     RustScope,
@@ -70,14 +70,23 @@ def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[st
 def run_pytest(args: list[str], cwd: Path | None = None) -> int:
     """Run pytest with the given arguments. Returns exit code.
 
-    Two-layer hang defense: per-test ``timeout = 5`` (pyproject) catches a
-    runaway test body; ``session_timeout = 35`` (pyproject) catches an
-    accumulating soft hang between tests when pytest is still responsive,
-    capping total wall clock while still allowing pytest to print its summary.
+    Three-layer hang defense:
+    - Per-test ``timeout`` (unit=1s, functional/integration=5s in
+      ``tests/conftest.py``) flags a runaway test body via pytest-timeout.
+    - Master-process watchdog (``teleclaude.quality.test_watchdog``) polls
+      ``${TMPDIR}/teleclaude_pytest_worker_*.json`` every 500 ms and SIGKILLs
+      any xdist worker whose current test has exceeded 2x its tier budget,
+      logging the offending nodeid before the kill. Sits outside the worker
+      so a syscall-level deadlock cannot suppress the diagnostic.
+    - ``session_timeout = 35`` (pyproject) caps total wall clock as a backstop;
+      ``pytest_sessionfinish`` / ``pytest_keyboard_interrupt`` print per-worker
+      in-flight tests at that instant.
 
-    Sweeps zombie pytest trees from prior runs before invoking.
+    Sweeps zombie pytest trees from prior runs before invoking, and cleans up
+    leftover worker files on exit.
 
     Justified subprocess: pytest is an external tool invocation.
+    Per ``software-development/policy/test-resource-discipline`` rules 14-15.
     """
     try:
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -89,12 +98,17 @@ def run_pytest(args: list[str], cwd: Path | None = None) -> int:
         logger.warning("Could not raise file-descriptor limit for pytest: %s", exc)
     subprocess.run(["pkill", "-9", "-f", "pytest tests"], check=False)
     subprocess.run(["pkill", "-9", "-f", "uv run pytest"], check=False)
+    test_watchdog.cleanup_inflight_files()
     proc = subprocess.Popen(
         ["uv", "run", "pytest", *args],
         cwd=str(cwd) if cwd else None,
         start_new_session=True,
     )
-    return proc.wait()
+    try:
+        poller = test_watchdog.WatchdogPoller(pytest_proc_poll=proc.poll)
+        return poller.poll_until_exit()
+    finally:
+        test_watchdog.cleanup_inflight_files()
 
 
 class TestRunner:
@@ -108,11 +122,9 @@ class TestRunner:
     def __init__(
         self,
         project_root: Path,
-        include_expensive: bool = False,
         update_snapshots: bool = False,
     ) -> None:
         self._project_root = project_root
-        self._include_expensive = include_expensive
         self._update_snapshots = update_snapshots
         self._is_full_suite = True
         self._scoped_files: set[str] = set()
@@ -176,8 +188,6 @@ class TestRunner:
         args = list(targets)
         if self._update_snapshots:
             args.append("--snapshot-update")
-        if not self._include_expensive:
-            args.extend(["-m", "not expensive"])
         return args
 
     def run(self, targets: list[str] | None = None) -> None:

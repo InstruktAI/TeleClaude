@@ -147,7 +147,6 @@ def test_persist_if_changed_writes_and_calls_callback(tmp_path: Path) -> None:
     assert saved == ["after\n"]
 
 
-@pytest.mark.timeout(60)
 async def test_editor_app_enter_and_escape_persist_multiline_buffer(tmp_path: Path) -> None:
     target = tmp_path / "artifact"
     target.write_text("before\n", encoding="utf-8")

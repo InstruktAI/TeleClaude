@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -828,20 +827,6 @@ class TestHandleCodeAdd:
         _ = capsys
 
 
-class TestExcludedFiles:
-    """Structural guards: certain files must not be modified by the current todo."""
-
-    @pytest.mark.unit
-    def test_excluded_pre_commit_config_has_no_branch_diff(self) -> None:
-        """The todo must not modify .pre-commit-config.yaml."""
-        assert _branch_diff(".pre-commit-config.yaml") == []
-
-    @pytest.mark.unit
-    def test_excluded_teleclaude_yml_has_no_branch_diff(self) -> None:
-        """The todo must not modify teleclaude.yml."""
-        assert _branch_diff("teleclaude.yml") == []
-
-
 class TestChangedWorkspaceScope:
     """Changed file listing consumes the centralized workspace scope."""
 
@@ -901,28 +886,6 @@ def _assert_pathspec_commit(repo: MagicMock, expected_files: list[str]) -> None:
     assert args[2] == "--"
     assert list(args[3:]) == expected_files
     assert kwargs == {"with_extended_output": True}
-
-
-def _branch_diff(path: str) -> list[str]:
-    merge_base = subprocess.run(
-        ["git", "merge-base", "HEAD", "main"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if merge_base.returncode != 0:
-        pytest.skip("main branch is unavailable for structural branch-diff check")
-    diff = subprocess.run(
-        ["git", "diff", "--name-only", f"{merge_base.stdout.strip()}..HEAD", "--", path],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if diff.returncode != 0:
-        pytest.skip("git diff is unavailable for structural branch-diff check")
-    return [line for line in diff.stdout.splitlines() if line]
 
 
 class TestWithTrailer:

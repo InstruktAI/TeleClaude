@@ -162,6 +162,7 @@
       "teleclaude/core/tmux_bridge.py"=["B904"]
       "teleclaude/daemon.py"=["E402", "PLC0415"] # Import timing instrumentation + startup-boundary lazy imports
       "teleclaude/daemon_event_platform.py"=["PLC0415"]
+      "tests/conftest.py"=["PLC0415"] # Heavy module imports deferred per test-resource-discipline rule 17
       "teleclaude/helpers/youtube_helper/_utils.py"=["PLC0415"] # try/except guarded import
       "tests/unit/core/test_codex_readiness.py"=["B018", "E402", "F841", "RUF001", "RUF002", "RUF003"]
       "tools/lint/markdown.py"=["E402"]
@@ -316,7 +317,7 @@
   max_supported_python="3.14"
 
 [tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-n", "auto", "-m", "not expensive", "-q", "--instafail"]
+  addopts=["--strict-config", "--strict-markers", "--tb=short", "-n", "auto", "-q", "--instafail"]
   asyncio_mode="auto"
   filterwarnings=[
     "ignore:.*datetime.utcnow.*:DeprecationWarning",
@@ -326,7 +327,6 @@
     "ignore:The default datetime adapter is deprecated:DeprecationWarning:aiosqlite",
   ]
   markers=[
-    "expensive: Tests that call real LLM APIs (excluded from default runs)",
     "functional: Real API/auth/DB chain tests with local harnessed dependencies",
     "integration: Integration tests (slower, real components)",
     "timeout: Test timeout marker",
@@ -349,11 +349,10 @@
   orphan-exclude=[
     "tests/unit/adapters/discord/test_headless_title.py",                          # Cross-module: Discord title prefix spans channel_ops.py and Session metadata.
     "tests/unit/adapters/telegram/test_send_message_topic_guard.py",               # Cross-module: Telegram topic guard spans message_ops.py and adapter metadata.
-    "tests/unit/audit/test_emit_visibility_audit.py",                              # Cross-module: AST-based audit walks every teleclaude/*.py file to verify every event_bus.emit() call carries an explicit visibility= kwarg; no single source companion.
     "tests/unit/cli/telec/handlers/test_todo_artifacts.py",                        # Deferred split: todo artifact CLI assertions share handlers/todo.py with other specs.
     "tests/unit/cli/telec/handlers/test_todo_lifecycle_dump_specs.py",             # Deferred split: dump event contract spans handlers/todo.py and event envelope.
     "tests/unit/cli/telec/test_surface_export.py",                                 # Deferred split: surface export assertions belong with occupied cli/telec/surface.py companion.
-    "tests/unit/cli/telec/test_todo_help.py",                                      # Cross-module: help snapshot tests cover help.py _usage_leaf for todo subcommands; no dedicated todo_help.py source.
+    "tests/unit/cli/tui/test_paste_guard.py",                                      # Cross-module: paste-guard logic spans TelecApp paste/key dispatch and PreparationView focus; no standalone paste_guard.py source.
     "tests/unit/cli/tui/test_pane_resilience_under_ws_reconnect.py",               # Cross-module: pane survival across WS reconnect spans SessionsView, TmuxPaneManager catalog, and per-computer SessionsInitialEvent merge in TelecAppWsMixin.
     "tests/unit/cli/tui/test_resource_cleanup.py",                                 # Cross-module: cleanup spans TelecApp, app_media state, and SessionsView resources.
     "tests/unit/config/test_build_config.py",                                      # Package-boundary: the _build_config assembly parser lives in config/__init__.py with no standalone module companion.

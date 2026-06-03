@@ -10,6 +10,7 @@ Both the interactive menu and onboarding wizard consume this layer.
 from __future__ import annotations
 
 import fcntl
+import importlib
 import os
 import secrets
 import shutil
@@ -21,6 +22,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAML
 
+import teleclaude.config as _tc_config_module
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.paths import TELECLAUDE_HOME
@@ -492,12 +494,8 @@ def validate_all() -> list[ValidationResult]:
     # we capture them as a result rather than letting them crash the validator.
     app_config: Any | None = None
     try:
-        import importlib
-
-        import teleclaude.config as _tc_config
-
-        importlib.reload(_tc_config)
-        app_config = _tc_config.config
+        importlib.reload(_tc_config_module)
+        app_config = _tc_config_module.config
         results.append(ValidationResult(area="config.yml", passed=True))
     except Exception as e:
         results.append(

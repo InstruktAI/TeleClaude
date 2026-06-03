@@ -21,7 +21,7 @@ from teleclaude.core.next_machine.work_steps import (
     _work_step_review_changes_requested,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 _WORK_STEPS = "teleclaude.core.next_machine.work_steps"
 

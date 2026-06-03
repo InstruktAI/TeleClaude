@@ -1058,7 +1058,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Run language-aware test suite",
                 flags=[
                     _H,
-                    Flag("--expensive", desc="Include expensive/slow tests"),
                     Flag("--all", desc="Run all tests, skip workspace scoping"),
                     Flag(
                         "--update-snapshots",

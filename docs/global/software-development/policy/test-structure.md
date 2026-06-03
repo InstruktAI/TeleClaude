@@ -8,6 +8,11 @@ visibility: 'public'
 
 # Test Structure — Policy
 
+> Tier placement rules (unit vs functional vs integration) and the
+> no-real-subprocess-in-unit rule are defined in
+> `software-development/policy/test-resource-discipline`. That snippet is
+> authoritative for which tier a test belongs in.
+
 ## Rules
 
 1. Every source file must have a corresponding test file following the project's mirror convention (1:1 source-to-test mapping).

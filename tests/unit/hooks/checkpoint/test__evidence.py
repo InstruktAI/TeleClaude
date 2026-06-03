@@ -186,51 +186,6 @@ class TestEvidenceChecks:
         assert _check_error_state(timeline) == []
 
     @pytest.mark.unit
-    def test_check_error_state_does_not_clear_expensive_failure_with_default_telec_test(self) -> None:
-        timeline = TurnTimeline(
-            tool_calls=[
-                _shell_record(
-                    "pytest -m expensive tests/unit/a_test.py",
-                    had_error=True,
-                    result_snippet="FAILED tests/unit/a_test.py",
-                ),
-                _shell_record("telec code test --all", result_snippet="1 passed"),
-            ]
-        )
-
-        assert _check_error_state(timeline) == ["Test failures remain — re-run tests after fixes"]
-
-    @pytest.mark.unit
-    def test_check_error_state_does_not_clear_expensive_failure_with_default_pytest(self) -> None:
-        timeline = TurnTimeline(
-            tool_calls=[
-                _shell_record(
-                    "pytest -m expensive tests/unit/a_test.py",
-                    had_error=True,
-                    result_snippet="FAILED tests/unit/a_test.py",
-                ),
-                _shell_record("pytest tests/unit/a_test.py", result_snippet="1 passed"),
-            ]
-        )
-
-        assert _check_error_state(timeline) == ["Test failures remain — re-run tests after fixes"]
-
-    @pytest.mark.unit
-    def test_check_error_state_clears_expensive_failure_with_expensive_telec_test(self) -> None:
-        timeline = TurnTimeline(
-            tool_calls=[
-                _shell_record(
-                    "pytest -m expensive tests/unit/a_test.py",
-                    had_error=True,
-                    result_snippet="FAILED tests/unit/a_test.py",
-                ),
-                _shell_record("telec code test --expensive tests/unit/a_test.py", result_snippet="1 passed"),
-            ]
-        )
-
-        assert _check_error_state(timeline) == []
-
-    @pytest.mark.unit
     def test_check_error_state_clears_failed_pytest_selector_with_broader_default_pytest(self) -> None:
         timeline = TurnTimeline(
             tool_calls=[

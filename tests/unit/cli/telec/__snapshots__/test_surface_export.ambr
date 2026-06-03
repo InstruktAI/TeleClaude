@@ -849,7 +849,6 @@
   
   **Flags:**
   
-  - `--expensive`: Include expensive/slow tests
   - `--all`: Run all tests, skip workspace scoping
   - `--update-snapshots`: Update snapshot files after reading diffs. Use only when test failures show snapshot deltas that match your intended change.
   

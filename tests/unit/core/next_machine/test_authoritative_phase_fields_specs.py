@@ -12,7 +12,7 @@ from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 def test_todo_state_has_canonical_lifecycle_phase_default() -> None:

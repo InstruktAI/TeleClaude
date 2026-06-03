@@ -3,37 +3,43 @@
 # pylint: disable=import-outside-toplevel,too-many-positional-arguments
 # Pytest fixture modules intentionally use dynamic imports and callback signatures.
 
+import asyncio
 import atexit
 import logging
 import multiprocessing
 import os
 import shutil
+import sys
 import tempfile
+import time
+import warnings
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from teleclaude.quality import test_watchdog as _watchdog
+
 _repo_root = Path(__file__).resolve().parents[1]
 _test_runtime_root = Path(tempfile.mkdtemp(prefix="teleclaude-pytest-")).resolve()
 atexit.register(shutil.rmtree, _test_runtime_root, ignore_errors=True)
 
 os.environ["TELECLAUDE_HOME"] = str(_test_runtime_root / ".teleclaude")
-os.environ["TELECLAUDE_TEST_MODE"] = "1"
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_repo_root / "tests" / "integration" / "config.yml"))
 os.environ.setdefault("TELECLAUDE_ENV_PATH", str(_repo_root / "tests" / "integration" / ".env"))
 
+# Heavy modules (teleclaude.core.db → SQLAlchemy+greenlet+aiosqlite, teleclaude.config →
+# greenlet, teleclaude.cli.tui.state_store → curses, teleclaude.runtime.binaries, the
+# session_* core modules) are NOT imported at module scope. They are imported inside the
+# autouse fixture bodies that use them so each xdist worker pays the cold-import cost
+# only when a test actually requires those fixtures. tests/unit/conftest.py overrides
+# those autouse fixtures with no-ops, so unit-tier workers pay zero cost.
+# Per software-development/policy/test-resource-discipline rule 17.
 import teleclaude.paths as tc_paths
 from teleclaude import paths
-from teleclaude.cli.tui import state_store
-from teleclaude.config import config as tc_config
-from teleclaude.core import db as db_module
-from teleclaude.core import session_cleanup, session_utils
 from teleclaude.core.command_registry import reset_command_service
 from teleclaude.core.event_bus import event_bus
-from teleclaude.quality.subprocess_reaper import reap_new_descendants, snapshot_descendants
-from teleclaude.runtime import binaries as binaries_mod
 
 
 class _ClusterEmitRedisFake:
@@ -42,7 +48,7 @@ class _ClusterEmitRedisFake:
 
 
 try:
-    import instrukt_ai_logging
+    import instrukt_ai_logging  # startup boundary
 
     def _noop_configure_logging(*_args, **_kwargs):
         return None
@@ -69,7 +75,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.timeout(5))
             continue
         if "unit" in item.keywords:
-            item.add_marker(pytest.mark.timeout(5))
+            item.add_marker(pytest.mark.timeout(1))
         elif "functional" in item.keywords:
             item.add_marker(pytest.mark.timeout(5))
         elif "integration" in item.keywords:
@@ -87,23 +93,158 @@ def pytest_xdist_auto_num_workers(config):
     return None
 
 
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_protocol(item, nextitem):
-    """Guarantee no test leaves attached subprocess descendants behind.
+# ---------------------------------------------------------------------------
+# In-flight tracker + session-timeout diagnostic.
+# Per software-development/policy/test-resource-discipline rules 14-15.
+# Each worker writes its currently-running test's nodeid + monotonic start time
+# to ${TMPDIR}/teleclaude_pytest_worker_<pid>.json during setup, clears it
+# during teardown. The master watchdog (teleclaude/quality/test_watchdog.py) and
+# the sessionfinish/keyboard_interrupt hooks read those files to name the hang.
 
-    Implemented as a hookwrapper on ``pytest_runtest_protocol`` — not as an autouse
-    fixture — because pytest's same-scope autouse fixture ordering is not
-    source-order: an autouse fixture declared first in a file is not guaranteed to
-    set up first or tear down last. ``pytest_runtest_protocol`` wraps the entire
-    test lifecycle (setup + call + teardown) from outside the fixture system, so
-    the snapshot is taken before any fixture setup and the reap happens after every
-    fixture teardown. The per-test timeout remains the sole flagging authority;
-    this hook only ensures the worker can finish and print that flag instead of
-    deadlocking on a leaked child holding its stdout pipe.
+
+# Platform detection done once per worker. macOS has no /proc, so we cache a
+# psutil.Process handle and reuse it across tests; otherwise per-call overhead
+# would dominate the unit-tier per-test budget.
+def _build_fd_counter() -> Callable[[], int]:
+    """Return the cheapest fd-counter for this platform, resolved once per worker."""
+    if Path("/proc/self/fd").is_dir():
+        proc_fd = "/proc/self/fd"
+
+        def _counter_linux() -> int:
+            try:
+                return len(os.listdir(proc_fd))
+            except OSError:
+                return 0
+
+        return _counter_linux
+    try:
+        import psutil  # startup boundary
+
+        process_handle = psutil.Process()
+
+        def _counter_psutil() -> int:
+            try:
+                return process_handle.num_fds()
+            except Exception:
+                return 0
+
+        return _counter_psutil
+    except Exception:
+        return lambda: 0
+
+
+_fd_counter = _build_fd_counter()
+
+
+def _count_fds() -> int:
+    return _fd_counter()
+
+
+def _current_event_loop() -> asyncio.AbstractEventLoop | None:
+    """Return the current event loop without emitting Python 3.12's deprecation warning."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+    except (RuntimeError, NotImplementedError):
+        return None
+    if loop.is_closed():
+        return None
+    return loop
+
+
+def _sweep_asyncio_tasks(item) -> None:
+    """Cancel + gather any asyncio tasks left running by the test.
+
+    Per ``software-development/policy/test-resource-discipline`` rule 8: every
+    ``asyncio.Task`` created by a test must terminate before the test ends. If a
+    test creates a task and forgets to await/cancel it, this sweeper catches it
+    and fails the test by name.
     """
-    before = snapshot_descendants()
-    yield
-    reap_new_descendants(before)
+    loop = _current_event_loop()
+    if loop is None:
+        return
+    pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+    if not pending:
+        return
+    for task in pending:
+        task.cancel()
+    try:
+        loop.run_until_complete(asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=0.5))
+    except (TimeoutError, RuntimeError):
+        pass
+    survivors = [t for t in pending if not t.done()]
+    if survivors:
+        names = ", ".join(t.get_name() for t in survivors)
+        pytest.fail(f"Asyncio task leak: {len(survivors)} task(s) survived cancel in {item.nodeid}: {names}")
+
+
+# Per-test instrumentation switches. The watchdog + inflight tracker are
+# always on (they're the load-bearing diagnostic for hangs). FD-delta and the
+# asyncio task sweep can be enabled per-environment via env vars when the
+# leak-hunt campaign is active; otherwise they stay off to keep per-test
+# overhead inside rule 15's budget.
+_FD_DELTA_ENABLED = os.environ.get("TELECLAUDE_TEST_FD_CHECK", "0") == "1"
+_FD_DELTA_STRICT = os.environ.get("TELECLAUDE_TEST_FD_STRICT", "0") == "1"
+_ASYNCIO_SWEEP_ENABLED = os.environ.get("TELECLAUDE_TEST_ASYNC_SWEEP", "0") == "1"
+
+
+def pytest_runtest_setup(item):
+    """Record the in-flight test for this worker (and fd count if enabled)."""
+    _watchdog.write_inflight(item.nodeid, time.monotonic())
+    if _FD_DELTA_ENABLED:
+        item._fd_count_at_setup = _count_fds()
+
+
+def pytest_runtest_teardown(item, nextitem):
+    """Clear in-flight record, sweep asyncio tasks, check fd-delta (if enabled)."""
+    _watchdog.clear_inflight()
+    if _ASYNCIO_SWEEP_ENABLED:
+        _sweep_asyncio_tasks(item)
+    if _FD_DELTA_ENABLED:
+        after = _count_fds()
+        before = getattr(item, "_fd_count_at_setup", after)
+        delta = after - before
+        if delta > 0:
+            tier = _watchdog.tier_for_nodeid(item.nodeid)
+            msg = f"FD leak in {item.nodeid} (tier={tier}): opened {delta} file descriptor(s) without closing"
+            if _FD_DELTA_STRICT and tier == "unit":
+                pytest.fail(msg)
+            else:
+                warnings.warn(msg, stacklevel=2)
+
+
+def _emit_inflight_diagnostic(label: str) -> None:
+    """Print per-worker in-flight tests to stderr when the suite is interrupted."""
+    records = _watchdog.read_all_inflight()
+    now = time.monotonic()
+    print("\n" + "=" * 72, file=sys.stderr)
+    print(f"{label}: per-worker in-flight tests at interrupt", file=sys.stderr)
+    print("=" * 72, file=sys.stderr)
+    if not records:
+        print("(no in-flight tests recorded — all workers were between tests)", file=sys.stderr)
+    else:
+        for rec in sorted(records, key=lambda r: r.started_monotonic):
+            elapsed = now - rec.started_monotonic
+            print(
+                f"  worker pid={rec.worker_pid:>6}  tier={rec.tier:<11}  elapsed={elapsed:>6.2f}s  {rec.nodeid}",
+                file=sys.stderr,
+            )
+    print("=" * 72 + "\n", file=sys.stderr)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """On interrupted session (xdist session_timeout, ^C), print in-flight diagnostic."""
+    # exitstatus 2 == pytest.ExitCode.INTERRUPTED, but we don't import the enum to keep
+    # this module dependency-light. session.shouldfail / shouldstop also signal an early stop.
+    interrupted = exitstatus == 2 or getattr(session, "shouldfail", None) or getattr(session, "shouldstop", None)
+    if interrupted:
+        _emit_inflight_diagnostic("SESSION INTERRUPTED")
+
+
+def pytest_keyboard_interrupt(excinfo):
+    """Defensive duplicate of the diagnostic — some xdist paths fire this instead of sessionfinish."""
+    _emit_inflight_diagnostic("KEYBOARD INTERRUPT")
 
 
 @pytest.fixture(autouse=True)
@@ -126,6 +267,8 @@ def cluster_event_bus(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Isolate TUI sticky state from user ~/.teleclaude/tui_state.json."""
+    from teleclaude.cli.tui import state_store  # startup boundary
+
     tui_state = tmp_path / "tui_state.json"
     monkeypatch.setattr(paths, "TUI_STATE_PATH", tui_state)
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", tui_state)
@@ -135,6 +278,11 @@ def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):  # ty
 @pytest.fixture(autouse=True)
 def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Provide a consistent, isolated test environment for parallel runs."""
+    # Deferred imports per test-resource-discipline rule 17 — keeps worker cold-start
+    # off the SQLAlchemy/greenlet/aiosqlite import chain for unit tests that no-op this fixture.
+    from teleclaude.core import db as db_module  # startup boundary
+    from teleclaude.core import session_cleanup, session_utils  # startup boundary
+
     project_root = tmp_path / "project"
     project_root.mkdir(parents=True, exist_ok=True)
     config_path = project_root / "teleclaude.yml"
@@ -157,16 +305,28 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
     yield
 
 
-@pytest.fixture(autouse=True)
-def _neutralize_launcher_binaries(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Prevent any un-mocked subprocess call from executing real macOS launcher binaries."""
-    # Neutralize already-resolved config values
-    monkeypatch.setattr(tc_config.computer, "tmux_binary", "/dev/null/tmux-NEUTERED")
-    for agent_cfg in tc_config.agents.values():
-        monkeypatch.setattr(agent_cfg, "binary", f"/dev/null/{agent_cfg.binary}-NEUTERED")
+@pytest.fixture(scope="session", autouse=True)
+def _neutralize_launcher_binaries() -> "object":
+    """Prevent any un-mocked subprocess call from executing real macOS launcher binaries.
 
-    # Prevent re-resolution from returning real launcher paths
-    monkeypatch.setattr(binaries_mod, "_is_macos", lambda: False)
+    Session-scoped: the patched values are constants across all tests. Paying the
+    monkeypatch + deferred import once per session (instead of once per test)
+    closes a real per-test budget item per
+    ``software-development/policy/test-resource-discipline`` rule 3.
+    """
+    # Deferred imports per test-resource-discipline rule 17.
+    from teleclaude.config import config as tc_config  # startup boundary
+    from teleclaude.runtime import binaries as binaries_mod  # startup boundary
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(tc_config.computer, "tmux_binary", "/dev/null/tmux-NEUTERED")
+    for agent_cfg in tc_config.agents.values():
+        mp.setattr(agent_cfg, "binary", f"/dev/null/{agent_cfg.binary}-NEUTERED")
+    mp.setattr(binaries_mod, "_is_macos", lambda: False)
+    try:
+        yield mp
+    finally:
+        mp.undo()
 
 
 # TUI Test Fixtures

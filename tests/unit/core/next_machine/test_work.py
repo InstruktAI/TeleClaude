@@ -19,7 +19,7 @@ from teleclaude.core.todos_db import TodosDb
 
 _WORK = "teleclaude.core.next_machine.work"
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
+pytestmark = pytest.mark.unit
 
 
 def _mock_todos_db(*, delivered: set[str] | None = None) -> AsyncMock:

@@ -62,17 +62,14 @@ def handle_test(args: list[str]) -> None:
 
     No args → context-aware scoping to resolve test targets.
     ``<files...>`` → run against explicit files (bypass scoping).
-    ``--expensive`` includes expensive-marked tests.
     ``--update-snapshots`` → accept reviewed snapshot diffs.
     """
     run_all = "--all" in args
-    include_expensive = "--expensive" in args
     update_snapshots = "--update-snapshots" in args
-    files = [a for a in args if a not in ("--expensive", "--all", "--update-snapshots")]
+    files = [a for a in args if a not in ("--all", "--update-snapshots")]
     project_root = resolve_workspace_root(resolve_invocation_cwd())
     runner = TestRunner(
         project_root=project_root,
-        include_expensive=include_expensive,
         update_snapshots=update_snapshots,
     )
     targets = runner.resolve_targets(files=files or None, run_all=run_all)

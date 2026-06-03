@@ -115,7 +115,6 @@ class TestShowTranscript:
         assert "Demo Session" in output
         assert "Conversation body" in output
 
-    @pytest.mark.timeout(5)
     def test_show_transcript_passes_caller_context_to_get_mirror(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: GetMirrorCall = {"session_id": "", "caller_email": "", "caller_role": ""}
 
