@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from teleclaude.core.next_machine.lifecycle import derive_lifecycle_drift
+from teleclaude.core.next_machine.lifecycle import DRIFT_PENDING, derive_lifecycle_drift
 from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state,
@@ -190,4 +190,4 @@ async def test_apply_prepared_state_keeps_prepped_todo_off_the_prepare_bounce(se
     assert plan.referenced_snippet_digests == expected_refs
     assert plan.dependency_set_at_write == expected_deps
     # And the work machine has no reason to bounce back to prepare.
-    assert "pending" not in set(drift.get("implementation-plan", {}).values())
+    assert DRIFT_PENDING not in set(drift.get("implementation-plan", {}).values())
