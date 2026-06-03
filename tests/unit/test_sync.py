@@ -85,6 +85,7 @@ class TestSyncValidation:
         (docs_root / "one.md").write_text("# One\n\n## Sources\n- https://example.com\n", encoding="utf-8")
         (docs_root / "two.md").write_text("# Two\n\n## Sources\n- https://example.com\n", encoding="utf-8")
 
+        monkeypatch.setattr(sync, "ensure_git_filters", lambda _: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
 
@@ -389,3 +390,21 @@ class TestSyncDoesNotRegisterProject:
 
         assert sync.sync(tmp_path / "project") is True
         assert not manifest_path.exists()
+
+
+class TestSyncSelfHealsGitFilter:
+    def test_ensures_git_filter_before_validation(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        # The filter self-heal must run before validation reads docs: a fresh
+        # checkout with an unconfigured driver otherwise fails validation on
+        # unexpanded paths and never reaches deploy. Ordering is the contract.
+        order: list[str] = []
+        monkeypatch.setattr(sync, "ensure_git_filters", lambda _root: order.append("ensure"))
+        monkeypatch.setattr(sync, "validate_all_snippets", lambda _root: order.append("validate"))
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
+        monkeypatch.setattr(sync, "get_errors", lambda: [])
+        monkeypatch.setattr(sync, "clear_errors", lambda: None)
+
+        sync.sync(tmp_path, validate_only=True)
+
+        assert order == ["ensure", "validate"]

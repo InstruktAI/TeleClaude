@@ -923,6 +923,22 @@ def _resolve_git_common_root(project_root: Path) -> Path:
     return common_path.parent
 
 
+def _repair_symlinked_deploy_root(deploy_root: Path) -> bool:
+    """Unlink a deploy root that is a symlink so it can be recreated as a real dir.
+
+    A deploy root must be a real directory of per-domain symlinks. If it is itself
+    a symlink (e.g. pointing back at the repo's docs/global from a botched setup),
+    the deploy resolves onto its own source and is refused forever. Removing the
+    symlink lets the caller recreate a real directory and self-heals the checkout
+    on the next sync. Returns True if a symlink was removed.
+    """
+    if not deploy_root.is_symlink():
+        return False
+    print(f"  Repairing symlinked deploy root: {deploy_root} -> {os.readlink(deploy_root)}")
+    deploy_root.unlink()
+    return True
+
+
 def main() -> None:  # noqa: C901
     """Transpile and optionally deploy agent artifacts for supported CLIs."""
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
@@ -1402,6 +1418,10 @@ def main() -> None:  # noqa: C901
         print("\nDeploying documentation...")
         deploy_docs_root = GLOBAL_SNIPPETS_DIR
         source_docs_root = Path(source_dir).resolve()
+
+        # Self-heal a deploy root that is itself a symlink (it would resolve onto
+        # its own source below). Once removed, the mkdir recreates a real dir.
+        _repair_symlinked_deploy_root(deploy_docs_root)
 
         if source_docs_root == deploy_docs_root.resolve():
             print("Error: deploy docs target resolves to source docs/global. Refusing deploy.")

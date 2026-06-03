@@ -202,6 +202,40 @@ def test_inflate_domain_baseline_appends_progressive_index(tmp_path: Path, snaps
     assert result == snapshot
 
 
+class TestRepairSymlinkedDeployRoot:
+    """A deploy root that is itself a symlink resolves onto its own source and must
+    be repaired so the deploy can recreate it as a real directory."""
+
+    def test_unlinks_symlinked_deploy_root(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        deploy = tmp_path / "deploy"
+        deploy.symlink_to(source)
+
+        repaired = distribute._repair_symlinked_deploy_root(deploy)
+
+        assert repaired is True
+        assert not deploy.is_symlink()
+        assert not deploy.exists()
+
+    def test_leaves_real_directory_untouched(self, tmp_path: Path) -> None:
+        deploy = tmp_path / "deploy"
+        deploy.mkdir()
+
+        repaired = distribute._repair_symlinked_deploy_root(deploy)
+
+        assert repaired is False
+        assert deploy.is_dir()
+
+    def test_noop_when_deploy_root_absent(self, tmp_path: Path) -> None:
+        deploy = tmp_path / "deploy"
+
+        repaired = distribute._repair_symlinked_deploy_root(deploy)
+
+        assert repaired is False
+        assert not deploy.exists()
+
+
 def test_inflate_domain_baseline_without_progressive_sibling(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
     """With no progressive sibling, the inflation is the baseline content alone."""
     domain_src = tmp_path / "docs" / "global" / "widgets"

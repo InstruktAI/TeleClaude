@@ -18,6 +18,7 @@ from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
+from teleclaude.project_setup.git_filters import ensure_git_filters
 from teleclaude.resource_validation import (
     clear_errors,
     get_errors,
@@ -46,6 +47,12 @@ def sync(
 
     Returns True if successful, False if validation errors occurred.
     """
+    # Phase 0: Self-heal the docs git filter. The smudge/clean driver lives in
+    # per-clone .git/config, so a fresh checkout has the .gitattributes rule but
+    # no driver — smudge silently no-ops and the validation below reads unexpanded
+    # paths. Configure the driver and re-smudge stale docs before anything reads them.
+    ensure_git_filters(project_root)
+
     clear_errors()
     errors: list[str] = []
 
