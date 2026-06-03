@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -35,8 +36,12 @@ def _run_bash(
     )
 
 
+_MAKE_DEPTH_RE = re.compile(r"\bmake\[\d+\]:")
+
+
 def _redact(value: str, tmp_path: Path) -> str:
-    return value.replace(str(tmp_path), "TMP").replace(str(_REPO_ROOT), "REPO")
+    redacted = value.replace(str(tmp_path), "TMP").replace(str(_REPO_ROOT), "REPO")
+    return _MAKE_DEPTH_RE.sub("make:", redacted)
 
 
 def _project(tmp_path: Path) -> Path:
@@ -99,7 +104,11 @@ def test_config_missing_default_env(tmp_path: Path, snapshot: SnapshotAssertion)
     (project_root / "config.yml").write_text("computer:\n  name: test\n", encoding="utf-8")
     process = _run_bash(_start_script(project_root), cwd=tmp_path)
 
-    assert {"code": process.returncode, "stdout": process.stdout, "stderr": process.stderr} == snapshot
+    assert {
+        "code": process.returncode,
+        "stdout": _redact(process.stdout, tmp_path),
+        "stderr": _redact(process.stderr, tmp_path),
+    } == snapshot
 
 
 def test_config_missing_default_config_yml(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
@@ -107,7 +116,11 @@ def test_config_missing_default_config_yml(tmp_path: Path, snapshot: SnapshotAss
     (project_root / ".env").write_text("ok=1\n", encoding="utf-8")
     process = _run_bash(_start_script(project_root), cwd=tmp_path)
 
-    assert {"code": process.returncode, "stdout": process.stdout, "stderr": process.stderr} == snapshot
+    assert {
+        "code": process.returncode,
+        "stdout": _redact(process.stdout, tmp_path),
+        "stderr": _redact(process.stderr, tmp_path),
+    } == snapshot
 
 
 def test_config_missing_env_override_tilde(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
@@ -120,7 +133,11 @@ def test_config_missing_env_override_tilde(tmp_path: Path, snapshot: SnapshotAss
     env.update({"HOME": str(fake_home), "TELECLAUDE_ENV_PATH": "~/missing.env"})
     process = _run_bash(_start_script(project_root), env=env, cwd=tmp_path)
 
-    assert {"code": process.returncode, "stdout": process.stdout, "stderr": process.stderr} == snapshot
+    assert {
+        "code": process.returncode,
+        "stdout": _redact(process.stdout, tmp_path),
+        "stderr": _redact(process.stderr, tmp_path),
+    } == snapshot
 
 
 def test_config_missing_env_override_relative(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
@@ -131,7 +148,11 @@ def test_config_missing_env_override_relative(tmp_path: Path, snapshot: Snapshot
     env.update({"TELECLAUDE_ENV_PATH": "does-not-exist/.env"})
     process = _run_bash(_start_script(project_root), env=env, cwd=tmp_path)
 
-    assert {"code": process.returncode, "stdout": process.stdout, "stderr": process.stderr} == snapshot
+    assert {
+        "code": process.returncode,
+        "stdout": _redact(process.stdout, tmp_path),
+        "stderr": _redact(process.stderr, tmp_path),
+    } == snapshot
 
 
 def test_config_missing_config_yml_override_tilde(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
@@ -144,7 +165,11 @@ def test_config_missing_config_yml_override_tilde(tmp_path: Path, snapshot: Snap
     env.update({"HOME": str(fake_home), "TELECLAUDE_CONFIG_PATH": "~/missing.yml"})
     process = _run_bash(_start_script(project_root), env=env, cwd=tmp_path)
 
-    assert {"code": process.returncode, "stdout": process.stdout, "stderr": process.stderr} == snapshot
+    assert {
+        "code": process.returncode,
+        "stdout": _redact(process.stdout, tmp_path),
+        "stderr": _redact(process.stderr, tmp_path),
+    } == snapshot
 
 
 def test_config_missing_config_yml_override_relative(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
@@ -155,7 +180,11 @@ def test_config_missing_config_yml_override_relative(tmp_path: Path, snapshot: S
     env.update({"TELECLAUDE_CONFIG_PATH": "does-not-exist/config.yml"})
     process = _run_bash(_start_script(project_root), env=env, cwd=tmp_path)
 
-    assert {"code": process.returncode, "stdout": process.stdout, "stderr": process.stderr} == snapshot
+    assert {
+        "code": process.returncode,
+        "stdout": _redact(process.stdout, tmp_path),
+        "stderr": _redact(process.stderr, tmp_path),
+    } == snapshot
 
 
 def test_config_present_proceeds_normally(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
@@ -208,4 +237,8 @@ def test_make_start_public_boundary_missing_config(tmp_path: Path, snapshot: Sna
         check=False,
     )
 
-    assert {"code": process.returncode, "stdout": process.stdout, "stderr": process.stderr} == snapshot
+    assert {
+        "code": process.returncode,
+        "stdout": _redact(process.stdout, tmp_path),
+        "stderr": _redact(process.stderr, tmp_path),
+    } == snapshot
