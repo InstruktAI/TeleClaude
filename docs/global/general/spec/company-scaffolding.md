@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## Required reads
 
-@~/.teleclaude/docs/software-development/spec/init-scaffolding.md
+- @~/.teleclaude/docs/software-development/spec/init-scaffolding.md
 
 ## What it is
 
@@ -91,7 +91,7 @@ id: 'company/{taxonomy}/{slug}'
 type: '{taxonomy}'
 scope: 'global'
 description: '{concise description}'
-generated_by: 'telec-company-onboard'
+generated_by: 'telec-init'
 generated_at: '{ISO8601 timestamp}'
 company: '{company-slug}'
 ---
@@ -104,7 +104,7 @@ Required fields: `id`, `type`, `scope`, `description`, `generated_by`,
   belonging to that company.
 - `company` identifies which company the snippet belongs to, enabling the
   context selector to filter by project membership.
-- `generated_by: telec-company-onboard` marks the snippet as auto-generated
+- `generated_by: telec-init` marks the snippet as auto-generated
   by the onboard process.
 
 ### Inbox Processing
@@ -154,7 +154,7 @@ snippets_preserved: []
 
 The same merge rules as init scaffolding apply:
 
-1. Identify existing snippets by `generated_by: telec-company-onboard`.
+1. Identify existing snippets by `generated_by: telec-init`.
 2. Human-authored sections after `<!-- human -->` survive.
 3. Changed-file-only writes (preserve timestamps for unchanged content).
 4. No duplication — update by ID.
@@ -182,7 +182,7 @@ The enrichment writer validates all output before persistence:
 ## Allowed values
 
 - `company` slug: lowercase kebab-case, derived from the company name.
-- `generated_by`: `telec-company-onboard`.
+- `generated_by`: `telec-init`.
 - `scope`: always `global` for company snippets.
 - `type`: any valid taxonomy type.
 

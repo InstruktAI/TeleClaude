@@ -533,7 +533,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "model_flags": {
             "fast": "--model haiku",
             "med": "--model 'sonnet'",
-            "slow": "--model 'claude-opus-4-7[1m]'",
+            "slow": "--model 'claude-opus-4-8[1m]'",
             "default": "",
         },
         "exec_subcommand": "",

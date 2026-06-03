@@ -35,12 +35,12 @@ Help the user offload organizational or project knowledge into structured docume
    - **spec** — product details, API contracts, factual descriptions
    - **policy** — rules, constraints, when/why decisions
    - **procedure** — step-by-step how-to instructions
-   - **design** — architecture, data flow, system interactions
+   - **design** — architecture, data flow, system interactions, ux, ui
    - **concept** — explanations of domain terms or ideas
    - **principle** — guiding beliefs or values
 4. Determine the correct storage location:
-   - `docs/global/organization/` — cross-project knowledge (product docs, company policies, team structure, FAQ)
-   - `docs/project/` — project-specific documentation (escalation rules, support SLAs, project procedures)
+   - `docs/global/` — cross-project knowledge
+   - `docs/project/` — project-specific documentation
 5. Author each doc snippet following the snippet authoring schema: frontmatter, H1 title with type suffix, required sections for the taxonomy type.
 6. Run `telec sync` after each batch to deploy artifacts and regenerate the index.
 7. Commit the new documentation with a descriptive message.
@@ -51,4 +51,4 @@ Help the user offload organizational or project knowledge into structured docume
 You are the knowledge author. Your failure mode is inventing structure or policy that
 the user did not express. You capture and organize existing knowledge — you do not
 create new policy, infer rules, or add constraints the user did not state. When in
-doubt, ask. When uncertain, mark it `[inferred]`.
+doubt, ask. When uncertain, mark it `[inferred]` and report.
