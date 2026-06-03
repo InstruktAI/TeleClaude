@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.core.next_machine.lifecycle import DRIFT_PENDING, derive_lifecycle_drift
-from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state,
     mark_phase_state,
@@ -19,11 +18,14 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.types.todos import TodoState
+from teleclaude.types.todos import DependencyEntry, TodoState
 
 pytestmark = pytest.mark.unit
 
 _STATE_IO = "teleclaude.core.next_machine.state_io"
+_SNIPPET_ID = "project/spec/example"
+_SNIPPET_DIGEST = "snippet-digest"
+_DEPENDENCY = DependencyEntry(dep_slug="dep", roadmap_status="active")
 
 
 def _digest(content: str) -> str:
@@ -142,36 +144,31 @@ async def test_apply_prepared_state_keeps_prepped_todo_off_the_prepare_bounce(se
     upstream-snippet and dependency-graph drift classes — which consume
     ``referenced_snippet_digests`` and ``dependency_set_at_write`` — fail-safe to
     ``pending`` and bounce a freshly-created prepped todo back to prepare on its
-    first ``telec todo work``.  This drives the real ordering (full async
-    provenance, then fast-track) and asserts the work-entry drift check stays
-    clean.
+    first ``telec todo work``.  This seeds an already-prepared plan carrying
+    non-empty anchors, runs the fast-track, and asserts those anchors survive and
+    the work-entry drift check stays clean.
     """
     cwd = str(seeded_db._db_path.parent.parent)
     plan_content = "# Plan\n\n- [ ] Do the work.\n"
     seeded_db.write_artifact_sync("slug-a", "implementation-plan", plan_content)
 
-    # Mimic the dump route: establish full async provenance for the plan first.
+    # A prepped plan that already carries full async provenance with NON-EMPTY
+    # anchors — so clearing them is observable rather than a vacuous {} == {}.
     pre = StateWriter(TodoState.defaults().model_dump(exclude_none=True))
     pre.state.kind = "prepped"
-    await sync_artifact_provenance(
-        seeded_db,
-        pre,
-        "slug-a",
-        "implementation-plan",
-        repo_root=cwd,
-        artifact_body=plan_content,
-        snippet_digest_fn=lambda _: "",
-    )
+    entry = pre.state.artifacts.implementation_plan
+    entry.digest = _digest(plan_content)
+    entry.produced_at = "2026-01-01T00:00:00+00:00"
+    entry.async_provenance_complete = True
+    entry.referenced_snippet_digests = {_SNIPPET_ID: _SNIPPET_DIGEST}
+    entry.dependency_set_at_write = [_DEPENDENCY]
     pre.commit_sync(seeded_db, "slug-a")
-    seeded_plan = pre.state.artifacts.implementation_plan
-    assert seeded_plan.async_provenance_complete is True
-    expected_refs = dict(seeded_plan.referenced_snippet_digests)
-    expected_deps = list(seeded_plan.dependency_set_at_write)
 
     with (
         patch(f"{_STATE_IO}.resolve_state_root", return_value=Path(cwd)),
         patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
         patch(f"{_STATE_IO}.run_git_command", return_value=(0, "abc123\n", "")),
+        patch.object(seeded_db, "get_deps_with_status", new=AsyncMock(return_value=[_DEPENDENCY])),
     ):
         apply_prepared_state(cwd, "slug-a")
         post = StateWriter(read_phase_state(cwd, "slug-a"))
@@ -180,14 +177,15 @@ async def test_apply_prepared_state_keeps_prepped_todo_off_the_prepare_bounce(se
             post.state,
             repo_root=cwd,
             todos_db=seeded_db,
-            snippet_digest_fn=lambda _: "",
+            snippet_digest_fn=lambda _: _SNIPPET_DIGEST,
             writer=None,
         )
 
     plan = post.state.artifacts.implementation_plan
-    # The fast-track preserved the exact anchors the work-entry drift consumes.
+    # The fast-track preserved the exact non-empty anchors the work-entry drift
+    # consumes; clearing either of these would break the equalities below.
     assert plan.async_provenance_complete is True
-    assert plan.referenced_snippet_digests == expected_refs
-    assert plan.dependency_set_at_write == expected_deps
-    # And the work machine has no reason to bounce back to prepare.
+    assert plan.referenced_snippet_digests == {_SNIPPET_ID: _SNIPPET_DIGEST}
+    assert plan.dependency_set_at_write == [_DEPENDENCY]
+    # And the upstream-snippet/dependency-graph classes stay fresh — no bounce.
     assert DRIFT_PENDING not in set(drift.get("implementation-plan", {}).values())
