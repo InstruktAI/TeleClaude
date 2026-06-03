@@ -212,6 +212,33 @@ class FileArtifactType(NamedTuple):
     artifact_kind: str  # "agent", "command", or "skill" — passed to validate_artifact
 
 
+def _mirror_exclusions_for_agent(
+    config: AgentConfig,
+    specs: list[FileArtifactType],
+    target_root: str,
+) -> frozenset[str]:
+    """Staging basenames in ``dist/<agent>/`` that must not also mirror into ``~/.{agent}``.
+
+    For each artifact spec, the explicit ``deploy_*_dest`` may point outside
+    the agent-home mirror (e.g. Codex commands → ``~/.teleclaude/commands``,
+    not ``~/.codex/prompts``). When it differs from where the blanket mirror
+    would place the staging subdir, that subdir is reported here so the
+    copytree can skip it and avoid producing a dead duplicate.
+    """
+    excluded: set[str] = set()
+    for spec in specs:
+        deploy_dest = str(config.get(spec.deploy_dir_key) or "")
+        if not deploy_dest:
+            continue
+        dest_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
+        if not dest_basename:
+            continue
+        copytree_dest = os.path.join(target_root, dest_basename)
+        if os.path.normpath(deploy_dest) != os.path.normpath(copytree_dest):
+            excluded.add(dest_basename)
+    return frozenset(excluded)
+
+
 def transform_to_codex(post: Post) -> str:
     """Transform a post to the Codex format (same as Claude - standard YAML frontmatter).
 
@@ -1254,17 +1281,26 @@ def main() -> None:  # noqa: C901
                 os.makedirs(target_root, exist_ok=True)
 
                 dist_agent_root = os.path.join(dist_dir, agent_name)
-                shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True)
+                excluded_basenames = _mirror_exclusions_for_agent(config, artifact_specs, target_root)
 
-                # Deploy artifact types to explicit targets when they differ from copytree
+                def _ignore(
+                    directory: str,
+                    _names: list[str],
+                    _root: str = dist_agent_root,
+                    _excluded: frozenset[str] = excluded_basenames,
+                ) -> frozenset[str]:
+                    return _excluded if directory == _root else frozenset()
+
+                shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True, ignore=_ignore)
+
+                # Each excluded subdir is deployed to its explicit external target
                 for spec in artifact_specs:
-                    deploy_dest = str(config.get(spec.deploy_dir_key) or "")
-                    if not deploy_dest:
-                        continue
                     dest_dir_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
+                    if dest_dir_basename not in excluded_basenames:
+                        continue
+                    deploy_dest = str(config.get(spec.deploy_dir_key) or "")
                     dist_src = os.path.join(dist_agent_root, dest_dir_basename)
-                    copytree_dest = os.path.join(target_root, dest_dir_basename)
-                    if os.path.normpath(deploy_dest) != os.path.normpath(copytree_dest) and os.path.isdir(dist_src):
+                    if os.path.isdir(dist_src):
                         os.makedirs(deploy_dest, exist_ok=True)
                         shutil.copytree(dist_src, deploy_dest, dirs_exist_ok=True)
 

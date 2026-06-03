@@ -25,6 +25,7 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts import distribute
 from scripts.distribute import (
     _inflate_domain_baseline,
+    _mirror_exclusions_for_agent,
     _needs_domain_baseline_domain,
     expand_exec_directives,
     expand_inline_refs,
@@ -209,3 +210,79 @@ def test_inflate_domain_baseline_without_progressive_sibling(tmp_path: Path, sna
     result = _inflate_domain_baseline(domain_src / "baseline.md", domain_src, project_root=tmp_path)
 
     assert result == snapshot
+
+
+# ---------------------------------------------------------------------------
+# Agent-home mirror exclusion: artifact subdirs that deploy externally must
+# not also be duplicated into ``~/.{agent}/`` by the blanket copytree.
+# ---------------------------------------------------------------------------
+
+
+def _commands_spec() -> distribute.FileArtifactType:
+    return distribute.FileArtifactType(
+        name="commands",
+        source_dir_key="commands",
+        dest_dir_key="commands_dest_dir",
+        deploy_dir_key="deploy_commands_dest",
+        ext_key="ext",
+        kind="file",
+        artifact_kind="command",
+    )
+
+
+def _agent_config_with_commands(
+    *,
+    commands_dest_dir: str,
+    deploy_commands_dest: str,
+) -> distribute.AgentConfig:
+    """Minimal valid AgentConfig fixture; stubs irrelevant fields and parameterizes the keys under test."""
+    return {
+        "check_dir": "/unused",
+        "prefix": "/",
+        "master_dest": "/unused",
+        "commands_dest_dir": commands_dest_dir,
+        "agents_dest_dir": "/unused",
+        "skills_dest_dir": "/unused",
+        "skills_ext": ".md",
+        "ext": ".md",
+        "transform": distribute.dump_frontmatter,
+        "deploy_commands_dest": deploy_commands_dest,
+    }
+
+
+def test_mirror_exclusions_for_agent_excludes_staging_basename_when_deploy_diverges(
+    tmp_path: Path,
+) -> None:
+    """A staging basename is excluded when its explicit deploy lands outside the mirror.
+
+    Codex's commands stage at ``dist/codex/prompts`` and deploy externally to
+    ``~/.teleclaude/commands``. Mirroring the staging into ``~/.codex`` would
+    create a dead duplicate at ``~/.codex/prompts``; the helper reports it as
+    excluded so the blanket copytree can skip it.
+    """
+    target_root = str(tmp_path / ".codex")
+    config = _agent_config_with_commands(
+        commands_dest_dir=str(tmp_path / "dist" / "codex" / "prompts"),
+        deploy_commands_dest=str(tmp_path / ".teleclaude" / "commands"),
+    )
+
+    result = _mirror_exclusions_for_agent(config, [_commands_spec()], target_root)
+
+    assert result == frozenset({"prompts"})
+
+
+def test_mirror_exclusions_for_agent_empty_when_deploy_matches_mirror(tmp_path: Path) -> None:
+    """When the explicit deploy equals the mirror destination, no exclusion is needed.
+
+    Claude's commands deploy to ``~/.claude/commands`` — identical to where the
+    blanket mirror would place them — so nothing should be excluded.
+    """
+    target_root = str(tmp_path / ".claude")
+    config = _agent_config_with_commands(
+        commands_dest_dir=str(tmp_path / "dist" / "claude" / "commands"),
+        deploy_commands_dest=os.path.join(target_root, "commands"),
+    )
+
+    result = _mirror_exclusions_for_agent(config, [_commands_spec()], target_root)
+
+    assert result == frozenset()
