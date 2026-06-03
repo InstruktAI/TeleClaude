@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,7 +10,12 @@ from fastapi import HTTPException
 
 from teleclaude.api import sessions_routes
 from teleclaude.api.sessions_routes import ListSessionsQuery
-from teleclaude.api_models import CreateSessionRequest, SendMessageRequest
+from teleclaude.api_models import (
+    CreateSessionRequest,
+    CreateSessionResponseDTO,
+    SendMessageRequest,
+    SendMessageResponseDTO,
+)
 from teleclaude.core.models import SessionLaunchKind, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
 
@@ -30,11 +34,106 @@ class TestSessionsRoutes:
         request = CreateSessionRequest(computer="local", project_path="/repo/demo", agent="claude")
         identity = SimpleNamespace(session_id=None, human_role=None, email=None)
 
-        with patch("teleclaude.api.sessions_routes.assert_agent_enabled", side_effect=ValueError("disabled")):
+        with patch("teleclaude.api.session_create_launch.assert_agent_enabled", side_effect=ValueError("disabled")):
             with pytest.raises(HTTPException) as exc_info:
                 await sessions_routes.create_session(request, identity=identity)
 
         assert exc_info.value.status_code == 400
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_session_on_remote_computer_returns_peer_session_without_local_creation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Remote session creation returns the peer-owned session and bypasses local creation."""
+        local_computer = "local-machine"
+        remote_computer = "remote-machine"
+        project_path = "/repo/demo"
+        startup_message = "build cluster-followups"
+        expected_local_computer = local_computer
+        client = object()
+        remote_response = CreateSessionResponseDTO(
+            status="success",
+            session_id="remote-session",
+            tmux_session_name="tc_remote-session",
+            computer=remote_computer,
+            agent="codex",
+        )
+        monkeypatch.setattr(sessions_routes._STATE, "client", None, raising=False)
+        monkeypatch.setattr(sessions_routes._STATE, "cache", None)
+        monkeypatch.setattr(sessions_routes, "config", SimpleNamespace(computer=SimpleNamespace(name=local_computer)))
+
+        async def dispatch_remote(
+            configured_client: object,
+            target_computer: str,
+            dispatched_request: CreateSessionRequest,
+            *,
+            local_computer: str,
+        ) -> CreateSessionResponseDTO:
+            if configured_client is not client:
+                raise AssertionError("remote route must preserve the configured peer client")
+            if target_computer != remote_computer:
+                raise AssertionError("remote route must target the requested computer")
+            if dispatched_request is not request:
+                raise AssertionError("remote route must delegate the request")
+            if local_computer != expected_local_computer:
+                raise AssertionError("remote route must identify the local computer")
+            return remote_response
+
+        request = CreateSessionRequest(
+            computer=remote_computer,
+            project_path=project_path,
+            agent="codex",
+            thinking_mode="slow",
+            message=startup_message,
+        )
+        identity = SimpleNamespace(session_id=None, human_role=None, email="caller@example.com")
+        local_service = SimpleNamespace(create_session=AsyncMock(side_effect=AssertionError("local create invoked")))
+
+        sessions_routes.configure(client=client, cache=None)
+        sessions_routes.configure(cache=object())
+        with (
+            patch("teleclaude.api.sessions_routes.dispatch_session_create_to_peer", new=dispatch_remote),
+            patch("teleclaude.api.sessions_routes.get_command_service", return_value=local_service),
+        ):
+            await sessions_routes.create_session(request, identity=identity)
+
+        local_service.create_session.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_session_on_local_computer_keeps_legacy_local_response(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Local session creation keeps using the local service and omits peer ownership."""
+        local_computer = "local-machine"
+        monkeypatch.setattr(sessions_routes._STATE, "client", object(), raising=False)
+        monkeypatch.setattr(sessions_routes, "config", SimpleNamespace(computer=SimpleNamespace(name=local_computer)))
+        request = CreateSessionRequest(
+            computer=local_computer,
+            project_path="/repo/demo",
+            agent="codex",
+            thinking_mode="slow",
+        )
+        identity = SimpleNamespace(session_id=None, human_role=None, email="caller@example.com")
+        local_service = SimpleNamespace(
+            create_session=AsyncMock(
+                return_value={"session_id": "local-session", "tmux_session_name": "tc_local-session"}
+            )
+        )
+        dispatch_remote = AsyncMock(side_effect=AssertionError("local create must not dispatch to a peer"))
+
+        with (
+            patch("teleclaude.api.session_create_launch.assert_agent_enabled", return_value="codex"),
+            patch("teleclaude.api.sessions_routes.dispatch_session_create_to_peer", dispatch_remote),
+            patch("teleclaude.api.sessions_routes.get_command_service", return_value=local_service),
+        ):
+            await sessions_routes.create_session(request, identity=identity)
+
+        dispatch_remote.assert_not_awaited()
+        local_service.create_session.assert_awaited_once()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -142,7 +241,7 @@ class TestSessionsRoutes:
         """Work-mode sends return the active direct-link response instead of dispatching a message."""
         request = _make_request()
         message = SendMessageRequest(message="hello")
-        direct_link_response: Any = {"status": "error", "mode": "direct", "link_id": "link-1"}
+        direct_link_response = SendMessageResponseDTO(status="error", mode="direct", link_id="link-1")
 
         with (
             patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()),
@@ -355,7 +454,7 @@ class TestSessionsRoutes:
         )
         identity = SimpleNamespace(session_id="caller-123", human_role="member", email="member@example.com")
 
-        with patch("teleclaude.api.sessions_routes.assert_agent_enabled", return_value="codex"):
+        with patch("teleclaude.api.session_create_launch.assert_agent_enabled", return_value="codex"):
             metadata, _initiator, initial_input, launch_intent, _caller = await sessions_routes._prepare_create_session(
                 request, identity
             )
@@ -384,7 +483,7 @@ class TestSessionsRoutes:
         )
         identity = SimpleNamespace(session_id="caller-123", human_role="member", email="member@example.com")
 
-        with patch("teleclaude.api.sessions_routes.assert_agent_enabled", return_value="claude"):
+        with patch("teleclaude.api.session_create_launch.assert_agent_enabled", return_value="claude"):
             metadata, _initiator, initial_input, launch_intent, _caller = await sessions_routes._prepare_create_session(
                 request, identity
             )

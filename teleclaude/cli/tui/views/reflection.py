@@ -25,7 +25,6 @@ _BLACKLIST = {
     "projects_mozbook",
     "tmux_binary",
     "trusted_dirs",  # Complex structure handled separately or blacklisted
-    "trusted_bots",  # Fleet-derived: assembled from fleet members, not edited here.
     # System-derived, not user-editable in the config view.
     "user",
     "default_working_dir",

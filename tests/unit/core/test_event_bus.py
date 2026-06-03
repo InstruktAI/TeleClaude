@@ -107,13 +107,6 @@ async def _start_and_immediately_shutdown(bus: EventBus) -> None:
     await bus.start(shutdown)
 
 
-def _contract_field(contract: object, field_name: str) -> object | None:
-    """Read a structured implementation-boundary contract from a mapping or object."""
-    if isinstance(contract, Mapping):
-        return contract.get(field_name)
-    return getattr(contract, field_name, None)
-
-
 def _session_started_envelope(session_id: str = "sess-1") -> EventEnvelope:
     """Build a typed internal session_started envelope for consumer-path specs."""
     return EventEnvelope(
@@ -151,6 +144,18 @@ class TestEventBus:
         await bus.emit("agent_event", AgentAvailabilityContext(agent="claude", available=True))
         calls = _captured_xadd_calls(redis)
         assert calls
+
+    @pytest.mark.unit
+    async def test_emit_stamps_originating_computer_on_stream_payload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(event_bus_module.config.computer, "name", "MozMini")
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+
+        await bus.emit("agent_event", AgentAvailabilityContext(agent="claude", available=True))
+
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        assert calls[0][1]["originating_computer"] == "MozMini"
 
     @pytest.mark.unit
     def test_clear_removes_all_handlers(self) -> None:
@@ -319,20 +324,36 @@ class TestEventBusRedisMigrationSpecs:
             )
 
     @pytest.mark.unit
-    def test_module_exposes_internal_event_contract_metadata(self) -> None:
-        """Module exposes structured stream/group/namespace/outage contract metadata.
+    async def test_consumer_groups_are_isolated_per_computer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        async def registered_groups_for(computer_name: str) -> set[str]:
+            monkeypatch.setattr(event_bus_module.config.computer, "name", computer_name)
+            redis = _make_redis_fake()
+            bus = EventBus(role="daemon", redis_client=redis)
 
-        Catches a regression where the implementation lands without
-        publishing the implementation-boundary contract required by the
-        requirements. The assertion uses structured fields instead of
-        prose-locking human-facing documentation text.
-        """
-        contract = getattr(event_bus_module, "INTERNAL_EVENT_BUS_CONTRACT", None)
-        assert contract is not None
-        assert _contract_field(contract, "stream_name") != CARTRIDGE_STREAM_NAME
-        assert _contract_field(contract, "consumer_group_rule") not in (None, "")
-        assert _contract_field(contract, "event_namespace_rule") not in (None, "")
-        assert _contract_field(contract, "redis_outage_mode") not in (None, "")
+            await _start_and_immediately_shutdown(bus)
+
+            return {group for _, group in _captured_xgroup_create_calls(redis)}
+
+        mozmini_groups = await registered_groups_for("MozMini")
+        mozbook_groups = await registered_groups_for("MozBook")
+
+        assert mozmini_groups
+        assert mozbook_groups
+        assert mozmini_groups.isdisjoint(mozbook_groups)
+
+    @pytest.mark.unit
+    async def test_consumer_group_stays_stable_for_same_computer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(event_bus_module.config.computer, "name", "MozMini")
+        redis = _make_redis_fake()
+        first_bus = EventBus(role="daemon", redis_client=redis)
+        second_bus = EventBus(role="daemon", redis_client=redis)
+
+        await _start_and_immediately_shutdown(first_bus)
+        await _start_and_immediately_shutdown(second_bus)
+
+        groups = [group for _, group in _captured_xgroup_create_calls(redis)]
+        assert groups
+        assert len(set(groups)) == 1
 
     @pytest.mark.unit
     async def test_subscribers_run_under_durable_acknowledgment_boundary_subscriber_exception(

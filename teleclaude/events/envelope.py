@@ -17,7 +17,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 #: Current envelope schema generation. Used as the default for EventEnvelope.version.
-SCHEMA_VERSION: int = 2
+SCHEMA_VERSION: int = 3
 
 
 class EventVisibility(str, Enum):
@@ -55,6 +55,7 @@ class EventEnvelope(BaseModel):
     event_id: str = Field(default_factory=lambda: str(uuid4()))
     version: int = SCHEMA_VERSION
     source: str
+    originating_computer: str | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     idempotency_key: str | None = None
     # Semantic
@@ -91,6 +92,7 @@ class EventEnvelope(BaseModel):
             "event_id": self.event_id,
             "version": str(self.version),
             "source": self.source,
+            "originating_computer": self.originating_computer or "",
             "timestamp": cast(str, dumped["timestamp"]),
             "idempotency_key": self.idempotency_key or "",
             "level": str(int(self.level)),
@@ -140,6 +142,7 @@ class EventEnvelope(BaseModel):
             event_id=event_id,
             version=int(d.get("version", str(SCHEMA_VERSION))),
             source=d["source"],
+            originating_computer=d.get("originating_computer") or None,
             timestamp=datetime.fromisoformat(d["timestamp"]),
             idempotency_key=d.get("idempotency_key") or None,
             level=EventLevel(int(d["level"])),

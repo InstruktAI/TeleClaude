@@ -216,41 +216,47 @@ visibility: 'public'
 
     Making something `pub(crate) fn _internal_helper()` for tests is the failure mode that binds tests to internals.
 
-21. **Test names describe behavior, not implementation.** `intake_advances_to_drafting_on_input_received`, not `test_match_returns_drafting`.
+21. **Do not test native shape or wiring for coverage.** Rust struct fields,
+    enum variants, builder defaults, trait-object wiring, and DI/container
+    registration are not test targets by themselves. Assert accepted/rejected
+    external input, public API output, persisted/wire behavior, or the runtime
+    behavior the wiring enables.
+
+22. **Test names describe behavior, not implementation.** `intake_advances_to_drafting_on_input_received`, not `test_match_returns_drafting`.
 
 ### Async testing
 
-22. **Use `#[tokio::test]` for async tests.** Single-threaded runtime by default — deterministic, fast.
+23. **Use `#[tokio::test]` for async tests.** Single-threaded runtime by default — deterministic, fast.
 
-23. **Use `#[tokio::test(flavor = "multi_thread")]` for concurrency tests.** Required when testing actual concurrent behavior; not the default.
+24. **Use `#[tokio::test(flavor = "multi_thread")]` for concurrency tests.** Required when testing actual concurrent behavior; not the default.
 
 ### Snapshot testing
 
-24. **Use `insta` deliberately, not as a default.** Snapshot tests are appropriate when:
+25. **Use `insta` deliberately, not as a default.** Snapshot tests are appropriate when:
     - The output is stable and any change requires explicit review (CLI text output, formatted error messages, generated JSON contracts).
     - The output shape is too large to assert inline meaningfully.
 
-25. **Snapshot tests are not a substitute for behavior assertions.** A snapshot says "the output looks like this." A behavior assertion says "the right thing happened." Prefer behavior assertions when the right output is small.
+26. **Snapshot tests are not a substitute for behavior assertions.** A snapshot says "the output looks like this." A behavior assertion says "the right thing happened." Prefer behavior assertions when the right output is small.
 
-26. **Review snapshot diffs as code.** Auto-accepting `cargo insta accept` without inspection is the snapshot-rubber-stamping anti-pattern.
+27. **Review snapshot diffs as code.** Auto-accepting `cargo insta accept` without inspection is the snapshot-rubber-stamping anti-pattern.
 
 ### Property-based testing
 
-27. **Use `proptest` where invariants are the contract.** Parsers, validators, state machines, serialization round-trips — these have invariants (`parse(format(x)) == x`, `serialize(deserialize(s)) == s`) that benefit from property tests.
+28. **Use `proptest` where invariants are the contract.** Parsers, validators, state machines, serialization round-trips — these have invariants (`parse(format(x)) == x`, `serialize(deserialize(s)) == s`) that benefit from property tests.
 
-28. **Don't add property tests where example tests suffice.** Most service code is behavioral; example tests are clearer. Property tests earn their complexity when the input space is genuinely large.
+29. **Don't add property tests where example tests suffice.** Most service code is behavioral; example tests are clearer. Property tests earn their complexity when the input space is genuinely large.
 
 ### Coverage
 
-29. **`cargo-llvm-cov` as a discovery tool.** Use it to find untested branches in critical code. Do not make coverage a quality gate (% threshold). Coverage measures lines exercised, not behavior verified.
+30. **`cargo-llvm-cov` as a discovery tool.** Use it to find untested branches in critical code. Do not make coverage a quality gate (% threshold). Coverage measures lines exercised, not behavior verified.
 
 ### Test isolation
 
-30. **No shared mutable state between tests.** Each test gets its own pool (`sqlx::test` provides this), its own mock bus, its own builders.
+31. **No shared mutable state between tests.** Each test gets its own pool (`sqlx::test` provides this), its own mock bus, its own builders.
 
-31. **No `#[ignore]` accumulation.** A test that's `#[ignore]`d for "flakiness" gets fixed or deleted. The standard build runs all tests.
+32. **No `#[ignore]` accumulation.** A test that's `#[ignore]`d for "flakiness" gets fixed or deleted. The standard build runs all tests.
 
-32. **No test ordering assumptions.** Tests must pass in any order, including parallel.
+33. **No test ordering assumptions.** Tests must pass in any order, including parallel.
 
 ## Rationale
 

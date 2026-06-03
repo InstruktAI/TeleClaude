@@ -123,8 +123,10 @@ quality policy. Produce a `Lane anticipation` section in
 Each entry names the specific artifact the build-review lane will validate
 and the plan task that produces it:
 
-- **Tests**: name the test file and the specific assertions each task delivers.
-  "Tests" as a category is not compliance.
+- **Tests**: name the test file and the specific behavior each task observes at
+  a meaningful boundary. "Tests" as a category is not compliance. Logger,
+  metric/trace, config/model/native-shape, private-helper, constructor-wiring,
+  and mock-call-echo assertions are not acceptable deliverables.
 - **Security**: name the validation point, the auth check, and the task that
   adds them.
 - **Documentation**: name the doc file, the section updated, and the task

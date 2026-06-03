@@ -48,6 +48,35 @@ class TestEventProducer:
         assert call_args.args[0] == "my-stream"
 
     @pytest.mark.asyncio
+    async def test_emit_auto_populates_originating_computer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_mod.config.computer, "name", "MozMini")
+        redis = _make_redis()
+        producer = EventProducer(redis)
+        envelope = EventEnvelope(event="test.event", source="svc", level=EventLevel.OPERATIONAL)
+
+        await producer.emit(envelope)
+
+        stream_data = redis.xadd.call_args.args[1]
+        assert stream_data["originating_computer"] == "MozMini"
+
+    @pytest.mark.asyncio
+    async def test_emit_preserves_explicit_originating_computer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_mod.config.computer, "name", "MozMini")
+        redis = _make_redis()
+        producer = EventProducer(redis)
+        envelope = EventEnvelope(
+            event="test.event",
+            source="svc",
+            level=EventLevel.OPERATIONAL,
+            originating_computer="MozBook",
+        )
+
+        await producer.emit(envelope)
+
+        stream_data = redis.xadd.call_args.args[1]
+        assert stream_data["originating_computer"] == "MozBook"
+
+    @pytest.mark.asyncio
     async def test_emit_decodes_bytes_entry_id(self) -> None:
         redis = _make_redis("5678-0")
         producer = EventProducer(redis)
@@ -301,5 +330,22 @@ class TestEmitEvent:
             call_args = redis.xadd.call_args
             stream_data = call_args.args[1]
             UUID(stream_data["event_id"])
+        finally:
+            _mod._PRODUCER_STATE["producer"] = None
+
+    @pytest.mark.asyncio
+    async def test_emit_event_stamps_originating_computer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_mod.config.computer, "name", "MozMini")
+        redis = _make_redis()
+        producer = EventProducer(redis)
+        configure_producer(producer)
+        try:
+            await emit_event(
+                event="test.event",
+                source="svc",
+                level=EventLevel.OPERATIONAL,
+            )
+            stream_data = redis.xadd.call_args.args[1]
+            assert stream_data["originating_computer"] == "MozMini"
         finally:
             _mod._PRODUCER_STATE["producer"] = None

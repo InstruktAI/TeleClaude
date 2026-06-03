@@ -2,13 +2,59 @@
 
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import Coroutine, Generator
+from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from teleclaude.transport.redis_transport._refresh import _RefreshRequest
 from teleclaude.transport.redis_transport._transport import RedisTransport
+
+
+class NoopAwaitable:
+    def __await__(self) -> Generator[None, None, None]:
+        if False:
+            yield None
+        return None
+
+
+class _HeartbeatPayload(TypedDict, total=False):
+    computer_name: str
+    user: str
+    host: str
+    role: str
+    system_stats: None
+
+
+def _heartbeat_payload(computer_name: str, *, user: str = "user") -> bytes:
+    payload = _HeartbeatPayload(
+        computer_name=computer_name,
+        user=user,
+        host="host",
+        role="worker",
+        system_stats=None,
+    )
+    return json.dumps(payload).encode()
+
+
+async def _drive_heartbeat_refresh(
+    transport: RedisTransport,
+    computer_name: str,
+    *,
+    user: str = "user",
+) -> None:
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=_heartbeat_payload(computer_name, user=user))
+    transport._get_redis = AsyncMock(return_value=mock_redis)
+    transport._cache = MagicMock()
+    with patch(
+        "teleclaude.transport.redis_transport._refresh.scan_keys",
+        AsyncMock(return_value=[f"computer:{computer_name}:heartbeat".encode()]),
+    ):
+        await transport.refresh_peers_from_heartbeats()
 
 
 @pytest.fixture
@@ -100,19 +146,6 @@ class TestBuildRefreshCoro:
         coro.close()
 
 
-class TestRecordPeerDigest:
-    @pytest.mark.unit
-    def test_stores_digest_for_computer(self, transport: RedisTransport) -> None:
-        transport._record_peer_digest("some-computer", "digest-abc")
-        assert transport._peer_digests["some-computer"] == "digest-abc"
-
-    @pytest.mark.unit
-    def test_overwrites_previous_digest(self, transport: RedisTransport) -> None:
-        transport._peer_digests["comp"] = "old-digest"
-        transport._record_peer_digest("comp", "new-digest")
-        assert transport._peer_digests["comp"] == "new-digest"
-
-
 class TestScheduleRefresh:
     @pytest.mark.unit
     def test_returns_false_for_disallowed_reason(self, transport: RedisTransport) -> None:
@@ -142,10 +175,16 @@ class TestScheduleRefresh:
 
     @pytest.mark.unit
     def test_schedules_task_for_valid_request(self, transport: RedisTransport) -> None:
-        transport.pull_remote_projects_with_todos = AsyncMock()
+        transport.pull_remote_projects_with_todos = MagicMock(return_value=NoopAwaitable())
         transport.task_registry = None
+
+        def create_task(coro: Coroutine[object, object, None], *, name: str) -> MagicMock:
+            _ = name
+            coro.close()
+            return MagicMock(done=MagicMock(return_value=True))
+
         with patch("teleclaude.transport.redis_transport._refresh.asyncio.create_task") as mock_ct:
-            mock_ct.return_value = MagicMock(done=MagicMock(return_value=True))
+            mock_ct.side_effect = create_task
             result = transport._schedule_refresh(
                 _RefreshRequest(computer="remote-host", data_type="projects", reason="startup")
             )
@@ -161,3 +200,60 @@ class TestRequestRefresh:
             _RefreshRequest(computer="remote", data_type="projects", reason="startup", project_path=None, force=False)
         )
         assert result is True
+
+
+class TestFirstHeartbeatBootstrap:
+    @pytest.mark.unit
+    async def test_first_heartbeat_schedules_project_and_session_pulls(self, transport: RedisTransport) -> None:
+        schedule_refresh = MagicMock(return_value=True)
+        transport._schedule_refresh = schedule_refresh
+
+        await _drive_heartbeat_refresh(transport, "PeerA")
+
+        requests = [call.args[0] for call in schedule_refresh.call_args_list]
+        assert [(r.computer, r.data_type, r.reason, r.force) for r in requests] == [
+            ("PeerA", "projects", "first_heartbeat", True),
+            ("PeerA", "sessions", "first_heartbeat", True),
+        ]
+
+    @pytest.mark.unit
+    async def test_invalid_heartbeat_identity_is_not_cached_or_scheduled(self, transport: RedisTransport) -> None:
+        schedule_refresh = MagicMock(return_value=True)
+        transport._schedule_refresh = schedule_refresh
+
+        await _drive_heartbeat_refresh(transport, "PeerA", user="peer;bad")
+
+        transport._cache.update_computer.assert_not_called()
+        schedule_refresh.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_second_heartbeat_after_success_schedules_nothing(self, transport: RedisTransport) -> None:
+        def schedule_success(_request: _RefreshRequest, *, on_success: object | None = None) -> bool:
+            if callable(on_success):
+                on_success()
+            return True
+
+        schedule_refresh = MagicMock(side_effect=schedule_success)
+        transport._schedule_refresh = schedule_refresh
+
+        await _drive_heartbeat_refresh(transport, "PeerA")
+        assert transport._bootstrapped == {("PeerA", "projects"), ("PeerA", "sessions")}
+
+        schedule_refresh.reset_mock()
+        await _drive_heartbeat_refresh(transport, "PeerA")
+
+        schedule_refresh.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_different_peer_schedules_independently(self, transport: RedisTransport) -> None:
+        transport._bootstrapped = {("PeerA", "projects"), ("PeerA", "sessions")}
+        schedule_refresh = MagicMock(return_value=True)
+        transport._schedule_refresh = schedule_refresh
+
+        await _drive_heartbeat_refresh(transport, "PeerB")
+
+        requests = [call.args[0] for call in schedule_refresh.call_args_list]
+        assert [(r.computer, r.data_type) for r in requests] == [
+            ("PeerB", "projects"),
+            ("PeerB", "sessions"),
+        ]

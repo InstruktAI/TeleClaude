@@ -46,6 +46,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Tests are deterministic (no flaky tests)
 - [ ] Test names are descriptive
 - [ ] Tests verify behavior, not implementation
+- [ ] Tests do not assert logger calls/log levels, config/model/native shapes, private helpers, constructor/DI wiring, or mock-call echoes as primary evidence
 - [ ] Browser-based frontend or web UI changes pass a Playwright smoke test
 
 ### 4. Linting & Type Checking

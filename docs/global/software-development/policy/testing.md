@@ -17,7 +17,7 @@ visibility: 'public'
 1. **Use pre-commit hooks as the primary verification path**
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
-4. **Test behavioral contracts, not human-facing text**
+4. **Test behavioral contracts at public boundaries, not implementation artifacts**
 5. **String content assertions go through snapshots, named constants, or a narrow non-empty guard.** Literal, substring, prefix, suffix, and pattern comparisons against string content are forbidden in tests — no carve-outs. See "String Assertions — One Paradigm".
 6. **Write failing tests before production code — no exceptions** (for new/modified code; see Characterization Testing for existing untested code)
 7. **Tests-only scope is binding** — when the request or checkpoint scopes the work to tests only, production files are out of scope unless the human explicitly expands scope. If failing tests reflect a changed production contract, update the tests to the current public contract or stop and ask to broaden scope. Do not rewrite production code under a tests-only request.
@@ -183,6 +183,34 @@ Tests must not merely mirror visible source literals or primitive library effect
 - **Forbidden:** pass-through assertions that only prove data, props, config, or arguments were forwarded unchanged unless that forwarding behavior is itself the explicit public contract at the boundary under test.
 - **Required question:** if the implementation were replaced with a constant, a trivial passthrough, or a single library call, would this test still pass? If yes, the test is weak and does not count as meaningful coverage.
 
+### Forbidden Assertion Targets
+
+Tests must prove application behavior at a meaningful boundary. The following
+targets are rejected as primary assertions in ordinary feature/module tests:
+
+- **Logger calls, logging levels, log text, metrics, traces, and diagnostic
+  telemetry.** Logs are operational diagnostics, not product behavior. Do not
+  patch `logger`, use `caplog`, or assert that a warning/error/info line was
+  emitted from feature code. The only narrow exception is code whose subject is
+  the logging/observability adapter itself; even then, assert through the
+  adapter's public output/sink, not every call site that logs.
+- **Native struct/model/config shapes.** Do not assert that a dataclass,
+  Pydantic model, Rust struct, dict, enum, config object, or DTO has a field,
+  key, default, or literal shape unless that shape is an external wire/API
+  contract consumed outside the process. Prefer accepted/rejected boundary
+  inputs and effective runtime behavior.
+- **Private helpers and helper-only tables.** Do not call or parametrize private
+  helpers to pin their internal branch table. Exercise the public function,
+  command, route, worker loop, or adapter that owns the behavior.
+- **Constructor/DI/container wiring.** Do not capture constructor arguments,
+  factory inputs, dependency-injection registrations, or container config solely
+  to prove wiring. Assert the downstream behavior or the external boundary the
+  wiring enables.
+- **Mock-call echoes.** Mock/spy calls are evidence only when the called thing
+  is an architectural boundary (API client, Redis write, filesystem write,
+  subprocess invocation) and the assertion proves an externally meaningful
+  behavior. A mock called with data constructed in the test is not enough.
+
 ### Test Levels (Required Strategy)
 
 Use a layered approach: **unit → functional → smoke**. Each layer proves a different slice of the system.
@@ -242,18 +270,21 @@ Every test must survive one question: **"What real bug in OUR code would this ca
 13. **Commented-out tests** — either fix or delete them
 14. **String-content assertions of every shape** — prose-locks, substring/fragment/pattern matches, error-message text, truthy-checks as content proxies. ALL routed through "String Assertions — One Paradigm" above. No carve-outs.
 15. **Testing third-party code** — never test that a library works. YAML round-trips, JSON serialization, `hashlib` output, ORM queries returning rows — these are the library's responsibility
-16. **Testing informational side-effects** — audit timestamps, event emissions, log entries, metrics. If the system behaves identically when the side-effect is absent, the test has no value. Test the observability system, not every callsite that emits into it
+16. **Testing diagnostic side-effects** — logger calls, log levels, log entries, metrics, traces, audit timestamps, and other diagnostic telemetry. These are not behavioral contracts for feature code. Test the observability component at its own public boundary; do not test every call site that emits diagnostics. Domain events and stream records count only when consumers act on them as application behavior.
 17. **Tautological assertions** — asserting that a data literal contains keys visible in the source. The code that consumes the structure catches missing keys — that is the real test
 18. **Redundant coverage across files** — a function has one test home. Do not test the same function from multiple test files. Redundant tests multiply maintenance without adding safety
 19. **Literal-echo tests** — reconstructing an expected literal from source-visible values and asserting equality without proving semantics, branching, validation, or failure handling
 20. **Primitive side-effect tests** — only proving that a file/path/object/record was created or copied after a direct library call, without exercising application-owned logic
 21. **Passthrough-only tests** — proving data flowed through unchanged when the forwarding itself is not the real behavior or decision under test
 22. **Parametrized / table-driven tests** — multiple input rows stuffed into one test body via `@pytest.mark.parametrize`, fixture `params=`, or any equivalent mechanism. The deeper sin parametrize commits is **redundant coverage masquerading as more tests**: most parametrize tables are N inputs that all flow through the same code-coverage path. The unit of testing is the path, not the input. One representative input pins the path; additional inputs through the same path are waste. When inputs do exercise different paths, give each path its own named test that documents which path it pins. There is no legitimate use of parametrize — by construction it either packages redundant runs (delete the duplicates) or smuggles distinct paths under one body (split into named tests)
+23. **Log-as-contract tests** — asserting logger methods, `caplog` records, log levels, or warning/error text from ordinary modules. Logs are diagnostics. A feature whose only observable effect is "it logged" has no tested behavior yet; create a real boundary or leave it untested until the behavior exists.
+24. **Native-shape/config tests** — asserting model fields, schema keys, defaults, enum values, config literals, or DTO shapes without driving the external input/output path that makes the shape meaningful.
+25. **Wiring-only tests** — proving a factory, constructor, container, or dependency registration received an argument while no downstream behavior changed.
 
-23. All tests run on every commit
-24. Tests must pass before merging to main branch
-25. Linting, type checking, and unit tests run automatically
-26. Keep test suite fast (< 10s for unit tests)
+26. All tests run on every commit
+27. Tests must pass before merging to main branch
+28. Linting, type checking, and unit tests run automatically
+29. Keep test suite fast (< 10s for unit tests)
 
 ### Test Specification Delivery
 

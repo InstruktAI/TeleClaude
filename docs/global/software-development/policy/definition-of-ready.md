@@ -43,7 +43,9 @@ Gates (all required):
 
 3. **Verification**
    - Executable test specifications (expected-failure-marked) exist for all behavioral requirements.
-   - There is a clear way to verify completion (tests, logs, or observable behavior).
+   - There is a clear way to verify completion through executable tests or
+     observable system behavior. Logs may support manual diagnosis, but they
+     are not default automated assertion targets for feature behavior.
    - Edge cases and error paths are identified or explicitly deferred.
    - Definition of Done applies and is not contradicted by the task.
 4. **Approach known**

@@ -40,7 +40,6 @@ class PeerInfo:
     role: str | None = None
     system_stats: SystemStats | None = None
     tmux_binary: str | None = None
-    bot_username: str | None = None
 
 
 def _int_or_none(value: object) -> int | None:

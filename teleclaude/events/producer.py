@@ -30,6 +30,8 @@ class EventProducer:
 
     async def emit(self, envelope: EventEnvelope) -> str:
         """Serialize and append an event envelope to the Redis stream."""
+        if envelope.originating_computer is None:
+            envelope.originating_computer = config.computer.name
         data = envelope.to_stream_dict()
         logger.info(
             "EventProducer.emit: event=%s entity=%s stream=%s",

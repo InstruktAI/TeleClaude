@@ -12,6 +12,7 @@ import pytest
 
 import teleclaude.daemon as daemon
 from teleclaude.core.todos_db import TodosDb, _instances, get_todos_db, set_todos_mutation_hook
+from teleclaude.transport.cluster_bridge import ClusterEnvelope
 
 _EVENT_NAME = "domain.software-development.planning.todo_finalize_ready"
 _SLUG = "phase-hook-slug"
@@ -78,6 +79,31 @@ def test_acquire_lock_raises_when_another_handle_already_holds_it(tmp_path: Path
             second._acquire_lock()
     finally:
         first._release_lock()
+
+
+@pytest.mark.unit
+def test_apply_session_envelope_rejects_invalid_remote_tmux_session_name() -> None:
+    daemon_instance = daemon.TeleClaudeDaemon.__new__(daemon.TeleClaudeDaemon)
+    daemon_instance.cache = MagicMock()
+    envelope = ClusterEnvelope(
+        channel="cluster.session.created",
+        idempotency_key="event-1",
+        emitted_at="2026-06-03T00:00:00+00:00",
+        origin="remote-machine",
+        payload={
+            "session_id": "sess-1",
+            "title": "Remote",
+            "status": "active",
+            "last_input_origin": None,
+            "thinking_mode": None,
+            "active_agent": None,
+            "tmux_session_name": "tc_demo;bad",
+        },
+    )
+
+    daemon_instance._apply_session_envelope(envelope)
+
+    daemon_instance.cache.update_session.assert_not_called()
 
 
 @pytest.mark.unit

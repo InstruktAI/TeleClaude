@@ -42,6 +42,10 @@ class TestEventEnvelopeDefaults:
         e = _minimal_envelope()
         UUID(e.event_id)
 
+    def test_originating_computer_defaults_to_none(self) -> None:
+        e = _minimal_envelope()
+        assert e.originating_computer is None
+
 
 class TestEventEnvelopeRequired:
     def test_missing_event_raises(self) -> None:
@@ -95,6 +99,16 @@ class TestToStreamDict:
         d = e.to_stream_dict()
         assert d["idempotency_key"] == ""
 
+    def test_none_originating_computer_serialized_as_empty_string(self) -> None:
+        e = _minimal_envelope()
+        d = e.to_stream_dict()
+        assert d["originating_computer"] == ""
+
+    def test_originating_computer_serialized_as_top_level_field(self) -> None:
+        e = _minimal_envelope(originating_computer="MozMini")
+        d = e.to_stream_dict()
+        assert d["originating_computer"] == "MozMini"
+
     def test_extra_fields_serialized_in_extra_key(self) -> None:
         e = _minimal_envelope(custom_field="custom_value")
         d = e.to_stream_dict()
@@ -134,6 +148,17 @@ class TestFromStreamDict:
         d = e.to_stream_dict()
         restored = EventEnvelope.from_stream_dict(d)
         assert restored.event_id == event_id
+
+    def test_roundtrip_originating_computer(self) -> None:
+        e = _minimal_envelope(originating_computer="MozMini")
+        d = e.to_stream_dict()
+        restored = EventEnvelope.from_stream_dict(d)
+        assert restored.originating_computer == "MozMini"
+
+    def test_empty_originating_computer_restores_to_none(self) -> None:
+        d = _minimal_envelope().to_stream_dict()
+        restored = EventEnvelope.from_stream_dict(d)
+        assert restored.originating_computer is None
 
     def test_legacy_stream_without_event_id_gets_migration_identity(self) -> None:
         d = _minimal_envelope().to_stream_dict()

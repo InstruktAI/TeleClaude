@@ -3,32 +3,45 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 
 
 @pytest.mark.unit
-def test_build_attach_cmd_uses_local_tmux_binary_when_session_is_local(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_attach_cmd_uses_local_tmux_binary_when_session_is_local(
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: SnapshotAssertion,
+) -> None:
     manager = object.__new__(TmuxPaneManager)
     monkeypatch.setattr("teleclaude.cli.tui.pane_manager.config.computer", SimpleNamespace(tmux_binary="tmux-bin"))
 
     command = manager._build_attach_cmd("tc_demo")
 
-    assert command.startswith("env -u TMUX TERM=tmux-256color tmux-bin -u ")
-    assert "attach-session -t tc_demo" in command
+    assert command == snapshot
 
 
 @pytest.mark.unit
-def test_build_attach_cmd_includes_ssh_and_appearance_env_for_remote_sessions() -> None:
+def test_build_attach_cmd_includes_ssh_and_appearance_env_for_remote_sessions(
+    snapshot: SnapshotAssertion,
+) -> None:
     manager = object.__new__(TmuxPaneManager)
     manager._get_appearance_env = lambda: {"APPEARANCE_MODE": "dark", "TERMINAL_BG": "#000000"}
     computer = ComputerInfo(name="remote", is_local=False, user="alice", host="example.test", tmux_binary="tmux-r")
 
     command = manager._build_attach_cmd("tc_demo", computer)
 
-    assert "ssh -t -A alice@example.test" in command
-    assert "APPEARANCE_MODE=dark TERMINAL_BG=#000000 TERM=tmux-256color tmux-r -u" in command
-    assert "attach-session -t tc_demo" in command
+    assert command == snapshot
+
+
+@pytest.mark.unit
+def test_build_attach_cmd_rejects_invalid_remote_shell_identity() -> None:
+    manager = object.__new__(TmuxPaneManager)
+    manager._get_appearance_env = lambda: {}
+    computer = ComputerInfo(name="remote", is_local=False, user="alice;bad", host="example.test")
+
+    with pytest.raises(ValueError):
+        manager._build_attach_cmd("tc_demo", computer)
 
 
 @pytest.mark.unit

@@ -154,38 +154,14 @@ class TestDiscoverPeers:
         assert names == sorted(names)
 
     @pytest.mark.unit
-    async def test_discover_peers_reads_bot_username_from_heartbeat(self, transport: RedisTransport) -> None:
+    async def test_discover_peers_skips_heartbeat_with_invalid_shell_identity(self, transport: RedisTransport) -> None:
         mock_redis = AsyncMock()
         transport._get_redis = AsyncMock(return_value=mock_redis)
         payload = json.dumps(
             {
                 "computer_name": "other-peer",
                 "last_seen": "2024-01-01T00:00:00+00:00",
-                "user": "u",
-                "host": "h",
-                "role": "worker",
-                "bot_username": "peer_bot",
-            }
-        ).encode()
-        mock_redis.get = AsyncMock(return_value=payload)
-
-        with patch(
-            "teleclaude.transport.redis_transport._peers.scan_keys",
-            AsyncMock(return_value=[b"computer:other-peer:heartbeat"]),
-        ):
-            result = await transport.discover_peers()
-
-        assert result[0].bot_username == "peer_bot"
-
-    @pytest.mark.unit
-    async def test_discover_peers_defaults_bot_username_to_none_when_absent(self, transport: RedisTransport) -> None:
-        mock_redis = AsyncMock()
-        transport._get_redis = AsyncMock(return_value=mock_redis)
-        payload = json.dumps(
-            {
-                "computer_name": "other-peer",
-                "last_seen": "2024-01-01T00:00:00+00:00",
-                "user": "u",
+                "user": "u;bad",
                 "host": "h",
                 "role": "worker",
             }
@@ -198,4 +174,4 @@ class TestDiscoverPeers:
         ):
             result = await transport.discover_peers()
 
-        assert result[0].bot_username is None
+        assert result == []

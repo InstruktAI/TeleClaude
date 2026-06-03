@@ -9,6 +9,7 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.channels.consumer import ConsumerGroupSpec, consume, ensure_consumer_group
+from teleclaude.config import config
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -17,16 +18,25 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Consumer group / consumer name for the subscription worker
-_WORKER_GROUP = "teleclaude-worker"
+# Consumer group base / consumer name for the subscription worker
+_WORKER_GROUP_BASE = "teleclaude-worker"
 _WORKER_CONSUMER = "main"
-_WORKER_CONSUMER_GROUP = ConsumerGroupSpec(group=_WORKER_GROUP, consumer=_WORKER_CONSUMER)
 
 # Polling interval when no messages are received
 _POLL_INTERVAL_S = 5.0
 
 _CONSUMER_EXCEPTIONS = (RedisError, OSError, RuntimeError, ValueError, TypeError)
 _DISPATCH_EXCEPTIONS = (OSError, RuntimeError, ValueError, TypeError)
+
+
+def _worker_group() -> str:
+    """Return this daemon's subscription-worker consumer group."""
+    return f"{_WORKER_GROUP_BASE}-{config.computer.name}"
+
+
+def _worker_consumer_group() -> ConsumerGroupSpec:
+    """Return this daemon's subscription-worker consumer spec."""
+    return ConsumerGroupSpec(group=_worker_group(), consumer=_WORKER_CONSUMER)
 
 
 async def _dispatch_to_target(
@@ -99,9 +109,11 @@ async def run_subscription_worker(
         return
 
     # Ensure consumer groups exist for all subscribed channels.
+    worker_group = _worker_group()
+    consumer_group = _worker_consumer_group()
     for sub in subscriptions:
         try:
-            await ensure_consumer_group(redis, sub.channel, _WORKER_GROUP)
+            await ensure_consumer_group(redis, sub.channel, worker_group)
         except _CONSUMER_EXCEPTIONS:
             logger.warning("Failed to create consumer group for %s", sub.channel)
 
@@ -116,7 +128,7 @@ async def run_subscription_worker(
                 messages = await consume(
                     redis,
                     sub.channel,
-                    _WORKER_CONSUMER_GROUP,
+                    consumer_group,
                     count=10,
                     block_ms=0,
                 )

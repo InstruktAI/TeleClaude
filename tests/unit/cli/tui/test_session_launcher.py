@@ -81,7 +81,6 @@ def test_attach_tmux_session_wraps_remote_peer_in_ssh(
             is_local=False,
             user="morriz",
             host="mozbook.local",
-            tmux_binary="/opt/tmux",
         )
     ]
 
@@ -109,8 +108,28 @@ def test_attach_tmux_session_remote_with_missing_identity_returns_failure(monkey
     stdscr = Mock()
 
     cache = Mock()
+    cache.get_computers.return_value = [SimpleNamespace(name="MozBook", is_local=False, user=None, host=None)]
+
+    attached = session_launcher.attach_tmux_session("tc_demo", stdscr, computer="MozBook", cache=cache)
+
+    assert attached is False
+    run.assert_not_called()
+
+
+@pytest.mark.unit
+def test_attach_tmux_session_rejects_invalid_remote_shell_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TMUX", "1")
+    monkeypatch.setattr(session_launcher.config, "computer", SimpleNamespace(name="MozMini", tmux_binary="local-tmux"))
+    run = Mock()
+    monkeypatch.setattr(session_launcher.curses, "def_prog_mode", Mock())
+    monkeypatch.setattr(session_launcher.curses, "endwin", Mock())
+    monkeypatch.setattr(session_launcher.curses, "reset_prog_mode", Mock())
+    monkeypatch.setattr(session_launcher.subprocess, "run", run)
+    stdscr = Mock()
+
+    cache = Mock()
     cache.get_computers.return_value = [
-        SimpleNamespace(name="MozBook", is_local=False, user=None, host=None, tmux_binary=None)
+        SimpleNamespace(name="MozBook", is_local=False, user="morriz;bad", host="mozbook.local")
     ]
 
     attached = session_launcher.attach_tmux_session("tc_demo", stdscr, computer="MozBook", cache=cache)

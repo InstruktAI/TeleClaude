@@ -14,6 +14,7 @@ from redis.exceptions import RedisError
 
 from teleclaude.core.models import ComputerInfo, JsonDict
 from teleclaude.core.redis_utils import scan_keys
+from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
@@ -49,7 +50,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         _running: bool
         _refresh_last: dict[str, float]
         _refresh_tasks: dict[str, asyncio.Task[object]]
-        _peer_digests: dict[str, str]
+        _bootstrapped: set[tuple[str, str]]
         _refresh_cooldown_seconds: float
         _ALLOWED_REFRESH_REASONS: set[str]
 
@@ -107,8 +108,14 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
 
         for peer in peers:
             try:
-                self._schedule_refresh(_RefreshRequest(peer.name, "projects", "startup", force=True))
-                self._schedule_refresh(_RefreshRequest(peer.name, "sessions", "startup", force=True))
+                self._schedule_refresh(
+                    _RefreshRequest(peer.name, "projects", "startup", force=True),
+                    on_success=lambda name=peer.name: self._bootstrapped.add((name, "projects")),
+                )
+                self._schedule_refresh(
+                    _RefreshRequest(peer.name, "sessions", "startup", force=True),
+                    on_success=lambda name=peer.name: self._bootstrapped.add((name, "sessions")),
+                )
             except _REFRESH_EXCEPTIONS as e:
                 logger.warning("Failed to refresh snapshot from %s: %s", peer.name, e)
 
@@ -252,33 +259,20 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                 computer_info = ComputerInfo(
                     name=computer_name,
                     status="online",
-                    user=cast("str | None", info.get("user")),
-                    host=cast("str | None", info.get("host")),
+                    user=optional_shell_safe_identifier(info.get("user"), "heartbeat user"),
+                    host=optional_shell_safe_identifier(info.get("host"), "heartbeat host"),
                     role=cast("str | None", info.get("role")),
                     system_stats=cast(SystemStats | None, info.get("system_stats")),
-                    tmux_binary=cast("str | None", info.get("tmux_binary")),
-                    bot_username=cast("str | None", info.get("bot_username")),
                 )
                 self.cache.update_computer(computer_info)
 
-                digest_obj = info.get("projects_digest")
-                if isinstance(digest_obj, str):
-                    last_digest = self._peer_digests.get(computer_name)
-                    if last_digest != digest_obj:
-                        logger.info("Project digest changed for %s, refreshing projects", computer_name)
-                        digest_value = digest_obj
-                        scheduled = self._schedule_refresh(
-                            _RefreshRequest(computer_name, "projects", "digest", force=True),
-                            on_success=lambda name=computer_name, digest=digest_value: self._record_peer_digest(
-                                name, digest
-                            ),
-                        )
-                        if not scheduled:
-                            self._peer_digests[computer_name] = digest_value
+                for data_type in ("projects", "sessions"):
+                    if (computer_name, data_type) in self._bootstrapped:
+                        continue
+                    self._schedule_refresh(
+                        _RefreshRequest(computer_name, data_type, "first_heartbeat", force=True),
+                        on_success=lambda p=computer_name, d=data_type: self._bootstrapped.add((p, d)),
+                    )
             except _REFRESH_EXCEPTIONS as exc:
                 logger.warning("Heartbeat peer parse failed: %s", exc)
                 continue
-
-    def _record_peer_digest(self, computer_name: str, digest: str) -> None:
-        """Persist the most recent project digest for a peer."""
-        self._peer_digests[computer_name] = digest

@@ -53,7 +53,7 @@ First read the software-development principles as listed in the software-develop
    - Update the task checkbox to `[x]` and include that change in the same commit.
    - Keep the flow commit-based inside the current worktree.
    - When a test or check disagrees with the current code, do the intent-resolution work before fixing either side. Ascertain what is leading for the active objective, then fix the stale side of the mismatch.
-   - When adding or updating tests, assert behavioral contracts; avoid exact wording assertions on docs/agent prose unless execution depends on that exact token.
+   - When adding or updating tests, assert behavioral contracts at public boundaries. Do not satisfy a task with logger assertions, log-level checks, config/model shape checks, private-helper tests, constructor/DI wiring captures, or mock-call echoes. If the plan asks for those, reinterpret it to the nearest behavior; if no behavior exists yet, surface the plan defect instead of inventing fake coverage.
 
    ### Snapshot acceptance
 

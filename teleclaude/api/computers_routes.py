@@ -43,7 +43,6 @@ async def list_computers(
                 host=info.host,
                 is_local=True,
                 tmux_binary=info.tmux_binary,
-                bot_username=getattr(info, "bot_username", None),
             )
         ]
 
@@ -62,7 +61,6 @@ async def list_computers(
                         user=comp.user,
                         host=comp.host,
                         is_local=False,
-                        bot_username=getattr(comp, "bot_username", None),
                     )
                 )
                 seen_names.add(comp.name.lower())
@@ -77,7 +75,6 @@ async def list_computers(
                         user=remote.user,
                         host=remote.host,
                         is_local=False,
-                        bot_username=None,
                     )
                 )
 

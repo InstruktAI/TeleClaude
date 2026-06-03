@@ -199,9 +199,20 @@ If you cannot answer those questions concretely, the test is weak and does not c
 - Reject substring/`startswith`/`endswith`/regex assertions against string content, including `assert "x" in s`, `s.startswith(...)`, `expect(s).toContain(...)`, and regex matches.
 - Reject error-message text assertions (`exc.message`, `.args[0]`, rendered error prose). Test the exception type and structured fields; snapshot the rendered prose at the renderer's boundary.
 - Reject tests whose primary assertion is shape, signatures, keys, properties, constants, configuration echoes, or literal structure checks without proving decision logic or behavior.
+- Reject tests whose primary assertion is logger calls, log levels, `caplog`
+  records, log text, metrics, traces, or diagnostic telemetry from ordinary
+  feature code. Logs are diagnostics, not product behavior. Only
+  observability/logging adapter tests may assert telemetry, and only through
+  the adapter's public boundary.
+- Reject tests that prove native struct/model/config shape instead of accepted
+  external input, rejected invalid input, wire/API payload behavior, or
+  effective runtime behavior.
 - Reject tests that merely reconstruct an expected literal, structure, or payload from values already visible in the implementation or fixture and compare it back without proving semantics.
 - Reject tests that only confirm a primitive side effect or passthrough occurred when no application-owned branch, validation rule, guard, or failure path was exercised.
 - Reject tests whose only evidence is mock or spy interaction unless the interaction itself is the contract being tested at an architectural boundary.
+- Reject constructor, dependency-injection, container, factory, and configuration
+  wiring captures unless the test observes the downstream behavior the wiring
+  enables at a meaningful boundary.
 - Reject tests that primarily verify framework, library, serializer, ORM, or other third-party behavior instead of our logic.
 - Reject tests that pin private helpers, internal state, or refactor-sensitive implementation details when the same behavior can be checked at a public boundary.
 - Reject characterization tests that pin observed behavior but provide no credible bug-catching value or mutation-sanity reasoning.

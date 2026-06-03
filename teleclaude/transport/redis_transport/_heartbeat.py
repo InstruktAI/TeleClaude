@@ -57,39 +57,23 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
                 await self._handle_redis_error("Heartbeat failed", e)
 
     async def _send_heartbeat(self) -> None:
-        """Publish full ComputerInfo + presence timestamp to the heartbeat key.
+        """Publish cross-computer identity + presence timestamp to the heartbeat key.
 
         The heartbeat is the cluster-wide source of identity for this computer:
         peers read it directly and never need a separate ``get_computer_info``
         round-trip. ``last_seen`` + TTL still drive presence detection.
         """
-        logger.trace("Sent heartbeat for %s", self.computer_name)
         key = f"computer:{self.computer_name}:heartbeat"
 
-        info_dict = (await command_handlers.get_computer_info()).to_dict()
+        info = await command_handlers.get_computer_info()
         payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
-            **info_dict,
             "computer_name": self.computer_name,
             "last_seen": datetime.now(UTC).isoformat(),
+            "user": info.user,
+            "host": info.host,
+            "role": info.role,
+            "system_stats": info.system_stats,
         }
-
-        # Include interest if cache available
-        # Collect all data types we have interest in (across all computers)
-        if self.cache:
-            all_data_types: set[str] = set()
-            # Check for common data types
-            for data_type in ["sessions", "projects", "todos"]:
-                if self.cache.get_interested_computers(data_type):
-                    all_data_types.add(data_type)
-
-            if all_data_types:
-                payload["interested_in"] = list(all_data_types)
-                logger.trace("Heartbeat includes interest: %s", all_data_types)
-
-        if self.cache:
-            digest = self.cache.get_projects_digest(self.computer_name)
-            if digest:
-                payload["projects_digest"] = digest
 
         # Set key with auto-expiry
         redis_client = await self._get_redis()
@@ -98,6 +82,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
             self.heartbeat_ttl,
             json.dumps(payload),
         )
+        logger.trace("Sent heartbeat for %s", self.computer_name)
 
     # === Event Push (Phase 5) - DISABLED ===
 

@@ -19,6 +19,12 @@ from teleclaude.api.auth import (
     clearance_sessions_start,
 )
 from teleclaude.api.session_access import check_session_access
+from teleclaude.api.session_create_launch import (
+    effective_launch_agent,
+    resolve_enabled_agent,
+    resolve_launch_kind,
+)
+from teleclaude.api.session_create_remote import dispatch_session_create_to_peer, is_remote_create_target
 from teleclaude.api.sessions_actions_routes import _infer_role_from_message, _rewrite_codex_next_startup_message
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -37,7 +43,6 @@ from teleclaude.constants import (
     ROLE_SYSTEM,
 )
 from teleclaude.core import command_handlers
-from teleclaude.core.agents import assert_agent_enabled, get_default_agent
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import (
@@ -67,18 +72,22 @@ from teleclaude.types.commands import CloseSessionCommand
 
 logger = get_logger(__name__)
 
-_STATE = SimpleNamespace(cache=None)
+_CONFIG_UNSET = object()
+
+_STATE = SimpleNamespace(client=None, cache=None)
 
 router = APIRouter()
 
 
 def configure(
-    client: AdapterClient | None = None,
-    cache: DaemonCache | None = None,
+    client: AdapterClient | None | object = _CONFIG_UNSET,
+    cache: DaemonCache | None | object = _CONFIG_UNSET,
 ) -> None:
     """Wire client and cache; called from APIServer."""
-    _ = client
-    _STATE.cache = cache
+    if client is not _CONFIG_UNSET:
+        _STATE.client = client
+    if cache is not _CONFIG_UNSET:
+        _STATE.cache = cache
 
 
 def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
@@ -223,26 +232,6 @@ def _resolve_origin(
     return origin, caller_email, typed_origin
 
 
-def _resolve_enabled_agent(requested_agent: str | None) -> str:
-    """Resolve an enabled agent or raise an HTTPException."""
-    if requested_agent:
-        try:
-            return assert_agent_enabled(requested_agent)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    try:
-        return get_default_agent()
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-def _effective_launch_agent(validated_request_agent: str | None) -> str:
-    """Resolve the agent used for derived launch intents."""
-    if validated_request_agent:
-        return validated_request_agent
-    return _resolve_enabled_agent(None)
-
-
 async def _build_direct_launch_message(
     request: CreateSessionRequest,
     identity: CallerIdentity,
@@ -270,9 +259,7 @@ async def _build_launch_intent(
     thinking_mode: str,
 ) -> tuple[SessionLaunchIntent | None, Session | None]:
     """Build the typed launch intent for a new session."""
-    launch_kind = SessionLaunchKind(request.launch_kind)
-    if launch_kind == SessionLaunchKind.AGENT and request.message:
-        launch_kind = SessionLaunchKind.AGENT_THEN_MESSAGE
+    launch_kind = resolve_launch_kind(request)
 
     if launch_kind == SessionLaunchKind.EMPTY:
         return SessionLaunchIntent(kind=SessionLaunchKind.EMPTY), None
@@ -280,7 +267,7 @@ async def _build_launch_intent(
     if launch_kind == SessionLaunchKind.AGENT_RESUME:
         if not request.agent:
             raise HTTPException(status_code=400, detail="agent required for agent_resume")
-        effective_agent = validated_request_agent or _resolve_enabled_agent(request.agent)
+        effective_agent = validated_request_agent or resolve_enabled_agent(request.agent)
         return (
             SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT_RESUME,
@@ -294,7 +281,7 @@ async def _build_launch_intent(
     if launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
         if request.message is None:
             raise HTTPException(status_code=400, detail="message required for agent_then_message")
-        effective_agent = _effective_launch_agent(validated_request_agent)
+        effective_agent = effective_launch_agent(validated_request_agent)
         startup_message = _rewrite_codex_next_startup_message(
             request.message,
             effective_agent=effective_agent,
@@ -316,7 +303,7 @@ async def _build_launch_intent(
     return (
         SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT,
-            agent=_effective_launch_agent(validated_request_agent),
+            agent=effective_launch_agent(validated_request_agent),
             thinking_mode=thinking_mode,
         ),
         None,
@@ -426,7 +413,7 @@ async def _prepare_create_session(
     initial_input = request.message
 
     effective_thinking_mode = request.thinking_mode or "slow"
-    validated_request_agent = _resolve_enabled_agent(request.agent) if request.agent else None
+    validated_request_agent = resolve_enabled_agent(request.agent) if request.agent else None
     launch_intent, direct_caller_session = await _build_launch_intent(
         request,
         identity,
@@ -531,11 +518,7 @@ async def create_session(
     request: CreateSessionRequest,
     identity: CallerIdentity = Depends(clearance_sessions_start),
 ) -> CreateSessionResponseDTO:
-    """Create new local session.
-
-    Note: Remote session creation via API is not yet implemented;
-    all sessions are created on the local machine regardless of
-    the computer field in the request.
+    """Create a new session on the local computer or a peer computer.
 
     Args:
         request: CreateSessionRequest model
@@ -543,12 +526,6 @@ async def create_session(
     Returns:
         CreateSessionResponseDTO
     """
-    # Normalize request into internal command.
-
-    metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session = await _prepare_create_session(
-        request, identity
-    )
-
     logger.info(
         "create_session request: computer=%s project=%s agent=%s thinking_mode=%s launch_kind=%s native_session_id=%s",
         request.computer,
@@ -557,6 +534,18 @@ async def create_session(
         request.thinking_mode,
         request.launch_kind,
         request.native_session_id,
+    )
+
+    if is_remote_create_target(request.computer, config.computer.name):
+        return await dispatch_session_create_to_peer(
+            _STATE.client,
+            request.computer,
+            request,
+            local_computer=config.computer.name,
+        )
+
+    metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session = await _prepare_create_session(
+        request, identity
     )
 
     cmd = CommandMapper.map_api_input(

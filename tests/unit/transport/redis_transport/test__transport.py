@@ -67,10 +67,10 @@ class TestInit:
         assert t._idle_poll_suppressed == 0
 
     @pytest.mark.unit
-    def test_peer_digests_initialized_empty(self, adapter_client: MagicMock) -> None:
+    def test_bootstrapped_initialized_empty(self, adapter_client: MagicMock) -> None:
         with patch("teleclaude.transport.redis_transport._connection.Redis"):
             t = RedisTransport(adapter_client)
-        assert t._peer_digests == {}
+        assert t._bootstrapped == set()
 
     @pytest.mark.unit
     def test_refresh_state_initialized_empty(self, adapter_client: MagicMock) -> None:
@@ -98,8 +98,8 @@ class TestAllowedRefreshReasons:
         assert "startup" in RedisTransport._ALLOWED_REFRESH_REASONS
 
     @pytest.mark.unit
-    def test_digest_is_allowed(self) -> None:
-        assert "digest" in RedisTransport._ALLOWED_REFRESH_REASONS
+    def test_first_heartbeat_is_allowed(self) -> None:
+        assert "first_heartbeat" in RedisTransport._ALLOWED_REFRESH_REASONS
 
     @pytest.mark.unit
     def test_interest_is_allowed(self) -> None:

@@ -187,6 +187,11 @@ Quality rules:
 - **Behavioral focus**: test specs encode observable behavior (inputs, outputs,
   side effects), not implementation structure. A test that asserts a specific
   internal function call is implementation leakage.
+- **Forbidden assertion targets**: test specs must not prescribe logger-call,
+  log-level, metric/trace, config/model/native-shape, private-helper,
+  constructor-wiring, or mock-call-echo assertions. Logs are diagnostic evidence,
+  not feature behavior. Config and native models are tested through accepted and
+  rejected external inputs, wire/API payloads, or effective runtime behavior.
 - **No source code**: specs may name existing test surfaces or expected
   assertions, but must not include executable test code, helper function bodies,
   or expected-failure markers. The builder writes or updates tests during work.
@@ -215,7 +220,8 @@ test-specs#case-rename-conflict`. The task body then describes the work
 - Every task has a verification step that references specific test-spec cases,
   existing tests, or direct checks: a test to satisfy, behavior to observe, or check to run.
   "Tests" as an abstract category is not compliance — name the specific test
-  file and assertions.
+  file and the behavior observed at a meaningful boundary. Do not name
+  logger/config/native-shape/private-helper/wiring assertions as deliverables.
 - Tasks trace to PRD, architecture, or test-specs. No orphan tasks
   (gold-plating) and no orphan PRD criteria (coverage gaps).
 - Referenced file paths are explicit in the plan tasks for grounding and

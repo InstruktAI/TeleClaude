@@ -34,7 +34,7 @@ All cross-computer state mutation flows through one Redis pub/sub channel namesp
 
 Concretely:
 
-- **Heartbeat carries the full `ComputerInfo`.** `user`, `host`, `role`, `tmux_binary`, `bot_username`, `system_stats` ship in the heartbeat payload. `discover_peers` reads identity directly from the heartbeat — no `get_computer_info` request/response round-trip exists.
+- **Heartbeat carries the cross-computer `ComputerInfo` fields peers need.** `user`, `host`, `role`, and `system_stats` ship in the heartbeat payload. Excluding `tmux_binary` is intentional: that field is a daemon-local server-start concern; the cross-computer protocol carries only fields a peer needs to reason about presence, SSH identity, and display. `discover_peers` reads identity directly from the heartbeat — no `get_computer_info` request/response round-trip exists.
 - **`ClusterBridge` subscribes to `cluster.*`** via `PSUBSCRIBE`, decodes `ClusterEnvelope` (channel, idempotency_key, emitted_at, origin, payload), dedups via an in-memory LRU, and dispatches by channel-prefix category (`session`, `project`, `todo`, `computer`).
 - **`ClusterPublisher` is the single emit point** used by `DaemonCache` writers. Every state mutation publishes a `cluster.*` event after the in-memory write. Cache writers accept a `from_cluster=True` flag that the bridge dispatch sink sets to suppress the re-publish leg (closes the round-trip).
 - **The bridge short-circuits self-origin envelopes.** Self-published events round-trip through Redis but are dropped at dispatch — the local writer already mutated state and fired WS fanout; re-applying would just double-emit.
@@ -59,7 +59,7 @@ The decision above defines the target architecture. Implementation lands in stag
 - `cluster.project.{registered|unregistered}` — projects still propagate via the bootstrap pull + workflow_bridge invalidation; the live publish/apply path is not in this push.
 - `cluster.todo.{created|updated|deleted|phase_changed}` — todos similarly rely on bootstrap + workflow_bridge today.
 - `cluster.computer.updated` — computer presence still flows through heartbeat keys (the primary path); a complementary event-level update is the long-term direction but not required for the current symptom.
-- `cluster.session.create_request|created|create_failed` request/response over events, for the TUI-to-peer "create session on MozBook" flow.
+- TUI-to-peer "create session on MozBook" flow. This ultimately shipped through the existing Redis `messages:{computer}` request/response transport rather than through `cluster.session.create_request|created|create_failed` event envelopes; session ownership still propagates back to peers through `cluster.session.{created|updated|closed}`.
 
 The narrowing is intentional: sessions are the cross-computer aggregate with the strongest user-visible win, and shipping one category cleanly proves the pattern. Subsequent commits repeat the same plumbing for the remaining categories using this commit set as the template.
 

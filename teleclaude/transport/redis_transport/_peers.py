@@ -12,6 +12,7 @@ from redis.exceptions import RedisError
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.models import JsonDict, MessageMetadata, PeerInfo
 from teleclaude.core.redis_utils import scan_keys
+from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
@@ -114,12 +115,11 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
     async def discover_peers(self) -> list[PeerInfo]:
         """Discover peers via Redis heartbeat keys.
 
-        Identity (``user``/``host``/``role``/``tmux_binary``/``bot_username``/
-        ``system_stats``) is read directly from the heartbeat payload — every
-        daemon publishes its full :class:`ComputerInfo` in the heartbeat key
-        (see ``_heartbeat.py``), so no separate ``get_computer_info`` round-
-        trip is needed. This removes the historical timeout failure mode that
-        could silently drop peers when the request/response leg was unhappy.
+        Identity (``user``/``host``/``role``/``system_stats``) is read directly
+        from the heartbeat payload, so no separate ``get_computer_info``
+        round-trip is needed. This removes the historical timeout failure mode
+        that could silently drop peers when the request/response leg was
+        unhappy.
 
         Returns:
             List of PeerInfo instances with peer computer information. Returns
@@ -145,16 +145,20 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
 
             peers: list[PeerInfo] = []
             for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
-                loaded = await self._load_peer_heartbeat(redis_client, key)
-                if loaded is None:
-                    continue
+                try:
+                    loaded = await self._load_peer_heartbeat(redis_client, key)
+                    if loaded is None:
+                        continue
 
-                computer_name, last_seen_dt, info = loaded
-                if computer_name == self.computer_name:
-                    logger.trace("Skipping self heartbeat: %s", computer_name)
-                    continue
+                    computer_name, last_seen_dt, info = loaded
+                    if computer_name == self.computer_name:
+                        logger.trace("Skipping self heartbeat: %s", computer_name)
+                        continue
 
-                peers.append(self._build_peer_info(computer_name, last_seen_dt, info))
+                    peers.append(self._build_peer_info(computer_name, last_seen_dt, info))
+                except _PEER_EXCEPTIONS as exc:
+                    logger.warning("Heartbeat peer parse failed: %s", exc)
+                    continue
 
             return sorted(peers, key=lambda p: p.name)
 
@@ -194,13 +198,11 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             status="online",
             last_seen=last_seen_dt,
             adapter_type="redis",
-            user=self._optional_text(computer_info.get("user")),
-            host=self._optional_text(computer_info.get("host")),
+            user=optional_shell_safe_identifier(computer_info.get("user"), "heartbeat user"),
+            host=optional_shell_safe_identifier(computer_info.get("host"), "heartbeat host"),
             ip=self._optional_text(computer_info.get("ip")),
             role=self._optional_text(computer_info.get("role")),
             system_stats=system_stats,
-            tmux_binary=self._optional_text(computer_info.get("tmux_binary")),
-            bot_username=self._optional_text(computer_info.get("bot_username")),
         )
 
     def _optional_text(self, value: object) -> str | None:

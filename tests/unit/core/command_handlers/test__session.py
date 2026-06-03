@@ -408,7 +408,6 @@ class TestComputerInfo:
                 role="builder",
                 host="localhost",
                 tmux_binary="/usr/bin/tmux",
-                bot_username=None,
             )
         )
         psutil = SimpleNamespace(

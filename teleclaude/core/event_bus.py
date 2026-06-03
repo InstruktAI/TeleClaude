@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict, TypeVar, ca
 from instrukt_ai_logging import get_logger
 from pydantic import JsonValue
 
+from teleclaude.config import config
 from teleclaude.core.event_guard import create_event_guard
 from teleclaude.core.events import (
     AgentAvailabilityContext,
@@ -132,7 +133,7 @@ class InternalEventBusContract:
 
 INTERNAL_EVENT_BUS_CONTRACT = InternalEventBusContract(
     stream_name=INTERNAL_EVENT_STREAM,
-    consumer_group_rule=f"{_INTERNAL_CONSUMER_GROUP_PREFIX}{{role}}",
+    consumer_group_rule=f"{_INTERNAL_CONSUMER_GROUP_PREFIX}{{role}}:{{computer_name}}",
     event_namespace_rule=f"{INTERNAL_EVENT_NAMESPACE_PREFIX}{{event_name}}",
     redis_outage_mode=(
         "Redis is required for internal propagation; Redis outage stops fan-out, "
@@ -544,6 +545,8 @@ class EventBus:
         """
         if self._redis is None:
             raise RuntimeError("EventBus.emit requires a configured Redis client")
+        if envelope.originating_computer is None:
+            envelope.originating_computer = config.computer.name
         entry_id = await self._redis.xadd(INTERNAL_EVENT_STREAM, envelope.to_stream_dict(), maxlen=10000)
         return entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
 
@@ -557,7 +560,7 @@ class EventBus:
             logger.exception("EventBus Redis publish failed")
 
     def _consumer_group(self) -> str:
-        return f"{_INTERNAL_CONSUMER_GROUP_PREFIX}{self._role}"
+        return f"{_INTERNAL_CONSUMER_GROUP_PREFIX}{self._role}:{config.computer.name}"
 
     def _consumer_name(self) -> str:
         return f"{self._role}:{os.getpid()}:{id(self)}"

@@ -48,6 +48,7 @@ from teleclaude.events.cartridges.correlation import CorrelationConfig
 from teleclaude.events.cartridges.trust import TrustConfig
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
+from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
 from teleclaude.hooks.config import load_hooks_config
@@ -308,12 +309,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _start_event_processor(self, redis_client: object, pipeline: Pipeline) -> str:
         """Start the Redis-backed event processor."""
-        computer_name = getattr(config, "computer", None)
-        computer_label = getattr(computer_name, "name", "local") if computer_name else "local"
+        computer_label = config.computer.name
         reliability = config.event_reliability
         event_processor = EventProcessor(
             redis_client=redis_client,
             pipeline=pipeline,
+            group=f"{EVENT_PROCESSOR_GROUP}-{computer_label}",
             consumer_name=f"{computer_label}-{os.getpid()}",
             idle_threshold_ms=reliability.idle_threshold_ms,
             max_attempts=reliability.max_attempts,

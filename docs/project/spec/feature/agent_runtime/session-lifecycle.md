@@ -19,7 +19,7 @@ description: 'v1 agent_runtime — start, list, and end agent sessions over the 
 
 The v1 surface for managing the live dimension of an `agent_runtime` Session: creating one (allocating a `session_id`, an associated tmux session, and a principal binding), listing what currently exists (subject to role-based visibility), and explicitly ending one (a request to transition to `closed`).
 
-Three FastAPI routes form the surface, all backed by the in-process command service: `POST /sessions`, `GET /sessions`, and `DELETE /sessions/{session_id}`. The TUI invokes them via the `telec sessions start`, `telec sessions list`, and `telec sessions end` CLI verbs respectively. Remote-computer routing is not yet implemented — `request.computer` is logged but every session is created locally.
+Three FastAPI routes form the surface: `POST /sessions`, `GET /sessions`, and `DELETE /sessions/{session_id}`. The TUI invokes them via the `telec sessions start`, `telec sessions list`, and `telec sessions end` CLI verbs respectively. Local creation is backed by the in-process command service; remote creation dispatches `new_session` to the target computer over Redis request/response and returns the peer-owned session transport fields.
 
 Termination accepted via the API is a request, not a finished close: `DELETE` returns `202 Accepted` and delegates the actual cleanup to the cleanup module (see `session-cleanup-and-reaping`).
 
@@ -50,14 +50,16 @@ And when an `initiator_session_id` references a parent session, missing fields (
 And a session creation without any resolved human_role AND no `system_role` raises ValueError — the request is rejected
 ```
 
-#### Computer routing (v1)
+#### Computer routing
 
 ```
 Given the request specifies `computer = <remote>`
 When the daemon receives the POST /sessions
-Then the daemon logs the requested computer
-And creates the session on the LOCAL machine regardless of the `computer` field
-And no remote dispatch occurs — remote creation via API is not implemented in v1
+Then the local daemon dispatches `new_session` to the target computer over Redis request/response
+And the target daemon creates the session on its own tmux server
+And the response carries the remote `session_id`, `tmux_session_name`, `computer=<remote>`, and resolved `agent`
+And if the target returns an error envelope, the API returns HTTP 502
+And if the target does not respond, the API returns HTTP 504
 ```
 
 #### Additional context propagation
@@ -151,16 +153,19 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 ### Implementation pointers (v1)
 
 - `teleclaude/api/sessions_routes.py`
-  - `list_sessions` (route `GET /sessions`, line 466)
-  - `create_session` (route `POST /sessions`, line 529)
-  - `end_session` (route `DELETE /sessions/{session_id}`, line 596)
-  - `_prepare_create_session` (line 397) — collects metadata, initiator id, launch intent
-  - `_resolve_created_session_transport` (line 440) — ensures the response carries both `session_id` and `tmux_session_name`
-  - `_build_launch_intent` (line 266) — resolves `SessionLaunchKind` (empty / agent / agent_then_message / agent_resume)
-  - `_filter_sessions_by_role` (line 89) — role-based list filtering
-  - `_resolve_origin` (line 188) — origin + caller_email + origin_metadata derivation
-  - `_extract_initiator_session_id` (line 161) — initiator session resolution
-  - `_link_direct_sessions` (line 340) — direct-conversation linkage
+  - `list_sessions` (route `GET /sessions`, line 472)
+  - `create_session` (route `POST /sessions`, line 535)
+  - `end_session` (route `DELETE /sessions/{session_id}`, line 604)
+  - `_prepare_create_session` (line 403) — collects metadata, initiator id, launch intent
+  - `_resolve_created_session_transport` (line 445) — ensures the response carries both `session_id` and `tmux_session_name`
+  - `_build_launch_intent` (line 271) — resolves `SessionLaunchKind` (empty / agent / agent_then_message / agent_resume)
+  - `_filter_sessions_by_role` (line 94) — role-based list filtering
+  - `_resolve_origin` (line 193) — origin + caller_email + origin_metadata derivation
+  - `_extract_initiator_session_id` (line 166) — initiator session resolution
+  - `_link_direct_sessions` (line 345) — direct-conversation linkage
+- `teleclaude/api/session_create_remote.py`
+  - `dispatch_session_create_to_peer` — remote `POST /sessions` branch; builds the Redis request metadata, waits for the peer envelope, and maps success/error/timeout to API response semantics
+  - `is_remote_create_target` — local-vs-peer target discriminator used by the route
 - `teleclaude/core/command_handlers/_session.py`
   - `create_session` (line 61) — command handler; allocates session*id, composes `tc*<session_id>` tmux name (line 89), inserts the DB row, registers initiator listener
   - `list_sessions` (line 268) — DB list + SessionSnapshot mapping
@@ -180,7 +185,7 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 ## Known caveats
 
 - **Tmux name in v1 is the full UUID, not a short id.** `tc_<full-uuid>` is the actual format; the v2-target domain spec phrases it as `tc_<session_id_short>` for readability, but no shortening occurs in v1.
-- **Remote-computer routing is logged but unimplemented.** The `computer` field on `CreateSessionRequest` is recorded; v1 creates every session locally. The TUI compensates by maintaining a remote-cache merge in `list_sessions`.
+- **Remote direct-link creation is not the normal path.** Remote `POST /sessions` supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materialises through local session records and is not created by the remote dispatch branch.
 - **Tmux + agent launch are off the request path.** `create_session` only inserts the DB row and returns; tmux creation and agent CLI launch happen on the daemon's bootstrap task after the API has already responded with 200. Callers polling for tmux readiness must check downstream — this surface does not block until the pane is alive.
 - **`ensure_tmux_session` is silently idempotent.** A name collision returns success without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "daemon refuses to start a session whose tmux name collides" is not a v1 behaviour; v1 simply joins the existing tmux session if one with the same name already exists.
 - **`DELETE /sessions/{id}` is fire-and-forget.** 202 means "accepted for processing", not "closed". The caller does not learn the outcome of cleanup over this route; observing the `completion_event` (returned in the 202 body) or polling `GET /sessions?closed=true` is required.

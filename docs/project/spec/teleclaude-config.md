@@ -193,23 +193,20 @@ These keys are loaded by the daemon runtime config parser in `teleclaude/config/
 computer:
   name: string
   is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
-  user: string
+  user: string # remote attach identity; must match [A-Za-z0-9._-]+
   role: string
   default_working_dir: string
   timezone: string
-  host: string | null
-  bot_username: string | null
+  host: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
   trusted_dirs: list[TrustedDir]
 remote_computers:
   <name>:
-    user: string | null
-    host: string | null
+    user: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
+    host: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
     ip: string | null
     teleclaude_path: string | null
-    bot_username: string | null
 telegram:
   enabled: boolean
-  trusted_bots: list[string] # explicit entries merged with non-null fleet bot_username values
 email:
   enabled: boolean # outbound SMTP; creds in .env (SMTP_USERNAME/SMTP_KEY/EMAIL_FROM). Disabled/unconfigured → email not sent (callers gate on availability).
 agents:

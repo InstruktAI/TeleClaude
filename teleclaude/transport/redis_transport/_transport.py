@@ -63,7 +63,7 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
     - Comp2 → XADD output:{computer}:{message_id} → Comp1 reads response for request/response
     """
 
-    _ALLOWED_REFRESH_REASONS = {"startup", "digest", "interest", "ttl"}
+    _ALLOWED_REFRESH_REASONS = {"startup", "first_heartbeat", "interest", "ttl"}
 
     def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry | None = None):
         """Initialize Redis transport.
@@ -116,8 +116,8 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         # Track pending new_session requests for response
         self._pending_new_session_request: str | None = None
 
-        # Track last-seen project digests for peers
-        self._peer_digests: dict[str, str] = {}
+        # Track successful first-heartbeat bootstraps per peer and data type.
+        self._bootstrapped: set[tuple[str, str]] = set()
 
         # Remote refresh coalescing (per peer + data type)
         self._refresh_cooldown_seconds = REDIS_REFRESH_COOLDOWN_SECONDS

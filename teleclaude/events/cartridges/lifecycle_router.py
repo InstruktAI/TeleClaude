@@ -7,6 +7,7 @@ import os
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
+from teleclaude.config import config
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
 
@@ -39,6 +40,9 @@ class LifecycleRouterCartridge:
         if not (event.event.startswith(_PLANNING_PREFIX) or event.event.startswith(_WORKFLOW_PREFIX)):
             return event
         if event.event not in _TRIGGER_EVENTS:
+            return event
+        origin = event.originating_computer
+        if origin and origin != config.computer.name:
             return event
 
         slug_raw = event.payload.get("slug")

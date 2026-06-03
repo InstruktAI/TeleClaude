@@ -45,7 +45,7 @@ Adding a person automatically:
 
 | Platform | Deep link format                                      | What happens when clicked                                |
 | -------- | ----------------------------------------------------- | -------------------------------------------------------- |
-| Telegram | `https://t.me/{bot_username}?start={invite_token}`    | Opens private chat with bot, sends `/start` with payload |
+| Telegram | `https://t.me/{telegram_username}?start={invite_token}` | Opens private chat with bot, sends `/start` with payload |
 | Discord  | `https://discord.com/users/{bot_user_id}`             | Opens DM with the bot (token sent as first message)      |
 | WhatsApp | `https://wa.me/{business_number}?text={invite_token}` | Opens WhatsApp chat with token prefilled                 |
 

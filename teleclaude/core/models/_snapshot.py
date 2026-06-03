@@ -6,6 +6,7 @@ from typing import cast
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.session_status import compute_agent_status
+from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
 from teleclaude.types import SystemStats
@@ -183,7 +184,9 @@ class SessionSnapshot(
             ),
             last_output_digest=str(data.get("last_output_digest")) if data.get("last_output_digest") else None,
             native_session_id=str(data.get("native_session_id")) if data.get("native_session_id") else None,
-            tmux_session_name=str(data.get("tmux_session_name")) if data.get("tmux_session_name") else None,
+            tmux_session_name=optional_shell_safe_identifier(
+                data.get("tmux_session_name"), "session tmux_session_name"
+            ),
             initiator_session_id=str(data.get("initiator_session_id")) if data.get("initiator_session_id") else None,
             detached=bool(data.get("detached")) if data.get("detached") is not None else False,
             computer=str(data.get("computer")) if data.get("computer") else None,
@@ -248,7 +251,6 @@ class ComputerInfo:
     is_local: bool = False
     system_stats: SystemStats | None = None
     tmux_binary: str | None = None
-    bot_username: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert computer info to a JSON-compatible dictionary."""

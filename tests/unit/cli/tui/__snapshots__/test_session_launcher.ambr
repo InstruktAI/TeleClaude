@@ -6,6 +6,6 @@
     '-h',
     '-p',
     '60',
-    "ssh -t morriz@mozbook.local '/opt/tmux attach -t tc_demo'",
+    "ssh -t morriz@mozbook.local 'tmux attach -t tc_demo'",
   ])
 # ---

@@ -22,9 +22,15 @@ visibility: 'public'
 5. New source files must have a corresponding test file before merge. The test file may start as a stub, but the mapping must exist.
 6. Tests are behavioral contracts, not implementation snapshots:
    - Assert behavior and outcomes, not internal state or call counts.
+   - Do not fill mandatory test files with logger assertions, config/model
+     shape checks, private-helper tests, constructor-wiring captures, or
+     literal payload echoes just to satisfy the 1:1 mapping.
    - No literal/substring/pattern assertions on string content — composed messages, CLI output, formatted reports, notifications, error prose, agent artifacts, documentation, protocol markers, schema keys, command names. Use snapshots for rendered text and named constants for protocol identity. See `software-development/policy/testing` → "String Assertions — One Paradigm".
    - Reject tests that merely restate literals, keys, or values already visible in the source or fixture without proving any transformation, validation, or decision logic.
    - Reject tests that only confirm primitive effects such as create/copy/write/existence/pass-through when no application-owned behavior, branching, or failure handling was exercised.
+   - Logs, metrics, and traces are diagnostic surfaces, not feature behavior.
+     Assert them only when the code under test is the observability adapter
+     itself, and use that adapter's public sink/boundary.
    - Maximum 5 mock patches per test. More indicates the code under test has too many dependencies.
    - Each test function must have a descriptive name that serves as a behavioral specification.
 

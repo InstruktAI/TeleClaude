@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
-    from telegram import Message as TelegramMessage
-
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.task_registry import TaskRegistry
 
@@ -176,7 +174,6 @@ class TelegramAdapter(
 
         # Extract from config singleton
         self.trusted_dirs = config.computer.get_all_trusted_dirs()
-        self.trusted_bots = config.telegram.trusted_bots
 
         self.computer_name = config.computer.name
         if not self.computer_name:
@@ -334,31 +331,6 @@ class TelegramAdapter(
                 retry_exc,
             )
             return None
-
-    def _is_message_from_trusted_bot(self, message: TelegramMessage) -> bool:
-        """Check if message is from a trusted bot (for AI-to-AI communication).
-
-        Args:
-            message: Telegram message object
-
-        Returns:
-            True if message is from a trusted bot, False otherwise
-        """
-        if not message or not message.from_user:
-            return False
-
-        # Check if sender is a bot
-        if not message.from_user.is_bot:
-            return False
-
-        # Check if bot username is in trusted list
-        bot_username = message.from_user.username
-        if bot_username in self.trusted_bots:
-            logger.debug("Message from trusted bot: %s", bot_username)
-            return True
-
-        logger.warning("Message from untrusted bot: %s", bot_username)
-        return False
 
     def format_output(self, tmux_output: str) -> str:
         """Format tmux output with Telegram MarkdownV2 escaping and line shortening."""

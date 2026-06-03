@@ -14,13 +14,19 @@ from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibilit
 _SPAWN_EVENT = "domain.software-development.planning.todo_finalize_ready"
 
 
-def _make_event(event_type: str, payload: dict) -> EventEnvelope:
+def _make_event(
+    event_type: str,
+    payload: dict,
+    *,
+    originating_computer: str | None = None,
+) -> EventEnvelope:
     return EventEnvelope(
         event=event_type,
         source="test",
         level=EventLevel.OPERATIONAL,
         domain="test",
         visibility=EventVisibility.LOCAL,
+        originating_computer=originating_computer,
         payload=payload,
     )
 
@@ -58,6 +64,47 @@ async def test_finalize_ready_triggers_spawn():
     spawn = AsyncMock()
     cartridge = IntegrationTriggerCartridge(spawn_callback=spawn)
     event = _make_event(_SPAWN_EVENT, _FINALIZE_READY_PAYLOAD)
+    ctx = MagicMock()
+
+    result = await cartridge.process(event, ctx)
+
+    assert result is event
+    spawn.assert_called_once_with("my-slug", "my-slug", "deadbeef1234", "w-001")
+
+
+@pytest.mark.asyncio
+async def test_finalize_ready_with_local_origin_triggers_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("teleclaude.events.cartridges.integration_trigger.config.computer.name", "MozMini")
+    spawn = AsyncMock()
+    cartridge = IntegrationTriggerCartridge(spawn_callback=spawn)
+    event = _make_event(_SPAWN_EVENT, _FINALIZE_READY_PAYLOAD, originating_computer="MozMini")
+    ctx = MagicMock()
+
+    result = await cartridge.process(event, ctx)
+
+    assert result is event
+    spawn.assert_called_once_with("my-slug", "my-slug", "deadbeef1234", "w-001")
+
+
+@pytest.mark.asyncio
+async def test_finalize_ready_with_foreign_origin_skips_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("teleclaude.events.cartridges.integration_trigger.config.computer.name", "MozMini")
+    spawn = AsyncMock()
+    cartridge = IntegrationTriggerCartridge(spawn_callback=spawn)
+    event = _make_event(_SPAWN_EVENT, _FINALIZE_READY_PAYLOAD, originating_computer="MozBook")
+    ctx = MagicMock()
+
+    result = await cartridge.process(event, ctx)
+
+    assert result is event
+    spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_finalize_ready_without_origin_keeps_legacy_spawn() -> None:
+    spawn = AsyncMock()
+    cartridge = IntegrationTriggerCartridge(spawn_callback=spawn)
+    event = _make_event(_SPAWN_EVENT, _FINALIZE_READY_PAYLOAD, originating_computer=None)
     ctx = MagicMock()
 
     result = await cartridge.process(event, ctx)

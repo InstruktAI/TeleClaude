@@ -22,6 +22,7 @@ from teleclaude.cli.tui._pane_specs import (
 from teleclaude.cli.tui.pane_layout import PaneLayoutMixin
 from teleclaude.cli.tui.pane_theming import PaneThemingMixin
 from teleclaude.config import config
+from teleclaude.core.shell_identity import require_shell_safe_identifier
 
 if TYPE_CHECKING:
     from teleclaude.api_models import SessionDTO
@@ -511,14 +512,16 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         Returns:
             Command string to execute
         """
-        attach_cmd = self._build_tmux_attach_command(tmux_session_name)
+        safe_tmux_session_name = require_shell_safe_identifier(tmux_session_name, "tmux_session_name")
+        attach_cmd = self._build_tmux_attach_command(safe_tmux_session_name)
 
         if computer_info and computer_info.is_remote:
             # Remote: SSH to the computer and attach there
             # Use -t for pseudo-terminal allocation (required for tmux)
             # Use -A for SSH agent forwarding
-            ssh_target = computer_info.ssh_target
-            tmux_binary = computer_info.tmux_binary or "tmux"
+            user = require_shell_safe_identifier(computer_info.user, "peer user")
+            host = require_shell_safe_identifier(computer_info.host, "peer host")
+            ssh_target = f"{user}@{host}"
 
             # Get appearance settings from host to pass to remote
             appearance_env = self._get_appearance_env()
@@ -526,7 +529,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             if env_str:
                 env_str += " "
 
-            cmd = f"ssh -t -A {ssh_target} '{env_str}TERM=tmux-256color {tmux_binary} -u {attach_cmd}'"
+            cmd = f"ssh -t -A {ssh_target} '{env_str}TERM=tmux-256color tmux -u {attach_cmd}'"
             logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
             return cmd
 

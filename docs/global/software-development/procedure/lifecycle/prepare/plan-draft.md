@@ -128,7 +128,10 @@ policy. Structure the plan as an ordered task list. Each task must include:
   observe, lint to pass). Each task references the PRD success criteria and, for
   Category A work, the Gherkin acceptance scenarios in the feature spec snippet
   it satisfies. Otherwise the task states the existing test or direct
-  verification that covers the behavior.
+  verification that covers the behavior. Verification must target behavior at
+  a meaningful boundary; do not prescribe logger/log-level, metric/trace,
+  config/model/native-shape, private-helper, constructor-wiring, or mock-call-echo
+  assertions.
 - **Referenced files**: exact file paths that will be created or modified. These are
   used by the state machine for grounding and staleness detection.
 

@@ -20,7 +20,6 @@ def adapter(monkeypatch: pytest.MonkeyPatch) -> TelegramAdapter:
 
     mock_cfg = MagicMock()
     mock_cfg.computer.get_all_trusted_dirs.return_value = []
-    mock_cfg.telegram.trusted_bots = ["trusted_bot"]
     mock_cfg.computer.name = "test-computer"
     mock_cfg.computer.is_master = True
     mock_cfg.telegram.qos.mode = "off"
@@ -150,44 +149,6 @@ def test_validate_update_returns_false_when_message_is_none(adapter: TelegramAda
     update.effective_user = MagicMock()
     update.effective_message = None
     assert adapter._validate_update_for_command(update) is False
-
-
-# ---------------------------------------------------------------------------
-# _is_message_from_trusted_bot
-# ---------------------------------------------------------------------------
-
-
-def test_is_message_from_trusted_bot_returns_false_when_no_message(adapter: TelegramAdapter) -> None:
-    assert adapter._is_message_from_trusted_bot(None) is False
-
-
-def test_is_message_from_trusted_bot_returns_false_when_no_from_user(adapter: TelegramAdapter) -> None:
-    msg = MagicMock()
-    msg.from_user = None
-    assert adapter._is_message_from_trusted_bot(msg) is False
-
-
-def test_is_message_from_trusted_bot_returns_false_for_human_user(adapter: TelegramAdapter) -> None:
-    msg = MagicMock()
-    msg.from_user = MagicMock()
-    msg.from_user.is_bot = False
-    assert adapter._is_message_from_trusted_bot(msg) is False
-
-
-def test_is_message_from_trusted_bot_returns_true_for_trusted_bot(adapter: TelegramAdapter) -> None:
-    msg = MagicMock()
-    msg.from_user = MagicMock()
-    msg.from_user.is_bot = True
-    msg.from_user.username = "trusted_bot"
-    assert adapter._is_message_from_trusted_bot(msg) is True
-
-
-def test_is_message_from_trusted_bot_returns_false_for_unknown_bot(adapter: TelegramAdapter) -> None:
-    msg = MagicMock()
-    msg.from_user = MagicMock()
-    msg.from_user.is_bot = True
-    msg.from_user.username = "unknown_bot"
-    assert adapter._is_message_from_trusted_bot(msg) is False
 
 
 # ---------------------------------------------------------------------------

@@ -29,11 +29,7 @@ class TestComputersRoutes:
         with (
             patch(
                 "teleclaude.api.computers_routes.command_handlers.get_computer_info",
-                new=AsyncMock(
-                    return_value=SimpleNamespace(
-                        user="alice", host="workstation", tmux_binary="tmux", bot_username=None
-                    )
-                ),
+                new=AsyncMock(return_value=SimpleNamespace(user="alice", host="workstation", tmux_binary="tmux")),
             ),
             patch(
                 "teleclaude.api.computers_routes.config",
@@ -50,7 +46,6 @@ class TestComputersRoutes:
                 "host": "workstation",
                 "is_local": True,
                 "tmux_binary": "tmux",
-                "bot_username": None,
             },
             {
                 "name": "raspi",
@@ -59,7 +54,6 @@ class TestComputersRoutes:
                 "host": "raspi.local",
                 "is_local": False,
                 "tmux_binary": None,
-                "bot_username": None,
             },
         ]
 
@@ -80,7 +74,7 @@ class TestComputersRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_list_computers_includes_config_defined_offline_remotes_and_bot_usernames(self) -> None:
+    async def test_list_computers_includes_config_defined_offline_remotes(self) -> None:
         computers_routes.configure(SimpleNamespace(get_computers=lambda: []))
 
         with (
@@ -91,7 +85,6 @@ class TestComputersRoutes:
                         user="alice",
                         host="workstation",
                         tmux_binary="tmux",
-                        bot_username="local_box_bot",
                     )
                 ),
             ),
@@ -120,7 +113,6 @@ class TestComputersRoutes:
                 "host": "workstation",
                 "is_local": True,
                 "tmux_binary": "tmux",
-                "bot_username": "local_box_bot",
             },
             {
                 "name": "raspi",
@@ -129,7 +121,6 @@ class TestComputersRoutes:
                 "host": "raspi.local",
                 "is_local": False,
                 "tmux_binary": None,
-                "bot_username": None,
             },
         ]
 
@@ -138,9 +129,7 @@ class TestComputersRoutes:
     async def test_list_computers_deduplicates_config_and_cache_names_case_insensitively(self) -> None:
         computers_routes.configure(
             SimpleNamespace(
-                get_computers=lambda: [
-                    SimpleNamespace(name="RASPI", user="cache-user", host="cache.local", bot_username="raspi_bot")
-                ]
+                get_computers=lambda: [SimpleNamespace(name="RASPI", user="cache-user", host="cache.local")]
             )
         )
 
@@ -152,7 +141,6 @@ class TestComputersRoutes:
                         user="alice",
                         host="workstation",
                         tmux_binary="tmux",
-                        bot_username="local_box_bot",
                     )
                 ),
             ),
@@ -165,7 +153,6 @@ class TestComputersRoutes:
                             name="raspi",
                             user="config-user",
                             host="config.local",
-                            bot_username="raspi_bot",
                         )
                     ],
                 ),
@@ -177,4 +164,3 @@ class TestComputersRoutes:
         assert len(raspi_entries) == 1
         assert raspi_entries[0]["status"] == "online"
         assert raspi_entries[0]["user"] == "cache-user"
-        assert raspi_entries[0]["bot_username"] == "raspi_bot"

@@ -14,6 +14,7 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
 
@@ -48,6 +49,9 @@ class IntegrationTriggerCartridge:
     async def process(self, event: EventEnvelope, _context: PipelineContext) -> EventEnvelope | None:
         """On todo_finalize_ready, spawn the integrator. All other events pass through."""
         if event.event != _SPAWN_EVENT:
+            return event
+        origin = event.originating_computer
+        if origin and origin != config.computer.name:
             return event
 
         payload = event.payload

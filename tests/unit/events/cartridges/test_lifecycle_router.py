@@ -11,9 +11,6 @@ from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibilit
 
 _WORKFLOW_TODO_CREATED = "workflow.todo.created"
 _KIND_FEATURE = "feature"
-_KIND_REFACTOR = "refactor"
-_KIND_MIGRATION = "migration"
-_UNKNOWN_KIND_LOG_FRAGMENT = "unknown kind"
 
 
 def _make_event(
@@ -34,6 +31,7 @@ def _make_workflow_todo_created(
     slug: str = "my-slug",
     kind: str = "feature",
     pickup_requested: bool = True,
+    originating_computer: str | None = None,
 ) -> EventEnvelope:
     return EventEnvelope(
         event=_WORKFLOW_TODO_CREATED,
@@ -41,6 +39,7 @@ def _make_workflow_todo_created(
         level=EventLevel.WORKFLOW,
         domain="software-development",
         visibility=EventVisibility.LOCAL,
+        originating_computer=originating_computer,
         payload={"slug": slug, "kind": kind, "pickup_requested": pickup_requested},
     )
 
@@ -188,6 +187,71 @@ async def test_workflow_todo_created_with_pickup_requested_true_triggers_dispatc
 
 
 @pytest.mark.asyncio
+async def test_workflow_todo_created_with_local_origin_triggers_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("teleclaude.events.cartridges.lifecycle_router.config.computer.name", "MozMini")
+    cartridge = LifecycleRouterCartridge()
+    event = _make_workflow_todo_created(originating_computer="MozMini")
+    ctx = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.connect = AsyncMock()
+    mock_client.run_session = AsyncMock()
+    mock_client.close = AsyncMock()
+
+    with patch(
+        "teleclaude.events.cartridges.lifecycle_router.TelecAPIClient",
+        return_value=mock_client,
+    ):
+        result = await cartridge.process(event, ctx)
+
+    assert result is event
+    mock_client.run_session.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_workflow_todo_created_with_foreign_origin_skips_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("teleclaude.events.cartridges.lifecycle_router.config.computer.name", "MozMini")
+    cartridge = LifecycleRouterCartridge()
+    event = _make_workflow_todo_created(originating_computer="MozBook")
+    ctx = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.connect = AsyncMock()
+    mock_client.run_session = AsyncMock()
+    mock_client.close = AsyncMock()
+
+    with patch(
+        "teleclaude.events.cartridges.lifecycle_router.TelecAPIClient",
+        return_value=mock_client,
+    ):
+        result = await cartridge.process(event, ctx)
+
+    assert result is event
+    mock_client.run_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_workflow_todo_created_without_origin_keeps_legacy_dispatch() -> None:
+    cartridge = LifecycleRouterCartridge()
+    event = _make_workflow_todo_created(originating_computer=None)
+    ctx = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.connect = AsyncMock()
+    mock_client.run_session = AsyncMock()
+    mock_client.close = AsyncMock()
+
+    with patch(
+        "teleclaude.events.cartridges.lifecycle_router.TelecAPIClient",
+        return_value=mock_client,
+    ):
+        result = await cartridge.process(event, ctx)
+
+    assert result is event
+    mock_client.run_session.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_workflow_todo_created_with_pickup_requested_false_skips_dispatch() -> None:
     cartridge = LifecycleRouterCartridge()
     event = _make_workflow_todo_created(pickup_requested=False)
@@ -236,79 +300,7 @@ async def test_workflow_todo_created_absent_pickup_requested_defaults_true() -> 
 
 
 @pytest.mark.asyncio
-async def test_canonical_kind_feature_dispatches_via_todo_lane_without_warning(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    cartridge = LifecycleRouterCartridge()
-    event = _make_workflow_todo_created(kind=_KIND_FEATURE)
-    ctx = MagicMock()
-
-    mock_client = MagicMock()
-    mock_client.connect = AsyncMock()
-    mock_client.run_session = AsyncMock()
-    mock_client.close = AsyncMock()
-
-    with patch(
-        "teleclaude.events.cartridges.lifecycle_router.TelecAPIClient",
-        return_value=mock_client,
-    ):
-        await cartridge.process(event, ctx)
-
-    assert not any(_UNKNOWN_KIND_LOG_FRAGMENT in r.message.lower() for r in caplog.records)
-    mock_client.run_session.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_canonical_kind_refactor_dispatches_via_todo_lane_without_warning(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    cartridge = LifecycleRouterCartridge()
-    event = _make_workflow_todo_created(kind=_KIND_REFACTOR)
-    ctx = MagicMock()
-
-    mock_client = MagicMock()
-    mock_client.connect = AsyncMock()
-    mock_client.run_session = AsyncMock()
-    mock_client.close = AsyncMock()
-
-    with patch(
-        "teleclaude.events.cartridges.lifecycle_router.TelecAPIClient",
-        return_value=mock_client,
-    ):
-        await cartridge.process(event, ctx)
-
-    assert not any(_UNKNOWN_KIND_LOG_FRAGMENT in r.message.lower() for r in caplog.records)
-    mock_client.run_session.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_canonical_kind_migration_dispatches_via_todo_lane_without_warning(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    cartridge = LifecycleRouterCartridge()
-    event = _make_workflow_todo_created(kind=_KIND_MIGRATION)
-    ctx = MagicMock()
-
-    mock_client = MagicMock()
-    mock_client.connect = AsyncMock()
-    mock_client.run_session = AsyncMock()
-    mock_client.close = AsyncMock()
-
-    with patch(
-        "teleclaude.events.cartridges.lifecycle_router.TelecAPIClient",
-        return_value=mock_client,
-    ):
-        await cartridge.process(event, ctx)
-
-    assert not any(_UNKNOWN_KIND_LOG_FRAGMENT in r.message.lower() for r in caplog.records)
-    mock_client.run_session.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_unknown_kind_still_warns_and_degrades_to_todo_lane(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Regression: unknown kind still logs a warning (existing behavior must survive)."""
+async def test_unknown_kind_still_dispatches() -> None:
     cartridge = LifecycleRouterCartridge()
     event = EventEnvelope(
         event="domain.software-development.planning.todo_dumped",
@@ -331,5 +323,4 @@ async def test_unknown_kind_still_warns_and_degrades_to_todo_lane(
     ):
         await cartridge.process(event, ctx)
 
-    assert any(_UNKNOWN_KIND_LOG_FRAGMENT in r.message.lower() for r in caplog.records)
     mock_client.run_session.assert_called_once()

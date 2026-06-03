@@ -82,6 +82,27 @@ class TestPullInterestedSessions:
         transport._pull_initial_sessions.assert_called_once()
 
 
+class TestPullRemoteSessions:
+    @pytest.mark.unit
+    async def test_rejects_invalid_remote_tmux_session_name(self, transport_with_cache: RedisTransport) -> None:
+        session_data = {
+            "session_id": "sess-1",
+            "title": "Test Session",
+            "status": "active",
+            "last_input_origin": None,
+            "thinking_mode": None,
+            "active_agent": None,
+            "tmux_session_name": "tc_demo;bad",
+        }
+        response = json.dumps({"status": "success", "data": [session_data]})
+        transport_with_cache.send_request = AsyncMock(return_value="msg-id")
+        transport_with_cache.client.read_response = AsyncMock(return_value=response)
+
+        await transport_with_cache.pull_remote_sessions("remote-machine")
+
+        transport_with_cache._cache.update_session.assert_not_called()
+
+
 class TestPullRemoteProjects:
     @pytest.mark.unit
     async def test_does_nothing_when_cache_unavailable(self, transport: RedisTransport) -> None:

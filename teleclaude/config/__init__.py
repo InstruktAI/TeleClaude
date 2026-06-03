@@ -212,7 +212,6 @@ class TelegramConfig:
     """Telegram adapter configuration."""
 
     enabled: bool = False
-    trusted_bots: list[str] = field(default_factory=list)
     qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
 
 
@@ -678,6 +677,8 @@ def _build_config(
 ) -> Config:
     """Build typed Config from raw dict with proper type conversion."""
     comp_raw = raw["computer"]
+    if not isinstance(comp_raw, dict):
+        raise ValueError("Invalid config key `config.yml:computer`: expected a mapping.")
     redis_raw = raw["redis"]
     if not isinstance(redis_raw, dict):
         raise ValueError("Invalid config key `config.yml:redis`: expected a mapping.")
@@ -849,9 +850,6 @@ def _build_config(
         ),
         telegram=TelegramConfig(
             enabled=_as_bool(telegram_raw.get("enabled", False)) if isinstance(telegram_raw, dict) else False,
-            trusted_bots=[str(b) for b in telegram_raw.get("trusted_bots", [])]
-            if isinstance(telegram_raw, dict)
-            else [],
             qos=TelegramQoSConfig(),
         ),
         discord=DiscordConfig(
