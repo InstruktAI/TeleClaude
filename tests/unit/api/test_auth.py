@@ -16,11 +16,12 @@ from teleclaude.api.auth import (
     clearance_sessions_agent_restart,
     clearance_sessions_run,
     clearance_sessions_start,
+    clearance_todos_reactivate,
     clearance_todos_reconcile,
     verify_caller,
 )
 from teleclaude.cli.telec import CommandAuth, is_command_allowed
-from teleclaude.constants import ROLE_WORKER
+from teleclaude.constants import HUMAN_ROLE_MEMBER, HUMAN_ROLE_NEWCOMER, ROLE_WORKER
 from teleclaude.core import db_models
 
 # ---------------------------------------------------------------------------
@@ -633,3 +634,35 @@ class TestSingleOwnerImplicitAdmin:
                 await verify_caller(x_tmux_session="tc_tui")
 
             assert exc_info.value.status_code == 401
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_clearance_todos_reactivate_allows_member() -> None:
+    """clearance_todos_reactivate admits a human with MEMBER role."""
+    identity = CallerIdentity(
+        session_id="sess-1",
+        system_role=None,
+        human_role=HUMAN_ROLE_MEMBER,
+        tmux_session_name=None,
+    )
+
+    cleared = await clearance_todos_reactivate(identity=identity)
+    assert cleared is identity
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_clearance_todos_reactivate_refuses_newcomer() -> None:
+    """clearance_todos_reactivate denies a human with NEWCOMER role."""
+    identity = CallerIdentity(
+        session_id="sess-1",
+        system_role=None,
+        human_role=HUMAN_ROLE_NEWCOMER,
+        tmux_session_name=None,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await clearance_todos_reactivate(identity=identity)
+    assert exc_info.value.status_code == 403
+    assert "telec todo reactivate" in str(exc_info.value.detail)

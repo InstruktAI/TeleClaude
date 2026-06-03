@@ -1,0 +1,4 @@
+# serializer version: 1
+# name: test_trashed_separator_renders_branch_line
+  <text '  ├────────────────────' [Span(0, 2, Style(color=Color('#808080', ColorType.TRUECOLOR, triplet=ColorTriplet(red=128, green=128, blue=128)))), Span(2, 3, Style(color=Color('#808080', ColorType.TRUECOLOR, triplet=ColorTriplet(red=128, green=128, blue=128)))), Span(3, 23, Style(color=Color('#808080', ColorType.TRUECOLOR, triplet=ColorTriplet(red=128, green=128, blue=128))))] ''>
+# ---

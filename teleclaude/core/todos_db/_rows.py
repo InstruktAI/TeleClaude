@@ -16,6 +16,7 @@ class RoadmapRow(TypedDict):
     status: str
     delivered_at: str | None
     delivered_commit: str | None
+    removed_at: str | None
     children: list[str] | None
 
 

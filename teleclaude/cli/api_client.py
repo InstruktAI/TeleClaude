@@ -61,7 +61,7 @@ API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 
 __all__ = ["APIError", "TelecAPIClient"]
 
-type WsPayload = dict[str, dict[str, str | list[str]]]
+type WsPayload = dict[str, dict[str, str | list[str] | bool]]
 type JsonBody = dict[str, object]  # guard: loose-dict - JSON API response
 
 WS_OPERATION_ERRORS = (OSError, RuntimeError, WebSocketException)
@@ -98,6 +98,7 @@ class _WebSocketState:
     ws: ClientConnection | None = None
     thread: threading.Thread | None = None
     running: bool = False
+    include_removed: bool = False
     subscriptions: set[str] = field(default_factory=set)
     callback: Callable[[WsEvent], None] | None = None
     on_connect: Callable[[], None] | None = None
@@ -211,6 +212,7 @@ class _TelecConnectionClient:
         callback: Callable[[WsEvent], None],
         subscriptions: list[str] | None = None,
         on_connect: Callable[[], None] | None = None,
+        include_removed: bool = False,
     ) -> None:
         """Start WebSocket connection for push updates.
 
@@ -219,6 +221,7 @@ class _TelecConnectionClient:
         Args:
             callback: Function called with (event_type, data) for each message
             subscriptions: Topics to subscribe to (e.g., ["sessions", "preparation"])
+            include_removed: Whether to include soft-removed entries
         """
         if self._ws_state.running:
             logger.debug("WebSocket already running")
@@ -227,6 +230,7 @@ class _TelecConnectionClient:
         self._ws_state.callback = callback
         self._ws_state.on_connect = on_connect
         self._ws_state.subscriptions = set(subscriptions or ["sessions", "preparation"])
+        self._ws_state.include_removed = include_removed
         self._ws_state.running = True
 
         self._ws_state.thread = threading.Thread(target=self._ws_loop, daemon=True, name="ws-client")
@@ -321,6 +325,7 @@ class _TelecConnectionClient:
             "subscribe": {
                 "computer": initial_sub.subscribe.computer,
                 "types": initial_sub.subscribe.types,
+                "include_removed": self._ws_state.include_removed,
             }
         }
         ws.send(json.dumps(initial_payload))
@@ -331,6 +336,7 @@ class _TelecConnectionClient:
                 "subscribe": {
                     "computer": rc.name,
                     "types": list(self._ws_state.subscriptions),
+                    "include_removed": self._ws_state.include_removed,
                 }
             }
             ws.send(json.dumps(remote_payload))
@@ -695,13 +701,22 @@ class _TelecSessionAPI:
             )
         return result
 
-    async def get_tui_bootstrap(self, pillars: list[TuiBootstrapPillar] | None = None) -> TuiBootstrapDTO:
+    async def get_tui_bootstrap(
+        self,
+        pillars: list[TuiBootstrapPillar] | None = None,
+        include_removed: bool = False,
+    ) -> TuiBootstrapDTO:
         """Fetch aggregate TUI bootstrap data with partial-success semantics."""
-        params = {"pillars": ",".join(pillars)} if pillars else None
+        params: dict[str, str] = {}
+        if pillars:
+            params["pillars"] = ",".join(pillars)
+        if include_removed:
+            params["include_removed"] = "true"
+
         resp = await self._request(
             "GET",
             "/tui/bootstrap",
-            request_options=RequestOptions(params=params),
+            request_options=RequestOptions(params=params if params else None),
         )
         return TypeAdapter(TuiBootstrapDTO).validate_json(resp.text)
 

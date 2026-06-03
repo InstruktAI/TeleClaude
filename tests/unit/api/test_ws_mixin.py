@@ -177,3 +177,45 @@ class TestWsMixin:
                 None,
             )
         ]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_initial_state_passes_include_removed_to_cache(self) -> None:
+        """_send_initial_state must pass include_removed=True to cache.get_todos for 'preparation' topic."""
+        cache = MagicMock()
+        # Mock get_projects to return one project so we enter the todos-fetch loop
+        cache.get_projects.return_value = [
+            SimpleNamespace(computer="local", path="/repo", name="proj", description=None)
+        ]
+        cache.get_todos.return_value = []
+
+        server = _WebSocketMixinHarness(cache=cache)
+        websocket = MagicMock(spec=WebSocket)
+        websocket.headers = {}
+
+        # topic='preparation' triggers get_todos
+        await server._send_initial_state(websocket, "preparation", "local", include_removed=True)
+
+        # Verify cache call
+        cache.get_todos.assert_called()
+        _, kwargs = cache.get_todos.call_args
+        assert kwargs.get("include_removed") is True
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_initial_state_defaults_to_exclude_removed(self) -> None:
+        """_send_initial_state must default to include_removed=False."""
+        cache = MagicMock()
+        cache.get_projects.return_value = [
+            SimpleNamespace(computer="local", path="/repo", name="proj", description=None)
+        ]
+        cache.get_todos.return_value = []
+
+        server = _WebSocketMixinHarness(cache=cache)
+        websocket = MagicMock(spec=WebSocket)
+        websocket.headers = {}
+
+        await server._send_initial_state(websocket, "preparation", "local")
+
+        _, kwargs = cache.get_todos.call_args
+        assert kwargs.get("include_removed") is False

@@ -7,7 +7,7 @@ import json as _json
 import sys
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list
@@ -35,6 +35,9 @@ from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd, resolve_state_root
 from teleclaude.session_identity import get_session_id
 from teleclaude.slug import validate_slug
+
+if TYPE_CHECKING:
+    pass
 
 __all__ = [
     "_handle_todo",
@@ -180,6 +183,7 @@ def _handle_todo(args: list[str]) -> None:
         "list": _handle_todo_list,
         "mark-phase": _handle_todo_mark_phase,
         "prepare": handle_todo_prepare,
+        "reactivate": _handle_todo_reactivate,
         "reconcile": _handle_todo_reconcile,
         "remove": _handle_todo_remove,
         "rename": _handle_todo_rename,
@@ -589,35 +593,26 @@ def _handle_todo_rename(args: list[str]) -> None:
         raise SystemExit(1)
 
 
-# ---------------------------------------------------------------------------
-# Artifact and stamp handlers (todos.db backed)
+# Artifact and stamp handlers (consolidated back from _todo_extra.py)
 # ---------------------------------------------------------------------------
 
 
 def _validate_artifact_name(name: str) -> None:
-    """Reject unknown artifact names before dispatching to the API."""
+    """Refuse unknown artifact names."""
     if name not in ARTIFACT_NAMES:
-        print(f"Unknown artifact name: {name!r}")
-        print(f"Valid names: {', '.join(sorted(ARTIFACT_NAMES))}")
+        print(f"Unknown artifact kind: {name}", file=sys.stderr)
+        print(f"Valid kinds: {', '.join(sorted(ARTIFACT_NAMES))}", file=sys.stderr)
         raise SystemExit(1)
 
 
 def _validate_artifact_name_write(name: str) -> None:
-    """Reject unknown or retired artifact names on the write path.
-
-    Retired names (e.g. ``test-specs``, ``spec-review-findings``) are accepted
-    by ``_validate_artifact_name`` for read/remove of pre-cutover todos but must
-    not be writeable.
-    """
+    """Refuse retired or read-only artifact names for writes."""
     if name not in ARTIFACT_NAMES_WRITABLE:
         if name in ARTIFACT_NAMES_RETIRED:
-            print(
-                f"Refusing to write retired artifact {name!r}: this artifact kind is no "
-                f"longer produced. Reads and removes of pre-cutover todos remain supported."
-            )
+            print(f"Artifact kind '{name}' is retired (read-only).", file=sys.stderr)
         else:
-            print(f"Unknown artifact name: {name!r}")
-            print(f"Writable names: {', '.join(sorted(ARTIFACT_NAMES_WRITABLE))}")
+            print(f"Unknown artifact kind: {name}", file=sys.stderr)
+        print(f"Writable kinds: {', '.join(sorted(ARTIFACT_NAMES_WRITABLE))}", file=sys.stderr)
         raise SystemExit(1)
 
 
@@ -702,8 +697,8 @@ def _handle_artifacts_diff(args: list[str]) -> None:
 
 def _handle_artifacts_remove(args: list[str]) -> None:
     """Handle telec todo artifacts remove <slug> <name>."""
-    slug: str | None = None
-    name: str | None = None
+    slug_val: str | None = None
+    name_val: str | None = None
 
     i = 0
     while i < len(args):
@@ -712,28 +707,28 @@ def _handle_artifacts_remove(args: list[str]) -> None:
             print(f"Unknown option: {arg}")
             print("Usage: telec todo artifacts remove <slug> <name>")
             raise SystemExit(1)
-        if slug is None:
-            slug = arg
-        elif name is None:
-            name = arg
+        if slug_val is None:
+            slug_val = arg
+        elif name_val is None:
+            name_val = arg
         else:
             print("Too many positional arguments.")
             print("Usage: telec todo artifacts remove <slug> <name>")
             raise SystemExit(1)
         i += 1
 
-    if not slug or not name:
+    if not slug_val or not name_val:
         print("Usage: telec todo artifacts remove <slug> <name>")
         raise SystemExit(1)
 
-    _validate_artifact_name(name)
-    if name == ARTIFACT_INPUT:
+    _validate_artifact_name(name_val)
+    if name_val == ARTIFACT_INPUT:
         print("input artifact cannot be removed")
         raise SystemExit(1)
 
     result = tool_api_request(
         "DELETE",
-        f"/todos/artifacts/{slug}/{name}",
+        f"/todos/artifacts/{slug_val}/{name_val}",
         params={"cwd": str(resolve_invocation_cwd())},
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
@@ -742,16 +737,16 @@ def _handle_artifacts_remove(args: list[str]) -> None:
 
     if result.get("removed") is True:
         versions_deleted = result.get("versions_deleted", 0)
-        print(f"Removed {name} for {slug}; deleted {versions_deleted} version rows.")
+        print(f"Removed {name_val} for {slug_val}; deleted {versions_deleted} version rows.")
     else:
-        print(f"No {name} artifact for {slug}; nothing needed to be removed.")
+        print(f"No {name_val} artifact for {slug_val}; nothing needed to be removed.")
 
 
 def _handle_artifacts_write(args: list[str]) -> None:
     """Handle telec todo artifacts write <slug> <name> <content>."""
-    slug: str | None = None
-    name: str | None = None
-    content: str | None = None
+    slug_val: str | None = None
+    name_val: str | None = None
+    content_val: str | None = None
 
     i = 0
     while i < len(args):
@@ -760,55 +755,42 @@ def _handle_artifacts_write(args: list[str]) -> None:
             print(f"Unknown option: {arg}")
             print("Usage: telec todo artifacts write <slug> <name> <content>")
             raise SystemExit(1)
-        elif slug is None:
-            slug = arg
-        elif name is None:
-            name = arg
-        elif content is None:
-            content = arg
+        elif slug_val is None:
+            slug_val = arg
+        elif name_val is None:
+            name_val = arg
+        elif content_val is None:
+            content_val = arg
         else:
             print("Too many positional arguments.")
             print("Usage: telec todo artifacts write <slug> <name> <content>")
             raise SystemExit(1)
         i += 1
 
-    if not slug or not name or not content:
+    if not slug_val or not name_val or not content_val:
         print("Usage: telec todo artifacts write <slug> <name> <content>")
         raise SystemExit(1)
 
-    _validate_artifact_name_write(name)
+    _validate_artifact_name_write(name_val)
     cwd = str(resolve_invocation_cwd())
     result = tool_api_request(
         "POST",
-        f"/todos/artifacts/{slug}/{name}",
+        f"/todos/artifacts/{slug_val}/{name_val}",
         json_body={
-            "content": content,
+            "content": content_val,
             "cwd": cwd,
             "codebase_sha_at_write": get_head_commit(cwd),
-            "referenced_paths": extract_referenced_paths(content, cwd),
+            "referenced_paths": extract_referenced_paths(content_val, cwd),
         },
     )
     if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Wrote {name} for {slug}")
+        print(f"Wrote {name_val} for {slug_val}")
     else:
         print(result)
 
 
 def _handle_todo_stamp(args: list[str]) -> None:
-    """Handle telec todo stamp.
-
-    Supported flag combinations:
-      --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
-      --prd-approved
-      --architecture-skipped <reason>
-      --drift-reviewed <artifact> <verdict> <reason>
-      --deferrals-processed
-      --design-spec-confirmed
-      --art-approved
-      --visuals-approved
-      --build-complete
-      --finalize-ready
-    """
+    """Handle telec todo stamp."""
     for arg in args:
         if arg == "--build-started":
             print("--build-started is machine-owned; run telec todo work <slug> to enter build.")
@@ -859,22 +841,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
     print(f"Stamped {label} for {slug}")
 
 
-_STAMP_BOOLEAN_FLAGS = {
-    "--prd-approved": "prd_approved",
-    "--requirements-ready": "requirements_ready",
-    "--plan-ready": "plan_ready",
-    "--deferrals-processed": "deferrals_processed",
-    "--design-spec-confirmed": "creative_design_spec_confirmed",
-    "--art-approved": "creative_art_approved",
-    "--visuals-approved": "creative_visuals_approved",
-    "--build-complete": "build_complete",
-}
-
-_STAMP_REASON_FLAGS = {
-    "--architecture-skipped": "architecture_skipped",
-}
-
-
 def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str | None, str | None]:
     """Parse ``telec todo stamp`` argv into slug, stamp type, value, and phase."""
     slug: str | None = None
@@ -917,17 +883,57 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
     return slug, stamp_type, value, phase
 
 
+_STAMP_BOOLEAN_FLAGS = {
+    "--prd-approved": "prd_approved",
+    "--requirements-ready": "requirements_ready",
+    "--plan-ready": "plan_ready",
+    "--deferrals-processed": "deferrals_processed",
+    "--design-spec-confirmed": "creative_design_spec_confirmed",
+    "--art-approved": "creative_art_approved",
+    "--visuals-approved": "creative_visuals_approved",
+    "--build-complete": "build_complete",
+}
+
+_STAMP_REASON_FLAGS = {
+    "--architecture-skipped": "architecture_skipped",
+}
+
+
+# ── Show and reactivate handlers ───────────────────────────────────────────
+
+
 def _handle_todo_show(args: list[str]) -> None:
-    """Handle telec todo show <slug> — display full todo state payload."""
-    if not args or args[0].startswith("-"):
-        print("Usage: telec todo show <slug>")
+    """Handle telec todo show <slug> [--include-removed] — display full todo state payload."""
+    include_removed = "--include-removed" in args
+    clean_args = [a for a in args if a != "--include-removed"]
+    if not clean_args or clean_args[0].startswith("-"):
+        print("Usage: telec todo show <slug> [--include-removed]")
         raise SystemExit(1)
 
-    slug = args[0]
-    result = tool_api_request("GET", f"/todos/{slug}/show")
+    slug = clean_args[0]
+    params = {"include_removed": "true"} if include_removed else None
+    result = tool_api_request("GET", f"/todos/{slug}/show", params=params)
 
     if isinstance(result, dict) and "slug" in result:
         print(_json.dumps(result, indent=2))
+    elif isinstance(result, dict) and result.get("detail"):
+        print(f"Error: {result['detail']}")
+        raise SystemExit(1)
+    else:
+        print(result)
+
+
+def _handle_todo_reactivate(args: list[str]) -> None:
+    """Handle telec todo reactivate <slug> — restore a soft-removed todo."""
+    if not args or args[0].startswith("-"):
+        print("Usage: telec todo reactivate <slug>")
+        raise SystemExit(1)
+
+    slug = args[0]
+    result = tool_api_request("POST", f"/todos/{slug}/reactivate")
+
+    if isinstance(result, dict) and result.get("slug"):
+        print(f"Restored todo: {result['slug']}")
     elif isinstance(result, dict) and result.get("detail"):
         print(f"Error: {result['detail']}")
         raise SystemExit(1)

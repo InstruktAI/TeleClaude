@@ -6,6 +6,7 @@ import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from typing import TypedDict
 from unittest.mock import AsyncMock
 
 import pytest
@@ -31,7 +32,12 @@ from teleclaude.cli.tui.app import _BURST_THRESHOLD, TelecApp
 from teleclaude.cli.tui.views.preparation import PreparationView
 
 _PASTE_TEXT = "R"
-_MANUAL_KEY = "n"
+_MANUAL_KEY = "N"
+
+
+class _NotificationCall(TypedDict):
+    message: str
+    severity: object
 
 
 @dataclass
@@ -39,14 +45,14 @@ class _ActionCalls:
     remove_artifact: int = 0
     new_project: int = 0
     new_todo: int = 0
-    notifications: list[dict[str, object]] = field(default_factory=list)  # guard: loose-dict
+    notifications: list[_NotificationCall] = field(default_factory=list)
 
 
 class _StubAPI:
     def __init__(self) -> None:
         self.connect = AsyncMock(return_value=None)
         self.close = AsyncMock(return_value=None)
-        self.websocket_calls: list[tuple[object, object, object]] = []
+        self.websocket_calls: list[tuple[object, object, object, bool]] = []
 
     def start_websocket(
         self,
@@ -54,10 +60,13 @@ class _StubAPI:
         callback: object,
         subscriptions: object = None,
         on_connect: object = None,
+        include_removed: bool = False,
     ) -> None:
-        self.websocket_calls.append((callback, subscriptions, on_connect))
+        self.websocket_calls.append((callback, subscriptions, on_connect, include_removed))
 
-    async def get_tui_bootstrap(self, requested: list[TuiBootstrapPillar]) -> TuiBootstrapDTO:
+    async def get_tui_bootstrap(
+        self, requested: list[TuiBootstrapPillar], include_removed: bool = False
+    ) -> TuiBootstrapDTO:
         return TuiBootstrapDTO(
             requested=requested,
             data=TuiBootstrapDataDTO(
@@ -98,6 +107,14 @@ async def _wait_for_preparation_rows(pilot: Pilot[str | None], prep: Preparation
     raise AssertionError("preparation rows did not populate")
 
 
+async def _wait_for_action_count(pilot: Pilot[str | None], calls: _ActionCalls, expected: int) -> None:
+    for _ in range(10):
+        await pilot.pause()
+        if calls.new_project + calls.new_todo == expected:
+            return
+    raise AssertionError("expected action count did not arrive")
+
+
 @asynccontextmanager
 async def _running_preparation_app(
     monkeypatch: pytest.MonkeyPatch,
@@ -111,7 +128,7 @@ async def _running_preparation_app(
     calls = _ActionCalls()
 
     def notify(self: TelecApp, message: str, **kwargs: object) -> None:
-        calls.notifications.append({"message": message, **kwargs})
+        calls.notifications.append({"message": message, "severity": kwargs.get("severity")})
 
     def remove_artifact(_self: PreparationView) -> None:
         calls.remove_artifact += 1
@@ -181,6 +198,7 @@ async def test_single_manual_key_on_preparation_surface_fires_without_burst_late
 ) -> None:
     async with _running_preparation_app(monkeypatch) as (_app, pilot, _prep, calls):
         await pilot.press(_MANUAL_KEY)
+        await _wait_for_action_count(pilot, calls, 1)
 
         assert calls.new_project + calls.new_todo == 1
         assert calls.notifications == []
@@ -192,7 +210,7 @@ async def test_threshold_sized_key_group_is_replayed_without_notification(monkey
     async with _running_preparation_app(monkeypatch) as (app, pilot, _prep, calls):
         for _ in range(_BURST_THRESHOLD):
             _send_driver_key(app, _MANUAL_KEY)
-        await pilot.pause()
+        await _wait_for_action_count(pilot, calls, _BURST_THRESHOLD)
 
     assert calls.new_project + calls.new_todo == _BURST_THRESHOLD
     assert calls.notifications == []

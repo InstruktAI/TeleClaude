@@ -455,30 +455,34 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "list": CommandDef(
                 desc="List todo entries (source of truth for todo status)",
-                args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]",
+                args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--include-removed] [--removed-only] [--since <when>] [--json]",
                 flags=[
                     Flag("--include-icebox", "-i", "Include icebox items"),
                     Flag("--icebox-only", "-o", "Show only icebox items"),
                     Flag("--include-delivered", "-d", "Include delivered items"),
                     Flag("--delivered-only", desc="Show only delivered items"),
+                    Flag("--include-removed", "-r", "Include soft-removed items"),
+                    Flag("--removed-only", desc="Show only soft-removed items"),
                     Flag(
                         "--since",
                         desc="Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.",
                     ),
-                    Flag("--json", desc="Output as a sectioned JSON object (active/delivered/icebox trees)"),
+                    Flag("--json", desc="Output as a sectioned JSON object (active/delivered/icebox/removed trees)"),
                 ],
                 notes=[
-                    "Output is sectioned into active/delivered/icebox dependency trees.",
+                    "Output is sectioned into active/delivered/icebox/removed dependency trees.",
                     "CONTRACT CHANGE: --json now emits a nested object keyed by section "
-                    "(active/delivered/icebox), each a tree with `children`; previously a flat "
+                    "(active/delivered/icebox/removed), each a tree with `children`; previously a flat "
                     "list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.",
                     "--include-delivered returns the full delivery history; scope it with --since.",
                     "--since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.",
                     "--since alone implies --include-delivered; combine with --delivered-only to exclude active items.",
+                    "--include-removed interleaves soft-removed entries; each removed row renders with its roadmap id and removed_at age.",
                 ],
                 examples=[
                     "telec todo list --include-delivered --since 7d",
                     "telec todo list --delivered-only --since 2026-05-01",
+                    "telec todo list --include-removed",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -681,10 +685,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "show": CommandDef(
                 desc="Show full state payload for a todo",
+                args="<slug> [--include-removed]",
+                flags=[_H, Flag("--include-removed", desc="Also search soft-removed entries")],
+                examples=["telec todo show my-slug", "telec todo show my-slug --include-removed"],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            "reactivate": CommandDef(
+                desc="Restore a soft-removed todo",
                 args="<slug>",
                 flags=[_H],
-                examples=["telec todo show my-slug"],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                notes=[
+                    "Resolves the slug against soft-removed rows and restores the uniquely matching entry.",
+                    "On success: status reverts to prev_status and outgoing dependencies are replayed.",
+                ],
+                examples=["telec todo reactivate my-slug"],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "stamp": CommandDef(
                 desc="Stamp a verdict or readiness marker into todo state",

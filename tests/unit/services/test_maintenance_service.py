@@ -723,7 +723,7 @@ async def test_cleanup_removed_todos_purges_removed_row_while_preserving_same_sl
     _instances.pop(str(project / ".teleclaude" / "todos.db"), None)
     _patch_trusted_dirs(monkeypatch, [project])
     cleanup = MagicMock(side_effect=AssertionError("purge must not run slug-keyed cleanup"))
-    monkeypatch.setattr("teleclaude.core.todos_db._roadmap.cleanup_delivered_slug", cleanup, raising=False)
+    monkeypatch.setattr("teleclaude.core.todos_db._roadmap_soft_delete.cleanup_delivered_slug", cleanup, raising=False)
 
     service = _make_service()
     await service._cleanup_removed_todos()

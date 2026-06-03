@@ -24,6 +24,7 @@ from teleclaude.api.auth import (
     clearance_todos_create,
     clearance_todos_integrate,
     clearance_todos_prepare,
+    clearance_todos_reactivate,
     clearance_todos_reconcile,
     clearance_todos_remove,
     clearance_todos_rename,
@@ -53,6 +54,7 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.todos_db._roadmap_soft_delete import ReactivateRefused
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
@@ -736,11 +738,60 @@ async def todo_reconcile(
 async def todo_show(
     slug: str,
     cwd: str | None = None,
+    include_removed: bool = False,
 ) -> ShowPayload:
     """Return full show payload for a slug."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    payload = await assemble_show_payload(todos_db, slug)
+    payload = await assemble_show_payload(todos_db, slug, include_removed=include_removed)
     if payload is None:
         raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found")
     return payload
+
+
+@router.post("/{slug}/reactivate")
+async def todo_reactivate(
+    slug: str,
+    cwd: Annotated[str | None, Body(embed=True)] = None,
+    _identity: CallerIdentity = Depends(clearance_todos_reactivate),
+) -> _SlugStatusResponse:
+    """Restore a soft-removed todo addressed by slug."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+
+    # Resolve slug to removed-row id (refuse if ambiguous)
+    removed_entries = await todos_db.list_roadmap(include_removed=True, removed_only=True)
+    matches = [r for r in removed_entries if r["slug"] == slug]
+
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"No soft-removed entry found for slug '{slug}'")
+    if len(matches) > 1:
+        details = ", ".join(f"{m['id']} (removed {m.get('removed_at')})" for m in matches)
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ambiguous slug '{slug}': multiple removed rows exist ({details}). Restore by id instead.",
+        )
+
+    roadmap_id = matches[0]["id"]
+    try:
+        await todos_db.reactivate_removed(roadmap_id)
+    except ReactivateRefused as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return _SlugStatusResponse(status="ok", slug=slug)
+
+
+@router.post("/by-id/{roadmap_id}/reactivate")
+async def todo_reactivate_by_id(
+    roadmap_id: str,
+    cwd: Annotated[str | None, Body(embed=True)] = None,
+    _identity: CallerIdentity = Depends(clearance_todos_reactivate),
+) -> _SlugStatusResponse:
+    """Restore a soft-removed todo addressed by its durable row id."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    try:
+        slug = await todos_db.reactivate_removed(roadmap_id)
+    except ReactivateRefused as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _SlugStatusResponse(status="ok", slug=slug)

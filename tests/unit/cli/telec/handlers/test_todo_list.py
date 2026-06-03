@@ -20,8 +20,11 @@ todo_list = importlib.import_module("teleclaude.cli.telec.handlers.todo_list")
 _ACTIVE_SLUG = "active-item"
 _ICEBOX_SLUG = "icebox-item"
 _DELIVERED_SLUG = "delivered-item"
+_REMOVED_SLUG = "removed-item"
 _SINCE_DAYS = "7d"
 _SINCE_ISO = "2026-05-01"
+_REMOVED_AT = "2026-05-22T09:50:00+00:00"
+_INCLUDE_REMOVED_OUTPUT = "active:\n    active-item active-item\n\nremoved:\n    removed-item removed-item\n"
 
 
 def _make_worktree(tmp_path: Path) -> tuple[Path, Path]:
@@ -34,7 +37,13 @@ def _make_worktree(tmp_path: Path) -> tuple[Path, Path]:
     return repo_root, worktree
 
 
-def _sample_todo(slug: str, status: RoadmapStatus, *, delivered_at: str | None = None) -> TodoDTO:
+def _sample_todo(
+    slug: str,
+    status: RoadmapStatus,
+    *,
+    delivered_at: str | None = None,
+    removed_at: str | None = None,
+) -> TodoDTO:
     return TodoDTO(
         slug=slug,
         status=status,
@@ -43,6 +52,7 @@ def _sample_todo(slug: str, status: RoadmapStatus, *, delivered_at: str | None =
         has_impl_plan=False,
         after=[],
         delivered_at=delivered_at,
+        removed_at=removed_at,
     )
 
 
@@ -66,6 +76,7 @@ def test_todo_list_renders_active_with_default_flags(
     service.roadmap.entries.assert_called_once_with(
         include_icebox=True,
         include_delivered=True,
+        include_removed=True,
         delivered_since=None,
     )
     assert capsys.readouterr().out == snapshot
@@ -98,6 +109,31 @@ def test_todo_list_renders_active_icebox_delivered_with_flags(
     assert capsys.readouterr().out == snapshot
 
 
+def test_todo_list_renders_removed_with_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, worktree = _make_worktree(tmp_path)
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree))
+    monkeypatch.chdir(worktree)
+    service = SimpleNamespace(
+        roadmap=SimpleNamespace(
+            entries=MagicMock(
+                return_value=[
+                    _sample_todo(_ACTIVE_SLUG, RoadmapStatus.READY),
+                    _sample_todo(_REMOVED_SLUG, RoadmapStatus.REMOVED, removed_at=_REMOVED_AT),
+                ]
+            )
+        )
+    )
+
+    with patch("teleclaude.cli.telec.handlers.todo_list.get_work_service", return_value=service):
+        todo_list._handle_todo_list(["--include-removed"])
+
+    assert capsys.readouterr().out == _INCLUDE_REMOVED_OUTPUT
+
+
 def test_todo_list_since_parses_relative_and_iso() -> None:
     relative = todo_list._parse_todo_list_args(["--include-delivered", "--since", _SINCE_DAYS])
     absolute = todo_list._parse_todo_list_args(["--delivered-only", "--since", _SINCE_ISO])
@@ -122,6 +158,38 @@ def test_todo_list_json_output_emits_valid_json(
 
     assert json.loads(capsys.readouterr().out) == {
         "active": [{"slug": _ACTIVE_SLUG, "status": RoadmapStatus.READY, "description": _ACTIVE_SLUG}]
+    }
+
+
+def test_todo_list_json_removed_only_includes_removed_at(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, worktree = _make_worktree(tmp_path)
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree))
+    monkeypatch.chdir(worktree)
+    service = SimpleNamespace(
+        roadmap=SimpleNamespace(
+            entries=MagicMock(
+                return_value=[
+                    _sample_todo(_ACTIVE_SLUG, RoadmapStatus.READY),
+                    _sample_todo(_REMOVED_SLUG, RoadmapStatus.REMOVED, removed_at=_REMOVED_AT),
+                ]
+            )
+        )
+    )
+
+    with patch("teleclaude.cli.telec.handlers.todo_list.get_work_service", return_value=service):
+        todo_list._handle_todo_list(["--removed-only", "--json"])
+
+    assert json.loads(capsys.readouterr().out) == {
+        "removed": [
+            {
+                "slug": _REMOVED_SLUG,
+                "status": RoadmapStatus.REMOVED,
+                "description": _REMOVED_SLUG,
+                "removed_at": _REMOVED_AT,
+            }
+        ]
     }
 
 

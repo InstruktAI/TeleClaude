@@ -641,16 +641,6 @@ async def test_roadmap_projection_exposes_uncapped_artifact_version_total(tmp_pa
     assert todos[0].version_total == _VERSION_COUNT + 1
 
 
-@pytest.mark.xfail(
-    reason=(
-        "HEAD regression surfaced during merge with origin/main's tui-artifact-visibility-cache-sync "
-        "delivery. When a slug exists as both delivered and active rows, assemble_roadmap_from_db "
-        "returns two rows but both carry the active row's data (status, files, version_total) — "
-        "the delivered row's identity is overwritten. Likely introduced by the sectioned dependency-tree "
-        "projection refactor (952c0d03b). The test stays in the suite to track when the regression is fixed."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_roadmap_projection_counts_follow_selected_row_id_when_slug_is_reused(tmp_path: Path) -> None:
     """A reused slug must not make active-row counts read from the delivered row."""
@@ -729,6 +719,90 @@ async def test_assemble_roadmap_excludes_removed_entries(tmp_path: Path) -> None
     todos = assemble_roadmap_from_db(str(project), include_icebox=True, include_delivered=True)
 
     assert [t.slug for t in todos] == ["kept"]
+
+
+@pytest.mark.asyncio
+async def test_roadmap_projection_supports_removed_visibility_opt_in(tmp_path: Path) -> None:
+    """Roadmap projection must support explicit removed-row visibility opt-in."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("removed-item", description="A removed item")
+        # Soft-remove it
+        async with database._session() as session:
+            entry = await database._active_entry(session, "removed-item")
+            assert entry is not None
+            entry.status = "removed"
+            entry.removed_at = datetime.now(UTC).isoformat()
+            session.add(entry)
+            await session.commit()
+    finally:
+        await database.close()
+
+    # Default: excluded
+    todos = assemble_roadmap_from_db(str(project))
+    assert len(todos) == 0
+
+    # include_removed=True: interleaved
+    todos = assemble_roadmap_from_db(str(project), include_removed=True)
+    assert len(todos) == 1
+    assert todos[0].slug == "removed-item"
+    assert todos[0].status == RoadmapStatus.REMOVED
+
+    # removed_only=True: exclusive
+    todos = assemble_roadmap_from_db(str(project), removed_only=True)
+    assert len(todos) == 1
+    assert todos[0].slug == "removed-item"
+
+
+@pytest.mark.asyncio
+async def test_roadmap_projection_returns_duplicate_slug_removed_rows(tmp_path: Path) -> None:
+    """Roadmap projection must return ALL removed rows for a slug, not just one."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        # Create and remove first copy
+        await database.add_to_roadmap("reused-slug", description="First copy")
+        async with database._session() as session:
+            entry = await database._active_entry(session, "reused-slug")
+            assert entry is not None
+            id1 = entry.id
+            entry.status = "removed"
+            entry.removed_at = "2026-05-01T10:00:00Z"
+            session.add(entry)
+            await session.commit()
+
+        # Create and remove second copy
+        await database.add_to_roadmap("reused-slug", description="Second copy")
+        async with database._session() as session:
+            entry = await database._active_entry(session, "reused-slug")
+            assert entry is not None
+            id2 = entry.id
+            entry.status = "removed"
+            entry.removed_at = "2026-05-02T10:00:00Z"
+            session.add(entry)
+            await session.commit()
+
+        assert id1 != id2
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), include_removed=True)
+
+    # Both should be present with their distinct IDs and descriptions
+    assert len(todos) == 2
+    assert {t.roadmap_id for t in todos} == {id1, id2}
+    assert {t.description for t in todos} == {"First copy", "Second copy"}
 
 
 # --- Section ordering (newest-first) ---

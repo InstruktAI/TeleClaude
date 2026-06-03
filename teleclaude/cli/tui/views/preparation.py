@@ -27,6 +27,7 @@ from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow, row_content_width
+from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 from teleclaude.core.roadmap_tree import FlatRow, build_roadmap_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
 
@@ -63,18 +64,18 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             "minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True), show=False
         ),
         Binding("n", "new_todo", "Todo"),
-        Binding("n", "new_project", "New Project"),
+        Binding("N", "new_project", "Project"),
         Binding("b", "new_bug", "Bug"),
         Binding("p", "prepare", "Prep"),
-        Binding("s", "start_work", "Start"),
-        Binding("r", "reconcile", "Reconcile"),
-        Binding("R", "remove_artifact", "Remove"),
-        Binding("f", "freeze", "Freeze"),
-        Binding("u", "unfreeze", "Unfreeze"),
-        Binding("d", "toggle_delivered", "Delivered"),
-        Binding("i", "toggle_icebox", "Icebox"),
-        Binding("shift+up", "move_todo_up", "Move Up", key_display="Shift+↑"),
-        Binding("shift+down", "move_todo_down", "Move Down", key_display="Shift+↓"),
+        Binding("s", "start_work", "Strt"),
+        Binding("r", "reconcile", "Rcncl"),
+        Binding("R", "remove_artifact", "Remv"),
+        Binding("U", "reactivate_selected", "Unr"),
+        Binding("f", "freeze", "Frz"),
+        Binding("u", "unfreeze", "Unfr"),
+        Binding("d", "toggle_delivered", "Deliv"),
+        Binding("i", "toggle_icebox", "Ice"),
+        Binding("x", "toggle_trashed", "Trsh"),
     ]
 
     cursor_index = reactive(0)
@@ -86,6 +87,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._expanded_todos: set[str] = set()
         self._icebox_projects: set[str] = set()
         self._delivered_projects: set[str] = set()
+        self._trashed_projects: set[str] = set()
         self._nav_items: list[Widget] = []
         self._slug_to_project_path: dict[str, str] = {}
         self._slug_to_computer: dict[str, str] = {}
@@ -120,6 +122,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 getattr(t, "band", None) or "",
                 getattr(t, "ready_since", None) or "",
                 getattr(t, "updated_at", None) or "",
+                getattr(t, "roadmap_id", None) or "",
+                getattr(t, "removed_at", None) or "",
             )
             for p in projects
             for t in (p.todos or [])
@@ -157,6 +161,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         delivered_projects = data.get("delivered_projects", [])
         if isinstance(delivered_projects, list):
             self._delivered_projects = {str(item) for item in delivered_projects}
+        trashed_projects = data.get("trashed_projects", [])
+        if isinstance(trashed_projects, list):
+            self._trashed_projects = {str(item) for item in trashed_projects}
 
     def _rebuild(self) -> None:  # noqa: C901
         """Rebuild the todo display from current data (Computer → Project → Todo)."""
@@ -193,6 +200,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 integration_phase=dto.integration_phase,
                 finalize_status=dto.finalize_status,
                 project_path=dto.project_path or project_path,
+                roadmap_id=dto.roadmap_id,
+                removed_at=dto.removed_at,
                 is_holder=is_holder,
             )
 
@@ -206,7 +215,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
         max_depth = 0
         for sections in project_sections.values():
-            for nodes in (sections.active, sections.delivered, sections.icebox):
+            for nodes in (sections.active, sections.delivered, sections.icebox, sections.removed):
                 for flat_row in flatten(nodes):
                     max_depth = max(max_depth, flat_row.depth)
 
@@ -313,6 +322,15 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     if icebox_rows:
                         widgets_to_mount.append(IceboxSeparator(line_width=_sep_width()))
                         for flat_row in icebox_rows:
+                            _emit_row(flat_row, project.path)
+                        rendered_any = True
+
+                # Trashed section — collapsible
+                if project.path in self._trashed_projects:
+                    trashed_rows = flatten(sections.removed, force_root_branch=True)
+                    if trashed_rows:
+                        widgets_to_mount.append(TrashedSeparator(line_width=_sep_width()))
+                        for flat_row in trashed_rows:
                             _emit_row(flat_row, project.path)
                         rendered_any = True
 
@@ -577,11 +595,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     # --- State export ---
 
     def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict
-        """Export the current expanded-todo and icebox state for persistence."""
+        """Export the current expanded-todo, icebox, and trashed state for persistence."""
         return {
             "expanded_todos": sorted(self._expanded_todos),
             "icebox_projects": sorted(self._icebox_projects),
             "delivered_projects": sorted(self._delivered_projects),
+            "trashed_projects": sorted(self._trashed_projects),
         }
 
 

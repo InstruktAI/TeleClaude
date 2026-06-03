@@ -21,23 +21,27 @@ class _TodoListArgs(TypedDict):
     icebox_only: bool
     include_delivered: bool
     delivered_only: bool
+    include_removed: bool
+    removed_only: bool
     json_output: bool
     since_cutoff: str
 
 
 def _handle_todo_list(args: list[str]) -> None:
-    """Display todos as sectioned active/delivered/icebox dependency trees."""
+    """Display todos as sectioned active/delivered/icebox/removed dependency trees."""
     parsed = _parse_todo_list_args(args)
     project_root = _resolve_todo_project_root()
 
     since_cutoff = parsed["since_cutoff"]
     show_delivered = parsed["include_delivered"] or parsed["delivered_only"] or bool(since_cutoff)
     show_icebox = parsed["include_icebox"] or parsed["icebox_only"]
+    show_removed = parsed["include_removed"] or parsed["removed_only"]
 
     svc = get_work_service(str(project_root))
     todos = svc.roadmap.entries(
         include_icebox=True,
         include_delivered=True,
+        include_removed=True,
         delivered_since=since_cutoff or None,
     )
 
@@ -53,12 +57,16 @@ def _handle_todo_list(args: list[str]) -> None:
         section_items = [("delivered", sections.delivered)]
     elif parsed["icebox_only"]:
         section_items = [("icebox", sections.icebox)]
+    elif parsed["removed_only"]:
+        section_items = [("removed", sections.removed)]
     else:
         section_items = [("active", sections.active)]
         if show_delivered:
             section_items.append(("delivered", sections.delivered))
         if show_icebox:
             section_items.append(("icebox", sections.icebox))
+        if show_removed:
+            section_items.append(("removed", sections.removed))
 
     if parsed["json_output"]:
         payload = {name: [_node_to_dict(n) for n in nodes] for name, nodes in section_items if nodes}
@@ -77,6 +85,9 @@ def _parse_todo_list_args(args: list[str]) -> _TodoListArgs:
         "--include-delivered": "include_delivered",
         "-d": "include_delivered",
         "--delivered-only": "delivered_only",
+        "--include-removed": "include_removed",
+        "-r": "include_removed",
+        "--removed-only": "removed_only",
         "--json": "json_output",
     }
     parsed: _TodoListArgs = {
@@ -84,6 +95,8 @@ def _parse_todo_list_args(args: list[str]) -> _TodoListArgs:
         "icebox_only": False,
         "include_delivered": False,
         "delivered_only": False,
+        "include_removed": False,
+        "removed_only": False,
         "json_output": False,
         "since_cutoff": "",
     }
@@ -146,6 +159,7 @@ class _TrimmedTodoDict(TypedDict, total=False):
     after: list[str]
     group: str
     delivered_at: str
+    removed_at: str
     children: list[_TrimmedTodoDict]
 
 
@@ -159,6 +173,8 @@ def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
         result["group"] = todo.group
     if todo.delivered_at:
         result["delivered_at"] = todo.delivered_at
+    if todo.removed_at:
+        result["removed_at"] = todo.removed_at
     return result
 
 

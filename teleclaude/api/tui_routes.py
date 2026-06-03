@@ -101,13 +101,20 @@ async def _load_computers(*, identity: CallerIdentity) -> list[ComputerDTO]:
     return await computers_routes.list_computers(_identity=identity)
 
 
-async def _load_projects_with_todos(*, identity: CallerIdentity) -> list[ProjectWithTodosDTO]:
+async def _load_projects_with_todos(
+    *,
+    identity: CallerIdentity,
+    include_removed: bool = False,
+) -> list[ProjectWithTodosDTO]:
     """Load projects plus cached todos through one server-side pillar."""
     projects = await projects_routes.list_projects(_identity=identity)
     cache = _CACHE["value"]
     todo_map = {}
     if cache:
-        todo_map = {(entry.computer, entry.project_path): entry.todos for entry in cache.get_todo_entries()}
+        todo_map = {
+            (entry.computer, entry.project_path): entry.todos
+            for entry in cache.get_todo_entries(include_removed=include_removed)
+        }
 
     return [
         ProjectWithTodosDTO(
@@ -185,13 +192,14 @@ def _build_loader(
     *,
     request: Request,
     identity: CallerIdentity,
+    include_removed: bool = False,
 ) -> Callable[[], Awaitable[Any]]:
     """Return the async loader for a bootstrap pillar."""
     match pillar:
         case "computers":
             return lambda: _load_computers(identity=identity)
         case "projects":
-            return lambda: _load_projects_with_todos(identity=identity)
+            return lambda: _load_projects_with_todos(identity=identity, include_removed=include_removed)
         case "sessions":
             return lambda: _load_sessions(request=request, identity=identity)
         case "availability":
@@ -209,10 +217,11 @@ async def _load_pillar(
     *,
     request: Request,
     identity: CallerIdentity,
+    include_removed: bool = False,
 ) -> tuple[TuiBootstrapPillar, object | Exception]:
     """Load one pillar, converting expected service failures into pillar errors."""
     _require_pillar_clearance(pillar, identity)
-    loader = _build_loader(pillar, request=request, identity=identity)
+    loader = _build_loader(pillar, request=request, identity=identity, include_removed=include_removed)
     try:
         return pillar, await loader()
     except HTTPException as exc:
@@ -225,11 +234,17 @@ async def _load_pillar(
 async def get_tui_bootstrap(
     request: Request,
     pillars: str | None = Query(None),
+    include_removed: bool = Query(False),
     identity: CallerIdentity = Depends(verify_caller),
 ) -> TuiBootstrapDTO:
     """Return initial TUI state with per-pillar partial-success semantics."""
     requested = _parse_pillars(pillars)
-    results = await asyncio.gather(*[_load_pillar(pillar, request=request, identity=identity) for pillar in requested])
+    results = await asyncio.gather(
+        *[
+            _load_pillar(pillar, request=request, identity=identity, include_removed=include_removed)
+            for pillar in requested
+        ]
+    )
 
     data = TuiBootstrapDataDTO()
     errors: list[TuiBootstrapErrorDTO] = []

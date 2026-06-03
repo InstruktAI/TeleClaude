@@ -233,6 +233,8 @@ class TodoDTO(BaseModel):
     lifecycle_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
+    roadmap_id: str | None = None
+    removed_at: str | None = None
 
 
 class OperationStatusBlockingSnippetPayload(BaseModel):

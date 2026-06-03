@@ -10,6 +10,7 @@ from teleclaude.project_root import resolve_state_root
 from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
 from ._roadmap import TodosDbRoadmapMixin
+from ._roadmap_soft_delete import TodosDbRoadmapSoftDeleteMixin
 from ._rows import ArtifactVersionRow, RoadmapRow
 from ._state import TodosDbStateMixin
 
@@ -17,6 +18,7 @@ from ._state import TodosDbStateMixin
 class TodosDb(
     TodosDbArtifactsMixin,
     TodosDbRoadmapMixin,
+    TodosDbRoadmapSoftDeleteMixin,
     TodosDbStateMixin,
     TodosDbBase,
 ):

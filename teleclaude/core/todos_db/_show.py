@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
@@ -9,6 +10,8 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
+from teleclaude.core.todos_db._models import TodoStateModel
+from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -253,19 +256,41 @@ async def _build_blocked_by(
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
+async def _lookup_removed_state(todos_db: TodosDb, slug: str) -> dict[str, StateValue] | None:
+    """Resolve slug against removed rows and return state if uniquely matched."""
+    removed_entries = await todos_db.list_roadmap(include_removed=True, removed_only=True)
+    matches = [r for r in removed_entries if r["slug"] == slug]
+    if len(matches) == 1:
+        roadmap_id = matches[0]["id"]
+        async with todos_db._session() as session:
+            state_model = await session.get(TodoStateModel, roadmap_id)
+            if state_model is not None:
+                return upcycle_state_dict(json.loads(state_model.state))
+    return None
+
+
 async def assemble_show_payload(
     todos_db: TodosDb,
     slug: str,
+    include_removed: bool = False,
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
     state = await todos_db.read_state(slug)
     is_delivered = False
+    is_removed = False
     if state is None:
-        # Active/icebox lookup found nothing — try delivered path
-        state = await todos_db.read_state_delivered(slug)
+        # Active/icebox lookup found nothing — try removed path if requested
+        if include_removed:
+            state = await _lookup_removed_state(todos_db, slug)
+            if state is not None:
+                is_removed = True
+
         if state is None:
-            return None
-        is_delivered = True
+            # Try delivered path
+            state = await todos_db.read_state_delivered(slug)
+            if state is None:
+                return None
+            is_delivered = True
 
     project_root = _project_root_from_db(todos_db)
     worktree_cwd = _worktree_cwd_for(project_root, slug)
@@ -273,10 +298,14 @@ async def assemble_show_payload(
 
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
 
-    roadmap_entries = await todos_db.list_roadmap(include_icebox=True, include_delivered=True)
+    roadmap_entries = await todos_db.list_roadmap(
+        include_icebox=True, include_delivered=True, include_removed=include_removed
+    )
     description: str | None = None
     for entry in roadmap_entries:
         if entry["slug"] == slug:
+            if is_removed and entry["status"] != "removed":
+                continue
             description = entry.get("description")
             break
 

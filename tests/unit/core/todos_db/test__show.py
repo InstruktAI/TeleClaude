@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
+from datetime import UTC, datetime
 
+import pytest
+from sqlmodel import select
+
+from teleclaude.constants import RoadmapStatus
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._models import TodoRoadmap
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.types.todos import TodoState
 
@@ -51,3 +56,27 @@ async def test_show_payload_omits_complete_holder_from_blocked_by(todos_db: Todo
 
     assert payload is not None
     assert "blocked_by" not in payload
+
+
+async def test_show_payload_supports_removed_opt_in(todos_db: TodosDb) -> None:
+    """assemble_show_payload must return removed-row payload only when explicitly requested."""
+    await todos_db.add_to_roadmap("removed-item")
+    # Soft-remove it by status flip (mocking the effect of soft_remove_from_roadmap)
+    async with todos_db._session() as session:
+        # Get by slug since it's still live
+        entry = (await session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "removed-item"))).one()
+        entry.status = RoadmapStatus.REMOVED
+        entry.removed_at = datetime.now(UTC).isoformat()
+        session.add(entry)
+        await session.commit()
+        roadmap_id = entry.id
+
+    await todos_db.write_state_by_id(roadmap_id, {"kind": "todo", "lifecycle_phase": "prepared"})
+
+    # Default: 404/None
+    assert await assemble_show_payload(todos_db, "removed-item") is None
+
+    # include_removed=True: success
+    payload = await assemble_show_payload(todos_db, "removed-item", include_removed=True)
+    assert payload is not None
+    assert payload["slug"] == "removed-item"

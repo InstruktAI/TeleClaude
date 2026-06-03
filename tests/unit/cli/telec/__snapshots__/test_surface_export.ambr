@@ -358,7 +358,7 @@
   
   List todo entries (source of truth for todo status)
   
-  **Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]`
+  **Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--include-removed] [--removed-only] [--since <when>] [--json]`
   
   **Flags:**
   
@@ -366,16 +366,19 @@
   - `--icebox-only` (`-o`): Show only icebox items
   - `--include-delivered` (`-d`): Include delivered items
   - `--delivered-only`: Show only delivered items
+  - `--include-removed` (`-r`): Include soft-removed items
+  - `--removed-only`: Show only soft-removed items
   - `--since`: Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.
-  - `--json`: Output as a sectioned JSON object (active/delivered/icebox trees)
+  - `--json`: Output as a sectioned JSON object (active/delivered/icebox/removed trees)
   
   **Notes:**
   
-  - Output is sectioned into active/delivered/icebox dependency trees.
-  - CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
+  - Output is sectioned into active/delivered/icebox/removed dependency trees.
+  - CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox/removed), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
   - --include-delivered returns the full delivery history; scope it with --since.
   - --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
   - --since alone implies --include-delivered; combine with --delivered-only to exclude active items.
+  - --include-removed interleaves soft-removed entries; each removed row renders with its roadmap id and removed_at age.
   
   ### `telec todo design`
   
@@ -547,7 +550,22 @@
   
   Show full state payload for a todo
   
-  **Usage:** `telec todo show <slug>`
+  **Usage:** `telec todo show <slug> [--include-removed]`
+  
+  **Flags:**
+  
+  - `--include-removed`: Also search soft-removed entries
+  
+  ### `telec todo reactivate`
+  
+  Restore a soft-removed todo
+  
+  **Usage:** `telec todo reactivate <slug>`
+  
+  **Notes:**
+  
+  - Resolves the slug against soft-removed rows and restores the uniquely matching entry.
+  - On success: status reverts to prev_status and outgoing dependencies are replayed.
   
   ### `telec todo stamp`
   

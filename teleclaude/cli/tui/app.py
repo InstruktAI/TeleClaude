@@ -53,6 +53,15 @@ from teleclaude.cli.tui.messages import (
     StickyChanged,
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
+from teleclaude.cli.tui.paste_guard import (
+    BURST_THRESHOLD as _BURST_THRESHOLD,
+)
+from teleclaude.cli.tui.paste_guard import (
+    PASTE_IGNORED_NOTIFICATION as _PASTE_IGNORED_NOTIFICATION,
+)
+from teleclaude.cli.tui.paste_guard import (
+    POST_PASTE_KEY_SUPPRESSION_SECONDS as _POST_PASTE_KEY_SUPPRESSION_SECONDS,
+)
 from teleclaude.cli.tui.persistence import Persistable, get_persistence_key
 from teleclaude.cli.tui.state_store import load_state, save_state
 from teleclaude.cli.tui.theme import (
@@ -83,10 +92,6 @@ logger = get_logger(__name__)
 APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueError)
 APP_RUNTIME_ERRORS = (APIError, AttributeError, ImportError, LookupError, OSError, RuntimeError, TypeError, ValueError)
 APP_DATA_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
-_PASTE_IGNORED_NOTIFICATION = "paste ignored on TUI controls — focus an agent pane to paste"
-_POST_PASTE_KEY_SUPPRESSION_MS = 100
-_POST_PASTE_KEY_SUPPRESSION_SECONDS = _POST_PASTE_KEY_SUPPRESSION_MS / 1000
-_BURST_THRESHOLD = 30
 _APP_STATE_FIELDS = {
     "_persisted": ("_init_state", "persisted"),
     "_start_view": ("_init_state", "start_view"),
@@ -432,7 +437,19 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         self._paste_guard_flush_scheduled = False
         self._paste_guard_replay_count += len(guarded_keys)
         for key, character in guarded_keys:
-            self.post_message(events.Key(key, character))
+            for node, binding, enabled, _tooltip in self.screen.active_bindings.values():
+                if enabled and binding.key == key:
+                    action = getattr(node, f"action_{binding.action}", None)
+                    if callable(action):
+                        action()
+                        break
+            else:
+                event = events.Key(key, character)
+                event.set_sender(self)
+                if self._driver is not None:
+                    self._driver.send_message(event)
+                else:
+                    self.post_message(event)
 
     def _discard_guarded_keys(self) -> None:
         """Drop buffered injected keys and surface one warning."""
@@ -483,6 +500,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             callback=self._on_ws_event,
             subscriptions=["sessions", "preparation", "todos"],
             on_connect=self._on_ws_connected,
+            include_removed=True,
         )
 
         logger.trace("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)
@@ -569,7 +587,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         requested: list[TuiBootstrapPillar],
     ) -> DataRefreshed:
         """Build the aggregate `DataRefreshed` message from TUI bootstrap data."""
-        bootstrap = await self.api.get_tui_bootstrap(requested)
+        bootstrap = await self.api.get_tui_bootstrap(requested, include_removed=True)
         missing = failed_bootstrap_pillars(bootstrap, requested=requested)
         self._reconcile_bootstrap_retry_state(requested=requested, missing=missing)
         logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)

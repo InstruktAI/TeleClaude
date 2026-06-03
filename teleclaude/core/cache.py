@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
-from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent
+from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent, RoadmapStatus
 from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
 from teleclaude.transport.cluster_publisher import ClusterPublisher
@@ -347,7 +347,7 @@ class DaemonCache:
             sessions.append(session)
         return sessions
 
-    def get_todos(self, computer: str, project_path: str) -> list[TodoDTO]:
+    def get_todos(self, computer: str, project_path: str, include_removed: bool = False) -> list[TodoDTO]:
         """Get cached todos for a project.
 
         Always returns cached data regardless of TTL. Stale reads trigger the
@@ -356,6 +356,7 @@ class DaemonCache:
         Args:
             computer: Computer name
             project_path: Project path
+            include_removed: Whether to include soft-removed todos
 
         Returns:
             List of todo info objects (empty if not cached)
@@ -369,13 +370,18 @@ class DaemonCache:
         if cached.is_stale(300):
             self._signal_stale_read("todos", computer)
 
-        return cached.data
+        todos = cached.data
+        if not include_removed:
+            todos = [t for t in todos if t.status != RoadmapStatus.REMOVED.value]
+
+        return todos
 
     def get_todo_entries(
         self,
         *,
         computer: str | None = None,
         project_path: str | None = None,
+        include_removed: bool = False,
     ) -> list[TodoCacheEntry]:
         """Get cached todos with context, optionally filtered.
 
@@ -385,6 +391,7 @@ class DaemonCache:
         Args:
             computer: Optional computer name to filter by
             project_path: Optional project path to filter by
+            include_removed: Whether to include soft-removed todos
 
         Returns:
             List of todo cache entries with context
@@ -397,11 +404,16 @@ class DaemonCache:
                 continue
             if project_path and path != project_path:
                 continue
+
+            todos = cached.data
+            if not include_removed:
+                todos = [t for t in todos if t.status != RoadmapStatus.REMOVED.value]
+
             entries.append(
                 TodoCacheEntry(
                     computer=comp_name,
                     project_path=path,
-                    todos=cached.data,
+                    todos=todos,
                 )
             )
             if cached.is_stale(300) and comp_name not in stale_computers:

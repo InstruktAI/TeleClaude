@@ -87,7 +87,10 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
     leaf-children aggregate. Derived here so every consumer reads one
     authoritative value.
     """
-    by_slug = {t.slug: t for t in todos}
+    by_id = {t.roadmap_id: t for t in todos if t.roadmap_id}
+    # Removed slug twins must not override a live/delivered row used for tree derivation.
+    non_removed_by_slug = {t.slug: t for t in todos if t.status != RoadmapStatus.REMOVED}
+
     children_by_parent: dict[str, list[str]] = {}
     for todo in todos:
         if todo.group:
@@ -99,7 +102,7 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
         seen.add(slug)
         kids = children_by_parent.get(slug)
         if not kids:
-            leaf = by_slug.get(slug)
+            leaf = non_removed_by_slug.get(slug)
             if leaf is None or leaf.status == RoadmapStatus.ICEBOX:
                 return []
             return [leaf]
@@ -112,7 +115,7 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
         return min(value for value in values if value) if any(values) else None
 
     for parent_slug in children_by_parent:
-        holder = by_slug.get(parent_slug)
+        holder = non_removed_by_slug.get(parent_slug)
         if holder is None:
             continue
         leaf_todos = _leaf_todos(parent_slug, set())
@@ -127,14 +130,19 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
             derived = RoadmapStatus.READY
         else:
             derived = RoadmapStatus.PENDING
-        updates: dict[str, str | None] = {"status": derived}
+
+        updates: dict[str, str | None] = {"status": derived.value}
         if derived == RoadmapStatus.READY:
             updates["band"] = READY_BAND
             updates["ready_since"] = _first_text([leaf.ready_since or leaf.updated_at for leaf in leaf_todos])
-        if updates["status"] != holder.status or any(getattr(holder, key) != value for key, value in updates.items()):
-            by_slug[parent_slug] = holder.model_copy(update=updates)
 
-    return [by_slug[t.slug] for t in todos]
+        if updates["status"] != holder.status or any(getattr(holder, key) != value for key, value in updates.items()):
+            updated_holder = holder.model_copy(update=updates)
+            if holder.roadmap_id:
+                by_id[holder.roadmap_id] = updated_holder
+            non_removed_by_slug[parent_slug] = updated_holder
+
+    return [by_id[t.roadmap_id] if t.roadmap_id and t.roadmap_id in by_id else t for t in todos]
 
 
 def _descending_text_key(value: str | None) -> tuple[int, tuple[int, ...]]:
@@ -178,15 +186,20 @@ def section_sort_key(todo: TodoDTO, *, raw_status: str | None = None) -> tuple[i
 def _apply_section_ordering(
     todos: list[TodoDTO],
     delivered_slug_set: set[str],
-    raw_status_by_slug: dict[str, str],
+    raw_status_by_id: dict[str, str],
 ) -> list[TodoDTO]:
+    """Sort todos into their roadmap sections (ready/prep/icebox/delivered)."""
     banded: list[TodoDTO] = []
     for todo in todos:
-        if raw_status_by_slug.get(todo.slug) == RoadmapStatus.ACTIVE:
+        raw_status = raw_status_by_id.get(todo.roadmap_id or "")
+        if raw_status == RoadmapStatus.ACTIVE:
             banded.append(_with_active_band(todo, delivered_slug_set))
         else:
             banded.append(todo)
-    return sorted(banded, key=lambda todo: section_sort_key(todo, raw_status=raw_status_by_slug.get(todo.slug)))
+    return sorted(
+        banded,
+        key=lambda todo: section_sort_key(todo, raw_status=raw_status_by_id.get(todo.roadmap_id or "")),
+    )
 
 
 def assemble_roadmap_from_db(
@@ -196,6 +209,8 @@ def assemble_roadmap_from_db(
     include_delivered: bool = False,
     delivered_only: bool = False,
     delivered_since: str | None = None,
+    include_removed: bool = False,
+    removed_only: bool = False,
 ) -> list[TodoDTO]:
     """Assemble todo list from todos.db using sync methods.
 
@@ -233,25 +248,30 @@ def assemble_roadmap_from_db(
         # derivation — never in SQL — so a holder whose children delivered
         # outside the window still derives as delivered.
         delivered_clause = "status = 'delivered'"
+        removed_clause = "status = 'removed'"
 
         conditions = []
         if delivered_only:
             conditions.append(delivered_clause)
         elif icebox_only:
             conditions.append("status = 'icebox'")
+        elif removed_only:
+            conditions.append(removed_clause)
         else:
             parts = ["status = 'active'"]
             if include_icebox:
                 parts.append("status = 'icebox'")
             if include_delivered:
                 parts.append(delivered_clause)
+            if include_removed:
+                parts.append(removed_clause)
             conditions.append(" OR ".join(parts))
 
         where = conditions[0] if conditions else "1=1"
         roadmap_started_at = time.perf_counter()
         rows = conn.execute(
             "SELECT id, slug, ready_since, group_slug, description, status, "  # guard: raw-sql
-            f"delivered_at, updated_at, created_at FROM roadmap WHERE {where} ORDER BY id",
+            f"delivered_at, updated_at, created_at, removed_at FROM roadmap WHERE {where} ORDER BY id",
         ).fetchall()
         roadmap_dt = time.perf_counter() - roadmap_started_at
 
@@ -271,7 +291,7 @@ def assemble_roadmap_from_db(
             deps_map.setdefault(dr[0], []).append(dr[1])
 
         todos: list[TodoDTO] = []
-        raw_status_by_slug: dict[str, str] = {}
+        raw_status_by_id: dict[str, str] = {}
         state_query_total_dt = 0.0
         artifact_query_total_dt = 0.0
         todo_build_total_dt = 0.0
@@ -279,7 +299,7 @@ def assemble_roadmap_from_db(
             row_id = row[0]
             slug = row[1]
             raw_status = row[5]
-            raw_status_by_slug[slug] = raw_status
+            raw_status_by_id[str(row_id)] = raw_status
             state_query_started_at = time.perf_counter()
             state_row = conn.execute(
                 "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
@@ -397,12 +417,14 @@ def assemble_roadmap_from_db(
                     finalize_status=finalize_status,
                     files=[ar[0] for ar in artifact_rows],
                     version_total=version_total,
+                    roadmap_id=str(row_id),
+                    removed_at=row[9],
                 )
             )
             todo_build_total_dt += time.perf_counter() - todo_build_started_at
 
         todos = _apply_holder_status(todos)
-        todos = _apply_section_ordering(todos, delivered_slug_set, raw_status_by_slug)
+        todos = _apply_section_ordering(todos, delivered_slug_set, raw_status_by_id)
 
         # Display window: drop genuine delivered entries older than the cutoff.
         # Holders (derived 'delivered', no own delivered_at) are unaffected.

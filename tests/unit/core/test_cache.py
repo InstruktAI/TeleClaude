@@ -316,3 +316,31 @@ class TestClusterPublish:
 
         assert cache.get_sessions() == [session]
         assert publisher.calls == []
+
+    @pytest.mark.unit
+    def test_get_todos_excludes_removed_by_default(self):
+        """get_todos must exclude soft-removed entries by default."""
+        cache = DaemonCache()
+        removed_todo = TodoDTO(
+            slug="removed-1",
+            status="removed",
+            has_requirements=True,
+            has_impl_plan=False,
+        )
+        active_todo = TodoDTO(
+            slug="active-1",
+            status="active",
+            has_requirements=True,
+            has_impl_plan=False,
+        )
+        cache.set_todos("local", "/p", [removed_todo, active_todo])
+
+        # Default: only active
+        todos = cache.get_todos("local", "/p")
+        assert len(todos) == 1
+        assert todos[0].slug == "active-1"
+
+        # Explicit opt-in: both
+        todos_with_removed = cache.get_todos("local", "/p", include_removed=True)
+        assert len(todos_with_removed) == 2
+        assert {t.slug for t in todos_with_removed} == {"removed-1", "active-1"}

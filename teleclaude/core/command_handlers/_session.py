@@ -343,6 +343,7 @@ async def list_todos(project_path: str) -> list[TodoDTO]:
         include_icebox=True,
         include_delivered=True,
         delivered_since=recently_delivered_cutoff(),
+        include_removed=True,
     )
 
 

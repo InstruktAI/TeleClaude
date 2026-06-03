@@ -12,6 +12,7 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
+from teleclaude.cli.tui.utils.formatters import format_relative_time
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
@@ -36,6 +37,7 @@ _TODO_STATUS_COMPLETE = "complete"
 _TODO_STATUS_APPROVED = "approved"
 _TODO_STATUS_DELIVERED = "delivered"
 _TODO_STATUS_ICEBOX = "icebox"
+_TODO_STATUS_REMOVED = "trashed"
 
 _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.DRAFT: "intake",
@@ -126,6 +128,7 @@ _STATUS_COLORS_DARK = {
     _TODO_STATUS_ACTIVE: "color(178)",
     _TODO_STATUS_DELIVERED: "color(244)",
     _TODO_STATUS_ICEBOX: "color(74)",
+    _TODO_STATUS_REMOVED: "color(161)",
 }
 _STATUS_COLORS_LIGHT = {
     _TODO_STATUS_DRAFT: "color(244)",
@@ -133,6 +136,7 @@ _STATUS_COLORS_LIGHT = {
     _TODO_STATUS_ACTIVE: "color(136)",
     _TODO_STATUS_DELIVERED: "color(102)",
     _TODO_STATUS_ICEBOX: "color(31)",
+    _TODO_STATUS_REMOVED: "color(125)",
 }
 
 # Phase value colors
@@ -164,6 +168,8 @@ def row_content_width(slug_width: int, max_depth: int, col_width: int) -> int:
 # Icebox color (light blue)
 _ICEBOX_DARK = "color(74)"
 _ICEBOX_LIGHT = "color(31)"
+_TRASHED_DARK = "color(161)"
+_TRASHED_LIGHT = "color(125)"
 
 # Muted slug color (missing artifacts)
 _MUTED_DARK = "color(244)"
@@ -183,6 +189,11 @@ def _gold_color() -> str:
 def _icebox_color() -> str:
     """Return the theme-aware icebox color (light blue)."""
     return _ICEBOX_DARK if is_dark_mode() else _ICEBOX_LIGHT
+
+
+def _trashed_color() -> str:
+    """Return the theme-aware trashed color (maroon)."""
+    return _TRASHED_DARK if is_dark_mode() else _TRASHED_LIGHT
 
 
 def _muted_color() -> str:
@@ -319,6 +330,20 @@ class TodoRow(TelecMixin, Widget):
             )
             return _pad(result, target)
 
+        # Trashed items show T:age only
+        if self.todo.status == TodoStatus.REMOVED:
+            result = Text()
+            age = format_relative_time(self.todo.removed_at) if self.todo.removed_at else ""
+            result.append_text(
+                self._build_col(
+                    "T",
+                    age,
+                    self._col_widths.get("P", 0),
+                    Style(color=_trashed_color(), bold=True),
+                )
+            )
+            return _pad(result, target)
+
         result = Text()
         ok = _ok_color()
         gold = _gold_color()
@@ -380,6 +405,8 @@ class TodoRow(TelecMixin, Widget):
         status_label = self.todo.status.display_label
         if status_label == _TODO_STATUS_DRAFT:
             line.append("\u25a1", style=self._status_style())
+        elif status_label == _TODO_STATUS_REMOVED:
+            line.append("\u2715", style=self._status_style())
         else:
             line.append("\u25a0", style=self._status_style())
         line.append(" ")

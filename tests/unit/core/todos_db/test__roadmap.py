@@ -22,11 +22,12 @@ from teleclaude.core.todos_db._models import (
     TodoRoadmap,
     TodoStateModel,
 )
-from teleclaude.core.todos_db._roadmap import ReactivateRefused
+from teleclaude.core.todos_db._roadmap_soft_delete import ReactivateRefused
 from teleclaude.docs_reconcile import scan_remove_orphans
 from teleclaude.types.todos import DependencyEntry
 
 pytestmark = pytest.mark.asyncio
+
 
 _RenameRoadmapSlug = Callable[[str, str], Awaitable[bool]]
 _ACTIVE_STATUS = "active"
@@ -671,7 +672,7 @@ def patched_cleanup(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Stand-in for cleanup_delivered_slug so soft-remove tests don't shell out."""
     cleanup = MagicMock()
     monkeypatch.setattr(
-        "teleclaude.core.todos_db._roadmap.cleanup_delivered_slug",
+        "teleclaude.core.todos_db._roadmap_soft_delete.cleanup_delivered_slug",
         cleanup,
         raising=False,
     )

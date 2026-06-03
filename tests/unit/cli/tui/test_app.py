@@ -162,7 +162,8 @@ async def test_successful_subset_refresh_does_not_clear_unrelated_pending_retry(
         timers.append(timer)
         return timer
 
-    async def get_tui_bootstrap(_pillars: object) -> TuiBootstrapDTO:
+    async def get_tui_bootstrap(_pillars: object, *, include_removed: bool = False) -> TuiBootstrapDTO:
+        assert include_removed is True
         return TuiBootstrapDTO(
             requested=["computers"],
             data=TuiBootstrapDataDTO(

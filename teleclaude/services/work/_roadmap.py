@@ -30,6 +30,8 @@ class RoadmapOps:
         include_delivered: bool = False,
         delivered_only: bool = False,
         delivered_since: str | None = None,
+        include_removed: bool = False,
+        removed_only: bool = False,
     ) -> list[TodoDTO]:
         """Return roadmap entries as TodoDTOs. Synchronous."""
         return assemble_roadmap_from_db(
@@ -39,6 +41,8 @@ class RoadmapOps:
             include_delivered=include_delivered,
             delivered_only=delivered_only,
             delivered_since=delivered_since,
+            include_removed=include_removed,
+            removed_only=removed_only,
         )
 
     def get_entry(self, slug: str, *, include_icebox: bool = True, include_delivered: bool = True) -> TodoDTO | None:

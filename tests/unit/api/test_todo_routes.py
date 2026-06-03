@@ -13,10 +13,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
+from syrupy.assertion import SnapshotAssertion
 from typing_extensions import TypedDict
 
 from teleclaude.api import todo_routes
-from teleclaude.api.auth import CallerIdentity, clearance_todos_reconcile
+from teleclaude.api.auth import (
+    CallerIdentity,
+    clearance_todos_reactivate,
+    clearance_todos_reconcile,
+)
 from teleclaude.api.kind_mapper import KIND_BUG, KIND_FEATURE
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.constants import (
@@ -32,6 +37,8 @@ _REPO_CWD = "/repo"
 _SRC_APP = "src/app.py"
 _HEAD_SHA = "head-sha"
 _STATUS_OK = "ok"
+_TRASHED_SLUG = "trashed"
+_RESTORED_SLUG = "restored-slug"
 _DRAFT_KIND = "draft"
 _PLAN_DRAFTING = "plan_drafting"
 _PREPARED = "prepared"
@@ -874,3 +881,90 @@ class TestTodoRoutes:
         ):
             await todo_routes.todo_dump(TodoDumpRequest(slug=_MY_SLUG, content="   ", cwd=_REPO_CWD))
         mock_emit.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_reactivate_requires_clearance(self) -> None:
+        """reactivate route must carry Depends(clearance_todos_reactivate)."""
+        route = next(
+            r
+            for r in todo_routes.router.routes
+            if isinstance(r, APIRoute) and r.endpoint is todo_routes.todo_reactivate
+        )
+        bound = {dep.call for dep in route.dependant.dependencies}
+        assert clearance_todos_reactivate in bound
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_reactivate_dispatches_to_db(self) -> None:
+        """POST /todos/{slug}/reactivate resolves slug and calls db.reactivate_removed."""
+        mock_db = AsyncMock()
+        mock_db.list_roadmap = AsyncMock(return_value=[{"id": "row-123", "slug": _TRASHED_SLUG, "status": "removed"}])
+        mock_db.reactivate_removed = AsyncMock()
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            response = await todo_routes.todo_reactivate(
+                slug=_TRASHED_SLUG,
+                cwd=_REPO_CWD,
+                _identity=_identity(),
+            )
+
+        assert response.status == _STATUS_OK
+        assert response.slug == _TRASHED_SLUG
+        mock_db.reactivate_removed.assert_awaited_once_with("row-123")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_reactivate_refuses_ambiguous_slug(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+        """Reactivate returns 409 when multiple removed rows share the slug."""
+        repo_cwd = str(tmp_path / "repo")
+        Path(repo_cwd).mkdir()
+        mock_db = AsyncMock()
+        mock_db.list_roadmap = AsyncMock(
+            return_value=[
+                {"id": "row-1", "slug": "dup", "status": "removed", "removed_at": "t1"},
+                {"id": "row-2", "slug": "dup", "status": "removed", "removed_at": "t2"},
+            ]
+        )
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.todo_reactivate(slug="dup", cwd=repo_cwd, _identity=_identity())
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail == snapshot
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_reactivate_by_id_dispatches_directly(self) -> None:
+        """POST /todos/by-id/{roadmap_id}/reactivate calls db.reactivate_removed directly."""
+        mock_db = AsyncMock()
+        mock_db.reactivate_removed = AsyncMock(return_value=_RESTORED_SLUG)
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            response = await todo_routes.todo_reactivate_by_id(
+                roadmap_id="row-123",
+                cwd=_REPO_CWD,
+                _identity=_identity(),
+            )
+
+        assert response.status == _STATUS_OK
+        assert response.slug == _RESTORED_SLUG
+        mock_db.reactivate_removed.assert_awaited_once_with("row-123")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_show_passes_include_removed_flag(self) -> None:
+        """GET /todos/{slug}/show passes include_removed to assemble_show_payload."""
+        mock_db = AsyncMock()
+        mock_payload = {"slug": "my-slug"}
+
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes.assemble_show_payload", return_value=mock_payload) as mock_assemble,
+        ):
+            await todo_routes.todo_show(slug="my-slug", cwd=_REPO_CWD, include_removed=True)
+
+        mock_assemble.assert_awaited_once()
+        _, kwargs = mock_assemble.call_args
+        assert kwargs["include_removed"] is True

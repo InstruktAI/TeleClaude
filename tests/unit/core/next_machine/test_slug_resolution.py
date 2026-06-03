@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from teleclaude.core.next_machine.slug_resolution import (
@@ -10,6 +12,7 @@ from teleclaude.core.next_machine.slug_resolution import (
     WorkQueueResolutionReason,
     resolve_next_work_queue_db,
     resolve_runnable_holder_children_db,
+    resolve_slug_async,
 )
 from teleclaude.core.todos_db import TodosDb
 
@@ -95,3 +98,22 @@ async def test_holder_with_only_delivered_children_resolves_complete(todos_db: T
     assert resolution.children == ("child-a",)
     assert resolution.runnable == ()
     assert resolution.reason is HolderResolutionReason.COMPLETE
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_slug_async_excludes_removed_entries() -> None:
+    """Orchestration slug enumeration must exclude soft-removed entries from candidate scanning."""
+    mock_db = AsyncMock()
+    # list_roadmap returns removed only when explicitly requested
+    mock_db.list_roadmap = AsyncMock(return_value=[])
+    mock_db.delivered_slugs = AsyncMock(return_value=set())
+
+    slug, is_ready, _desc = await resolve_slug_async(mock_db, slug=None)
+
+    assert slug is None
+    assert is_ready is False
+    # Verify that list_roadmap was called WITHOUT include_removed=True
+    mock_db.list_roadmap.assert_called_once()
+    _, kwargs = mock_db.list_roadmap.call_args
+    assert kwargs.get("include_removed") is not True

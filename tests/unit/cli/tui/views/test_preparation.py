@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import shlex
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 from textual.app import App, ComposeResult
 
 from teleclaude.api_models import ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.views.preparation import PreparationView
+from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
@@ -185,3 +188,97 @@ async def test_preparation_view_keyboard_preview_and_edit_file_rows() -> None:
     assert "--artifact-name requirements" in edit_command
     assert "--project-root /tmp/project" in edit_command
     assert edit_title == "Editing: requirements"
+
+
+def test_preparation_view_toggles_trashed_projects() -> None:
+    """x: toggle_trashed must update _trashed_projects set."""
+    view = PreparationView()
+    project_path = "/path/to/project"
+
+    # Mock _resolve_cursor_context and _rebuild
+
+    with (
+        patch.object(view, "_resolve_cursor_context", return_value=("comp", project_path, None)),
+        patch.object(view, "_rebuild"),
+    ):
+        view.action_toggle_trashed()
+        assert project_path in view._trashed_projects
+
+        view.action_toggle_trashed()
+        assert project_path not in view._trashed_projects
+
+
+def test_preparation_view_persists_trashed_state() -> None:
+    """trashed_projects must be included in persisted state."""
+    view = PreparationView()
+    view._trashed_projects.add("/path/to/trashed")
+
+    state = view.get_persisted_state()
+    trashed_projects = state["trashed_projects"]
+    assert isinstance(trashed_projects, list)
+    assert "/path/to/trashed" in trashed_projects
+
+    new_view = PreparationView()
+    # load_persisted_state expects TUI state dict from storage
+
+    with patch.object(new_view, "_rebuild"):
+        new_view.load_persisted_state({"trashed_projects": ["/path/to/trashed"]})
+    assert "/path/to/trashed" in new_view._trashed_projects
+
+
+@pytest.mark.unit
+def test_preparation_view_footer_bindings_match_shortened_labels() -> None:
+    """The PreparationView footer must use the shortened labels from Task 6b."""
+    view = PreparationView()
+    # Check a few representative bindings
+    prep_binding = next(b for b in view.BINDINGS if b.action == "prepare")
+    assert prep_binding.description == "Prep"
+
+    rcncl_binding = next(b for b in view.BINDINGS if b.action == "reconcile")
+    assert rcncl_binding.description == "Rcncl"
+
+    trsh_binding = next(b for b in view.BINDINGS if b.action == "toggle_trashed")
+    assert trsh_binding.description == "Trsh"
+
+    unr_binding = next(b for b in view.BINDINGS if b.action == "reactivate_selected")
+    assert unr_binding.description == "Unr"
+
+
+@pytest.mark.unit
+def test_preparation_view_manual_reorder_bindings_are_removed() -> None:
+    """Manual reorder bindings (shift+up/down) must be removed from PreparationView."""
+    view = PreparationView()
+    actions = {b.action for b in view.BINDINGS}
+    assert "move_todo_up" not in actions
+    assert "move_todo_down" not in actions
+
+
+@pytest.mark.unit
+def test_preparation_view_footer_snapshot_at_120_cols(snapshot: SnapshotAssertion) -> None:
+    """The PreparationView footer at 120 columns must include all new and shortened bindings."""
+    view = PreparationView()
+    # Mock enough of the app/screen to satisfy TelecFooter
+    mock_app = MagicMock(spec=App)
+    mock_app.app_focus = True
+    mock_app.get_key_display.side_effect = lambda b: b.key
+
+    mock_screen = MagicMock()
+    # Build the set of active bindings from view.BINDINGS
+    active_bindings = {}
+    for binding in view.BINDINGS:
+        # node, binding, enabled, tooltip
+        active_bindings[binding.action] = (view, binding, True, "")
+
+    mock_screen.active_bindings = active_bindings
+
+    footer = TelecFooter()
+    with (
+        patch.object(TelecFooter, "app", mock_app),
+        patch.object(TelecFooter, "screen", mock_screen),
+        patch.object(TelecFooter, "is_mounted", True),
+    ):
+        context_items, _ = footer._collect_rows()
+        rendered = footer._render_hints_line(context_items, empty_label="none")
+
+    # The snapshot will capture the full plain text.
+    assert rendered.plain == snapshot

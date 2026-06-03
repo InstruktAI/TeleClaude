@@ -51,7 +51,11 @@ class _DummyPreparationView(PreparationViewActionsMixin):
         self._context = context
         self.app = SimpleNamespace(notify=Mock(), _refresh_data=Mock(), push_screen=self._push_screen)
         self._todo_row = None
-        self._slug_to_project_path = {_REMOVE_SLUG: _REPO_PATH}
+        self._slug_to_project_path = {_REMOVE_SLUG: _REPO_PATH, _SLUG: _REPO_PATH}
+        self._projects_with_todos = []
+        self._trashed_projects = set()
+        self._icebox_projects = set()
+        self._delivered_projects = set()
         self.opened_modal: dict[str, str] | None = None
         self.pushed_screen: object | None = None
         self.pushed_callback: object | None = None
@@ -68,6 +72,9 @@ class _DummyPreparationView(PreparationViewActionsMixin):
     def _current_file_row(self):
         return None
 
+    def _current_item(self):
+        return None
+
     def _open_session_modal(self, **kwargs):
         self.opened_modal = kwargs
 
@@ -75,13 +82,16 @@ class _DummyPreparationView(PreparationViewActionsMixin):
         self.pushed_screen = screen
         self.pushed_callback = callback
 
+    def post_message(self, message: object) -> None:
+        pass
+
+    def _rebuild(self) -> None:
+        pass
+
 
 @pytest.mark.unit
 def test_action_reconcile_routes_through_daemon_and_refreshes() -> None:
-    """Reconcile must POST through the daemon so the mutation hook fires —
-    direct in-process calls bypass the cache invalidation and leave the TUI
-    rendering the pre-reconcile row.
-    """
+    """Reconcile must POST through the daemon so the mutation hook fires."""
     view = _DummyPreparationView(("local", "/repo", "my-slug"))
 
     with patch(
@@ -153,7 +163,7 @@ def test_action_start_work_blocks_non_prepared_todo() -> None:
     assert view.app.notify.call_count == 1
     call_args, call_kwargs = view.app.notify.call_args
     assert call_kwargs.get("severity") == "warning"
-    assert "plan_review" in call_args[0]
+    assert call_args[0] == "Todo is not ready to start work: lifecycle_phase 'plan_review' is before 'prepared'"
     assert view.opened_modal is None
 
 
@@ -217,19 +227,9 @@ def test_action_remove_artifact_blocks_input_artifact() -> None:
     with patch("teleclaude.cli.tui.views.preparation_actions.tool_api_request") as mock_request:
         view.action_remove_artifact()
 
-    # Behavioral outcome: no API call, one warning notification (prose is the
-    # renderer's concern, not pinned here).
     mock_request.assert_not_called()
     assert view.app.notify.call_count == 1
     assert view.app.notify.call_args.kwargs == {"severity": "warning"}
-
-
-# Todo-row branch of action_remove_artifact: when _current_file_row() returns
-# None (cursor on a todo row), the unified action falls through to the original
-# todo-removal logic. These tests pin the confirm-modal count display and the
-# POST flow on that fall-through path. They use _DummyPreparationView (which
-# returns None from _current_file_row by default), so a single entry point
-# (action_remove_artifact) exercises both branches across the test suite.
 
 
 @pytest.mark.unit
@@ -281,6 +281,7 @@ def test_action_remove_artifact_todo_row_confirm_posts_daemon_remove_and_notifie
         *,
         json_body: object = None,
         timeout: float | None = None,
+        **_kwargs: object,
     ) -> dict[str, str]:
         requests.append((method, path, json_body, timeout))
         return {"operation_id": _REMOVE_OPERATION_ID}
@@ -341,3 +342,74 @@ def test_create_item_substantive_content_posts(monkeypatch: pytest.MonkeyPatch) 
         view.pushed_callback(_SUBSTANTIVE_CONTENT)  # type: ignore[operator]
     assert api_calls
     assert api_calls[0][1] == _DUMP_ENDPOINT
+
+
+@pytest.mark.unit
+def test_action_toggle_icebox_updates_view_state() -> None:
+    """i: toggle_icebox must update _icebox_projects set."""
+    view = _DummyPreparationView(("local", _REPO_PATH, None))
+    project_path = "/path/to/project"
+
+    with patch.object(view, "_resolve_cursor_context", return_value=("comp", project_path, None)):
+        view.action_toggle_icebox()
+        assert project_path in view._icebox_projects
+
+        view.action_toggle_icebox()
+        assert project_path not in view._icebox_projects
+
+
+@pytest.mark.unit
+def test_action_toggle_delivered_updates_view_state() -> None:
+    """d: toggle_delivered must update _delivered_projects set."""
+    view = _DummyPreparationView(("local", _REPO_PATH, None))
+    project_path = "/path/to/project"
+
+    with patch.object(view, "_resolve_cursor_context", return_value=("comp", project_path, None)):
+        view.action_toggle_delivered()
+        assert project_path in view._delivered_projects
+
+        view.action_toggle_delivered()
+        assert project_path not in view._delivered_projects
+
+
+@pytest.mark.unit
+def test_action_toggle_trashed_updates_view_state() -> None:
+    """x: toggle_trashed must update _trashed_projects set."""
+    view = _DummyPreparationView(("local", _REPO_PATH, None))
+    project_path = "/path/to/project"
+
+    with patch.object(view, "_resolve_cursor_context", return_value=("comp", project_path, None)):
+        view.action_toggle_trashed()
+        assert project_path in view._trashed_projects
+
+        view.action_toggle_trashed()
+        assert project_path not in view._trashed_projects
+
+
+@pytest.mark.unit
+def test_action_reactivate_selected_dispatches_request() -> None:
+    """U: reactivate_selected must call the API for a removed todo."""
+    view = _DummyPreparationView(("local", _REPO_PATH, "trashed"))
+    roadmap_id = "row-123"
+    todo = TodoItem(
+        slug="trashed",
+        status=TodoStatus.REMOVED,
+        description="Test",
+        has_requirements=True,
+        has_impl_plan=False,
+        roadmap_id=roadmap_id,
+    )
+
+    with (
+        patch.object(view, "_current_todo_row", return_value=Mock(todo=todo, slug="trashed")),
+        patch("teleclaude.cli.tui.views.preparation_actions.tool_api_request") as mock_request,
+    ):
+        view._slug_to_project_path = {"trashed": "/path/to/project"}
+        mock_request.return_value = {"status": "ok"}
+
+        view.action_reactivate_selected()
+
+        mock_request.assert_called_once()
+        args, _kwargs = mock_request.call_args
+        assert args[0] == "POST"
+        assert args[1] == f"/todos/by-id/{roadmap_id}/reactivate"

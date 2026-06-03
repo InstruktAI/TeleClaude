@@ -1429,3 +1429,30 @@ class TestTodoDumpRequest:
     def test_todo_dump_request_default_silent_is_false(self) -> None:
         req = TodoDumpRequest(slug="my-slug", content="some content")
         assert req.silent is False
+
+
+def test_todo_dto_accepts_roadmap_id_and_removed_at() -> None:
+    """TodoDTO must accept the optional roadmap_id and removed_at fields."""
+    # Verification: presence and type-correctness, not literal echo
+    data = {
+        "slug": "test-slug",
+        "status": "removed",
+        "has_requirements": True,
+        "has_impl_plan": False,
+        "roadmap_id": "row-123",
+        "removed_at": "2026-05-22T10:00:00Z",
+    }
+    dto = TodoDTO.model_validate(data)
+    assert isinstance(dto.roadmap_id, str)
+    assert isinstance(dto.removed_at, str)
+
+    # Backward compatibility: old payload without fields must still validate
+    old_data = {
+        "slug": "test-slug",
+        "status": "active",
+        "has_requirements": True,
+        "has_impl_plan": False,
+    }
+    # Should not raise ValidationError
+    old_dto = TodoDTO.model_validate(old_data)
+    assert old_dto.roadmap_id is None

@@ -1,0 +1,4 @@
+# serializer version: 1
+# name: TestTodoRoutes.test_todo_reactivate_refuses_ambiguous_slug
+  "Ambiguous slug 'dup': multiple removed rows exist (row-1 (removed t1), row-2 (removed t2)). Restore by id instead."
+# ---

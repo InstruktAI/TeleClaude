@@ -124,6 +124,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                         # New format: {"subscribe": {"computer": "raspi", "types": ["sessions", "projects"]}}
                         computer_raw = subscribe_data.get("computer")
                         types_raw = subscribe_data.get("types")
+                        include_removed = bool(subscribe_data.get("include_removed", False))
 
                         if not isinstance(computer_raw, str) or not isinstance(types_raw, list):
                             logger.warning("Invalid subscribe format: computer or types missing/invalid")
@@ -144,7 +145,9 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                             # Pull remote data immediately for this data type
                             await self._pull_remote_on_interest(computer, data_type)
                             # Send initial state for this data type
-                            await self._send_initial_state(websocket, data_type, computer)
+                            await self._send_initial_state(
+                                websocket, data_type, computer, include_removed=include_removed
+                            )
                     else:
                         logger.warning("WebSocket subscribe data is invalid type: %s", type(subscribe_data))
                         continue
@@ -239,6 +242,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         websocket: WebSocket,
         data_type: str,
         computer: str,
+        include_removed: bool = False,
     ) -> None:
         """Send initial state for a subscription.
 
@@ -246,6 +250,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             websocket: WebSocket connection
             data_type: Data type (e.g., "sessions", "projects", "todos")
             computer: Computer name to filter data by
+            include_removed: Whether to include soft-removed todos
         """
         try:
             if data_type == "sessions":
@@ -273,7 +278,9 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                     for proj in cached_projects:
                         comp = proj.computer or ""
                         if data_type == "preparation":
-                            todos = self.cache.get_todos(comp or config.computer.name, proj.path)
+                            todos = self.cache.get_todos(
+                                comp or config.computer.name, proj.path, include_removed=include_removed
+                            )
                             roadmap_exists = False
                             projects.append(
                                 ProjectWithTodosDTO(

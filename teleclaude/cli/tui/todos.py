@@ -28,3 +28,5 @@ class TodoItem:
     finalize_status: str | None = None
     project_path: str | None = None
     is_holder: bool = False
+    roadmap_id: str | None = None
+    removed_at: str | None = None

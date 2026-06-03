@@ -65,17 +65,6 @@ class PreparationViewActionsMixin:
         item = self._current_item()  # type: ignore[attr-defined]
         return item if isinstance(item, ComputerHeader) else None
 
-    def action_move_todo_up(self) -> None:
-        """Shift+Up: manual reorder is unsupported for derived todo ordering."""
-        self.app.notify(
-            "Manual reorder is not supported; ordering is derived from todo state.",
-            severity="warning",
-        )  # type: ignore[attr-defined]
-
-    def action_move_todo_down(self) -> None:
-        """Shift+Down: manual reorder is unsupported for derived todo ordering."""
-        self.action_move_todo_up()
-
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Enable/hide actions based on current tree node type."""
         del parameters
@@ -91,8 +80,8 @@ class PreparationViewActionsMixin:
             "reconcile",
             "freeze",
             "unfreeze",
-            "move_todo_up",
-            "move_todo_down",
+            "toggle_trashed",
+            "reactivate_selected",
         }
         project_disallowed = {
             "remove_artifact",
@@ -104,8 +93,6 @@ class PreparationViewActionsMixin:
             "reconcile",
             "freeze",
             "unfreeze",
-            "move_todo_up",
-            "move_todo_down",
         }
         file_disallowed = {
             "new_todo",
@@ -113,8 +100,6 @@ class PreparationViewActionsMixin:
             "new_project",
             "freeze",
             "unfreeze",
-            "move_todo_up",
-            "move_todo_down",
         }
 
         if isinstance(item, ComputerHeader):
@@ -139,7 +124,9 @@ class PreparationViewActionsMixin:
             return item.todo.status == TodoStatus.ICEBOX
         if action == "freeze":
             return item.todo.status != TodoStatus.ICEBOX
-        return action not in {"move_todo_up", "move_todo_down"}
+        if action == "reactivate_selected":
+            return item.todo.status == TodoStatus.REMOVED
+        return True
 
     def watch_cursor_index(self, _index: int) -> None:
         """Refresh key bindings when node context changes."""
@@ -614,6 +601,73 @@ class PreparationViewActionsMixin:
             )
             if isinstance(result, dict) and result.get("status") == "ok":
                 self.app.notify(f"Unfrozen '{slug}' to todo list")  # type: ignore[attr-defined]
+                self.app._refresh_data()  # type: ignore[attr-defined]
+            elif isinstance(result, dict) and result.get("detail"):
+                self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+        except Exception as exc:
+            self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
+
+    def action_toggle_trashed(self) -> None:
+        """x: toggle the trashed section visibility, scoped to computer or project."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if isinstance(item, ComputerHeader):
+            comp_name = item.data.computer.name
+            project_paths = [
+                p.path
+                for p in self._projects_with_todos  # type: ignore[attr-defined]
+                if (p.computer or "local") == comp_name
+            ]
+            # Toggle: if all are visible, hide all; otherwise show all
+            all_visible = all(p in self._trashed_projects for p in project_paths)  # type: ignore[attr-defined]
+            for path in project_paths:
+                if all_visible:
+                    self._trashed_projects.discard(path)  # type: ignore[attr-defined]
+                else:
+                    self._trashed_projects.add(path)  # type: ignore[attr-defined]
+        else:
+            context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+            if not context:
+                return
+            _, project_path, _ = context
+            if project_path in self._trashed_projects:  # type: ignore[attr-defined]
+                self._trashed_projects.discard(project_path)  # type: ignore[attr-defined]
+            else:
+                self._trashed_projects.add(project_path)  # type: ignore[attr-defined]
+
+        self.post_message(StateChanged())  # type: ignore[attr-defined]
+        self._rebuild()  # type: ignore[attr-defined]
+
+    def action_reactivate_selected(self) -> None:
+        """U: restore a trashed todo addressed by row-id."""
+        row = self._current_todo_row()  # type: ignore[attr-defined]
+        if not row:
+            return
+
+        if row.todo.status != TodoStatus.REMOVED:
+            self.app.notify("Reactivate only applies to trashed entries")  # type: ignore[attr-defined]
+            return
+
+        roadmap_id = row.todo.roadmap_id
+        if not roadmap_id:
+            self.app.notify("row missing durable id; refresh the roadmap pane", severity="warning")  # type: ignore[attr-defined]
+            return
+
+        slug = row.slug
+        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        if not project_path:
+            return
+
+        try:
+            result = tool_api_request(
+                "POST",
+                f"/todos/by-id/{roadmap_id}/reactivate",
+                json_body={"cwd": project_path},
+                timeout=10.0,
+            )
+            if isinstance(result, dict) and result.get("status") == "ok":
+                self.app.notify(f"Restored '{slug}' to roadmap")  # type: ignore[attr-defined]
+                # Rely on _on_mutation("todo_updated") to refresh via websocket,
+                # but call refresh_data to be sure if needed.
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]

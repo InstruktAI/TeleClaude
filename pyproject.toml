@@ -352,7 +352,6 @@
     "tests/unit/cli/telec/handlers/test_todo_artifacts.py",                        # Deferred split: todo artifact CLI assertions share handlers/todo.py with other specs.
     "tests/unit/cli/telec/handlers/test_todo_lifecycle_dump_specs.py",             # Deferred split: dump event contract spans handlers/todo.py and event envelope.
     "tests/unit/cli/telec/test_surface_export.py",                                 # Deferred split: surface export assertions belong with occupied cli/telec/surface.py companion.
-    "tests/unit/cli/tui/test_paste_guard.py",                                      # Cross-module: paste-guard logic spans TelecApp paste/key dispatch and PreparationView focus; no standalone paste_guard.py source.
     "tests/unit/cli/tui/test_pane_resilience_under_ws_reconnect.py",               # Cross-module: pane survival across WS reconnect spans SessionsView, TmuxPaneManager catalog, and per-computer SessionsInitialEvent merge in TelecAppWsMixin.
     "tests/unit/cli/tui/test_resource_cleanup.py",                                 # Cross-module: cleanup spans TelecApp, app_media state, and SessionsView resources.
     "tests/unit/config/test_build_config.py",                                      # Package-boundary: the _build_config assembly parser lives in config/__init__.py with no standalone module companion.

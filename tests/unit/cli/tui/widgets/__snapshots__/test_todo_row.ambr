@@ -1,7 +1,7 @@
 # serializer version: 1
-# name: test_collapsed_row_exposes_artifact_count_signal
-  dict({
-    'empty': '  ├─□ empty-row·············',
-    'with_artifacts': '  ├─□ with-artifacts··A:2···',
-  })
+# name: test_render_removed_row_includes_age_column
+  <text '  ├─✕ trashed-item··T:10m' [Span(0, 2, Style(color=Color('#808080', ColorType.TRUECOLOR, triplet=ColorTriplet(red=128, green=128, blue=128)))), Span(2, 4, Style(color=Color('#808080', ColorType.TRUECOLOR, triplet=ColorTriplet(red=128, green=128, blue=128)))), Span(4, 5, Style(color=Color('color(125)', ColorType.EIGHT_BIT, number=125), bold=False)), Span(18, 20, Style(color=Color('color(102)', ColorType.EIGHT_BIT, number=102))), Span(22, 25, Style(color=Color('color(125)', ColorType.EIGHT_BIT, number=125), bold=True))] ''>
+# ---
+# name: test_render_work_row_does_not_include_prepare_phase_column
+  <text '  ├─■ work-item··B:complete··R:approved···' [Span(0, 2, Style(color=Color('#808080', ColorType.TRUECOLOR, triplet=ColorTriplet(red=128, green=128, blue=128)))), Span(2, 4, Style(color=Color('#808080', ColorType.TRUECOLOR, triplet=ColorTriplet(red=128, green=128, blue=128)))), Span(4, 5, Style(color=Color('color(136)', ColorType.EIGHT_BIT, number=136), bold=True)), Span(15, 17, Style(color=Color('color(102)', ColorType.EIGHT_BIT, number=102))), Span(19, 27, Style(color=Color('color(28)', ColorType.EIGHT_BIT, number=28), bold=True)), Span(27, 29, Style(color=Color('color(102)', ColorType.EIGHT_BIT, number=102))), Span(31, 39, Style(color=Color('color(28)', ColorType.EIGHT_BIT, number=28), bold=True)), Span(39, 41, Style(color=Color('color(102)', ColorType.EIGHT_BIT, number=102))), Span(41, 42, Style(color=Color('color(102)', ColorType.EIGHT_BIT, number=102)))] ''>
 # ---

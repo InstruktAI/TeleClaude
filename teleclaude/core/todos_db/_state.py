@@ -242,6 +242,48 @@ class TodosDbStateMixin:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.read_state(slug)
 
+    async def write_state_by_id(
+        self,
+        roadmap_id: str,
+        state: dict[str, StateValue],
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> None:
+        """Write the typed state payload for a specific roadmap row id."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            entry = await db_session.get(TodoRoadmap, roadmap_id)
+            if entry is None:
+                raise ValueError(f"Roadmap row {roadmap_id} not found")
+
+            # Upcycle and canonicalize before storage
+            canonical = canonicalize_state_for_storage(state)
+            now = datetime.now(UTC).isoformat()
+
+            # Upsert state model
+            state_model = await db_session.get(TodoStateModel, roadmap_id)
+            if state_model is None:
+                state_model = TodoStateModel(
+                    id=roadmap_id,
+                    slug=entry.slug,
+                    state=json.dumps(canonical),
+                    created_at=now,
+                    updated_at=now,
+                )
+                db_session.add(state_model)
+            else:
+                state_model.state = json.dumps(canonical)
+                state_model.updated_at = now
+                db_session.add(state_model)
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation("todo_updated", None)
+        finally:
+            if owns_session:
+                await db_session.close()
+
     async def write_state(
         self,
         slug: str,

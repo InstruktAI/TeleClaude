@@ -141,7 +141,7 @@ async def test_delete_artifact_fires_mutation_callback_for_real_removal(db: Todo
 async def test_soft_remove_fires_mutation_callback(db: TodosDb, monkeypatch: pytest.MonkeyPatch) -> None:
     """soft_remove_from_roadmap calls _on_mutation after committing."""
     monkeypatch.setattr(
-        "teleclaude.core.todos_db._roadmap.cleanup_delivered_slug",
+        "teleclaude.core.todos_db._roadmap_soft_delete.cleanup_delivered_slug",
         MagicMock(),
         raising=False,
     )

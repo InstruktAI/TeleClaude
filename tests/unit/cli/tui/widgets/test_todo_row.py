@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from unittest.mock import patch
+
 import pytest
 from rich.text import Text
+from syrupy.assertion import SnapshotAssertion
 from textual.geometry import Size
 
 from teleclaude.cli.tui.todos import TodoItem
@@ -339,7 +343,7 @@ def test_render_eliminates_dots_when_very_narrow() -> None:
 
 
 @pytest.mark.unit
-def test_render_work_row_does_not_include_prepare_phase_column() -> None:
+def test_render_work_row_does_not_include_prepare_phase_column(snapshot: SnapshotAssertion) -> None:
     work_item = TodoItem(
         slug="work-item",
         status=TodoStatus.IN_PROGRESS,
@@ -351,8 +355,29 @@ def test_render_work_row_does_not_include_prepare_phase_column() -> None:
     col_widths = TodoRow.compute_col_widths([work_item])
     row = TodoRow(todo=work_item, slug_width=len(work_item.slug), col_widths=col_widths, max_depth=0)
 
-    rendered = row.render().plain
+    rendered = row.render()
+    assert rendered == snapshot
 
-    assert "B:complete" in rendered
-    assert "R:approved" in rendered
-    assert "P:" not in rendered
+
+@pytest.mark.unit
+def test_render_removed_row_includes_age_column(snapshot: SnapshotAssertion) -> None:
+    """A trashed item must render with its age in the T column."""
+    removed_item = TodoItem(
+        slug="trashed-item",
+        status=TodoStatus.REMOVED,
+        description=None,
+        has_requirements=True,
+        has_impl_plan=True,
+        removed_at="2026-05-22T09:50:00Z",
+    )
+    mock_now = datetime(2026, 5, 22, 10, 0, 0, tzinfo=UTC)
+
+    col_widths = TodoRow.compute_col_widths([removed_item])
+    row = TodoRow(todo=removed_item, slug_width=len(removed_item.slug), col_widths=col_widths, max_depth=0)
+
+    with patch("teleclaude.cli.tui.utils.formatters.datetime") as mock_datetime:
+        mock_datetime.now.return_value = mock_now
+        mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+        rendered = row.render()
+
+    assert rendered == snapshot

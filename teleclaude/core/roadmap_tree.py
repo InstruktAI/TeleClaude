@@ -47,6 +47,7 @@ class RoadmapSections:
     active: list[RoadmapNode] = field(default_factory=list)
     delivered: list[RoadmapNode] = field(default_factory=list)
     icebox: list[RoadmapNode] = field(default_factory=list)
+    removed: list[RoadmapNode] = field(default_factory=list)
 
 
 @dataclass
@@ -193,11 +194,14 @@ def build_roadmap_sections(todos: list[TodoDTO]) -> RoadmapSections:
     active: list[TodoDTO] = []
     delivered: list[TodoDTO] = []
     icebox: list[TodoDTO] = []
+    removed: list[TodoDTO] = []
     for todo in todos:
         if todo.status == RoadmapStatus.DELIVERED:
             delivered.append(todo)
         elif todo.status == RoadmapStatus.ICEBOX:
             icebox.append(todo)
+        elif todo.status == RoadmapStatus.REMOVED:
+            removed.append(todo)
         else:
             active.append(todo)
     return RoadmapSections(
@@ -210,6 +214,7 @@ def build_roadmap_sections(todos: list[TodoDTO]) -> RoadmapSections:
             icebox,
             sibling_key=lambda todo: section_sort_key(todo, raw_status=RoadmapStatus.ICEBOX),
         ),
+        removed=[RoadmapNode(todo=t) for t in sorted(removed, key=lambda t: t.roadmap_id or "")],
     )
 
 
