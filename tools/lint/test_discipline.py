@@ -11,7 +11,7 @@ Detects, with file:line locations, every violation of
   reaper-style per-test cost amplifier — must be marker-scoped instead).
 - Module-scope imports of heavy modules in ``tests/conftest.py`` (rule 17).
 - Real subprocess calls in ``tests/unit/**`` (rule 11).
-- `session_timeout` in ``pyproject.toml`` differing from 35 (rule 3).
+- `session_timeout` in ``pyproject.toml`` differing from the value configured in `pyproject.toml` (rule 3).
 
 Exit code 0 on success, 1 on any violation. Prints offenders as
 ``path:line: rule: <description>``.
