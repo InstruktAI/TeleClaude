@@ -215,17 +215,23 @@ class FileArtifactType(NamedTuple):
 def _mirror_exclusions_for_agent(
     config: AgentConfig,
     specs: list[FileArtifactType],
-    target_root: str,
 ) -> frozenset[str]:
-    """Staging basenames in ``dist/<agent>/`` that must not also mirror into ``~/.{agent}``.
+    """Staging basenames whose explicit ``deploy_*_dest`` lands outside the agent's home root.
 
-    For each artifact spec, the explicit ``deploy_*_dest`` may point outside
-    the agent-home mirror (e.g. Codex commands → ``~/.teleclaude/commands``,
-    not ``~/.codex/prompts``). When it differs from where the blanket mirror
-    would place the staging subdir, that subdir is reported here so the
-    copytree can skip it and avoid producing a dead duplicate.
+    The per-agent mirror copies ``dist/<agent>/`` into ``~/.{agent}/`` (global
+    phase) or ``project_root/.{agent}/`` (local phase). When a spec's explicit
+    deploy target lives OUTSIDE the agent's home root (``config["check_dir"]``)
+    — Codex commands route to ``~/.teleclaude/commands`` (outside ``~/.codex``)
+    — mirroring the staging subdir into the home root produces a dead duplicate.
+    Such basenames are reported here so the blanket copytree can skip them while
+    the explicit deploy still writes them to the external destination.
+
+    Other artifacts whose deploy target lives under ``check_dir`` (Claude/Gemini
+    commands) are NOT excluded — the blanket mirror places them correctly in
+    both phases.
     """
     excluded: set[str] = set()
+    agent_home = os.path.normpath(config["check_dir"])
     for spec in specs:
         deploy_dest = str(config.get(spec.deploy_dir_key) or "")
         if not deploy_dest:
@@ -233,10 +239,50 @@ def _mirror_exclusions_for_agent(
         dest_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
         if not dest_basename:
             continue
-        copytree_dest = os.path.join(target_root, dest_basename)
-        if os.path.normpath(deploy_dest) != os.path.normpath(copytree_dest):
+        deploy_norm = os.path.normpath(deploy_dest)
+        if deploy_norm != agent_home and not deploy_norm.startswith(agent_home + os.sep):
             excluded.add(dest_basename)
     return frozenset(excluded)
+
+
+def _deploy_agent(
+    *,
+    dist_agent_root: str,
+    target_root: str,
+    config: AgentConfig,
+    specs: list[FileArtifactType],
+) -> None:
+    """Mirror ``dist/<agent>/`` into ``target_root`` and route externally-deployed subdirs.
+
+    Blanket-mirrors the staging tree, skipping any artifact subdir whose explicit
+    deploy lands outside the agent's home root (see ``_mirror_exclusions_for_agent``).
+    Then walks the specs and explicitly copies each artifact whose deploy target
+    differs from the mirror destination — preserving the existing dual-write for
+    artifacts that map both into the agent home and an external location.
+    """
+    os.makedirs(target_root, exist_ok=True)
+    excluded_basenames = _mirror_exclusions_for_agent(config, specs)
+
+    def _ignore(
+        directory: str,
+        _names: list[str],
+        _root: str = dist_agent_root,
+        _excluded: frozenset[str] = excluded_basenames,
+    ) -> frozenset[str]:
+        return _excluded if directory == _root else frozenset()
+
+    shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True, ignore=_ignore)
+
+    for spec in specs:
+        deploy_dest = str(config.get(spec.deploy_dir_key) or "")
+        if not deploy_dest:
+            continue
+        dest_dir_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
+        dist_src = os.path.join(dist_agent_root, dest_dir_basename)
+        copytree_dest = os.path.join(target_root, dest_dir_basename)
+        if os.path.normpath(deploy_dest) != os.path.normpath(copytree_dest) and os.path.isdir(dist_src):
+            os.makedirs(deploy_dest, exist_ok=True)
+            shutil.copytree(dist_src, deploy_dest, dirs_exist_ok=True)
 
 
 def transform_to_codex(post: Post) -> str:
@@ -1278,31 +1324,13 @@ def main() -> None:  # noqa: C901
                 print(f"Deploying {agent_name}...")
 
                 target_root = os.path.join(deploy_root, os.path.basename(config["check_dir"]))
-                os.makedirs(target_root, exist_ok=True)
-
                 dist_agent_root = os.path.join(dist_dir, agent_name)
-                excluded_basenames = _mirror_exclusions_for_agent(config, artifact_specs, target_root)
-
-                def _ignore(
-                    directory: str,
-                    _names: list[str],
-                    _root: str = dist_agent_root,
-                    _excluded: frozenset[str] = excluded_basenames,
-                ) -> frozenset[str]:
-                    return _excluded if directory == _root else frozenset()
-
-                shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True, ignore=_ignore)
-
-                # Each excluded subdir is deployed to its explicit external target
-                for spec in artifact_specs:
-                    dest_dir_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
-                    if dest_dir_basename not in excluded_basenames:
-                        continue
-                    deploy_dest = str(config.get(spec.deploy_dir_key) or "")
-                    dist_src = os.path.join(dist_agent_root, dest_dir_basename)
-                    if os.path.isdir(dist_src):
-                        os.makedirs(deploy_dest, exist_ok=True)
-                        shutil.copytree(dist_src, deploy_dest, dirs_exist_ok=True)
+                _deploy_agent(
+                    dist_agent_root=dist_agent_root,
+                    target_root=target_root,
+                    config=config,
+                    specs=artifact_specs,
+                )
 
             print("Deployment complete.")
 

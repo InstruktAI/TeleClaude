@@ -24,6 +24,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from scripts import distribute
 from scripts.distribute import (
+    _deploy_agent,
     _inflate_domain_baseline,
     _mirror_exclusions_for_agent,
     _needs_domain_baseline_domain,
@@ -232,12 +233,13 @@ def _commands_spec() -> distribute.FileArtifactType:
 
 def _agent_config_with_commands(
     *,
+    check_dir: str,
     commands_dest_dir: str,
     deploy_commands_dest: str,
 ) -> distribute.AgentConfig:
     """Minimal valid AgentConfig fixture; stubs irrelevant fields and parameterizes the keys under test."""
     return {
-        "check_dir": "/unused",
+        "check_dir": check_dir,
         "prefix": "/",
         "master_dest": "/unused",
         "commands_dest_dir": commands_dest_dir,
@@ -250,39 +252,107 @@ def _agent_config_with_commands(
     }
 
 
-def test_mirror_exclusions_for_agent_excludes_staging_basename_when_deploy_diverges(
+def test_mirror_exclusions_for_agent_excludes_basename_when_deploy_is_outside_agent_home(
     tmp_path: Path,
 ) -> None:
-    """A staging basename is excluded when its explicit deploy lands outside the mirror.
+    """A staging basename is excluded when its explicit deploy lands outside the agent's home root.
 
-    Codex's commands stage at ``dist/codex/prompts`` and deploy externally to
-    ``~/.teleclaude/commands``. Mirroring the staging into ``~/.codex`` would
-    create a dead duplicate at ``~/.codex/prompts``; the helper reports it as
-    excluded so the blanket copytree can skip it.
+    Codex commands route to ``~/.teleclaude/commands`` — outside ``~/.codex`` —
+    so mirroring the staging ``prompts/`` subdir into ``~/.codex`` would create
+    a dead duplicate. The helper reports the basename as excluded.
     """
-    target_root = str(tmp_path / ".codex")
+    agent_home = str(tmp_path / ".codex")
     config = _agent_config_with_commands(
+        check_dir=agent_home,
         commands_dest_dir=str(tmp_path / "dist" / "codex" / "prompts"),
         deploy_commands_dest=str(tmp_path / ".teleclaude" / "commands"),
     )
 
-    result = _mirror_exclusions_for_agent(config, [_commands_spec()], target_root)
+    result = _mirror_exclusions_for_agent(config, [_commands_spec()])
 
     assert result == frozenset({"prompts"})
 
 
-def test_mirror_exclusions_for_agent_empty_when_deploy_matches_mirror(tmp_path: Path) -> None:
-    """When the explicit deploy equals the mirror destination, no exclusion is needed.
+def test_mirror_exclusions_for_agent_empty_when_deploy_is_inside_agent_home(tmp_path: Path) -> None:
+    """When the explicit deploy lives under the agent's home root, no exclusion is needed.
 
-    Claude's commands deploy to ``~/.claude/commands`` — identical to where the
-    blanket mirror would place them — so nothing should be excluded.
+    Claude commands deploy to ``~/.claude/commands`` — inside ``~/.claude`` — so
+    the blanket mirror lands them correctly (in both global and local phases).
     """
-    target_root = str(tmp_path / ".claude")
+    agent_home = str(tmp_path / ".claude")
     config = _agent_config_with_commands(
+        check_dir=agent_home,
         commands_dest_dir=str(tmp_path / "dist" / "claude" / "commands"),
-        deploy_commands_dest=os.path.join(target_root, "commands"),
+        deploy_commands_dest=os.path.join(agent_home, "commands"),
     )
 
-    result = _mirror_exclusions_for_agent(config, [_commands_spec()], target_root)
+    result = _mirror_exclusions_for_agent(config, [_commands_spec()])
 
     assert result == frozenset()
+
+
+def test_deploy_agent_skips_externally_routed_subdir_in_mirror_and_writes_to_external_dest(
+    tmp_path: Path,
+) -> None:
+    """The mirror skips externally-routed subdirs; the explicit deploy still writes them.
+
+    Codex's ``prompts/`` stages under ``dist/codex`` and routes externally to
+    ``~/.teleclaude/commands``. Deploying must (a) skip ``prompts/`` in the
+    blanket mirror into the agent home (so no dead duplicate appears there) and
+    (b) write the staged commands to the external destination. Other staged
+    subdirs whose deploy is under the agent home must mirror normally.
+    """
+    dist_agent_root = tmp_path / "dist" / "codex"
+    agent_home = tmp_path / ".codex"
+    external_commands = tmp_path / ".teleclaude" / "commands"
+    (dist_agent_root / "prompts").mkdir(parents=True)
+    (dist_agent_root / "prompts" / "foo.md").write_text("foo", encoding="utf-8")
+    (dist_agent_root / "agents").mkdir()
+    (dist_agent_root / "agents" / "bar.md").write_text("bar", encoding="utf-8")
+    config = _agent_config_with_commands(
+        check_dir=str(agent_home),
+        commands_dest_dir=str(dist_agent_root / "prompts"),
+        deploy_commands_dest=str(external_commands),
+    )
+
+    _deploy_agent(
+        dist_agent_root=str(dist_agent_root),
+        target_root=str(agent_home),
+        config=config,
+        specs=[_commands_spec()],
+    )
+
+    assert not (agent_home / "prompts").exists()
+    assert (agent_home / "agents" / "bar.md").exists()
+    assert (external_commands / "foo.md").exists()
+
+
+def test_deploy_agent_local_phase_mirrors_into_project_root_for_internally_deployed_subdir(
+    tmp_path: Path,
+) -> None:
+    """Local-phase deploy (``target_root = project_root/.{agent}``) keeps the
+    project-root mirror for artifacts whose deploy lives under the agent home,
+    while still firing the explicit copy when ``deploy_dest`` differs from the
+    mirror destination — the dual-write contract for Claude/Gemini local
+    artifacts.
+    """
+    dist_agent_root = tmp_path / "dist_local" / "claude"
+    project_target = tmp_path / "project_root" / ".claude"
+    agent_home = tmp_path / ".claude"
+    (dist_agent_root / "commands").mkdir(parents=True)
+    (dist_agent_root / "commands" / "qux.md").write_text("qux", encoding="utf-8")
+    config = _agent_config_with_commands(
+        check_dir=str(agent_home),
+        commands_dest_dir=str(dist_agent_root / "commands"),
+        deploy_commands_dest=str(agent_home / "commands"),
+    )
+
+    _deploy_agent(
+        dist_agent_root=str(dist_agent_root),
+        target_root=str(project_target),
+        config=config,
+        specs=[_commands_spec()],
+    )
+
+    assert (project_target / "commands" / "qux.md").exists()
+    assert (agent_home / "commands" / "qux.md").exists()
