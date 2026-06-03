@@ -57,6 +57,11 @@
       ]),
       '.teleclaude': list([
         tuple(
+          'symlink',
+          '.env',
+          'TMP/project_root/.env',
+        ),
+        tuple(
           'dir',
           '.vscode',
           0,
@@ -146,7 +151,7 @@
       ]),
     }),
     'project_outputs': dict({
-      '.env': False,
+      '.env': True,
       'bin/teleclaude-wrapper.sh': True,
       'config.yml': False,
       'teleclaude.yml': True,
@@ -174,6 +179,7 @@
       ]),
       'uv.log': list([
         'uv sync --frozen',
+        'uv run --directory TMP/project_root --quiet python -m teleclaude.cli.telec config validate',
       ]),
     }),
     'venv': dict({
@@ -260,6 +266,11 @@
       ]),
       '.teleclaude': list([
         tuple(
+          'symlink',
+          '.env',
+          'TMP/project_root/.env',
+        ),
+        tuple(
           'dir',
           '.vscode',
           0,
@@ -349,7 +360,7 @@
       ]),
     }),
     'project_outputs': dict({
-      '.env': False,
+      '.env': True,
       'bin/teleclaude-wrapper.sh': True,
       'config.yml': False,
       'teleclaude.yml': True,
@@ -380,6 +391,7 @@
       ]),
       'uv.log': list([
         'uv sync',
+        'uv run --directory TMP/project_root --quiet python -m teleclaude.cli.telec config validate',
       ]),
     }),
     'venv': dict({

@@ -89,6 +89,11 @@
           0,
         ),
         tuple(
+          'symlink',
+          '.teleclaude/.env',
+          'TMP/project_root/.env',
+        ),
+        tuple(
           'dir',
           '.teleclaude/.vscode',
           0,
@@ -273,6 +278,11 @@
           'dir',
           '.teleclaude',
           0,
+        ),
+        tuple(
+          'symlink',
+          '.teleclaude/.env',
+          'TMP/project_root/.env',
         ),
         tuple(
           'dir',
