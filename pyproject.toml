@@ -134,8 +134,8 @@
 
     [tool.ruff.lint.per-file-ignores]
       "cron/**"                        =["E402"]                 # Cron entrypoints need sys.path manipulation before imports
-      "jobs/**"                        =["E402"]                 # Jobs need sys.path manipulation before imports
-      "scripts/**"                     =["E402"]                 # Scripts need sys.path manipulation before imports
+      "jobs/**"                        =["E402", "PLC0415"]      # Jobs need sys.path manipulation; lazy imports for CLI startup
+      "scripts/**"                     =["E402", "PLC0415"]      # Scripts need sys.path manipulation; lazy imports for CLI startup
       "teleclaude/helpers/agent_cli.py"=["E402"]                 # Needs sys.path for standalone execution
       "tests/**"                       =["B018", "E402", "F841"] # Allow unused variables and sys.path imports in tests
       # guard: ratchet-down — B904 (raise from), B023 (loop vars), E402 (import order), RUF001-003 (unicode)
