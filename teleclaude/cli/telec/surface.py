@@ -433,23 +433,26 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args="<slug> <content> [--after <deps>] [--silent] [--prepped]",
+                args="<slug> <content> --kind <kind> [--after <deps>] [--silent]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
-                    Flag("--silent", desc="Create silently — suppress pickup notification"),
                     Flag(
-                        "--prepped",
+                        "--kind",
                         desc=(
-                            "HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped "
-                            "and ready for build. Agents must obtain explicit human approval of the "
-                            "exact plan content before invoking."
+                            "Required. Work category and lifecycle lane: "
+                            "feature|refactor|migration|todo (→ prepare lane), "
+                            "bug (→ bug-fix lane), "
+                            "prepped (content is a complete plan; skip prepare), "
+                            "draft (park idea; no lifecycle)."
                         ),
                     ),
+                    Flag("--silent", desc="Create silently — suppress pickup notification"),
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
                     "Emits workflow.todo.created for autonomous pickup unless --silent is set.",
+                    "--kind is required; use --kind=prepped to skip prepare (HUMAN-IN-THE-LOOP required).",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
@@ -588,27 +591,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--after", desc="Dependency slug (repeatable)"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "dump": CommandDef(
-                desc="DEPRECATED — alias for `telec todo create`",
-                args="<slug> <content> [--after <deps>] [--draft] [--prepped]",
-                flags=[
-                    _FLAG_AFTER_DEPS,
-                    Flag(
-                        "--draft",
-                        desc="Forwarded as --silent to telec todo create",
-                        hidden=True,
-                    ),
-                    Flag(
-                        "--prepped",
-                        desc="Forwarded to telec todo create --prepped",
-                    ),
-                ],
-                notes=[
-                    "This command is deprecated. Use `telec todo create` instead.",
-                ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
-                hidden=True,
             ),
             "split": CommandDef(
                 desc="Split a todo into child items (container transition)",

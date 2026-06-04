@@ -118,9 +118,9 @@ async def test_duplicate_event_dropped():
 
 
 @pytest.mark.asyncio
-async def test_fresh_todo_dump_with_seen_slug_is_not_dropped() -> None:
-    """Fresh todo_dumped emits for an existing subject must keep their own event identity."""
-    event_type = "domain.software-development.planning.todo_dumped"
+async def test_fresh_todo_creation_with_seen_slug_is_not_dropped() -> None:
+    """Fresh todo-created emits for an existing subject must keep their own event identity."""
+    event_type = "domain.software-development.planning.todo_created"
     old_subject_key = f"{event_type}:notification-dispatch-service"
     fresh_event_id = "11111111-1111-4111-8111-111111111111"
 
@@ -144,7 +144,7 @@ async def test_fresh_todo_dump_with_seen_slug_is_not_dropped() -> None:
 @pytest.mark.asyncio
 async def test_replayed_event_with_seen_event_id_is_dropped() -> None:
     """Replay delivery of the same event identity is the duplicate path."""
-    event_type = "domain.software-development.planning.todo_dumped"
+    event_type = "domain.software-development.planning.todo_created"
     event_id = "22222222-2222-4222-8222-222222222222"
 
     async def _key_exists(key: str) -> bool:

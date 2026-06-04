@@ -34,7 +34,7 @@
   - no active preparation work found
   
   NEXT ACTION:
-  1. Create a new todo: `telec todo create <slug>` (use --kind feature|bug|refactor|migration|prepped).
+  1. Create a new todo: `telec todo create <slug> <content> --kind feature|refactor|migration|todo|bug|prepped|draft`.
   2. Or pick an existing slug from `telec todo list`.
   3. Then call `telec todo prepare <slug>` to drive the lifecycle.
   

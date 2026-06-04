@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
 
 LifecyclePhaseValue = Literal[
     "draft",
@@ -234,7 +235,7 @@ class TodoState(BaseModel):
     build_start_base_sha: str = ""
     build_completed_at: str = ""
     build_gate_claim_at: str = ""
-    kind: str = "todo"  # "feature" | "todo" | "bug" | "draft" | "prepped" | "refactor" | "migration"
+    kind: str = TODO_KIND_DEFAULT  # canonical values: see teleclaude.types.todo_kind.ALL_DUMP_KINDS
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)

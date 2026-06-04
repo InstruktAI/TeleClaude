@@ -591,3 +591,60 @@ class TestNoParametrizeRule:
         )
         result = _run_scanner(tmp_path)
         assert result is None
+
+
+# Build test fixture strings via concatenation so the guardrail scanner
+# does not match them in THIS file.
+_KIND_ASSIGN_TODO = "kind" + " = " + '"todo"'
+_KIND_ASSIGN_BUG = "kind" + " = " + '"bug"'
+_KIND_OVERRIDE_MARKER = "guard: " + "kind-vocabulary-override"
+
+
+class TestDivergentKindVocabularyRule:
+    """Tests for the divergent-kind-vocabulary guardrail rule."""
+
+    @pytest.mark.unit
+    def test_flags_raw_kind_assignment_in_teleclaude(self, tmp_path: Path) -> None:
+        """A raw kind string assigned outside the canonical module is flagged."""
+        _write_file(
+            tmp_path,
+            "teleclaude/foo.py",
+            f"def f():\n    {_KIND_ASSIGN_TODO}\n",
+        )
+        result = _run_scanner(tmp_path)
+        assert result is not None
+        assert "divergent-kind-vocabulary" in result
+        assert "teleclaude/foo.py" in result
+
+    @pytest.mark.unit
+    def test_canonical_module_is_excluded(self, tmp_path: Path) -> None:
+        """Assignments inside teleclaude/types/todo_kind.py are allowed."""
+        _write_file(
+            tmp_path,
+            "teleclaude/types/todo_kind.py",
+            'TODO_KIND_TODO: str = "todo"\n',
+        )
+        result = _run_scanner(tmp_path)
+        assert result is None
+
+    @pytest.mark.unit
+    def test_exception_marker_suppresses_site(self, tmp_path: Path) -> None:
+        """A line tagged with the exception marker is allowed."""
+        _write_file(
+            tmp_path,
+            "teleclaude/foo.py",
+            f"def f():\n    # {_KIND_OVERRIDE_MARKER}\n    {_KIND_ASSIGN_BUG}\n",
+        )
+        result = _run_scanner(tmp_path)
+        assert result is None
+
+    @pytest.mark.unit
+    def test_comparison_not_flagged(self, tmp_path: Path) -> None:
+        """Equality comparisons (not assignments) are not flagged."""
+        _write_file(
+            tmp_path,
+            "teleclaude/foo.py",
+            'def f(kind):\n    return kind == "todo"\n',
+        )
+        result = _run_scanner(tmp_path)
+        assert result is None

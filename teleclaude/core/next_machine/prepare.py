@@ -164,7 +164,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     if not resolved_slug:
         guidance = await compose_agent_guidance(db)
         instruction = (
-            f"1. Create a new todo: `telec todo create <slug>` (use --kind feature|bug|refactor|migration|prepped).\n"
+            f"1. Create a new todo: `telec todo create <slug> <content> --kind feature|refactor|migration|todo|bug|prepped|draft`.\n"
             f"2. Or pick an existing slug from `telec todo list`.\n"
             f"3. Then call `telec todo prepare <slug>` to drive the lifecycle.\n\n"
             f"{guidance}"

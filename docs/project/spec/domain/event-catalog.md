@@ -195,7 +195,6 @@ spec body and flags it for catalog completion.
 
 | v1 event name                                              | v2 event name                                                           |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `domain.software-development.planning.todo_dumped`         | `workflow.todo.created`                                                 |
 | `domain.software-development.planning.todo_finalize_ready` | `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) |
 | `agent_runtime.session.spawn`                              | `agent_runtime.session.started`                                         |
 | `agent.restart_dispatched`                                 | `agent_runtime.agent.restarted`                                         |

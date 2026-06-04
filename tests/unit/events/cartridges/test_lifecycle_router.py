@@ -121,14 +121,7 @@ class TestLifecycleRouterDispatchPropagationSpecs:
     async def test_lane_dispatch_failure_propagates_from_process(self) -> None:
         """When the dispatch path raises, ``process`` must raise rather than return success."""
         cartridge = LifecycleRouterCartridge()
-        event = EventEnvelope(
-            event="domain.software-development.planning.todo_dumped",
-            source="test",
-            level=EventLevel.WORKFLOW,
-            domain="software-development",
-            visibility=EventVisibility.LOCAL,
-            payload={"slug": "my-slug", "kind": "todo", "project_root": "/p"},
-        )
+        event = _make_workflow_todo_created(kind="todo")
         ctx = MagicMock()
 
         failing_client = MagicMock()
@@ -302,14 +295,7 @@ async def test_workflow_todo_created_absent_pickup_requested_defaults_true() -> 
 @pytest.mark.asyncio
 async def test_unknown_kind_still_dispatches() -> None:
     cartridge = LifecycleRouterCartridge()
-    event = EventEnvelope(
-        event="domain.software-development.planning.todo_dumped",
-        source="test",
-        level=EventLevel.WORKFLOW,
-        domain="software-development",
-        visibility=EventVisibility.LOCAL,
-        payload={"slug": "my-slug", "kind": "unknown-lane", "project_root": "/p"},
-    )
+    event = _make_workflow_todo_created(kind="unknown-lane")
     ctx = MagicMock()
 
     mock_client = MagicMock()

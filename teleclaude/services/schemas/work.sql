@@ -13,7 +13,7 @@ CREATE TABLE work.roadmap (
     slug        TEXT NOT NULL UNIQUE,
     domain      TEXT NOT NULL DEFAULT 'sdlc',
     description TEXT NOT NULL DEFAULT '',
-    kind        TEXT NOT NULL DEFAULT 'feature',
+    kind        TEXT NOT NULL DEFAULT 'todo',
     "group"     TEXT,
     position    INTEGER NOT NULL DEFAULT 0,
     status      TEXT NOT NULL DEFAULT 'pending',

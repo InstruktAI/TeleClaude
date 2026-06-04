@@ -126,7 +126,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
-- **Lifecycle:** Created via `telec todo create <slug> <content>` (substantive — content required at creation; an empty-content invocation is refused and writes nothing) or `telec todo split` (child of a container). `telec todo dump` survives one transition window as a warning compatibility alias for `telec todo create` and produces the same substantive-create outcome. Advances through stages via the per-stage state machine. Reaches `delivered` via integration. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create <slug> <content> --kind <kind>` (content and kind required at creation; missing either is refused at the CLI and writes nothing) or `telec todo split` (child of a container). Advances through stages via the per-stage state machine. Reaches `delivered` via integration. Frozen aggregates move to icebox.
 
 #### Roadmap (aggregate)
 
@@ -349,23 +349,12 @@ And autonomous pickup consumers dispatch the relevant prepare/work entry
 #### UC-WFL-2: Empty-content creation is refused
 
 ```
-Given an operator (or agent) runs `telec todo create my-feature` with no content
+Given an operator (or agent) runs `telec todo create my-feature --kind feature` with no content
 When the workflow service receives the request
 Then it rejects with a typed empty-input error
 And writes no roadmap row, no todo_state row, no artifact row, and no artifact-version row
 And emits no workflow.todo.created event
 And no autonomous pickup is triggered
-```
-
-#### UC-WFL-2a: `telec todo dump` compatibility alias
-
-```
-Given the transition compatibility alias is enabled
-When the operator runs `telec todo dump my-feature "<content>"`
-Then the CLI emits a deprecation warning naming `telec todo create` as the replacement
-And forwards to the substantive-create path with the same arguments
-And the resulting persisted state is indistinguishable from `telec todo create my-feature "<content>"`
-And exactly one workflow.todo.created event is emitted (no double-dispatch)
 ```
 
 #### UC-WFL-2b: Surface (and optionally migrate) pre-cutover v1 skeleton rows
@@ -688,11 +677,11 @@ Then the TUI surfaces the primitive's structured reason via the existing TUI not
 
 ```
 Given a live todo exists for slug "<slug>"
-When the operator runs `telec workflow todo update <slug> [<content>] [--artifact <name>] [--after <slugs>] [--group <label>] [--description <text>] [--kind <kind>] [--prepped]`
+When the operator runs `telec workflow todo update <slug> [<content>] [--artifact <name>] [--after <slugs>] [--group <label>] [--description <text>] [--kind <kind>]`
 Then workflow applies all supplied fields in a single transaction
 And dependency inputs REPLACE the entire `after` set (not patch)
 And positional content writes a new artifact version (default kind `input`, or the kind named by `--artifact`)
-And `--prepped` writes content as the `implementation-plan` artifact and enforces the existing prepped HITL guard
+And `--artifact implementation-plan` writes content as the implementation plan artifact and enforces the existing prepped HITL guard when paired with kind=prepped
 And update can NEVER move lifecycle phase (phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs)
 And on success emits workflow.todo.updated with a change_summary listing the mutated fields
 And on any partial-failure rolls back so previous state is fully preserved
@@ -700,7 +689,7 @@ And on any partial-failure rolls back so previous state is fully preserved
 
 ```
 Given the operator runs update with mutually ambiguous content/artifact combinations
-(e.g., positional content with `--prepped` AND `--artifact <other>`)
+(e.g., positional content with incompatible artifact and kind combinations)
 When the workflow service validates the request
 Then it rejects with a typed ambiguous-update diagnostic and changes nothing
 ```
@@ -798,7 +787,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.
 - [`todo-management`](../feature/workflow/todo-management.md) — Per-project ordered todo-list access through todo-scoped commands; derived section ordering; delivery transition.
 - [`todo-icebox`](../feature/workflow/todo-icebox.md) — Frozen-but-recoverable state for Todo entries; iceboxed entries do not participate in dependency resolution.
-- [`todo-creation`](../feature/workflow/todo-creation.md) — `create`, `dump`, and `design` paths to scaffold a Todo, with `--draft` and `--prepped` modes plus bug-kind helpers that route to `/next-work`.
+- [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--kind prepped` skips prepare; bug-kind helpers route to `/next-work`.
 - [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
 - [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
 
@@ -829,7 +818,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - Todo rename is target behavior delivered by `telec-todo-rename`. Its rollback-tested atomic unit excludes terminal/audit and closed-but-revivable daemon reference reconciliation for `operations.slug`, `sessions.working_slug`, and `sessions.subdir`; those rows are repaired after commit on a best-effort, idempotent basis.
 - The state machine is a Rust crate (`crates/state_machine`) embedded by workflow. State machine state lives in `workflow.state_transitions`; transitions are persisted as the source of truth for phase advances.
 - Per-project isolation: each project has its own `.teleclaude/todos.db` (v1 SQLite) or its own Postgres schema (v2, possibly `<project>_workflow`). No cross-project queries.
-- `prepped` kind todos skip the prepare lifecycle entirely. Used when a human or agent has authored a complete implementation plan and wants to jump to build. Per the `--prepped` flag's policy: HUMAN-IN-THE-LOOP REQUIRED.
+- `prepped` kind todos skip the prepare lifecycle entirely. Used when a human or agent has authored a complete implementation plan and wants to jump to build. Use `--kind prepped` on `telec todo create`. HUMAN-IN-THE-LOOP REQUIRED.
 - `bug` kind todos skip the demo phase during finalize and require the orchestrator to manually mark `build complete` before advancing (per agent memory gotcha).
 - The orchestrator (`teleclaude/core/next_machine/` in v1) is a CONSUMER of workflow, not part of it. The orchestrator dispatches sessions, reads workflow state, calls workflow mutations. Workflow itself has no opinion about WHO advances todos — it enforces invariants on transitions and exposes events.
 - Reviewer findings artifacts are workflow artifacts (per the canonical list) even though they're produced by review sessions. The state machine treats `review-findings` artifact presence + verdict as the trigger for advance.

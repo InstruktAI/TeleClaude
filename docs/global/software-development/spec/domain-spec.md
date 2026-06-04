@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'global'
 visibility: 'public'
-description: 'Template every bounded context''s canonical domain spec must follow — ubiquitous language, aggregates, events, use cases, context map position.'
+description: "Template every bounded context's canonical domain spec must follow — ubiquitous language, aggregates, events, use cases, context map position."
 ---
 
 # Domain Spec — Spec
@@ -80,7 +80,7 @@ Example:
   - An artifact's version history is append-only.
   - A todo cannot move to `delivered` stage without a non-empty `delivery_commit`.
 - **Identifier:** slug (kebab-case, unique per project)
-- **Lifecycle:** Created via `telec todo create` (content required). `telec todo dump` is a deprecated compatibility alias. Reaches terminal `delivered` after integration. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create <slug> <content> --kind <kind>` (both content and kind required). Reaches terminal `delivered` after integration. Frozen aggregates move to icebox.
 ```
 
 #### Domain events emitted

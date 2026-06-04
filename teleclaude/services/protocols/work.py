@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from teleclaude.types.todo_kind import TODO_KIND_FEATURE
+
 type StateValue = str | int | float | bool | None | dict[str, Any] | list[Any]  # guard: loose-dict
 
 
@@ -71,7 +73,7 @@ class WorkWriter(Protocol):
         *,
         domain: str = "sdlc",
         description: str = "",
-        kind: str = "feature",
+        kind: str = TODO_KIND_FEATURE,
         group: str | None = None,
         before: str | None = None,
         after: str | None = None,

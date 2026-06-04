@@ -24,15 +24,6 @@ def register_software_development(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
-            event_type="domain.software-development.planning.todo_dumped",
-            description="Legacy event: todo input captured. Superseded by workflow.todo.created (emitted by the API route). Retained for backward compatibility with in-flight subscribers.",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "kind"]),
-        )
-    )
-    catalog.register(
-        EventSchema(
             event_type="domain.software-development.planning.todo_activated",
             description="A work item moved to active state",
             default_level=EventLevel.WORKFLOW,

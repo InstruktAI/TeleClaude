@@ -26,6 +26,7 @@ from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.next_machine.lifecycle import is_ready_for_work
+from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_TODO
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
@@ -313,7 +314,7 @@ class PreparationViewActionsMixin:
             request = TodoDumpRequest(
                 slug=slug,
                 content=content.strip(),
-                kind="bug" if kind == "bug" else None,
+                kind=TODO_KIND_BUG if kind == TODO_KIND_BUG else None,
                 cwd=project_root,
             )
 
@@ -365,7 +366,7 @@ class PreparationViewActionsMixin:
 
         def _on_result(slug: str | None) -> None:
             if slug:
-                self._create_item(slug, kind="todo")
+                self._create_item(slug, kind=TODO_KIND_TODO)
 
         self.app.push_screen(  # type: ignore[attr-defined]
             CreateSlugModal(title="New Todo"),
@@ -377,7 +378,7 @@ class PreparationViewActionsMixin:
 
         def _on_result(slug: str | None) -> None:
             if slug:
-                self._create_item(slug, kind="bug")
+                self._create_item(slug, kind=TODO_KIND_BUG)
 
         self.app.push_screen(  # type: ignore[attr-defined]
             CreateSlugModal(title="New Bug", placeholder="my-new-bug"),
@@ -493,7 +494,7 @@ class PreparationViewActionsMixin:
                 return
             file_names = {name.lower() for name in todo_row.todo.files}
             is_bug = "bug" in file_names or "bug.md" in file_names
-            kind = "bug" if is_bug else "todo"
+            kind = TODO_KIND_BUG if is_bug else TODO_KIND_TODO
             ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=todo_row.todo.lifecycle_phase)
             if not ready:
                 self.app.notify(

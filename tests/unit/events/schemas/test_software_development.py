@@ -12,7 +12,6 @@ _TODO_FINALIZE_READY_FIELDS = ["slug", "branch", "sha", "worker_session_id", "re
 _EXPECTED_TYPES = {
     # Planning
     "domain.software-development.planning.todo_created",
-    "domain.software-development.planning.todo_dumped",
     "domain.software-development.planning.todo_activated",
     _TODO_FINALIZE_READY_EVENT,
     "domain.software-development.planning.artifact_changed",

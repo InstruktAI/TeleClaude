@@ -114,7 +114,7 @@ reintroduces any of these patterns is rejected.
 
 **6. Bureaucratic empty rows.**
 
-- _v1_: `telec todo create <slug>` mints a row with no input artifact —
+- _v1_: a content-free todo creation command minted a row with no input artifact —
   "a draft todo skeleton with no input artifact." A todo without input has
   no purpose.
 - _Failure_: Storage holds entities whose existence isn't justified by

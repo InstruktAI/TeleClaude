@@ -7,7 +7,7 @@ import json as _json
 import sys
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, cast
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
@@ -36,6 +36,7 @@ from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd, resolve_state_root
 from teleclaude.session_identity import get_session_id
 from teleclaude.slug import validate_slug
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TodoDumpKind
 
 if TYPE_CHECKING:
     pass
@@ -46,7 +47,6 @@ __all__ = [
     "_handle_todo_create",
     "_handle_todo_deliver",
     "_handle_todo_design",
-    "_handle_todo_dump",
     "_handle_todo_freeze",
     "_handle_todo_list",
     "_handle_todo_mark_phase",
@@ -178,7 +178,6 @@ def _handle_todo(args: list[str]) -> None:
         "create": _handle_todo_create,
         "deliver": _handle_todo_deliver,
         "design": _handle_todo_design,
-        "dump": _handle_todo_dump,
         "freeze": _handle_todo_freeze,
         "integrate": handle_todo_integrate,
         "list": _handle_todo_list,
@@ -339,12 +338,14 @@ def _handle_todo_deliver(args: list[str]) -> None:
 
 
 def _handle_todo_create(args: list[str]) -> None:
-    """Handle telec todo create <slug> <content> [--after <deps>] [--silent] [--prepped]."""
+    """Handle telec todo create <slug> <content> --kind <kind> [--after <deps>] [--silent]."""
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
     silent = False
-    prepped = False
+    kind_value: str | None = None
+
+    _VALID_KINDS_STR = "|".join(sorted(ALL_DUMP_KINDS))
 
     i = 0
     while i < len(args):
@@ -355,9 +356,13 @@ def _handle_todo_create(args: list[str]) -> None:
         elif arg == "--silent":
             silent = True
             i += 1
-        elif arg == "--prepped":
-            prepped = True
-            i += 1
+        elif arg == "--kind" and i + 1 < len(args):
+            kind_value = args[i + 1]
+            i += 2
+        elif arg == "--kind":
+            print(f"Error: --kind requires a value ({_VALID_KINDS_STR})")
+            print(_usage("todo", "create"))
+            raise SystemExit(1)
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "create"))
@@ -382,7 +387,17 @@ def _handle_todo_create(args: list[str]) -> None:
         print(_usage("todo", "create"))
         raise SystemExit(1)
 
-    dump_kind: Literal["bug", "draft", "prepped"] | None = "prepped" if prepped else None
+    if kind_value is None:
+        print(f"Error: --kind is required. Valid values: {_VALID_KINDS_STR}")
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
+
+    if kind_value not in ALL_DUMP_KINDS:
+        print(f"Error: invalid --kind '{kind_value}'. Valid values: {_VALID_KINDS_STR}")
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
+
+    dump_kind = cast(TodoDumpKind, kind_value)
 
     request = TodoDumpRequest(
         slug=slug,
@@ -400,7 +415,8 @@ def _handle_todo_create(args: list[str]) -> None:
     )
 
     if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Created todo: {slug}" + (" (prepped, ready for build)" if prepped else ""))
+        suffix = f" (kind={dump_kind})" if dump_kind != "todo" else ""
+        print(f"Created todo: {slug}{suffix}")
     else:
         print(f"Error: unexpected response: {result}")
         raise SystemExit(1)
@@ -409,13 +425,6 @@ def _handle_todo_create(args: list[str]) -> None:
 def _handle_todo_design(args: list[str]) -> None:
     """Handle telec todo design [<slug>]."""
     handle_todo_design(args)
-
-
-def _handle_todo_dump(args: list[str]) -> None:
-    """DEPRECATED — alias for telec todo create. Use telec todo create instead."""
-    print("Warning: 'telec todo dump' is deprecated. Use 'telec todo create' instead.", file=sys.stderr)
-    translated = ["--silent" if arg == "--draft" else arg for arg in args]
-    _handle_todo_create(translated)
 
 
 def _handle_todo_split(args: list[str]) -> None:

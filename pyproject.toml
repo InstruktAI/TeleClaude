@@ -350,6 +350,7 @@
     "tests/unit/adapters/discord/test_headless_title.py",                          # Cross-module: Discord title prefix spans channel_ops.py and Session metadata.
     "tests/unit/adapters/telegram/test_send_message_topic_guard.py",               # Cross-module: Telegram topic guard spans message_ops.py and adapter metadata.
     "tests/unit/cli/telec/handlers/test_todo_artifacts.py",                        # Deferred split: todo artifact CLI assertions share handlers/todo.py with other specs.
+    "tests/unit/cli/telec/handlers/test_todo_create_kind_specs.py",               # Deferred split: create --kind specs cover handlers/todo.py; no standalone todo_create_kind_specs.py companion.
     "tests/unit/cli/telec/handlers/test_todo_lifecycle_dump_specs.py",             # Deferred split: dump event contract spans handlers/todo.py and event envelope.
     "tests/unit/cli/telec/test_surface_export.py",                                 # Deferred split: surface export assertions belong with occupied cli/telec/surface.py companion.
     "tests/unit/cli/tui/test_pane_resilience_under_ws_reconnect.py",               # Cross-module: pane survival across WS reconnect spans SessionsView, TmuxPaneManager catalog, and per-computer SessionsInitialEvent merge in TelecAppWsMixin.
@@ -384,7 +385,6 @@
     "tests/unit/core/todos_db/test_mutation_callback.py",                          # Cross-module: mutation callback spans state_io singleton access and TodosDb hooks.
     "tests/unit/core/todos_db/test_sqlalchemy_engine.py",                          # Package-boundary: todos_db package engine contract is exposed through package-level TodosDb.
     "tests/unit/events/cartridges/test_todo_lifecycle_router_specs.py",            # Deferred decision: router spec imports only envelope types; ownership needs event-router split.
-    "tests/unit/events/schemas/test_todo_dumped_kind_specs.py",                    # Cross-module: dumped-kind schema spans event catalog, envelope, and software-development schema registration.
     "tests/unit/hooks/checkpoint/test__init__.py",                                 # Package-boundary: hooks.checkpoint public exports compose checkpoint messages across helper internals.
     "tests/unit/hooks/receiver/test__init__.py",                                   # Package-boundary: hooks.receiver public entrypoints span receiver package helpers and database paths.
     "tests/unit/install/test_git_wrapper_permissions.py",                          # Mapper-gap: shell wrapper under teleclaude/install/wrappers has no Python source companion.

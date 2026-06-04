@@ -8,7 +8,9 @@ from teleclaude.api.kind_mapper import (
     KIND_BUG,
     KIND_FEATURE,
     KIND_MIGRATION,
+    KIND_PREPPED,
     KIND_REFACTOR,
+    KIND_TODO,
     map_v1_kind_to_canonical,
 )
 
@@ -27,8 +29,8 @@ class TestMapV1KindToCanonical:
         assert map_v1_kind_to_canonical("bug") == KIND_BUG
 
     @pytest.mark.unit
-    def test_prepped_maps_to_feature(self) -> None:
-        assert map_v1_kind_to_canonical("prepped") == KIND_FEATURE
+    def test_prepped_passes_through(self) -> None:
+        assert map_v1_kind_to_canonical("prepped") == KIND_PREPPED
 
     @pytest.mark.unit
     def test_draft_maps_to_feature(self) -> None:
@@ -45,3 +47,7 @@ class TestMapV1KindToCanonical:
     @pytest.mark.unit
     def test_canonical_migration_passes_through(self) -> None:
         assert map_v1_kind_to_canonical("migration") == KIND_MIGRATION
+
+    @pytest.mark.unit
+    def test_canonical_todo_passes_through(self) -> None:
+        assert map_v1_kind_to_canonical("todo") == KIND_TODO

@@ -286,7 +286,6 @@ class TestEventBusRedisMigrationSpecs:
         cartridge consumer code paths.
         """
         cartridge_event_identifiers = {
-            "todo_dumped",
             "agent_restart_dispatched",
             "session_close_completed",
             "session_escalated",

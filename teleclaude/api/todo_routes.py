@@ -501,14 +501,14 @@ async def diff_artifact(
 
 
 @router.post("/dump")
-async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
+async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
     """Create a todo: state + artifact + todo entry in todos.db.
 
     Kind variants (see TodoDumpRequest for the full contract):
       - None (default): writes an "input" artifact; enters the normal prepare lifecycle.
       - "bug": writes a "bug" artifact; stamps DOR/grounding/verdicts via
         apply_prepared_state so the canonical lifecycle is immediately `prepared`.
-      - "draft": writes an "input" artifact with kind="draft" and lifecycle_phase="draft"; bypasses lifecycle.
+      - "draft": writes an "input" artifact with lifecycle_phase="draft"; bypasses lifecycle.
       - "prepped": writes the content as an "implementation-plan" artifact; stamps
         all prepare primitives so the todo is immediately ready for build.
     """
@@ -525,7 +525,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
 
         state = default_state()
-        if request.kind in ("bug", "draft", "prepped"):
+        if request.kind is not None:
             state["kind"] = request.kind
         if request.kind == "draft":
             state["lifecycle_phase"] = LifecyclePhase.DRAFT.value
@@ -542,7 +542,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                         slug,
                         ARTIFACT_BUG,
                         request.content,
-                        updated_by="api.todo.dump.bug",
+                        updated_by="api.todo.create.bug",
                         session=session,
                     )
                 elif request.kind == "prepped":
@@ -553,7 +553,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                         slug,
                         ARTIFACT_IMPLEMENTATION_PLAN,
                         plan_content,
-                        updated_by="api.todo.dump.prepped",
+                        updated_by="api.todo.create.prepped",
                         session=session,
                     )
                 else:
@@ -564,7 +564,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                         slug,
                         ARTIFACT_INPUT,
                         input_content,
-                        updated_by="api.todo.dump",
+                        updated_by="api.todo.create",
                         session=session,
                     )
 
@@ -589,7 +589,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
         if request.kind != "draft":
             await emit_event(
                 event="workflow.todo.created",
-                source="api.todo.dump",
+                source="api.todo.create",
                 level=EventLevel.WORKFLOW,
                 domain="software-development",
                 payload={
@@ -604,7 +604,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
             )
 
         logger.info(
-            "todo dump completed",
+            "todo creation completed",
             slug=slug,
             kind=request.kind or "todo",
             cwd=effective_cwd,
@@ -617,7 +617,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
     except HTTPException:
         raise
     except Exception:
-        logger.error("todo_dump failed for slug=%s", slug, exc_info=True)
+        logger.error("todo creation failed for slug=%s", slug, exc_info=True)
         raise
 
 

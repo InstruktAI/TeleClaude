@@ -1,4 +1,4 @@
-"""Tests for telec todo dump/remove/split CLI handlers (DB-backed)."""
+"""Tests for telec todo create/remove/split and other CLI handlers (DB-backed)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_create,
     _handle_todo_deliver,
     _handle_todo_design,
-    _handle_todo_dump,
     _handle_todo_freeze,
     _handle_todo_reconcile,
     _handle_todo_remove,
@@ -34,8 +33,7 @@ _MODULE = "teleclaude.cli.telec.handlers.todo"
 _RENAME_RESULT = "renamed old-slug->new-slug (todos.db, delivered_by:1, worktree)"
 
 
-_DEPRECATION_KEYWORD = "deprecated"
-_KIND_PREPPED = "prepped"
+_KIND_TODO = "todo"
 _EVENTS_EMIT_PATH = "/events/emit"
 _ACTIVE_SLUG = "active-item"
 _DEPENDENCY_SLUG = "dependency-item"
@@ -70,62 +68,6 @@ def _entry_status(database: TodosDb, slug: str) -> tuple[str, str | None]:
         return entry.status, entry.ready_since
 
 
-class TestHandleTodoDump:
-    """telec todo dump is a deprecation alias for telec todo create."""
-
-    def test_dump_emits_deprecation_warning_and_forwards_to_create(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        captured: list[dict] = []
-        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
-        monkeypatch.setattr(
-            f"{_MODULE}.tool_api_request",
-            lambda method, path, **kw: captured.append(kw.get("json_body", {})) or {"status": "ok"},
-        )
-        _handle_todo_dump([_TODO_SLUG, _TODO_CONTENT])
-        err = capsys.readouterr().err
-        assert err
-        assert _DEPRECATION_KEYWORD in err.lower()
-        assert captured
-
-    def test_dump_missing_args_exits(self) -> None:
-        with pytest.raises(SystemExit):
-            _handle_todo_dump(["only-slug"])
-
-    def test_dump_draft_maps_to_silent_in_create(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        captured: list[dict] = []
-        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
-        monkeypatch.setattr(
-            f"{_MODULE}.tool_api_request",
-            lambda method, path, **kw: captured.append(kw.get("json_body", {})) or {"status": "ok"},
-        )
-        _handle_todo_dump([_TODO_SLUG, _TODO_CONTENT, "--draft"])
-        assert captured
-        assert captured[0].get("silent") is True
-
-    def test_dump_prepped_writes_implementation_plan(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        captured: list[dict] = []
-        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
-        monkeypatch.setattr(
-            f"{_MODULE}.tool_api_request",
-            lambda method, path, **kw: captured.append(kw.get("json_body", {})) or {"status": "ok"},
-        )
-        _handle_todo_dump([_TODO_SLUG, _TODO_CONTENT, "--prepped"])
-        assert captured
-        assert captured[0].get("kind") == _KIND_PREPPED
-
-    def test_cli_handler_no_longer_emits_planning_event(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        api_calls: list[tuple[str, str]] = []
-        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
-        monkeypatch.setattr(
-            f"{_MODULE}.tool_api_request",
-            lambda method, path, **kw: api_calls.append((method, path)) or {"status": "ok"},
-        )
-        _handle_todo_dump([_TODO_SLUG, _TODO_CONTENT])
-        paths = [p for _, p in api_calls]
-        assert _EVENTS_EMIT_PATH not in paths
-
-
 _TODO_CONTENT = "Implement the feature"
 _TODO_SLUG = "my-slug"
 _API_DUMP_PATH = "/todos/dump"
@@ -155,18 +97,29 @@ class _DeferredTaskRegistry:
 
 
 class TestHandleTodoCreate:
-    """telec todo create <slug> <content> [--silent] [--prepped] [--after deps]."""
+    """telec todo create <slug> <content> --kind <kind> [--silent] [--after deps]."""
 
-    def test_create_with_content_routes_to_substantive_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_create_with_kind_and_content_routes_to_api(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: list[dict] = []
         monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
         monkeypatch.setattr(
             f"{_MODULE}.tool_api_request",
             lambda method, path, **kw: captured.append(kw.get("json_body", {})) or {"status": "ok"},
         )
-        _handle_todo_create([_TODO_SLUG, _TODO_CONTENT])
+        _handle_todo_create([_TODO_SLUG, _TODO_CONTENT, "--kind", "feature"])
         assert captured
         assert captured[0].get("content") == _TODO_CONTENT
+
+    def test_create_without_kind_fails_with_usage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        api_calls: list = []
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
+        monkeypatch.setattr(
+            f"{_MODULE}.tool_api_request",
+            lambda *a, **kw: api_calls.append(a),
+        )
+        with pytest.raises(SystemExit):
+            _handle_todo_create([_TODO_SLUG, _TODO_CONTENT])
+        assert not api_calls
 
     def test_create_without_content_fails_clearly_and_writes_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         api_calls: list = []
@@ -186,20 +139,9 @@ class TestHandleTodoCreate:
             f"{_MODULE}.tool_api_request",
             lambda method, path, **kw: captured.append(kw.get("json_body", {})) or {"status": "ok"},
         )
-        _handle_todo_create([_TODO_SLUG, _TODO_CONTENT, "--silent"])
+        _handle_todo_create([_TODO_SLUG, _TODO_CONTENT, "--kind", "feature", "--silent"])
         assert captured
         assert captured[0].get("silent") is True
-
-    def test_create_prepped_forwards_kind_prepped_to_api(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        captured: list[dict] = []
-        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
-        monkeypatch.setattr(
-            f"{_MODULE}.tool_api_request",
-            lambda method, path, **kw: captured.append(kw.get("json_body", {})) or {"status": "ok"},
-        )
-        _handle_todo_create([_TODO_SLUG, _TODO_CONTENT, "--prepped"])
-        assert captured
-        assert captured[0].get("kind") == "prepped"
 
 
 class TestHandleTodoDesign:

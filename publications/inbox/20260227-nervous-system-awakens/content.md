@@ -107,7 +107,7 @@ This architecture unlocks something Maurice calls "the five-minute paradigm." To
 we have `telec todo create` — it scaffolds a folder and waits for you to iterate.
 Manual. Passive.
 
-What we're building is `telec todo dump`. You brain-dump an idea in five minutes and
+What we're building is quick todo capture. You brain-dump an idea in five minutes and
 walk away. The dump fires a notification. An agent picks it up, fleshes out
 requirements, writes an implementation plan, runs DOR assessment. By the time you come
 back, your five-minute dump is a fully prepared work item. Or it's flagged with

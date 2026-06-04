@@ -118,7 +118,7 @@ subcommands:
     description: 'Manage work items.'
     subcommands:
       create:
-        description: 'Create a substantive todo with content. Content is REQUIRED — an empty-content invocation is refused at the workflow service boundary and writes nothing (no roadmap row, no state row, no artifact row, no artifact-version row, no workflow.todo.created event). Replaces the v1 empty-skeleton path that produced misleading (stage=draft, phase=draft, state=in_progress) rows with no input artifact. The substantive-create outcome is identical regardless of which surface (`telec todo create`, the `telec todo dump` deprecation alias, or `telec workflow todo create`) was invoked. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-1, UC-WFL-2.)'
+        description: 'Create a substantive todo with content. Content is REQUIRED — an empty-content invocation is refused at the workflow service boundary and writes nothing (no roadmap row, no state row, no artifact row, no artifact-version row, no workflow.todo.created event). Replaces the v1 empty-skeleton path that produced misleading (stage=draft, phase=draft, state=in_progress) rows with no input artifact. The substantive-create outcome is identical regardless of which surface (`telec todo create` or `telec workflow todo create`) was invoked. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-1, UC-WFL-2.)'
         args:
           - slug: 'string'
           - content: 'string (REQUIRED)'
@@ -128,7 +128,6 @@ subcommands:
           --kind: 'Todo kind (feature | bug | refactor | migration | prepped).'
           --group: 'Optional grouping label for the todo entry.'
           --description: 'Optional todo-entry description.'
-          --prepped: 'Write content as `implementation-plan` (skip prepare). HITL guard enforced.'
           --silent: 'Persist without triggering autonomous pickup dispatch. The workflow.todo.created event is still emitted with creation_mode=silent and pickup_requested=false so cache/audit consumers observe the new aggregate; only the pickup dispatch consumers gate themselves on pickup_requested. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: UC-WFL-19.)'
       list:
         description: 'List todo entries grouped into sections (active, optionally delivered, optionally icebox, optionally removed). Default output shows only active entries; each visibility section opts in via its own flag pair (`--include-*` to interleave, `--*-only` to isolate). Each section''s tree is independent — cross-section edges drop out automatically. Soft-removed entries (status=removed) are hidden by default and only appear under the explicit `--include-removed` / `--removed-only` opt-in (UC-WFL-14); each removed row renders with its durable row id and `removed_at` age so the operator sees how much grace window remains. (status: mixed — active/delivered/icebox visibility is `actual`; the removed-row visibility opt-in is `target — delivered_by roadmap-trash-reveal-ui`.)'
@@ -143,17 +142,6 @@ subcommands:
           --json: 'Emit a sectioned JSON object keyed by section name.'
         notes:
           - 'The --include-removed / --removed-only reveal is strictly opt-in; the default and every other read surface continue to hide soft-removed entries (workflow domain spec, "Removed entries are invisible to every default read path" invariant).'
-      dump:
-        description: 'DEPRECATED — warning compatibility alias for `telec todo create` retained for one transition window. Emits a deprecation diagnostic naming `telec todo create` and forwards to the substantive-create path; persisted state is indistinguishable from `telec todo create <slug> <content>`. Removed after the transition window closes. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-2a.)'
-        args:
-          - slug: 'string'
-          - content: 'string (REQUIRED)'
-        flags:
-          --project-root: 'Project root (default: cwd).'
-          --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
-          --kind: 'Todo kind.'
-          --prepped: 'Forwarded to create.'
-          --silent: 'Forwarded to create.'
       mark-phase:
         description: 'Operator override for the authoritative lifecycle phase field.'
         args:
@@ -295,12 +283,8 @@ subcommands:
               --description: 'Optional todo-entry description.'
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
               --input-file: 'Read content from path instead of positional argument.'
-              # --prepped is intentionally NOT on the v2 workflow todo create surface in
-              # the v2-workflow-creation-cleanup delivery. v1 `telec todo create --prepped`
-              # continues to ship via the existing v1 /todos/dump kind=prepped path
-              # (v1-workflow-creation-hardening); a future delivery brings --prepped to v2.
           update:
-            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); `--prepped` writes content as `implementation-plan` and enforces the prepped HITL guard. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through the writable-allowlist gate (retired artifact kinds — test-specs, spec-review-findings — are refused). On success emits workflow.todo.updated with a change_summary listing the mutated fields. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
+            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); implementation-plan content is selected explicitly with `--artifact implementation-plan` plus the appropriate kind. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through the writable-allowlist gate (retired artifact kinds — test-specs, spec-review-findings — are refused). On success emits workflow.todo.updated with a change_summary listing the mutated fields. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
             args:
               - slug: 'string'
               - content: 'string (optional)'
@@ -311,7 +295,6 @@ subcommands:
               --group: 'New grouping label.'
               --description: 'New todo-entry description.'
               --kind: 'New todo kind (validated against the canonical set).'
-              --prepped: 'Write content as `implementation-plan`; HITL guard enforced.'
           rename:
             description: 'Workflow-namespace alias for `telec todo rename`. Atomically rename a live todo''s slug across todos.db, doc-snippet delivered_by frontmatter, and the on-disk worktree/branch/workspace. (status: target — delivered_by telec-todo-rename + v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-13.)'
             args:

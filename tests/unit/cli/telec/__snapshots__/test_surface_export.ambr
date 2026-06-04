@@ -341,18 +341,19 @@
   
   Create a todo with substantive content
   
-  **Usage:** `telec todo create <slug> <content> [--after <deps>] [--silent] [--prepped]`
+  **Usage:** `telec todo create <slug> <content> --kind <kind> [--after <deps>] [--silent]`
   
   **Flags:**
   
   - `--after`: Comma-separated dependency slugs
+  - `--kind`: Required. Work category and lifecycle lane: feature|refactor|migration|todo (→ prepare lane), bug (→ bug-fix lane), prepped (content is a complete plan; skip prepare), draft (park idea; no lifecycle).
   - `--silent`: Create silently — suppress pickup notification
-  - `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking.
   
   **Notes:**
   
   - Creates the todo entry, canonical state, and stores content as the input artifact.
   - Emits workflow.todo.created for autonomous pickup unless --silent is set.
+  - --kind is required; use --kind=prepped to skip prepare (HUMAN-IN-THE-LOOP required).
   
   ### `telec todo list`
   
@@ -550,11 +551,23 @@
   
   Show diagnostic state payload for a todo; artifact bodies are omitted by default
   
-  **Usage:** `telec todo show <slug> [--include-artifact-content]`
+  **Usage:** `telec todo show <slug> [--include-removed] [--include-artifact-content]`
   
   **Flags:**
   
+  - `--include-removed`: Also search soft-removed entries
   - `--include-artifact-content`: Include artifact body content under artifact_content in the payload
+  
+  ### `telec todo reactivate`
+  
+  Restore a soft-removed todo
+  
+  **Usage:** `telec todo reactivate <slug>`
+  
+  **Notes:**
+  
+  - Resolves the slug against soft-removed rows and restores the uniquely matching entry.
+  - On success: status reverts to prev_status and outgoing dependencies are replayed.
   
   ### `telec todo stamp`
   

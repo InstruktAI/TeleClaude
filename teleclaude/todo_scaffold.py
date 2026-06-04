@@ -21,6 +21,7 @@ from teleclaude.hooks.receiver._session import _create_sync_engine
 from teleclaude.session_identity import get_session_id as _get_session_id
 from teleclaude.session_scoping import resolve_scoped_paths
 from teleclaude.slug import validate_slug
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
 
 
 class TranscriptUnavailable(ValueError):
@@ -75,14 +76,14 @@ def create_draft_skeleton(
     *,
     content: str | None = None,
     after: list[str] | None = None,
-    kind: str = "feature",
+    kind: str = TODO_KIND_DEFAULT,
 ) -> str:
     """Create a draft todo skeleton with no input artifact."""
     if not content or not content.strip():
         raise ValueError("content must not be empty")
     validate_slug(slug)
     slug = slug.strip()
-    if kind not in {"feature", "bug", "refactor", "migration", "prepped"}:
+    if kind not in ALL_DUMP_KINDS:
         raise ValueError(f"Unknown todo kind: {kind!r}")
 
     db = get_todos_db_sync(project_root)

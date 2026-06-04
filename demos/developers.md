@@ -363,7 +363,7 @@ input.md                  Worktree created            Merge to main
 
 ```bash
 # Create a new todo
-telec todo create my-feature
+telec todo create my-feature "Describe the work" --kind feature
 
 # Check the todo list
 telec todo list
@@ -597,7 +597,7 @@ telec todo list
 telec todo list
 
 # Add a new entry
-telec todo create my-new-feature "New feature"
+telec todo create my-new-feature "New feature" --kind feature
 
 # Set dependencies
 telec todo set-deps my-new-feature --after prerequisite-feature
@@ -887,7 +887,7 @@ telec config get business.domains
 | `telec sessions run --command /next-build --args slug` | Dispatch a worker              |
 | `telec docs index`                                     | List available doc snippets    |
 | `telec docs get <id>`                                  | Fetch snippet content          |
-| `telec todo create <slug>`                             | Create a new todo              |
+| `telec todo create <slug> <content> --kind <value>`    | Create a new todo              |
 | `telec todo prepare <slug>`                            | Run Phase A (prepare)          |
 | `telec todo work <slug>`                               | Run Phase B (build/review/fix) |
 | `telec todo integrate <slug>`                          | Run Phase C (merge to main)    |

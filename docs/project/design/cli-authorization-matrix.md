@@ -109,7 +109,6 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec todo stamp`            | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Stamping verdicts and finalize-ready is state machine management.                                                                                                                                                             |
 | `telec todo set-deps`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is work planning. Same as prepare/work.                                                                                                                                                                  |
 | `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                                                                                                                                    |
-| `telec todo dump`             | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | **Deprecated** — compatibility alias for `telec todo create`. Retained for transition; prefer `telec todo create`.                                                                                                            |
 
 ### Todo List Management
 
@@ -205,7 +204,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo reactivate`       | Contributors, newcomers, customers          |
 | `telec todo verify-artifacts` | Customers                                   |
-| `telec todo dump`             | Newcomers, customers (**deprecated** alias) |
 | `telec todo list`             | Customers                                   |
 | `telec todo freeze`           | Contributors, newcomers, customers          |
 | `telec todo unfreeze`         | Contributors, newcomers, customers          |

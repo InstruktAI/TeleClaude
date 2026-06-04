@@ -278,7 +278,7 @@ The MVP is done when ALL of these hold:
 3. `cargo clippy --all-targets -- -D warnings` passes.
 4. `make pg-up` brings up Postgres + Redis; `cargo run --bin telec-cli
 -- todo list` succeeds (returns empty list).
-5. `telec todo create my-test "<input>"` creates a todo in Postgres
+5. `telec todo create my-test "<input>" --kind feature` creates a todo in Postgres
    workflow schema; emits `workflow.todo.created` to Redis.
 6. v1 TUI (running unchanged) displays the new todo after the daemon
    receives the Redis event.

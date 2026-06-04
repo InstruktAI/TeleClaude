@@ -546,7 +546,7 @@ def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
 def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Stamp all authoritative state required to make a todo `prepared`.
 
-    Fast-track path used by prepped ``telec todo dump`` to short-circuit
+    Fast-track path used by ``--kind prepped`` to short-circuit
     the full prepare lifecycle.
     Validates that the PRD (or legacy requirements) and implementation-plan artifacts exist and
     that a git HEAD is reachable BEFORE any state is persisted. Only after
@@ -758,13 +758,13 @@ def has_pending_deferrals(cwd: str, slug: str) -> bool:
 
 
 def is_bug_todo(cwd: str, slug: str) -> bool:
-    """Check if a todo is a bug (kind='bug' in state.yaml)."""
+    """Return True when the todo state has kind == KIND_BUG."""
     state = read_phase_state(cwd, slug)
     return state.get("kind") == KIND_BUG
 
 
 def is_prepped_todo(cwd: str, slug: str) -> bool:
-    """Check if a todo entered the lifecycle pre-prepared (kind='prepped').
+    """Return True when the todo state has kind == KIND_PREPPED.
 
     Prepped todos were born with a complete implementation plan and skipped the
     prepare phase entirely. They have no PRD artifact — the plan is the sole spec.

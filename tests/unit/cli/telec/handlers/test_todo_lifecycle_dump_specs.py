@@ -1,14 +1,13 @@
 """Test spec for work-cartridge-lifecycle-routing CLI entry paths.
 
-These specs pin the dump-entry side of the lifecycle router:
+These specs pin the bugs-entry side of the lifecycle router:
 
-- ``--draft`` / ``--silent`` suppresses emission;
 - ``bugs report`` no longer launches work sessions directly from the CLI; and
 - the bug-lane chain routes through the lifecycle router to ``/next-work`` when
   the captured dump body is fed back into the router.
 
-Event emission moved server-side: the API route emits ``workflow.todo.created``
-after a successful dump; the CLI no longer calls ``/events/emit``.
+Event emission is server-side: the API route emits ``workflow.todo.created``
+after a successful creation; the CLI never calls ``/events/emit``.
 """
 
 from __future__ import annotations
@@ -23,14 +22,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from teleclaude.cli.telec.handlers.todo import _handle_todo_dump
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 pytestmark = [
     pytest.mark.unit,
 ]
 
-_TODO_MODULE = "teleclaude.cli.telec.handlers.todo"
 bugs = importlib.import_module("teleclaude.cli.telec.handlers.bugs")
 
 
@@ -153,15 +150,6 @@ def _assert_bug_chain_routes(
     assert router_launch.kwargs is not None
     assert router_launch.kwargs["command"] == "/next-work"
     assert router_launch.kwargs["args"] == expected_slug
-
-
-def test_todo_dump_silent_suppresses_pickup() -> None:
-    """--draft (→ --silent) causes a single /todos/dump call with no pickup event."""
-    with patch(f"{_TODO_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
-        _handle_todo_dump(["my-slug", "my content", "--draft"])
-
-    called_paths = [call.args[1] for call in mock_api.call_args_list]
-    assert called_paths == ["/todos/dump"]
 
 
 def test_bugs_create_chain_routes_through_lifecycle_router_to_next_work() -> None:

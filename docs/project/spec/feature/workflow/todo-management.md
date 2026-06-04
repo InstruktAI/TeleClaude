@@ -37,7 +37,7 @@ And "telec todo list --json" emits "{}"
 
 ```
 Given an empty todo list
-When the operator runs "telec todo create new-feature 'do the thing' --description 'do the thing'"
+When the operator runs "telec todo create new-feature 'do the thing' --kind feature --description 'do the thing'"
 Then a live roadmap row is inserted with status="active"
 And a stable UUID is assigned as the row id
 And the slug is rejected if it is not lowercase kebab-case

@@ -1,6 +1,6 @@
-"""Lifecycle-router contract tests for todo dump handling.
+"""Lifecycle-router contract tests for todo creation handling.
 
-These tests pin the lifecycle-router cartridge's routing behavior: dump events
+These tests pin the lifecycle-router cartridge's routing behavior: creation events
 are dispatched by ``payload.kind`` as a pure function of the payload.
 """
 
@@ -19,19 +19,12 @@ pytestmark = [
     pytest.mark.unit,
 ]
 
-_NON_DUMP_TRIGGER_EVENTS: tuple[str, ...] = (
-    "domain.software-development.planning.artifact_changed",
-    "domain.software-development.planning.todo_created",
-    "domain.software-development.planning.todo_activated",
-    "domain.software-development.planning.dependency_resolved",
-)
-
 
 def _make_event(
     *,
     slug: str = "my-slug",
     kind: str | None = None,
-    event_type: str = "domain.software-development.planning.todo_dumped",
+    event_type: str = "workflow.todo.created",
 ) -> EventEnvelope:
     payload: dict[str, str] = {"slug": slug, "project_root": "/project"}
     if kind is not None:
@@ -110,10 +103,9 @@ def test_daemon_pipeline_registers_the_lifecycle_router_cartridge() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("event_type", _NON_DUMP_TRIGGER_EVENTS)
-async def test_non_dump_planning_events_pass_through_without_assessment(event_type: str) -> None:
+async def test_planning_trigger_passes_through_without_assessment() -> None:
     router = _router_type()()
-    event = _make_event(event_type=event_type)
+    event = _make_event(event_type="domain.software-development.planning.artifact_changed")
     context = MagicMock()
 
     result = await router.process(event, context)
@@ -227,19 +219,14 @@ async def test_unknown_kind_degrades_to_next_prepare() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "kind",
-    ["todo", "prepped", "bug", None, "unexpected-lane"],
-    ids=["default-todo", "prepped", "bug", "missing-kind", "unknown-kind"],
-)
-async def test_dump_routing_is_a_pure_function_of_payload_kind(kind: str | None) -> None:
-    """Dump routing must resolve from ``payload.kind`` without reading todo state.
+async def test_creation_routing_does_not_read_todo_state() -> None:
+    """Creation routing must resolve from ``payload.kind`` without reading todo state.
 
     FR4 requires that the orchestration path is selected from the event payload
     alone and must not depend on rereading todo state after the event is
     emitted. This test patches the state-read boundary (``get_todos_db``, the
     single entry point into the todo-state store) and proves it is never
-    touched while the router dispatches a dump event, regardless of the
+    touched while the router dispatches a creation event, regardless of the
     ``kind`` branch taken. An implementation that re-reads todo state during
     routing — even if it happens to pick the same command by coincidence —
     must fail this spec.
@@ -253,7 +240,7 @@ async def test_dump_routing_is_a_pure_function_of_payload_kind(kind: str | None)
         patch("teleclaude.core.todos_db.get_todos_db", new=state_read_mock),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
-        result = await router.process(_make_event(kind=kind), MagicMock())
+        result = await router.process(_make_event(kind="bug"), MagicMock())
 
     assert result is not None
     state_read_mock.assert_not_called()

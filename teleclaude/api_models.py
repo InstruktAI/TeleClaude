@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
+from teleclaude.types.todo_kind import TodoDumpKind
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -340,9 +341,9 @@ class SetAgentStatusRequest(BaseModel):
 class TodoDumpRequest(BaseModel):
     """Request body for POST /todos/dump.
 
-    The kind field selects the lifecycle lane:
-      - None (default): regular todo — content is written as the "input" artifact
-        and the todo enters the normal prepare phase.
+    The ``kind`` field selects the lifecycle lane and content category:
+      - "feature" | "refactor" | "migration" | "todo": content kinds — content is
+        written as the "input" artifact and the todo enters the prepare phase.
       - "bug": bug-fix lane — content is written as the "bug" artifact and the todo
         enters the work phase directly.
       - "draft": parked idea — content is written as the "input" artifact but the
@@ -350,6 +351,7 @@ class TodoDumpRequest(BaseModel):
       - "prepped": pre-prepared lane — content is written as the "implementation-plan"
         artifact and the todo is stamped prepared (ready for build), skipping the
         prepare phase entirely.
+      - None (legacy / backward-compat): treated as "todo" (prepare lane).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -357,7 +359,7 @@ class TodoDumpRequest(BaseModel):
     slug: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
     after: list[str] | None = None
-    kind: Literal["bug", "draft", "prepped"] | None = None
+    kind: TodoDumpKind | None = None
     cwd: str | None = None
     silent: bool = False
 

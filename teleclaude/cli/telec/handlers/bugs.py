@@ -12,6 +12,7 @@ from teleclaude.config import config
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import normalize_slug
+from teleclaude.types.todo_kind import TODO_KIND_BUG
 
 __all__ = [
     "_handle_bugs",
@@ -105,7 +106,7 @@ def _handle_bugs_create(args: list[str]) -> None:
 
     bug_content = f"# {slug}\n\n**Symptom:** {description}\n"
 
-    request = TodoDumpRequest(slug=slug, content=bug_content, kind="bug", cwd=str(project_root))
+    request = TodoDumpRequest(slug=slug, content=bug_content, kind=TODO_KIND_BUG, cwd=str(project_root))
     result = tool_api_request(
         "POST",
         "/todos/dump",
@@ -178,7 +179,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     if body:
         bug_content += f"\n{body}\n"
 
-    bug_request = TodoDumpRequest(slug=slug, content=bug_content, kind="bug", cwd=str(project_root))
+    bug_request = TodoDumpRequest(slug=slug, content=bug_content, kind=TODO_KIND_BUG, cwd=str(project_root))
     api_result = tool_api_request(
         "POST",
         "/todos/dump",

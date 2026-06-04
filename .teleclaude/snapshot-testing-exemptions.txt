@@ -284,7 +284,6 @@ tests/unit/events/schemas/test_schema.py
 tests/unit/events/schemas/test_signal.py
 tests/unit/events/schemas/test_software_development.py
 tests/unit/events/schemas/test_system.py
-tests/unit/events/schemas/test_todo_dumped_kind_specs.py
 tests/unit/events/signal/test_ai.py
 tests/unit/events/signal/test_fetch.py
 tests/unit/events/signal/test_sources.py

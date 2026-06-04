@@ -130,7 +130,7 @@ Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml
 - **chiptunes:** SID music player with HVSC song duration lookup and fade-out
 - **chiptunes:** Stop button, dislike button for filtering unwanted songs
 - **lint:** Scoped lint, test, and type-check to session-touched files in agent sessions
-- **cli:** `--draft` and `--prepped` flags for `telec todo dump`
+- **cli:** Draft and prepped todo creation modes through explicit kind values
 - **cli:** Register `todo read/write/stamp/artifacts` in CLI surface
 - **adapters:** GFM markdown split engine and flavor-routed overflow for long messages
 - **listeners:** One-shot listener support with auto-registration on plain send
@@ -145,7 +145,7 @@ Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml
 - **db:** Unified SQLite access behind shared SQLAlchemy connection factory
 - **jobs:** Project backup cron job for todo DB snapshot and S3 upload
 - **services:** v2 service-oriented architecture scaffolding
-- **events:** Route `todo_dumped` by kind via lifecycle router cartridge
+- **events:** Route todo creation events by kind via lifecycle router cartridge
 - **todo-watcher:** OS-managed todo file watchers
 - **docs:** Untrack `index.yaml` files — treat as generated artifacts
 - **history:** Role-aware session history
@@ -195,7 +195,7 @@ Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml
 - **chiptunes:** Reset position on track advance, skip CIA-timer tracks, fix prebuffer
 - **chiptunes:** Fade AFTER listed duration, use SID's default subtune for duration
 - **cli:** Ignore stale temp identity in `tc_tui` sessions
-- **api:** Add global exception handler, fix `todo_dump` 500
+- **api:** Add global exception handler, fix todo content-creation route 500
 - **regression:** Restore project config, doc snippets, and guardrails after blind merge
 - **worktrees:** Remove symlink approach — workers need real tracked dirs
 - **mirrors:** Fully separate mirrors from main database

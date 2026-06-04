@@ -338,13 +338,13 @@ Manage work items
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> [--after <deps>] [--silent] [--prepped]`
+**Usage:** `telec todo create <slug> <content> --kind <kind> [--after <deps>] [--silent]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
+- `--kind`: Required. Work category and lifecycle lane: feature|refactor|migration|todo (→ prepare lane), bug (→ bug-fix lane), prepped (content is a complete plan; skip prepare), draft (park idea; no lifecycle).
 - `--silent`: Create silently — suppress pickup notification
-- `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking.
 
 **Notes:**
 

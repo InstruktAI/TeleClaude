@@ -1421,12 +1421,12 @@ class TestOperationStatusPayload:
 
 class TestTodoDumpRequest:
     @pytest.mark.unit
-    def test_todo_dump_request_empty_content_raises_validation_error(self) -> None:
+    def test_todo_content_create_request_empty_content_raises_validation_error(self) -> None:
         with pytest.raises(ValidationError):
             TodoDumpRequest(slug="my-slug", content="")
 
     @pytest.mark.unit
-    def test_todo_dump_request_default_silent_is_false(self) -> None:
+    def test_todo_content_create_request_default_silent_is_false(self) -> None:
         req = TodoDumpRequest(slug="my-slug", content="some content")
         assert req.silent is False
 
