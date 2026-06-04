@@ -52,12 +52,24 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         return envelope_obj
 
     def _extract_response_data(self, envelope: JsonDict, computer: str, label: str) -> list[JsonDict] | None:
-        """Return the `data` list from a response envelope when successful."""
+        """Return the `data` list from a response envelope, or None if untrustworthy.
+
+        A malformed item (non-dict) makes the whole response unreliable. The pull
+        results drive authoritative snapshot reconciliation that can delete valid
+        cached data, so a partial/filtered list must never be applied: reject the
+        entire response (return None) rather than silently dropping bad items.
+        """
         data = envelope.get("data")
         if not isinstance(data, list):
             logger.warning("Invalid %s data from %s: %s", label, computer, type(data))
             return None
-        return [item for item in data if isinstance(item, dict)]
+        items: list[JsonDict] = []
+        for item in data:
+            if not isinstance(item, dict):
+                logger.warning("Malformed %s item from %s (%s); rejecting response", label, computer, type(item))
+                return None
+            items.append(item)
+        return items
 
     async def _handle_error_status(
         self,
@@ -265,7 +277,10 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             for project_obj in data:
                 project_path = str(project_obj.get("path", ""))
                 if not project_path:
-                    continue
+                    # A project without a path makes the snapshot incomplete; applying it
+                    # would reconcile valid cached projects away. Reject the whole response.
+                    logger.warning("Project from %s missing path; rejecting projects-with-todos response", computer)
+                    return False
                 info = ProjectInfo.from_dict(project_obj)
                 info.computer = computer
                 projects.append(info)

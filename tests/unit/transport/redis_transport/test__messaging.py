@@ -53,9 +53,10 @@ class TestParseRedisMessage:
     @pytest.mark.unit
     def test_parses_msg_type_from_bytes(self, redis_transport: RedisTransport) -> None:
         """The parser decodes the message type from bytes."""
-        data = {b"type": b"system", b"command": b"restart", b"origin": b"terminal"}
+        msg_type = "system"
+        data = {b"type": msg_type.encode(), b"command": b"restart", b"origin": b"terminal"}
         result = redis_transport.parse_message(data)
-        assert result.msg_type == data[b"type"].decode()
+        assert result.msg_type == msg_type
 
     @pytest.mark.unit
     def test_parses_session_id_as_none_when_empty(self, redis_transport: RedisTransport) -> None:
@@ -67,35 +68,41 @@ class TestParseRedisMessage:
     @pytest.mark.unit
     def test_parses_session_id_when_present(self, redis_transport: RedisTransport) -> None:
         """Non-empty session ids are preserved."""
-        data = {b"session_id": b"abc-123", b"command": b"process_message", b"origin": b"terminal"}
+        session_id = "abc-123"
+        data = {b"session_id": session_id.encode(), b"command": b"process_message", b"origin": b"terminal"}
         result = redis_transport.parse_message(data)
-        assert result.session_id == data[b"session_id"].decode()
+        assert result.session_id == session_id
 
     @pytest.mark.unit
     def test_tolerates_missing_origin(self, redis_transport: RedisTransport) -> None:
         """origin is a client-stamped session concept; system RPCs and internal ops
         carry none, so parsing must succeed without it."""
-        data = {b"command": b"list_sessions"}
+        command = "list_sessions"
+        data = {b"command": command.encode()}
         result = redis_transport.parse_message(data)
         assert result.origin is None
-        assert result.command == data[b"command"].decode()
+        assert result.command == command
 
     @pytest.mark.unit
     def test_parses_typed_actor_fields(self, redis_transport: RedisTransport) -> None:
         """Typed actor fields are decoded individually."""
+        actor_id = "telegram:12345"
+        actor_name = "TestUser"
+        actor_avatar_url = "https://example.com/avatar.jpg"
+        platform_message_id = "msg-123"
         data = {
             b"command": b"process_message",
-            b"actor_id": b"telegram:12345",
-            b"actor_name": b"TestUser",
-            b"actor_avatar_url": b"https://example.com/avatar.jpg",
-            b"platform_message_id": b"msg-123",
+            b"actor_id": actor_id.encode(),
+            b"actor_name": actor_name.encode(),
+            b"actor_avatar_url": actor_avatar_url.encode(),
+            b"platform_message_id": platform_message_id.encode(),
             b"origin": b"telegram",
         }
         result = redis_transport.parse_message(data)
-        assert result.actor_id == data[b"actor_id"].decode()
-        assert result.actor_name == data[b"actor_name"].decode()
-        assert result.actor_avatar_url == data[b"actor_avatar_url"].decode()
-        assert result.platform_message_id == data[b"platform_message_id"].decode()
+        assert result.actor_id == actor_id
+        assert result.actor_name == actor_name
+        assert result.actor_avatar_url == actor_avatar_url
+        assert result.platform_message_id == platform_message_id
 
     @pytest.mark.unit
     def test_ignores_legacy_actor_bag(self, redis_transport: RedisTransport) -> None:
@@ -140,15 +147,17 @@ class TestParseRedisMessage:
     @pytest.mark.unit
     def test_parses_project_path_and_title(self, redis_transport: RedisTransport) -> None:
         """Project path and title are preserved."""
+        project_path = "/repo/myproject"
+        title = "My Session"
         data = {
             b"command": b"create_session",
-            b"project_path": b"/repo/myproject",
-            b"title": b"My Session",
+            b"project_path": project_path.encode(),
+            b"title": title.encode(),
             b"origin": b"terminal",
         }
         result = redis_transport.parse_message(data)
-        assert result.project_path == data[b"project_path"].decode()
-        assert result.title == data[b"title"].decode()
+        assert result.project_path == project_path
+        assert result.title == title
 
 
 class TestHandleAgentNotificationCommand:

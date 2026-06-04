@@ -153,6 +153,19 @@ class TestPullRemoteSessions:
         assert result is False
         transport_with_cache._cache.apply_sessions_snapshot.assert_not_called()
 
+    @pytest.mark.unit
+    async def test_rejects_malformed_item_without_reconciling(self, transport_with_cache: RedisTransport) -> None:
+        # A malformed (non-dict) item makes the snapshot untrustworthy; applying a
+        # partial set would reconcile valid cached sessions away. Reject instead.
+        response = json.dumps({"status": "success", "data": [self._session_data(), "not-a-dict"]})
+        transport_with_cache.send_request = AsyncMock(return_value="msg-id")
+        transport_with_cache.client.read_response = AsyncMock(return_value=response)
+
+        result = await transport_with_cache.pull_remote_sessions("remote-machine")
+
+        assert result is False
+        transport_with_cache._cache.apply_sessions_snapshot.assert_not_called()
+
 
 class TestPullRemoteProjects:
     @pytest.mark.unit
@@ -222,6 +235,20 @@ class TestPullRemoteProjectsWithTodos:
         await transport_with_cache.pull_remote_projects_with_todos("remote-machine")
         transport_with_cache._cache.apply_projects_snapshot.assert_called_once()
         transport_with_cache._cache.apply_todos_snapshot.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_rejects_project_missing_path_without_reconciling(self, transport_with_cache: RedisTransport) -> None:
+        # A project without a path makes the snapshot incomplete; applying it would
+        # reconcile valid cached projects away. Reject and do not apply snapshots.
+        response = json.dumps({"status": "success", "data": [{"name": "no-path", "todos": []}]})
+        transport_with_cache.send_request = AsyncMock(return_value="msg-id")
+        transport_with_cache.client.read_response = AsyncMock(return_value=response)
+
+        result = await transport_with_cache.pull_remote_projects_with_todos("remote-machine")
+
+        assert result is False
+        transport_with_cache._cache.apply_projects_snapshot.assert_not_called()
+        transport_with_cache._cache.apply_todos_snapshot.assert_not_called()
 
 
 class TestPullRemoteTodos:

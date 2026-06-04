@@ -156,15 +156,14 @@ class TestSendRequest:
         mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        await transport.send_request(
-            "target",
-            "new_session",
-            MessageMetadata(origin="web", human_email="a@b.c", human_role="admin", system_role=None, job=None),
-        )
+        metadata = MessageMetadata(origin="web", human_email="a@b.c", human_role="admin", system_role=None, job=None)
+        await transport.send_request("target", "new_session", metadata)
         data_arg = mock_redis.xadd.call_args.args[1]
-        assert data_arg[b"origin"] == b"web"
-        assert data_arg[b"human_email"] == b"a@b.c"
-        assert data_arg[b"human_role"] == b"admin"
+        # Round-trip against the input metadata — assert the wire serialization
+        # carries each field, without hardcoding the literal values.
+        assert data_arg[b"origin"] == metadata.origin.encode()
+        assert data_arg[b"human_email"] == metadata.human_email.encode()
+        assert data_arg[b"human_role"] == metadata.human_role.encode()
         assert b"system_role" not in data_arg
 
 

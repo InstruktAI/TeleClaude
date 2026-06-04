@@ -163,7 +163,7 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         logger.debug(
             "Redis request sent",
             target=computer_name,
-            request_id=message_id[:15],
+            request_id=message_id,
             command=command[:50],
         )
         return message_id
