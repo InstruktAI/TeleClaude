@@ -129,6 +129,39 @@ class TestSendRequest:
         data_arg = mock_redis.xadd.call_args.args[1]
         assert data_arg[b"session_id"] == b"sess-1"
 
+    @pytest.mark.unit
+    async def test_does_not_require_origin_and_omits_it_when_absent(self, transport: RedisTransport) -> None:
+        # origin is a client-stamped session concept; a system RPC has none.
+        # The transport must not require it (regression: it used to raise).
+        mock_redis = AsyncMock()
+        mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
+        transport._get_redis = AsyncMock(return_value=mock_redis)
+
+        result = await transport.send_request("target", "list_sessions", MessageMetadata())
+
+        assert result == "msg-id-0"
+        data_arg = mock_redis.xadd.call_args.args[1]
+        assert b"origin" not in data_arg
+        # Computer identity still travels, via initiator.
+        assert b"initiator" in data_arg
+
+    @pytest.mark.unit
+    async def test_forwards_identity_fields_for_remote_create(self, transport: RedisTransport) -> None:
+        mock_redis = AsyncMock()
+        mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
+        transport._get_redis = AsyncMock(return_value=mock_redis)
+
+        await transport.send_request(
+            "target",
+            "new_session",
+            MessageMetadata(origin="web", human_email="a@b.c", human_role="admin", system_role=None, job=None),
+        )
+        data_arg = mock_redis.xadd.call_args.args[1]
+        assert data_arg[b"origin"] == b"web"
+        assert data_arg[b"human_email"] == b"a@b.c"
+        assert data_arg[b"human_role"] == b"admin"
+        assert b"system_role" not in data_arg
+
 
 class TestSendResponse:
     @pytest.mark.unit

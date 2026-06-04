@@ -71,11 +71,13 @@ class TestParseRedisMessage:
         assert result.session_id == "abc-123"
 
     @pytest.mark.unit
-    def test_raises_when_origin_missing(self, redis_transport: RedisTransport) -> None:
-        """Missing origins are rejected."""
-        data = {b"command": b"start_agent"}
-        with pytest.raises(ValueError, match="missing origin"):
-            redis_transport.parse_message(data)
+    def test_tolerates_missing_origin(self, redis_transport: RedisTransport) -> None:
+        """origin is a client-stamped session concept; system RPCs and internal ops
+        carry none. The transport must parse without it (regression: it used to raise)."""
+        data = {b"command": b"list_sessions"}
+        result = redis_transport.parse_message(data)
+        assert result.origin is None
+        assert result.command == "list_sessions"
 
     @pytest.mark.unit
     def test_parses_typed_actor_fields(self, redis_transport: RedisTransport) -> None:

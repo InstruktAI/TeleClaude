@@ -214,6 +214,56 @@ def _make_session(session_id: str = "sess-001", computer: str = "MozMini") -> Ma
     return session
 
 
+class TestApplySessionsSnapshot:
+    @pytest.mark.unit
+    def test_upserts_snapshot_sessions(self) -> None:
+        cache = DaemonCache()
+        s1 = _make_session("a", computer="raspi")
+        s2 = _make_session("b", computer="raspi")
+
+        changed = cache.apply_sessions_snapshot("raspi", [s1, s2], from_cluster=True)
+
+        assert changed is True
+        assert {s.session_id for s in cache.get_sessions("raspi")} == {"a", "b"}
+
+    @pytest.mark.unit
+    def test_reconciles_out_stale_sessions(self) -> None:
+        cache = DaemonCache()
+        cache.apply_sessions_snapshot(
+            "raspi",
+            [_make_session("a", computer="raspi"), _make_session("b", computer="raspi")],
+            from_cluster=True,
+        )
+
+        # "a" is gone on the peer; the next snapshot must drop it even though no
+        # live cluster.session.closed event was applied.
+        cache.apply_sessions_snapshot(
+            "raspi",
+            [_make_session("b", computer="raspi"), _make_session("c", computer="raspi")],
+            from_cluster=True,
+        )
+
+        assert {s.session_id for s in cache.get_sessions("raspi")} == {"b", "c"}
+
+    @pytest.mark.unit
+    def test_does_not_touch_other_computers(self) -> None:
+        cache = DaemonCache()
+        cache.update_session(_make_session("keep", computer="other"))
+
+        cache.apply_sessions_snapshot("raspi", [_make_session("a", computer="raspi")], from_cluster=True)
+
+        assert {s.session_id for s in cache.get_sessions("other")} == {"keep"}
+
+    @pytest.mark.unit
+    def test_identical_snapshot_is_a_noop(self) -> None:
+        cache = DaemonCache()
+        sessions = [_make_session("a", computer="raspi"), _make_session("b", computer="raspi")]
+        assert cache.apply_sessions_snapshot("raspi", sessions, from_cluster=True) is True
+
+        # Same digest → no work, returns False.
+        assert cache.apply_sessions_snapshot("raspi", sessions, from_cluster=True) is False
+
+
 class TestClusterPublish:
     @pytest.mark.unit
     async def test_update_session_without_publisher_is_silent(self) -> None:

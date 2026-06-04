@@ -239,6 +239,10 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 project_path=parsed.project_path,
                 title=parsed.title,
                 launch_intent=launch_intent_obj,
+                human_email=parsed.human_email,
+                human_role=parsed.human_role,
+                system_role=parsed.system_role,
+                job=parsed.job,
             )
             command = CommandMapper.map_redis_input(
                 command_str=parsed.command,
@@ -368,9 +372,10 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         msg_type = _decode_redis_text(data, b"type") or ""
         session_id = _decode_redis_text(data, b"session_id")
         command = _decode_redis_text(data, b"command") or ""
+        # origin is a client-stamped session concept (InputOrigin), carried in the
+        # command payload only for genuine user-input relays. System RPCs and
+        # internal ops carry none — the transport neither requires nor invents it.
         origin_raw = _decode_redis_text(data, b"origin")
-        if not origin_raw:
-            raise ValueError("Redis inbound message missing origin field")
         launch_intent = None
         launch_intent_raw = _decode_redis_text(data, b"launch_intent")
         if launch_intent_raw:
@@ -394,6 +399,10 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             title=_decode_redis_text(data, b"title"),
             origin=origin_raw,
             launch_intent=launch_intent,
+            human_email=_decode_redis_text(data, b"human_email"),
+            human_role=_decode_redis_text(data, b"human_role"),
+            system_role=_decode_redis_text(data, b"system_role"),
+            job=_decode_redis_text(data, b"job"),
         )
 
     async def _handle_system_message(self, data: dict[bytes, bytes]) -> None:

@@ -537,11 +537,12 @@ async def create_session(
     )
 
     if is_remote_create_target(request.computer, config.computer.name):
+        remote_metadata, _, _, _, _ = await _prepare_create_session(request, identity)
         return await dispatch_session_create_to_peer(
             _STATE.client,
             request.computer,
             request,
-            local_computer=config.computer.name,
+            identity_metadata=remote_metadata,
         )
 
     metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session = await _prepare_create_session(

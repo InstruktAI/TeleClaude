@@ -124,7 +124,7 @@ class CommandMapper:
     def map_redis_input(  # noqa: C901 # TODO: refactor to reduce complexity
         command_str: str,
         *,
-        origin: str,
+        origin: str | None = None,
         session_id: str | None = None,
         project_path: str | None = None,
         title: str | None = None,
@@ -209,6 +209,10 @@ class CommandMapper:
                 initial_input=initial_input,
                 origin=origin,
                 launch_intent=launch_intent_obj,
+                human_email=metadata.human_email if metadata else None,
+                human_role=metadata.human_role if metadata else None,
+                system_role=metadata.system_role if metadata else None,
+                job=metadata.job if metadata else None,
             )
 
         if cmd_name == "agent_restart":

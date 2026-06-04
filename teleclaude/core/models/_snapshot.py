@@ -62,6 +62,10 @@ class RedisInboundMessage:
     origin: str | None = None
     launch_intent: dict[str, object] | None = None  # guard: loose-dict
     reply_stream: str | None = None
+    human_email: str | None = None
+    human_role: str | None = None
+    system_role: str | None = None
+    job: str | None = None
 
 
 @dataclass

@@ -136,6 +136,7 @@ class DaemonCache:
 
         # Snapshot fingerprints + versions (per computer)
         self._projects_digest: dict[str, str] = {}
+        self._sessions_digest: dict[str, str] = {}
         self._todos_digest: dict[str, str] = {}
         self._projects_version: dict[str, int] = {}
         self._todos_version: dict[str, int] = {}
@@ -551,6 +552,45 @@ class DaemonCache:
         todos = await command_handlers.list_todos(project_path)
         self.set_todos(computer, project_path, todos, event_name=event_hint, event_data=event_data)
 
+    def apply_sessions_snapshot(
+        self,
+        computer: str,
+        sessions: list[SessionSnapshot],
+        *,
+        from_cluster: bool = False,
+    ) -> bool:
+        """Apply a full sessions snapshot for a remote computer with reconciliation.
+
+        The pull response from a peer lists that peer's local sessions
+        authoritatively, so this replaces the cached set for ``computer``:
+        cached sessions for that computer absent from the snapshot are removed
+        (closed/ended sessions disappear even when their live
+        ``cluster.session.closed`` event was missed), and the rest are upserted.
+        ``from_cluster`` suppresses the re-publish that ``update_session`` /
+        ``remove_session`` would otherwise emit, matching the bootstrap pull.
+
+        Only call this for a remote computer; local sessions are authoritative
+        from the database, not from a snapshot.
+        """
+        digest = self._sessions_fingerprint(sessions)
+        if self._sessions_digest.get(computer) == digest:
+            return False
+
+        snapshot_ids = {session.session_id for session in sessions}
+        for session_id in list(self._sessions.keys()):
+            cached = self._sessions.get(session_id)
+            if cached is None or cached.data.computer != computer:
+                continue
+            if session_id not in snapshot_ids:
+                self.remove_session(session_id, from_cluster=from_cluster)
+
+        for session in sessions:
+            session.computer = computer
+            self.update_session(session, from_cluster=from_cluster)
+
+        self._sessions_digest[computer] = digest
+        return True
+
     def apply_projects_snapshot(self, computer: str, projects: list[ProjectInfo]) -> bool:
         """Apply a full projects snapshot for a computer with change detection."""
         digest = self._projects_fingerprint(projects)
@@ -623,6 +663,13 @@ class DaemonCache:
             )
         joined = "\n".join(parts)
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+    def _sessions_fingerprint(self, sessions: list[SessionSnapshot]) -> str:
+        parts = [
+            json.dumps(session.to_dict(), sort_keys=True, default=str)
+            for session in sorted(sessions, key=lambda session: session.session_id)
+        ]
+        return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
     def _computer_fingerprint(self, computer: ComputerInfo) -> str:
         payload = json.dumps(computer.to_dict(), sort_keys=True, default=str)

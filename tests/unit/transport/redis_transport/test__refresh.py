@@ -257,3 +257,42 @@ class TestFirstHeartbeatBootstrap:
             ("PeerB", "projects"),
             ("PeerB", "sessions"),
         ]
+
+
+class TestRefreshSuccessGating:
+    """on_success (which records a peer as bootstrapped) must fire only when the
+    pull genuinely answered, so a failed first heartbeat retries on the next one
+    instead of being permanently recorded as warmed."""
+
+    @pytest.mark.unit
+    async def test_failed_pull_does_not_fire_on_success(self, transport: RedisTransport) -> None:
+        transport.task_registry = None
+        transport.pull_remote_sessions = AsyncMock(return_value=False)
+        marked: list[str] = []
+
+        scheduled = transport._schedule_refresh(
+            _RefreshRequest("PeerA", "sessions", "first_heartbeat", force=True),
+            on_success=lambda: marked.append("sessions"),
+        )
+        assert scheduled is True
+        task = transport._refresh_tasks.get("PeerA:sessions")
+        assert task is not None
+        await task
+
+        assert marked == []
+
+    @pytest.mark.unit
+    async def test_successful_pull_fires_on_success(self, transport: RedisTransport) -> None:
+        transport.task_registry = None
+        transport.pull_remote_sessions = AsyncMock(return_value=True)
+        marked: list[str] = []
+
+        transport._schedule_refresh(
+            _RefreshRequest("PeerA", "sessions", "first_heartbeat", force=True),
+            on_success=lambda: marked.append("sessions"),
+        )
+        task = transport._refresh_tasks.get("PeerA:sessions")
+        assert task is not None
+        await task
+
+        assert marked == ["sessions"]

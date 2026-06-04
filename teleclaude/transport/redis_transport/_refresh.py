@@ -67,13 +67,13 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
             """Refresh session snapshots for interested peers."""
             raise NotImplementedError
 
-        async def pull_remote_projects_with_todos(self, computer: str) -> None:
-            """Refresh projects and todos for one peer."""
+        async def pull_remote_projects_with_todos(self, computer: str) -> bool:
+            """Refresh projects and todos for one peer; True only on success."""
             _ = computer
             raise NotImplementedError
 
-        async def pull_remote_sessions(self, computer: str) -> None:
-            """Pull sessions from one peer (bootstrap path)."""
+        async def pull_remote_sessions(self, computer: str) -> bool:
+            """Pull sessions from one peer (bootstrap path); True only on success."""
             _ = computer
             raise NotImplementedError
 
@@ -169,11 +169,14 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
 
         async def _refresh_wrapper() -> None:
             try:
-                await coro
+                succeeded = await coro
             except _REFRESH_EXCEPTIONS as exc:
                 logger.warning("Refresh failed for %s (reason=%s): %s", key, request.reason, exc)
             else:
-                if on_success:
+                # on_success records the peer as bootstrapped; only fire it when the
+                # pull genuinely answered, so a failed first heartbeat retries on the
+                # next one instead of being recorded as a completed warm-up.
+                if succeeded and on_success:
                     on_success()
 
         task = self._spawn_refresh_task(_refresh_wrapper(), key=key)
@@ -196,7 +199,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
             return True
         return (time.monotonic() - last) >= self._refresh_cooldown_seconds
 
-    def _build_refresh_coro(self, computer: str, data_type: str, _project_path: str | None) -> Awaitable[None] | None:
+    def _build_refresh_coro(self, computer: str, data_type: str, _project_path: str | None) -> Awaitable[bool] | None:
         if data_type in ("projects", "preparation"):
             return self.pull_remote_projects_with_todos(computer)
         if data_type == "todos":

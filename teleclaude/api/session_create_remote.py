@@ -74,9 +74,16 @@ async def dispatch_session_create_to_peer(
     target_computer: str,
     request: CreateSessionRequest,
     *,
-    local_computer: str,
+    identity_metadata: MessageMetadata,
 ) -> CreateSessionResponseDTO:
-    """Create a session on a peer computer through Redis request/response."""
+    """Create a session on a peer computer through Redis request/response.
+
+    ``identity_metadata`` carries the initiating client's resolved origin and
+    identity (human_email/human_role/system_role/job), produced by the same
+    preparation the local create path uses. Forwarding it lets the peer's
+    identity gate pass and gives the created session a truthful origin — the
+    computer that initiated travels separately as the transport ``initiator``.
+    """
     if client is None:
         raise HTTPException(status_code=503, detail="Remote session creation is unavailable")
 
@@ -101,8 +108,12 @@ async def dispatch_session_create_to_peer(
         )
 
     metadata = MessageMetadata(
-        origin=local_computer,
+        origin=identity_metadata.origin,
         project_path=request.project_path,
+        human_email=identity_metadata.human_email,
+        human_role=identity_metadata.human_role,
+        system_role=identity_metadata.system_role,
+        job=identity_metadata.job,
         launch_intent=SessionLaunchIntent(
             kind=launch_kind,
             agent=effective_agent,

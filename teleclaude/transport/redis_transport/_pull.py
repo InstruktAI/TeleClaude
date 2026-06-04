@@ -142,18 +142,26 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         """Pull sessions for currently interested computers."""
         await self._pull_initial_sessions()
 
-    async def pull_remote_sessions(self, computer: str) -> None:
+    async def pull_remote_sessions(self, computer: str) -> bool:
         """Pull sessions from a specific remote computer via Redis.
 
-        Used at cold-start bootstrap (``refresh_remote_snapshot``) and when a
-        client expresses interest in a peer's sessions. The cache write goes
-        through ``update_session(..., from_cluster=True)`` so the bootstrap
-        path does NOT re-publish each pulled session as if the local daemon
-        had originated it — peers continue to own their events.
+        Used at cold-start bootstrap (``refresh_remote_snapshot``) and on a
+        peer's first heartbeat. The response lists that peer's local sessions
+        authoritatively, so it is applied via
+        ``apply_sessions_snapshot(..., from_cluster=True)``: stale sessions the
+        peer no longer reports are reconciled out (closed-session removal
+        self-heals even when the live event was missed), and the cache write
+        does NOT re-publish each session as if the local daemon had originated
+        it — peers continue to own their events.
+
+        Returns:
+            True only when the peer answered successfully (so the bootstrap may
+            mark this peer warmed); False on any failure or early return, so the
+            next heartbeat retries instead of recording a failed pull as done.
         """
         if not self.cache:
             logger.warning("Cache unavailable, skipping sessions pull from %s", computer)
-            return
+            return False
 
         logger.debug("Pulling sessions from %s", computer)
 
@@ -162,26 +170,24 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
             envelope = self._parse_envelope(computer, response_data, "sessions")
             if envelope is None:
-                return
+                return False
 
             if envelope.get("status") == "error":
                 await self._handle_error_status(computer, envelope.get("error", "unknown error"))
-                return
+                return False
 
             data = self._extract_response_data(envelope, computer, "sessions")
             if data is None:
-                return
+                return False
 
-            count = 0
-            for session_obj in data:
-                snapshot = SessionSnapshot.from_dict(session_obj)
-                snapshot.computer = computer
-                self.cache.update_session(snapshot, from_cluster=True)
-                count += 1
-            logger.info("Pulled %d sessions from %s", count, computer)
+            snapshots = [SessionSnapshot.from_dict(session_obj) for session_obj in data]
+            self.cache.apply_sessions_snapshot(computer, snapshots, from_cluster=True)
+            logger.info("Pulled %d sessions from %s", len(snapshots), computer)
+            return True
 
         except _PULL_EXCEPTIONS as e:
             logger.warning("Failed to pull sessions from %s: %s", computer, e)
+            return False
 
     async def pull_remote_projects(self, computer: str) -> None:
         """Pull projects from a remote computer via Redis.
@@ -221,11 +227,17 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         except _PULL_EXCEPTIONS as e:
             logger.warning("Failed to pull projects from %s: %s", computer, e)
 
-    async def pull_remote_projects_with_todos(self, computer: str) -> None:
-        """Pull projects with embedded todos from a remote computer via Redis."""
+    async def pull_remote_projects_with_todos(self, computer: str) -> bool:
+        """Pull projects with embedded todos from a remote computer via Redis.
+
+        Returns:
+            True only when the peer answered successfully, so the bootstrap may
+            mark this peer warmed; False on any failure or early return so the
+            next heartbeat retries.
+        """
         if not self.cache:
             logger.warning("Cache unavailable, skipping projects-with-todos pull from %s", computer)
-            return
+            return False
 
         logger.debug("Pulling projects-with-todos from %s", computer)
 
@@ -234,7 +246,7 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             response_data = await self.client.read_response(message_id, timeout=5.0, target_computer=computer)
             envelope = self._parse_envelope(computer, response_data, "projects-with-todos")
             if envelope is None:
-                return
+                return False
 
             if envelope.get("status") == "error":
                 await self._handle_error_status(
@@ -242,11 +254,11 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
                     envelope.get("error", "unknown error"),
                     fallback_to_projects=True,
                 )
-                return
+                return False
 
             data = self._extract_response_data(envelope, computer, "projects-with-todos")
             if data is None:
-                return
+                return False
 
             projects: list[ProjectInfo] = []
             todos_by_project: dict[str, list[TodoDTO]] = {}
@@ -262,9 +274,11 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             self.cache.apply_projects_snapshot(computer, projects)
             self.cache.apply_todos_snapshot(computer, todos_by_project)
             logger.info("Pulled %d projects-with-todos from %s", len(projects), computer)
+            return True
 
         except _PULL_EXCEPTIONS as e:
             logger.warning("Failed to pull projects-with-todos from %s: %s", computer, e)
+            return False
 
     def _extract_todos_for_project(self, data: list[object], computer: str, project_path: str) -> list[TodoDTO] | None:
         """Extract todos for one project from a projects-with-todos payload."""

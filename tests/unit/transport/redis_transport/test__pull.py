@@ -83,24 +83,75 @@ class TestPullInterestedSessions:
 
 
 class TestPullRemoteSessions:
-    @pytest.mark.unit
-    async def test_rejects_invalid_remote_tmux_session_name(self, transport_with_cache: RedisTransport) -> None:
-        session_data = {
-            "session_id": "sess-1",
+    @staticmethod
+    def _session_data(session_id: str = "sess-1") -> dict[str, object]:  # guard: loose-dict - test fixture payload
+        return {
+            "session_id": session_id,
             "title": "Test Session",
             "status": "active",
             "last_input_origin": None,
             "thinking_mode": None,
             "active_agent": None,
-            "tmux_session_name": "tc_demo;bad",
         }
+
+    @pytest.mark.unit
+    async def test_rejects_invalid_remote_tmux_session_name(self, transport_with_cache: RedisTransport) -> None:
+        session_data = {**self._session_data(), "tmux_session_name": "tc_demo;bad"}
         response = json.dumps({"status": "success", "data": [session_data]})
         transport_with_cache.send_request = AsyncMock(return_value="msg-id")
         transport_with_cache.client.read_response = AsyncMock(return_value=response)
 
-        await transport_with_cache.pull_remote_sessions("remote-machine")
+        result = await transport_with_cache.pull_remote_sessions("remote-machine")
 
+        assert result is False
+        transport_with_cache._cache.apply_sessions_snapshot.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_returns_true_and_applies_snapshot_on_success(self, transport_with_cache: RedisTransport) -> None:
+        response = json.dumps({"status": "success", "data": [self._session_data()]})
+        transport_with_cache.send_request = AsyncMock(return_value="msg-id")
+        transport_with_cache.client.read_response = AsyncMock(return_value=response)
+
+        result = await transport_with_cache.pull_remote_sessions("remote-machine")
+
+        assert result is True
+        transport_with_cache._cache.apply_sessions_snapshot.assert_called_once()
+        # Reconciliation snapshot replaces the peer's set; never per-row upsert here.
         transport_with_cache._cache.update_session.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_sends_list_request_without_requiring_origin(self, transport_with_cache: RedisTransport) -> None:
+        response = json.dumps({"status": "success", "data": []})
+        send_request = AsyncMock(return_value="msg-id")
+        transport_with_cache.send_request = send_request
+        transport_with_cache.client.read_response = AsyncMock(return_value=response)
+
+        result = await transport_with_cache.pull_remote_sessions("remote-machine")
+
+        assert result is True
+        # System RPC carries no client origin; the metadata passed must not require one.
+        assert send_request.await_args.args[2].origin is None
+
+    @pytest.mark.unit
+    async def test_returns_false_on_error_envelope(self, transport_with_cache: RedisTransport) -> None:
+        response = json.dumps({"status": "error", "error": "boom"})
+        transport_with_cache.send_request = AsyncMock(return_value="msg-id")
+        transport_with_cache.client.read_response = AsyncMock(return_value=response)
+
+        result = await transport_with_cache.pull_remote_sessions("remote-machine")
+
+        assert result is False
+        transport_with_cache._cache.apply_sessions_snapshot.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_returns_false_on_timeout(self, transport_with_cache: RedisTransport) -> None:
+        transport_with_cache.send_request = AsyncMock(return_value="msg-id")
+        transport_with_cache.client.read_response = AsyncMock(side_effect=TimeoutError())
+
+        result = await transport_with_cache.pull_remote_sessions("remote-machine")
+
+        assert result is False
+        transport_with_cache._cache.apply_sessions_snapshot.assert_not_called()
 
 
 class TestPullRemoteProjects:

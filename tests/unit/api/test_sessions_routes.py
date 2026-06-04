@@ -51,7 +51,7 @@ class TestSessionsRoutes:
         remote_computer = "remote-machine"
         project_path = "/repo/demo"
         startup_message = "build cluster-followups"
-        expected_local_computer = local_computer
+        prepared_metadata = SimpleNamespace(origin="web", human_role="admin")
         client = object()
         remote_response = CreateSessionResponseDTO(
             status="success",
@@ -69,7 +69,7 @@ class TestSessionsRoutes:
             target_computer: str,
             dispatched_request: CreateSessionRequest,
             *,
-            local_computer: str,
+            identity_metadata: object,
         ) -> CreateSessionResponseDTO:
             if configured_client is not client:
                 raise AssertionError("remote route must preserve the configured peer client")
@@ -77,8 +77,8 @@ class TestSessionsRoutes:
                 raise AssertionError("remote route must target the requested computer")
             if dispatched_request is not request:
                 raise AssertionError("remote route must delegate the request")
-            if local_computer != expected_local_computer:
-                raise AssertionError("remote route must identify the local computer")
+            if identity_metadata is not prepared_metadata:
+                raise AssertionError("remote route must forward the prepared identity metadata")
             return remote_response
 
         request = CreateSessionRequest(
@@ -95,6 +95,10 @@ class TestSessionsRoutes:
         sessions_routes.configure(cache=object())
         with (
             patch("teleclaude.api.sessions_routes.dispatch_session_create_to_peer", new=dispatch_remote),
+            patch(
+                "teleclaude.api.sessions_routes._prepare_create_session",
+                new=AsyncMock(return_value=(prepared_metadata, None, None, None, None)),
+            ),
             patch("teleclaude.api.sessions_routes.get_command_service", return_value=local_service),
         ):
             await sessions_routes.create_session(request, identity=identity)

@@ -56,6 +56,7 @@ And a session creation without any resolved human_role AND no `system_role` rais
 Given the request specifies `computer = <remote>`
 When the daemon receives the POST /sessions
 Then the local daemon dispatches `new_session` to the target computer over Redis request/response
+And the dispatch forwards the initiating client's resolved origin and identity (`human_email`, `human_role`, `system_role`, `job`) in the command payload so the target's identity gate passes; the originating computer travels separately as the transport `initiator`, never as `origin`
 And the target daemon creates the session on its own tmux server
 And the response carries the remote `session_id`, `tmux_session_name`, `computer=<remote>`, and resolved `agent`
 And if the target returns an error envelope, the API returns HTTP 502

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import JsonDict, MessageMetadata
-from teleclaude.core.origins import InputOrigin
 
 logger = get_logger(__name__)
 
@@ -133,10 +132,22 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             data[b"platform_message_id"] = metadata.platform_message_id.encode("utf-8")
         if metadata.launch_intent:
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
-        if not metadata.origin:
-            raise ValueError("MessageMetadata.origin is required for Redis transport")
-        origin = metadata.origin
-        data[b"origin"] = origin.encode("utf-8")
+        # Identity travels as command payload (not transport metadata) so a session
+        # created on a peer carries the initiating human's identity — the receiver's
+        # identity gate needs human_role or system_role.
+        if metadata.human_email:
+            data[b"human_email"] = metadata.human_email.encode("utf-8")
+        if metadata.human_role:
+            data[b"human_role"] = metadata.human_role.encode("utf-8")
+        if metadata.system_role:
+            data[b"system_role"] = metadata.system_role.encode("utf-8")
+        if metadata.job:
+            data[b"job"] = metadata.job.encode("utf-8")
+        # origin is a client-stamped session concept (InputOrigin), not a transport
+        # field. Carry it only when a client set it; system RPCs and internal ops
+        # (pulls, fanout) legitimately have none. Computer identity travels as `initiator`.
+        if metadata.origin:
+            data[b"origin"] = metadata.origin.encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{computer}:{message_id})
@@ -306,7 +317,6 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             b"command": command.encode("utf-8"),
             b"timestamp": str(time.time()).encode("utf-8"),
             b"from_computer": self.computer_name.encode("utf-8"),
-            b"origin": InputOrigin.TERMINAL.value.encode("utf-8"),
         }
 
         # Add args as JSON if provided

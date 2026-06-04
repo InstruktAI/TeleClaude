@@ -49,8 +49,10 @@ class _RemoteSessionCreateClient:
             raise AssertionError("remote create must use the peer session-create command")
         if session_id is not None:
             raise AssertionError("session create is not scoped to an existing session")
-        if metadata.origin != self.local_computer:
-            raise AssertionError("remote create must identify the requesting computer")
+        if metadata.human_role != "admin":
+            raise AssertionError("remote create must forward the initiating identity to the peer")
+        if metadata.origin != "web":
+            raise AssertionError("remote create must carry the client origin, not the computer name")
         if metadata.project_path != self.project_path:
             raise AssertionError("remote create must carry the requested project path")
         launch_intent = metadata.launch_intent
@@ -203,7 +205,7 @@ async def test_dispatch_session_create_to_peer_returns_peer_owned_session(
         _make_client(client),
         remote_computer,
         request,
-        local_computer=local_computer,
+        identity_metadata=MessageMetadata(origin="web", human_role="admin"),
     )
 
     assert response.model_dump() == snapshot
@@ -239,7 +241,7 @@ async def test_dispatch_session_create_to_peer_keeps_native_session_id_from_impl
         _make_client(client),
         remote_computer,
         request,
-        local_computer=local_computer,
+        identity_metadata=MessageMetadata(origin="web", human_role="admin"),
     )
 
     assert response.model_dump() == snapshot
@@ -251,7 +253,7 @@ async def test_dispatch_session_create_to_peer_maps_peer_error_to_bad_gateway(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Remote peer rejection surfaces as a gateway failure."""
-    local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateErrorClient)
+    _local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateErrorClient)
     monkeypatch.setattr("teleclaude.api.session_create_launch.assert_agent_enabled", lambda agent: agent)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -259,7 +261,7 @@ async def test_dispatch_session_create_to_peer_maps_peer_error_to_bad_gateway(
             _make_client(client),
             remote_computer,
             request,
-            local_computer=local_computer,
+            identity_metadata=MessageMetadata(origin="web", human_role="admin"),
         )
 
     assert exc_info.value.status_code == 502
@@ -271,7 +273,7 @@ async def test_dispatch_session_create_to_peer_maps_peer_timeout_to_gateway_time
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Remote peer response timeout surfaces as a gateway timeout."""
-    local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateTimeoutClient)
+    _local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateTimeoutClient)
     monkeypatch.setattr("teleclaude.api.session_create_launch.assert_agent_enabled", lambda agent: agent)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -279,7 +281,7 @@ async def test_dispatch_session_create_to_peer_maps_peer_timeout_to_gateway_time
             _make_client(client),
             remote_computer,
             request,
-            local_computer=local_computer,
+            identity_metadata=MessageMetadata(origin="web", human_role="admin"),
         )
 
     assert exc_info.value.status_code == 504
@@ -291,7 +293,7 @@ async def test_dispatch_session_create_to_peer_maps_transport_failure_to_service
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Transport failures are distinct from peer response timeouts."""
-    local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateTransportClient)
+    _local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateTransportClient)
     monkeypatch.setattr("teleclaude.api.session_create_launch.assert_agent_enabled", lambda agent: agent)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -299,7 +301,7 @@ async def test_dispatch_session_create_to_peer_maps_transport_failure_to_service
             _make_client(client),
             remote_computer,
             request,
-            local_computer=local_computer,
+            identity_metadata=MessageMetadata(origin="web", human_role="admin"),
         )
 
     assert exc_info.value.status_code == 503
@@ -311,7 +313,7 @@ async def test_dispatch_session_create_to_peer_rejects_invalid_remote_tmux_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unsafe peer transport fields fail at the gateway boundary."""
-    local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateClient)
+    _local_computer, remote_computer, request, client = _make_failure_case(_RemoteSessionCreateClient)
     client.tmux_session_name = "tc_remote;bad"
     monkeypatch.setattr("teleclaude.api.session_create_launch.assert_agent_enabled", lambda agent: agent)
 
@@ -320,7 +322,7 @@ async def test_dispatch_session_create_to_peer_rejects_invalid_remote_tmux_name(
             _make_client(client),
             remote_computer,
             request,
-            local_computer=local_computer,
+            identity_metadata=MessageMetadata(origin="web", human_role="admin"),
         )
 
     assert exc_info.value.status_code == 502
