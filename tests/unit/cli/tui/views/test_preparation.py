@@ -252,12 +252,12 @@ async def test_preparation_collapse_project_hides_todos_and_expand_restores() ->
         prep.action_collapse()
         await pilot.pause()
         assert not any(isinstance(w, TodoRow) for w in prep._nav_items)
-        assert "/tmp/project" in prep._collapsed_projects
+        assert ("local", "/tmp/project") in prep._collapsed_projects
 
         prep.action_expand()
         await pilot.pause()
         assert any(isinstance(w, TodoRow) for w in prep._nav_items)
-        assert "/tmp/project" not in prep._collapsed_projects
+        assert ("local", "/tmp/project") not in prep._collapsed_projects
 
 
 @pytest.mark.unit
@@ -290,7 +290,7 @@ async def test_preparation_structure_keys_toggle_structure_without_touching_todo
         prep.action_collapse_structure()
         await pilot.pause()
         assert prep._collapsed_computers == {"local"}
-        assert prep._collapsed_projects == {"/tmp/project"}
+        assert prep._collapsed_projects == {("local", "/tmp/project")}
         assert _READY_SLUG in prep._expanded_todos
         assert not any(isinstance(w, (ProjectHeader, TodoRow)) for w in prep._nav_items)
 
@@ -305,16 +305,16 @@ async def test_preparation_structure_keys_toggle_structure_without_touching_todo
 def test_preparation_persists_collapsed_structure_round_trip() -> None:
     view = PreparationView()
     view._collapsed_computers.add("local")
-    view._collapsed_projects.add("/tmp/project")
+    view._collapsed_projects.add(("local", "/tmp/project"))
 
     state = view.get_persisted_state()
     assert state["collapsed_computers"] == ["local"]
-    assert state["collapsed_projects"] == ["/tmp/project"]
+    assert state["collapsed_projects"] == [["local", "/tmp/project"]]
 
     new_view = PreparationView()
-    new_view.load_persisted_state({"collapsed_computers": ["local"], "collapsed_projects": ["/tmp/project"]})
+    new_view.load_persisted_state(state)
     assert new_view._collapsed_computers == {"local"}
-    assert new_view._collapsed_projects == {"/tmp/project"}
+    assert new_view._collapsed_projects == {("local", "/tmp/project")}
 
 
 @pytest.mark.unit

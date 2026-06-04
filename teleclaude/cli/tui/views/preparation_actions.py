@@ -9,6 +9,7 @@ from urllib.parse import quote
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
+from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
@@ -164,9 +165,9 @@ class PreparationViewActionsMixin:
                 self._rebuild()  # type: ignore[attr-defined]
             return
         if isinstance(item, ProjectHeader):
-            path = item.project.path
-            if path in self._collapsed_projects:  # type: ignore[attr-defined]
-                self._collapsed_projects.discard(path)  # type: ignore[attr-defined]
+            key = project_collapse_key(item.project.computer, item.project.path)
+            if key in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.discard(key)  # type: ignore[attr-defined]
                 self.post_message(StateChanged())  # type: ignore[attr-defined]
                 self._rebuild()  # type: ignore[attr-defined]
             return
@@ -185,9 +186,9 @@ class PreparationViewActionsMixin:
                 self._rebuild()  # type: ignore[attr-defined]
             return
         if isinstance(item, ProjectHeader):
-            path = item.project.path
-            if path not in self._collapsed_projects:  # type: ignore[attr-defined]
-                self._collapsed_projects.add(path)  # type: ignore[attr-defined]
+            key = project_collapse_key(item.project.computer, item.project.path)
+            if key not in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.add(key)  # type: ignore[attr-defined]
                 self.post_message(StateChanged())  # type: ignore[attr-defined]
                 self._rebuild()  # type: ignore[attr-defined]
             return
@@ -260,7 +261,10 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         target_computer = context[0] if context else None
         self._collapsed_computers = {p.computer or "local" for p in self._projects_with_todos}  # type: ignore[attr-defined]
-        self._collapsed_projects = {p.path for p in self._projects_with_todos}  # type: ignore[attr-defined]
+        self._collapsed_projects = {  # type: ignore[attr-defined]
+            project_collapse_key(p.computer, p.path)
+            for p in self._projects_with_todos  # type: ignore[attr-defined]
+        }
         self.post_message(StateChanged())  # type: ignore[attr-defined]
         self._rebuild()  # type: ignore[attr-defined]
         if target_computer is not None:

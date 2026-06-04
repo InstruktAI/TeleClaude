@@ -16,7 +16,7 @@ from textual.widget import Widget
 from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged
 from teleclaude.cli.tui.todos import TodoItem
-from teleclaude.cli.tui.tree import ComputerDisplayInfo
+from teleclaude.cli.tui.tree import ComputerDisplayInfo, project_collapse_key
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
@@ -88,7 +88,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._projects_with_todos: list[ProjectWithTodosDTO] = []
         self._expanded_todos: set[str] = set()
         self._collapsed_computers: set[str] = set()
-        self._collapsed_projects: set[str] = set()
+        self._collapsed_projects: set[tuple[str, str]] = set()
         self._icebox_projects: set[str] = set()
         self._delivered_projects: set[str] = set()
         self._trashed_projects: set[str] = set()
@@ -164,7 +164,11 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             self._collapsed_computers = {str(item) for item in collapsed_computers}
         collapsed_projects = data.get("collapsed_projects", [])
         if isinstance(collapsed_projects, list):
-            self._collapsed_projects = {str(item) for item in collapsed_projects}
+            self._collapsed_projects = {
+                (str(item[0]), str(item[1]))
+                for item in collapsed_projects
+                if isinstance(item, (list, tuple)) and len(item) == 2
+            }
         icebox_projects = data.get("icebox_projects", [])
         if isinstance(icebox_projects, list):
             self._icebox_projects = {str(item) for item in icebox_projects}
@@ -309,7 +313,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     path=project.path,
                     description=project.description,
                 )
-                proj_collapsed = project.path in self._collapsed_projects
+                proj_collapsed = project_collapse_key(project.computer, project.path) in self._collapsed_projects
                 header = ProjectHeader(project=proj_info, session_count=0, collapsed=proj_collapsed)
                 widgets_to_mount.append(header)
                 self._nav_items.append(header)
@@ -615,7 +619,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         return {
             "expanded_todos": sorted(self._expanded_todos),
             "collapsed_computers": sorted(self._collapsed_computers),
-            "collapsed_projects": sorted(self._collapsed_projects),
+            "collapsed_projects": [list(key) for key in sorted(self._collapsed_projects)],
             "icebox_projects": sorted(self._icebox_projects),
             "delivered_projects": sorted(self._delivered_projects),
             "trashed_projects": sorted(self._trashed_projects),

@@ -9,6 +9,15 @@ from teleclaude.cli.tui.types import NodeType
 from teleclaude.constants import WORKTREE_DIR
 
 
+def project_collapse_key(computer: str | None, path: str) -> tuple[str, str]:
+    """Identity of a project for collapse state and persistence.
+
+    Keyed by computer and path together: the same path can exist on more than
+    one computer, so path alone would collide across machines.
+    """
+    return (computer or "local", path)
+
+
 @dataclass(frozen=True)
 class ComputerDisplayInfo:
     """Computer info with display-only counts."""

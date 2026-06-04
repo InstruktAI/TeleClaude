@@ -21,6 +21,7 @@ from teleclaude.cli.tui.tree import (
     is_computer_node,
     is_project_node,
     is_session_node,
+    project_collapse_key,
 )
 from teleclaude.cli.tui.views.interaction import TreeInteractionState
 from teleclaude.cli.tui.views.sessions_actions import DOUBLE_PRESS_THRESHOLD, SessionsViewActionsMixin
@@ -108,7 +109,7 @@ class SessionsView(
         self._last_output_summary: dict[str, dict[str, object]] = {}  # guard: loose-dict
         self._collapsed_sessions: set[str] = set()
         self._collapsed_computers: set[str] = set()
-        self._collapsed_projects: set[str] = set()
+        self._collapsed_projects: set[tuple[str, str]] = set()
         self._optimistically_hidden_session_ids: set[str] = set()
         # TreeInteractionState for Space double-press detection
         self._interaction = TreeInteractionState()
@@ -234,7 +235,11 @@ class SessionsView(
 
         collapsed_projects = data.get("collapsed_projects", [])
         if isinstance(collapsed_projects, list):
-            self._collapsed_projects = {str(item) for item in collapsed_projects}
+            self._collapsed_projects = {
+                (str(item[0]), str(item[1]))
+                for item in collapsed_projects
+                if isinstance(item, (list, tuple)) and len(item) == 2
+            }
 
         preview_data = data.get("preview")
         if isinstance(preview_data, dict):
@@ -379,7 +384,7 @@ class SessionsView(
 
         elif is_project_node(node):
             session_count = len([c for c in node.children if is_session_node(c)])
-            collapsed = node.data.path in self._collapsed_projects
+            collapsed = project_collapse_key(node.data.computer, node.data.path) in self._collapsed_projects
             widget = ProjectHeader(project=node.data, session_count=session_count, collapsed=collapsed)
             container.mount(widget)
             self._nav_items.append(widget)

@@ -66,12 +66,12 @@ async def test_sessions_collapse_project_hides_sessions_and_expand_restores() ->
         view.action_collapse()
         await pilot.pause()
         assert not any(isinstance(w, SessionRow) for w in view._nav_items)
-        assert "/repo" in view._collapsed_projects
+        assert ("c1", "/repo") in view._collapsed_projects
 
         view.action_expand()
         await pilot.pause()
         assert any(isinstance(w, SessionRow) for w in view._nav_items)
-        assert "/repo" not in view._collapsed_projects
+        assert ("c1", "/repo") not in view._collapsed_projects
 
 
 @pytest.mark.unit
@@ -104,7 +104,7 @@ async def test_sessions_structure_keys_toggle_structure_without_touching_leaves(
         view.action_collapse_structure()
         await pilot.pause()
         assert view._collapsed_computers == {"c1"}
-        assert view._collapsed_projects == {"/repo"}
+        assert view._collapsed_projects == {("c1", "/repo")}
         assert not any(isinstance(w, (ProjectHeader, SessionRow)) for w in view._nav_items)
         assert view._collapsed_sessions == leaf_before
 
@@ -118,9 +118,9 @@ async def test_sessions_structure_keys_toggle_structure_without_touching_leaves(
 @pytest.mark.unit
 def test_sessions_load_persisted_collapsed_structure() -> None:
     view = SessionsView()
-    view.load_persisted_state({"collapsed_computers": ["c1"], "collapsed_projects": ["/repo"]})
+    view.load_persisted_state({"collapsed_computers": ["c1"], "collapsed_projects": [["c1", "/repo"]]})
     assert view._collapsed_computers == {"c1"}
-    assert view._collapsed_projects == {"/repo"}
+    assert view._collapsed_projects == {("c1", "/repo")}
 
 
 @pytest.mark.unit
@@ -129,6 +129,62 @@ def test_sessions_load_persisted_ignores_malformed_collapsed_structure() -> None
     view.load_persisted_state({"collapsed_computers": "c1", "collapsed_projects": 5})
     assert view._collapsed_computers == set()
     assert view._collapsed_projects == set()
+
+
+def _two_computers() -> list[ComputerDTO]:
+    return [
+        ComputerDTO(name="c1", status="online", user="u", host="h1", is_local=True),
+        ComputerDTO(name="c2", status="online", user="u", host="h2", is_local=False),
+    ]
+
+
+@pytest.mark.unit
+async def test_sessions_same_path_on_two_computers_collapses_independently() -> None:
+    projects = [
+        ProjectDTO(computer="c1", name="p1", path="/same", description=None),
+        ProjectDTO(computer="c2", name="p2", path="/same", description=None),
+    ]
+    sessions = [
+        SessionDTO(session_id="s1", title="a", status="idle", project_path="/same", computer="c1"),
+        SessionDTO(session_id="s2", title="b", status="idle", project_path="/same", computer="c2"),
+    ]
+    app = _SessionsHarness()
+    async with app.run_test() as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(_two_computers(), projects, sessions)
+        await pilot.pause()
+
+        view.cursor_index = next(i for i, w in enumerate(view._nav_items) if isinstance(w, ProjectHeader))
+        view.action_collapse()
+        await pilot.pause()
+
+        assert ("c1", "/same") in view._collapsed_projects
+        assert ("c2", "/same") not in view._collapsed_projects
+        assert not any(isinstance(w, SessionRow) and w.session_id == "s1" for w in view._nav_items)
+        assert any(isinstance(w, SessionRow) and w.session_id == "s2" for w in view._nav_items)
+
+
+@pytest.mark.unit
+async def test_sessions_collapsed_computer_resolves_context_of_that_computer() -> None:
+    projects = [
+        ProjectDTO(computer="c1", name="p1", path="/repo1", description=None),
+        ProjectDTO(computer="c2", name="p2", path="/repo2", description=None),
+    ]
+    sessions = [
+        SessionDTO(session_id="s1", title="a", status="idle", project_path="/repo1", computer="c1"),
+        SessionDTO(session_id="s2", title="b", status="idle", project_path="/repo2", computer="c2"),
+    ]
+    app = _SessionsHarness()
+    async with app.run_test() as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(_two_computers(), projects, sessions)
+        await pilot.pause()
+
+        view.cursor_index = [i for i, w in enumerate(view._nav_items) if isinstance(w, ComputerHeader)][1]
+        view.action_collapse()
+        await pilot.pause()
+
+        assert view._resolve_context_for_cursor() == ("c2", "/repo2")
 
 
 class _FakeSessionRow:

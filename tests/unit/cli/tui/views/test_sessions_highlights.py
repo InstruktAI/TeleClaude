@@ -129,10 +129,10 @@ def test_get_persisted_state_includes_required_keys() -> None:
 def test_get_persisted_state_exports_collapsed_structure_sorted() -> None:
     host = _make_mixin()
     host._collapsed_computers.update({"zeta", "alpha"})
-    host._collapsed_projects.update({"/b", "/a"})
+    host._collapsed_projects.update({("c2", "/b"), ("c1", "/a")})
     state = host.get_persisted_state()
     assert state["collapsed_computers"] == ["alpha", "zeta"]
-    assert state["collapsed_projects"] == ["/a", "/b"]
+    assert state["collapsed_projects"] == [["c1", "/a"], ["c2", "/b"]]
 
 
 @pytest.mark.unit

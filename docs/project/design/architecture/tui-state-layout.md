@@ -8,7 +8,7 @@ visibility: public
 applies_to: v1
 status: mixed
 delivered_by:
-- roadmap-trash-reveal-ui
+  - roadmap-trash-reveal-ui
 ---
 
 # Tui State Layout — Design
@@ -68,7 +68,8 @@ Bracketed-paste forwarding from tmux into the TUI pane is a documented runtime r
 - `selection`: currently selected item
 - `preview`: `{ session_id, show_child } | null`
 - `sticky`: list of `{ session_id, show_child }`
-- `collapsed`: set of collapsed session ids
+- `collapsed`: set of collapsed session ids (session-level row fold)
+- `collapsed_computers` / `collapsed_projects`: structural fold of whole computers (keyed by computer name) and projects (keyed by computer + path, since the same path can exist on multiple computers). Persisted per view via `get_persisted_state` / `load_persisted_state`, in both the Sessions and Preparation trees. A collapsed computer hides its project headers and all their descendants; a collapsed project hides its sessions/todos while keeping its own header.
 - `focus`: computer/project focus stack
 - `scroll`: scroll offset and window bounds
 - `output_working`: set of session ids that must render `out: Working...` until authoritative turn completion (`agent_stop`)
@@ -156,6 +157,9 @@ flowchart TD
 - `a` on project: `ToggleProjectStickySessions(project_path)`
 - `R` on session: `RestartSession(session_id)`
 - `k` on session (after confirm): `KillSession(session_id)`
+- `←`/`→` on a session: collapse/expand that row; on a project or computer header: collapse/expand that node's whole subtree.
+- `=`/`-`: expand/collapse every session row (leaf fold).
+- `+`/`_` (shift): expand/collapse every computer and project (structural fold); session rows are untouched.
 
 ### Interaction mapping (Preparation)
 
@@ -168,7 +172,9 @@ flowchart TD
 - `s` on todo READY: `StartWork(todo_id)`
 - `v` on file: `ViewFile(file_id)`
 - `e` on file: `EditFile(file_id)`
-- `+`/`-`: `ExpandAll()` / `CollapseAll()`
+- `←`/`→` on a todo: collapse/expand its file list; on a project or computer header: collapse/expand that node's whole subtree.
+- `=`/`-`: `ExpandAll()` / `CollapseAll()` — leaf fold of every todo's file list.
+- `+`/`_` (shift): collapse/expand every computer and project (structural fold); todo file lists are untouched.
 - `d` on project: `ToggleProjectDelivered(project_path)` — reveals/hides the project's recent delivery history.
 - `i` on project: `ToggleProjectIcebox(project_path)` — reveals/hides the project's iceboxed entries.
 - `x` on project: `ToggleProjectTrashed(project_path)` — reveals/hides the project's soft-removed entries (Trashed section). Per-project toggle; persisted across TUI sessions. Binding chosen over `t` (the global Cycle-Theme binding at `teleclaude/cli/tui/app.py:233`) and `T` (kept free for future use); `x` matches the "trash" mental model and the input proposal (status: target — delivered_by roadmap-trash-reveal-ui).

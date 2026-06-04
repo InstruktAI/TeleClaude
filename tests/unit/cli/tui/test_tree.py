@@ -9,7 +9,18 @@ from teleclaude.cli.tui.tree import (
     is_computer_node,
     is_project_node,
     is_session_node,
+    project_collapse_key,
 )
+
+
+@pytest.mark.unit
+def test_project_collapse_key_defaults_missing_computer_to_local() -> None:
+    assert project_collapse_key(None, "/repo") == ("local", "/repo")
+
+
+@pytest.mark.unit
+def test_project_collapse_key_distinguishes_same_path_across_computers() -> None:
+    assert project_collapse_key("c1", "/repo") != project_collapse_key("c2", "/repo")
 
 
 @pytest.mark.unit

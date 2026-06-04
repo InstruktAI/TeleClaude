@@ -13,6 +13,7 @@ from teleclaude.cli.tui.messages import (
     RestartSessionsRequest,
     StickyChanged,
 )
+from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
 from teleclaude.cli.tui.views.interaction import TreeInteractionAction
@@ -42,7 +43,7 @@ class SessionsViewActionsMixin:
         _projects: list[Any]
         _sessions: list[Any]
         _collapsed_computers: set[str]
-        _collapsed_projects: set[str]
+        _collapsed_projects: set[tuple[str, str]]
 
     def action_cursor_up(self) -> None:
         """Move the cursor to the previous sessions tree item."""
@@ -181,9 +182,9 @@ class SessionsViewActionsMixin:
                 self._notify_state_changed()  # type: ignore[attr-defined]
             return
         if isinstance(item, ProjectHeader):
-            path = item.project.path
-            if path not in self._collapsed_projects:  # type: ignore[attr-defined]
-                self._collapsed_projects.add(path)  # type: ignore[attr-defined]
+            key = project_collapse_key(item.project.computer, item.project.path)
+            if key not in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.add(key)  # type: ignore[attr-defined]
                 self._rebuild_tree()  # type: ignore[attr-defined]
                 self._notify_state_changed()  # type: ignore[attr-defined]
             return
@@ -204,9 +205,9 @@ class SessionsViewActionsMixin:
                 self._notify_state_changed()  # type: ignore[attr-defined]
             return
         if isinstance(item, ProjectHeader):
-            path = item.project.path
-            if path in self._collapsed_projects:  # type: ignore[attr-defined]
-                self._collapsed_projects.discard(path)  # type: ignore[attr-defined]
+            key = project_collapse_key(item.project.computer, item.project.path)
+            if key in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.discard(key)  # type: ignore[attr-defined]
                 self._rebuild_tree()  # type: ignore[attr-defined]
                 self._notify_state_changed()  # type: ignore[attr-defined]
             return
@@ -246,7 +247,10 @@ class SessionsViewActionsMixin:
         context = self._resolve_context_for_cursor()
         target_computer = context[0] if context else None
         self._collapsed_computers = {c.name for c in self._computers}  # type: ignore[attr-defined]
-        self._collapsed_projects = {p.path for p in self._projects}  # type: ignore[attr-defined]
+        self._collapsed_projects = {  # type: ignore[attr-defined]
+            project_collapse_key(p.computer, p.path)
+            for p in self._projects  # type: ignore[attr-defined]
+        }
         self._rebuild_tree()  # type: ignore[attr-defined]
         if target_computer is not None:
             for i, widget in enumerate(self._nav_items):  # type: ignore[attr-defined]
@@ -291,9 +295,12 @@ class SessionsViewActionsMixin:
                     return (computer, nav.project.path)
                 if isinstance(nav, ComputerHeader):
                     break
-            # No project found under this computer — use first project
-            if self._projects:  # type: ignore[attr-defined]
-                return (computer, self._projects[0].path)  # type: ignore[attr-defined]
+            # The computer's project headers may be hidden (collapsed) — fall back
+            # to a project that belongs to this computer, never one from another.
+            for project in self._projects:  # type: ignore[attr-defined]
+                if (project.computer or "local") == computer:
+                    return (computer, project.path)
+            return (computer, "")
 
         return None
 
