@@ -1,4 +1,11 @@
 # serializer version: 1
+# name: TestWrapMessageWithOrigin.test_bridge_message_passes_through_unwrapped
+  '''
+  [TeleClaude - Peer (peer-uuid) on host]
+  
+  body
+  '''
+# ---
 # name: TestWrapMessageWithOrigin.test_integrator_caller_prepends_integrator_bracket
   '''
   [Integrator (int-uuid) on MozBook]

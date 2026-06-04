@@ -519,15 +519,18 @@ class TestWrapMessageWithOrigin:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_bridge_message_passes_through_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_bridge_message_passes_through_unwrapped(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         """Already bracket-marked TeleClaude bridge messages must not be re-wrapped."""
         get_session = AsyncMock()
         monkeypatch.setattr(sessions_routes.db, "get_session", get_session)
-        bridge = "[TeleClaude - Peer (peer-uuid) on host]\n\nbody"
 
-        result = await sessions_routes._wrap_message_with_origin(bridge, "caller-uuid")
+        result = await sessions_routes._wrap_message_with_origin(
+            "[TeleClaude - Peer (peer-uuid) on host]\n\nbody", "caller-uuid"
+        )
 
-        assert result == bridge
+        assert result == snapshot
         get_session.assert_not_awaited()
 
     @pytest.mark.unit

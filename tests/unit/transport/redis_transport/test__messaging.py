@@ -7,6 +7,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.constants import ResultStatus
 from teleclaude.core.models import JsonDict
@@ -51,12 +52,11 @@ class TestParseRedisMessage:
     """Characterize Redis message parsing behavior."""
 
     @pytest.mark.unit
-    def test_parses_msg_type_from_bytes(self, redis_transport: RedisTransport) -> None:
+    def test_parses_msg_type_from_bytes(self, redis_transport: RedisTransport, snapshot: SnapshotAssertion) -> None:
         """The parser decodes the message type from bytes."""
-        msg_type = "system"
-        data = {b"type": msg_type.encode(), b"command": b"restart", b"origin": b"terminal"}
+        data = {b"type": b"system", b"command": b"restart", b"origin": b"terminal"}
         result = redis_transport.parse_message(data)
-        assert result.msg_type == msg_type
+        assert result == snapshot
 
     @pytest.mark.unit
     def test_parses_session_id_as_none_when_empty(self, redis_transport: RedisTransport) -> None:
@@ -66,43 +66,33 @@ class TestParseRedisMessage:
         assert result.session_id is None
 
     @pytest.mark.unit
-    def test_parses_session_id_when_present(self, redis_transport: RedisTransport) -> None:
+    def test_parses_session_id_when_present(self, redis_transport: RedisTransport, snapshot: SnapshotAssertion) -> None:
         """Non-empty session ids are preserved."""
-        session_id = "abc-123"
-        data = {b"session_id": session_id.encode(), b"command": b"process_message", b"origin": b"terminal"}
+        data = {b"session_id": b"abc-123", b"command": b"process_message", b"origin": b"terminal"}
         result = redis_transport.parse_message(data)
-        assert result.session_id == session_id
+        assert result == snapshot
 
     @pytest.mark.unit
     def test_tolerates_missing_origin(self, redis_transport: RedisTransport) -> None:
         """origin is a client-stamped session concept; system RPCs and internal ops
         carry none, so parsing must succeed without it."""
-        command = "list_sessions"
-        data = {b"command": command.encode()}
+        data = {b"command": b"list_sessions"}
         result = redis_transport.parse_message(data)
         assert result.origin is None
-        assert result.command == command
 
     @pytest.mark.unit
-    def test_parses_typed_actor_fields(self, redis_transport: RedisTransport) -> None:
+    def test_parses_typed_actor_fields(self, redis_transport: RedisTransport, snapshot: SnapshotAssertion) -> None:
         """Typed actor fields are decoded individually."""
-        actor_id = "telegram:12345"
-        actor_name = "TestUser"
-        actor_avatar_url = "https://example.com/avatar.jpg"
-        platform_message_id = "msg-123"
         data = {
             b"command": b"process_message",
-            b"actor_id": actor_id.encode(),
-            b"actor_name": actor_name.encode(),
-            b"actor_avatar_url": actor_avatar_url.encode(),
-            b"platform_message_id": platform_message_id.encode(),
+            b"actor_id": b"telegram:12345",
+            b"actor_name": b"TestUser",
+            b"actor_avatar_url": b"https://example.com/avatar.jpg",
+            b"platform_message_id": b"msg-123",
             b"origin": b"telegram",
         }
         result = redis_transport.parse_message(data)
-        assert result.actor_id == actor_id
-        assert result.actor_name == actor_name
-        assert result.actor_avatar_url == actor_avatar_url
-        assert result.platform_message_id == platform_message_id
+        assert result == snapshot
 
     @pytest.mark.unit
     def test_ignores_legacy_actor_bag(self, redis_transport: RedisTransport) -> None:
@@ -145,19 +135,16 @@ class TestParseRedisMessage:
         assert result.initiator is None
 
     @pytest.mark.unit
-    def test_parses_project_path_and_title(self, redis_transport: RedisTransport) -> None:
+    def test_parses_project_path_and_title(self, redis_transport: RedisTransport, snapshot: SnapshotAssertion) -> None:
         """Project path and title are preserved."""
-        project_path = "/repo/myproject"
-        title = "My Session"
         data = {
             b"command": b"create_session",
-            b"project_path": project_path.encode(),
-            b"title": title.encode(),
+            b"project_path": b"/repo/myproject",
+            b"title": b"My Session",
             b"origin": b"terminal",
         }
         result = redis_transport.parse_message(data)
-        assert result.project_path == project_path
-        assert result.title == title
+        assert result == snapshot
 
 
 class TestHandleAgentNotificationCommand:
