@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,15 +19,33 @@ def test_handle_sessions_routes_revive_to_telec_misc() -> None:
     assert received == [["sess-1", "--attach"]]
 
 
-def test_handle_sessions_start_defaults_project_to_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_handle_sessions_start_defaults_project_to_invocation_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The project default must come from the caller's invocation cwd, not Path.cwd()
+    # — under the `telec` wrapper (`uv run --directory <install>`) Path.cwd() is the
+    # install dir, which would dispatch sessions into the wrong project.
     tool_api_call = MagicMock(return_value={"session_id": "sess-1"})
     monkeypatch.setattr(sessions, "tool_api_call", tool_api_call)
     monkeypatch.setattr(sessions, "print_json", MagicMock())
+    monkeypatch.setattr(sessions, "resolve_invocation_cwd", lambda: Path("/caller/project"))
 
     sessions.handle_sessions_start(["--agent", "claude"])
 
     call_body = tool_api_call.call_args[1]["json_body"]
-    assert call_body["project_path"] != ""
+    assert call_body["project_path"] == str(Path("/caller/project"))
+
+
+def test_handle_sessions_run_defaults_project_to_invocation_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: a `/next-*` dispatch with no --project must target the caller's
+    # project (invocation cwd), not the daemon/install dir.
+    tool_api_call = MagicMock(return_value={"session_id": "sess-1"})
+    monkeypatch.setattr(sessions, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(sessions, "print_json", MagicMock())
+    monkeypatch.setattr(sessions, "resolve_invocation_cwd", lambda: Path("/caller/project"))
+
+    sessions.handle_sessions_run(["--command", "/next-review-commits", "--args", "abc123"])
+
+    call_body = tool_api_call.call_args[1]["json_body"]
+    assert call_body["project"] == str(Path("/caller/project"))
 
 
 def test_handle_sessions_start_posts_launch_body(monkeypatch: pytest.MonkeyPatch) -> None:

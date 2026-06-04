@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,7 +14,7 @@ def test_handle_todo_prepare_invalidate_check_stays_local(monkeypatch: pytest.Mo
     print_json = MagicMock()
 
     monkeypatch.setattr(todo_commands, "print_json", print_json)
-    monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
+    monkeypatch.setattr(todo_commands, "resolve_invocation_cwd", lambda: Path("/tmp/project"))
 
     with pytest.MonkeyPatch.context() as sys_patch:
         sys_patch.setattr(
@@ -38,7 +39,7 @@ def test_handle_todo_work_polls_until_terminal_state(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(todo_commands, "print_json", print_json)
     monkeypatch.setattr(receipt_module, "print_json", print_json)
-    monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
+    monkeypatch.setattr(todo_commands, "resolve_invocation_cwd", lambda: Path("/tmp/project"))
     monkeypatch.setattr(todo_commands.uuid, "uuid4", lambda: "req-1")
     monkeypatch.setattr(receipt_module.time, "sleep", sleep_calls.append)
 
@@ -66,7 +67,7 @@ def test_handle_todo_integrate_polls_until_terminal_state(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(todo_commands, "print_json", print_json)
     monkeypatch.setattr(receipt_module, "print_json", print_json)
-    monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
+    monkeypatch.setattr(todo_commands, "resolve_invocation_cwd", lambda: Path("/tmp/project"))
     monkeypatch.setattr(receipt_module.time, "sleep", sleep_calls.append)
     monkeypatch.setattr(todo_commands, "tool_api_call", tool_api_call)
     monkeypatch.setattr(receipt_module, "tool_api_call", tool_api_call)
@@ -95,7 +96,7 @@ def test_handle_todo_set_deps_posts_repeated_after_values(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(todo_commands, "tool_api_call", tool_api_call)
     monkeypatch.setattr(todo_commands, "print_json", print_json)
-    monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
+    monkeypatch.setattr(todo_commands, "resolve_invocation_cwd", lambda: Path("/tmp/project"))
 
     todo_commands.handle_todo_set_deps(["sample-slug", "--after", "dep-a", "--after", "dep-b"])
 

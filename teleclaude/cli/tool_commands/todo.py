@@ -7,13 +7,13 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 from __future__ import annotations
 
 import json
-import os
 import sys
 import uuid
 
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.core.next_machine.prepare_events import invalidate_stale_preparations
+from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
     "handle_operations",
@@ -50,7 +50,7 @@ def handle_todo_design(args: list[str]) -> None:
         print(handle_todo_design.__doc__ or "")
         return
 
-    cwd = os.getcwd()
+    cwd = str(resolve_invocation_cwd())
     body: dict[str, object] = {"cwd": cwd}  # guard: loose-dict - JSON request body
 
     i = 0
@@ -96,7 +96,7 @@ def handle_todo_prepare(args: list[str]) -> None:
         print(handle_todo_prepare.__doc__ or "")
         return
 
-    cwd = os.getcwd()
+    cwd = str(resolve_invocation_cwd())
 
     # Handle --invalidate-check as a pure local mechanical operation (no API call)
     if "--invalidate-check" in args:
@@ -157,7 +157,7 @@ def handle_todo_work(args: list[str]) -> None:
         return
 
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
-        "cwd": os.getcwd(),
+        "cwd": str(resolve_invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
 
@@ -207,7 +207,7 @@ def handle_todo_integrate(args: list[str]) -> None:
         return
 
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
-        "cwd": os.getcwd(),
+        "cwd": str(resolve_invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
 
@@ -307,7 +307,7 @@ def handle_todo_set_deps(args: list[str]) -> None:
 
     slug: str | None = None
     after: list[str] = []
-    cwd: str = os.getcwd()
+    cwd: str = str(resolve_invocation_cwd())
 
     i = 0
     while i < len(args):

@@ -10,10 +10,10 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 from teleclaude.cli.telec.handlers.misc import _handle_revive
 from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
 
 
@@ -186,7 +186,7 @@ def handle_sessions_start(args: list[str]) -> None:
             i += 1
 
     if not body.get("project_path"):
-        body["project_path"] = str(Path.cwd())
+        body["project_path"] = str(resolve_invocation_cwd())
 
     data = tool_api_call("POST", "/sessions", json_body=body)
     print_json(data)
@@ -406,7 +406,7 @@ def handle_sessions_run(args: list[str]) -> None:
         print("Error: --command is required", file=sys.stderr)
         raise SystemExit(1)
     if not body.get("project"):
-        body["project"] = str(Path.cwd())
+        body["project"] = str(resolve_invocation_cwd())
 
     data = tool_api_call("POST", "/sessions/run", json_body=body)
     print_json(data)
