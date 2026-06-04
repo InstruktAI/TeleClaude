@@ -9,6 +9,7 @@ date: '2026-05-28'
 adr_status: 'accepted'
 description: 'Shared (generic) Discord channels — Operations, Help Desk (Customer Sessions, Escalations), and Team — are provisioned by the master computer only. Non-master computers resolve them by name but never create, so a shared Discord app cannot accrue duplicate channels.'
 ---
+
 # ADR-0012: Shared Discord Channels Are Provisioned by the Master Computer Only — ADR
 
 ## Context

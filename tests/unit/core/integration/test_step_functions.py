@@ -449,7 +449,7 @@ def test_delivery_bookkeeping_idempotently_continues_when_slug_already_delivered
             checkpoint=checkpoint,
             checkpoint_path=tmp_path / "checkpoint.yaml",
             cwd=str(tmp_path),
-    )
+        )
     assert progressed is True
     assert message == snapshot
 

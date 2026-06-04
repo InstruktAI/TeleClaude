@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Memory observations are stored as (subject, predicate, object) triples rather than as flat title+narrative+type records.'
 ---
+
 # ADR-0002: Memory Uses Triples — ADR
 
 ## Context

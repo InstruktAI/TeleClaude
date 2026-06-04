@@ -68,11 +68,11 @@ agy --sandbox --add-dir ~/.teleclaude/docs --add-dir /tmp/shared
 
 Settings are loaded in this precedence order (overrides lower entries):
 
-| Configuration Surface | Gemini CLI Location | Antigravity CLI Location (`agy`) |
-| :--- | :--- | :--- |
-| **User Global Settings** | `~/.gemini/settings.json` | `~/.gemini/antigravity-cli/settings.json` |
-| **Project Local Settings** | `.gemini/settings.json` | `.agents/antigravity-cli/settings.json` or `.agents/settings.json` |
-| **MCP Servers Config** | Inline in `settings.json` | `mcp_config.json` in the respective setting folder |
+| Configuration Surface      | Gemini CLI Location       | Antigravity CLI Location (`agy`)                                   |
+| :------------------------- | :------------------------ | :----------------------------------------------------------------- |
+| **User Global Settings**   | `~/.gemini/settings.json` | `~/.gemini/antigravity-cli/settings.json`                          |
+| **Project Local Settings** | `.gemini/settings.json`   | `.agents/antigravity-cli/settings.json` or `.agents/settings.json` |
+| **MCP Servers Config**     | Inline in `settings.json` | `mcp_config.json` in the respective setting folder                 |
 
 ### Authentication & Consent Files
 

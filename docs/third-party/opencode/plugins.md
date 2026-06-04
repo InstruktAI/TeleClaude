@@ -49,8 +49,8 @@ event handlers:
 export const MyPlugin = async ({ project, client, $, directory, worktree }) => {
   return {
     // event handlers go here
-  }
-}
+  };
+};
 ```
 
 Context parameters:
@@ -64,11 +64,13 @@ Context parameters:
 TypeScript variant uses the `Plugin` type from `@opencode-ai/plugin`:
 
 ```typescript
-import { type Plugin, tool } from "@opencode-ai/plugin"
+import { type Plugin, tool } from '@opencode-ai/plugin';
 
 export const CustomToolsPlugin: Plugin = async (ctx) => {
-  return { /* handlers */ }
-}
+  return {
+    /* handlers */
+  };
+};
 ```
 
 ## Event handler signature
@@ -128,12 +130,12 @@ Environment injection (`shell.env`):
 ```javascript
 export const InjectEnvPlugin = async () => {
   return {
-    "shell.env": async (input, output) => {
-      output.env.MY_API_KEY = "secret"
-      output.env.PROJECT_ROOT = input.cwd
+    'shell.env': async (input, output) => {
+      output.env.MY_API_KEY = 'secret';
+      output.env.PROJECT_ROOT = input.cwd;
     },
-  }
-}
+  };
+};
 ```
 
 Tool gating by throwing (`tool.execute.before`):
@@ -141,33 +143,33 @@ Tool gating by throwing (`tool.execute.before`):
 ```javascript
 export const EnvProtection = async () => {
   return {
-    "tool.execute.before": async (input, output) => {
-      if (input.tool === "read" && output.args.filePath.includes(".env")) {
-        throw new Error("Do not read .env files")
+    'tool.execute.before': async (input, output) => {
+      if (input.tool === 'read' && output.args.filePath.includes('.env')) {
+        throw new Error('Do not read .env files');
       }
     },
-  }
-}
+  };
+};
 ```
 
 Custom tool registration:
 
 ```typescript
-import { type Plugin, tool } from "@opencode-ai/plugin"
+import { type Plugin, tool } from '@opencode-ai/plugin';
 
 export const CustomToolsPlugin: Plugin = async (ctx) => {
   return {
     tool: {
       mytool: tool({
-        description: "This is a custom tool",
+        description: 'This is a custom tool',
         args: { foo: tool.schema.string() },
         async execute(args, context) {
-          return `Hello ${args.foo} from ${context.directory}`
+          return `Hello ${args.foo} from ${context.directory}`;
         },
       }),
     },
-  }
-}
+  };
+};
 ```
 
 Compaction context injection (`experimental.session.compacting`):
@@ -175,11 +177,11 @@ Compaction context injection (`experimental.session.compacting`):
 ```typescript
 export const CompactionPlugin: Plugin = async (ctx) => {
   return {
-    "experimental.session.compacting": async (input, output) => {
-      output.context.push("## Custom Context\n...")
+    'experimental.session.compacting': async (input, output) => {
+      output.context.push('## Custom Context\n...');
     },
-  }
-}
+  };
+};
 ```
 
 ## Sources

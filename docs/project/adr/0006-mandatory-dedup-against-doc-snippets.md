@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Before saving any memory triple, the scraper must search existing doc snippets for substantive coverage and discard candidates that are already codified. Codified knowledge does not get re-encoded as memory.'
 ---
+
 # ADR-0006: Mandatory Dedup Against Doc Snippets — ADR
 
 ## Context

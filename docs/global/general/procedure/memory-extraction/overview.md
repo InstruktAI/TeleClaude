@@ -90,4 +90,3 @@ This procedure's single most-violated rule is the dedup-against-docs check in Ph
 - Re-runs are safe. The store's append-only semantics mean a re-run produces no harm — duplicates are meaningful, not corruptive.
 - If a row was saved that violated the procedure (interpretation, codified content, behavioral pattern), it can be removed via `telec memories delete <id>`. Operator-level cleanup; not part of normal flow.
 - If the doc-snippet dedup was skipped on an earlier run, a later pass with the discipline applied will produce correct behavior for new content; the polluted historical rows require explicit cleanup.
-

@@ -15,7 +15,7 @@ visibility: 'public'
 
 ## What it is
 
-Defines the vocabulary and protocol for compressed agent-to-agent exchanges *when compression is in use*. Per `communication-compression`, compression is opt-in — invoked by explicit human authorization or in agent-only channels that genuinely have no human observer. The default register for every exchange is `L1` prose. This spec is the reference for what compression looks like once enabled; it does not prescribe when to enable it.
+Defines the vocabulary and protocol for compressed agent-to-agent exchanges _when compression is in use_. Per `communication-compression`, compression is opt-in — invoked by explicit human authorization or in agent-only channels that genuinely have no human observer. The default register for every exchange is `L1` prose. This spec is the reference for what compression looks like once enabled; it does not prescribe when to enable it.
 
 ## Canonical fields
 
@@ -23,12 +23,12 @@ Defines the vocabulary and protocol for compressed agent-to-agent exchanges *whe
 
 A register names the type of exchange. Registers do not auto-prescribe a compression level — they describe the context in which an opt-in decision is made.
 
-| Register            | Meaning                                                  |
-| ------------------- | -------------------------------------------------------- |
-| `human-present`     | A human is participating or actively observing           |
-| `human-aware`       | A human opted into structured compression                |
-| `agent-only`        | Agent-only channel with no human observer                |
-| `structured-report` | Worker-style reporting to an orchestrator or supervisor  |
+| Register            | Meaning                                                 |
+| ------------------- | ------------------------------------------------------- |
+| `human-present`     | A human is participating or actively observing          |
+| `human-aware`       | A human opted into structured compression               |
+| `agent-only`        | Agent-only channel with no human observer               |
+| `structured-report` | Worker-style reporting to an orchestrator or supervisor |
 
 ### Compression levels
 

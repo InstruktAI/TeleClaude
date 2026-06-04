@@ -64,7 +64,7 @@ The previous rules govern budget and infrastructure. These govern what makes a t
     - `import mymodule` with no further assertion — testing Python's import system.
     - Tautological round-trips through a library (`db.write(k, v); assert db.read(k) == v`) when the production code is a thin pass-through with no validation, transformation, or branching of its own — testing the library.
 
-22. **The value gate.** Every test must be able to answer: *what regression in OUR code would this catch that no other test catches?* If the answer is "the constructor stores its argument" or "this enum has these values" or "this default value didn't change" — the test does not earn its place. Delete it.
+22. **The value gate.** Every test must be able to answer: _what regression in OUR code would this catch that no other test catches?_ If the answer is "the constructor stores its argument" or "this enum has these values" or "this default value didn't change" — the test does not earn its place. Delete it.
 
 ## Rationale
 

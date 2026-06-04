@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Memory observations are classified into exactly two categories — human (about a person) and project (about a project). A third "general" category was considered and deferred for lack of a concrete use case.'
 ---
+
 # ADR-0004: Two Memory Categories — ADR
 
 ## Context
@@ -36,7 +37,7 @@ The two categories have distinct predicate vocabularies (per the feature specs) 
 
 **Positive:**
 
-- The category axis is decisive: every candidate observation maps to exactly one category by asking "what is this *about*?"
+- The category axis is decisive: every candidate observation maps to exactly one category by asking "what is this _about_?"
 - Multi-tenant works naturally: per-project memory aggregates across all humans in the project; per-human memory follows the human across all projects.
 - The two-category model has clear downstream consumers, validating the split.
 

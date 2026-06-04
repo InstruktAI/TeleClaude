@@ -9,6 +9,7 @@ date: '2026-03-20'
 adr_status: 'accepted'
 description: 'Phantom git stash entries from test runs and stale worktree wrappers blocked the work state machine; resolved via test-isolation, mark-phase auto-commit, worktree-preferring state IO, and defense-in-depth autostash prevention.'
 ---
+
 # ADR-0001: Git Stash Prevention in Multi-Worktree Environment — ADR
 
 ## Context

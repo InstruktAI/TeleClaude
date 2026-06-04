@@ -57,7 +57,7 @@ The dedup discipline (below) is what keeps memory from becoming a duplicate junk
 
 ### Storage shape
 
-The store is **append-only event semantics**. Every save inserts a new row. Dedup happens at *processing* time downstream, not at write time. The Tier-2 pattern-matcher reading the store aggregates by `(subject, predicate, object)` and uses `COUNT(*)` for salience. The scraper's only write-time obligation is the dedup-against-doc-snippets rule (below).
+The store is **append-only event semantics**. Every save inserts a new row. Dedup happens at _processing_ time downstream, not at write time. The Tier-2 pattern-matcher reading the store aggregates by `(subject, predicate, object)` and uses `COUNT(*)` for salience. The scraper's only write-time obligation is the dedup-against-doc-snippets rule (below).
 
 Row shape:
 
@@ -149,7 +149,7 @@ Before saving any triple, the scraper MUST:
 1. **Search doc snippets** (`telec docs index` + `telec docs get`). If the candidate is substantively covered there — even with different wording — **discard**. Codified knowledge does not get re-encoded as memory.
 2. **Save** the survivor.
 
-The store does NOT dedup at write time across existing memory rows — repeated observations are meaningful (frequency signals salience). The dedup discipline is solely against the *codified* library (doc snippets), to keep memory from duplicating authoritative knowledge.
+The store does NOT dedup at write time across existing memory rows — repeated observations are meaningful (frequency signals salience). The dedup discipline is solely against the _codified_ library (doc snippets), to keep memory from duplicating authoritative knowledge.
 
 This is the single most important rule in this spec. Without it, memory becomes a duplicate junk drawer next to the codified library and the system loses the ability to know what's authoritative.
 
@@ -172,7 +172,7 @@ Extraction is triggered by one of two conditions on a session:
 - **Idle threshold reached** — the session has been idle for ≥ 30 minutes since `last_activity`.
 - **Session close** — the session has transitioned to closed/stopped.
 
-Both triggers invoke the scrapers over the *whole session* delta (no per-turn windowing). Each scraper reads the session's mirror (`session_mirrors.text_content`) and extracts the new content since its category's last-extraction marker for this mirror.
+Both triggers invoke the scrapers over the _whole session_ delta (no per-turn windowing). Each scraper reads the session's mirror (`session_mirrors.text_content`) and extracts the new content since its category's last-extraction marker for this mirror.
 
 The trigger handler is the daemon's maintenance loop; no separate scheduler entry. Each scraper runs once per eligible session per trigger; concurrent dispatch for the same `(category, mirror_id)` is prevented by sidecar bookkeeping (operational concern, not a memory-domain detail).
 

@@ -61,7 +61,12 @@ Agents and default agent (also definable as markdown in `agents/`):
 ```json
 {
   "agent": {
-    "code-reviewer": { "description": "...", "model": "anthropic/claude-sonnet-4-5", "prompt": "...", "tools": { "write": false, "edit": false } }
+    "code-reviewer": {
+      "description": "...",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "...",
+      "tools": { "write": false, "edit": false }
+    }
   },
   "default_agent": "build"
 }

@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Memory writes are append-only — multiple rows with the same (subject, predicate, object) are allowed. Dedup is a read-time concern for downstream consumers, not a write-time check.'
 ---
+
 # ADR-0003: Memory Event-Store Semantics — ADR
 
 ## Context

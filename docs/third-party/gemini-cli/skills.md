@@ -13,10 +13,10 @@ The CLIs support Agent Skills defined by `SKILL.md` files.
 
 ## Locations
 
-| Scope | Gemini CLI Location | Antigravity CLI Location (`agy`) |
-| :--- | :--- | :--- |
-| **User Global** | `~/.gemini/skills/` | `~/.gemini/antigravity-cli/skills/` |
-| **Workspace Local** | `.gemini/skills/` | `.agents/skills/` |
+| Scope               | Gemini CLI Location | Antigravity CLI Location (`agy`)    |
+| :------------------ | :------------------ | :---------------------------------- |
+| **User Global**     | `~/.gemini/skills/` | `~/.gemini/antigravity-cli/skills/` |
+| **Workspace Local** | `.gemini/skills/`   | `.agents/skills/`                   |
 
 ## Sources
 

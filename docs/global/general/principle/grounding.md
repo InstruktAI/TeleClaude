@@ -22,7 +22,7 @@ The cost of checking is low. The cost of a wrong conclusion compounded through s
 
 - Memory — all tiers of it — is a cache, not a database. Caches go stale.
 - Confidence without evidence is the most dangerous state an agent can occupy.
-- State assumptions as declarations, not questions. *"I'm assuming X because Y"* lets the human correct you without burdening them with evaluation; a question hands them work you should have done.
+- State assumptions as declarations, not questions. _"I'm assuming X because Y"_ lets the human correct you without burdening them with evaluation; a question hands them work you should have done.
 - After interruption, context switch, or uncertainty, the agent's mental model has drifted. Re-anchoring is not overhead — it is correction.
 - Sources of truth are ordered: consolidated documentation and codebase first, then broader retrieval. The closer the source to the domain, the more trustworthy it is.
 

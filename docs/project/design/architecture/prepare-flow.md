@@ -29,12 +29,12 @@ The flow replaces the prior pair-driven prepare model. One session drives the wh
 
 **Outputs (per surviving phase):**
 
-| Phase        | Artifact                                                  | Authority gate                                        |
-| ------------ | --------------------------------------------------------- | ----------------------------------------------------- |
-| Intake       | `prd` (+ feature spec snippet for Category A)              | `prd_approved`                                        |
-| Architecture | domain-spec / design-doc snippet updates + thin `architecture` index | `architecture_review` verdict `approve`    |
-| Plan         | `implementation-plan`                                     | `plan_review` verdict `approve`                       |
-| Terminal     | —                                                         | `PREPARED` (derived from all gates + fresh grounding) |
+| Phase        | Artifact                                                             | Authority gate                                        |
+| ------------ | -------------------------------------------------------------------- | ----------------------------------------------------- |
+| Intake       | `prd` (+ feature spec snippet for Category A)                        | `prd_approved`                                        |
+| Architecture | domain-spec / design-doc snippet updates + thin `architecture` index | `architecture_review` verdict `approve`               |
+| Plan         | `implementation-plan`                                                | `plan_review` verdict `approve`                       |
+| Terminal     | —                                                                    | `PREPARED` (derived from all gates + fresh grounding) |
 
 The confirmed plan is the handoff input to the work phase.
 

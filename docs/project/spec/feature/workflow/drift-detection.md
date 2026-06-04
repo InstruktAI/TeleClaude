@@ -3,7 +3,7 @@ id: 'project/spec/feature/workflow/drift-detection'
 type: 'spec'
 domain: 'software-development'
 scope: 'project'
-description: 'Detect when a Todo''s prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, dependency graph, and age — and force re-grounding before the Todo may reach prepared.'
+description: "Detect when a Todo's prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, dependency graph, and age — and force re-grounding before the Todo may reach prepared."
 status: 'target'
 delivered_by:
   - drift-detection-consolidation
@@ -63,14 +63,14 @@ Each tracked artifact is evaluated against every applicable class on every
 prepare call. The overall artifact drift status is the **most blocking**
 status across its classes (`substantive` > `pending` > `cosmetic` > `fresh`).
 
-| Class                  | Evidence checked                                                                                                | When pending                                                                                                |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **code**               | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to `referenced_paths`.                 | HEAD has moved AND at least one changed path overlaps `referenced_paths`.                                   |
-| **upstream-artifact**  | Digest of each upstream artifact (e.g., PRD digest at the time architecture was written) vs current digest.     | Any upstream artifact has been rewritten since this artifact was authored.                                  |
-| **owned-snippet**      | Digest of each doc snippet the Todo owns via `delivered_by` (recorded at artifact write time) vs current digest. | An owned snippet was edited outside this prepare flow since the artifact was authored.                      |
-| **upstream-snippet**   | Digest of each non-owned doc snippet the artifact references by ID, recorded at write time, vs current digest. | A referenced snippet's content has changed since the reference was recorded.                                |
-| **dependency-graph**   | The Todo's immediate `after` set and each direct dep's roadmap status at write time vs current. Shallow — not transitive. | The immediate dep set changed (added/removed) OR any direct dep's roadmap status flipped (e.g., a HELD dep is now DELIVERED). |
-| **age** _(policy)_     | Artifact `produced_at` vs configurable freshness window.                                                        | `produced_at` is older than the configured window for the artifact kind.                                    |
+| Class                 | Evidence checked                                                                                                          | When pending                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **code**              | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to `referenced_paths`.                           | HEAD has moved AND at least one changed path overlaps `referenced_paths`.                                                     |
+| **upstream-artifact** | Digest of each upstream artifact (e.g., PRD digest at the time architecture was written) vs current digest.               | Any upstream artifact has been rewritten since this artifact was authored.                                                    |
+| **owned-snippet**     | Digest of each doc snippet the Todo owns via `delivered_by` (recorded at artifact write time) vs current digest.          | An owned snippet was edited outside this prepare flow since the artifact was authored.                                        |
+| **upstream-snippet**  | Digest of each non-owned doc snippet the artifact references by ID, recorded at write time, vs current digest.            | A referenced snippet's content has changed since the reference was recorded.                                                  |
+| **dependency-graph**  | The Todo's immediate `after` set and each direct dep's roadmap status at write time vs current. Shallow — not transitive. | The immediate dep set changed (added/removed) OR any direct dep's roadmap status flipped (e.g., a HELD dep is now DELIVERED). |
+| **age** _(policy)_    | Artifact `produced_at` vs configurable freshness window.                                                                  | `produced_at` is older than the configured window for the artifact kind.                                                      |
 
 Code drift is the existing v1 behavior. The other classes are new in this
 spec; their provenance fields are listed below.
@@ -134,12 +134,12 @@ slug does not trigger drift).
 
 ### Per-artifact coverage matrix
 
-| Artifact                | code | upstream-artifact      | owned-snippet  | upstream-snippet | dependency-graph | age |
-| ----------------------- | :--: | ---------------------- | :------------: | :--------------: | :--------------: | :-: |
-| `input`                 |  ✓   | _(none)_               |  _(none)_      |        ✓         |        ✓         |  ✓  |
-| `prd`                   |  ✓   | `input`                |       ✓        |        ✓         |        ✓         |  ✓  |
-| `architecture` (index)  |  ✓   | `prd`                  |       ✓        |        ✓         |        ✓         |  ✓  |
-| `implementation-plan`   |  ✓   | `architecture`, `prd`  |  _(none)_      |        ✓         |        ✓         |  ✓  |
+| Artifact               | code | upstream-artifact     | owned-snippet | upstream-snippet | dependency-graph | age |
+| ---------------------- | :--: | --------------------- | :-----------: | :--------------: | :--------------: | :-: |
+| `input`                |  ✓   | _(none)_              |   _(none)_    |        ✓         |        ✓         |  ✓  |
+| `prd`                  |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
+| `architecture` (index) |  ✓   | `prd`                 |       ✓       |        ✓         |        ✓         |  ✓  |
+| `implementation-plan`  |  ✓   | `architecture`, `prd` |   _(none)_    |        ✓         |        ✓         |  ✓  |
 
 `owned-snippet` applies to artifacts whose authoring phase writes doc
 snippets directly (intake → feature spec; architecture → domain/design
@@ -498,7 +498,7 @@ Scenario: re-writing an artifact clears its drift stamps
   renamed from `derive_prepare_drift`; computes per-(artifact, class)
   status; collapses to the per-artifact overall status via the priority
   rule. Signature: `derive_lifecycle_drift(slug, model, *, repo_root,
-  todos_db, snippet_digest_fn)` — explicit injection of slug,
+todos_db, snippet_digest_fn)` — explicit injection of slug,
   `TodosDb`, and snippet-digest callable so the function has no hidden
   dependencies and per-class helpers receive exactly what they need.
   Called from BOTH `prepare_steps.py` and `work.py` so the two
@@ -566,9 +566,9 @@ Scenario: re-writing an artifact clears its drift stamps
   - **Fast-track `apply_prepared_state`** at
     `teleclaude/core/next_machine/state_io.py:624` — the prepped/bug
     fast-track that stamps PRD/requirements/implementation-plan digest
-    + produced_at directly. Routes through the same provenance boundary
-    so fast-tracked artifacts carry the same extended provenance as
-    organically prepared ones.
+    - produced_at directly. Routes through the same provenance boundary
+      so fast-tracked artifacts carry the same extended provenance as
+      organically prepared ones.
   - **Legacy auto-import** at `teleclaude/core/todos_db/_base.py:307`
     and `teleclaude/core/todos_db/_legacy_import.py:29` / `:351` /
     `:360` — runs during TodosDb bootstrap and writes drift-tracked
@@ -586,6 +586,7 @@ Scenario: re-writing an artifact clears its drift stamps
   captured through a path that did not populate the new fields. The
   plan's task list enumerates each path above and either routes it
   through the boundary or marks it explicitly out-of-scope with reason.
+
 - `teleclaude/cli/telec/handlers/todo.py:--drift-reviewed` — flag
   signature unchanged; analyzer supplies the evidence anchor implicitly
   from current state at stamp time.

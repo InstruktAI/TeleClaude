@@ -28,7 +28,7 @@ integration lifecycle before the delivery commit is made.
 The sync pipeline is:
 
 1. **Validate** — run snippet, artifact, and jobs-config validators.
-2. **Record provenance** *(best-effort)* — if `DATABASE_URL` is set, insert
+2. **Record provenance** _(best-effort)_ — if `DATABASE_URL` is set, insert
    `delivered_by` memberships into `workflow.snippet_provenance` for v2 audit.
    v2 postgres failures (container down, credential mismatch, missing migration)
    are caught and logged as warnings. This step never blocks phases 3–4.

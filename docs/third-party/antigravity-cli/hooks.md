@@ -54,13 +54,13 @@ Observed payloads carry `conversationId`, `transcriptPath`, `artifactDirectoryPa
 and `workspacePaths` — but **not** prompt or assistant text, which must be read from
 the transcript:
 
-| Event Name           | Description                                                             | Observed payload fields                                          |
-| :------------------- | :---------------------------------------------------------------------- | :--------------------------------------------------------------- |
+| Event Name           | Description                                                             | Observed payload fields                                                                               |
+| :------------------- | :---------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
 | **`PreInvocation`**  | Fires after user submits a prompt but before model inference.           | `conversationId`, `transcriptPath`, `invocationNum`, `initialNumSteps`, `workspacePaths` (no prompt). |
-| **`PostInvocation`** | Fires after the model returns a response but before any tool execution. | Not ingested by TeleClaude.                                      |
-| **`PreToolUse`**     | Fires immediately before a tool is executed.                            | `conversationId`, `transcriptPath`, tool fields.                 |
-| **`PostToolUse`**    | Fires after a tool executes, capturing results.                         | Not ingested by TeleClaude.                                      |
-| **`Stop`**           | Fires when the execution turn completely terminates.                    | `conversationId`, `transcriptPath`, `terminationReason`, `fullyIdle` (no assistant message). |
+| **`PostInvocation`** | Fires after the model returns a response but before any tool execution. | Not ingested by TeleClaude.                                                                           |
+| **`PreToolUse`**     | Fires immediately before a tool is executed.                            | `conversationId`, `transcriptPath`, tool fields.                                                      |
+| **`PostToolUse`**    | Fires after a tool executes, capturing results.                         | Not ingested by TeleClaude.                                                                           |
+| **`Stop`**           | Fires when the execution turn completely terminates.                    | `conversationId`, `transcriptPath`, `terminationReason`, `fullyIdle` (no assistant message).          |
 
 ## TeleClaude Integration & Event Mapping
 

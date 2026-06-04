@@ -8,7 +8,7 @@ visibility: public
 applies_to: v1
 status: mixed
 delivered_by:
-- roadmap-trash-reveal-ui
+  - roadmap-trash-reveal-ui
 ---
 
 # CLI Authorization Matrix — Design
@@ -97,28 +97,28 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 ### Todo Management
 
-| Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                            |
-| ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                     |
-| `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                  |
-| `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                    |
+| Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                                                                     |
+| ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                                                                                                                              |
+| `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                                                                                                                           |
+| `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                                                                                                                             |
 | `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). Status: target — delivered_by roadmap-trash-reveal-ui. |
-| `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members. |
-| `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                    |
-| `telec todo reconcile`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Re-aligning the lifecycle pointer from current evidence is orchestration. Same boundary as prepare/work.             |
-| `telec todo stamp`            | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Stamping verdicts and finalize-ready is state machine management.                                                    |
-| `telec todo set-deps`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is work planning. Same as prepare/work.                                                         |
-| `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                           |
-| `telec todo dump`             | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | **Deprecated** — compatibility alias for `telec todo create`. Retained for transition; prefer `telec todo create`.  |
+| `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members.                                                                                                          |
+| `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                                                                                                                             |
+| `telec todo reconcile`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Re-aligning the lifecycle pointer from current evidence is orchestration. Same boundary as prepare/work.                                                                                                                      |
+| `telec todo stamp`            | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Stamping verdicts and finalize-ready is state machine management.                                                                                                                                                             |
+| `telec todo set-deps`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is work planning. Same as prepare/work.                                                                                                                                                                  |
+| `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                                                                                                                                    |
+| `telec todo dump`             | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | **Deprecated** — compatibility alias for `telec todo create`. Retained for transition; prefer `telec todo create`.                                                                                                            |
 
 ### Todo List Management
 
-| Command                 | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                      |
-| ----------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `telec todo list`       | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the todo list is useful for orientation. Workers don't need todo-list context. Customers should not see internal planning. |
-| `telec todo freeze`     | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                             |
-| `telec todo unfreeze`   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring an iceboxed entry is planning management. Only admins and members.                                                   |
-| `telec todo deliver`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                    |
+| Command               | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                          |
+| --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `telec todo list`     | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the todo list is useful for orientation. Workers don't need todo-list context. Customers should not see internal planning. |
+| `telec todo freeze`   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                                 |
+| `telec todo unfreeze` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring an iceboxed entry is planning management. Only admins and members.                                                       |
+| `telec todo deliver`  | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                        |
 
 ### Bug Management
 
@@ -205,7 +205,7 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo reactivate`       | Contributors, newcomers, customers          |
 | `telec todo verify-artifacts` | Customers                                   |
-| `telec todo dump`             | Newcomers, customers (**deprecated** alias)  |
+| `telec todo dump`             | Newcomers, customers (**deprecated** alias) |
 | `telec todo list`             | Customers                                   |
 | `telec todo freeze`           | Contributors, newcomers, customers          |
 | `telec todo unfreeze`         | Contributors, newcomers, customers          |

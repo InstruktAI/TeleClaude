@@ -63,13 +63,13 @@ priority = 100                    # higher wins within a tier
 The CLI auto-discovers and combines `.toml` files from tiered locations. **No
 `settings.json` registration is required for the User-tier default directory.**
 
-| Tier      | Base | Location                              |
-| --------- | ---- | ------------------------------------- |
-| Admin     | 5    | system dirs / `--admin-policy` paths  |
-| User      | 4    | `~/.gemini/policies/*.toml`           |
-| Workspace | 3    | project-level (currently disabled)    |
-| Extension | 2    | extension-provided                    |
-| Default   | 1    | built-in defaults                     |
+| Tier      | Base | Location                             |
+| --------- | ---- | ------------------------------------ |
+| Admin     | 5    | system dirs / `--admin-policy` paths |
+| User      | 4    | `~/.gemini/policies/*.toml`          |
+| Workspace | 3    | project-level (currently disabled)   |
+| Extension | 2    | extension-provided                   |
+| Default   | 1    | built-in defaults                    |
 
 Effective priority: `final_priority = tier_base + (toml_priority / 1000)`. A
 User-tier rule with `priority = 100` resolves to `4.100`. Higher wins.
@@ -90,15 +90,15 @@ Consequences for coexisting User-tier files (ours + a user's hand-authored file)
   the tools it matches; a lower one loses. No file can delete or overwrite
   another file's rules — they only out-prioritize each other.
 - This makes "accidental overwrite" a non-issue at the file level: deploying our
-  file never clobbers a user's file and vice versa. Whose *rule* takes effect is
+  file never clobbers a user's file and vice versa. Whose _rule_ takes effect is
   decided deterministically by priority.
 - **Design lever:** the priority we stamp on our rules decides the relationship.
-  A **low** priority makes our rules a permissive *baseline* that any
+  A **low** priority makes our rules a permissive _baseline_ that any
   hand-authored user rule can override (fills gaps, never fights the user). A
   **high** priority makes our rules authoritative over same-tier user rules.
 
 **Undocumented caveat:** the docs do **not** specify a tiebreaker when two
-matching rules have the *same* effective priority in the same tier (file load
+matching rules have the _same_ effective priority in the same tier (file load
 order? alphabetical? last-wins?). Do not rely on equal-priority collisions
 resolving predictably; stamp our rules at a priority that avoids ties with the
 default/user space.
@@ -121,13 +121,13 @@ In non-interactive mode, `ask_user` is treated as `deny`.
 
 ### Deprecated → replacement mapping
 
-| Deprecated                          | Replacement                                                              |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| `tools.allowed: ["*"]` (settings)   | a User-tier policy file with `toolName = "*"`, `decision = "allow"`       |
-| `tools.allowed: ["X"]` (settings)   | a policy file with `toolName = "X"`, `decision = "allow"`                 |
-| `tools.exclude: ["X"]` (settings)   | a policy rule with `toolName = "X"`, `decision = "deny"`                  |
-| `--allowed-tools X` (CLI flag)      | a policy file passed via `--policy <path>` (file or dir)                  |
-| `--yolo` (CLI flag)                 | `--approval-mode=yolo` (the legacy `--yolo` spelling is deprecated)       |
+| Deprecated                        | Replacement                                                         |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `tools.allowed: ["*"]` (settings) | a User-tier policy file with `toolName = "*"`, `decision = "allow"` |
+| `tools.allowed: ["X"]` (settings) | a policy file with `toolName = "X"`, `decision = "allow"`           |
+| `tools.exclude: ["X"]` (settings) | a policy rule with `toolName = "X"`, `decision = "deny"`            |
+| `--allowed-tools X` (CLI flag)    | a policy file passed via `--policy <path>` (file or dir)            |
+| `--yolo` (CLI flag)               | `--approval-mode=yolo` (the legacy `--yolo` spelling is deprecated) |
 
 `--yolo` is a deprecated alias for `--approval-mode=yolo`. Approval modes:
 `default` (prompt), `auto_edit` (auto-approve edits), `plan` (read-only),
@@ -150,8 +150,8 @@ Confirmed current in the CLI reference; agents auditing for 1.0 breakage should
   `tools.enableHooks`, `mcpServers` — current settings keys.
 
 Sandbox + mounted directories + MCP-server allowlisting are how a session is
-*jailed*; none of that machinery is deprecated. Only the `tools.allowed` /
-`--allowed-tools` *tool-confirmation* surface and the `--yolo` spelling move.
+_jailed_; none of that machinery is deprecated. Only the `tools.allowed` /
+`--allowed-tools` _tool-confirmation_ surface and the `--yolo` spelling move.
 
 ## Known caveats
 

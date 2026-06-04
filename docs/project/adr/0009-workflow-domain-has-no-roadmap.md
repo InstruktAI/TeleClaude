@@ -9,6 +9,7 @@ date: '2026-05-23'
 adr_status: 'accepted'
 description: 'The workflow domain has no "roadmap" concept. A todo is the single entity, ordered and dependency-gated; the v2 workflow crate''s separate RoadmapEntry is to be folded into Todo. v1''s legacy roadmap table/module names stay until cutover.'
 ---
+
 # ADR-0009: Workflow Domain Has No Roadmap Concept — ADR
 
 ## Context
@@ -27,7 +28,7 @@ The workflow domain has exactly one entity: the **todo**. It carries its own ord
 
 - **v2 (`workflow` crate):** fold `RoadmapEntry`'s unique fields into `Todo`, remove `RoadmapEntry` and `service/roadmap.rs`, and rename the `roadmap` Postgres table and `workflow.roadmap.*` events onto a todo-named surface. Tracked by the `v2-workflow-drop-roadmap` todo. The current v2 workflow code does **not** represent the intended shape; this ADR does.
 - **v1:** the legacy `roadmap` table, `roadmap.py`/`roadmap_tree.py` modules, identifiers, the `"roadmap"` cache scope, and the `chore(roadmap)` commit type stay as-is — v1 is replaced wholesale at cutover, so renaming its internals is churn against code with a death date.
-- **Agent- and human-facing surfaces** (error/notification strings, doc-snippet prose) drop "roadmap" as a *concept* in favor of "todo"/"todo list" where it does not name a real v1/v2 structure, table, event, or legacy file.
+- **Agent- and human-facing surfaces** (error/notification strings, doc-snippet prose) drop "roadmap" as a _concept_ in favor of "todo"/"todo list" where it does not name a real v1/v2 structure, table, event, or legacy file.
 
 ## Consequences
 

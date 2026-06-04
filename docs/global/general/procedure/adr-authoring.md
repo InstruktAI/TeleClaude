@@ -32,6 +32,7 @@ Capture a decision as a structured, discoverable record that future agents can f
 2. **Pick a kebab-case title.** Short, action-oriented, describes the decision. Examples: `memory-uses-triples`, `event-store-semantics`, `provenance-via-mirror-id`.
 
 3. **Create the file** at `docs/project/adr/NNNN-kebab-case-title.md` with the frontmatter shape:
+
    ```yaml
    ---
    id: project/adr/NNNN-kebab-case-title
@@ -41,7 +42,7 @@ Capture a decision as a structured, discoverable record that future agents can f
    visibility: public
    number: NNNN
    date: YYYY-MM-DD
-   adr_status: accepted    # or proposed | deprecated | superseded
+   adr_status: accepted # or proposed | deprecated | superseded
    description: <one-line summary of the decision>
    # optional:
    # supersedes: [project/adr/0001-prior-decision]

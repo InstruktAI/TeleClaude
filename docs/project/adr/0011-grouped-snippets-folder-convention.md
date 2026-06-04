@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Related snippets that share a topic live in a folder named for the topic, with overview.md as the shared entry and sibling files for variants. The flat-prefix-sibling pattern (foo-overview.md / foo-human.md / foo-project.md) is rejected.'
 ---
+
 # ADR-0011: Grouped Snippets Use overview.md Folder Convention — ADR
 
 ## Context

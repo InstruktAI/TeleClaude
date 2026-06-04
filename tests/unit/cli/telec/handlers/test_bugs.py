@@ -145,8 +145,7 @@ def test_handle_bugs_list_queries_db_for_bug_kind_todos(
         "CREATE TABLE todo_state (id TEXT PRIMARY KEY, slug TEXT, state TEXT, created_at TEXT, updated_at TEXT)"
     )
     conn.execute(
-        "INSERT INTO roadmap (id, slug, status, created_at, updated_at) "
-        "VALUES ('id1', 'fix-crash', 'active', '', '')"
+        "INSERT INTO roadmap (id, slug, status, created_at, updated_at) VALUES ('id1', 'fix-crash', 'active', '', '')"
     )
     state = json.dumps({"kind": "bug", "phase": "review_pending", "build_review": {"verdict": "changes_requested"}})
     conn.execute(

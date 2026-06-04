@@ -6,8 +6,8 @@ type: spec
 visibility: public
 status: mixed
 delivered_by:
-- roadmap-trash-reveal-ui
-- v2-workflow-cli-refinement-commands
+  - roadmap-trash-reveal-ui
+  - v2-workflow-cli-refinement-commands
 ---
 
 # CLI Surface — Spec

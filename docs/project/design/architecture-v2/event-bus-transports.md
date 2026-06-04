@@ -66,7 +66,7 @@ fast-path stays gone.
   installs configure only Local. Adding a mesh adds Cluster. Joining
   federation adds Public. Operators opt in per scope.
 - **Explicit scoping on emit.** Every event carries `envelope.scope: Local
-  | Cluster | Public`. The bus routes that emit to the matching client
+| Cluster | Public`. The bus routes that emit to the matching client
   only. Emitting at scope=Cluster does NOT also fire on Local. The
   application chooses scope at emit time and the bus respects it
   literally.
@@ -115,11 +115,11 @@ fast-path stays gone.
 
 ### The three scopes (each its own Redis client)
 
-| Scope | Reach | Required? | Typical deployment |
-|---|---|---|---|
-| **Local** | Single host (this computer) | YES | Always present. Single-computer install runs Local-only. |
-| **Cluster** | Single owner's mesh (multi-host fleet) | NO | A user with multiple machines configures Cluster to coordinate across them. |
-| **Public** | Cross-mesh federation hub | NO | Multiple owners' clusters meet via a cloud-hosted hub. Spoke (cluster) → hub (public) → spoke (other cluster) topology. |
+| Scope       | Reach                                  | Required? | Typical deployment                                                                                                      |
+| ----------- | -------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Local**   | Single host (this computer)            | YES       | Always present. Single-computer install runs Local-only.                                                                |
+| **Cluster** | Single owner's mesh (multi-host fleet) | NO        | A user with multiple machines configures Cluster to coordinate across them.                                             |
+| **Public**  | Cross-mesh federation hub              | NO        | Multiple owners' clusters meet via a cloud-hosted hub. Spoke (cluster) → hub (public) → spoke (other cluster) topology. |
 
 Each scope is a separate Redis client instance. The bus is constructed
 with all three:

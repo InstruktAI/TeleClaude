@@ -13,11 +13,11 @@ visibility: 'public'
 
 TeleClaude's software development lifecycle is driven by three deterministic state machines, each governing a distinct phase of delivery. The orchestrator calls a machine, executes the returned instruction (typically dispatching a worker session), then calls again. This loop continues until a terminal state.
 
-| Phase | Name                                      | State Machine                    | Entry Point                   | Purpose                                                       |
-| ----- | ----------------------------------------- | -------------------------------- | ----------------------------- | ------------------------------------------------------------- |
-| **A** | [Prepare](prepare-flow.md)                | `lifecycle_phase` (prepare lane) | `telec todo prepare [slug]`   | Define PRD, architecture, and implementation plan             |
-| **B** | [Work](work-state-machine.md)             | `lifecycle_phase` (work lane)    | `telec todo work [slug]`      | Build, review, fix, and finalize the implementation           |
-| **C** | [Integrate](integration-state-machine.md) | `IntegrationPhase` (12 states)   | `telec todo integrate [slug]` | Merge to main, push, deliver                                  |
+| Phase | Name                                      | State Machine                    | Entry Point                   | Purpose                                             |
+| ----- | ----------------------------------------- | -------------------------------- | ----------------------------- | --------------------------------------------------- |
+| **A** | [Prepare](prepare-flow.md)                | `lifecycle_phase` (prepare lane) | `telec todo prepare [slug]`   | Define PRD, architecture, and implementation plan   |
+| **B** | [Work](work-state-machine.md)             | `lifecycle_phase` (work lane)    | `telec todo work [slug]`      | Build, review, fix, and finalize the implementation |
+| **C** | [Integrate](integration-state-machine.md) | `IntegrationPhase` (12 states)   | `telec todo integrate [slug]` | Merge to main, push, deliver                        |
 
 ### Referenced files
 
@@ -177,15 +177,15 @@ flowchart TB
 
 All workers are dispatched via `telec sessions run`. The machine specifies the command; the orchestrator specifies agent and thinking mode.
 
-| Phase    | Worker Role                                 | Command                                                                                           | Thinking Mode      |
-| -------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------ |
-| Prepare  | Intaker / Architect / Planner               | `/next-prepare-intake`, `/next-prepare-architecture`, `/next-prepare-plan`                         | `slow`             |
-| Prepare  | Drift Analyzer                              | `/next-drift-analyze`                                                                             | `fast`             |
-| Prepare  | Reviewer                                    | `/next-review-architecture`, `/next-review-plan`                                                  | `slow`             |
-| Build    | Builder                                     | `/next-build` (or `/next-bugs-fix`)                                                               | `med`              |
-| Review   | Reviewer                                    | `/next-review-build`                                                                              | `slow` (mandatory) |
-| Fix      | Fixer                                       | `/next-fix-review`                                                                                | `med`              |
-| Finalize | Finalizer                                   | `/next-finalize`                                                                                  | `med`              |
+| Phase    | Worker Role                   | Command                                                                    | Thinking Mode      |
+| -------- | ----------------------------- | -------------------------------------------------------------------------- | ------------------ |
+| Prepare  | Intaker / Architect / Planner | `/next-prepare-intake`, `/next-prepare-architecture`, `/next-prepare-plan` | `slow`             |
+| Prepare  | Drift Analyzer                | `/next-drift-analyze`                                                      | `fast`             |
+| Prepare  | Reviewer                      | `/next-review-architecture`, `/next-review-plan`                           | `slow`             |
+| Build    | Builder                       | `/next-build` (or `/next-bugs-fix`)                                        | `med`              |
+| Review   | Reviewer                      | `/next-review-build`                                                       | `slow` (mandatory) |
+| Fix      | Fixer                         | `/next-fix-review`                                                         | `med`              |
+| Finalize | Finalizer                     | `/next-finalize`                                                           | `med`              |
 
 ### Detailed documentation
 

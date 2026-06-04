@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'ADRs become a first-class taxonomy type with their own required sections, frontmatter fields, and location at docs/project/adr/ (peer to spec, design, policy, procedure, concept).'
 ---
+
 # ADR-0010: ADR Taxonomy Type — ADR
 
 ## Context

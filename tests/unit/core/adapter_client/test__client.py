@@ -120,8 +120,12 @@ class TestStart:
         with (
             patch("teleclaude.core.adapter_client._client.config", config),
             _fake_validator_env(TELEGRAM_BOT_TOKEN="telegram-token"),
-            patch("teleclaude.core.adapter_client._client.DiscordAdapter", return_value=discord_adapter) as discord_ctor,
-            patch("teleclaude.core.adapter_client._client.TelegramAdapter", return_value=telegram_adapter) as telegram_ctor,
+            patch(
+                "teleclaude.core.adapter_client._client.DiscordAdapter", return_value=discord_adapter
+            ) as discord_ctor,
+            patch(
+                "teleclaude.core.adapter_client._client.TelegramAdapter", return_value=telegram_adapter
+            ) as telegram_ctor,
             patch("teleclaude.core.adapter_client._client.RedisTransport", return_value=redis_adapter) as redis_ctor,
         ):
             await client.start()

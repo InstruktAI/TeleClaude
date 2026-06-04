@@ -223,10 +223,10 @@ Frontmatter:
 
 ```yaml
 type: spec-diff
-diff_of: project/spec/feature/<context>/<concept>       # parent id, validated
-applies_to: v2                                          # implicit; schema-enforced
-delivered_by: [<v2-cutover-slug>]                       # the v2 todo that ships the divergence
-status: target                                          # target until that todo delivers
+diff_of: project/spec/feature/<context>/<concept> # parent id, validated
+applies_to: v2 # implicit; schema-enforced
+delivered_by: [<v2-cutover-slug>] # the v2 todo that ships the divergence
+status: target # target until that todo delivers
 ```
 
 Required sections:

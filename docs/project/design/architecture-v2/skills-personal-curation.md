@@ -21,7 +21,7 @@ description: Forward-looking architectural design for per-human skill curation �
 
 Give multi-tenant platform users (members, customers, contributors) per-human skill loadouts without inheriting the failure modes of agent-CLI native skill systems (account-bound, project-or-global-only, no per-human axis). Skills are sourced from trusted external libraries (vetted, security-reviewed, community-tested), not authored internally. Per-human associations live in memory; the session-start hook reads them and injects a per-human manifest pointing the agent at the relevant skill files on disk.
 
-This design builds on top of the v2 platform — Postgres-backed memory, mirror-based provenance, session-start injection — and is therefore deliberately *not* part of the v2 cutover scope. It is the next layer.
+This design builds on top of the v2 platform — Postgres-backed memory, mirror-based provenance, session-start injection — and is therefore deliberately _not_ part of the v2 cutover scope. It is the next layer.
 
 ## Inputs/Outputs
 

@@ -1,10 +1,9 @@
 ---
-description: UI adapters translate human inputs into events and render outputs with
-  UX rules.
-id: project/design/architecture/ui-adapter
-scope: project
-type: design
-visibility: public
+description: 'UI adapters translate human inputs into events and render outputs with UX rules.'
+id: 'project/design/architecture/ui-adapter'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Ui Adapter — Design
@@ -215,18 +214,18 @@ owns every `voice_transcriptions` row write and state transition (UI adapters
 never mutate core state directly — see `#invariants` and
 `layer-ownership#layer-boundaries`).
 
-| Step | Actor     | Action                                                                       |
-| ---- | --------- | ---------------------------------------------------------------------------- |
-| 1    | User      | Sends voice message                                                          |
-| 2    | UiAdapter | Downloads audio file to `/tmp/teleclaude_voice/voice_*`                      |
-| 3    | UiAdapter | Dispatches `HandleVoiceCommand` through the daemon task registry and returns |
-| 4    | Core      | Writes `voice_transcriptions` row `state=pending` (notice id NULL)           |
-| 5    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only); returns its platform msg id |
-| 6    | Core      | Persists the returned id as `notice_message_id`; runs transcription as a tracked task |
+| Step | Actor     | Action                                                                                           |
+| ---- | --------- | ------------------------------------------------------------------------------------------------ |
+| 1    | User      | Sends voice message                                                                              |
+| 2    | UiAdapter | Downloads audio file to `/tmp/teleclaude_voice/voice_*`                                          |
+| 3    | UiAdapter | Dispatches `HandleVoiceCommand` through the daemon task registry and returns                     |
+| 4    | Core      | Writes `voice_transcriptions` row `state=pending` (notice id NULL)                               |
+| 5    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only); returns its platform msg id                     |
+| 6    | Core      | Persists the returned id as `notice_message_id`; runs transcription as a tracked task            |
 | 7    | STT       | Transcribes audio via the existing speech-to-text backend chain, bounded by a wall-clock timeout |
-| 8    | UiAdapter | Edits the notice in place with the transcribed text or explicit failure      |
-| 9    | Core      | Transitions row to `succeeded` and sends the transcription through the normal message pipeline |
-| 10   | UiAdapter | Deletes voice message per cleanup rules (temp audio is swept by maintenance) |
+| 8    | UiAdapter | Edits the notice in place with the transcribed text or explicit failure                          |
+| 9    | Core      | Transitions row to `succeeded` and sends the transcription through the normal message pipeline   |
+| 10   | UiAdapter | Deletes voice message per cleanup rules (temp audio is swept by maintenance)                     |
 
 Non-happy paths edit the **same** notice in place rather than emitting a
 duplicate. Core drives the row's state and asks the adapter to edit: a

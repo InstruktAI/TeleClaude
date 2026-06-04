@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Skill pattern detection is deferred. Skills, when they come, will be per-human curation of external libraries (not memory-promotion). The future shape is captured in a design doc; no implementation in v2.'
 ---
+
 # ADR-0009: Skill Pattern Detection Deferred — ADR
 
 ## Context

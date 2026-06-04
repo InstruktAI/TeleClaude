@@ -28,11 +28,11 @@ status: 'actual'
   todo databases, or project artifact stores.
 - **Sanctioned exception — retention finalization of explicitly-removed todo
   rows.** Runtime maintenance MAY hard-purge todo-database rows that an operator
-  or agent has *explicitly removed* (soft-deleted: marked `removed` with a
+  or agent has _explicitly removed_ (soft-deleted: marked `removed` with a
   `removed_at` tombstone) once they are older than the fixed recovery-retention
   window. This is the finalization of an already-explicit removal after a
   recovery grace period — not blind pruning of live durable work. The
-  prohibition above still holds for all *live* (non-removed) todo data: routine
+  prohibition above still holds for all _live_ (non-removed) todo data: routine
   maintenance must never prune a todo that has not been explicitly removed.
 - Git worktrees use isolated database files for test isolation and must not touch
   production state.

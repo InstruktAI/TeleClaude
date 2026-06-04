@@ -1,14 +1,11 @@
 ---
-id: project/spec/feature/agent_runtime/daemon-lifecycle
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-description: The long-running daemon process lifecycle — single-instance lock, staged
-  startup (DB → operations → session cache warm → adapters → event platform → API
-  server → projects cache warm), shutdown ordering, and the API-server restart loop
-  that keeps the in-process HTTP surface alive across crashes.
+id: 'project/spec/feature/agent_runtime/daemon-lifecycle'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+description: 'The long-running daemon process lifecycle — single-instance lock, staged startup (DB → operations → session cache warm → adapters → event platform → API server → projects cache warm), shutdown ordering, and the API-server restart loop that keeps the in-process HTTP surface alive across crashes.'
 ---
 
 # Daemon Lifecycle — Spec

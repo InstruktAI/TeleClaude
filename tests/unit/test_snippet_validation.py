@@ -83,6 +83,7 @@ class TestExpectedSnippetIdForPath:
 
         assert (expected, error) == ("project/policy/getting-started", None)
 
+
 class TestValidateInlineRefFormat:
     def test_validates_project_and_global_inline_refs(self) -> None:
         assert (
@@ -129,7 +130,9 @@ class TestSnippetBodyDigest:
 
         assert first != second
 
-    def test_empty_delivered_by_matches_absent_delivered_by(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_empty_delivered_by_matches_absent_delivered_by(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.chdir(tmp_path)
         snippet_path = _write_project_snippet(tmp_path, _snippet_content("[]", "Stable body."))
         first = snippet_validation.snippet_body_digest(_SNIPPET_ID)

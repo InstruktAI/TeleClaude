@@ -38,21 +38,21 @@ Subject is the **project slug** (e.g., `teleclaude`, `help-desk`). The agent ide
 
 ### Predicate vocabulary (closed)
 
-| Predicate            | Captures                                                  |
-| -------------------- | --------------------------------------------------------- |
-| `convention`         | A way-of-working that emerged or was affirmed             |
-| `decided`            | A decision made (rationale baked into object)             |
-| `friction`           | Something that broke, rubbed, or surprised painfully      |
-| `requirement`        | An explicit ask — upstream of a future todo               |
-| `gotcha`             | Counter-intuitive behavior, quiet trap                    |
-| `architectural-fact` | Design state of the system                                |
-| `constraint`         | A limit the project enforces                              |
-| `deferral`           | An explicit postponement (reason in object)               |
-| `dependency`         | What this project relies on                               |
-| `pattern`            | A recurring approach that works                           |
-| `anti-pattern`       | A recurring approach that doesn't                         |
-| `mentioned`          | Topic salience for this project                           |
-| `open-question`      | Unresolved items, capture-and-revisit                     |
+| Predicate            | Captures                                             |
+| -------------------- | ---------------------------------------------------- |
+| `convention`         | A way-of-working that emerged or was affirmed        |
+| `decided`            | A decision made (rationale baked into object)        |
+| `friction`           | Something that broke, rubbed, or surprised painfully |
+| `requirement`        | An explicit ask — upstream of a future todo          |
+| `gotcha`             | Counter-intuitive behavior, quiet trap               |
+| `architectural-fact` | Design state of the system                           |
+| `constraint`         | A limit the project enforces                         |
+| `deferral`           | An explicit postponement (reason in object)          |
+| `dependency`         | What this project relies on                          |
+| `pattern`            | A recurring approach that works                      |
+| `anti-pattern`       | A recurring approach that doesn't                    |
+| `mentioned`          | Topic salience for this project                      |
+| `open-question`      | Unresolved items, capture-and-revisit                |
 
 Free-form predicates outside this list are rejected at save.
 

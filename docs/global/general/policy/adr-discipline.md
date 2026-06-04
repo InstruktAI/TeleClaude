@@ -20,7 +20,7 @@ description: 'When agents commit a non-trivial decision into documentation, the 
 - A "non-trivial decision" is one a future agent might reasonably question or want to understand the rationale for. The discriminator: if reading the resulting snippet would prompt "why was it done this way?" — an ADR is required.
 - The ADR is authored BEFORE or ALONGSIDE the primary artifact change, never retroactively long after.
 - ADRs live at `docs/project/adr/NNNN-<kebab-case-title>.md` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/` — NOT under `design/`, because ADRs are reasoning records, not design exploration), follow the `type: adr` schema (Context / Decision / Consequences, with required `date`, `adr_status`, and `number` frontmatter), and are discovered via `telec docs index --areas adr`.
-- Primary artifacts (specs, procedures, principles) MUST describe the *current state* — they are NOT reasoning logs. The reasoning belongs in the accompanying ADR, not inline.
+- Primary artifacts (specs, procedures, principles) MUST describe the _current state_ — they are NOT reasoning logs. The reasoning belongs in the accompanying ADR, not inline.
 - When an ADR supersedes a prior decision, the new ADR's `supersedes` frontmatter cites the prior ADR's id, and the prior ADR's `adr_status` is updated to `superseded`.
 
 ## Rationale

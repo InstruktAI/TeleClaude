@@ -1,10 +1,9 @@
 ---
-description: SQLite persistence for sessions, hook outbox, memory, UX state, and agent
-  metadata.
-id: project/design/architecture/database
-scope: project
-type: design
-visibility: public
+description: 'SQLite persistence for sessions, hook outbox, memory, UX state, and agent metadata.'
+id: 'project/design/architecture/database'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Database — Design
@@ -139,7 +138,7 @@ The daemon owns `voice_transcriptions`; it is the single source of truth for
 the durability requirement in `@prd#scope` (a transcription in progress at
 shutdown is not lost) and the recovery contract in `@prd#success-criteria`.
 Adapter-side identity (`notice_message_id`, `origin`) is persisted so recovery
-edits the *existing* placeholder rather than emitting a duplicate, satisfying
+edits the _existing_ placeholder rather than emitting a duplicate, satisfying
 `@prd#success-criteria` (edited in place, not a new duplicate message). The
 `state` column carries the lifecycle the recovery flow keys off of; `audio_path`
 lets recovery verify the captured audio still exists before resubmitting.

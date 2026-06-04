@@ -45,14 +45,11 @@ from teleclaude.resource_validation import _models as resource_models
 from teleclaude.resource_validation import _snippet
 
 
-def _normalize_error_paths(errors: list[dict[str, object]], root: Path) -> list[dict[str, object]]:
-    normalized: list[dict[str, object]] = []
+def _normalize_error_paths(errors: list[dict[str, object]], root: Path) -> list[dict[str, object]]:  # guard: loose-dict
+    normalized: list[dict[str, object]] = []  # guard: loose-dict
     for error in errors:
         normalized.append(
-            {
-                key: value.replace(str(root), "TMP") if isinstance(value, str) else value
-                for key, value in error.items()
-            }
+            {key: value.replace(str(root), "TMP") if isinstance(value, str) else value for key, value in error.items()}
         )
     return normalized
 

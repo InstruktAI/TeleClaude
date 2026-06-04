@@ -22,7 +22,7 @@ Consolidation is the engine. The platform is meant to densify: fewer, sharper ar
 
 ## Implications
 
-- When friction surfaces, ask *what absorbs this?* — a doc snippet, a hook, a tool, a gate, a command, a test. The answer is the evolution. Naming the friction without absorbing it is theater.
+- When friction surfaces, ask _what absorbs this?_ — a doc snippet, a hook, a tool, a gate, a command, a test. The answer is the evolution. Naming the friction without absorbing it is theater.
 - When the same lesson lands twice, it belongs in infrastructure. The second occurrence is the signal; the first was data.
 - Memory, checkpoints, shared tools, consolidated documentation — these are the substrate of evolution. They are how knowledge stops being personal and starts being platform.
 - Treat duplication as decay. Two artifacts that overlap are not redundancy — they are an unresolved consolidation. Find what each owns; migrate the rest; delete what no longer earns its place.
@@ -33,7 +33,7 @@ Consolidation is the engine. The platform is meant to densify: fewer, sharper ar
 
 - **Build vs. consolidate:** Shipping new capability competes with absorbing what we have already learned. Resolve by making consolidation a byproduct of building, not a separate phase. Each delivery is also a chance to prune.
 - **Refinement vs. flow:** Meta-work on tools and docs interrupts the primary task. Time it at task boundaries, not mid-stride.
-- **Attachment vs. pruning:** Old artifacts carry the weight of the effort that produced them. That weight is not a reason to keep them. If an artifact no longer earns its place, removing it *is* the evolution.
+- **Attachment vs. pruning:** Old artifacts carry the weight of the effort that produced them. That weight is not a reason to keep them. If an artifact no longer earns its place, removing it _is_ the evolution.
 - **Evolution vs. expansion:** Consolidation alone produces a sharper version of the same thing; expansion alone produces sprawl. Hold both.
 
 ---

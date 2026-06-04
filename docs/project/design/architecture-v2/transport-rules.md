@@ -498,9 +498,9 @@ Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 
 **Where cursors live applied to v2:**
 
-| Source                            | Cursor table                               | Consumers                                                                                                                      |
-| --------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `agent_runtime` (sessions stream) | `agent_runtime.extractor_cursors`          | `session-history` (writes mirrors), `memory-miner` (writes observations via memory)                                            |
+| Source                            | Cursor table                               | Consumers                                                                           |
+| --------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `agent_runtime` (sessions stream) | `agent_runtime.extractor_cursors`          | `session-history` (writes mirrors), `memory-miner` (writes observations via memory) |
 | Other pillars                     | Add only when a real consumer materializes |
 
 **Where job state (other than cursor) lives:**

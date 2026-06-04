@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Memory observations carry source_mirror_id as their provenance handle. Mirrors are eternal, so the pointer never rots; TeleClaude session_ids are ephemeral and native CLI session UUIDs are CLI-controlled.'
 ---
+
 # ADR-0007: Provenance via mirror_id — ADR
 
 ## Context

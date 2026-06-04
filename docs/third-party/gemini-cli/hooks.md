@@ -49,14 +49,14 @@ The root key of `hooks.json` holds a user/identifier table (e.g. `"teleclaude"`)
 
 ## Hook Event Comparison
 
-| Legacy Gemini Event | Antigravity (`agy`) Event | Description |
-| :--- | :--- | :--- |
-| **`SessionStart`** | — | Fires when a session begins |
-| **`BeforeAgent`** | **`PreInvocation`** | Fires after user submits prompt, before planning/model call |
-| — | **`PostInvocation`** | Fires after the model returns but before tools execute |
-| **`BeforeTool`** | **`PreToolUse`** | Fires before a tool executes (drives TUI activity) |
-| **`AfterTool`** | **`PostToolUse`** | Fires after a tool finishes |
-| **`AfterAgent`** | **`Stop`** | Fires when the execution loop terminates (turn completion) |
+| Legacy Gemini Event | Antigravity (`agy`) Event | Description                                                 |
+| :------------------ | :------------------------ | :---------------------------------------------------------- |
+| **`SessionStart`**  | —                         | Fires when a session begins                                 |
+| **`BeforeAgent`**   | **`PreInvocation`**       | Fires after user submits prompt, before planning/model call |
+| —                   | **`PostInvocation`**      | Fires after the model returns but before tools execute      |
+| **`BeforeTool`**    | **`PreToolUse`**          | Fires before a tool executes (drives TUI activity)          |
+| **`AfterTool`**     | **`PostToolUse`**         | Fires after a tool finishes                                 |
+| **`AfterAgent`**    | **`Stop`**                | Fires when the execution loop terminates (turn completion)  |
 
 ## TeleClaude Adapter Mapping
 

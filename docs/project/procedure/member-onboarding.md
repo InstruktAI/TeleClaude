@@ -43,11 +43,11 @@ Adding a person automatically:
 3. Resolves the bot username from the live Telegram bot token (`bot.get_me().username`).
 4. Generates platform deep links (one per configured adapter), all using the same token:
 
-| Platform | Deep link format                                      | What happens when clicked                                |
-| -------- | ----------------------------------------------------- | -------------------------------------------------------- |
+| Platform | Deep link format                                        | What happens when clicked                                |
+| -------- | ------------------------------------------------------- | -------------------------------------------------------- |
 | Telegram | `https://t.me/{telegram_username}?start={invite_token}` | Opens private chat with bot, sends `/start` with payload |
-| Discord  | `https://discord.com/users/{bot_user_id}`             | Opens DM with the bot (token sent as first message)      |
-| WhatsApp | `https://wa.me/{business_number}?text={invite_token}` | Opens WhatsApp chat with token prefilled                 |
+| Discord  | `https://discord.com/users/{bot_user_id}`               | Opens DM with the bot (token sent as first message)      |
+| WhatsApp | `https://wa.me/{business_number}?text={invite_token}`   | Opens WhatsApp chat with token prefilled                 |
 
 5. Composes the onboarding email from a template (see below).
 6. Sends via Brevo SMTP.

@@ -9,11 +9,12 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Memory extraction runs over the whole session delta on two triggers — idle ≥30 minutes or session close. Per-turn windowing (e.g., Hermes-style every-N-turns) is not used for memory.'
 ---
+
 # ADR-0008: Idle/Close Cadence, Whole-Session Ingestion — ADR
 
 ## Context
 
-The v2 architecture's transport-rules originally proposed per-session turn-trigger windowing (Hermes-style, ~10 turns) as a default cadence for `extract-window` consumers. That cadence makes sense for *active in-session* skill harvesting, where short repetitive sequences are the signal. It does not match what memory extraction is doing.
+The v2 architecture's transport-rules originally proposed per-session turn-trigger windowing (Hermes-style, ~10 turns) as a default cadence for `extract-window` consumers. That cadence makes sense for _active in-session_ skill harvesting, where short repetitive sequences are the signal. It does not match what memory extraction is doing.
 
 Memory observations crystallize from sustained exchanges — decisions, frictions, requirements, preferences expressed over the course of a session. A 10-turn window is both too small (misses observations that span more turns) and too frequent (pays the LLM classification + doc-dedup cost N times for the same content).
 

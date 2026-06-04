@@ -8,7 +8,7 @@ description: Every domain event the platform emits — producer context, named c
   payload field set in domain terms. The contract that defines cross-context coordination.
 status: mixed
 delivered_by:
-- v2-workflow-cli-refinement-commands
+  - v2-workflow-cli-refinement-commands
 ---
 
 # Domain Event Catalog — Spec
@@ -168,20 +168,20 @@ The scheduler bridge is one OS cron entry that fires `telec cron tick` every min
 
 Inverse view: for each event, which consumers act on it. Populated as per-context specs land.
 
-| Event                               | Consumers                                                                                                                        |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `integration.inbox.received`        | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound)                                           |
-| `agent_runtime.session.started`     | `frontend` (live UI), audit log consumers                                                                                        |
-| `agent_runtime.session.updated`     | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation)                                                 |
-| `agent_runtime.session.ended`       | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal) |
-| `session_mirrors.mirror.created`    | `frontend` (history search index refresh), audit log consumers                                                                   |
-| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                 |
-| `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                              |
-| `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                              |
+| Event                               | Consumers                                                                                                                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `integration.inbox.received`        | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound)                                                                                 |
+| `agent_runtime.session.started`     | `frontend` (live UI), audit log consumers                                                                                                                              |
+| `agent_runtime.session.updated`     | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation)                                                                                       |
+| `agent_runtime.session.ended`       | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal)                                       |
+| `session_mirrors.mirror.created`    | `frontend` (history search index refresh), audit log consumers                                                                                                         |
+| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                                                       |
+| `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                                                                    |
+| `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                                                                    |
 | `workflow.todo.renamed`             | `frontend` (re-key roadmap/todo view old→new), `telec-tui` (cache invalidation — drop old_slug, refetch new_slug), `integration` (slug-keyed subscription bookkeeping) |
-| `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                |
-| `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                  |
-| `config.effective.updated`          | every service that caches config (re-read on next access)                                                                        |
+| `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                                                      |
+| `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                                                        |
+| `config.effective.updated`          | every service that caches config (re-read on next access)                                                                                                              |
 
 ### v1 → v2 event-name mapping
 

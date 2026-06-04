@@ -13,10 +13,10 @@ The CLIs provide built-in commands and support custom commands defined as TOML f
 
 ## Custom command locations
 
-| Custom Commands | Gemini CLI Location | Antigravity CLI Location (`agy`) |
-| :--- | :--- | :--- |
-| **User Global** | `~/.gemini/commands/` | `~/.gemini/antigravity-cli/commands/` |
-| **Project Local** | `.gemini/commands/` | `.agents/commands/` |
+| Custom Commands   | Gemini CLI Location   | Antigravity CLI Location (`agy`)      |
+| :---------------- | :-------------------- | :------------------------------------ |
+| **User Global**   | `~/.gemini/commands/` | `~/.gemini/antigravity-cli/commands/` |
+| **Project Local** | `.gemini/commands/`   | `.agents/commands/`                   |
 
 ## Namespacing
 

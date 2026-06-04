@@ -9,6 +9,7 @@ date: '2026-06-02'
 adr_status: 'accepted'
 description: 'Cross-computer state propagation moves to a single ``cluster.*`` Redis pub/sub channel namespace. Local cache becomes a materialized view of cluster events; the legacy heartbeat-digest pull and the per-data-type "interest" gate are retired.'
 ---
+
 # ADR-0013: Unified Cluster Events Replace Per-Aggregate Cross-Computer Pull — ADR
 
 ## Context
@@ -17,20 +18,20 @@ The v1 daemon had accreted three different transport patterns for one logical jo
 
 1. **Heartbeat keys (`SETEX` + TTL)** — presence ping plus a `projects_digest` hash used as a change trigger.
 2. **Request/response over Redis Streams** — `list_projects_with_todos`, `list_sessions`, `get_computer_info`; pull-on-demand, synchronous, brittle to peer offline. Sessions were additionally gated by an in-memory "interest" registration that only fired when a WebSocket client subscribed to a specific peer.
-3. **PSUBSCRIBE `workflow.*`** — v2-Rust → v1-Python cache invalidation introduced when the workflow service moved to v2. Worked exactly the way cross-computer propagation *should* work, but scoped to one direction and one aggregate family.
+3. **PSUBSCRIBE `workflow.*`** — v2-Rust → v1-Python cache invalidation introduced when the workflow service moved to v2. Worked exactly the way cross-computer propagation _should_ work, but scoped to one direction and one aggregate family.
 
 The symptoms accumulated in production over the v1 lifecycle:
 
 - `discover_peers()` consistently returned 0 computers at TUI WebSocket connect because the `get_computer_info` request/response round-trip timed out or returned stripped data; subsequent heartbeat-driven `ComputerInfo` writes overwrote good data with nulls (heartbeat payload didn't carry identity).
 - The peer-refresh background loop crashed with `AttributeError: 'NoneType' object has no attribute 'decode'` whenever a heartbeat key TTL'd between `SCAN` and `GET`; `AttributeError` was not in `_REFRESH_EXCEPTIONS`, so the task died with no respawn.
-- The `projects_digest` field was a hash of state masquerading as an event — opaque to receivers, no information about *what* changed, used purely as a "something is different, please pull" trigger.
+- The `projects_digest` field was a hash of state masquerading as an event — opaque to receivers, no information about _what_ changed, used purely as a "something is different, please pull" trigger.
 - The session "interest" gate (`set_interest`/`get_interested_computers`) created an asymmetry: projects propagated whenever a heartbeat digest moved; sessions only propagated when a WS subscription was open. Most users never saw remote sessions because that gate was never registered.
 
 The proximate question — how do we make the TUI a real cross-computer cockpit? — collapsed into a deeper one: which single transport pattern should own this domain?
 
 ## Decision
 
-All cross-computer state mutation flows through one Redis pub/sub channel namespace, **`cluster.*`**, with the same envelope shape and idempotency discipline as the existing `workflow.*` v2 bridge. The local `DaemonCache` is a materialized view of the cluster event stream, partitioned by `computer`. The TUI consumes cache change events over WebSocket exactly as before — only the *source* of cache writes broadens.
+All cross-computer state mutation flows through one Redis pub/sub channel namespace, **`cluster.*`**, with the same envelope shape and idempotency discipline as the existing `workflow.*` v2 bridge. The local `DaemonCache` is a materialized view of the cluster event stream, partitioned by `computer`. The TUI consumes cache change events over WebSocket exactly as before — only the _source_ of cache writes broadens.
 
 Concretely:
 

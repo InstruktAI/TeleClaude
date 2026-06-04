@@ -56,7 +56,9 @@ class TestRenderContext:
     def test_render_context_returns_empty_string_for_no_entries(self) -> None:
         assert renderer_module.render_context([]) == ""
 
-    def test_render_context_emits_observation_and_summary_sections(self, snapshot, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_render_context_emits_observation_and_summary_sections(
+        self, snapshot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
             TimelineEntry(kind="observation", epoch=80, observation=_observation()),
@@ -67,10 +69,14 @@ class TestRenderContext:
 
         assert rendered == snapshot
 
-    def test_render_context_index_under_top_n_uses_expanded_heading(self, snapshot, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_render_context_index_under_top_n_uses_expanded_heading(
+        self, snapshot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
-            TimelineEntry(kind="observation", epoch=100 - i, observation=_observation(title=f"obs-{i}", created_at_epoch=100 - i))
+            TimelineEntry(
+                kind="observation", epoch=100 - i, observation=_observation(title=f"obs-{i}", created_at_epoch=100 - i)
+            )
             for i in range(5)
         ]
 
@@ -81,10 +87,14 @@ class TestRenderContext:
         assert rendered == snapshot
         assert len(detail_headings) == 5
 
-    def test_render_context_index_at_or_above_top_n_uses_top_n_heading(self, snapshot, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_render_context_index_at_or_above_top_n_uses_top_n_heading(
+        self, snapshot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
-            TimelineEntry(kind="observation", epoch=100 - i, observation=_observation(title=f"obs-{i}", created_at_epoch=100 - i))
+            TimelineEntry(
+                kind="observation", epoch=100 - i, observation=_observation(title=f"obs-{i}", created_at_epoch=100 - i)
+            )
             for i in range(50)
         ]
 
@@ -97,10 +107,14 @@ class TestRenderContext:
         assert len(detail_headings) == renderer_module.MEMORY_EXPANDED_TOP_N
         assert len(index_rows) == 50
 
-    def test_render_context_index_caps_at_one_hundred_when_total_exceeds(self, snapshot, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_render_context_index_caps_at_one_hundred_when_total_exceeds(
+        self, snapshot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
-            TimelineEntry(kind="observation", epoch=200 - i, observation=_observation(title=f"obs-{i}", created_at_epoch=200 - i))
+            TimelineEntry(
+                kind="observation", epoch=200 - i, observation=_observation(title=f"obs-{i}", created_at_epoch=200 - i)
+            )
             for i in range(150)
         ]
 

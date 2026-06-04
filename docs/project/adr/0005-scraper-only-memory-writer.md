@@ -9,6 +9,7 @@ date: '2026-05-21'
 adr_status: 'accepted'
 description: 'Memory is writable exclusively by the dedicated memory extraction agents (the scrapers). All other agents are prohibited from calling telec memories save.'
 ---
+
 # ADR-0005: Scraper-Only Memory Writer — ADR
 
 ## Context
