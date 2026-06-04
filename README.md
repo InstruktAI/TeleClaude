@@ -124,6 +124,12 @@ instrukt-ai-logs teleclaude  # Monitor the newly installed daemon
 
 For AI-driven project analysis and quality-config assessment, run `telec projects onboard` (or `telec projects analyze` / `telec projects assess` individually) after `telec projects init`.
 
+### Antigravity policy deployment
+
+TeleClaude deploys its Antigravity (`agy`) Policy Engine rule file to `~/.gemini/antigravity-cli/policies/teleclaude.toml`. The file contains an allow-all rule at User-tier priority `100`, so agents work out of the box while leaving room for operator policy.
+
+Antigravity resolves policy by rules, not by file ownership. Operators can add their own `*.toml` files beside TeleClaude's file in `~/.gemini/antigravity-cli/policies/`: a higher-priority rule overrides TeleClaude's rule for the same tool, while a lower-priority rule defers to it. TeleClaude deploys non-destructively and only rewrites its own `teleclaude.toml`; operator-authored policy files are left untouched.
+
 ### Agent environment access
 
 TeleClaude starts agent CLIs in sealed `tmux` sessions. Project application secrets in `.env` are not automatically exposed to agents.

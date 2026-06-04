@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -34,6 +33,10 @@ from teleclaude.config import config as app_config
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import get_enabled_agents, is_agent_enabled
 from teleclaude.core.db import read_agent_availability_sync
+from teleclaude.helpers.agent_cli_command_assembly import (
+    build_agent_command_parts,
+    with_tool_authorization,
+)
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.runtime.binaries import resolve_agent_binary
@@ -58,7 +61,6 @@ class _OneshotSpec(TypedDict, total=False):
     response_field: str
     response_field_type: str
     tools_arg: str
-    tools_map: dict[str, str]
     exec_subcommand: str
 
 
@@ -85,7 +87,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "response_field": "result",
         "response_field_type": "string_json",
         "tools_arg": "--allowed-tools",
-        "tools_map": {"web_search": "web_search"},
     },
     "gemini": {
         "flags": "--dangerously-skip-permissions",
@@ -95,8 +96,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "prompt_flag": True,
         "response_field": "response",
         "response_field_type": "string_json",
-        "tools_arg": "--allowed-tools",
-        "tools_map": {"web_search": "google_web_search"},
     },
     "codex": {
         "flags": "--dangerously-bypass-approvals-and-sandbox --search",
@@ -109,7 +108,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "response_field": "",
         "response_field_type": "object",
         "tools_arg": "",
-        "tools_map": {"web_search": "web_search"},
     },
 }
 
@@ -239,18 +237,15 @@ def _run_agent(
     if model_flag is None:
         raise RuntimeError(f"Invalid thinking_mode '{thinking_mode.value}' for agent '{agent.value}'")
 
-    # Assemble command: binary + flags + exec_subcommand + model
-    cmd_parts = shlex.split(f"{binary} {flags}".strip())
-
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
-    if exec_subcommand:
-        cmd_parts.extend(shlex.split(exec_subcommand))
-    if model_flag:
-        cmd_parts.extend(shlex.split(str(model_flag)))
-
     output_format = str(spec.get("output_format", "") or "")
-    if output_format:
-        cmd_parts.extend(shlex.split(output_format))
+    cmd_parts = build_agent_command_parts(
+        binary=binary,
+        flags=flags,
+        exec_subcommand=exec_subcommand,
+        model_flag=str(model_flag),
+        output_format=output_format,
+    )
 
     schema_arg = str(spec.get("schema_arg", "") or "")
     schema_file = str(spec.get("schema_file", "") or "")
@@ -267,9 +262,11 @@ def _run_agent(
     else:
         prompt = f"{prompt}\n\nExpected JSON schema:\n{json.dumps(schema)}"
 
-    tools_arg = str(spec.get("tools_arg", "") or "")
-    if tools_arg and tools is not None:
-        cmd_parts.extend([tools_arg, tools])
+    cmd_parts = with_tool_authorization(
+        cmd_parts,
+        tools_arg=str(spec.get("tools_arg", "") or ""),
+        tools=tools,
+    )
 
     # Handle prompt passing based on input_mode
     use_stdin = input_mode == "stdin"
@@ -379,13 +376,13 @@ def run_job(
     if model_flag is None:
         raise RuntimeError(f"Invalid thinking_mode '{mode_enum.value}' for agent '{agent_enum.value}'")
 
-    cmd_parts = shlex.split(f"{binary} {flags}".strip())
-
     exec_subcommand = str(spec.get("exec_subcommand", "") or "")
-    if exec_subcommand:
-        cmd_parts.extend(shlex.split(exec_subcommand))
-    if model_flag:
-        cmd_parts.extend(shlex.split(model_flag))
+    cmd_parts = build_agent_command_parts(
+        binary=binary,
+        flags=flags,
+        exec_subcommand=exec_subcommand,
+        model_flag=model_flag,
+    )
 
     cmd_parts.extend(["-p", prompt])
 

@@ -1,0 +1,4 @@
+[[rule]]
+toolName = "*"
+decision = "allow"
+priority = 100

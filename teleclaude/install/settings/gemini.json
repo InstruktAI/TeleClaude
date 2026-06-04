@@ -1,6 +1,5 @@
 {
   "tools": {
-    "allowed": [ "*" ],
     "enableHooks": true,
     "sandbox": false
   },
