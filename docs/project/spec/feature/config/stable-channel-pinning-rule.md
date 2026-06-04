@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'Project deployment channel `stable` requires a non-empty `pinned_minor` value; validation rejects empty pins on the stable channel.'
 ---
 
@@ -37,9 +35,9 @@ production channel.
 ```
 Given a project config under load with deployment.channel = "stable"
 And deployment.pinned_minor = "1.42"
-When DeploymentConfig.validate_stable_requires_pinned_minor runs
-Then the model_validator returns the DeploymentConfig unchanged
-And the surrounding ProjectConfig validation continues
+When the stable-channel pinning rule is validated
+Then validation passes and the deployment config is accepted unchanged
+And the surrounding project overlay validation continues
 ```
 
 #### UC-CFG-PIN-2: Stable channel with empty pinned_minor rejected
@@ -47,11 +45,11 @@ And the surrounding ProjectConfig validation continues
 ```
 Given a project config under load with deployment.channel = "stable"
 And deployment.pinned_minor = "" (the default)
-When DeploymentConfig.validate_stable_requires_pinned_minor runs
-Then a ValueError is raised with the message:
+When the stable-channel pinning rule is validated
+Then a validation error is raised with the message:
   "pinned_minor is required and must be non-empty when channel=stable"
-And Pydantic surfaces the validation failure on the deployment field
-And load_project_config raises before save_project_config is reachable
+And the schema layer surfaces the validation failure on the deployment field
+And the project config load raises before the project-config writer is reachable
 ```
 
 #### UC-CFG-PIN-3: Alpha channel ignores pinned_minor
@@ -59,8 +57,8 @@ And load_project_config raises before save_project_config is reachable
 ```
 Given a project config under load with deployment.channel = "alpha"
 And deployment.pinned_minor is empty
-When DeploymentConfig.validate_stable_requires_pinned_minor runs
-Then the model_validator returns the DeploymentConfig unchanged
+When the stable-channel pinning rule is validated
+Then validation passes and the deployment config is accepted unchanged
 And the project is accepted on the alpha channel with no pin
 ```
 
@@ -69,8 +67,8 @@ And the project is accepted on the alpha channel with no pin
 ```
 Given a project config under load with deployment.channel = "beta"
 And deployment.pinned_minor is empty
-When DeploymentConfig.validate_stable_requires_pinned_minor runs
-Then the model_validator returns the DeploymentConfig unchanged
+When the stable-channel pinning rule is validated
+Then validation passes and the deployment config is accepted unchanged
 And the project is accepted on the beta channel with no pin
 ```
 
@@ -78,28 +76,24 @@ And the project is accepted on the beta channel with no pin
 
 ```
 Given a project config under load that omits the entire deployment block
-When ProjectConfig validation runs
-Then deployment is constructed via DeploymentConfig() default-factory
+When project overlay validation runs
+Then the deployment block falls back to its defaults (alpha + empty pin)
 And deployment.channel defaults to "alpha"
 And deployment.pinned_minor defaults to ""
-And the model_validator passes (alpha + empty pin is valid)
+And validation passes (alpha + empty pin is valid)
 ```
-
-### Implementation pointers (v1)
-
-- `teleclaude/config/schema.py:293-305` — `DeploymentConfig` with channel/pinned_minor fields and the `validate_stable_requires_pinned_minor` model validator.
-- `teleclaude/config/schema.py:308-324` — `ProjectConfig` declaring `deployment: DeploymentConfig = DeploymentConfig()` as a default-factory field.
 
 ### Cross-context references
 
-- The `deployment` block currently lives on `ProjectConfig` in v1. The v2
-  `config` domain spec (`docs/project/spec/domain/config.md`) flags this as a
-  misplacement and relocates the deployment block to the runtime configuration
-  aggregate. v1 contract is "deployment is per-project" until the v2 cutover.
-- Consumed by the daemon's auto-update path (release-channel routing in the
-  deployment executor). The deployment executor reads `deployment.channel` and
-  `deployment.pinned_minor` from the project config to decide which release to
-  pull.
+- The `deployment` block currently lives on the project config. The
+  `config` domain spec (`project/spec/domain/config.md`) flags this as a
+  misplacement and relocates the deployment block to the runtime
+  configuration aggregate. The current contract is "deployment is
+  per-project" until that move lands.
+- Consumed by the runtime auto-update path (release-channel routing in
+  the deployment bounded context). The deployment executor reads
+  `deployment.channel` and `deployment.pinned_minor` from the project
+  config to decide which release to pull.
 
 ## Allowed values
 
@@ -108,7 +102,7 @@ And the model_validator passes (alpha + empty pin is valid)
 
 ## Known caveats
 
-- **Misplacement noted by domain spec.** v1 places `deployment` on `ProjectConfig`. The v2 `config` domain spec calls this a defect and relocates the block to the runtime configuration aggregate in v2. Until the v2 cutover lands, the project config is the source of truth for release channel.
+- **Misplacement noted by domain spec.** v1 places `deployment` on the project overlay. The v2 `config` domain spec calls this a defect and relocates the block to the runtime configuration aggregate in v2. Until the v2 cutover lands, the project config is the source of truth for release channel.
 - **No format validation on `pinned_minor`.** v1 only checks non-emptiness. Any non-empty string (including `"not-a-version"`) passes. Format conformance is the deployment executor's concern, not the config schema's.
-- **Validation runs on every load.** The model validator fires on every `load_project_config` call. A previously valid `teleclaude.yml` that has been edited out-of-band to set `channel: stable` without `pinned_minor` will fail to load the next time the daemon or CLI reads the project config.
-- **Default-factory means absent deployment block is accepted.** Projects with no `deployment` key at all get `DeploymentConfig()` (alpha + empty pin) by default. The rule only fires when `channel` is explicitly set to `stable`.
+- **Validation runs on every load.** The validator fires on every project-config load. A previously valid `teleclaude.yml` edited out-of-band to set `channel: stable` without `pinned_minor` will fail to load the next time the runtime or CLI reads the project config.
+- **Default-factory means absent deployment block is accepted.** Projects with no `deployment` key at all fall back to the default deployment block (alpha + empty pin). The rule only fires when `channel` is explicitly set to `stable`.

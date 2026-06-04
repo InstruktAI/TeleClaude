@@ -4,7 +4,6 @@ id: 'project/design/architecture-v2/event-bus-transports'
 scope: 'project'
 type: 'design'
 visibility: 'public'
-applies_to: 'v2'
 ---
 
 # Event Bus Transports — Design

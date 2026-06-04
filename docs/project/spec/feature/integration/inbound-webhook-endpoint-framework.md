@@ -4,9 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
-description: 'Dynamic FastAPI route registration for external inbound webhooks — provider-specific path + verification config + normalizer key, mounted at runtime from teleclaude.yml.'
+description: 'Dynamic route registration for external inbound webhooks — provider-specific path + verification config + normalizer key, mounted at runtime from teleclaude.yml.'
 ---
 
 # Inbound Webhook Endpoint Framework — Spec
@@ -19,20 +17,20 @@ description: 'Dynamic FastAPI route registration for external inbound webhooks �
 
 ## What it is
 
-A pluggable inbound webhook framework that lets a provider's POST endpoint
-be declared in `teleclaude.yml` (under `hooks.inbound.<source_name>`)
-without writing new HTTP handler code. On daemon startup,
-`load_hooks_config` reads the inbound section and, for each entry, calls
-`InboundEndpointRegistry.register(path, normalizer_key, verify_config)`
-which mounts both a GET handler (for verification challenges) and a POST
-handler (for the webhook payload) on the FastAPI app.
+A pluggable inbound webhook framework that lets a provider's POST
+endpoint be declared in `teleclaude.yml` (under
+`hooks.inbound.<source_name>`) without writing new HTTP handler code.
+On integration service startup, the hooks config loader reads the
+inbound section and, for each entry, registers a verification handler
+(for verification challenges) and a delivery handler (for the webhook
+payload) on the inbound endpoint surface.
 
-The POST handler verifies the request signature when a `secret` is
-configured, parses the JSON body, looks up the registered normalizer by
-key, invokes it to produce a `HookEvent` (or a list of events), and
-forwards each event to the `HookDispatcher.dispatch` callback. The GET
-handler implements the WhatsApp / Meta verification challenge protocol
-when a `verify_token` is configured.
+The delivery handler verifies the request signature when a `secret` is
+configured, parses the body, looks up the registered normalizer by key,
+invokes it to produce a hook event (or a list of events), and forwards
+each event to the hook dispatcher. The verification handler implements
+the WhatsApp / Meta verification challenge protocol when a
+`verify_token` is configured.
 
 ## Canonical fields
 
@@ -49,20 +47,19 @@ Given teleclaude.yml contains:
           normalizer: whatsapp
           verify_token: <token>
           secret: <hmac-secret>
-When the daemon starts up and load_hooks_config processes the inbound section
-Then _resolve_inbound_registration extracts path, normalizer_key, verify_config
-And InboundEndpointRegistry.register(path, normalizer_key, verify_config) is called
-And both GET and POST routes are added to the FastAPI app with tags=["hooks-inbound"]
-And the path is recorded in _registered_paths
-And an INFO log "Registered inbound endpoint: /hooks/whatsapp (normalizer=whatsapp)" is emitted
+When the integration service starts up and the hooks config loader processes the inbound section
+Then the inbound-registration resolver extracts path, normalizer key, and verification config
+And the inbound endpoint registry mounts the verification and delivery handlers
+And both registrations are recorded
+And an INFO log "registered inbound endpoint: /hooks/whatsapp (normalizer=whatsapp)" is emitted
 ```
 
 #### UC-IF2: Path defaulted from source name
 
 ```gherkin
 Given a hooks.inbound entry omits the path field
-When _resolve_inbound_registration runs
-Then path defaults to /hooks/inbound/<source_name>
+When the inbound-registration resolver runs
+Then the path defaults to /hooks/inbound/<source_name>
 And an INFO log records the derived path
 ```
 
@@ -70,158 +67,135 @@ And an INFO log records the derived path
 
 ```gherkin
 Given the inbound entry has verify_token = "abc123"
-And an external provider issues GET /hooks/whatsapp?hub.mode=subscribe&hub.verify_token=abc123&hub.challenge=xyz
-When handle_get runs
+And an external provider issues a verification challenge with mode=subscribe, verify_token=abc123, challenge=xyz
+When the verification handler runs
 Then it checks mode == "subscribe", token matches verify_token, challenge is present
-And returns Response(content="xyz", media_type="text/plain") with 200
-And NO HookEvent is created, NO dispatch happens
+And echoes the challenge value as plain text in the accepted response
+And NO hook event is created, NO dispatch happens
 ```
 
 #### UC-IF4: Verification challenge rejected
 
 ```gherkin
-Given a GET request arrives without the correct verify_token, or with a missing mode
-When handle_get evaluates the params
-Then it raises HTTPException(status_code=403, detail="Verification failed")
+Given a verification challenge arrives without the correct verify_token, or with a missing mode
+When the verification handler evaluates the parameters
+Then it rejects the challenge as forbidden
 ```
 
-#### UC-IF5: GET on non-verification endpoint returns 405
+#### UC-IF5: Verification on non-verification endpoint is unsupported
 
 ```gherkin
 Given the inbound entry has no verify_token set
-When any GET request arrives at the registered path
-Then handle_get raises HTTPException(status_code=405, detail="GET not supported for this endpoint")
+When any verification request arrives at the registered path
+Then the verification handler rejects it as method-not-supported
 ```
 
 #### UC-IF6: HMAC signature verification
 
 ```gherkin
 Given the inbound entry has secret = "shared-key" and the path is /hooks/github
-And a POST request arrives with header X-Hub-Signature-256 = "sha256=<expected>"
-When handle_post processes the request
+And a delivery arrives carrying a signature header "sha256=<expected>"
+When the delivery handler processes the request
 Then it reads the raw body bytes
-And computes hmac.new(secret, body, sha256).hexdigest()
-And compares against the signature header using hmac.compare_digest
+And computes an HMAC-SHA256 digest of the body under the shared secret
+And compares against the signature header using a constant-time check
 And on match: proceeds to normalization
-And on mismatch: raises HTTPException(401, "Invalid signature")
-And on missing header (with secret configured): raises HTTPException(401, "Missing signature")
+And on mismatch: rejects the delivery as unauthorized
+And on missing header (with secret configured): rejects the delivery as unauthorized
 ```
 
-#### UC-IF7: Non-string secret rejected with 500
+#### UC-IF7: Non-string secret rejected as misconfiguration
 
 ```gherkin
-Given verify_config["secret"] is non-string (misconfiguration, e.g., a dict)
-When handle_post evaluates the secret
-Then a warning "Ignoring non-string secret config for inbound webhook" is logged
-And HTTPException(500, "Invalid webhook secret config") is raised
+Given the verification config's secret is non-string (misconfiguration, e.g., a structured value)
+When the delivery handler evaluates the secret
+Then a warning "ignoring non-string secret config for inbound webhook" is logged
+And the delivery is rejected as an internal misconfiguration
 ```
 
-#### UC-IF8: Invalid JSON body returns 400
+#### UC-IF8: Invalid body returns a client error
 
 ```gherkin
-Given a POST request arrives with body that does not parse as JSON
-When handle_post calls json.loads
-Then HTTPException(400, "Invalid JSON payload") is raised
+Given a delivery arrives with a body that does not parse as a structured payload
+When the delivery handler runs the parser
+Then the delivery is rejected with an "invalid payload" client error
 And the exception is logged
 ```
 
-#### UC-IF9: Missing normalizer returns 500
+#### UC-IF9: Missing normalizer is an internal error
 
 ```gherkin
-Given the normalizer_key is not registered in NormalizerRegistry
-When handle_post looks up the normalizer
-Then HTTPException(500, "Normalizer not configured") is raised
+Given the normalizer key is not registered in the normalizer registry
+When the delivery handler looks up the normalizer
+Then the delivery is rejected with a "normalizer not configured" internal error
 And the error is logged
 ```
 
-#### UC-IF10: Normalizer raising → 400
+#### UC-IF10: Normalizer raising → client error
 
 ```gherkin
 Given the normalizer raises an exception while parsing
-When handle_post invokes _invoke_normalizer
+When the delivery handler invokes the normalizer
 Then the exception is caught
-And HTTPException(400, "Failed to normalize payload") is raised with the original exception chained
+And the delivery is rejected with a "failed to normalize payload" client error chained with the original exception
 ```
 
 #### UC-IF11: Dispatch escape vs swallowed handler failures
 
 ```gherkin
-Given normalization succeeded and produced one or more HookEvents
-And HookDispatcher.dispatch internally catches per-Contract handler exceptions and webhook-enqueue exceptions, logging them and continuing to the next match
+Given normalization succeeded and produced one or more hook events
+And the dispatcher internally catches per-contract handler exceptions and webhook-enqueue exceptions, logging them and continuing to the next match
 When dispatch returns normally (the common case, even when individual handlers raised inside)
-Then handle_post returns {"status": "accepted"} with HTTP 200
+Then the delivery handler returns an accepted response
 And the provider sees a successful delivery (no retry)
 
-Given an exception ESCAPES HookDispatcher.dispatch itself (e.g., the matcher faults, the contract iteration crashes, or a downstream component raises outside the per-Contract try/except)
-When self._dispatch(event) raises
-Then handle_post's outer try catches the exception
-And HTTPException(502, "dispatch error") is raised
-And the provider (WhatsApp, GitHub) interprets 502 as transient and retries delivery
+Given an exception ESCAPES the dispatcher itself (e.g., the matcher faults, the contract iteration crashes, or a downstream component raises outside the per-contract guard)
+When dispatch raises
+Then the delivery handler's outer guard catches the exception
+And the delivery is rejected with a transient upstream-failure status
+And the provider (WhatsApp, GitHub) interprets the transient status as retry-eligible
 
-In v1 practice, handler exceptions do NOT trigger 502 — they are
-absorbed by dispatch. Operators inspecting "missing" inbound events
-must check daemon error logs for the per-Contract "Internal handler
-failed" entries.
+In v1 practice, handler exceptions do NOT trigger a retry-eligible
+rejection — they are absorbed by dispatch. Operators inspecting
+"missing" inbound events must check error logs for the per-contract
+"internal handler failed" entries.
 ```
 
 #### UC-IF12: Multi-event normalizer
 
 ```gherkin
-Given a normalizer returns a list[HookEvent] (e.g., WhatsApp may carry multiple messages in one webhook)
-When handle_post processes the normalized result
+Given a normalizer returns a list of hook events (e.g., WhatsApp may carry multiple messages in one webhook)
+When the delivery handler processes the normalized result
 Then it iterates and dispatches every event in order
-And returns {"status": "accepted"} on completion
+And returns an accepted response on completion
 ```
 
 #### UC-IF13: Duplicate path registration is ignored
 
 ```gherkin
-Given InboundEndpointRegistry.register(path, ...) was already called for that path
-When a second call arrives for the same path
-Then a warning "Inbound path already registered" is logged
-And the function returns without re-mounting routes
+Given the inbound endpoint registry has already registered a path
+When a second registration call arrives for the same path
+Then a warning "inbound path already registered" is logged
+And the function returns without re-mounting handlers
 ```
 
 #### UC-IF14: Normalizer signature compatibility
 
 ```gherkin
 Given a normalizer's signature accepts only (payload) — the legacy form
-When _invoke_normalizer inspects the signature
+When the normalizer-invoke helper inspects the signature
 Then it detects the lack of headers support
 And invokes the normalizer with payload only
-Given a normalizer accepts (payload, headers) or *args
+Given a normalizer accepts (payload, headers) or variadic args
 When the same invocation runs
 Then the normalizer is called with both arguments
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/hooks/inbound.py` —
-  `NormalizerRegistry` (L27),
-  `InboundEndpointRegistry` (L43, with `register` and inline
-  `handle_get` / `handle_post` closures inside it),
-  `_invoke_normalizer` (static, L155).
-- `teleclaude/hooks/config.py` —
-  `load_hooks_config` (L85),
-  `_resolve_inbound_registration` (L71),
-  `_build_config_contract` (L51),
-  `parse_criterion` (L18).
-- `teleclaude/hooks/normalizers/__init__.py` —
-  `register_builtin_normalizers` (L10, registers `github` and `whatsapp`).
-- `teleclaude/daemon_event_platform.py` —
-  `_init_webhook_service` (L464, hosts the inbound wiring):
-  `NormalizerRegistry()` (~L522), `register_builtin_normalizers` (~L523),
-  `InboundEndpointRegistry(app, normalizer_registry, dispatcher.dispatch)`
-  (~L531), `await load_hooks_config(...)` (~L534).
-- Config schema: `teleclaude/config/schema.py` `HooksConfig` (L285):
-  `inbound: dict[str, InboundSourceConfig] = {}`,
-  `subscriptions: list[SubscriptionConfig] = []`.
-
 ### Cross-context references
 
 - This is the canonical inbound boundary for the `integration` context.
-- Dispatch callback wires through `eventbus-hook-bridge`'s
-  `HookDispatcher.dispatch` to the Contract registry's matcher.
+- The dispatch callback wires through `eventbus-hook-bridge`'s
+  hook dispatcher to the contract registry's matcher.
 - Built-in normalizers consumed: `github-webhook-normalization` and
   `whatsapp-inbound-conversation-routing` register their normalizers
   here.
@@ -236,21 +210,20 @@ Then the normalizer is called with both arguments
   wired and exercised by test suites and by deployment configurations
   that populate `hooks.inbound` (e.g., help-desk WhatsApp deployments).
   Production observability for the framework therefore comes from
-  configuration-driven activation, not from baseline daemon startup.
+  configuration-driven activation, not from baseline service startup.
 - HMAC signature verification accepts EITHER `X-Hub-Signature-256`
   (GitHub-style) OR `X-Hook-Signature` (TeleClaude internal contract
   delivery format). The same handler serves both naming conventions.
 - The verification challenge handler is hard-coded to the Meta /
-  WhatsApp `hub.mode=subscribe` protocol; other providers requiring
+  WhatsApp subscribe protocol; other providers requiring different
   challenge handshakes would need code changes, not config.
-- The framework does NOT enforce an allowlist on event NAMES — only
-  on path mounting. Any event the normalizer produces is forwarded to
-  the dispatcher; allowlist enforcement is a Contract-level concern in
-  v1.
-- HTTP 502 on dispatch failure invites provider retries; the dispatcher
+- The framework does NOT enforce an allowlist on event NAMES — only on
+  path mounting. Any event the normalizer produces is forwarded to the
+  dispatcher; allowlist enforcement is a contract-level concern in v1.
+- A retry-eligible rejection invites provider retries; the dispatcher
   itself does NOT implement provider-side dedupe — duplicate deliveries
-  from retried providers will produce duplicate HookEvents.
-- The framework mounts routes on whichever FastAPI `app` the daemon
-  passes; if the API server is not available at startup, inbound
-  registration is skipped with a warning and inbound endpoints remain
-  inactive until restart.
+  from retried providers will produce duplicate hook events.
+- The framework mounts handlers on whichever inbound endpoint surface
+  the integration service exposes at startup; if the inbound surface
+  is not available at startup, inbound registration is skipped with a
+  warning and inbound endpoints remain inactive until restart.

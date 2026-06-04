@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'target'
 delivered_by: [integrate-deliveredby-flip]
 description: 'Integration-time flip of status target or mixed snippets when a delivery slug reaches delivered todo status.'
 ---
@@ -81,26 +79,16 @@ Scenario: Conflict-resolved merge stages snippet reconciliation
 ```
 Scenario: Staging failure aborts the merge prompt
   Given integration reconciliation rewrote one or more snippet files
-  And git add fails for a reconciled snippet path
+  And the staging step fails for a reconciled snippet path
   When the merge flow prepares the commit prompt
-  Then the flow returns RECONCILE_STAGING_FAILED
+  Then the flow returns a reconcile-staging-failed signal
   And the operator is not prompted to commit until staging succeeds
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/docs_reconcile.py` — frontmatter parse/render and
-  `reconcile_snippet_status(..., only_slug=...)`.
-- `teleclaude/core/integration/step_functions.py` — clean-merge and
-  conflict-resolved pre-commit staging points.
-- `teleclaude/resource_validation/_snippet.py` —
-  `build_roadmap_status_map()` used by the integrator to evaluate sibling
-  slug state.
-
 ### Cross-context references
 
-- workflow — owns roadmap status; the integrator pre-applies the current slug
-  as `delivered` because `deliver_sync` bookkeeping has not run yet.
+- workflow — owns todo status; the integrator pre-applies the current slug
+  as `delivered` because delivery bookkeeping has not run yet.
 - context — owns snippet frontmatter parse/render primitives used by lifecycle
   callers.
 
@@ -110,5 +98,3 @@ Scenario: Staging failure aborts the merge prompt
   cleaning unrelated stale snippets.
 - The flip collapses to implicit `actual` by removing `status` and
   `delivered_by` entirely rather than writing `status: actual` explicitly.
-- `applies_to` is declared on typed frontmatter but is neither read nor
-  rewritten by reconciliation.

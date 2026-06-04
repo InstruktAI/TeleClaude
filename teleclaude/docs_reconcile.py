@@ -14,14 +14,6 @@ from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 
 
 @dataclass(frozen=True)
-class SnippetStatusReconcileResult:
-    """A single snippet frontmatter rewrite performed by reconciliation."""
-
-    path: Path
-    removed_slugs: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class SnippetDeliveredByRewriteResult:
     """A single delivered_by slug rewrite."""
 
@@ -59,8 +51,6 @@ class SnippetFrontmatter(TypedDict, total=False):
     description: str
     visibility: str
     activation_trigger: str
-    applies_to: str
-    status: str
     delivered_by: list[str]
 
 
@@ -162,25 +152,6 @@ def scan_remove_orphans(
     return blockers
 
 
-def _reconciled_metadata(
-    _snippet_path: Path,
-    metadata: SnippetFrontmatter,
-    delivered_by: list[str],
-    roadmap_status_map: Mapping[str, str],
-) -> tuple[SnippetFrontmatter | None, tuple[str, ...]]:
-    delivered_slugs = tuple(slug for slug in delivered_by if roadmap_status_map.get(slug) == RoadmapStatus.DELIVERED)
-    if not delivered_slugs:
-        return None, ()
-    next_metadata = cast(SnippetFrontmatter, dict(metadata))
-    if len(delivered_slugs) == len(delivered_by):
-        next_metadata.pop("status", None)
-        next_metadata.pop("delivered_by", None)
-        return next_metadata, delivered_slugs
-    remaining_slugs = [slug for slug in delivered_by if slug not in delivered_slugs]
-    next_metadata["delivered_by"] = remaining_slugs
-    return next_metadata, delivered_slugs
-
-
 def _purged_metadata_planner(purged_slugs: tuple[str, ...]) -> _MetadataPlanner:
     purged_slug_set = set(purged_slugs)
 
@@ -240,27 +211,6 @@ def _planned_snippet_writes(
                 write_required=rendered != content,
             )
         )
-    return results
-
-
-def reconcile_snippet_status(
-    project_root: Path,
-    roadmap_status_map: Mapping[str, str],
-    *,
-    only_slug: str | None = None,
-) -> list[SnippetStatusReconcileResult]:
-    """Remove delivered slugs from snippet lifecycle frontmatter."""
-    results: list[SnippetStatusReconcileResult] = []
-    for plan in _planned_snippet_writes(
-        project_root,
-        roadmap_status_map,
-        _reconciled_metadata,
-        only_slug=only_slug,
-    ):
-        if not plan.write_required:
-            continue
-        plan.path.write_text(plan.rendered_content, encoding="utf-8")
-        results.append(SnippetStatusReconcileResult(path=plan.path, removed_slugs=plan.removed_slugs))
     return results
 
 

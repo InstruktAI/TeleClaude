@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'Three-phase doc retrieval: telec docs index lists IDs (phase 1), telec docs get returns content (phase 2), and Required-reads dependencies are surfaced for an explicit follow-up fetch (phase 3).'
 ---
 
@@ -46,7 +44,7 @@ Then phase 1 returns matching snippet metadata sorted by scope then ID
 And each entry shows its ID and one-line description
 And snippets with status: target render with prefix [target → slug1,slug2]
 And snippets with status: mixed render with prefix [mixed → slug]
-And snippets with status: actual render with no prefix
+And snippets with no lifecycle status render with no prefix
 ```
 
 ```
@@ -66,7 +64,7 @@ Then the command fails with "At least one snippet ID is required"
 ```
 Given an unknown snippet ID
 When the caller runs telec docs get unknown/id
-Then stdout includes "ERROR: Unknown snippet IDs: unknown/id"
+Then the output includes "ERROR: Unknown snippet IDs: unknown/id"
 And no content body is returned for that ID
 ```
 
@@ -84,22 +82,13 @@ Then the content body is returned
 And Required reads resolution is NOT applied to that ID
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/cli/telec/surface.py:401-422` — `docs index` and `docs get` CLI verb definitions
-- `teleclaude/cli/telec/handlers/docs.py:46-107` — `_handle_docs_index` phase 1 handler
-- `teleclaude/cli/telec/handlers/docs.py:110-145` — `_handle_docs_get` phase 2 handler
-- `teleclaude/cli/telec/handlers/docs.py:19-23` — `_current_terminal_role()` role resolution
-- `teleclaude/context_selector.py:674-714` — phase 1 listing build + `_status_prefix`
-- `teleclaude/context_selector.py:752-997` — `build_context_output()` main orchestrator
-- `teleclaude/context_selector.py:898` — unknown-ID error rendering
-- `teleclaude/context_selector.py:925` — required-reads "not loaded" marker emission
-- `teleclaude/context_selector.py:984-995` — denied-snippet rendering
-
 ### Cross-context references
 
-- **identity** — `_current_terminal_role()` calls `get_identity_resolver().resolve_by_email()` against the terminal-session login to determine the active role; that role drives visibility gating in both phases.
-- **selection** — both verbs delegate filter composition (areas, domains, baseline, target) to the Selection policy in `context_selector.py`.
+- **identity** — the terminal-session role is resolved against the active
+  terminal login to determine which visibility tier the caller may see; that
+  role drives gating in both phases.
+- **selection** — both verbs delegate filter composition (areas, domains,
+  baseline, target) to the Selection policy.
 
 ## Known caveats
 
@@ -114,4 +103,4 @@ And Required reads resolution is NOT applied to that ID
 - Phase 1 third-party output ignores `--baseline-only` and `--target` filters
   entirely; third-party listings render on a separate track.
 - The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
-docs *`. The verb rename is a known migration cleanup.
+  docs *`. The verb rename is a known migration cleanup.

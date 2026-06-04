@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'Sync builds the per-scope snippet index.yaml catalog from frontmatter, normalizes titles, and rejects cross-project ID collisions.'
 ---
 
@@ -33,14 +31,14 @@ projects cannot silently claim the same snippet identity.
 ```
 Given a project with valid snippet sources under docs/
 When the operator runs telec sync
-Then sync phase 2 calls build_all_indexes()
+Then the index-build phase runs
 And docs/project/index.yaml is written with one entry per valid Source
 And docs/third-party/index.yaml is written when third-party sources exist
 ```
 
 ```
 Given a snippet file with malformed frontmatter (missing id or description)
-When build_index_payload runs
+When the index-build phase runs
 Then the snippet is silently skipped and excluded from the Index
 And no error is raised for that single snippet
 ```
@@ -48,53 +46,41 @@ And no error is raised for that single snippet
 ```
 Given a Source whose H1 heading lacks the type suffix (e.g. "— Policy")
 When the index entry is rendered
-Then _normalize_title appends the type suffix derived from frontmatter type
+Then the title-normalization step appends the type suffix derived from frontmatter type
 And the rewrite is idempotent on subsequent builds
 ```
 
 ```
 Given a snippet ID already owned by another project in ~/.teleclaude/docs/index.yaml
 When the current project syncs that same ID
-Then check_global_collisions raises and the sync build fails
+Then the cross-project collision check raises and the sync build fails
 And the operator must rename or remove the conflicting Source
 ```
 
 ```
 Given a built index whose rendered YAML equals the on-disk file
-When build_all_indexes writes the result
+When the index-build phase writes the result
 Then the file is NOT rewritten (idempotent write)
 And the mtime is preserved
 ```
 
 ```
-Given a snippet with status: actual
-When _copy_status_metadata runs
+Given a snippet with no lifecycle metadata
+When the lifecycle-metadata copy step runs
 Then status and delivered_by are omitted from the index entry
 ```
 
 ```
 Given a snippet with status: target and delivered_by: [slug-a]
-When _copy_status_metadata runs
+When the lifecycle-metadata copy step runs
 Then both fields are copied into the index entry verbatim
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/docs_index.py:502-623` — `build_index_payload()` orchestrator
-- `teleclaude/docs_index.py:560-593` — frontmatter extraction loop
-- `teleclaude/docs_index.py:146-155` — `_copy_status_metadata()` status/delivered_by filter
-- `teleclaude/docs_index.py:163-180` — `_normalize_title()` H1 type-suffix rewrite
-- `teleclaude/docs_index.py:195-231` — `remove_non_baseline_indexes` stale cleanup
-- `teleclaude/docs_index.py:407-428` — `get_project_slug()` priority chain
-- `teleclaude/docs_index.py:436-494` — `check_global_collisions()` cross-project guard
-- `teleclaude/docs_index.py:524-557` — baseline path/type inference
-- `teleclaude/docs_index.py:639-642` — idempotent write
-- `teleclaude/docs_index.py:647-662` — `build_all_indexes()` entry point
-- `teleclaude/sync.py:90-95` — invocation from sync
-
 ### Cross-context references
 
-- **config** — `get_project_slug()` reads `teleclaude.yml` (`project_slug` then `project_name`) before falling back to the directory name; the resulting slug prefixes every snippet ID this project owns.
+- **config** — supplies the project slug (from `teleclaude.yml`
+  `project_slug` then `project_name`, falling back to the directory name);
+  the resulting slug prefixes every snippet ID this project owns.
 
 ## Known caveats
 
@@ -103,7 +89,7 @@ Then both fields are copied into the index entry verbatim
   with no diagnostic. Operators discover the gap only when downstream lookups
   fail to find the ID.
 - Baseline title normalization only fires for folder names listed in the
-  `TYPE_SUFFIX` constant. Snippets in unrecognized baseline folders get no
+  known type-suffix set. Snippets in unrecognized baseline folders get no
   title rewrite, producing inconsistent presentation.
 - Project-slug path rewriting is a literal string substitution: `docs/global/`
   becomes `docs/` in the rendered index so the entry is portable to

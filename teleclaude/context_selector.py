@@ -16,9 +16,6 @@ from teleclaude.config.schema import AppConfig
 from teleclaude.constants import (
     DOMAIN_SCOPES,
     HUMAN_ROLE_ADMIN,
-    SNIPPET_STATUS_ACTUAL,
-    SNIPPET_STATUS_MIXED,
-    SNIPPET_STATUS_TARGET,
     SNIPPET_VISIBILITY_INTERNAL,
     TAXONOMY_TYPES,
 )
@@ -44,7 +41,6 @@ class SnippetMeta:
     source_project: str = ""
     project_root: Path | None = None
     visibility: str = SNIPPET_VISIBILITY_INTERNAL
-    status: str = SNIPPET_STATUS_ACTUAL
     delivered_by: tuple[str, ...] = ()
 
 
@@ -203,14 +199,7 @@ def _output_scope(snippet: SnippetMeta, *, global_snippets_root: Path) -> str:
 
 
 def _load_manifest_by_name() -> dict[str, tuple[Path, Path, str]]:
-    """Map project slug to ``(index_path, project_root, canonical_slug)``.
-
-    Keys are slugs (the canonical machine identity) since cross-project
-    snippet ID prefixes are expected to be slugs after the registry
-    simplification. The canonical third tuple value is the slug itself so
-    that ``source_project`` comparisons throughout the module become
-    slug-based.
-    """
+    """Return {slug: (index_path, project_root, slug)} for all registered projects."""
     catalog = get_project_catalog_service()
     projects: dict[str, tuple[Path, Path, str]] = {}
     for node in catalog.list_projects():
@@ -313,10 +302,6 @@ def _load_index(
             raw_visibility = item.get("visibility")
             visibility = raw_visibility if isinstance(raw_visibility, str) else SNIPPET_VISIBILITY_INTERNAL
             raw_source_project = item.get("source_project")
-            raw_status = item.get("status")
-            status = (
-                raw_status if raw_status in (SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED) else SNIPPET_STATUS_ACTUAL
-            )
             raw_delivered_by = item.get("delivered_by")
             delivered_by = (
                 tuple(raw_delivered_by)
@@ -333,7 +318,6 @@ def _load_index(
                     source_project=raw_source_project if isinstance(raw_source_project, str) else "",
                     project_root=root_path,
                     visibility=visibility,
-                    status=status,
                     delivered_by=delivered_by,
                 )
             )
@@ -355,7 +339,6 @@ def _load_index(
                 source_project=source_project or snippet.source_project,
                 project_root=project_root or snippet.project_root,
                 visibility=snippet.visibility or SNIPPET_VISIBILITY_INTERNAL,
-                status=snippet.status,
                 delivered_by=snippet.delivered_by,
             )
         )
@@ -712,7 +695,7 @@ def _build_phase1_output(
         test_csv_path=test_csv_path,
     )
     for snippet in ordered:
-        parts.append(f"{_status_prefix(snippet)}{snippet.snippet_id}: {snippet.description or ''}".strip())
+        parts.append(f"{snippet.snippet_id}: {snippet.description or ''}".strip())
     if third_party_entries:
         parts.append("")
         parts.append("# Third-party documentation (not part of taxonomy)")
@@ -729,18 +712,6 @@ def _build_phase1_output(
         ]
     )
     return "\n".join(parts)
-
-
-def _status_prefix(snippet: SnippetMeta) -> str:
-    if snippet.status not in (SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED):
-        return ""
-    if not snippet.delivered_by:
-        return ""
-    visible_slugs = ", ".join(snippet.delivered_by[:3])
-    remaining = len(snippet.delivered_by) - 3
-    if remaining > 0:
-        visible_slugs = f"{visible_slugs} +{remaining} more"
-    return f"[{snippet.status} → {visible_slugs}] "
 
 
 def _partition_selected_ids(

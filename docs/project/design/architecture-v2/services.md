@@ -5,8 +5,6 @@ scope: 'project'
 domain: 'software-development'
 type: 'design'
 visibility: 'public'
-applies_to: v2
-status: target
 delivered_by: [integrate-deliveredby-flip]
 ---
 

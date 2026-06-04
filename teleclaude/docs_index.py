@@ -19,8 +19,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import (
-    SNIPPET_STATUS_MIXED,
-    SNIPPET_STATUS_TARGET,
     SNIPPET_VISIBILITY_INTERNAL,
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
@@ -115,7 +113,6 @@ class SnippetEntry(TypedDict):
     path: str
     source_project: NotRequired[str]
     visibility: NotRequired[str]
-    status: NotRequired[str]
     delivered_by: NotRequired[list[str]]
 
 
@@ -143,13 +140,7 @@ class ThirdPartyIndexPayload(TypedDict):
     snippets: list[ThirdPartyEntry]
 
 
-def _copy_status_metadata(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
-    raw_status = metadata.get("status")
-    if not isinstance(raw_status, str):
-        return
-    if raw_status not in (SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED):
-        return
-    entry["status"] = raw_status
+def _copy_delivered_by_metadata(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
     raw_delivered_by = metadata.get("delivered_by")
     if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by):
         entry["delivered_by"] = list(raw_delivered_by)
@@ -589,7 +580,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             entry["visibility"] = raw_visibility
         else:
             entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
-        _copy_status_metadata(entry, metadata)
+        _copy_delivered_by_metadata(entry, metadata)
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])

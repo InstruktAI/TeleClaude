@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'Schema, section, and Required-reads-order validation for agents, commands, and skills source artifacts.'
 ---
 
@@ -17,7 +15,7 @@ description: 'Schema, section, and Required-reads-order validation for agents, c
 
 ## What it is
 
-Agent artifact validation is the v1 gate that runs over the `agents/`,
+Agent artifact validation is the context gate that runs over the `agents/`,
 `commands/`, and `skills/` source trees during `telec sync`. It enforces the
 shape that every agent-facing artifact must hold so the downstream CLI help
 text, skill manifests, and inflation pipeline produce predictable output
@@ -34,7 +32,7 @@ commands and agents declare a role; skills do not.
 ```
 Scenario: Command artifact missing H1
   Given a command Markdown file with frontmatter but no leading H1 line
-  When validate_artifact runs
+  When the artifact validator runs
   Then a "missing H1" error is reported
 ```
 
@@ -77,8 +75,9 @@ Scenario: H3 heading present in an artifact
 
 ```
 Scenario: Skill folder name does not match frontmatter name
-  Given a directory skills/foo/SKILL.md with frontmatter name "bar"
-  When validate_all_artifacts walks the skills tree
+  Given a skill directory whose SKILL.md frontmatter declares name "bar"
+  And the directory itself is named "foo"
+  When the artifact validator walks the skills tree
   Then the folder-name mismatch is reported
 ```
 
@@ -92,38 +91,20 @@ Scenario: parameters contains duplicate names
 ```
 Scenario: Required reads orders refs incorrectly
   Given a Required reads block listing a skill ref before a command ref
-  When _validate_required_reads_order runs
+  When the Required-reads ordering check runs
   Then the ordering error is reported (commands → agents → skills)
 ```
 
 ```
 Scenario: Non-mother project's local agents/ is not walked
-  Given a project where is_mother_project evaluates False
+  Given a project that is not the Mother project
   And the project contains files under its own agents/ directory
-  When validate_all_artifacts runs
-  Then the validator's global_sources list is empty
+  When the artifact validator walks the configured sources
+  Then the global agent-source list is empty
   And the project's own agents/ tree is NOT walked or validated
   And no error is reported about those files
   And only the project's .agents/ tree is processed
 ```
-
-### Implementation pointers (v1)
-
-- `teleclaude/resource_validation/__init__.py:109-130` —
-  `_extract_artifact_required_reads()`
-- `teleclaude/resource_validation/__init__.py:141-152` —
-  `validate_artifact_frontmatter()`
-- `teleclaude/resource_validation/__init__.py:155-171` — `parameters` shape
-- `teleclaude/resource_validation/__init__.py:236-251` — role activation line
-- `teleclaude/resource_validation/__init__.py:254-303` — section order
-- `teleclaude/resource_validation/__init__.py:306-330` — body structure +
-  Required reads placement
-- `teleclaude/resource_validation/__init__.py:333-342` —
-  `_validate_required_reads_order()`
-- `teleclaude/resource_validation/__init__.py:354-365` — `validate_artifact()`
-- `teleclaude/resource_validation/__init__.py:373-425` —
-  `validate_all_artifacts()` walks the trees
-- `teleclaude/sync.py:50` — sync invocation
 
 ### Cross-context references
 
@@ -133,18 +114,18 @@ Scenario: Non-mother project's local agents/ is not walked
 
 ## Known caveats
 
-- Required-reads ref-existence is checked only by the wrapper
-  `validate_artifact()` when the refs list is non-empty; the underlying
-  `validate_artifact_body()` does not verify existence in isolation.
-- `_collect_artifact_headings()` skips fenced code blocks so example markdown
-  inside code fences does not produce false H2 hits.
+- Required-reads ref-existence is checked only at the outer artifact-level
+  validation when the refs list is non-empty; the underlying body-structure
+  check does not verify existence in isolation.
+- The heading collector skips fenced code blocks so example markdown inside
+  code fences does not produce false H2 hits.
 - Skill discovery requires the `SKILL.md` filename specifically; other
   Markdown files inside a skill subdirectory are not treated as skills and are
   silently ignored.
-- The mother-project gate is applied here as a silent skip: when
-  `is_mother_project` is False, the validator's `global_sources` list is
-  empty and the project's own `agents/` tree is never walked. There is no
-  error path that fails non-mother projects for having `agents/` content;
-  the contents are simply ignored. See `mother-project-publishing-gate`.
+- The mother-project gate is applied here as a silent skip: when the project
+  is not the Mother, the validator's global source list stays empty and the
+  project's own `agents/` tree is never walked. There is no error path that
+  fails non-mother projects for having `agents/` content; the contents are
+  simply ignored. See `mother-project-publishing-gate`.
 - `parameters` entries that are not dicts, or dicts missing the `name` string,
   are rejected before the duplicate-name check runs.

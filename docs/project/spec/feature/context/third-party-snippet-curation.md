@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'Curation and indexing of vendor and external reference docs under docs/third-party/ with a separate minimal schema and a parallel Index.'
 ---
 
@@ -17,12 +15,12 @@ description: 'Curation and indexing of vendor and external reference docs under 
 
 ## What it is
 
-Third-party snippet curation is the v1 path that lets the Context bounded
-context ingest external reference documentation (vendor docs, framework
-references, library guides) under `docs/third-party/` with its own minimal
-schema and a dedicated parallel Index, so external Sources sit alongside
-taxonomy snippets without polluting the taxonomy frontmatter or the taxonomy
-Selection policy.
+Third-party snippet curation is the context path that lets the Context
+bounded context ingest external reference documentation (vendor docs,
+framework references, library guides) under `docs/third-party/` with its own
+minimal schema and a dedicated parallel Index, so external Sources sit
+alongside taxonomy snippets without polluting the taxonomy frontmatter or
+the taxonomy Selection policy.
 
 A third-party snippet is a Markdown file whose Kind is `third-party`. It does
 not carry the taxonomy fields (`type` enum, `domain`, `visibility`, `status`,
@@ -47,8 +45,8 @@ Scenario: Author a third-party snippet under the project tree
 Scenario: ID does not match the path
   Given a file at docs/third-party/vendors/acme/widgets.md
   And frontmatter id "third-party/vendors/other/widgets"
-  When validate_third_party_doc runs
-  Then a third_party_id_path_mismatch error is raised against the file
+  When third-party validation runs
+  Then a third-party-id-path-mismatch error is raised against the file
 ```
 
 ```
@@ -72,22 +70,10 @@ Scenario: Phase 2 auto-loads third-party indexes on prefix match
 Scenario: Description falls back when frontmatter description is empty
   Given a third-party Markdown file with no description in frontmatter
   And a first-line H1 "# Acme Widgets Reference"
-  When write_third_party_index_yaml runs
+  When the third-party index is written
   Then the index entry description is "Acme Widgets Reference"
   And if the H1 is also missing the description falls back to the filename stem
 ```
-
-### Implementation pointers (v1)
-
-- `teleclaude/resource_validation/_snippet.py:615-631` — `_is_third_party_doc()`, `_expected_third_party_id()`
-- `teleclaude/resource_validation/_snippet.py:664-695` — `_validate_third_party_frontmatter()`, `_validate_third_party_sources()`
-- `teleclaude/resource_validation/_snippet.py:697-737` — `validate_third_party_doc()`, `validate_third_party_docs()`
-- `teleclaude/docs_index.py:130-137` — `ThirdPartyEntry` shape
-- `teleclaude/docs_index.py:260-287` — `_extract_description_from_md()`
-- `teleclaude/docs_index.py:290-355` — `write_third_party_index_yaml()`
-- `teleclaude/context_selector.py:405-452` — `_load_third_party_index()`
-- `teleclaude/context_selector.py:815-824` — auto-load on third-party ID prefix
-- `teleclaude/context_selector.py:956-981` — phase 2 third-party rendering
 
 ### Cross-context references
 

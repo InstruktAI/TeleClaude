@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'target'
 delivered_by: [integrate-deliveredby-flip]
 description: 'Curated baseline.md files of @-refs that anchor the always-loaded snippet set per scope.'
 ---
@@ -60,13 +58,6 @@ When --baseline-only is applied
 Then only the manifest-referenced snippet is included
 And its Required reads dependencies are NOT auto-pulled into the baseline set
 ```
-
-### Implementation pointers (v1)
-
-- `teleclaude/resource_validation/_snippet.py:374-390` — `_validate_baseline_index()` ref-only enforcement
-- `teleclaude/context_selector.py:366-402` — `_load_baseline_ids()` manifest resolver
-- `teleclaude/context_selector.py:641-660` — `_apply_baseline_filter()`
-- `teleclaude/docs_index.py:524-557` — baseline path/type inference at index build time
 
 ### Cross-context references
 

@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'target'
 delivered_by:
   - 'simplify-install-flow-cleanup'
   - 'install-wizard-enrichment'
@@ -30,7 +28,7 @@ inspect or change configuration without leaving the TeleClaude CLI.
 The wizard owns every persisted value TeleClaude needs to come up cleanly:
 system identity (computer name), platform adapters (Telegram, Discord,
 AI/Voice, WhatsApp), people, notifications, environment, agent
-environment access (`GlobalConfig.env_allow_list`), deployment release
+environment access (the global overlay's `env_allow_list`), deployment release
 channel (with the stable-pinned-minor field shown only on the `stable`
 channel), and a permissions/preflight section that surfaces and
 status-checks the host- and adapter-level consents that commonly block
@@ -70,13 +68,13 @@ The user experience holds five guarantees:
 The wizard delegates to the existing TUI in guided mode and reuses the
 established adapter-tab, env-var-registry, guidance-registry, and
 atomic-config-write infrastructure. Persistence flows through five
-distinct surfaces (see "Persistence surfaces and writers" below):
-YAML overlays are typed via Pydantic (`GlobalConfig`, `ProjectConfig`,
-`PersonConfig`), the machine `config.yml` is typed via the dataclass
-tree loaded by `teleclaude/config/__init__.py`, and adapter / API
-credentials persist through the documented env-var registry and
-env-file writer. Every persisted surface the wizard writes is documented
-in `project/spec/teleclaude-config`.
+distinct surfaces (see "Persistence surfaces and writers" below): YAML
+overlays are typed by the config bounded context's overlay schemas
+(global, project, per-person), the machine `config.yml` is typed by the
+runtime configuration aggregate, and adapter / API credentials persist
+through the documented env-var registry and the env-file writer. Every
+persisted surface the wizard writes is documented in
+`project/spec/teleclaude-config`.
 
 ## Canonical fields
 
@@ -95,7 +93,7 @@ And the wizard guides the human through every section in turn
 And every value the human provides is written through the atomic config-write path
 When the human exits the wizard with all required sections completed
 And the human runs `make start`
-Then the daemon comes up cleanly
+Then the runtime comes up cleanly
 And no further TeleClaude-owned interactive prompt is presented during the install→wizard→start path
 ```
 
@@ -163,7 +161,7 @@ Given the human opens `telec config wizard`
 Then the entry view shows overall completion (configured count / total count)
 And every section has a status label in the set
   {configured, partial, unconfigured, invalid}
-And required daemon-start blockers are visually distinct from optional adapter gaps
+And required runtime-start blockers are visually distinct from optional adapter gaps
 When the human closes the wizard
 Then the closing screen summarises remaining blockers in one view
 And distinguishes blockers from optional gaps
@@ -214,7 +212,7 @@ Given a delivery where this feature spec is `actual`
 When a human runs `make install`
 Then no interactive prompt collects a TeleClaude-persisted value
 When a human runs `make start` on a configured machine
-Then the daemon starts without any interactive prompt
+Then the runtime starts without any interactive prompt
 When a human runs `make start` on a machine missing required configuration
 Then `make start` prints a single instruction line directing the human at `telec config wizard`
 And no other prompt is shown
@@ -245,7 +243,7 @@ And the step reads and writes `~/.teleclaude/teleclaude.yml: env_allow_list`
 And the human can add, remove, or keep variable names without editing YAML by hand
 And each entered name is validated as a shell environment variable name
 And the step explains that `.env` is not an implicit agent pass-through surface
-And the step explains that the daemon must have the value in its environment
+And the step explains that the runtime must have the value in its environment
 And the wizard reminds the human that existing agent sessions must be restarted
   before newly authorized values are visible to those agents
 ```
@@ -256,14 +254,14 @@ The wizard writes through five distinct persistence surfaces. The
 wizard does not introduce a parallel store; every persisted value
 lands in one of the five surfaces below.
 
-| Wizard scope                                         | Persistence file                             | Typed surface                         | Writer (v1)                                                                                                                     |
-| ---------------------------------------------------- | -------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| People, subscriptions, interests, event domains      | `~/.teleclaude/teleclaude.yml` (global YAML) | `GlobalConfig` (Pydantic)             | `cli/config_handlers.py:save_global_config`                                                                                     |
-| Per-person creds, subscriptions, interests           | `~/.teleclaude/people/<name>/teleclaude.yml` | `PersonConfig` (Pydantic)             | `cli/config_handlers.py:save_person_config`                                                                                     |
-| Project metadata, deployment release channel + pin   | `<project>/teleclaude.yml` (project YAML)    | `ProjectConfig` (Pydantic)            | `config/loader.py:save_project_config` (atomic, per `atomic-project-config-write`)                                              |
-| Agent environment allow list                         | `~/.teleclaude/teleclaude.yml` (global YAML) | `GlobalConfig.env_allow_list`         | `cli/config_handlers.py:save_global_config`                                                                                     |
-| Adapter secrets, OpenAI key, runtime env overrides   | `.env` file                                  | env-var registry (untyped)            | `cli/config_handlers.py:set_env_var` (atomic — per `atomic-env-file-write`, promoted from `target.write_text` by this delivery) |
-| Computer identity, agents inventory, daemon settings | `config.yml` (machine config)                | `Config` dataclass tree (no Pydantic) | `save_machine_config` (target — per `machine-config-write`)                                                                     |
+| Wizard scope                                          | Persistence file                              | Typed surface                                                         | Writer                                                                                                       |
+| ----------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| People, subscriptions, interests, event domains       | `~/.teleclaude/teleclaude.yml` (global YAML)  | global overlay schema                                                 | global-config writer (config bounded context)                                                                |
+| Per-person creds, subscriptions, interests            | `~/.teleclaude/people/<name>/teleclaude.yml`  | per-person overlay schema                                             | per-person-config writer (config bounded context)                                                            |
+| Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)     | project overlay schema                                                | project-config writer (atomic — per `atomic-project-config-write.md`)                                        |
+| Agent environment allow list                          | `~/.teleclaude/teleclaude.yml` (global YAML)  | global overlay schema (`env_allow_list`)                              | global-config writer (config bounded context)                                                                |
+| Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                   | env-var registry (untyped)                                            | env-file writer (atomic — per `atomic-env-file-write.md`)                                                    |
+| Computer identity, agents inventory, runtime settings | `config.yml` (machine config)                 | runtime configuration aggregate                                       | machine-config writer (per `machine-config-write.md`)                                                        |
 
 YAML overlays and machine config are typed and validated; the `.env`
 file path holds adapter and provider credentials and is intentionally
@@ -271,40 +269,40 @@ untyped, with semantics carried by the documented env-var registry and
 `_ADAPTER_ENV_VARS`. UC-WIZ-4's secret-hygiene contract applies
 uniformly across both typed and env-file persistence.
 
-The machine-config writer (`save_machine_config`) does not exist in
-v1 today — `bin/init.sh` historically used `sed` against `config.yml`.
-This delivery introduces the atomic-replace helper documented in
-`machine-config-write`. Module placement is `config/loader.py` for
-symmetry with `save_project_config`. The plan task that adds the
-computer-name wizard step is the task that adds the helper.
+The machine-config writer does not exist today — `bin/init.sh`
+historically mutated `config.yml` line-by-line. This delivery
+introduces the atomic-replace helper documented in
+`machine-config-write.md`, placed alongside the project-config writer
+in the config bounded context for symmetry. The plan task that adds
+the computer-name wizard step is the task that adds the writer.
 
-### v1 reload semantics
+### Reload semantics
 
-v1 wizard writes do **not** publish `config.effective.updated`. That
-event is part of the v2 `config` domain contract (per
-`project/spec/domain/config`) and the v1 `applies_to: v1`
-`machine-config-load` and `layered-overlay-resolution` specs state v1
-has no filesystem watcher and no cluster-visible config event.
+Wizard writes do **not** publish `config.effective.updated`. That
+event is part of the `config` bounded context's domain contract (per
+`project/spec/domain/config.md`); the current machine-config-load and
+layered-overlay-resolution contracts have no filesystem watcher and
+no cluster-visible config event.
 
-Consumer reload in v1 happens through the existing semantics:
+Consumer reload happens through the existing semantics:
 
-- **Daemon** — reads `config.yml` and overlay files at startup.
+- **Runtime** — reads `config.yml` and overlay files at process start.
   Operators run `make start` / `make restart` after the wizard. The
   canonical `make install → telec config wizard → make start` path
-  IS the v1 reload story.
-- **CLI invocations** — re-load config at module import on each
-  invocation (per `machine-config-load`). The next `telec` command
+  IS the reload story.
+- **CLI invocations** — re-load config at process start on each
+  invocation (per `machine-config-load.md`). The next `telec` command
   sees the new values.
 - **TUI / wizard view itself** — write-then-read for the wizard's
   rendering. Each step writes through the surface's writer; the next
   render re-derives status from the persisted file (UC-WIZ-5
   mandates this).
 
-UX consequence: after a write that affects a running daemon (e.g.,
-`config.yml: computer.name`, `config.yml: agents`, `teleclaude.yml:
-notifications`), the wizard surfaces a reminder that `make restart`
-is required for the daemon to pick up the change. The reminder is a
-display detail; the persistent contract is that v1 reload is
+UX consequence: after a write that affects a running runtime (e.g.,
+`config.yml: computer.name`, `config.yml: agents`,
+`teleclaude.yml: notifications`), the wizard surfaces a reminder that
+`make restart` is required for the runtime to pick up the change. The
+reminder is a display detail; the persistent contract is that reload is
 restart-driven, not event-driven.
 
 ### Wizard step inventory and placement
@@ -325,11 +323,11 @@ existing seven (Configure Telegram → Configure Discord → Configure
 AI + Voice → Configure WhatsApp → Review People → Review
 Notifications → Review Environment):
 
-| New guided step                    | Position                          | Subtab        | Persistence                                                                                          |
-| ---------------------------------- | --------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
-| Configure System Identity          | First (before Configure Telegram) | `environment` | `config.yml: computer.name` via `save_machine_config` (per `machine-config-write`)                   |
-| Configure Agent Environment Access | After Review Environment          | `environment` | `~/.teleclaude/teleclaude.yml: env_allow_list` via `save_global_config` (per `agent-env-allow-list`) |
-| Configure Release Channel          | After Review Environment (last)   | `environment` | `<project>/teleclaude.yml: deployment.{channel,pinned_minor}` via `save_project_config`              |
+| New guided step                    | Position                          | Subtab        | Persistence                                                                                              |
+| ---------------------------------- | --------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- |
+| Configure System Identity          | First (before Configure Telegram) | `environment` | `config.yml: computer.name` via the machine-config writer (per `machine-config-write.md`)                |
+| Configure Agent Environment Access | After Review Environment          | `environment` | global `teleclaude.yml: env_allow_list` via the global-config writer (per `agent-env-allow-list.md`)     |
+| Configure Release Channel          | After Review Environment (last)   | `environment` | project `teleclaude.yml: deployment.{channel,pinned_minor}` via the project-config writer                |
 
 Rationale for placement: system identity is foundational (later steps
 may reference it in guidance text), so it leads. Agent environment access
@@ -346,19 +344,19 @@ check inventory below uses local reads (file presence, env-var
 presence, schema validation, local subprocess probes) with a
 deterministic verdict per row.
 
-| Check                                              | Mechanism                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Verdict tier                                              |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Telegram required env vars set                     | env-var presence: `TELEGRAM_BOT_TOKEN`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Required daemon-start blocker                             |
-| `config.yml` exists and parses                     | File presence + existing dataclass loader (per `machine-config-load`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Required daemon-start blocker                             |
-| Project `teleclaude.yml` exists and validates      | File presence + existing `ProjectConfig` Pydantic validation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Required daemon-start blocker (when run inside a project) |
-| Global `~/.teleclaude/teleclaude.yml` valid        | File presence + existing `GlobalConfig` Pydantic validation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Optional gap                                              |
-| Enabled agent CLI binaries on `PATH`               | `shutil.which(<binary>)` per agent declared `enabled: true` in `config.yml: agents`                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Required daemon-start blocker                             |
-| `TELECLAUDE_HOME` resolves and is writable         | Path resolution via `teleclaude.paths` + `os.access(path, os.W_OK)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Required daemon-start blocker                             |
-| AI/Voice keys present (when adapter enabled)       | env-var presence: `OPENAI_API_KEY` etc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Optional adapter gap                                      |
-| WhatsApp credentials present (when enabled)        | env/config presence: `WHATSAPP_ACCESS_TOKEN` + `phone_number_id` (Business Cloud API, per `whatsapp-env-var-override`)                                                                                                                                                                                                                                                                                                                                                                                                                                            | Optional adapter gap                                      |
-| Discord credentials present (when enabled)         | env-var presence: Discord env vars                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Optional adapter gap                                      |
-| Agent CLI auth / OAuth consent (per enabled agent) | Stored OAuth/account credential presence per enabled agent (sources per `teleclaude/helpers/agent_cli.py`): Codex → `~/.codex/auth.json`; Gemini → `~/.gemini/oauth_creds.json`; Claude → the Claude Code login credential (macOS Keychain service `Claude Code-credentials`; the CLI's own credential store on other platforms). API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are **not** a consent source — `agent_cli.py` strips them from CLI subprocess env because they bypass OAuth, so their presence must not flip this row to OK. | Required daemon-start blocker (per enabled agent)         |
-| Agent CLI permission readiness (per enabled agent) | Bounded local subprocess probe: invoke the enabled agent binary with its configured non-interactive flags (`config.yml: agents` args; `constants.py` defaults) and confirm it returns without blocking on an interactive permission prompt                                                                                                                                                                                                                                                                                                                        | Required daemon-start blocker (per enabled agent)         |
+| Check                                          | Mechanism                                                                              | Verdict tier                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------- |
+| Telegram required env vars set                     | env-var presence: `TELEGRAM_BOT_TOKEN`                                                                                                                                                                                                                                                                                                                                                                                                                | Required runtime-start blocker                 |
+| `config.yml` exists and parses                     | File presence + machine-config loader (per `machine-config-load.md`)                                                                                                                                                                                                                                                                                                                                                                                  | Required runtime-start blocker                 |
+| Project `teleclaude.yml` exists and validates      | File presence + project overlay validation                                                                                                                                                                                                                                                                                                                                                                                                            | Required runtime-start blocker (when in a project) |
+| Global `~/.teleclaude/teleclaude.yml` valid        | File presence + global overlay validation                                                                                                                                                                                                                                                                                                                                                                                                             | Optional gap                                   |
+| Enabled agent CLI binaries on `PATH`               | Binary lookup per agent declared `enabled: true` in `config.yml: agents`                                                                                                                                                                                                                                                                                                                                                                              | Required runtime-start blocker                 |
+| `TELECLAUDE_HOME` resolves and is writable         | Path resolution + writability check                                                                                                                                                                                                                                                                                                                                                                                                                   | Required runtime-start blocker                 |
+| AI/Voice keys present (when adapter enabled)       | env-var presence: `OPENAI_API_KEY` etc.                                                                                                                                                                                                                                                                                                                                                                                                               | Optional adapter gap                           |
+| WhatsApp credentials present (when enabled)        | env/config presence: `WHATSAPP_ACCESS_TOKEN` + `phone_number_id` (Business Cloud API, per `whatsapp-env-var-override.md`)                                                                                                                                                                                                                                                                                                                             | Optional adapter gap                           |
+| Discord credentials present (when enabled)        | env-var presence: Discord env vars                                                                                                                                                                                                                                                                                                                                                                                                                    | Optional adapter gap                           |
+| Agent CLI auth / OAuth consent (per enabled agent) | Stored OAuth/account credential presence per enabled agent (the agent runtime defines the credential source): Codex → `~/.codex/auth.json`; Gemini → `~/.gemini/oauth_creds.json`; Claude → the Claude Code login credential (macOS Keychain service `Claude Code-credentials`; the CLI's own credential store on other platforms). API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) are **not** a consent source — the agent runtime strips them from CLI subprocess env because they bypass OAuth, so their presence must not flip this row to OK. | Required runtime-start blocker (per enabled agent) |
+| Agent CLI permission readiness (per enabled agent) | Bounded local subprocess probe: invoke the enabled agent binary with its configured non-interactive flags (declared on the agents inventory) and confirm it returns without blocking on an interactive permission prompt                                                                                                                                                                                                                              | Required runtime-start blocker (per enabled agent) |
 
 The two agent-CLI rows status-check the live-consent categories UC-WIZ-8
 requires the section to reflect: the agent's OAuth/browser login (the stored
@@ -371,8 +369,7 @@ grants, escalates, or modifies a host-level permission itself — UC-WIZ-8
 mandates this.
 
 **WhatsApp consent — covered by the credentials row; no QR pairing applies.**
-The implemented adapter (`teleclaude/adapters/whatsapp_adapter.py`) is a
-WhatsApp **Business Cloud API** client (Meta Graph API), authenticated by
+The implemented adapter is a WhatsApp **Business Cloud API** client (Meta Graph API), authenticated by
 `WHATSAPP_ACCESS_TOKEN` + `phone_number_id` (env/config). It has **no
 QR/device-pairing step** — QR pairing is the Web/linked-device model this
 adapter does not implement. Its locally-statusable consent surface is exactly
@@ -389,11 +386,11 @@ derive from the finalized inventory rather than inventing a mechanism:
 
 - **OS-level permission dialogs** (e.g., macOS automation/accessibility
   grants). No portable cross-platform local probe exists. The writable-path
-  rows cover the log/path consents the daemon needs; general OS grants stay
+  rows cover the log/path consents the runtime needs; general OS grants stay
   guidance-only.
 
 Cross-context status that would require a service call (e.g., "is the
-daemon currently running and healthy?") is **excluded**. The wizard's
+runtime currently running and healthy?") is **excluded**. The wizard's
 job is preflight, not health-checking.
 
 ### Section status taxonomy
@@ -402,40 +399,16 @@ The existing `classify_adapter_status` returns `configured` /
 `partial` / `unconfigured`. UC-WIZ-6 extends the taxonomy with a
 fourth value:
 
-- `invalid` — schema validation fails against the typed config
-  (Pydantic for YAML overlays; dataclass-parse for `config.yml`).
-  Example: release channel = `stable` with empty pinned-minor (per
-  `stable-channel-pinning-rule`).
+- `invalid` — schema validation fails against the typed config (the
+  overlay schemas for YAML overlays; the runtime configuration aggregate
+  for `config.yml`). Example: release channel = `stable` with empty
+  pinned-minor (per `stable-channel-pinning-rule.md`).
 
 The required-vs-optional distinction surfaced in the permissions
 inventory above is **computed at render time** from each section's
-classification (`Required daemon-start blocker` vs `Optional gap`).
+classification (`Required runtime-start blocker` vs `Optional gap`).
 No new persisted field is introduced for this distinction; it is a
 rendering concern, not a state concern.
-
-### Implementation pointers (v1)
-
-- `teleclaude/cli/telec/handlers/config.py` — `telec config`
-  dispatcher; the `wizard` subcommand opens the TUI in guided mode.
-- `teleclaude/cli/tui/views/_config_constants.py` — `_SUBTABS`,
-  `_GUIDED_STEPS`, adapter-tab inventory, `classify_adapter_status`
-  helper.
-- `teleclaude/cli/tui/views/config_editing.py` — existing TUI editing
-  flows the new guided steps reuse.
-- `teleclaude/cli/tui/config_components/guidance.py` —
-  `GuidanceRegistry` for per-field human-facing copy.
-- `teleclaude/cli/config_handlers.py` — `save_global_config`,
-  `save_person_config`, `set_env_var`, `resolve_env_file_path`,
-  `_ADAPTER_ENV_VARS`.
-- `teleclaude/cli/config_cli.py` — `_write_env_var` (env-file
-  writer); existing patterns for non-interactive env mutation.
-- `teleclaude/config/loader.py` — `save_project_config` (existing
-  atomic-write helper) and the location of the new
-  `save_machine_config` introduced by this delivery.
-- `teleclaude/config/__init__.py` — machine config loader; the
-  `Config` dataclass tree the new writer targets.
-- `teleclaude/config/schema.py` — Pydantic models for the YAML
-  overlay surfaces (`GlobalConfig`, `ProjectConfig`, `PersonConfig`).
 
 ### Cross-context references
 
@@ -457,10 +430,9 @@ rendering concern, not a state concern.
   specs are joint-delivered.
 - `project/spec/feature/config/atomic-env-file-write` is the
   persistence contract the wizard's adapter / API-key / env-override
-  steps traverse (`.env` file). The v1 `set_env_var` helper is
-  promoted from `target.write_text(...)` to the atomic-replace
-  pattern by this delivery so UC-WIZ-3 and UC-WIZ-5 hold uniformly
-  across every persistence surface.
+  steps traverse (`.env` file). The env-file writer is promoted to the
+  atomic-replace pattern by this delivery so UC-WIZ-3 and UC-WIZ-5
+  hold uniformly across every persistence surface.
 - The cleanup todo `simplify-install-flow-cleanup` retires the shell-layer
   interactive prompts and points missing config at the wizard so the shell-side
   half of UC-WIZ-9 holds. The wizard-side prompt coverage remains owed by
@@ -499,6 +471,6 @@ rendering concern, not a state concern.
   default agent surface and has no concrete supported integration
   contract yet. A future delivery may add an optional MCP section to
   this spec; until then, MCP is out of scope.
-- **v1 surface only.** This spec applies to v1; the `v2-config-cutover`
+- **Subject to the config-domain cutover.** The `v2-config-cutover`
   delivery migrates whatever this spec describes. The cutover may
-  re-author this spec or add a v2 diff at that time.
+  re-author this spec at that time.

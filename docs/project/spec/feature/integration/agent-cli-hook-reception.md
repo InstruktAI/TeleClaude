@@ -4,9 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
-description: 'Subprocess receiver invoked by agent CLIs (Claude, Codex, Gemini) that parses a hook payload, resolves a TeleClaude session, and enqueues the event for daemon processing.'
+description: 'Subprocess receiver invoked by agent CLIs (Claude, Codex, Gemini) that parses a hook payload, resolves a TeleClaude session, and enqueues the event for integration-side processing.'
 ---
 
 # Agent CLI Hook Reception — Spec
@@ -19,23 +17,22 @@ description: 'Subprocess receiver invoked by agent CLIs (Claude, Codex, Gemini) 
 
 ## What it is
 
-The `telec-hook` subprocess that an agent CLI invokes for every hook event it
+The receiver subprocess that an agent CLI invokes for every hook event it
 emits (`session_start`, `user_prompt_submit`, `tool_use`, `agent_stop`,
-`agent_error`, plus event-name variants per agent). The receiver reads a JSON
-payload from stdin, selects a per-agent adapter (Claude / Codex / Gemini) to
-normalize agent-specific field names, maps the raw event name to a canonical
-`AgentHookEventType`, resolves or refreshes a TeleClaude session identifier
-from the agent's native session id, and enqueues the event into a per-session
-SQLite outbox. The receiver also emits stdout "additional context" on
-`agent_session_start` and, on `agent_stop`, may emit an adapter-formatted
-checkpoint-block response that the agent CLI interprets as a blocking
-instruction.
+`agent_error`, plus event-name variants per agent). It reads the hook
+payload from its standard input, selects a per-agent adapter (Claude /
+Codex / Gemini) to normalize agent-specific field names, maps the raw
+event name to a canonical hook event type, resolves or refreshes a
+TeleClaude session identifier from the agent's native session id, and
+enqueues the event into the per-session hook outbox. The receiver also
+emits adapter-formatted "additional context" on `agent_session_start`
+and, on `agent_stop`, may emit an adapter-formatted checkpoint-block
+response that the agent CLI interprets as a blocking instruction.
 
-In v1 this code lives under `teleclaude/hooks/receiver/` even though by v2
-fold it conceptually belongs to `agent_runtime`. v1 reality keeps it inside
-integration because the receiver shares its outbox writer, payload model
-(`HookEvent`), and process-boundary plumbing with the third-party webhook
-subsystem.
+Conceptually this surface belongs to the `agent_runtime` bounded context;
+it is inventoried under `integration` because the receiver shares its
+outbox writer, payload model, and process-boundary plumbing with the
+third-party webhook subsystem.
 
 ## Canonical fields
 
@@ -44,17 +41,17 @@ subsystem.
 #### UC-R1: Claude session_start with additional context injection
 
 ```gherkin
-Given Claude Code is configured with a SessionStart hook pointing at telec-hook
+Given Claude Code is configured with a SessionStart hook pointing at the receiver
 And the project has memory snippets and a configured human-in-the-loop person
-When Claude starts a new session and invokes telec-hook with --agent claude --cwd /path/to/project SessionStart
-Then the ClaudeAdapter parses JSON payload from stdin
-And the receiver maps "SessionStart" to AgentHookEvents.AGENT_SESSION_START
-And the receiver resolves the TeleClaude session id (minting one if missing — AGENT_SESSION_START is in mint_events)
-And the receiver fetches memory_context + person_header for the project
-And prints adapter-formatted additional context to stdout (plain text for Claude)
-And persists native_session_id + native_log_file via NATIVE_METADATA_UPDATE outbox row
-And enqueues the AGENT_SESSION_START event into the per-session hook outbox
-And exits 0
+When Claude starts a new session and invokes the receiver for SessionStart
+Then the Claude adapter parses the hook payload
+And the receiver maps the event to the canonical agent-session-start hook event
+And the receiver resolves the TeleClaude session id (minting one when missing — agent-session-start is a mint event)
+And the receiver fetches memory context and the person header for the project
+And emits adapter-formatted additional context (plain text for Claude)
+And persists the native session id and native log file as a native-metadata-update outbox entry
+And enqueues the agent-session-start event into the per-session hook outbox
+And signals success to the agent CLI
 ```
 
 #### UC-R2: Stop hook blocked with checkpoint instruction
@@ -64,38 +61,37 @@ Given a Claude session has uncommitted turn-local changes
 Or the session's current HEAD differs from the turn-start anchor SHA on main
 And the persistent checkpoint clear flag is not set
 And the post-commit review flag for the current HEAD has not already fired
-When Claude invokes telec-hook ... Stop after the agent attempts to stop
-Then the receiver maps "Stop" to AgentHookEvents.AGENT_STOP
-And calls _maybe_checkpoint_output which loads the session row and gathers evidence
-And get_checkpoint_content returns a non-empty checkpoint reason string
-And when HEAD advanced on main, the checkpoint reason includes the post-commit review-gate surfacing action even if no dirty files remain
+When Claude invokes the receiver with a Stop event after the agent attempts to stop
+Then the receiver maps the event to agent-stop
+And the checkpoint engine evaluates the session row and gathers evidence
+And the engine returns a non-empty checkpoint reason
+And when HEAD advanced on main, the reason includes the post-commit review-gate surfacing action even if no dirty files remain
 And that action instructs the agent to set a conditional 5-minute heartbeat when it recommends review
 And if the heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review and waits for REVIEW COMPLETE
 And repeated Stop hooks for the same HEAD do not include that action again
-And enqueue_checkpoint_seen writes a CHECKPOINT_SEEN row to the outbox
-And ClaudeAdapter.format_checkpoint_response serializes {"decision":"block","reason":<reason>} to stdout
-And the process exits 0 BEFORE enqueueing the original AGENT_STOP event
-And Claude reads the JSON from stdout and re-prompts itself with the checkpoint reason
+And a checkpoint-seen outbox entry is recorded
+And the Claude adapter formats a block decision carrying the reason
+And the receiver emits the block decision to the agent CLI BEFORE the agent-stop event is enqueued
+And Claude reads the block decision and re-prompts itself with the checkpoint reason
 ```
 
 #### UC-R3: Codex subagent event dropped pre-resolution
 
 ```gherkin
 Given Codex emits a hook event from a subagent transcript path
-When telec-hook --agent codex receives the event
-And the receiver detects is_codex_subagent_transcript(native_log_file) is True
+When the receiver detects the event originates from a subagent transcript
 Then the event is dropped BEFORE session resolution runs
 And no session-map entry is written that would bind the subagent native id to the parent session
-And the receiver exits 0 with no outbox row
-And a "subagent_drop" debug log is recorded
+And the receiver exits cleanly with no outbox row
+And a subagent-drop debug log is recorded
 ```
 
 #### UC-R4: System-injected user_prompt_submit dropped
 
 ```gherkin
-Given Claude posts a user_prompt_submit event whose prompt body starts with "[TeleClaude Checkpoint]" or other TeleClaude-owned envelope prefixes
+Given Claude posts a user-prompt-submit event whose prompt body starts with "[TeleClaude Checkpoint]" or another TeleClaude-owned envelope prefix
 When the receiver processes the event
-Then _is_system_injected_user_prompt returns True
+Then the receiver recognizes the system-injected envelope
 And the event is dropped (no outbox row written)
 And the per-turn recheck flag is NOT reset
 ```
@@ -103,134 +99,94 @@ And the per-turn recheck flag is NOT reset
 #### UC-R5: Unhandled hook event silently dropped
 
 ```gherkin
-Given an agent emits a hook event whose canonical type is not in AgentHookEvents.RECEIVER_HANDLED
+Given an agent emits a hook event whose canonical type is outside the receiver-handled set
 When the receiver processes the event
-Then a "Dropped unhandled hook event" debug log is emitted
-And the process exits 0 with no outbox row written
+Then a "dropped unhandled hook event" debug log is emitted
+And the receiver exits cleanly with no outbox row written
 ```
 
-#### UC-R6: Invalid JSON payload — best-effort error path
+#### UC-R6: Invalid payload — best-effort error path
 
 ```gherkin
-Given the agent CLI invokes telec-hook with malformed JSON on stdin
+Given the agent CLI invokes the receiver with a malformed payload
 When the receiver attempts to parse via the adapter
-Then a JSONDecodeError is caught
-And _emit_receiver_error_best_effort is invoked with code=HOOK_INVALID_JSON, no raw_data
+Then the parse failure is caught
+And the best-effort error helper is invoked with an invalid-payload code
 And inside that helper:
-    - raw_native_session_id is None (no raw_data was passed by _parse_receiver_input)
-    - _get_cached_session_id(args.agent, None) returns None
-    - _find_session_id_by_native(None) returns None
-    - the helper logs "Receiver error with unknown session" at error level
-    - NO outbox row is enqueued (the function returns without reaching enqueue_hook_event)
-And the receiver exits 1
+    - no raw payload data is available for session resolution
+    - cached session lookup returns no result
+    - native-session lookup returns no result
+    - the helper logs "receiver error with unknown session" at error level
+    - NO outbox row is enqueued
+And the receiver exits with a failure status
 
-Given a hypothetical caller that did pass raw_data with a resolvable native session id
-When _emit_receiver_error_best_effort runs
-Then session resolution succeeds and an "error" outbox row IS enqueued
-But _parse_receiver_input does NOT pass raw_data on JSON / non-object failures, so this branch is not reached on the JSON parse path
+Given a hypothetical caller path that did supply payload data with a resolvable native session id
+When the error helper runs
+Then session resolution succeeds and an error outbox row IS enqueued
+But the parse-failure path does NOT supply such data, so this branch is not reached on the parse path
 ```
 
-#### UC-R7: Receiver re-execs under project venv
+#### UC-R7: Receiver runs under the project venv
 
 ```gherkin
-Given telec-hook is invoked by an agent CLI from an arbitrary working directory where PATH resolves python3 to system Python
-When the receiver __main__ bootstrap resolves the repo root via resolve_state_root
-And finds <repo>/.venv/bin/python3
-Then os.execv replaces the current process with the project venv interpreter
-And the receiver continues with the same argv under the venv interpreter
+Given the receiver is invoked by an agent CLI from an arbitrary working directory where the resolved Python is the system Python
+When the receiver bootstrap resolves the repo root
+And finds a project virtualenv interpreter beneath it
+Then the receiver re-executes under the project virtualenv interpreter
+And continues with the same arguments under that interpreter
 And all project dependencies are importable
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/hooks/receiver/__init__.py` — `main()` (L807, top-level
-  orchestration); `_resolve_receiver_session_id` (L568),
-  `_maybe_checkpoint_output` (L234),
-  `_maybe_emit_additional_context` (L755),
-  `_maybe_emit_checkpoint_response` (L777),
-  `_handle_user_prompt_submit` (L723),
-  `_persist_native_metadata` (L660),
-  `enqueue_hook_event` (L420),
-  `_parse_receiver_input` (L526),
-  `_emit_receiver_error_best_effort` (L483).
-- `teleclaude/hooks/receiver/__main__.py` — script bootstrap, venv re-exec
-  (whole file ~43 lines).
-- `teleclaude/hooks/receiver/_repo_root.py` — repo-root helper for the
-  worktree-safe bootstrap (~19 lines).
-- `teleclaude/hooks/receiver/_session.py` —
-  `_resolve_hook_session_id` (L406),
-  `_load_session_map` (L122),
-  `_write_session_map_atomic` (L138),
-  `_resolve_or_refresh_session_id` (L251),
-  `_get_cached_session_id` (L148),
-  `_find_session_id_by_native` (L303),
-  `_get_memory_context` (L105).
-- `teleclaude/hooks/adapters/base.py` — `HookAdapter` protocol (L66),
-  `read_stdin_payload` (L14), `parse_stdin_hook_input` (L28),
-  `normalize_common_payload` (L40).
-- `teleclaude/hooks/adapters/claude.py` — `ClaudeAdapter` (L13):
-  `mint_events = {AGENT_SESSION_START}` (L17),
-  `supports_hook_checkpoint = True` (L18).
-- `teleclaude/hooks/adapters/codex.py` — `CodexAdapter` (L13):
-  `mint_events = {AGENT_SESSION_START, AGENT_STOP}` (L17),
-  `supports_hook_checkpoint = True` (L23).
-- `teleclaude/hooks/adapters/gemini.py` — `GeminiAdapter` (L13):
-  `mint_events = {AGENT_SESSION_START}` (L17),
-  `supports_hook_checkpoint = True` (L18).
-
 ### Cross-context references
 
-- **Primary home is agent_runtime in v2** per `docs/project/spec/domain/context-map.md`
-  ("Agent CLI hooks reach agent_runtime directly via `telec-hook` IPC"). In v1
-  the code lives under `teleclaude/hooks/` and is inventoried here per PRD
-  scope. The v2 fold moves this whole feature to `agent_runtime`.
-- Consumes session-map state from the agent_runtime domain (sessions table,
-  native_session_id mapping).
-- Emits CHECKPOINT_SEEN, NATIVE_METADATA_UPDATE, NATIVE_SESSION_REFRESH,
-  AGENT_SESSION_START, USER_PROMPT_SUBMIT, TOOL_USE, AGENT_STOP, AGENT_ERROR
-  rows into the hook outbox (see `hook-event-outbox`).
+- Primary home is `agent_runtime` per `docs/project/spec/domain/context-map.md`
+  ("Agent CLI hooks reach agent_runtime directly via the receiver IPC").
+  This feature is inventoried under `integration` because the receiver
+  shares its outbox writer, payload model, and process-boundary plumbing
+  with the third-party webhook subsystem.
+- Consumes session-map state owned by the `agent_runtime` context
+  (sessions and native-session-id mapping).
+- Emits checkpoint-seen, native-metadata-update, native-session-refresh,
+  agent-session-start, user-prompt-submit, tool-use, agent-stop, and
+  agent-error entries into the hook outbox (see `hook-event-outbox`).
 
 ## Known caveats
 
-- Receiver only emits events listed in `AgentHookEvents.RECEIVER_HANDLED`;
-  intermediate hook traffic outside that set is intentionally dropped at the
-  process boundary to prevent noisy events reaching daemon handlers.
-- Adapter `mint_events` sets are:
-  - `ClaudeAdapter.mint_events = {AGENT_SESSION_START}`
-  - `GeminiAdapter.mint_events = {AGENT_SESSION_START}`
-  - `CodexAdapter.mint_events = {AGENT_SESSION_START, AGENT_STOP}` — Codex
-    mints on both session start AND stop because its hook surface emits
-    `AGENT_STOP` even when no prior session_start arrived through the
-    daemon (e.g., manual `codex` invocations whose first observable hook
-    is the stop). For non-mint events on an unknown native session id,
-    the receiver drops the event rather than minting.
-- `_is_system_injected_user_prompt` filters out TeleClaude-injected prompt
+- The receiver only emits events that belong to the receiver-handled
+  canonical set; intermediate hook traffic outside that set is
+  intentionally dropped at the process boundary to prevent noisy events
+  reaching downstream handlers.
+- Adapter mint sets are:
+  - Claude mints on agent-session-start.
+  - Gemini mints on agent-session-start.
+  - Codex mints on BOTH agent-session-start and agent-stop, because its
+    hook surface emits agent-stop even when no prior session-start was
+    observed (e.g., manual `codex` invocations whose first observable
+    hook is the stop). For non-mint events on an unknown native session
+    id, the receiver drops the event rather than minting.
+- The system-injected prompt filter strips out TeleClaude-injected
   envelopes (`[TeleClaude Checkpoint]`, `[TeleClaude Notification]`,
   `[TeleClaude Input Request]`, `[TeleClaude Linked output...]`), Codex
-  internal `<hook_prompt>` markers, and Claude hook-feedback prefixes
+  internal hook-prompt markers, and Claude hook-feedback prefixes
   ("Stop hook feedback:", "PreToolUse hook feedback:") plus internal
-  `<task-notification>` / `<system-reminder>` envelopes. Without this filter,
-  agents would treat their own injected prompts as new user input and loop.
-- All three v1 adapters set `supports_hook_checkpoint = True`. The block
-  payload format differs per adapter:
-  - `ClaudeAdapter.format_checkpoint_response` →
-    `{"decision": "block", "reason": <reason>}`
-  - `CodexAdapter.format_checkpoint_response` →
-    `{"decision": "block", "reason": <reason>}`
-  - `GeminiAdapter.format_checkpoint_response` →
-    `{"decision": "deny", "reason": <reason>}`
-    When the adapter returns `None` from `format_checkpoint_response`, the
-    receiver lets the stop event continue to outbox enqueue, but in v1 none
-    of the three adapters return `None`.
-- Native metadata persistence (`_persist_native_metadata`) always runs when
-  `raw_native_session_id` or `raw_native_log_file` is present. If the new
-  native_session_id differs from the row's stored value, a
-  `NATIVE_SESSION_REFRESH` outbox row is emitted in addition to the standard
-  `NATIVE_METADATA_UPDATE`.
-- Hook stdin must be a JSON object (not array, not primitive); the adapter
-  raises `ValueError("Hook stdin payload must be a JSON object")` otherwise,
-  which `_parse_receiver_input` reports through the same best-effort
-  unknown-session path as malformed JSON: a `HOOK_PAYLOAD_NOT_OBJECT` error
-  is logged, no error outbox row is enqueued, and the receiver exits 1.
-- The receiver swallows DB errors during native-metadata persistence with a
-  warning log; the hook event itself is still enqueued.
+  task-notification and system-reminder envelopes. Without this filter,
+  agents would treat their own injected prompts as new user input and
+  loop.
+- All three v1 adapters support hook checkpoints. The block decision
+  shape differs per adapter:
+  - Claude → block decision with reason.
+  - Codex → block decision with reason.
+  - Gemini → deny decision with reason.
+  When the adapter returns no decision, the receiver lets the stop event
+  continue to outbox enqueue; no v1 adapter exercises that branch.
+- Native metadata persistence always runs when a native session id or
+  native log file is present. When the new native session id differs
+  from the stored value, a native-session-refresh outbox entry is
+  emitted in addition to the standard native-metadata-update.
+- The hook input must be a structured payload object; an unstructured
+  payload is rejected at the adapter boundary and reported through the
+  same best-effort unknown-session path as a malformed payload: an
+  error is logged, no error outbox row is enqueued, and the receiver
+  exits with a failure status.
+- The receiver swallows persistence errors during native-metadata
+  writes with a warning log; the hook event itself is still enqueued.

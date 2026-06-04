@@ -4,9 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
-description: 'tmux-bridge primitive surface that v1 agent_runtime uses to host agent CLI processes — session creation, pane snapshot capture, key injection, signaling, kill, and liveness probing.'
+description: 'Host-pane orchestration primitives that agent_runtime uses to host agent CLI processes — session creation, pane snapshot capture, key injection, signaling, kill, and liveness probing.'
 ---
 
 # Tmux Pane Orchestration — Spec
@@ -17,213 +15,204 @@ description: 'tmux-bridge primitive surface that v1 agent_runtime uses to host a
 
 ## What it is
 
-The low-level tmux orchestration surface that v1 `agent_runtime` uses to host a supervised agent CLI inside a tmux pane. Every live agent CLI process — Claude, Codex, Gemini — runs inside exactly one detached tmux session created and managed through this surface. The bridge exposes one primitive surface, the `teleclaude.core.tmux_bridge` package, that fans out to four concerns: session creation/teardown, pane snapshot capture, key and signal injection, and subprocess-timeout discipline.
+The low-level host-pane orchestration surface that `agent_runtime` uses to host a supervised agent CLI inside a multiplexed terminal pane. Every live agent CLI process — Claude, Codex, Gemini — runs inside exactly one detached host pane created and managed through this surface. The bridge exposes one primitive surface that fans out to four concerns: host-pane creation/teardown, pane snapshot capture, key and signal injection, and subprocess-timeout discipline.
 
-The surface is stateless. Every function shells out to the `tmux` binary configured in `config.computer.tmux_binary` (default `tmux`), reads `config` lazily for per-call values, and wraps each `asyncio.create_subprocess_exec` call in a timeout envelope that raises `SubprocessTimeoutError` on hang. No in-process tmux session table is held — the only authoritative state lives in the tmux server. Higher-level callers (session_lifecycle creation/end flows, session_cleanup orphan sweeps, the polling cadence loop) consume this surface; this surface owns the tmux interaction end-to-end and reports successes and failures via return values and structured logs.
+The surface is stateless. Every function shells out to the configured terminal multiplexer binary (default `tmux`), reads configuration lazily for per-call values, and wraps each subprocess call in a timeout envelope that raises a subprocess-timeout error on hang. No in-process host-pane table is held — the only authoritative state lives in the multiplexer server. Higher-level callers (session-lifecycle creation/end flows, session-cleanup orphan sweeps, the polling cadence loop) consume this surface; this surface owns the host-pane interaction end-to-end and reports successes and failures via return values and structured logs.
 
 ## Canonical fields
 
 ### Behavioral contract
 
-#### Tmux session creation is idempotent through `ensure_tmux_session`
+#### Host-pane creation is idempotent through ensure-host-pane
 
 ```
-Given agent_runtime needs a tmux session named "tc_<session_id>" for a session_id
-When ensure_tmux_session(name, working_dir, session_id, env_vars) is called
-Then the bridge first calls session_exists(name, log_missing=False)
-And returns True immediately if the session already exists
-And otherwise invokes _create_tmux_session to create it detached
-And on creation failure, re-checks existence to absorb create/has-session race
-And returns True if the session is present at function exit, False otherwise
+Given agent_runtime needs a host pane named "<teleclaude-prefix><session_id>" for a session id
+When ensure-host-pane(name, working_dir, session_id, env_vars) is called
+Then the bridge first checks whether the host pane already exists
+And returns success immediately if it does
+And otherwise invokes the create primitive to spawn it detached
+And on creation failure, re-checks existence to absorb create/has-pane race
+And returns success if the pane is present at function exit, failure otherwise
 ```
 
-#### A fresh tmux session is created with a TeleClaude-controlled shell and a sealed env
+#### A fresh host pane is created with a TeleClaude-controlled shell and a sealed env
 
 ```
-Given _create_tmux_session(name, working_dir, session_id, env_vars) is called
-When the bridge builds the tmux new-session command
-Then a per-session TMPDIR is materialized under TMP_SESSIONS_DIR / safe_session_tmp_component(session_id)
-And the directory is recreated empty with mode 0700 to drop any stray unix sockets
-And the TeleClaude-controlled env dict injects TELECLAUDE_HOME, SHELL=teleclaude-shell, ZDOTDIR, BASH_ENV, ENV, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, ZSH_LAST_WORKING_DIRECTORY=1, TMPDIR/TMP/TEMP all pointing at the per-session TMPDIR
-And authorized agent env vars are resolved from `GlobalConfig.env_allow_list` plus `ProjectConfig.env_allow_list`
-And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance (`APPEARANCE_MODE`, `TERMINAL_BG`), locale (`LANG`, `LC_*`), and voice selectors
-And common tmux runtime env filtering uses one shared allowlist for appearance and locale keys, with TUI and agent panes adding only surface-specific extras
-And agent env vars are written to a 0600 file under the per-session TMPDIR
-And each env var name is validated against ^[A-Za-z_][A-Za-z0-9_]*$ — invalid names raise ValueError
-And tmux is invoked as `tmux new-session -d -s <name> -c <working_dir> [-e VAR=VAL ...] <shell_command>` with only TeleClaude-controlled values in `-e`
-And shell_command sources the private agent env file before executing `teleclaude-shell`
-And on success, a follow-up `set-environment -u NO_COLOR ; set-option destroy-unattached off ; set-hook client-detached run-shell true` setup chain runs, with per-step markers logged so the failing step can be identified
-And the call returns True on tmux returncode==0, False on returncode!=0 or SubprocessTimeoutError
+Given the create primitive is invoked for (name, working_dir, session_id, env_vars)
+When the bridge builds the create command
+Then a per-session tmpdir is materialized under the configured per-session tmpdir base, keyed by the session id
+And the directory is recreated empty with restrictive mode to drop any stray unix sockets
+And the TeleClaude-controlled env dict injects TELECLAUDE_HOME, the TeleClaude shell selector, the configured rc roots, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, the working-directory tracking marker, and TMPDIR/TMP/TEMP all pointing at the per-session tmpdir
+And authorized agent env vars are resolved from the global and per-project env allowlists
+And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance, locale, and voice selectors
+And common runtime env filtering uses one shared allowlist for appearance and locale keys, with TUI and agent panes adding only surface-specific extras
+And agent env vars are written to a private file under the per-session tmpdir
+And each env var name is validated against a strict identifier pattern — invalid names are refused
+And the multiplexer is invoked to create a detached session with only TeleClaude-controlled values surfaced
+And the shell command sources the private agent env file before executing the TeleClaude shell
+And on success, a follow-up environment-setup chain runs to drop NO_COLOR and set hooks, with per-step markers logged so the failing step can be identified
+And the call returns success on a zero-exit create, failure otherwise (including subprocess-timeout)
 ```
 
-#### Per-session TMPDIR layout
+#### Per-session tmpdir layout
 
 ```
-Given a tmux session is created for session_id S
-When _prepare_session_tmp_dir(S) runs
-Then the path is TMP_SESSIONS_DIR / safe_session_tmp_component(S)
-And TMP_SESSIONS_DIR defaults to ${TELECLAUDE_HOME}/tmp/sessions, overridable via TELECLAUDE_SESSION_TMPDIR_BASE
-And safe_session_tmp_component returns the raw id when it matches [A-Za-z0-9._-]{1,128}, otherwise sha256(id)[:32]
+Given a host pane is created for session id S
+When the per-session tmpdir is prepared
+Then the path is anchored under the configured per-session tmpdir base
+And the base defaults to <TELECLAUDE_HOME>/tmp/sessions, overridable via the configured override variable
+And the safe-component helper returns the raw id when it matches the safe pattern, otherwise a SHA-256 prefix
 And any prior contents (including unix sockets) are removed before creation
-And the directory is created with mode 0700
-And get_session_tmpdir(S) later returns the path if it still exists, or None
+And the directory is created with restrictive mode
+And later requests for the tmpdir return its path if it still exists, or nothing
 ```
 
-#### A single tmux snapshot returns the polling state
+#### A single host-pane snapshot returns the polling state
 
 ```
-Given the polling cadence loop probes session_name
-When collect_pane_snapshot(session_name, capture_lines=N) is invoked
-Then ONE tmux process runs the chained command:
-    capture-pane -t <name> -p -J -e -S -<N> ; display-message -p <BOUNDARY_MARKER> ; list-panes -t <name> -F '#{pane_dead}'
-And the boundary marker partitions stdout into pane output (raw) and pane_dead lines
-And if N is omitted or non-positive, N defaults to DEFAULT_CAPTURE_LINES (200); hot poller callers pass their own smaller window
-And the result is a PaneSnapshot(session_exists, pane_dead, output_raw, output_normalized)
-And output_normalized strips ANSI, normalizes CRLF/CR to LF, and rstrips each line
-And if tmux stderr matches "can't find" or "no such" (case-insensitive), session_exists=False is returned without raising
-And other nonzero exits raise ValueError; subprocess hangs raise SubprocessTimeoutError
+Given the polling cadence loop probes a host pane
+When the snapshot primitive is invoked with a capture-line budget N
+Then ONE multiplexer process runs a chained command:
+    capture pane output, emit a boundary marker, then list pane-dead flags
+And the boundary marker partitions stdout into pane output (raw) and pane-dead lines
+And if N is omitted or non-positive, N defaults to the configured default; hot poller callers pass their own smaller window
+And the result is a pane snapshot carrying (pane exists, pane dead, output raw, output normalized)
+And output normalized strips ANSI, normalizes CRLF/CR to LF, and right-strips each line
+And if stderr matches "can't find" or "no such" (case-insensitive), the snapshot reports the pane as absent without raising
+And other nonzero exits raise; subprocess hangs raise subprocess-timeout
 ```
 
-#### `capture_pane` alone returns the raw capture body
+#### `capture-pane` alone returns the raw capture body
 
 ```
 Given a caller wants only the pane text, not the liveness probe
-When capture_pane(session_name, capture_lines=N) is invoked
-Then tmux is invoked as `capture-pane -t <name> -p -J -e -S -<N>`
-And on returncode==0, the raw decoded stdout is returned
-And on returncode!=0 the call logs and returns "" (empty string)
-And on SubprocessTimeoutError or OSError the exception is re-raised
-And the same DEFAULT_CAPTURE_LINES fallback applies when capture_lines is omitted
+When the capture primitive is invoked with a capture-line budget N
+Then the multiplexer is invoked to capture pane output only
+And on success, the raw decoded stdout is returned
+And on nonzero exit the call logs and returns an empty string
+And on subprocess timeout or OS error the exception is re-raised
+And the same default fallback applies when the budget is omitted
 ```
 
-#### Send-keys uses the load-buffer / paste-buffer / send-keys C-m pipeline
+#### Send-keys uses the load-buffer / paste / submit pipeline
 
 ```
-Given send_keys(session_name, text, session_id, working_dir, active_agent) is called
-When the session is ensured (via ensure_tmux_session, creating it fresh on miss — previous state is lost; this is NOT recovery)
+Given the send-keys primitive is called with (host pane name, text, session id, working_dir, active agent)
+When the host pane is ensured (creating it fresh on miss — previous state is lost; this is NOT recovery)
 Then text is delivered through the three-stage pipeline:
-    1. tmux load-buffer -b telec-<uuid> - (text piped to stdin to bypass tmux argv length limits)
-    2. tmux paste-buffer -p -r -t <name> -b telec-<uuid> (bracketed paste DECSET 2004 markers, preserves LF)
-    3. asyncio.sleep(0.2) ordering margin so tmux flushes the close marker before the discrete submit
-    4. tmux send-keys -t <name> C-m (discrete Enter, treated as submit by all three agent CLIs)
-And the buffer is always deleted in a finally block via `tmux delete-buffer -b telec-<uuid>` (cleanup errors are logged but never override the operation result)
-And if active_agent == "gemini", every literal '!' in text is replaced with '\!' (Gemini CLI bug workaround)
-And the call returns True on every stage success, False on any stage failure
+    1. Load a uniquely-named paste buffer from stdin (bypasses multiplexer argument-length limits)
+    2. Paste the buffer with bracketed-paste markers, preserving LF
+    3. Wait a small ordering margin so the multiplexer flushes the close marker before the discrete submit
+    4. Send a discrete submit keystroke (treated as submit by all three agent CLIs)
+And the paste buffer is always cleaned up in a finalizer (cleanup errors are logged but never override the operation result)
+And if the active agent is Gemini, every literal '!' in text is replaced with '\!' (Gemini CLI bug workaround)
+And the call returns success on every stage success, failure on any stage failure
 ```
 
-#### `send_keys_existing_tmux` skips the auto-create
+#### send-keys-existing-host-pane skips the auto-create
 
 ```
-Given a caller has already verified session_name exists
-When send_keys_existing_tmux(session_name, text, active_agent, timeout) is called
+Given a caller has already verified the host pane exists
+When the existing-pane variant is invoked
 Then the same load/paste/submit pipeline runs without re-checking existence
-And SubprocessTimeoutError is caught and converted to False with structured log
+And subprocess-timeout is caught and converted to a structured log + failure return
 And the redundant existence check is intentionally omitted to save one subprocess call
 ```
 
-#### `send_keys_to_tty` is the non-tmux escape hatch
+#### send-keys-to-tty is the non-pane escape hatch
 
 ```
-Given a session is hosted on a controlling TTY rather than a tmux pane
-When send_keys_to_tty(tty_path, text, send_enter=True) is called
-Then the tty is opened with O_RDWR | O_NOCTTY off the asyncio loop
-And bytes are injected byte-by-byte via fcntl.ioctl(fd, TIOCSTI, byte) with EAGAIN/EWOULDBLOCK/EINTR/ENOMEM retry up to 5s
-And if the path looks like a PTY master ("pty*", "ptys*", "ptyp*"), os.write is used as a fallback
-And the call returns True on success, False on OSError or ValueError
+Given a session is hosted on a controlling TTY rather than a multiplexed pane
+When the TTY variant is called
+Then the tty is opened off the event loop
+And bytes are injected one at a time via the TTY ioctl that mimics typed input, retrying on transient errors up to 5 seconds
+And if the path looks like a PTY master, a direct write fallback is used
+And the call returns success on success, failure on errors
 ```
 
-#### Signal injection: SIGINT and SIGTERM via send-keys, SIGKILL via pgrep+kill
+#### Signal injection: SIGINT and SIGTERM via key commands, SIGKILL via shell-child lookup
 
 ```
-Given send_signal(session_name, signal) is called
-When signal is SIGINT
-Then tmux is invoked as `send-keys -t <name> C-c`
-When signal is SIGTERM
-Then tmux is invoked as `send-keys -t <name> C-\\`
-When signal is SIGKILL
-Then the bridge calls `display-message -p '#{pane_pid}'` to read the shell PID
-And calls `pgrep -P <shell_pid>` to find the foreground child
-And sends `kill -9 <child_pid>` to the first child returned
-And returns False if no shell PID, no children, or any subprocess fails
+Given the signal primitive is called for a host pane
+When the signal is SIGINT
+Then the multiplexer is asked to send Ctrl-C into the pane
+When the signal is SIGTERM
+Then the multiplexer is asked to send Ctrl-\\ into the pane
+When the signal is SIGKILL
+Then the bridge reads the pane's shell process id
+And looks up the foreground child of that shell
+And sends a hard kill to the first child returned
+And returns failure if no shell id, no children, or any subprocess fails
 ```
 
 #### Liveness probes
 
 ```
-Given a poller needs to know whether the agent CLI is alive in session_name
-When get_current_command(session_name) is called
-Then tmux is invoked as `display-message -p -t <name> '#{pane_current_command}'` and returns the trimmed command name or None
+Given a poller needs to know whether the agent CLI is alive in a host pane
+When the current-command probe is called
+Then the multiplexer reports the pane's current foreground command name (or nothing)
 
-When is_process_running(session_name) is called
-Then it returns True iff get_current_command result exists and != the user's shell basename (computed at import from $SHELL or pwd entry)
+When the running-process check is called
+Then it returns true iff the current command exists and differs from the user's shell basename
 
-When wait_for_shell_ready(session_name, timeout_s=8.0, poll_interval_s=0.2) is called
-Then it polls get_current_command until the foreground command equals the user's shell, returning True on hit, False on timeout
+When the wait-for-shell-ready probe is called with a timeout
+Then it polls the current command until the foreground command equals the user's shell, returning success on hit, failure on timeout
 
-When is_pane_dead(session_name) is called
-Then it invokes `list-panes -t <name> -F '#{pane_dead}'`
-And returns True iff at least one pane line is present AND every numeric line equals 1
+When the pane-dead check is called
+Then the multiplexer reports pane-dead flags per pane
+And the check returns true iff at least one pane line is present AND every numeric line equals 1
 ```
 
 #### Pipe-pane attach / detach
 
 ```
 Given pipe-pane attachment for byte-arrival wake signaling
-When start_pipe_pane(session_name, command) is called
-Then tmux is invoked as `pipe-pane -t <name> -o <command>` (the -o flag toggles append-pipe mode)
-And returns True on returncode==0
+When the attach primitive is called
+Then the multiplexer attaches a command to the pane's output stream (append mode)
+And returns success on a clean attach
 
-When stop_pipe_pane(session_name) is called
-Then tmux is invoked as `pipe-pane -t <name>` with no command (this severs the pipe)
-And returns True on returncode==0
+When the detach primitive is called
+Then the multiplexer is asked to sever the pipe
+And returns success on clean detach
 ```
 
 #### Subprocess timeout envelope
 
 ```
-Given any tmux invocation
-When wait_with_timeout(process, timeout, operation) or communicate_with_timeout(process, input, timeout, operation) is awaited
-Then asyncio.wait_for guards the call with the supplied timeout
-And on TimeoutError, the process is killed and a 2s grace wait_for(process.wait()) is attempted
-And SubprocessTimeoutError(operation, timeout, pid) is raised (chained via `from None`)
-And the timeout constants are SUBPROCESS_TIMEOUT_QUICK=5.0, SUBPROCESS_TIMEOUT_DEFAULT=30.0, SUBPROCESS_TIMEOUT_LONG=60.0
-And nearly all tmux-bridge calls use the QUICK budget
+Given any multiplexer invocation
+When the timeout-guarded wait or communicate primitive is awaited
+Then a timeout guard wraps the call with the supplied timeout
+And on timeout, the process is terminated and a 2s grace wait is attempted
+And a subprocess-timeout error is raised carrying the operation name, timeout, and process id
+And the timeout budgets are categorized as quick (5s), default (30s), and long (60s)
+And nearly all bridge calls use the quick budget
 ```
 
-#### Killing a tmux session cascades to all panes
+#### Killing a host pane cascades to all panes
 
 ```
-Given kill_session(session_name) is called
-When tmux is invoked as `kill-session -t <name>`
-Then tmux terminates the session, every pane, every child of every pane's shell — the SHELL exits, which reaps the agent CLI and any subprocess tree it spawned
-And the per-session TMPDIR is NOT removed here (that lives with session lifecycle/cleanup callers)
-And the call returns True on returncode==0
+Given the kill primitive is called for a host pane
+When the multiplexer is asked to kill the session
+Then the multiplexer terminates the session, every pane, every child of every pane's shell — the SHELL exits, which reaps the agent CLI and any subprocess tree it spawned
+And the per-session tmpdir is NOT removed here (that lives with session lifecycle/cleanup callers)
+And the call returns success on a clean kill
 ```
-
-### Implementation pointers (v1)
-
-- Public surface: `teleclaude/core/tmux_bridge/__init__.py:1`
-- Session creation and TMPDIR layout: `teleclaude/core/tmux_bridge/_session.py:48` (`_get_session_tmp_basedir`), `:67` (`safe_session_tmp_component`), `:72` (`_prepare_session_tmp_dir`), `:111` (`_create_tmux_session`), `:276` (`ensure_tmux_session`), `:309` (`update_tmux_session`)
-- Pane snapshot + capture + liveness: `teleclaude/core/tmux_bridge/_pane.py:34` (`PaneSnapshot`), `:107` (`capture_pane`), `:171` (`collect_pane_snapshot`), `:234` (`kill_session`), `:279` (`session_exists` with diagnostic-rich logging), `:353` (`get_current_command`), `:389` (`wait_for_shell_ready`), `:407` (`is_process_running`), `:415` (`is_pane_dead`), `:465` (`start_pipe_pane`), `:487` (`stop_pipe_pane`)
-- Key and signal injection: `teleclaude/core/tmux_bridge/_keys.py:41` (`send_keys`), `:85` (`send_keys_existing_tmux`), `:123` (`send_keys_to_tty`), `:173` (`_send_keys_tmux` — the load-buffer/paste-buffer/C-m pipeline), `:314` (`send_signal`), `:421+` (`send_escape`, `send_ctrl_key`, `send_tab`, `send_shift_tab`, `send_backspace`, `send_enter`, `send_arrow_key`)
-- Timeout envelope: `teleclaude/core/tmux_bridge/_subprocess.py:11` (timeout constants), `:16` (`SubprocessTimeoutError`), `:40` (`wait_with_timeout`), `:78` (`communicate_with_timeout`)
-- Live callers (within agent_runtime): session_lifecycle creation/end flows, `teleclaude/core/session_cleanup.py` orphan sweeps, the polling cadence loop (consumer of `collect_pane_snapshot`), `teleclaude/core/agent_coordinator/` signal handlers (consumers of `send_signal`)
 
 ### Cross-context references
 
-`agent_runtime` owns tmux orchestration end-to-end; no other bounded context calls into `tmux_bridge` directly. Adjacent dependencies:
+`agent_runtime` owns host-pane orchestration end-to-end; no other bounded context calls into the bridge directly. Adjacent dependencies:
 
-- **config** — `config.computer.tmux_binary` selects the tmux binary path; `GlobalConfig.env_allow_list` and `ProjectConfig.env_allow_list` name ambient env vars that may enter agent sessions; TeleClaude-owned runtime env preserves appearance, locale, and voice selector keys while stripping `NO_COLOR` after session creation; the env override `TELECLAUDE_SESSION_TMPDIR_BASE` overrides the per-session TMPDIR root from `paths.TMP_SESSIONS_DIR`. Subprocess timeout constants are module-level (`SUBPROCESS_TIMEOUT_QUICK`, `..._DEFAULT`, `..._LONG`), not currently sourced from config.
-- **Internal `agent_runtime` consumers** — session_lifecycle (session start, end, kill), session_cleanup (orphan tmux sweeps), the polling cadence loop (snapshot-driven cadence transitions), agent_coordinator (signal escalation, control queue).
+- **config** — the configured multiplexer binary selects the underlying terminal multiplexer; the global and per-project env allowlists name ambient env vars that may enter agent sessions; TeleClaude-owned runtime env preserves appearance, locale, and voice selector keys while stripping NO_COLOR after session creation; an env override variable overrides the per-session tmpdir root from configuration defaults. Subprocess timeout budgets are surface-internal constants, not currently sourced from config.
+- **Internal agent_runtime consumers** — session-lifecycle (session start, end, kill), session-cleanup (orphan sweeps), the polling cadence loop (snapshot-driven cadence transitions), agent-coordinator (signal escalation, control queue).
 - No identity, integration, workflow, knowledge, or session_mirrors call this surface.
 
 ## Known caveats
 
-- **Pane capture line budgets and message char budgets are separate.** `capture_pane` and `collect_pane_snapshot` accept `capture_lines: int | None`; when omitted, the line budget defaults to `DEFAULT_CAPTURE_LINES` (200). Session-data fallback callers use `FALLBACK_CAPTURE_LINES` (40) for the tmux read, then apply their independent `tail_chars` message budget.
-- **`send_keys` auto-creates on miss.** If the named tmux session is gone (crashed, killed externally), `send_keys` silently calls `ensure_tmux_session` and the text is delivered to a freshly created session with no prior state. The docstring is explicit: "Previous state is lost - this is NOT recovery, just creating a new session so the user can continue working." Callers that need miss-as-error must call `send_keys_existing_tmux` (with their own existence check) instead.
-- **Per-session TMPDIR is the Claude Code unix-socket workaround.** Claude Code's `fs.watch` can crash on macOS if TMPDIR contains stray unix sockets (e.g., `docker_cli_*`). The bridge mitigates this by giving every tmux session its own freshly-created, 0700, empty TMPDIR rather than sharing the global one. The directory is created on session start and not removed by `kill_session` — cleanup lives with higher-level lifecycle code.
-- **Setup chain failures are non-fatal but only logged.** After `new-session` succeeds, the `set-environment -u NO_COLOR ; set-option destroy-unattached off ; set-hook client-detached run-shell true` chain runs and is allowed to fail — `_describe_setup_chain_failure` reconstructs which step failed from chain markers in stdout. The session is still considered created. Symptoms (color leakage, premature destroy on detach) may surface later if a step silently failed.
-- **Pipe-pane wake-signal interpretation is v1-specific.** `start_pipe_pane` / `stop_pipe_pane` attach/detach a command to the pane's output stream. v1 uses this byte-arrival signal as the Codex wake mechanism (any bytes set `wake_dirty=true`, triggering a snapshot on the next cadence cycle). The plumbing primitives are stable; the semantic interpretation upstream may diverge in v2 — the bridge itself merely manages the tmux attach/detach.
-- **SIGKILL targets the first child, not the full process tree.** `send_signal(SIGKILL)` reads the pane PID, runs `pgrep -P <shell_pid>`, and SIGKILLs the FIRST child returned. If the agent CLI spawned a descendant tree (subprocesses, helpers), only the foreground child is killed. The shell typically reaps the orphans, but a misbehaving descendant chain can survive. `kill_session` is the heavier hammer that tears down the whole tmux session.
-- **`update_tmux_session` only affects NEW processes.** `setenv -t <name> VAR VAL` updates the tmux session environment for future child processes; the already-running pane shell and the agent CLI in it do NOT see the update. Callers needing to push env into a live process must restart the session.
-- **stderr-substring matching for missing-session detection in `collect_pane_snapshot`.** The "session does not exist" path is detected by `"can't find" in stderr.lower() or "no such" in stderr.lower()`. A future tmux version that changes its error wording would silently break this branch and surface as a raised `ValueError` instead of `session_exists=False`.
+- **Pane capture line budgets and message char budgets are separate.** The capture primitives accept an optional capture-line budget; when omitted, the budget defaults to the configured default (currently 200). Session-data fallback callers use a smaller line budget for the pane read, then apply their independent character-budget on the resulting text.
+- **send-keys auto-creates on miss.** If the named host pane is gone (crashed, killed externally), send-keys silently calls the ensure primitive and the text is delivered to a freshly created pane with no prior state. This is explicit: "Previous state is lost — this is NOT recovery, just creating a new session so the user can continue working." Callers that need miss-as-error must use the existing-pane variant (with their own existence check) instead.
+- **Per-session tmpdir is the Claude Code unix-socket workaround.** Claude Code's filesystem watcher can crash on macOS if TMPDIR contains stray unix sockets (e.g., docker CLI sockets). The bridge mitigates this by giving every host pane its own freshly-created, mode-700, empty tmpdir rather than sharing the global one. The directory is created on session start and not removed by the kill primitive — cleanup lives with higher-level lifecycle code.
+- **Setup-chain failures are non-fatal but only logged.** After create succeeds, the environment-setup chain runs and is allowed to fail — a per-step descriptor reconstructs which step failed from chain markers in stdout. The session is still considered created. Symptoms (color leakage, premature destroy on detach) may surface later if a step silently failed.
+- **Pipe-pane wake-signal interpretation is internal.** The pipe attach/detach primitives attach/detach a command to the pane's output stream. This byte-arrival signal is used as the Codex wake mechanism (any bytes set a dirty flag, triggering a snapshot on the next cadence cycle). The plumbing primitives are stable; the semantic interpretation upstream may diverge — the bridge itself merely manages the multiplexer attach/detach.
+- **SIGKILL targets the first child, not the full process tree.** The hard-kill primitive reads the pane shell process id, looks up its children, and sends SIGKILL to the FIRST child returned. If the agent CLI spawned a descendant tree (subprocesses, helpers), only the foreground child is killed. The shell typically reaps the orphans, but a misbehaving descendant chain can survive. The whole-pane kill primitive is the heavier hammer that tears down the entire host pane.
+- **The update primitive only affects NEW processes.** Setting an env var on the host pane updates the multiplexer environment for future child processes; the already-running pane shell and the agent CLI in it do NOT see the update. Callers needing to push env into a live process must restart the session.
+- **stderr-substring matching for missing-pane detection in the snapshot primitive.** The "session does not exist" path is detected by matching "can't find" or "no such" in stderr (case-insensitive). A future multiplexer version that changes its error wording would silently break this branch and surface as a raised error instead of a "pane absent" snapshot.

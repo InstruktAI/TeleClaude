@@ -4,9 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
-description: 'v1 agent_runtime — start, list, and end agent sessions over the HTTP API. The creation, enumeration, and explicit-termination surface that operators and other agents use.'
+description: 'agent_runtime — start, list, and end agent sessions. The creation, enumeration, and explicit-termination surface that operators and other agents use.'
 ---
 
 # Session Lifecycle — Spec
@@ -17,11 +15,11 @@ description: 'v1 agent_runtime — start, list, and end agent sessions over the 
 
 ## What it is
 
-The v1 surface for managing the live dimension of an `agent_runtime` Session: creating one (allocating a `session_id`, an associated tmux session, and a principal binding), listing what currently exists (subject to role-based visibility), and explicitly ending one (a request to transition to `closed`).
+The surface for managing the live dimension of an `agent_runtime` Session: creating one (allocating a session id, an associated host pane, and a principal binding), listing what currently exists (subject to role-based visibility), and explicitly ending one (a request to transition to `closed`).
 
-Three FastAPI routes form the surface: `POST /sessions`, `GET /sessions`, and `DELETE /sessions/{session_id}`. The TUI invokes them via the `telec sessions start`, `telec sessions list`, and `telec sessions end` CLI verbs respectively. Local creation is backed by the in-process command service; remote creation dispatches `new_session` to the target computer over Redis request/response and returns the peer-owned session transport fields.
+Three operations form the surface: create-session, list-sessions, and end-session. The TUI invokes them via the `telec sessions start`, `telec sessions list`, and `telec sessions end` CLI verbs respectively. Local creation is backed by the in-process command service; remote creation dispatches a new-session request to the target computer and returns the peer-owned session transport fields.
 
-Termination accepted via the API is a request, not a finished close: `DELETE` returns `202 Accepted` and delegates the actual cleanup to the cleanup module (see `session-cleanup-and-reaping`).
+Termination accepted by the service is a request, not a finished close: the end-session call is accepted asynchronously and delegates the actual cleanup to the cleanup module (see `session-cleanup-and-reaping`). The `agent_runtime.session.started` event is emitted when the session has booted; consumers subscribe to that to learn when the new session is live.
 
 ## Canonical fields
 
@@ -30,24 +28,25 @@ Termination accepted via the API is a request, not a finished close: `DELETE` re
 #### Creating a session — happy path
 
 ```
-Given an authenticated caller has clearance `sessions_start`
+Given an authenticated caller has clearance to start sessions
 And the request carries an `origin` (terminal or web) and an enabled `agent`
-When the caller POSTs to /sessions with project_path, agent, thinking_mode, launch_kind
-Then a session_id is generated as `str(uuid.uuid4())` (or accepted from the command when pre-supplied)
-And a tmux_session_name is composed as `tc_<session_id>` (prefix `tc_`, full UUID)
-And the Session row is inserted in `agent_runtime.sessions` with `lifecycle_status="initializing"` and a complete payload (computer_name, title, project_path, subdir, working_slug, human_email, human_role, principal, active_agent, thinking_mode)
-And tmux session creation + agent CLI launch are kicked off asynchronously by the daemon bootstrap task (not on the request path)
-And the response carries `status="success"`, `session_id`, `tmux_session_name`, and the resolved `agent`
+When the caller asks the agent_runtime service to create a session with project_path, agent, thinking_mode, launch_kind
+Then a session id is generated (or accepted from the command when pre-supplied)
+And a host-pane reference is composed using the TeleClaude prefix and the session id
+And the session row is recorded in storage with `lifecycle_status="initializing"` and a complete payload (computer name, title, project path, subdir, working slug, human email, human role, principal, active agent, thinking mode)
+And host-pane creation and agent CLI launch are kicked off asynchronously by the bootstrap task (not on the request path)
+And the response carries the session id, host-pane reference, and the resolved agent
+And the `agent_runtime.session.started` event is published when the session is live
 ```
 
 #### UC-SL2: Principal binding from identity
 
 ```
-Given the request supplies `origin_metadata` (web or terminal email payload)
-When `create_session` resolves identity via the identity resolver
-Then `human_email` and `human_role` are populated from the identity context when not explicitly provided
-And when an `initiator_session_id` references a parent session, missing fields (human_email, human_role, principal) are inherited from the parent
-And a session creation without any resolved human_role AND no `system_role` raises ValueError — the request is rejected
+Given the request supplies origin metadata (web or terminal email payload)
+When the agent_runtime service resolves identity via the identity resolver
+Then human_email and human_role are populated from the identity context when not explicitly provided
+And when an initiator session id references a parent session, missing fields (human_email, human_role, principal) are inherited from the parent
+And a session creation without any resolved human_role AND no system role is rejected — the request is refused
 ```
 
 #### UC-SL20: Single-user terminal caller resolves to admin
@@ -71,90 +70,90 @@ Then the session's project_path is confined to the computer's help-desk director
 
 ```
 Given the request specifies `computer = <remote>`
-When the daemon receives the POST /sessions
-Then the local daemon dispatches `new_session` to the target computer over Redis request/response
-And the dispatch forwards the initiating client's resolved origin and identity (`human_email`, `human_role`, `system_role`, `job`) in the command payload so the target's identity gate passes; the originating computer travels separately as the transport `initiator`, never as `origin`
-And the target daemon creates the session on its own tmux server
-And the response carries the remote `session_id`, `tmux_session_name`, `computer=<remote>`, and resolved `agent`
-And if the target returns an error envelope, the API returns HTTP 502
-And if the target does not respond, the API returns HTTP 504
+When the local agent_runtime service receives the create-session request
+Then it dispatches a new-session request to the target computer over the inter-computer transport
+And the dispatch forwards the initiating client's resolved origin and identity (human_email, human_role, system_role, job) in the command payload so the target's identity gate passes; the originating computer travels separately as the transport initiator, never as origin
+And the target agent_runtime service creates the session on its own host-pane layer
+And the response carries the remote session id, host-pane reference, computer reference, and resolved agent
+And if the target returns an error envelope, an upstream error is surfaced
+And if the target does not respond, a timeout error is surfaced
 ```
 
 #### Additional context propagation
 
 ```
-Given the caller passes `message` in the create request
-And `launch_kind` is `agent` (the default)
-When `_build_launch_intent` runs
-Then launch_kind is upgraded to `agent_then_message`
-And the `SessionLaunchIntent` is built with `agent`, `thinking_mode`, and `message`
-And the message is persisted on the launch intent and replayed into the tmux pane by the daemon bootstrap task once the agent CLI is ready
-And `_extract_initiator_session_id` records the caller's session id so the spawned child can notify the initiator on stop (one-shot listener)
+Given the caller passes a message in the create request
+And the launch kind is `agent` (the default)
+When the launch-intent builder runs
+Then the launch kind is upgraded to `agent_then_message`
+And the launch intent is built with agent, thinking mode, and message
+And the message is persisted on the launch intent and replayed into the host pane by the bootstrap task once the agent CLI is ready
+And the initiator extraction records the caller's session id so the spawned child can notify the initiator on stop (one-shot listener)
 ```
 
 #### Initiator listener registration
 
 ```
-Given the caller's session is non-web (initiator_session_id present and not `web:`-prefixed)
-And `skip_listener_registration` is false
-When the new Session row is created
+Given the caller's session is non-web (initiator session id present and not `web:`-prefixed)
+And the listener-skip flag is false
+When the new session row is created
 Then a stop-listener is registered tying caller -> new session
-And the caller's tmux_session_name is captured so completion notifications can route back
-And if the caller has no tmux session, registration is skipped with a debug log
+And the caller's host-pane reference is captured so completion notifications can route back
+And if the caller has no host pane, registration is skipped with a debug log
 ```
 
 #### Listing sessions — caller-scoped default
 
 ```
-Given the TUI calls GET /sessions without `?all=true`
-And the request carries the `x-caller-session-id` header
-When `list_sessions` runs
-Then local sessions are loaded via `command_handlers.list_sessions(include_closed=query.include_closed)`
-And cached remote sessions are merged in by session_id (local wins on conflict)
-And the merged list is filtered to entries whose `initiator_session_id == x-caller-session-id`
+Given the TUI lists sessions without `?all=true`
+And the request carries the caller-session-id header
+When list-sessions runs
+Then local sessions are loaded via the local command handler
+And cached remote sessions are merged in by session id (local wins on conflict)
+And the merged list is filtered to entries whose initiator session id matches the caller-session-id header
 And role-based filtering is then applied (see below)
 And optional `job` filter narrows further
-And `human_name` is enriched from the people config for each entry whose email matches
+And the human display name is enriched from the people configuration for each entry whose email matches
 ```
 
 #### Listing sessions — role-based visibility
 
 ```
-Given the web client sends identity headers `x-web-user-email` and `x-web-user-role`
-When `_filter_sessions_by_role` applies
+Given the web client sends identity headers for email and role
+When the role-based filter applies
 Then role `admin` sees every session
-And role `member` sees their own sessions PLUS sessions with `visibility == "shared"`
-And role `contributor` / `newcomer` / unknown sees only their own sessions (matched by `human_email`)
+And role `member` sees their own sessions PLUS sessions with visibility "shared"
+And role `contributor` / `newcomer` / unknown sees only their own sessions (matched by human_email)
 And requests without identity headers (TUI / tool clients) are NOT filtered by role — they see everything reachable
 ```
 
 #### Ending a session — happy path
 
 ```
-Given a caller with clearance `sessions_end` and ownership of the session
-When the caller DELETEs /sessions/{session_id}
-Then the route authorizes the caller via `check_session_access(require_owner=True)`
-And builds a `CloseSessionCommand(session_id)`
+Given a caller with clearance to end sessions and ownership of the session
+When the caller asks the agent_runtime service to end the session
+Then the entry authorizes the caller as an owner
+And builds a close-session command
 And dispatches it through the command service
-And returns HTTP 202 with body `{"status":"accepted","message":"Session <id> closing","completion_event":<event_name>}`
-And the actual termination work (tmux kill, resource cleanup, lifecycle transition) is performed asynchronously by the cleanup module — see session-cleanup-and-reaping
+And accepts the request asynchronously, identifying the completion event consumers can subscribe to
+And the actual termination work (host-pane termination, resource cleanup, lifecycle transition) is performed asynchronously by the cleanup module — see session-cleanup-and-reaping
 ```
 
 #### Ending a missing or already-closed session
 
 ```
-Given the supplied session_id does not exist in the database
+Given the supplied session id does not exist in storage
 When the close command runs
-Then the inner termination returns False and is logged at debug
-And the API path still returns 202 (the route does not pre-check existence)
+Then the inner termination reports no transition and is logged at debug
+And the entry path still accepts the request (the entry does not pre-check existence)
 And no error is surfaced to the caller for a missing session
 ```
 
 ```
-Given the session_id exists but is already marked closed (closed_at is non-null)
+Given the session id exists but is already marked closed (closed-at marker non-null)
 When the close command runs
-Then the cleanup module proceeds with resource cleanup for any straggling artifacts (channel delete, workspace rmtree, tmpdir delete) but skips the closing -> closed lifecycle write
-And the API path returns 202 as usual
+Then the cleanup module proceeds with resource cleanup for any straggling artifacts (channel delete, workspace removal, tmpdir delete) but skips the closing -> closed lifecycle write
+And the entry path accepts the request as usual
 ```
 
 #### Direct-link sessions
@@ -162,52 +161,26 @@ And the API path returns 202 as usual
 ```
 Given the caller passes `direct=true` AND has a non-web caller session
 When the new session is created
-Then `_link_direct_sessions` resolves both endpoints (titles, computer names, fallback to ids)
-And `create_or_reuse_direct_link` materialises the conversation link
+Then the direct-link initiator resolves both endpoints (titles, computer names, fallback to ids)
+And the link is materialized via the standard ignition path
 And the launch intent's message is wrapped with the direct-conversation protocol header and rules block
 And the conversation link operates orthogonally to stop-listener subscriptions
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/api/sessions_routes.py`
-  - `list_sessions` (route `GET /sessions`, line 472)
-  - `create_session` (route `POST /sessions`, line 535)
-  - `end_session` (route `DELETE /sessions/{session_id}`, line 604)
-  - `_prepare_create_session` (line 403) — collects metadata, initiator id, launch intent
-  - `_resolve_created_session_transport` (line 445) — ensures the response carries both `session_id` and `tmux_session_name`
-  - `_build_launch_intent` (line 271) — resolves `SessionLaunchKind` (empty / agent / agent_then_message / agent_resume)
-  - `_filter_sessions_by_role` (line 94) — role-based list filtering
-  - `_resolve_origin` (line 193) — origin + caller_email + origin_metadata derivation
-  - `_extract_initiator_session_id` (line 166) — initiator session resolution
-  - `_link_direct_sessions` (line 345) — direct-conversation linkage
-- `teleclaude/api/session_create_remote.py`
-  - `dispatch_session_create_to_peer` — remote `POST /sessions` branch; builds the Redis request metadata, waits for the peer envelope, and maps success/error/timeout to API response semantics
-  - `is_remote_create_target` — local-vs-peer target discriminator used by the route
-- `teleclaude/core/command_handlers/_session.py`
-  - `create_session` (line 61) — command handler; allocates session*id, composes `tc*<session_id>` tmux name (line 89), inserts the DB row, registers initiator listener
-  - `list_sessions` (line 268) — DB list + SessionSnapshot mapping
-- `teleclaude/core/tmux_bridge/_session.py`
-  - `ensure_tmux_session` (line 276) — single choke point, idempotent (returns True if session already exists)
-  - `_create_tmux_session` (line 111) — detached `new-session` with the teleclaude-shell wrapper, per-session TMPDIR
-- `teleclaude/core/session_cleanup.py` — `TMUX_SESSION_PREFIX = "tc_"` (line 40)
-- CLI surface: `telec sessions start`, `telec sessions list`, `telec sessions end` — invoke the routes above
-
 ### Cross-context references
 
-- **identity** — `_resolve_origin` + `get_identity_resolver()` resolve principal binding (human_email, human_role, person identity) for the Session aggregate.
-- **config** — `config.computer.name`, `config.computer.tmux_binary`, `config.computer.help_desk_dir`, enabled agents and defaults flow in via `_resolve_enabled_agent` / `get_default_agent`.
+- **identity** — origin resolution plus the identity resolver resolve principal binding (human_email, human_role, person identity) for the Session aggregate.
+- **config** — the computer name, host-pane binary, help-desk directory, enabled agents and defaults flow in via configuration resolution.
 - **session_mirrors** — downstream consumer of the session-lifecycle events emitted as the Session moves through `initializing -> active -> closed`. The lifecycle write here is the source of those events.
-- **workflow** — orchestrators dispatched as child sessions via this surface receive completion notifications through the one-shot stop-listener wired during `create_session`.
+- **workflow** — orchestrators dispatched as child sessions via this surface receive completion notifications through the one-shot stop-listener wired during create-session.
 
 ## Known caveats
 
-- **Tmux name in v1 is the full UUID, not a short id.** `tc_<full-uuid>` is the actual format; the v2-target domain spec phrases it as `tc_<session_id_short>` for readability, but no shortening occurs in v1.
-- **Remote direct-link creation is not the normal path.** Remote `POST /sessions` supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materialises through local session records and is not created by the remote dispatch branch.
-- **Tmux + agent launch are off the request path.** `create_session` only inserts the DB row and returns; tmux creation and agent CLI launch happen on the daemon's bootstrap task after the API has already responded with 200. Callers polling for tmux readiness must check downstream — this surface does not block until the pane is alive.
-- **`ensure_tmux_session` is silently idempotent.** A name collision returns success without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "daemon refuses to start a session whose tmux name collides" is not a v1 behaviour; v1 simply joins the existing tmux session if one with the same name already exists.
-- **`DELETE /sessions/{id}` is fire-and-forget.** 202 means "accepted for processing", not "closed". The caller does not learn the outcome of cleanup over this route; observing the `completion_event` (returned in the 202 body) or polling `GET /sessions?closed=true` is required.
-- **Listing without identity headers reveals everything.** TUI and tool clients are intentionally unfiltered. Role-based gating is only applied when the web headers (`x-web-user-email`, `x-web-user-role`) are present. The `x-caller-session-id` header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
-- **Non-admin non-system-role sessions are jailed to the help-desk directory.** When the request has no `system_role` and the human role is anything other than admin, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
-- **`closed_at` is set by the cleanup module, not this surface.** This route only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
-- **v2-target framings deliberately not covered here:** `windowed-batch-write-and-dispatch`, three-lane signal coordination, `SessionRuntime` actor model, adaptive cadence, agent CLI hook reception via `telec-hook` — those describe target shape, not the v1 route surface documented in this snippet.
+- **Host-pane reference uses the full session id.** The format is `<teleclaude-prefix><session-id>` with the full id; the v2-target domain spec phrases it as a short id for readability, but no shortening occurs here.
+- **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
+- **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
+- **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
+- **End-session is fire-and-forget.** Acceptance means "accepted for processing", not "closed". The caller does not learn the outcome of cleanup over this surface; subscribing to the completion event (named in the acceptance response) or listing closed sessions is required.
+- **Listing without identity headers reveals everything.** TUI and tool clients are intentionally unfiltered. Role-based gating is only applied when the web identity headers are present. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
+- **Non-admin non-system-role sessions are jailed to the help-desk directory.** When the request has no system role and the human role is anything other than admin, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
+- **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.

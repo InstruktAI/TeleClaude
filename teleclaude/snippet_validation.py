@@ -190,7 +190,8 @@ def _global_ref_prefixes() -> tuple[str, ...]:
     """Return valid absolute prefixes for global documentation refs."""
     configured_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"
     home_prefix = f"@{Path.home()}/.teleclaude/docs/"
-    return tuple(dict.fromkeys((configured_prefix, home_prefix)))
+    tilde_prefix = "@~/.teleclaude/docs/"
+    return tuple(dict.fromkeys((configured_prefix, home_prefix, tilde_prefix)))
 
 
 def snippet_body_digest(snippet_id: str) -> str:

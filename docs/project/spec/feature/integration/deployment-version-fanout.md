@@ -4,9 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
-description: 'Cross-host Redis stream consumer that fans out deployment version_available events to every daemon in the cluster, with self-skip on origin to avoid double-execution.'
+description: 'Cross-host fan-out of deployment version_available events to every integration service in the cluster, with self-skip on origin to avoid double-execution.'
 ---
 
 # Deployment Version Fanout — Spec
@@ -19,166 +17,139 @@ description: 'Cross-host Redis stream consumer that fans out deployment version_
 
 ## What it is
 
-A long-running async task on each daemon (`_deployment_fanout_consumer`)
-that reads from the Redis stream `DEPLOYMENT_FANOUT_CHANNEL` and dispatches
-each message as a local HookEvent through the daemon's own HookDispatcher.
-This fans out a deployment version-available signal to all daemons in the
-cluster: when one daemon receives a GitHub release webhook (or otherwise
-detects a new version), it publishes a `source="deployment"`,
-`type="version_available"` event onto the Redis stream; every other daemon
-reads it and runs its local update flow.
+A long-running cross-host consumer on each integration service that
+reads from the deployment fanout channel and dispatches each message as
+a local hook event through the integration service's own hook
+dispatcher. This fans out a deployment version-available signal to all
+integration services in the cluster: when one service receives a GitHub
+release webhook (or otherwise detects a new version), it publishes a
+deployment / version-available event onto the cross-host channel; every
+other service reads it and runs its local update flow.
 
-Self-origination is detected via a `daemon_id` property carried in the
-event payload; a daemon skips messages with `daemon_id == config.computer.name`
-to avoid re-executing an update it scheduled directly from the
-github-source path. The originating daemon publishes the fanout
-**before** scheduling its local `execute_update` task (publish is
-awaited; `execute_update` is launched fire-and-forget via
-`asyncio.create_task`), so remote daemons can begin their update in
-parallel with the local one.
+Self-origination is detected via a host identifier carried in the event
+payload; a service skips messages whose host identifier matches its own
+configured computer name to avoid re-executing an update it scheduled
+directly from the GitHub-source path. The originating service publishes
+the fanout **before** scheduling its local update task (publish is
+awaited; the local update runs in the background), so remote services
+can begin their update in parallel with the local one.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-DF1: Remote daemon receives the fanout and runs the update
+#### UC-DF1: Remote service receives the fanout and runs the update
 
 ```gherkin
-Given daemon A on host "alpha" received a GitHub release webhook and entered handle_deployment_event with should_update=True
-And A awaits _publish_fanout(version_info), which xadd's a HookEvent (source="deployment", type="version_available", properties.daemon_id="alpha") onto DEPLOYMENT_FANOUT_CHANNEL
-And only AFTER the publish returns, A schedules its own local update as asyncio.create_task(execute_update(channel, version_info, get_redis), name=f"deploy-update-{channel}")
-When daemon B on host "beta" reads the stream via xread
-Then it decodes the event_json bytes
-And reconstructs HookEvent.from_json(event_json)
-And detects properties.daemon_id == "alpha" != config.computer.name ("beta")
-And calls dispatcher.dispatch(event)
-And the dispatcher matches the built-in deployment-fanout Contract
-And handle_deployment_event runs on daemon B (with event.source="deployment", so no second fanout is published — only github-source events publish)
-And handle_deployment_event on B schedules its own execute_update task
+Given service A on host "alpha" received a GitHub release webhook and entered the deployment-event handler with an update required
+And A awaits the fanout publish, which writes a hook event (source="deployment", type="version_available", host identifier="alpha") onto the cross-host channel
+And only AFTER the publish returns, A schedules its own local update task in the background
+When service B on host "beta" reads the channel
+Then it decodes the event payload
+And reconstructs the hook event
+And detects host identifier == "alpha" != its own configured computer name ("beta")
+And calls the local hook dispatcher with the event
+And the dispatcher matches the built-in deployment-fanout contract
+And the deployment-event handler runs on service B (event source is "deployment", so no second fanout is published — only github-source events publish)
+And the handler on B schedules its own local update task
 
-The originating daemon's publish-before-execute ordering means: when the
-publish fails, remote daemons miss the fanout but A still proceeds with
-its local update; when execute_update fails, the fanout has already
-gone out to other daemons.
+The originating service's publish-before-execute ordering means: when
+the publish fails, remote services miss the fanout but A still proceeds
+with its local update; when the local update fails, the fanout has
+already gone out to other services.
 ```
 
 #### UC-DF2: Self-skip to avoid double execution
 
 ```gherkin
-Given daemon A reads its own message from the stream
-When the consumer evaluates event.properties.daemon_id == config.computer.name
-Then it logs "Deployment fanout: skipping self-originated message" at debug
-And does NOT dispatch — the github-source path is the same `handle_deployment_event` call that awaits `_publish_fanout` and then schedules the local `execute_update` task after the publish returns
+Given service A reads its own message from the channel
+When the consumer evaluates the host identifier against its configured computer name
+Then it logs "deployment fanout: skipping self-originated message" at debug
+And does NOT dispatch — the GitHub-source path is the same deployment-event handler call that awaited the publish and then scheduled the local update task after the publish returned
 ```
 
-#### UC-DF3: Stream cursor starts at "$" — only new messages
+#### UC-DF3: Cursor starts at "now" — only new messages
 
 ```gherkin
-Given the daemon starts up
-When _deployment_fanout_consumer initializes
-Then last_id is set to "$" so xread reads only messages published AFTER startup
-And no historical messages are replayed on daemon restart
+Given the service starts up
+When the fanout consumer initializes
+Then its cursor is positioned at "now" so reads only return messages published AFTER startup
+And no historical messages are replayed on service restart
 ```
 
-#### UC-DF4: Decoding tolerance for bytes / str
+#### UC-DF4: Decoding tolerance for raw and decoded payloads
 
 ```gherkin
-Given xread may return data values as bytes (from the redis-py client) or strings
-When the consumer reads data.get(b"event") or data.get("event")
+Given the channel client may return data values in raw or decoded form
+When the consumer reads the event field
 Then it tries both encodings
-And decodes bytes via .decode() before passing to HookEvent.from_json
+And decodes raw bytes before reconstructing the hook event
 ```
 
 #### UC-DF5: Dispatch failure is logged and consumption continues
 
 ```gherkin
-Given event_json fails to parse or dispatcher.dispatch raises
+Given an event payload fails to parse or the dispatcher raises
 When the consumer catches the exception
-Then a warning "Deployment fanout: dispatch failed" is logged with the exception
+Then a warning "deployment fanout: dispatch failed" is logged with the exception
 And the consumer continues with the next message (does NOT halt)
-And last_id is still advanced (the failed message is not retried)
+And the cursor is still advanced (the failed message is not retried)
 ```
 
-#### UC-DF6: Redis error backoff
+#### UC-DF6: Connectivity error backoff
 
 ```gherkin
-Given the consumer encounters a Redis connectivity error
-When the outer try/except catches the exception
-Then a warning "Deployment fanout consumer error" is logged
-And the consumer sleeps for 5 seconds
-And loops back to retry _get_redis() + xread
+Given the consumer encounters a connectivity error against the cross-host channel
+When the outer guard catches the exception
+Then a warning "deployment fanout consumer error" is logged
+And the consumer waits briefly before retrying
+And loops back to re-establish the connection
 ```
 
 #### UC-DF7: Shutdown via cancellation
 
 ```gherkin
-Given the daemon's shutdown_event is set OR the task is cancelled
-When asyncio.CancelledError is raised in xread
-Then the consumer's loop exits cleanly
-And "Deployment fanout consumer stopped" is logged
+Given the service's shutdown is initiated OR the consumer task is cancelled
+When the cancellation surfaces inside the read
+Then the consumer loop exits cleanly
+And "deployment fanout consumer stopped" is logged
 ```
-
-### Implementation pointers (v1)
-
-- `teleclaude/daemon_event_platform.py` —
-  `_deployment_fanout_consumer` (L586, the consumer loop),
-  task creation at L515 inside `_init_webhook_service`:
-  `self._deployment_fanout_task = asyncio.create_task(
-self._deployment_fanout_consumer(dispatcher, redis_transport),
-name="deployment-fanout")`.
-- Built-in contract registration inside `_init_webhook_service`
-  (~L500): `Contract(id="deployment-fanout",
-source_criterion=PropertyCriterion(match="deployment"),
-type_criterion=PropertyCriterion(match="version_available"),
-target=Target(handler="deployment_update"), source="programmatic")`.
-- `teleclaude/deployment/handler.py` —
-  `handle_deployment_event` (L72, runs for both github- and
-  deployment-source events),
-  `configure_deployment_handler` (L34),
-  `_publish_fanout` (L161, awaited BEFORE the local execute_update
-  task is scheduled),
-  `_log_execute_update_task_exception` (L67).
-  `execute_update` lives in `teleclaude/deployment/executor.py`.
-- `DEPLOYMENT_FANOUT_CHANNEL = "deployment:version_available"` constant
-  in `teleclaude/deployment/handler.py`.
-- `teleclaude/transport/redis_transport.py` — `RedisTransport._get_redis`
-  for client access.
 
 ### Cross-context references
 
-- Cluster-scoped delivery — every daemon in the deployment runs its own
-  consumer. The mechanism is the v1 expression of the v2 domain spec's
-  `EventVisibility.CLUSTER` posture for cross-context events.
+- Cluster-scoped delivery — every integration service in the
+  deployment runs its own consumer. The mechanism is the v1
+  expression of the v2 domain spec's cluster-visibility posture for
+  cross-context events.
 - Initial trigger sources include `github-webhook-normalization`
-  (push / release events) and any other path that emits
-  `source="deployment"` / `type="version_available"` through the
-  daemon's local dispatcher.
-- Consumer dispatches through `eventbus-hook-bridge`'s dispatcher
-  (sharing the Contract matcher and handler registry).
-- The `deployment_update` handler lives outside `integration`
-  (in `teleclaude/deployment/`); this snippet documents the
+  (push / release events) and any other path that emits a
+  deployment / version-available event through the local dispatcher.
+- The consumer dispatches through `eventbus-hook-bridge`'s dispatcher
+  (sharing the contract matcher and handler registry).
+- The deployment update handler lives outside `integration`
+  (in the deployment subsystem); this snippet documents the
   integration-side transport, not the deployment business logic.
 
 ## Known caveats
 
-- Uses Redis **streams** (xread) with a per-consumer `last_id` cursor.
-  Crash recovery starts from `"$"` — meaning unread messages published
-  while the daemon was down are NOT replayed. This is a deliberate
-  simplification: the github-source daemon retries publish on its own
-  cadence, and the deployment system has eventual-consistency
+- The cross-host channel uses an append-only stream with a per-consumer
+  cursor. Crash recovery starts from "now" — meaning unread messages
+  published while the service was down are NOT replayed. This is a
+  deliberate simplification: the GitHub-source service retries publish
+  on its own cadence, and the deployment system has eventual-consistency
   guarantees that tolerate skipped fanouts.
-- `xread` blocks for up to 5000 ms per call to keep the loop responsive
-  to shutdown signals (count=10, block=5000).
-- Self-skip relies on `config.computer.name` matching the
-  `daemon_id` written by the publishing daemon — naming drift between
-  the publisher and the local computer config would defeat the
-  self-skip and could re-execute updates.
+- The read blocks for a bounded interval to keep the loop responsive to
+  shutdown signals.
+- Self-skip relies on the publishing service's host identifier matching
+  the configured computer name on the consuming service — naming drift
+  between publisher and local config would defeat the self-skip and
+  could re-execute updates.
 - The consumer does NOT dedupe across messages; if the same version
-  message is published twice with different `daemon_id` values, both
-  remote daemons would dispatch (and the deployment handler must be
+  message is published twice with different host identifiers, both
+  remote services would dispatch (and the deployment handler must be
   idempotent to absorb).
-- This is the only Redis-stream-based dispatch path in v1 integration;
-  all other event flows are local HookOutbox or in-process EventBus.
-- Per-message backpressure is bounded only by `count=10` per `xread`
-  call; under high publish rates the consumer can fall behind without
-  observable signal beyond delayed dispatch.
+- This is the only cross-host channel dispatch path in v1 integration;
+  all other event flows are local hook outbox or in-process event bus.
+- Per-message backpressure is bounded only by the read batch size; under
+  high publish rates the consumer can fall behind without observable
+  signal beyond delayed dispatch.

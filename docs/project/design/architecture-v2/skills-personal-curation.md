@@ -4,8 +4,6 @@ type: design
 domain: software-development
 scope: project
 visibility: public
-status: target
-applies_to: v2
 delivered_by: [skills-personal-curation]
 description: Forward-looking architectural design for per-human skill curation — pulling vetted external skill libraries via the git-ingestion primitive, detecting per-human skill need from accumulated memory, associating skills per-human, and injecting per-human skill manifests at session-start. Built on top of the v2 platform; not part of the v2 cutover scope.
 ---

@@ -26,12 +26,10 @@ Frontmatter (optional):
 
 - `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
-- `status` — lifecycle state of the snippet relative to the implementation. One of `actual`, `target`, or `mixed`. Defaults to `actual` when omitted. See `software-development/principle/documentation-first-development` for the discipline.
-- `delivered_by` — list of todo slugs that will materialize this snippet's intended state. REQUIRED when `status` is `target` or `mixed`. FORBIDDEN when `status` is `actual`. Lifecycle code owns roadmap relationship checks and flips snippets to `actual` when the relevant delivery state changes; `telec sync` validates frontmatter shape and indexes the source state it receives.
-- `applies_to` — optional migration-boundary metadata for projects that explicitly declare parallel implementation tracks. Values are project-defined; TeleClaude's current migration vocabulary is `v1`, `v2`, and `both`. Brownfield projects do not inherit those values unless they declare the same boundary. Tooling preserves and indexes this field when present, but the schema does not promise universal path-vs-value validation unless a project-specific validator implements it.
+- `delivered_by` — list of todo slugs whose delivery materializes this snippet's intended state. Present while the snippet is pending delivery; absent once delivered. `telec sync` validates shape (non-empty list of slug strings) when present.
 - `diff_of` — `spec-diff` snippets ONLY (required for that type, forbidden on every other type). Snippet id of the parent spec this diff modifies. Validated to point at an existing snippet of `type: spec`. The diff is read alongside the parent; together they describe v2 behavior for the concept.
 - `date` — `adr` snippets ONLY (required). ISO-8601 date the decision was recorded.
-- `adr_status` — `adr` snippets ONLY (required). One of `proposed`, `accepted`, `deprecated`, `superseded`. Distinct from snippet `status` (which describes implementation lifecycle); `adr_status` captures the decision's standing.
+- `adr_status` — `adr` snippets ONLY (required). One of `proposed`, `accepted`, `deprecated`, `superseded`. Captures the decision's standing.
 - `number` — `adr` snippets ONLY (required). Integer matching the filename prefix (e.g., `0007` for `0007-provenance-via-mirror-id.md`).
 - `supersedes` — `adr` snippets ONLY (optional). List of ADR IDs this decision replaces.
 
@@ -99,7 +97,6 @@ Apply this convention whenever a group of related snippets would otherwise produ
 - `scope`: global, domain, project.
 - Third-party `scope`: global, project.
 - `visibility`: public, internal. Default: `internal`.
-- `applies_to` on `spec-diff` snippets is inherited from the project's declared successor migration track. TeleClaude uses `v2`; projects without a declared successor track should not author `spec-diff` snippets.
 
 ## Known caveats
 

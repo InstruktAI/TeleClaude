@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'AGENTS.global.md (mother-project) and per-project AGENTS.master.md are inflated into deployed AGENTS files by recursively expanding @-refs.'
 ---
 
@@ -39,7 +37,7 @@ Scenario: Mother project sync inflates the global baseline
   And AGENTS.global.md exists at the Mother project root
   And AGENTS.global.md contains @-refs to baseline snippet files
   When the sync step inflates agent baselines
-  Then expand_inline_refs recursively inlines every @-ref to a depth of at most 20
+  Then the inflater recursively inlines every @-ref to a depth of at most 20
   And the resulting AGENTS.md is emitted at the Mother project root
   And a CLAUDE.md shim is emitted alongside it pointing at AGENTS.md
 ```
@@ -57,7 +55,7 @@ Scenario: Non-mother project skips the global source
 ```
 Scenario: Progressive baseline refs always render as an index
   Given AGENTS.master.md contains an @-ref to a baseline-progressive* file
-  When expand_inline_refs processes the ref
+  When the inflater processes the ref
   Then the ref is rendered as a progressive index block listing activatable procedures
   And the procedure bodies are NOT inlined into the Deployed AGENTS.md
   And the same rendering applies for every target agent (Claude, Codex, Gemini)
@@ -67,7 +65,7 @@ Scenario: Progressive baseline refs always render as an index
 ```
 Scenario: Recursive ref expansion fails at the depth limit
   Given an @-ref tree whose expansion depth would exceed 20 levels
-  When expand_inline_refs walks the tree
+  When the inflater walks the tree
   Then expansion stops at depth 20
   And the build fails with a depth-limit error
   And no truncated AGENTS.md is emitted
@@ -82,18 +80,6 @@ Scenario: Idempotent re-inflation produces byte-identical output
   And no spurious diff appears in the working tree
 ```
 
-### Implementation pointers (v1)
-
-- `scripts/distribute.py:55-68` — stable YAML loader for idempotency
-- `scripts/distribute.py:277-278` — `_should_expand_inline()` membership set (`claude`, `codex`, `gemini`).
-- `scripts/distribute.py:359-422` — `_render_progressive_index()` and `_render_activatable_procedures()`.
-- `scripts/distribute.py:473-507` — `expand_exec_directives()`.
-- `scripts/distribute.py:509-597` — `expand_inline_refs()` with depth-limit 20; progressive-baseline branch at lines 532-541 and 561-570 fires by filename prefix `baseline-progressive`, with no agent parameter.
-- `scripts/distribute.py:621-640` — `_iter_project_agent_masters()`
-- `scripts/distribute.py:643-655` — `_write_project_agents()`
-- `scripts/distribute.py:733-748` — mother-project gating + `AGENTS.global.md` source
-- `scripts/distribute.py:973-1004` — agent-output composition
-
 ### Cross-context references
 
 - **config** — Provides the project root list and the Mother project identity
@@ -106,14 +92,13 @@ Scenario: Idempotent re-inflation produces byte-identical output
 - The progressive-vs-full-inline rule is selected by **filename**, not by
   agent: any `@`-ref whose target filename starts with `baseline-progressive`
   is rendered as a progressive index for every agent. Non-progressive
-  baseline refs are inlined fully for every agent in the
-  `_should_expand_inline()` set (`claude`, `codex`, `gemini`). There is no
-  Codex full-inline special case for progressive baselines.
-- The depth limit of 20 is a static constant in `expand_inline_refs()`.
-  A legitimately deeper ref tree would fail without a configuration knob —
-  the fix today is to flatten the ref tree at the Source, not to raise the
-  limit.
-- Mother-project gating is filesystem-`Path` equality against the configured
+  baseline refs are inlined fully for every target agent (Claude, Codex,
+  Gemini). There is no Codex full-inline special case for progressive
+  baselines.
+- The depth limit of 20 is a static constant in the inflater. A legitimately
+  deeper ref tree would fail without a configuration knob — the fix is to
+  flatten the ref tree at the Source, not to raise the limit.
+- Mother-project gating is filesystem-path equality against the configured
   Mother root. There is no per-project ACL beyond "is this the Mother repo";
   any project whose root matches the configured path receives the global
   treatment.
@@ -121,6 +106,6 @@ Scenario: Idempotent re-inflation produces byte-identical output
   while the per-project Source is `AGENTS.master.md`. The asymmetry is
   intentional (different roles, different scopes) but easy to confuse with
   the Deployed `AGENTS.md` output.
-- `expand_exec_directives()` resolves embedded executable directives inline
-  during expansion; this means the Deployed file can capture the output of
-  a directive at sync time rather than at agent runtime.
+- Embedded executable directives are resolved inline during expansion; this
+  means the Deployed file can capture the output of a directive at sync time
+  rather than at agent runtime.

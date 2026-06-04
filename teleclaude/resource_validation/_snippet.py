@@ -10,10 +10,6 @@ from pathlib import Path
 import frontmatter
 
 from teleclaude.constants import (
-    SNIPPET_STATUS_ACTUAL,
-    SNIPPET_STATUS_MIXED,
-    SNIPPET_STATUS_TARGET,
-    SNIPPET_STATUS_VALUES,
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
     RoadmapStatus,
@@ -62,9 +58,6 @@ _ROADMAP_STATUS_PRIORITY = {
     RoadmapStatus.ACTIVE: 1,
     RoadmapStatus.ICEBOX: 1,
 }
-SNIPPET_STATUS_INVALID_VALUE = "snippet_status_invalid_value"
-SNIPPET_STATUS_TARGET_MISSING_DELIVERED_BY = "snippet_status_target_missing_delivered_by"
-SNIPPET_STATUS_ACTUAL_FORBIDS_DELIVERED_BY = "snippet_status_actual_forbids_delivered_by"
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +117,7 @@ def iter_inline_refs(lines: list[str]) -> list[str]:
 
 def _get_allowed_ref_prefixes() -> tuple[str, ...]:
     home = str(Path.home())
-    return f"@{home}/.teleclaude/docs/", "@docs/"
+    return f"@{home}/.teleclaude/docs/", "@~/.teleclaude/docs/", "@docs/"
 
 
 def collect_inline_ref_errors(
@@ -286,30 +279,16 @@ def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
     return status_map
 
 
-def _validate_status_and_delivered_by(
+def _validate_delivered_by(
     path: Path,
     meta: Mapping[str, object],
 ) -> None:
-    raw_status = meta.get("status")
-    if raw_status is None:
-        status = SNIPPET_STATUS_ACTUAL
-    elif not isinstance(raw_status, str) or raw_status not in SNIPPET_STATUS_VALUES:
-        _error(SNIPPET_STATUS_INVALID_VALUE, path=str(path), value=str(raw_status))
-        return
-    else:
-        status = raw_status
-
     raw_delivered_by = meta.get("delivered_by")
+    if raw_delivered_by is None:
+        return
     delivered_by = _as_str_list(raw_delivered_by)
-    if status == SNIPPET_STATUS_ACTUAL:
-        if raw_delivered_by is not None:
-            _error(SNIPPET_STATUS_ACTUAL_FORBIDS_DELIVERED_BY, path=str(path))
-        return
-
-    if status not in (SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED):
-        return
     if not delivered_by:
-        _error(SNIPPET_STATUS_TARGET_MISSING_DELIVERED_BY, path=str(path))
+        _error("snippet_delivered_by_invalid_shape", path=str(path))
 
 
 def validate_snippet(
@@ -370,7 +349,7 @@ def validate_snippet(
     _validate_visibility(path, meta)
     snippet_type = _snippet_type_for_validation(path, meta)
     _validate_activation_trigger(path, meta, snippet_type=snippet_type)
-    _validate_status_and_delivered_by(path, meta)
+    _validate_delivered_by(path, meta)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, domains=domains)

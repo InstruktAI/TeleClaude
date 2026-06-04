@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'Pure-function curation of doc snippets by role visibility, taxonomy areas/domains, scope, baseline manifest anchoring, and target-slug filter.'
 ---
 
@@ -87,20 +85,14 @@ Then the cross-project Source is loaded
 And visibility gating still applies
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/context_selector.py:610-638` — `_include_snippet_factory()` predicate builder (visibility + global filter + domain match)
-- `teleclaude/context_selector.py:641-660` — `_apply_baseline_filter()` reduces to manifest-reachable IDs
-- `teleclaude/context_selector.py:825-836` — domain filter resolution chain (flag → config → default)
-- `teleclaude/context_selector.py:864-872` — target slug filter and area filter composition
-- `teleclaude/context_selector.py:184-196` — `_load_project_domains()` reads `business.domains` from config
-- `teleclaude/context_selector.py:205-218` — cross-project manifest lookup via project catalog
-- `teleclaude/context_selector.py:221-231` — `_is_cross_project_snippet_id()` prefix classifier
-
 ### Cross-context references
 
-- **identity** — terminal-session role is resolved upstream by the CLI handler and passed in; the predicate factory uses it to filter visibility.
-- **config** — `_load_project_domains()` reads `teleclaude.yml` `business.domains`; the project catalog supplies known project slugs for cross-project ID classification; `project_slug` determines which IDs are "own" vs. "cross-project".
+- **identity** — terminal-session role is resolved upstream by the CLI and
+  passed in; the predicate composition uses it to filter visibility.
+- **config** — supplies `business.domains` from project configuration, the
+  project catalog of known project slugs for cross-project ID classification,
+  and the `project_slug` that determines which IDs are "own" vs.
+  "cross-project".
 
 ## Known caveats
 
@@ -113,7 +105,7 @@ And visibility gating still applies
   so cross-domain snippets (e.g., `creative/*`, `marketing/*`) are filtered
   out of that project's view unless `business.domains` is explicitly set.
 - Cross-project snippet `delivered_by` slugs are NOT normalized against the
-  consuming project's roadmap. A snippet that references a slug from a
+  consuming project's todo list. A snippet that references a slug from a
   foreign project appears in the consuming project's index with a phantom
   dependency that no local lifecycle will ever resolve.
 - Baseline manifest resolution matches snippets by `@`-ref file path; ID

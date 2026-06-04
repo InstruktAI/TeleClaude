@@ -4,9 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
-description: 'Subscribes to the daemon''s internal EventBus, normalizes each event into a HookEvent, runs it through the Contract matcher, and dispatches to internal handlers or webhook outbox URLs.'
+description: 'Subscribes to the integration service''s internal event bus, normalizes each event into a HookEvent, runs it through the Contract matcher, and dispatches to internal handlers or webhook subscriber endpoints.'
 ---
 
 # EventBus Hook Bridge — Spec
@@ -19,187 +17,161 @@ description: 'Subscribes to the daemon''s internal EventBus, normalizes each eve
 
 ## What it is
 
-The bridge that connects the in-process `EventBus` (where domain events
-like `session_started`, `agent_event`, `agent_activity`, `error` flow) to
-the Contract / matcher dispatch path (which fans out to internal handlers
-and external webhook URLs). On daemon startup the bridge subscribes to a
-fixed set of EventBus event types; on each fired event it computes a
-canonical `source` and `type`, packs identifying properties (`session_id`,
-`agent_event_type`, `tool_name`, `severity`, `error_source`, `error_code`)
-and a payload (raw agent event data, error message), wraps it as a
-`HookEvent`, and calls `HookDispatcher.dispatch(event)`.
+The bridge that connects the in-process event bus (where domain events
+like session-started, agent events, agent activity, and errors flow) to
+the contract / matcher dispatch path (which fans out to internal handlers
+and external webhook subscriber endpoints). On integration service
+startup the bridge subscribes to a fixed set of event-bus event types;
+on each fired event it computes a canonical `source` and `type`, packs
+identifying properties (session id, agent event type, tool name,
+severity, error source, error code) and a payload (raw agent event data,
+error message), wraps it as a hook event, and calls the hook dispatcher.
 
-The bridge is the OUTBOUND side of the integration boundary: it makes the
-daemon's internal domain events available as routable HookEvents that
-subscribers (Contracts) can react to via internal handlers or external
-HTTPS webhook deliveries.
+The bridge is the OUTBOUND side of the integration boundary: it makes
+the integration service's internal domain events available as routable
+hook events that subscribers (contracts) can react to via internal
+handlers or external webhook deliveries.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-EB1: Session lifecycle event becomes a session.\* HookEvent
+#### UC-EB1: Session lifecycle event becomes a session.\* hook event
 
 ```gherkin
-Given the EventBus emits TeleClaudeEvents.SESSION_STARTED with SessionLifecycleContext(session_id="sess-1")
-When EventBusBridge._handle runs
-Then it detects context is SessionLifecycleContext
+Given the event bus emits a session-started event with a session-lifecycle context for session "sess-1"
+When the bridge handler runs
+Then it recognizes the lifecycle context
 And properties = {session_id: "sess-1"}
-And hook_type = "session.started" (derived as "session." + event_type.replace("session_", ""))
-And source = "system" (from _SOURCE_MAP)
-And HookEvent.now(source, type, properties, payload) is built with timestamp = now
-And HookDispatcher.dispatch is invoked
-And any Contract matching source="system" / type pattern "session.*" / property session_id="sess-1" receives the event
+And hook type = "session.started" (derived as "session." + the event-type suffix)
+And source = "system" (from the source-map for session events)
+And a hook event is built with the current timestamp
+And the hook dispatcher is invoked
+And any contract matching source="system" / type pattern "session.*" / property session_id="sess-1" receives the event
 ```
 
-#### UC-EB2: Agent event becomes agent.<event_type> HookEvent
+#### UC-EB2: Agent event becomes agent.<event_type> hook event
 
 ```gherkin
-Given EventBus emits AGENT_EVENT with AgentEventContext(session_id="s1", event_type="prompt_submitted", data=<raw>)
-When _handle runs
+Given the event bus emits an agent event with session "s1", event type "prompt_submitted", and a raw data payload
+When the bridge handler runs
 Then properties = {session_id: "s1", agent_event_type: "prompt_submitted"}
-And hook_type = "agent.prompt_submitted"
+And hook type = "agent.prompt_submitted"
 And source = "agent"
-And if data.raw exists (e.g., the original hook payload), payload = dict(data.raw)
-And dispatch is invoked
+And if the data carries an original hook payload, that payload becomes the hook event payload
+And the dispatcher is invoked
 ```
 
 #### UC-EB3: Tool use activity carries tool_name property
 
 ```gherkin
-Given EventBus emits AGENT_ACTIVITY with ToolUseActivityEvent(session_id="s1", event_type="tool_use", tool_name="Bash")
-When _handle runs
+Given the event bus emits an agent-activity event for a tool-use activity on session "s1" with tool name "Bash"
+When the bridge handler runs
 Then properties = {session_id: "s1", agent_event_type: "tool_use", tool_name: "Bash"}
-And hook_type = "agent.activity.tool_use"
+And hook type = "agent.activity.tool_use"
 ```
 
 #### UC-EB4: Error context translates to error.<severity> with payload message
 
 ```gherkin
-Given EventBus emits ERROR with ErrorEventContext(session_id="s1", severity="error", source="hook_receiver", code="HOOK_INVALID_JSON", message="bad json")
-When _handle runs
-Then properties = {session_id: "s1", severity: "error", error_source: "hook_receiver", error_code: "HOOK_INVALID_JSON"}
-And hook_type = "error.error"
+Given the event bus emits an error event with severity "error", error source "hook_receiver", code "HOOK_INVALID_JSON", message "bad json"
+When the bridge handler runs
+Then properties = {session_id, severity: "error", error_source: "hook_receiver", error_code: "HOOK_INVALID_JSON"}
+And hook type = "error.error"
 And payload = {message: "bad json"}
-And dispatch is invoked
+And the dispatcher is invoked
 ```
 
 #### UC-EB5: Dispatch failure is logged but does not raise
 
 ```gherkin
-Given HookDispatcher.dispatch raises (matcher fault, handler exception, webhook enqueue fault)
-When _handle catches the exception
-Then a logger.error("Bridge dispatch failed: %s", exc) is recorded with exc_info
-And _handle returns silently
-And the EventBus continues with its next subscriber (the bridge does not break the bus)
+Given the hook dispatcher raises (matcher fault, handler exception, webhook enqueue fault)
+When the bridge handler catches the exception
+Then a "bridge dispatch failed" error is logged with the exception info
+And the handler returns silently
+And the event bus continues with its next subscriber (the bridge does not break the bus)
 ```
 
 #### UC-EB6: Subscription set is fixed
 
 ```gherkin
-Given EventBusBridge.register(event_bus) is called at daemon startup
+Given the bridge is registered at integration service startup
 Then the bridge subscribes to these event types only:
-  TeleClaudeEvents.SESSION_STARTED, SESSION_CLOSED, SESSION_UPDATED,
-  AGENT_EVENT, AGENT_ACTIVITY, ERROR
-And the system_command event type is mapped in _SOURCE_MAP but the bridge does NOT subscribe to it explicitly
+  session-started, session-closed, session-updated, agent-event,
+  agent-activity, error
+And the system-command event type is mapped in the source-map but the bridge does NOT subscribe to it explicitly
 ```
 
 #### UC-EB7: Matcher dispatch to internal handler
 
 ```gherkin
-Given a Contract has target=Target(handler="whatsapp_inbound") and matches the event
-When HookDispatcher.dispatch runs the for-loop
-Then it looks up the handler in HandlerRegistry
-And awaits handler(event)
-And on handler exception: logger.error("Internal handler failed") with contract_id, handler, error, and the loop continues to next contract
+Given a contract targets an internal handler (e.g., "whatsapp_inbound") and matches the event
+When the dispatcher iterates matched contracts
+Then it looks up the handler in the handler registry
+And awaits the handler with the event
+And on handler exception: an "internal handler failed" error is logged with the contract id, handler key, and error, and the loop continues to the next contract
 ```
 
 #### UC-EB8: Matcher dispatch to external URL
 
 ```gherkin
-Given a Contract has target=Target(url="https://example.com/webhook", secret="hmac-key") and matches the event
-When HookDispatcher.dispatch runs
-Then enqueue_webhook(contract_id, event_json, target_url, target_secret) is invoked
-And a row is written to webhook_outbox (see outbound-webhook-delivery)
+Given a contract targets an external URL with an HMAC secret and matches the event
+When the dispatcher iterates matched contracts
+Then a webhook outbox entry is recorded for the subscriber endpoint (see outbound-webhook-delivery)
 And the dispatcher returns; the delivery worker actually transmits the request later
 ```
 
 #### UC-EB9: Contract with neither handler nor URL is a defect
 
 ```gherkin
-Given a Contract matched the event but its target has handler=None and url=None
-When HookDispatcher.dispatch evaluates the contract
-Then a warning "Contract <id> matched but has no handler or URL" is logged
+Given a contract matched the event but its target has neither a handler nor a URL
+When the dispatcher evaluates the contract
+Then a warning "contract <id> matched but has no handler or URL" is logged
 And no delivery action is taken
 ```
 
-### Implementation pointers (v1)
-
-- `teleclaude/hooks/bridge.py` — `EventBusBridge` (L40):
-  `register`, `attach` (compatibility alias), `_handle`, `_SOURCE_MAP`
-  (L28, the agent*event → "agent" / session*\* → "system" mapping).
-- `teleclaude/hooks/dispatcher.py` — `HookDispatcher` (L22): `dispatch`,
-  `deliver` (compatibility alias). `dispatch` catches per-Contract
-  handler exceptions and webhook-enqueue exceptions internally.
-- `teleclaude/hooks/handlers.py` — `HandlerRegistry`, `InternalHandler`
-  type alias.
-- `teleclaude/hooks/registry.py` — `ContractRegistry.match` (filters
-  active, non-expired contracts against the event).
-- `teleclaude/hooks/matcher.py` —
-  `match_event` (L46),
-  `match_criterion` (L14),
-  `_matches_exact_value` (L36, pattern, exact, and required-presence
-  semantics).
-- `teleclaude/daemon_event_platform.py` — `bridge.register(event_bus)`
-  inside `_init_webhook_service` (~L564, after contract registry is
-  populated).
-- `teleclaude/core/event_bus.py` — `EventBus.subscribe`.
-- `teleclaude/core/events.py` — event types, contexts,
-  `TeleClaudeEvents`, `AgentEventContext`, `BaseAgentActivityEvent`,
-  `ToolUseActivityEvent`, `ErrorEventContext`,
-  `SessionLifecycleContext`.
-
 ### Cross-context references
 
-- Producer of HookEvents that downstream Contracts consume — Contracts
+- Producer of hook events that downstream contracts consume — contracts
   themselves are managed via `subscriber-driven-contract-routing`
   (the named-exception snippet for v2 inheritance).
-- The bridge emits events with `source` ∈ `{"system", "agent"}` per
-  `_SOURCE_MAP`, and `type` patterns of `session.*`, `agent.*`,
+- The bridge emits events with source ∈ `{"system", "agent"}` per the
+  source-map, and type patterns `session.*`, `agent.*`,
   `agent.activity.*`, `error.*`. The three v1 built-in production
-  Contracts do NOT match these:
-  - `builtin-whatsapp-inbound` matches `source="whatsapp"` (driven by
+  contracts do NOT match these:
+  - `builtin-whatsapp-inbound` matches source="whatsapp" (driven by
     `whatsapp-inbound-conversation-routing` via the inbound framework)
-  - `deployment-github` matches `source="github"` (driven by
+  - `deployment-github` matches source="github" (driven by
     `github-webhook-normalization` via the inbound framework)
-  - `deployment-fanout` matches `source="deployment"` (driven by
-    `deployment-version-fanout` via the Redis stream consumer)
+  - `deployment-fanout` matches source="deployment" (driven by
+    `deployment-version-fanout` via the cross-host channel consumer)
     These built-ins are wired to dispatcher entry points other than this
-    bridge. The bridge's potential consumers are user-published Contracts
-    declaring `source` ∈ `{"system", "agent"}` — and v1 production has none.
+    bridge. The bridge's potential consumers are user-published contracts
+    declaring source ∈ `{"system", "agent"}` — and v1 production has
+    none.
 - The webhook enqueue side feeds `outbound-webhook-delivery` whenever a
-  matched Contract has a URL target. In v1 production this path is
-  inactive because no Contract matches bridge events.
+  matched contract has a URL target. In v1 production this path is
+  inactive because no contract matches bridge events.
 - Internal handler dispatch reaches `whatsapp-inbound-conversation-routing`
   and the deployment handler ONLY for events arriving from the inbound
-  framework or the Redis fanout consumer — not from this bridge.
+  framework or the cross-host fanout consumer — not from this bridge.
 
 ## Known caveats
 
-- The bridge subscribes at startup and never resubscribes. EventBus
+- The bridge subscribes at startup and never resubscribes. Event-bus
   events emitted before the bridge is registered are not delivered.
-- The bridge uses `EventVisibility` semantics implicitly via the
-  EventBus's own publish path; the dispatch decision (handler vs URL)
-  is purely Contract-driven.
-- All exceptions inside `_handle` are swallowed by design — the
+- The bridge uses cluster-visibility semantics implicitly via the event
+  bus's own publish path; the dispatch decision (handler vs URL) is
+  purely contract-driven.
+- All exceptions inside the bridge handler are swallowed by design — the
   bridge must never crash an event-bus subscriber, because that would
   break unrelated consumers on the same bus.
-- The `_SOURCE_MAP` mapping `agent_event` → `"agent"` is hard-coded;
-  adding a new EventBus type requires both `bus.subscribe` and a new
+- The source-map's "agent" mapping for agent events is fixed; adding a
+  new event-bus type requires both subscribing on the bus and a new
   entry in this map.
-- Internal handler exceptions are caught per-Contract; the loop
-  continues to the next matching contract. A misbehaving handler
-  cannot block delivery to other contracts.
+- Internal handler exceptions are caught per-contract; the loop continues
+  to the next matching contract. A misbehaving handler cannot block
+  delivery to other contracts.
 - Webhook enqueue failures are caught and logged but do NOT raise; if
-  the SQLite outbox is unavailable, the event is dropped after a log
+  the outbox store is unavailable, the event is dropped after a log
   entry — there is no in-memory retry queue at the bridge layer.

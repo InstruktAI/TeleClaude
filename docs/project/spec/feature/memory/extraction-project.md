@@ -4,8 +4,6 @@ type: spec
 domain: software-development
 scope: project
 visibility: public
-status: target
-applies_to: v2
 delivered_by: [v2-memory]
 description: Project memory extraction — the memory-miner agent that reads a session mirror, classifies observations about a project as triples in the project-category vocabulary, and saves them through the scraper-only write path.
 ---

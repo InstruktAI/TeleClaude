@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-applies_to: 'v1'
-status: 'actual'
 description: 'Two-phase deployment of transpiled artifacts to per-agent home dirs, with Codex commands routed to a shared TeleClaude dir and docs atomically symlinked.'
 ---
 
@@ -18,29 +16,29 @@ description: 'Two-phase deployment of transpiled artifacts to per-agent home dir
 ## What it is
 
 The phase of Sync that writes Deployed outputs each agent CLI reads at
-runtime. When invoked via `telec sync`, `scripts/distribute.py` is always
-called with `--deploy` (there is no no-deploy mode through the CLI). The
-deploy path runs two phases:
+runtime. When invoked via `telec sync`, the distribution step always runs
+in deploy mode (there is no no-deploy mode through the CLI). The deploy
+path runs two phases:
 
 1. **Global phase** — sources from `agents/` (Mother project only) are
-   built under a temp dir `teleclaude-dist-global-*` and then deployed
+   built under a transient distribution directory and then deployed
    to per-agent user-home roots: `~/.claude/`, `~/.gemini/`, `~/.codex/`.
    The publishing gate ensures the global source list is only populated
    on the Mother project.
 2. **Local phase** — sources from `.agents/` (any project) are built
-   under `teleclaude-dist-local-*` and then deployed to the project
-   root. Codex commands are an exception: they route to
+   under a transient distribution directory and then deployed to the
+   project root. Codex commands are an exception: they route to
    `~/.teleclaude/commands/` (NOT `~/.codex/commands/`) so commands are
    reusable across projects.
 
 After both phases, the documentation tree is atomically symlinked from
-source into `~/.teleclaude/docs/`, with `index.yaml` rewritten so
-consumers see deployment-relative paths.
+source into `~/.teleclaude/docs/`, with the deployed `index.yaml`
+rewritten so consumers see deployment-relative paths.
 
-When `scripts/distribute.py` is invoked directly without `--deploy`,
-agent artifacts are emitted to `project_root/dist/global` and
-`project_root/dist/local` (not temp dirs), no copies are made to
-`~/.<agent>/`, and `_deploy_documentation` is not called. This direct
+When the distribution step is invoked directly in no-deploy mode, agent
+artifacts are emitted to `project_root/dist/global` and
+`project_root/dist/local` (not transient dirs), no copies are made to
+`~/.<agent>/`, and documentation deployment is skipped. This direct
 no-deploy mode is for developers/CI inspecting build output, not for
 `telec sync`.
 
@@ -49,9 +47,9 @@ no-deploy mode is for developers/CI inspecting build output, not for
 ### Use cases
 
 ```
-Scenario: Mother project full sync with --deploy
+Scenario: Mother project full sync with deploy
   Given the project is the Mother project
-  And sync is invoked with --deploy
+  And sync is invoked in deploy mode
   When the distribution pipeline runs
   Then global sources from agents/ deploy to ~/.claude/, ~/.gemini/, and ~/.codex/
   And local sources from .agents/ deploy to the project root
@@ -63,7 +61,7 @@ Scenario: Mother project full sync with --deploy
 ```
 Scenario: Non-mother project sync skips global phase
   Given the project is not the Mother project
-  And sync is invoked with --deploy
+  And sync is invoked in deploy mode
   When the distribution pipeline runs
   Then the global phase produces no agent-home writes
   And the local phase deploys .agents/ to the project root
@@ -73,7 +71,7 @@ Scenario: Non-mother project sync skips global phase
 ```
 Scenario: Sync from a worktree uses worktree docs
   Given sync runs from a git worktree of the Mother project
-  When _resolve_git_common_root identifies the canonical root
+  When the canonical-root resolver identifies the canonical root
   Then the docs source is the current worktree checkout
   And docs deployed reflect the worktree's branch, not main
   And the deployed index.yaml is rewritten with the deployment root
@@ -82,39 +80,23 @@ Scenario: Sync from a worktree uses worktree docs
 ```
 Scenario: Sync repairs a broken docs symlink
   Given ~/.teleclaude/docs/ contains a broken or self-pointing symlink
-  When _deploy_documentation runs
+  When the documentation deployment step runs
   Then the broken link is unlinked
   And a fresh atomic symlink is created to the docs source
   And third-party/ contents are preserved across the deploy
-  And rewrite_global_index updates project_root and snippets_root in index.yaml
+  And the deployed index.yaml is rewritten with the deployment-relative project and snippet roots
 ```
 
 ```
-Scenario: scripts/distribute.py invoked directly without --deploy
-  Given scripts/distribute.py is invoked directly (not through telec sync) without --deploy
+Scenario: Distribution invoked directly in no-deploy mode
+  Given the distribution step is invoked directly (not through telec sync) in no-deploy mode
   When the distribution pipeline runs
   Then agent artifacts are emitted under project_root/dist/global and project_root/dist/local
-  And no temp dist dirs are used
+  And no transient distribution dirs are used
   And no writes occur to ~/.claude/, ~/.gemini/, ~/.codex/
-  And _deploy_documentation is NOT called
+  And documentation deployment is NOT performed
   And the dist/ output is left in place for inspection
 ```
-
-### Implementation pointers (v1)
-
-- `scripts/distribute.py:682-705` — `_resolve_git_common_root()` resolves the canonical root for worktrees.
-- `scripts/distribute.py:753-758` — docs-source selection (worktree checkout vs canonical root).
-- `scripts/distribute.py:778-785` — Codex command prefix and deploy target (`COMMANDS_DIR`).
-- `scripts/distribute.py:839-870` — global vs local source collection branching on `is_mother_project`.
-- `scripts/distribute.py:859-870` — `_existing_sources()` preserves `"agents"` and `".agents"` source entries even when their artifact subdirectories are absent.
-- `scripts/distribute.py:1012-1016` — `AGENTS.override.md` write during the Codex local phase.
-- `scripts/distribute.py:1100, 1178-1201` — two-phase deploy (global temp dir then local temp dir) under `if args.deploy:`.
-- `scripts/distribute.py:1202-1224` — no-deploy branch writing under `project_root/dist/global` and `project_root/dist/local` (only reachable when distribute.py is invoked directly without `--deploy`).
-- `scripts/distribute.py:1121-1123` — per-agent command artifact deployment.
-- `scripts/distribute.py:1127-1176` — `_deploy_documentation()` atomic symlink logic with `third-party/` preservation.
-- `scripts/distribute.py:658-679` — `rewrite_global_index()` updates `project_root` and `snippets_root` in the deployed `index.yaml`.
-- `teleclaude/paths.py:30-31` — `GLOBAL_SNIPPETS_DIR` and `COMMANDS_DIR` constants.
-- `teleclaude/sync.py:104-122` — `_run_distribute()` subprocess invocation; always appends `--deploy`, optionally `--warn-only`, and calls `subprocess.run(..., check=not warn_only)`.
 
 ### Cross-context references
 
@@ -136,12 +118,12 @@ Scenario: scripts/distribute.py invoked directly without --deploy
 - Worktree-aware docs sourcing prevents the easy bug of "synced from a
   worktree but deployed main-branch docs". A worktree whose `docs/` is
   missing, however, falls back silently rather than erroring.
-- `--warn-only` is forwarded to the distribute subprocess. The
-  subprocess return code is checked with `check=not warn_only`, so a
-  warn-only run **suppresses** a non-zero distribute exit rather than
-  surfacing it. Operators relying on the exit code to detect a
-  distribute crash will see a silent success instead.
-- The deployed `index.yaml` is rewritten in-place by
-  `rewrite_global_index()`. Consumers reading the working-tree index
-  will see different `project_root` values than the deployed one — this
-  is expected, not drift.
+- `--warn-only` is forwarded to the distribution step. The step's return
+  code is checked conditionally on `--warn-only`, so a warn-only run
+  **suppresses** a non-zero distribution exit rather than surfacing it.
+  Operators relying on the exit code to detect a distribution crash will
+  see a silent success instead.
+- The deployed `index.yaml` is rewritten in-place during deployment.
+  Consumers reading the working-tree index will see different
+  `project_root` values than the deployed one — this is expected, not
+  drift.

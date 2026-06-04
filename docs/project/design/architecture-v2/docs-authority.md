@@ -4,9 +4,7 @@ type: design
 scope: project
 domain: software-development
 description: v2 docs-authority design for serialized docs writes, delivered-by reconciliation, file watching, and sync triggering inside the context service.
-status: target
 delivered_by: [integrate-deliveredby-flip]
-applies_to: v2
 ---
 
 # Docs Authority — Design
