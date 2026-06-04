@@ -21,8 +21,9 @@ SESSION_CLOSED_CHANNEL = "cluster.session.closed"
 class TestCachedItem:
     @pytest.mark.unit
     def test_stores_data(self):
-        item = CachedItem("some data")
-        assert item.data == "some data"
+        payload = "some data"
+        item = CachedItem(payload)
+        assert item.data == payload
 
     @pytest.mark.unit
     def test_cached_at_defaults_to_now(self):
@@ -109,11 +110,12 @@ class TestDaemonCache:
     @pytest.mark.unit
     def test_get_interested_computers(self):
         cache = DaemonCache()
-        cache.set_interest("sessions", "raspi")
-        cache.set_interest("sessions", "macbook")
+        raspi, macbook = "raspi", "macbook"
+        cache.set_interest("sessions", raspi)
+        cache.set_interest("sessions", macbook)
         computers = cache.get_interested_computers("sessions")
-        assert "raspi" in computers
-        assert "macbook" in computers
+        assert raspi in computers
+        assert macbook in computers
 
     @pytest.mark.unit
     def test_publish_workflow_change_todos_invalidates_and_notifies(self):
@@ -159,12 +161,13 @@ class TestDaemonCache:
             has_impl_plan=False,
             lifecycle_phase="draft",
         )
-        after = before.model_copy(update={"lifecycle_phase": "prd_drafting"})
+        updated_phase = "prd_drafting"
+        after = before.model_copy(update={"lifecycle_phase": updated_phase})
 
         assert cache.apply_todos_snapshot("local", {"/p": [before]}) is True
         assert cache.apply_todos_snapshot("local", {"/p": [after]}) is True
         cached = cache.get_todos("local", "/p")
-        assert cached[0].lifecycle_phase == "prd_drafting"
+        assert cached[0].lifecycle_phase == updated_phase
 
     @pytest.mark.unit
     def test_apply_todos_snapshot_propagates_artifact_version_total_changes(self):
@@ -377,8 +380,9 @@ class TestClusterPublish:
             has_requirements=True,
             has_impl_plan=False,
         )
+        active_slug = "active-1"
         active_todo = TodoDTO(
-            slug="active-1",
+            slug=active_slug,
             status="active",
             has_requirements=True,
             has_impl_plan=False,
@@ -388,7 +392,7 @@ class TestClusterPublish:
         # Default: only active
         todos = cache.get_todos("local", "/p")
         assert len(todos) == 1
-        assert todos[0].slug == "active-1"
+        assert todos[0].slug == active_slug
 
         # Explicit opt-in: both
         todos_with_removed = cache.get_todos("local", "/p", include_removed=True)

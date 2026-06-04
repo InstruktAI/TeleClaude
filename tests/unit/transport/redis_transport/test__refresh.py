@@ -68,19 +68,22 @@ def transport() -> RedisTransport:
 class TestRefreshKey:
     @pytest.mark.unit
     def test_sessions_keyed_per_computer(self, transport: RedisTransport) -> None:
-        """Sessions are now pulled per peer (was: global) so coalescing must key per peer too."""
-        key = transport._refresh_key("any-computer", "sessions", None)
-        assert key == "any-computer:sessions"
+        """Sessions are pulled per peer, so coalescing must key per peer too."""
+        computer, data_type = "any-computer", "sessions"
+        key = transport._refresh_key(computer, data_type, None)
+        assert key == f"{computer}:{data_type}"
 
     @pytest.mark.unit
     def test_projects_without_path_returns_computer_datatype(self, transport: RedisTransport) -> None:
-        key = transport._refresh_key("remote-host", "projects", None)
-        assert key == "remote-host:projects"
+        computer, data_type = "remote-host", "projects"
+        key = transport._refresh_key(computer, data_type, None)
+        assert key == f"{computer}:{data_type}"
 
     @pytest.mark.unit
     def test_projects_with_path_includes_path(self, transport: RedisTransport) -> None:
-        key = transport._refresh_key("remote-host", "projects", "/repo/myproject")
-        assert key == "remote-host:projects:/repo/myproject"
+        computer, data_type, path = "remote-host", "projects", "/repo/myproject"
+        key = transport._refresh_key(computer, data_type, path)
+        assert key == f"{computer}:{data_type}:{path}"
 
 
 class TestCanScheduleRefresh:

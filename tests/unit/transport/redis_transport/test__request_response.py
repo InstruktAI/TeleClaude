@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.constants import ResultStatus
 from teleclaude.core.models import MessageMetadata
 from teleclaude.transport.redis_transport._transport import RedisTransport
 
@@ -26,11 +27,12 @@ class TestSignalObservation:
         mock_redis = AsyncMock()
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        await transport.signal_observation("target-host", "session-abc", 60)
+        host, session = "target-host", "session-abc"
+        await transport.signal_observation(host, session, 60)
 
         mock_redis.setex.assert_called_once()
         key_arg, ttl_arg, _ = mock_redis.setex.call_args.args
-        assert key_arg == "observation:target-host:session-abc"
+        assert key_arg == f"observation:{host}:{session}"
         assert ttl_arg == 60
 
     @pytest.mark.unit
@@ -90,12 +92,13 @@ class TestIsSessionObserved:
 class TestSendRequest:
     @pytest.mark.unit
     async def test_returns_message_id_string(self, transport: RedisTransport) -> None:
+        entry_id = "1234567890-0"
         mock_redis = AsyncMock()
-        mock_redis.xadd = AsyncMock(return_value=b"1234567890-0")
+        mock_redis.xadd = AsyncMock(return_value=entry_id.encode())
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
         result = await transport.send_request("target", "list_sessions", MessageMetadata(origin="terminal"))
-        assert result == "1234567890-0"
+        assert result == entry_id
 
     @pytest.mark.unit
     async def test_sends_to_correct_message_stream(self, transport: RedisTransport) -> None:
@@ -103,9 +106,10 @@ class TestSendRequest:
         mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        await transport.send_request("target-computer", "list_sessions", MessageMetadata(origin="terminal"))
+        target = "target-computer"
+        await transport.send_request(target, "list_sessions", MessageMetadata(origin="terminal"))
         stream_arg = mock_redis.xadd.call_args.args[0]
-        assert stream_arg == "messages:target-computer"
+        assert stream_arg == f"messages:{target}"
 
     @pytest.mark.unit
     async def test_includes_command_in_message_data(self, transport: RedisTransport) -> None:
@@ -133,13 +137,14 @@ class TestSendRequest:
     async def test_does_not_require_origin_and_omits_it_when_absent(self, transport: RedisTransport) -> None:
         # origin is a client-stamped session concept; a system RPC has none,
         # so the transport must accept a request without it.
+        entry_id = "msg-id-0"
         mock_redis = AsyncMock()
-        mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
+        mock_redis.xadd = AsyncMock(return_value=entry_id.encode())
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
         result = await transport.send_request("target", "list_sessions", MessageMetadata())
 
-        assert result == "msg-id-0"
+        assert result == entry_id
         data_arg = mock_redis.xadd.call_args.args[1]
         assert b"origin" not in data_arg
         # Computer identity still travels, via initiator.
@@ -166,12 +171,13 @@ class TestSendRequest:
 class TestSendResponse:
     @pytest.mark.unit
     async def test_returns_response_id_string(self, transport: RedisTransport) -> None:
+        response_id = "response-id-0"
         mock_redis = AsyncMock()
-        mock_redis.xadd = AsyncMock(return_value=b"response-id-0")
+        mock_redis.xadd = AsyncMock(return_value=response_id.encode())
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
         result = await transport.send_response("orig-msg-1", '{"status":"ok"}')
-        assert result == "response-id-0"
+        assert result == response_id
 
     @pytest.mark.unit
     async def test_sends_to_output_stream_keyed_by_computer_and_message(self, transport: RedisTransport) -> None:
@@ -197,13 +203,14 @@ class TestSendResponse:
 class TestReadResponse:
     @pytest.mark.unit
     async def test_returns_chunk_data_on_first_message(self, transport: RedisTransport) -> None:
+        chunk = '{"result":"ok"}'
         mock_redis = AsyncMock()
-        fake_entry = {b"chunk": b'{"result":"ok"}', b"timestamp": b"1234"}
+        fake_entry = {b"chunk": chunk.encode(), b"timestamp": b"1234"}
         mock_redis.xread = AsyncMock(return_value=[(b"output:target:msg-1", [(b"entry-0", fake_entry)])])
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
         result = await transport.read_response("msg-1", timeout=1.0, target_computer="target")
-        assert result == '{"result":"ok"}'
+        assert result == chunk
 
     @pytest.mark.unit
     async def test_raises_timeout_error_when_no_response(self, transport: RedisTransport) -> None:
@@ -234,12 +241,13 @@ class TestReadResponse:
 class TestSendSystemCommand:
     @pytest.mark.unit
     async def test_returns_message_id_string(self, transport: RedisTransport) -> None:
+        entry_id = "sys-msg-0"
         mock_redis = AsyncMock()
-        mock_redis.xadd = AsyncMock(return_value=b"sys-msg-0")
+        mock_redis.xadd = AsyncMock(return_value=entry_id.encode())
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
         result = await transport.send_system_command("target", "restart")
-        assert result == "sys-msg-0"
+        assert result == entry_id
 
     @pytest.mark.unit
     async def test_sends_to_target_message_stream(self, transport: RedisTransport) -> None:
@@ -247,9 +255,10 @@ class TestSendSystemCommand:
         mock_redis.xadd = AsyncMock(return_value=b"id-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        await transport.send_system_command("target-machine", "health_check")
+        target = "target-machine"
+        await transport.send_system_command(target, "health_check")
         stream_arg = mock_redis.xadd.call_args.args[0]
-        assert stream_arg == "messages:target-machine"
+        assert stream_arg == f"messages:{target}"
 
     @pytest.mark.unit
     async def test_sets_type_field_to_system(self, transport: RedisTransport) -> None:
@@ -280,7 +289,7 @@ class TestGetSystemCommandStatus:
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
         result = await transport.get_system_command_status("target", "restart")
-        assert result["status"] == "success"
+        assert result == status
 
     @pytest.mark.unit
     async def test_returns_error_for_non_dict_response(self, transport: RedisTransport) -> None:
@@ -289,4 +298,4 @@ class TestGetSystemCommandStatus:
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
         result = await transport.get_system_command_status("target", "restart")
-        assert result["status"] == "error"
+        assert result["status"] == ResultStatus.ERROR.value

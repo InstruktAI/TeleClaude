@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.api import sessions_routes
 from teleclaude.api.sessions_routes import ListSessionsQuery
@@ -202,6 +203,8 @@ class TestSessionsRoutes:
     async def test_list_sessions_returns_last_agent_stop_at_and_agent_status(self) -> None:
         """List responses surface the deterministic turn-settled fields."""
         request = _make_request()
+        stop_at = "2025-02-01T12:00:05+00:00"
+        agent_status = "idle"
         sessions = [
             SessionSnapshot(
                 session_id="worker-1",
@@ -211,8 +214,8 @@ class TestSessionsRoutes:
                 active_agent="codex",
                 status="active",
                 last_input_at="2025-02-01T12:00:00+00:00",
-                last_agent_stop_at="2025-02-01T12:00:05+00:00",
-                agent_status="idle",
+                last_agent_stop_at=stop_at,
+                agent_status=agent_status,
             )
         ]
 
@@ -234,8 +237,8 @@ class TestSessionsRoutes:
                 _identity=object(),
             )
 
-        assert response[0].last_agent_stop_at == "2025-02-01T12:00:05+00:00"
-        assert response[0].agent_status == "idle"
+        assert response[0].last_agent_stop_at == stop_at
+        assert response[0].agent_status == agent_status
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -305,7 +308,7 @@ class TestSessionsRoutes:
 
         assert metadata.origin == InputOrigin.WEB.value
         assert metadata.origin_metadata is not None
-        assert metadata.origin_metadata["email"] == "web@example.com"
+        assert metadata.origin_metadata["email"] == request.human_email
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -327,12 +330,14 @@ class TestSessionsRoutes:
 
         assert metadata.origin == InputOrigin.TERMINAL.value
         assert metadata.origin_metadata is not None
-        assert metadata.origin_metadata["email"] == "terminal@example.com"
+        assert metadata.origin_metadata["email"] == identity.email
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_prepare_create_session_preserves_explicit_daemon_origin_override(self) -> None:
         """Daemon-internal callers may provide origin/origin_metadata that must survive route preparation."""
+        phone_number = "15551234567"
+        platform = "whatsapp"
         request = CreateSessionRequest.model_validate(
             {
                 "computer": "local",
@@ -340,8 +345,8 @@ class TestSessionsRoutes:
                 "title": "WhatsApp: 15551234567",
                 "origin": InputOrigin.WHATSAPP.value,
                 "origin_metadata": {
-                    "phone_number": "15551234567",
-                    "platform": "whatsapp",
+                    "phone_number": phone_number,
+                    "platform": platform,
                 },
             }
         )
@@ -357,8 +362,8 @@ class TestSessionsRoutes:
 
         assert metadata.origin == InputOrigin.WHATSAPP.value
         assert metadata.origin_metadata is not None
-        assert metadata.origin_metadata["phone_number"] == "15551234567"
-        assert metadata.origin_metadata["platform"] == "whatsapp"
+        assert metadata.origin_metadata["phone_number"] == phone_number
+        assert metadata.origin_metadata["platform"] == platform
         assert "email" not in metadata.origin_metadata
 
     @pytest.mark.unit
@@ -400,7 +405,7 @@ class TestSessionsRoutes:
                 request, identity
             )
 
-        assert metadata.human_role == "member"
+        assert metadata.human_role == request.human_role
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -421,8 +426,9 @@ class TestSessionsRoutes:
                 request, identity
             )
 
-        assert metadata.system_role == "integrator"
-        assert metadata.job == "integrator"
+        integrator_role = "integrator"
+        assert metadata.system_role == integrator_role
+        assert metadata.job == integrator_role
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -463,10 +469,11 @@ class TestSessionsRoutes:
                 request, identity
             )
 
-        assert initial_input == "/next-review-build chartest-api-routes"
+        worker_role, reviewer_job = "worker", "reviewer"
+        assert initial_input == request.message
         assert metadata.title is None
-        assert metadata.system_role == "worker"
-        assert metadata.job == "reviewer"
+        assert metadata.system_role == worker_role
+        assert metadata.job == reviewer_job
         assert metadata.launch_intent is not None
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
@@ -492,12 +499,12 @@ class TestSessionsRoutes:
                 request, identity
             )
 
-        assert initial_input == "/next-review-build chartest-api-routes"
+        assert initial_input == request.message
         assert metadata.title is None
         assert metadata.launch_intent is not None
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
-        assert launch_intent.message == "/next-review-build chartest-api-routes"
+        assert launch_intent.message == request.message
 
 
 class TestWrapMessageWithOrigin:
@@ -578,38 +585,46 @@ class TestWrapMessageWithOrigin:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_orchestrator_caller_prepends_canonical_bracket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_orchestrator_caller_prepends_canonical_bracket(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         """Orchestrator system_role triggers the `[Orchestrator (sess) on host]` header."""
         orchestrator = SimpleNamespace(system_role="orchestrator", computer_name="MozBook")
         monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=orchestrator))
 
         result = await sessions_routes._wrap_message_with_origin("Dispatch body", "orch-uuid")
 
-        assert result == "[Orchestrator (orch-uuid) on MozBook]\n\nDispatch body"
+        assert result == snapshot
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_integrator_caller_prepends_integrator_bracket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_integrator_caller_prepends_integrator_bracket(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         integrator = SimpleNamespace(system_role="integrator", computer_name="MozBook")
         monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=integrator))
 
         result = await sessions_routes._wrap_message_with_origin("integration message", "int-uuid")
 
-        assert result == "[Integrator (int-uuid) on MozBook]\n\nintegration message"
+        assert result == snapshot
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_system_caller_prepends_system_bracket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_system_caller_prepends_system_bracket(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         system = SimpleNamespace(system_role="system", computer_name="MozBook")
         monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=system))
 
         result = await sessions_routes._wrap_message_with_origin("system message", "sys-uuid")
 
-        assert result == "[System (sys-uuid) on MozBook]\n\nsystem message"
+        assert result == snapshot
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_missing_caller_computer_falls_back_to_local_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_missing_caller_computer_falls_back_to_local_host(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         """When the caller's session has no computer_name, the local daemon's host fills in."""
         orchestrator = SimpleNamespace(system_role="orchestrator", computer_name=None)
         monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=orchestrator))
@@ -618,4 +633,4 @@ class TestWrapMessageWithOrigin:
 
         result = await sessions_routes._wrap_message_with_origin("body", "orch-uuid")
 
-        assert result == "[Orchestrator (orch-uuid) on MozBook]\n\nbody"
+        assert result == snapshot

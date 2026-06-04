@@ -186,11 +186,12 @@ class TestPullRemoteProjects:
         transport_with_cache.send_request = AsyncMock(return_value="msg-id")
         transport_with_cache.client.read_response = AsyncMock(return_value=response)
 
-        await transport_with_cache.pull_remote_projects("remote-machine")
+        remote = "remote-machine"
+        await transport_with_cache.pull_remote_projects(remote)
         call_args = transport_with_cache._cache.apply_projects_snapshot.call_args
         computer, projects = call_args[0]
-        assert computer == "remote-machine"
-        assert all(p.computer == "remote-machine" for p in projects)
+        assert computer == remote
+        assert all(p.computer == remote for p in projects)
 
 
 class TestPullRemoteProjectsWithTodos:
@@ -231,13 +232,14 @@ class TestPullRemoteTodos:
 
     @pytest.mark.unit
     async def test_filters_to_requested_project_path(self, transport_with_cache: RedisTransport) -> None:
+        target_slug = "t-todo"
         project_data = [
             {
                 "path": "/repo/target",
                 "name": "target",
                 "todos": [
                     {
-                        "slug": "t-todo",
+                        "slug": target_slug,
                         "title": "T Todo",
                         "status": "pending",
                         "has_requirements": False,
@@ -267,4 +269,4 @@ class TestPullRemoteTodos:
         call_args = transport_with_cache._cache.set_todos.call_args
         _, _, todos = call_args[0]
         assert len(todos) == 1
-        assert todos[0].slug == "t-todo"
+        assert todos[0].slug == target_slug
