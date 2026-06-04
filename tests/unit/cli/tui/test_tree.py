@@ -9,6 +9,7 @@ from teleclaude.cli.tui.tree import (
     is_computer_node,
     is_project_node,
     is_session_node,
+    parse_collapsed_projects,
     project_collapse_key,
 )
 
@@ -21,6 +22,16 @@ def test_project_collapse_key_defaults_missing_computer_to_local() -> None:
 @pytest.mark.unit
 def test_project_collapse_key_distinguishes_same_path_across_computers() -> None:
     assert project_collapse_key("c1", "/repo") != project_collapse_key("c2", "/repo")
+
+
+@pytest.mark.unit
+def test_parse_collapsed_projects_accepts_pairs_and_legacy_strings() -> None:
+    assert parse_collapsed_projects([["c1", "/a"], "/b"]) == {("c1", "/a"), ("local", "/b")}
+
+
+@pytest.mark.unit
+def test_parse_collapsed_projects_ignores_non_list() -> None:
+    assert parse_collapsed_projects("nope") == set()
 
 
 @pytest.mark.unit

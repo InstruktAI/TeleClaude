@@ -16,7 +16,7 @@ from textual.widget import Widget
 from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged
 from teleclaude.cli.tui.todos import TodoItem
-from teleclaude.cli.tui.tree import ComputerDisplayInfo, project_collapse_key
+from teleclaude.cli.tui.tree import ComputerDisplayInfo, parse_collapsed_projects, project_collapse_key
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
@@ -162,13 +162,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         collapsed_computers = data.get("collapsed_computers", [])
         if isinstance(collapsed_computers, list):
             self._collapsed_computers = {str(item) for item in collapsed_computers}
-        collapsed_projects = data.get("collapsed_projects", [])
-        if isinstance(collapsed_projects, list):
-            self._collapsed_projects = {
-                (str(item[0]), str(item[1]))
-                for item in collapsed_projects
-                if isinstance(item, (list, tuple)) and len(item) == 2
-            }
+        self._collapsed_projects = parse_collapsed_projects(data.get("collapsed_projects", []))
         icebox_projects = data.get("icebox_projects", [])
         if isinstance(icebox_projects, list):
             self._icebox_projects = {str(item) for item in icebox_projects}
@@ -221,7 +215,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
         # Sectioned dependency trees come from the projection — the view renders;
         # it does not derive hierarchy, grouping, or section membership.
-        project_sections = {p.path: build_roadmap_sections(list(p.todos or [])) for p in self._projects_with_todos}
+        project_sections = {
+            project_collapse_key(p.computer, p.path): build_roadmap_sections(list(p.todos or []))
+            for p in self._projects_with_todos
+        }
 
         all_items = [_item_from_dto(t, project_path=p.path) for p in self._projects_with_todos for t in (p.todos or [])]
         slug_width = max((len(i.slug) for i in all_items), default=0)
@@ -320,7 +317,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 if proj_collapsed:
                     continue
 
-                sections = project_sections[project.path]
+                sections = project_sections[project_collapse_key(project.computer, project.path)]
                 rendered_any = False
 
                 for flat_row in flatten(sections.active, force_root_branch=True):

@@ -18,6 +18,23 @@ def project_collapse_key(computer: str | None, path: str) -> tuple[str, str]:
     return (computer or "local", path)
 
 
+def parse_collapsed_projects(value: object) -> set[tuple[str, str]]:
+    """Parse persisted collapsed-project identities.
+
+    Accepts the current ``[computer, path]`` pair form and the legacy bare-path
+    string form (whose computer defaults to local).
+    """
+    if not isinstance(value, list):
+        return set()
+    parsed: set[tuple[str, str]] = set()
+    for item in value:
+        if isinstance(item, str):
+            parsed.add(("local", item))
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
+            parsed.add((str(item[0]), str(item[1])))
+    return parsed
+
+
 @dataclass(frozen=True)
 class ComputerDisplayInfo:
     """Computer info with display-only counts."""

@@ -21,6 +21,7 @@ from teleclaude.cli.tui.tree import (
     is_computer_node,
     is_project_node,
     is_session_node,
+    parse_collapsed_projects,
     project_collapse_key,
 )
 from teleclaude.cli.tui.views.interaction import TreeInteractionState
@@ -233,13 +234,7 @@ class SessionsView(
         if isinstance(collapsed_computers, list):
             self._collapsed_computers = {str(item) for item in collapsed_computers}
 
-        collapsed_projects = data.get("collapsed_projects", [])
-        if isinstance(collapsed_projects, list):
-            self._collapsed_projects = {
-                (str(item[0]), str(item[1]))
-                for item in collapsed_projects
-                if isinstance(item, (list, tuple)) and len(item) == 2
-            }
+        self._collapsed_projects = parse_collapsed_projects(data.get("collapsed_projects", []))
 
         preview_data = data.get("preview")
         if isinstance(preview_data, dict):

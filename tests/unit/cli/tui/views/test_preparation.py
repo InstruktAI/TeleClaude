@@ -317,6 +317,33 @@ def test_preparation_persists_collapsed_structure_round_trip() -> None:
     assert new_view._collapsed_projects == {("local", "/tmp/project")}
 
 
+def test_preparation_load_persisted_migrates_legacy_string_projects() -> None:
+    view = PreparationView()
+    view.load_persisted_state({"collapsed_projects": ["/tmp/project"]})
+    assert view._collapsed_projects == {("local", "/tmp/project")}
+
+
+def _same_path_two_computers() -> list[ProjectWithTodosDTO]:
+    ready = {"status": "ready", "has_requirements": True, "has_impl_plan": True}
+    return [
+        ProjectWithTodosDTO(computer="c1", name="P1", path="/same", todos=[TodoDTO(slug="c1-todo", **ready)]),
+        ProjectWithTodosDTO(computer="c2", name="P2", path="/same", todos=[TodoDTO(slug="c2-todo", **ready)]),
+    ]
+
+
+@pytest.mark.unit
+async def test_preparation_same_path_two_computers_render_their_own_todos() -> None:
+    app = _PreparationHarness()
+    async with app.run_test() as pilot:
+        prep = app.query_one("#preparation-view", PreparationView)
+        prep.update_data(_same_path_two_computers())
+        await pilot.pause()
+
+        slugs = {w.slug for w in prep._nav_items if isinstance(w, TodoRow)}
+
+    assert slugs == {"c1-todo", "c2-todo"}
+
+
 @pytest.mark.unit
 def test_preparation_view_footer_bindings_match_shortened_labels() -> None:
     """The PreparationView footer must use the shortened labels from Task 6b."""

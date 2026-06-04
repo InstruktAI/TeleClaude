@@ -124,6 +124,13 @@ def test_sessions_load_persisted_collapsed_structure() -> None:
 
 
 @pytest.mark.unit
+def test_sessions_load_persisted_migrates_legacy_string_projects() -> None:
+    view = SessionsView()
+    view.load_persisted_state({"collapsed_projects": ["/repo"]})
+    assert view._collapsed_projects == {("local", "/repo")}
+
+
+@pytest.mark.unit
 def test_sessions_load_persisted_ignores_malformed_collapsed_structure() -> None:
     view = SessionsView()
     view.load_persisted_state({"collapsed_computers": "c1", "collapsed_projects": 5})
