@@ -56,7 +56,6 @@ tests/unit/api/test_event_routes.py
 tests/unit/api/test_jobs_routes.py
 tests/unit/api/test_notifications_routes.py
 tests/unit/api/test_sessions_actions_routes.py
-tests/unit/api/test_sessions_routes.py
 tests/unit/api/test_streaming.py
 tests/unit/api/test_transcript_converter.py
 tests/unit/api/test_tui_routes.py
@@ -211,7 +210,6 @@ tests/unit/core/operations/test_service.py
 tests/unit/core/test_activity_contract.py
 tests/unit/core/test_agent_parsers.py
 tests/unit/core/test_agents.py
-tests/unit/core/test_cache.py
 tests/unit/core/test_channel_metadata_cleanup.py
 tests/unit/core/test_codex_transcript.py
 tests/unit/core/test_command_mapper.py
@@ -403,11 +401,7 @@ tests/unit/tools/test_session_scope.py
 tests/unit/transport/redis_transport/test__adapter_noop.py
 tests/unit/transport/redis_transport/test__connection.py
 tests/unit/transport/redis_transport/test__heartbeat.py
-tests/unit/transport/redis_transport/test__messaging.py
 tests/unit/transport/redis_transport/test__peers.py
-tests/unit/transport/redis_transport/test__pull.py
-tests/unit/transport/redis_transport/test__refresh.py
-tests/unit/transport/redis_transport/test__request_response.py
 tests/unit/transport/redis_transport/test__transport.py
 tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py
 tests/unit/transport/redis_transport/test_target_computer_named_field.py

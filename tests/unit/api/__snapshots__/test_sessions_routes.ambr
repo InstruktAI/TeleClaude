@@ -1,0 +1,29 @@
+# serializer version: 1
+# name: TestWrapMessageWithOrigin.test_integrator_caller_prepends_integrator_bracket
+  '''
+  [Integrator (int-uuid) on MozBook]
+  
+  integration message
+  '''
+# ---
+# name: TestWrapMessageWithOrigin.test_missing_caller_computer_falls_back_to_local_host
+  '''
+  [Orchestrator (orch-uuid) on MozBook]
+  
+  body
+  '''
+# ---
+# name: TestWrapMessageWithOrigin.test_orchestrator_caller_prepends_canonical_bracket
+  '''
+  [Orchestrator (orch-uuid) on MozBook]
+  
+  Dispatch body
+  '''
+# ---
+# name: TestWrapMessageWithOrigin.test_system_caller_prepends_system_bracket
+  '''
+  [System (sys-uuid) on MozBook]
+  
+  system message
+  '''
+# ---
