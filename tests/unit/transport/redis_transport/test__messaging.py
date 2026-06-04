@@ -109,16 +109,15 @@ class TestParseRedisMessage:
         assert result.platform_message_id is None
 
     @pytest.mark.unit
-    def test_parses_launch_intent_as_dict(self, redis_transport: RedisTransport) -> None:
+    def test_parses_launch_intent_as_dict(self, redis_transport: RedisTransport, snapshot: SnapshotAssertion) -> None:
         """Launch-intent JSON is parsed into a dict."""
-        intent = {"kind": "new", "agent": "claude"}
         data = {
             b"command": b"create_session",
-            b"launch_intent": json.dumps(intent).encode("utf-8"),
+            b"launch_intent": json.dumps({"kind": "new", "agent": "claude"}).encode("utf-8"),
             b"origin": b"terminal",
         }
         result = redis_transport.parse_message(data)
-        assert result.launch_intent == intent
+        assert result.launch_intent == snapshot
 
     @pytest.mark.unit
     def test_launch_intent_none_when_invalid_json(self, redis_transport: RedisTransport) -> None:
@@ -175,33 +174,35 @@ class TestHandleAgentNotificationCommand:
         assert result["status"] == ResultStatus.ERROR.value
 
     @pytest.mark.unit
-    async def test_stop_notification_decodes_base64_title(self, redis_transport: RedisTransport) -> None:
+    async def test_stop_notification_decodes_base64_title(
+        self, redis_transport: RedisTransport, snapshot: SnapshotAssertion
+    ) -> None:
         """Base64 titles are decoded before the handler sees them."""
         redis_transport.client.agent_event_handler = AsyncMock()
-        title = "My Title"
-        title_b64 = base64.b64encode(title.encode()).decode()
+        title_b64 = base64.b64encode(b"My Title").decode()
         result = await redis_transport.handle_agent_notification_command(
             "stop_notification", ["sess-id", "comp-name", title_b64]
         )
         assert result["status"] == ResultStatus.SUCCESS.value
         ctx = redis_transport.client.agent_event_handler.call_args[0][0]
-        # Title is preserved in the raw mapping of AgentStopPayload
-        assert ctx.data.raw.get("title") == title
+        # Title is preserved (base64-decoded) in the raw mapping of AgentStopPayload
+        assert ctx.data.raw.get("title") == snapshot
 
 
 class TestHandleSystemMessage:
     """Characterize system-message handling behavior."""
 
     @pytest.mark.unit
-    async def test_emits_system_command_event(self, redis_transport: RedisTransport) -> None:
+    async def test_emits_system_command_event(
+        self, redis_transport: RedisTransport, snapshot: SnapshotAssertion
+    ) -> None:
         """Non-empty system commands emit an event-bus entry."""
         with patch("teleclaude.transport.redis_transport._messaging.event_bus") as mock_bus:
             data = {b"command": b"restart", b"from_computer": b"other-host"}
             await redis_transport.handle_system_message(data)
             mock_bus.emit.assert_called_once()
             args = mock_bus.emit.call_args[0]
-            system_command_event = "system_command"
-            assert args[0] == system_command_event
+            assert args[0] == snapshot
 
     @pytest.mark.unit
     async def test_empty_command_does_not_emit_event(self, redis_transport: RedisTransport) -> None:
@@ -212,14 +213,15 @@ class TestHandleSystemMessage:
             mock_bus.emit.assert_not_called()
 
     @pytest.mark.unit
-    async def test_unknown_computer_defaults_to_unknown(self, redis_transport: RedisTransport) -> None:
-        """Missing from_computer defaults to 'unknown'."""
+    async def test_unknown_computer_defaults_to_unknown(
+        self, redis_transport: RedisTransport, snapshot: SnapshotAssertion
+    ) -> None:
+        """Missing from_computer defaults to a sentinel value."""
         with patch("teleclaude.transport.redis_transport._messaging.event_bus") as mock_bus:
             data = {b"command": b"health_check"}
             await redis_transport.handle_system_message(data)
             ctx = mock_bus.emit.call_args[0][1]
-            default_from_computer = "unknown"
-            assert ctx.from_computer == default_from_computer
+            assert ctx.from_computer == snapshot
 
 
 class TestExecuteCommand:
@@ -233,12 +235,13 @@ class TestExecuteCommand:
         assert result.get("error")
 
     @pytest.mark.unit
-    async def test_exception_in_command_returns_error_envelope(self, redis_transport: RedisTransport) -> None:
+    async def test_exception_in_command_returns_error_envelope(
+        self, redis_transport: RedisTransport, snapshot: SnapshotAssertion
+    ) -> None:
         """Exceptions from command handlers are surfaced in the error envelope."""
         cmd = ProcessMessageCommand(session_id="s1", text="hi", origin="test")
-        boom = "boom"
         with patch("teleclaude.transport.redis_transport._messaging.get_command_service") as mock_svc:
-            mock_svc.return_value.process_message = AsyncMock(side_effect=RuntimeError(boom))
+            mock_svc.return_value.process_message = AsyncMock(side_effect=RuntimeError("boom"))
             result = await redis_transport.execute_command(cmd)
         assert result["status"] == ResultStatus.ERROR.value
-        assert boom in str(result["error"])
+        assert result == snapshot

@@ -142,7 +142,9 @@ class TestSessionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_list_sessions_filters_member_view_to_owned_and_shared_sessions(self) -> None:
+    async def test_list_sessions_filters_member_view_to_owned_and_shared_sessions(
+        self, snapshot: SnapshotAssertion
+    ) -> None:
         """Member web requests only see their own sessions plus shared sessions."""
         request = _make_request({"x-web-user-email": "member@example.com", "x-web-user-role": "member"})
         sessions = [
@@ -196,7 +198,7 @@ class TestSessionsRoutes:
                 _identity=object(),
             )
 
-        assert [session.session_id for session in response] == ["owned", "shared"]
+        assert [session.session_id for session in response] == snapshot
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -535,44 +537,51 @@ class TestWrapMessageWithOrigin:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_orchestrator_dispatch_passes_through_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_orchestrator_dispatch_passes_through_unwrapped(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         """Already bracket-marked orchestrator dispatches must not be re-wrapped."""
         get_session = AsyncMock()
         monkeypatch.setattr(sessions_routes.db, "get_session", get_session)
-        dispatch = "[Orchestrator (orch-uuid) on host]\n\nDispatch reason: upstream-changed"
 
-        result = await sessions_routes._wrap_message_with_origin(dispatch, "caller-uuid")
+        result = await sessions_routes._wrap_message_with_origin(
+            "[Orchestrator (orch-uuid) on host]\n\nDispatch reason: upstream-changed", "caller-uuid"
+        )
 
-        assert result == dispatch
+        assert result == snapshot
         get_session.assert_not_awaited()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_human_caller_without_session_id_returns_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_human_caller_without_session_id_returns_unwrapped(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         """Terminal/web/Telegram callers have no caller_session_id and never get a marker."""
         get_session = AsyncMock()
         monkeypatch.setattr(sessions_routes.db, "get_session", get_session)
-        message = "fix the bug"
 
-        result = await sessions_routes._wrap_message_with_origin(message, None)
+        result = await sessions_routes._wrap_message_with_origin("fix the bug", None)
 
-        assert result == message
+        assert result == snapshot
         get_session.assert_not_awaited()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_unknown_caller_session_returns_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_unknown_caller_session_returns_unwrapped(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         """When the caller session id does not resolve in the DB, no header is added."""
         monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=None))
-        message = "fix the bug"
 
-        result = await sessions_routes._wrap_message_with_origin(message, "ghost-uuid")
+        result = await sessions_routes._wrap_message_with_origin("fix the bug", "ghost-uuid")
 
-        assert result == message
+        assert result == snapshot
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_worker_caller_returns_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_worker_caller_returns_unwrapped(
+        self, monkeypatch: pytest.MonkeyPatch, snapshot: SnapshotAssertion
+    ) -> None:
         """Worker system_role is intentionally absent from the machine label map.
 
         Worker-to-peer communication routes through the Direct Conversation
@@ -580,11 +589,10 @@ class TestWrapMessageWithOrigin:
         plain sends would double-mark or mis-label."""
         worker = SimpleNamespace(system_role="worker", computer_name="local")
         monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=worker))
-        message = "fix the bug"
 
-        result = await sessions_routes._wrap_message_with_origin(message, "worker-uuid")
+        result = await sessions_routes._wrap_message_with_origin("fix the bug", "worker-uuid")
 
-        assert result == message
+        assert result == snapshot
 
     @pytest.mark.unit
     @pytest.mark.asyncio

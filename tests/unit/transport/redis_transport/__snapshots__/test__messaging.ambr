@@ -1,4 +1,25 @@
 # serializer version: 1
+# name: TestExecuteCommand.test_exception_in_command_returns_error_envelope
+  dict({
+    'error': 'boom',
+    'status': 'error',
+  })
+# ---
+# name: TestHandleAgentNotificationCommand.test_stop_notification_decodes_base64_title
+  'My Title'
+# ---
+# name: TestHandleSystemMessage.test_emits_system_command_event
+  'system_command'
+# ---
+# name: TestHandleSystemMessage.test_unknown_computer_defaults_to_unknown
+  'unknown'
+# ---
+# name: TestParseRedisMessage.test_parses_launch_intent_as_dict
+  dict({
+    'agent': 'claude',
+    'kind': 'new',
+  })
+# ---
 # name: TestParseRedisMessage.test_parses_msg_type_from_bytes
   RedisInboundMessage(msg_type='system', session_id=None, command='restart', actor_id=None, actor_name=None, actor_avatar_url=None, platform_message_id=None, initiator=None, project_path=None, title=None, origin='terminal', launch_intent=None, reply_stream=None, human_email=None, human_role=None, system_role=None, job=None)
 # ---
