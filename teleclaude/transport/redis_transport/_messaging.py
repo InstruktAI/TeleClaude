@@ -256,17 +256,17 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             )
             command.request_id = message_id
 
-            logger.info(">>> About to call command service for: %s", command.command_type)
             result = await self._execute_command(command)
-            logger.info(">>> command service completed for: %s", command.command_type)
 
             # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
             response_json = json.dumps(result)
-            logger.info(
-                ">>> About to send_response for message_id: %s, response length: %d", message_id, len(response_json)
-            )
             await self.send_response(message_id, response_json)
-            logger.info(">>> send_response completed for message_id: %s", message_id)
+            logger.debug(
+                "Handled redis command",
+                command_type=str(command.command_type),
+                message_id=message_id,
+                response_len=len(response_json),
+            )
 
         except _MESSAGE_EXCEPTIONS as e:
             logger.error("Failed to handle incoming message: %s", e, exc_info=True)

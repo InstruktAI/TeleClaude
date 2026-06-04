@@ -131,8 +131,8 @@ class TestSendRequest:
 
     @pytest.mark.unit
     async def test_does_not_require_origin_and_omits_it_when_absent(self, transport: RedisTransport) -> None:
-        # origin is a client-stamped session concept; a system RPC has none.
-        # The transport must not require it (regression: it used to raise).
+        # origin is a client-stamped session concept; a system RPC has none,
+        # so the transport must accept a request without it.
         mock_redis = AsyncMock()
         mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)

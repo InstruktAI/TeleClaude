@@ -73,7 +73,7 @@ class TestParseRedisMessage:
     @pytest.mark.unit
     def test_tolerates_missing_origin(self, redis_transport: RedisTransport) -> None:
         """origin is a client-stamped session concept; system RPCs and internal ops
-        carry none. The transport must parse without it (regression: it used to raise)."""
+        carry none, so parsing must succeed without it."""
         data = {b"command": b"list_sessions"}
         result = redis_transport.parse_message(data)
         assert result.origin is None
