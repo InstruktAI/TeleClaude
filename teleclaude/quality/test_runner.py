@@ -226,8 +226,7 @@ class TestRunner:
         return bool(typescript_files(list(self._scoped_files)))
 
     def _should_run_pytest(self, languages: list[str]) -> bool:
-        """Run pytest for declared Python or legacy no-language projects."""
-        return not languages or "python" in languages
+        return "python" in languages
 
     def _has_non_python_scoped_tests(self) -> bool:
         languages = get_project_languages(self._project_root)

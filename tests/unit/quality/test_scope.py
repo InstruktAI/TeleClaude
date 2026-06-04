@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
 from teleclaude.quality import scope as scope_module
@@ -229,35 +231,84 @@ class TestResolveWorkspaceScopeResolution:
 
 
 class TestGetProjectLanguages:
-    """get_project_languages reads the languages list from teleclaude.yml."""
+    """get_project_languages detects languages from repo artifacts."""
 
-    def test_returns_languages_list_from_config(self, tmp_path: Path) -> None:
-        """Reads the languages list when present."""
-        (tmp_path / "teleclaude.yml").write_text("languages:\n  - python\n  - typescript\n", encoding="utf-8")
-
-        assert get_project_languages(tmp_path) == ["python", "typescript"]
-
-    def test_falls_back_to_singular_language_field(self, tmp_path: Path) -> None:
-        """Backward compat: wraps singular language in a list."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
-
+    def test_detects_python_from_pyproject_toml(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
         assert get_project_languages(tmp_path) == ["python"]
 
-    def test_prefers_languages_over_language(self, tmp_path: Path) -> None:
-        """When both fields exist, languages takes precedence."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\nlanguages:\n  - typescript\n", encoding="utf-8")
+    def test_detects_python_from_setup_py(self, tmp_path: Path) -> None:
+        (tmp_path / "setup.py").write_text("from setuptools import setup\nsetup()\n", encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["python"]
 
+    def test_detects_python_from_loose_py_files(self, tmp_path: Path) -> None:
+        (tmp_path / "script.py").write_text("print('hello')\n", encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["python"]
+
+    def test_detects_typescript_from_root_tsconfig(self, tmp_path: Path) -> None:
+        (tmp_path / "tsconfig.json").write_text("{}\n", encoding="utf-8")
         assert get_project_languages(tmp_path) == ["typescript"]
 
-    def test_returns_empty_list_when_no_language_fields(self, tmp_path: Path) -> None:
-        """Returns empty list when neither field exists."""
-        (tmp_path / "teleclaude.yml").write_text("business:\n  domains: {}\n", encoding="utf-8")
+    def test_detects_typescript_from_frontend_candidate_tsconfig(self, tmp_path: Path) -> None:
+        fe = tmp_path / "frontend"
+        fe.mkdir()
+        (fe / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["typescript"]
 
+    def test_detects_typescript_from_package_json_dep(self, tmp_path: Path) -> None:
+        fe = tmp_path / "frontend"
+        fe.mkdir()
+        (fe / "package.json").write_text(json.dumps({"devDependencies": {"typescript": "^5.0.0"}}), encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["typescript"]
+
+    def test_detects_rust_from_cargo_toml(self, tmp_path: Path) -> None:
+        (tmp_path / "Cargo.toml").write_text("[package]\nname = 'x'\n", encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["rust"]
+
+    def test_detects_multiple_languages(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
+        (tmp_path / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+        (tmp_path / "Cargo.toml").write_text("[package]\nname = 'x'\n", encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["python", "typescript", "rust"]
+
+    def test_returns_empty_list_when_no_artifacts(self, tmp_path: Path) -> None:
         assert get_project_languages(tmp_path) == []
 
-    def test_returns_empty_list_when_no_config_file(self, tmp_path: Path) -> None:
-        """Returns empty list when teleclaude.yml doesn't exist."""
+    def test_languages_field_in_teleclaude_yml_ignored(self, tmp_path: Path) -> None:
+        """teleclaude.yml languages: field is not used for detection — artifacts only."""
+        (tmp_path / "teleclaude.yml").write_text("languages:\n  - python\n", encoding="utf-8")
         assert get_project_languages(tmp_path) == []
+
+    def test_detects_typescript_from_configured_frontend_root(self, tmp_path: Path) -> None:
+        """When teleclaude.yml specifies frontend_root, that directory is checked authoritatively."""
+        (tmp_path / "teleclaude.yml").write_text("frontend_root: web\n", encoding="utf-8")
+        web = tmp_path / "web"
+        web.mkdir()
+        (web / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["typescript"]
+
+    def test_configured_frontend_root_takes_priority_over_candidates(self, tmp_path: Path) -> None:
+        """frontend_root from teleclaude.yml is used even if it doesn't match any candidate name."""
+        (tmp_path / "teleclaude.yml").write_text("frontend_root: ui\n", encoding="utf-8")
+        # Put tsconfig in the configured root (not in any candidate)
+        ui = tmp_path / "ui"
+        ui.mkdir()
+        (ui / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+        assert get_project_languages(tmp_path) == ["typescript"]
+
+    def test_malformed_teleclaude_yml_fails_fast(self, tmp_path: Path) -> None:
+        (tmp_path / "teleclaude.yml").write_text("frontend_root: [\n", encoding="utf-8")
+
+        with pytest.raises(yaml.YAMLError):
+            get_project_languages(tmp_path)
+
+    def test_malformed_package_json_fails_fast(self, tmp_path: Path) -> None:
+        frontend = tmp_path / "frontend"
+        frontend.mkdir()
+        (frontend / "package.json").write_text("{", encoding="utf-8")
+
+        with pytest.raises(json.JSONDecodeError):
+            get_project_languages(tmp_path)
 
 
 class TestRustFiles:

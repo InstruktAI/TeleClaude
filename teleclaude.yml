@@ -1,7 +1,4 @@
 project_name: TeleClaude
-languages:
-  - python
-  - typescript
 env_allow_list: []
 frontend_root: frontend
 

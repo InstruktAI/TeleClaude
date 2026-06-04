@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-__all__ = ["resolve_invocation_cwd", "resolve_state_root", "resolve_workspace_root"]
+__all__ = ["resolve_git_root", "resolve_invocation_cwd", "resolve_state_root", "resolve_workspace_root"]
 
 
 def resolve_invocation_cwd() -> Path:
@@ -56,6 +56,27 @@ def resolve_workspace_root(start: str | Path) -> Path:
         if parent == current:
             raise FileNotFoundError("No teleclaude.yml found in directory hierarchy")
         current = parent
+
+
+def resolve_git_root(start: str | Path) -> Path:
+    """Return the active Git checkout root where file operations should run.
+
+    Linked worktrees carry ``.git`` as a gitdir file; for code and quality
+    operations the checkout root is the directory containing that file, not the
+    main repository that owns the shared Git metadata.
+    """
+    current = Path(start).expanduser().resolve()
+    if current.is_file():
+        current = current.parent
+    original = current
+
+    while current != current.parent:
+        git_path = current / ".git"
+        if git_path.is_dir() or git_path.is_file():
+            return current
+        current = current.parent
+
+    return original
 
 
 def resolve_state_root(start: str | Path) -> Path:

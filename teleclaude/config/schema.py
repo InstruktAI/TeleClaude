@@ -328,8 +328,6 @@ class ProjectConfig(BaseModel):
     project_slug: str | None = None
     project_name: str | None = None
     description: str | None = None
-    language: str | None = None
-    languages: list[str] = []
     env_allow_list: list[str] = []
     frontend_root: str | None = None
     business: BusinessConfig = BusinessConfig()

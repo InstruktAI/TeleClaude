@@ -6,6 +6,7 @@ code, lint, and test commands.
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import tomllib
@@ -214,31 +215,74 @@ def _resolve_session_touched_paths(project_root: Path) -> tuple[str, ...]:
     return tuple(sorted(touched))
 
 
+_FRONTEND_CANDIDATES = ("frontend", "web", "client", "src")
+
+
 def get_project_languages(project_root: Path) -> list[str]:
-    """Read languages from teleclaude.yml. Falls back to singular language field."""
-    config_path = project_root / "teleclaude.yml"
-    if not config_path.exists():
-        return []
-    with open(config_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    if not isinstance(data, dict):
-        return []
-    languages = data.get("languages", [])
-    if languages:
-        return [str(lang) for lang in languages]
-    lang = data.get("language")
-    if lang is not None:
-        return [str(lang)]
-    return []
+    """Detect project languages from repo artifacts.
 
-
-def get_project_language(project_root: Path) -> str | None:
-    """Read the language field from teleclaude.yml. Returns None if absent.
-
-    Deprecated: use get_project_languages() for multi-language support.
+    Python: pyproject.toml, setup.py, or root *.py files.
+    TypeScript: tsconfig.json or package.json with a typescript dep. When
+    teleclaude.yml specifies frontend_root, that directory is checked first
+    (authoritative); otherwise _FRONTEND_CANDIDATES are searched.
+    Rust: Cargo.toml.
     """
-    languages = get_project_languages(project_root)
-    return languages[0] if languages else None
+    languages: list[str] = []
+
+    if (project_root / "pyproject.toml").exists() or (project_root / "setup.py").exists():
+        languages.append("python")
+    elif any(project_root.glob("*.py")):
+        languages.append("python")
+
+    frontend_root: str | None = None
+    config_path = project_root / "teleclaude.yml"
+    if config_path.exists():
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            frontend_root = data.get("frontend_root") or None
+
+    if _detect_typescript(project_root, frontend_root=frontend_root):
+        languages.append("typescript")
+
+    if (project_root / "Cargo.toml").exists():
+        languages.append("rust")
+
+    return languages
+
+
+def _detect_typescript(project_root: Path, *, frontend_root: str | None = None) -> bool:
+    """Return True if TypeScript indicators are found at or under the project root.
+
+    When frontend_root is supplied (from teleclaude.yml), it is checked first.
+    The generic _FRONTEND_CANDIDATES then cover conventional layouts.
+    """
+    if (project_root / "tsconfig.json").exists():
+        return True
+
+    def _check_dir(candidate_dir: Path) -> bool:
+        if not candidate_dir.is_dir():
+            return False
+        if (candidate_dir / "tsconfig.json").exists():
+            return True
+        pkg = candidate_dir / "package.json"
+        if pkg.exists():
+            pkg_data = json.loads(pkg.read_text(encoding="utf-8"))
+            deps = pkg_data.get("dependencies", {})
+            dev_deps = pkg_data.get("devDependencies", {})
+            if "typescript" in deps or "typescript" in dev_deps:
+                return True
+        return False
+
+    if frontend_root and _check_dir(project_root / frontend_root):
+        return True
+
+    for candidate in _FRONTEND_CANDIDATES:
+        if frontend_root and candidate == frontend_root:
+            continue  # already checked above
+        if _check_dir(project_root / candidate):
+            return True
+
+    return False
 
 
 def python_files(paths: list[str]) -> list[str]:

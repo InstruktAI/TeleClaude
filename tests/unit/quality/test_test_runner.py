@@ -23,6 +23,10 @@ PYTHON_SOURCE = "teleclaude/foo.py"
 PYTHON_TEST = "tests/unit/test_foo.py"
 TYPESCRIPT_SOURCE = "frontend/app/foo.tsx"
 
+_TESTS_UNIT_DIR = "tests/unit"
+_TEST_DIRECT_PY = "tests/unit/test_direct.py"
+_TEST_BAR_PY = "tests/unit/foo/test_bar.py"
+
 
 def _workspace_resolution(
     *,
@@ -111,7 +115,7 @@ class TestDirectlyTouchedTestFiles:
             project_root=tmp_path,
             touched_files={"tests/unit/test_direct.py"},
         )
-        assert "tests/unit/test_direct.py" in targets
+        assert _TEST_DIRECT_PY in targets
 
     def test_touched_test_file_appears_exactly_once(self, tmp_path: Path) -> None:
         """A test file already under tests/ is not duplicated via companion mapping."""
@@ -187,7 +191,7 @@ class TestNonWorktreeFullSuite:
         runner = TestRunner(project_root=tmp_path)
         targets = runner.resolve_targets()
 
-        assert any("tests/unit" in str(t) for t in targets), f"Targets do not include 'tests/unit': {targets}"
+        assert any(_TESTS_UNIT_DIR in str(t) for t in targets), f"Targets do not include {_TESTS_UNIT_DIR!r}: {targets}"
 
     def test_shared_branch_with_session_uses_companion_mapping(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -208,7 +212,7 @@ class TestNonWorktreeFullSuite:
         runner = TestRunner(project_root=tmp_path)
         targets = runner.resolve_targets()
 
-        assert "tests/unit/foo/test_bar.py" in targets
+        assert _TEST_BAR_PY in targets
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +231,9 @@ class TestExitBehavior:
             pid = 12345
 
             def wait(self, timeout: int | None = None) -> int:
+                return 0
+
+            def poll(self) -> int | None:
                 return 0
 
         def _capture_popen(cmd: list[str], **kwargs: object) -> _FakeProc:
@@ -254,6 +261,9 @@ class TestExitBehavior:
             pid = 1
 
             def wait(self, timeout: int | None = None) -> int:
+                return 0
+
+            def poll(self) -> int | None:
                 return 0
 
         def _raise_setrlimit(*_args: object, **_kwargs: object) -> None:
@@ -284,6 +294,7 @@ class TestExitBehavior:
         def _failing_pytest_run(*_args: object, **_kwargs: object) -> int:
             return 1  # pytest exit code 1 = tests failed
 
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", _failing_pytest_run)
 
         runner = TestRunner(project_root=tmp_path)
@@ -399,7 +410,7 @@ class TestPathValidation:
         # Absolute paths outside project must be filtered
         for t in targets:
             t_str = str(t)
-            assert not t_str.startswith("/") or t_str.startswith(str(tmp_path)), (
+            assert not Path(t_str).is_absolute() or t_str.startswith(str(tmp_path)), (
                 f"Absolute path '{t_str}' outside project root in test targets"
             )
 

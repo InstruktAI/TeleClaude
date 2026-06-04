@@ -12,7 +12,7 @@ from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, ha
 from teleclaude.cli.telec.help import _usage
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
-from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
+from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -103,7 +103,7 @@ def handle_code_add(args: list[str]) -> None:
         )
         raise SystemExit(2)
 
-    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    project_root = resolve_git_root(resolve_invocation_cwd())
     untracked = set(_get_untracked_files(project_root))
     unmerged = set(_get_unmerged_files(project_root))
     dirty = _dirty_paths(project_root)
@@ -170,7 +170,7 @@ def handle_code_add(args: list[str]) -> None:
 def handle_code_changed(args: list[str]) -> None:
     """List workspace-scoped changed files."""
     _ = args
-    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    project_root = resolve_git_root(resolve_invocation_cwd())
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     files = _changed_paths(scope_resolution)
     if not files:
@@ -284,7 +284,7 @@ def handle_code_commit(args: list[str]) -> None:
 
     message = positionals[0] if positionals else None
     system_role = get_system_role()
-    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    project_root = resolve_git_root(resolve_invocation_cwd())
 
     # The absence of --approved is the trigger: surface guidance, never commit.
     # On main + non-integrator → Path A/B/C. Off main / integrator → short help.

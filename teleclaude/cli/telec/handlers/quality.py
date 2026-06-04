@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
+from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.format import FormatRunner
 from teleclaude.quality.lint import LintRunner
 from teleclaude.quality.scope import get_project_languages
@@ -19,7 +19,7 @@ def handle_lint(args: list[str]) -> None:
     """
     run_all = "--all" in args
     filtered = [a for a in args if a != "--all"]
-    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    project_root = resolve_git_root(resolve_invocation_cwd())
     runner = LintRunner(project_root=project_root)
 
     step_name, files = _parse_step_args(filtered)
@@ -67,7 +67,7 @@ def handle_test(args: list[str]) -> None:
     run_all = "--all" in args
     update_snapshots = "--update-snapshots" in args
     files = [a for a in args if a not in ("--all", "--update-snapshots")]
-    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    project_root = resolve_git_root(resolve_invocation_cwd())
     runner = TestRunner(
         project_root=project_root,
         update_snapshots=update_snapshots,
@@ -83,7 +83,7 @@ def handle_format(args: list[str]) -> None:
     Positional args → format those specific files (pre-commit mode).
     """
     run_all = "--all" in args
-    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    project_root = resolve_git_root(resolve_invocation_cwd())
     languages = get_project_languages(project_root)
     runner = FormatRunner(project_root=project_root, languages=languages)
     files = [a for a in args if not a.startswith("-")]

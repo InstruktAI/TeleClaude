@@ -635,8 +635,7 @@ class LintRunner:
             step.run(targets)
 
     def _should_run_python_pipeline(self, languages: list[str]) -> bool:
-        """Run Python lint for declared Python or legacy no-language projects."""
-        return not languages or "python" in languages
+        return "python" in languages
 
     def _collect_all_steps(self) -> dict[str, PipelineStep]:
         """Collect steps from all configured language pipelines."""

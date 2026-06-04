@@ -6,9 +6,20 @@ language-aware deployment, no-overwrite, project name substitution.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from teleclaude.project_setup.skeleton import deploy_skeleton
+
+_PRECOMMIT_REPOS_MARKER = "repos:"
+_PRECOMMIT_REPO_MARKER = "repo:"
+_MAKEFILE_LINT_TARGET = "lint:"
+_MAKEFILE_LINT_TARGET_SPACED = "lint :"
+_PYPROJECT_RUFF_SECTION = "[tool.ruff]"
+_PYPROJECT_PYRIGHT_SECTION = "[tool.pyright]"
+_PYPROJECT_PYRIGHTCONFIG = "pyrightconfig"
+_PYPROJECT_TYPECHECKING = "typeCheckingMode"
+_PROJECT_NAME_MARKER = "my-new-project"
 
 # ---------------------------------------------------------------------------
 # R4.1 — Python skeleton deployed to empty project
@@ -16,50 +27,52 @@ from teleclaude.project_setup.skeleton import deploy_skeleton
 
 
 class TestSkeletonDeployment:
-    """When language is declared in teleclaude.yml, init deploys skeleton files."""
+    """When Python artifacts are present, init deploys Python skeleton files."""
 
     def test_deploy_creates_pyproject_toml(self, tmp_path: Path) -> None:
         """Deploying Python skeleton creates pyproject.toml in an empty project."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+        (tmp_path / "setup.py").write_text("# placeholder\n", encoding="utf-8")
 
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "pyproject.toml").exists(), "pyproject.toml was not deployed"
 
     def test_deploy_creates_precommit_config(self, tmp_path: Path) -> None:
         """Deploying Python skeleton creates .pre-commit-config.yaml with real content."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+        (tmp_path / "setup.py").write_text("# placeholder\n", encoding="utf-8")
 
         deploy_skeleton(project_root=tmp_path)
         precommit = tmp_path / ".pre-commit-config.yaml"
         assert precommit.exists(), ".pre-commit-config.yaml was not deployed"
         content = precommit.read_text(encoding="utf-8")
-        assert "repos:" in content or "repo:" in content, (
+        assert _PRECOMMIT_REPOS_MARKER in content or _PRECOMMIT_REPO_MARKER in content, (
             "Deployed .pre-commit-config.yaml lacks repo entries — not production-grade"
         )
 
     def test_deploy_creates_makefile(self, tmp_path: Path) -> None:
         """Deploying Python skeleton creates a Makefile with real targets."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+        (tmp_path / "setup.py").write_text("# placeholder\n", encoding="utf-8")
 
         deploy_skeleton(project_root=tmp_path)
         makefile = tmp_path / "Makefile"
         assert makefile.exists(), "Makefile was not deployed"
         content = makefile.read_text(encoding="utf-8")
-        assert "lint:" in content or "lint :" in content, (
+        assert _MAKEFILE_LINT_TARGET in content or _MAKEFILE_LINT_TARGET_SPACED in content, (
             "Deployed Makefile lacks 'lint:' target — not production-grade"
         )
 
     def test_deployed_pyproject_is_non_trivial(self, tmp_path: Path) -> None:
         """Deployed pyproject.toml contains actual tool configuration (not a stub)."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+        (tmp_path / "setup.py").write_text("# placeholder\n", encoding="utf-8")
 
         deploy_skeleton(project_root=tmp_path)
         content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
         # Must contain tool configuration, not just the project header
-        assert "[tool.ruff]" in content, "Deployed pyproject.toml lacks [tool.ruff] section"
-        assert "[tool.pyright]" in content or "pyrightconfig" in content or "typeCheckingMode" in content, (
-            "Deployed pyproject.toml lacks pyright configuration"
-        )
+        assert _PYPROJECT_RUFF_SECTION in content, "Deployed pyproject.toml lacks [tool.ruff] section"
+        assert (
+            _PYPROJECT_PYRIGHT_SECTION in content
+            or _PYPROJECT_PYRIGHTCONFIG in content
+            or _PYPROJECT_TYPECHECKING in content
+        ), "Deployed pyproject.toml lacks pyright configuration"
 
 
 # ---------------------------------------------------------------------------
@@ -68,14 +81,14 @@ class TestSkeletonDeployment:
 
 
 class TestSkeletonMultiLanguage:
-    """Skeleton deployment reads the languages list field."""
+    """Skeleton deployment detects languages from filesystem artifacts."""
 
-    def test_deploy_reads_languages_list(self, tmp_path: Path) -> None:
-        """teleclaude.yml with languages: [python] triggers Python skeleton deployment."""
-        (tmp_path / "teleclaude.yml").write_text("languages:\n  - python\n", encoding="utf-8")
+    def test_deploy_reads_languages_from_artifacts(self, tmp_path: Path) -> None:
+        """setup.py artifact triggers Python skeleton deployment."""
+        (tmp_path / "setup.py").write_text("# placeholder\n", encoding="utf-8")
 
         deploy_skeleton(project_root=tmp_path)
-        assert (tmp_path / "pyproject.toml").exists(), "Python skeleton not deployed from languages list"
+        assert (tmp_path / "pyproject.toml").exists(), "Python skeleton not deployed from setup.py artifact"
 
     def test_deploy_skips_unrecognized_language(self, tmp_path: Path) -> None:
         """Unrecognized languages in the list are skipped, not errored."""
@@ -169,7 +182,7 @@ class TestDiffAndPrompt:
 
     def test_identical_file_is_skipped_silently(self, tmp_path: Path) -> None:
         """Existing file identical to template content is skipped without output."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+        (tmp_path / "setup.py").write_text("# placeholder\n", encoding="utf-8")
 
         # Deploy once to get the template content
         deploy_skeleton(project_root=tmp_path)
@@ -199,11 +212,13 @@ class TestTypeScriptSkeleton:
 
     def test_typescript_skeleton_deployed_to_frontend_root(self, tmp_path: Path) -> None:
         """TypeScript skeleton files deploy under the frontend_root directory."""
-        (tmp_path / "teleclaude.yml").write_text(
-            "languages:\n  - typescript\nfrontend_root: frontend\n",
+        (tmp_path / "teleclaude.yml").write_text("frontend_root: frontend\n", encoding="utf-8")
+        frontend = tmp_path / "frontend"
+        frontend.mkdir()
+        (frontend / "package.json").write_text(
+            json.dumps({"devDependencies": {"typescript": "^5"}}),
             encoding="utf-8",
         )
-        (tmp_path / "frontend").mkdir()
 
         deploy_skeleton(project_root=tmp_path)
         # At minimum, tsconfig.json should be deployed
@@ -211,11 +226,12 @@ class TestTypeScriptSkeleton:
 
     def test_typescript_skeleton_default_frontend_dir(self, tmp_path: Path) -> None:
         """When frontend_root is not set, defaults to frontend/."""
-        (tmp_path / "teleclaude.yml").write_text(
-            "languages:\n  - typescript\n",
+        frontend = tmp_path / "frontend"
+        frontend.mkdir()
+        (frontend / "package.json").write_text(
+            json.dumps({"devDependencies": {"typescript": "^5"}}),
             encoding="utf-8",
         )
-        (tmp_path / "frontend").mkdir()
 
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "frontend" / "tsconfig.json").exists()
@@ -231,12 +247,12 @@ class TestProjectNameSubstitution:
 
     def test_pyproject_contains_directory_name_as_project_name(self, tmp_path: Path) -> None:
         """Deployed pyproject.toml has the directory name as the project name."""
-        project_dir = tmp_path / "my-new-project"
+        project_dir = tmp_path / _PROJECT_NAME_MARKER
         project_dir.mkdir()
-        (project_dir / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+        (project_dir / "setup.py").write_text("# placeholder\n", encoding="utf-8")
 
         deploy_skeleton(project_root=project_dir)
         content = (project_dir / "pyproject.toml").read_text(encoding="utf-8")
-        assert "my-new-project" in content, (
-            f"Project name 'my-new-project' not found in deployed pyproject.toml:\n{content[:500]}"
+        assert _PROJECT_NAME_MARKER in content, (
+            f"Project name {_PROJECT_NAME_MARKER!r} not found in deployed pyproject.toml:\n{content[:500]}"
         )

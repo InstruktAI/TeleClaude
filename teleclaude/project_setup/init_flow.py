@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import json
 import shutil
 import sys
 from pathlib import Path
@@ -34,132 +33,6 @@ def _is_teleclaude_project(project_root: Path) -> bool:
     """Check if this is the TeleClaude project itself (not a user project)."""
     marker = project_root / "teleclaude" / "project_setup" / "init_flow.py"
     return marker.exists()
-
-
-def _prompt_yes_no(prompt: str, *, default: bool = True) -> bool:
-    """Prompt user for a yes/no answer. Returns default when stdin is not a TTY."""
-    suffix = " [Y/n] " if default else " [y/N] "
-    if not sys.stdin.isatty():
-        return default
-    try:
-        answer = input(prompt + suffix).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return False
-    if not answer:
-        return default
-    return answer in ("y", "yes")
-
-
-_FRONTEND_CANDIDATES = ("frontend", "web", "client", "src")
-
-
-def _detect_python(project_root: Path) -> bool:
-    """Detect Python indicators at the project root."""
-    if (project_root / "pyproject.toml").exists():
-        return True
-    if (project_root / "setup.py").exists():
-        return True
-    return any(project_root.glob("*.py"))
-
-
-def _detect_typescript(project_root: Path) -> tuple[bool, str | None]:
-    """Detect TypeScript indicators. Returns (found, frontend_root_relative)."""
-    # Check root-level tsconfig.json
-    if (project_root / "tsconfig.json").exists():
-        return True, None
-
-    # Check candidate frontend directories
-    for candidate in _FRONTEND_CANDIDATES:
-        candidate_dir = project_root / candidate
-        if not candidate_dir.is_dir():
-            continue
-        has_ts = (candidate_dir / "tsconfig.json").exists()
-        if not has_ts:
-            pkg = candidate_dir / "package.json"
-            if pkg.exists():
-                try:
-                    pkg_data = json.loads(pkg.read_text(encoding="utf-8"))
-                    deps = pkg_data.get("dependencies", {})
-                    dev_deps = pkg_data.get("devDependencies", {})
-                    has_ts = "typescript" in deps or "typescript" in dev_deps
-                except (json.JSONDecodeError, OSError):
-                    pass
-        if has_ts:
-            return True, candidate
-
-    return False, None
-
-
-def _detect_and_set_languages(project_root: Path) -> None:
-    """Detect project languages and write to teleclaude.yml if changed.
-
-    Non-interactive mode auto-writes detected values. Interactive mode
-    prompts the user when detected languages differ from configured.
-    """
-    config_path = project_root / "teleclaude.yml"
-    if not config_path.exists():
-        return
-
-    try:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError) as exc:
-        logger.warning("Could not read %s: %s — skipping language detection", config_path, exc)
-        return
-    if not isinstance(raw, dict):
-        raw = {}
-
-    existing_languages: list[str] = raw.get("languages", [])
-    existing_frontend: str | None = raw.get("frontend_root")
-
-    # Detect
-    detected_languages: list[str] = []
-    detected_frontend: str | None = None
-
-    if _detect_python(project_root):
-        detected_languages.append("python")
-
-    ts_found, ts_root = _detect_typescript(project_root)
-    if ts_found:
-        detected_languages.append("typescript")
-        detected_frontend = ts_root
-
-    if not detected_languages:
-        return
-
-    # Check if anything changed
-    if sorted(detected_languages) == sorted(existing_languages) and detected_frontend == existing_frontend:
-        return
-
-    # Interactive: prompt
-    if sys.stdin.isatty():
-        print(f"\nDetected languages: {', '.join(detected_languages)}")
-        if detected_frontend:
-            print(f"Frontend root: {detected_frontend}/")
-        if existing_languages:
-            print(f"Current config: {', '.join(existing_languages)}")
-        if not _prompt_yes_no("Update language configuration?", default=False):
-            return
-
-    # Write via ruamel.yaml to preserve comments
-    _ryaml = YAML()
-    _ryaml.preserve_quotes = True
-    try:
-        doc = _ryaml.load(config_path.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
-        doc = raw
-
-    if not isinstance(doc, dict):
-        doc = {}
-
-    doc["languages"] = detected_languages
-    if detected_frontend:
-        doc["frontend_root"] = detected_frontend
-
-    buf = io.StringIO()
-    _ryaml.dump(doc, buf)
-    config_path.write_text(buf.getvalue(), encoding="utf-8")
-    logger.info("Updated languages: %s", detected_languages)
 
 
 def _prompt_release_channel(project_root: Path) -> None:
@@ -315,7 +188,6 @@ def init_project(project_root: Path) -> None:
     # ``_ensure_project_slug`` guarantee the canonical machine identity is
     # present before the project is registered with the catalog.
     sync_project_artifacts(project_root)
-    _detect_and_set_languages(project_root)
     if not is_mother:
         deploy_skeleton(project_root)
     _ensure_project_slug(project_root)

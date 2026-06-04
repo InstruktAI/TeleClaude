@@ -13,6 +13,8 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.quality.scope import get_project_languages
+
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "quality"
@@ -32,36 +34,26 @@ _TYPESCRIPT_FILES: list[tuple[str, str]] = [
 
 
 def deploy_skeleton(project_root: Path) -> None:
-    """Deploy skeleton files for the project's declared languages.
+    """Deploy skeleton files for detected project languages.
 
-    Reads ``teleclaude.yml`` at *project_root* to determine languages.
-    When no languages are declared or the config is absent, returns silently.
-    Existing identical files are skipped silently. Differing files trigger a
-    diff-and-prompt in interactive mode, or are skipped in non-interactive mode.
+    Languages are detected from repo artifacts (pyproject.toml, tsconfig.json,
+    Cargo.toml). frontend_root is read from teleclaude.yml when present,
+    defaulting to 'frontend'. Existing identical files are skipped silently.
+    Differing files trigger a diff-and-prompt in interactive mode, or are
+    skipped in non-interactive mode.
     """
-    config_path = project_root / "teleclaude.yml"
-    if not config_path.exists():
-        logger.info("No teleclaude.yml — skipping skeleton deployment")
-        return
-
-    with open(config_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    if not isinstance(data, dict):
-        return
-
-    raw_languages = data.get("languages", [])
-    if raw_languages and isinstance(raw_languages, list):
-        languages = [str(lang) for lang in raw_languages]
-    else:
-        lang = data.get("language")
-        languages = [str(lang)] if lang else []
-
+    languages = get_project_languages(project_root)
     if not languages:
-        logger.info("No languages declared in teleclaude.yml — skipping skeleton deployment")
+        logger.info("No recognised language artifacts — skipping skeleton deployment")
         return
 
-    frontend_root = str(data.get("frontend_root", "frontend"))
+    config_path = project_root / "teleclaude.yml"
+    frontend_root = "frontend"
+    if config_path.exists():
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        if isinstance(data, dict):
+            frontend_root = str(data.get("frontend_root", "frontend"))
 
     for language in languages:
         if language == "python":

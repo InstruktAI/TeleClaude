@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.project_root import resolve_state_root, resolve_workspace_root
+from teleclaude.project_root import resolve_git_root, resolve_state_root, resolve_workspace_root
 
 
 def test_resolve_state_root_follows_worktree_gitdir(tmp_path: Path) -> None:
@@ -16,6 +16,17 @@ def test_resolve_state_root_follows_worktree_gitdir(tmp_path: Path) -> None:
     (worktree / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
 
     assert resolve_state_root(worktree) == repo_root
+
+
+def test_resolve_git_root_returns_worktree_checkout(tmp_path: Path) -> None:
+    repo_root = tmp_path / "main"
+    worktree = tmp_path / "trees" / "sample"
+    gitdir = repo_root / ".git" / "worktrees" / "sample"
+    gitdir.mkdir(parents=True)
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+
+    assert resolve_git_root(worktree / "subdir") == worktree
 
 
 def test_resolve_workspace_root_returns_worktree_checkout(tmp_path: Path) -> None:

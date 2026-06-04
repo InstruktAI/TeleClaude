@@ -26,6 +26,13 @@ STORAGE_SOURCE = "crates/storage/src/lib.rs"
 PYTHON_SOURCE = "teleclaude/foo.py"
 TYPESCRIPT_SOURCE = "frontend/app/foo.tsx"
 
+_STEP_MARKDOWN = "markdown"
+_STEP_RESOURCE_VALIDATION = "resource_validation"
+_STEP_ESLINT = "eslint"
+_STEP_TSC = "tsc"
+_TS_RELATIVE_PATH = "app/foo.tsx"
+_PY_SUFFIX = ".py"
+
 
 def _workspace_resolution(
     *,
@@ -89,17 +96,17 @@ class TestProjectRootResolution:
 
 
 class TestLanguageDetection:
-    """Languages are read from the project's teleclaude.yml."""
+    """Languages are detected from filesystem artifacts."""
 
-    def test_reads_python_language_from_config(self, tmp_path: Path) -> None:
-        """teleclaude.yml with language:python returns ['python'] as the project languages."""
-        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+    def test_reads_python_language_from_pyproject_toml(self, tmp_path: Path) -> None:
+        """pyproject.toml presence returns ['python'] as the project languages."""
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
 
         langs = get_project_languages(tmp_path)
         assert langs == ["python"]
 
     def test_no_language_field_returns_empty_list(self, tmp_path: Path) -> None:
-        """teleclaude.yml without a language field returns empty list."""
+        """No recognised artifacts returns empty list."""
         (tmp_path / "teleclaude.yml").write_text("business:\n  domains: {}\n", encoding="utf-8")
 
         langs = get_project_languages(tmp_path)
@@ -165,6 +172,7 @@ class TestWorktreeContext:
     ) -> None:
         received_targets: list[object] = []
 
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_workspace_scope_resolution",
             lambda _path: _workspace_resolution(
@@ -184,6 +192,7 @@ class TestWorktreeContext:
     ) -> None:
         received_targets: list[object] = []
 
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_workspace_scope_resolution",
             lambda _path: _workspace_resolution(
@@ -287,6 +296,7 @@ class TestSharedBranchScopeSuccess:
         scoped_files = ["teleclaude/foo/bar.py", "teleclaude/baz/qux.py"]
         received_targets: list[object] = []
 
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_workspace_scope_resolution",
             lambda _path: _workspace_resolution(
@@ -306,7 +316,7 @@ class TestSharedBranchScopeSuccess:
         targets_arg = received_targets[0]
         if hasattr(targets_arg, "__iter__") and not isinstance(targets_arg, str):
             items = list(targets_arg)  # pyright: ignore[reportUnknownArgumentType]
-            assert all(str(t).endswith(".py") for t in items), (
+            assert all(str(t).endswith(_PY_SUFFIX) for t in items), (
                 f"Shared branch pipeline received non-file targets — expected scoped .py files: {items}"
             )
             assert set(str(t) for t in items) == set(scoped_files), (
@@ -319,6 +329,7 @@ class TestSharedBranchScopeSuccess:
         """Without session identity on shared branch, pipeline runs against source dirs."""
         received_targets: list[object] = []
 
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_workspace_scope_resolution",
             lambda _path: _workspace_resolution(
@@ -352,6 +363,7 @@ class TestExplicitFilesOverride:
         """Explicit file arguments go directly to the pipeline without scoping."""
         received_targets: list[object] = []
 
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             received_targets.append,
@@ -383,8 +395,8 @@ class TestExplicitFilesOverride:
         runner.run(files=[".github/workflows/lint-test.yaml"])
 
         step_names = [name for name, _cmd in step_calls]
-        assert "markdown" in step_names
-        assert "resource_validation" in step_names
+        assert _STEP_MARKDOWN in step_names
+        assert _STEP_RESOURCE_VALIDATION in step_names
         assert "ruff_check" not in step_names
         assert "ruff_format" not in step_names
         assert "pyright" not in step_names
@@ -418,19 +430,19 @@ class TestExplicitFilesOverride:
         runner.run(files=["frontend/app/foo.tsx"])
 
         step_names = [name for name, _cwd, _cmd in step_calls]
-        assert "eslint" in step_names
-        assert "tsc" in step_names
+        assert _STEP_ESLINT in step_names
+        assert _STEP_TSC in step_names
         assert "ruff_check" not in step_names
         assert "ruff_format" not in step_names
         assert "pyright" not in step_names
         assert "mypy" not in step_names
         assert "jscpd" not in step_names
 
-        eslint_call = next((entry for entry in step_calls if entry[0] == "eslint"), None)
+        eslint_call = next((entry for entry in step_calls if entry[0] == _STEP_ESLINT), None)
         assert eslint_call is not None
         _, cwd, cmd = eslint_call
         assert cwd == str(tmp_path / "frontend")
-        assert "app/foo.tsx" in cmd
+        assert _TS_RELATIVE_PATH in cmd
 
 
 # ---------------------------------------------------------------------------
@@ -518,14 +530,14 @@ class TestTypeScriptLintPipeline:
         """TypeScript pipeline contains eslint and tsc steps."""
         pipeline = TypeScriptLintPipeline(tmp_path, tmp_path / "frontend")
         step_names = [step.name for step in pipeline.steps]
-        assert "eslint" in step_names, f"eslint not found in TS pipeline: {step_names}"
-        assert "tsc" in step_names, f"tsc not found in TS pipeline: {step_names}"
+        assert _STEP_ESLINT in step_names, f"{_STEP_ESLINT!r} not found in TS pipeline: {step_names}"
+        assert _STEP_TSC in step_names, f"{_STEP_TSC!r} not found in TS pipeline: {step_names}"
 
     def test_typescript_pipeline_eslint_before_tsc(self, tmp_path: Path) -> None:
         """eslint runs before tsc in the TypeScript pipeline."""
         pipeline = TypeScriptLintPipeline(tmp_path, tmp_path / "frontend")
         step_names = [step.name for step in pipeline.steps]
-        assert step_names.index("eslint") < step_names.index("tsc"), "eslint must run before tsc"
+        assert step_names.index(_STEP_ESLINT) < step_names.index(_STEP_TSC), "eslint must run before tsc"
 
 
 # ---------------------------------------------------------------------------
@@ -574,8 +586,12 @@ class TestMultiLanguageLintDispatch:
 
         assert len(python_calls) >= 1, "Python pipeline was not called"
         ts_step_names = [name for name, _ in ts_step_calls]
-        assert "eslint" in ts_step_names, f"eslint was not dispatched — TS pipeline not running: {ts_step_calls}"
-        assert "tsc" in ts_step_names, f"tsc was not dispatched — TS pipeline not running: {ts_step_calls}"
+        assert _STEP_ESLINT in ts_step_names, (
+            f"{_STEP_ESLINT!r} was not dispatched — TS pipeline not running: {ts_step_calls}"
+        )
+        assert _STEP_TSC in ts_step_names, (
+            f"{_STEP_TSC!r} was not dispatched — TS pipeline not running: {ts_step_calls}"
+        )
 
     def test_typescript_steps_run_from_frontend_root_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TypeScript lint steps (eslint, tsc) execute from the frontend_root directory as cwd."""
@@ -649,32 +665,6 @@ class TestRustLintDispatch:
 
         assert python_calls == []
         assert [name for name, _cmd, _cwd in tool_calls] == ["cargo_fmt_check", "cargo_clippy"]
-
-    def test_legacy_no_language_project_runs_python_pipeline_without_cargo(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Legacy projects with no language declaration keep Python lint behavior."""
-        python_calls: list[object] = []
-        tool_calls: list[tuple[str, list[str], Path]] = []
-
-        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: [])
-        monkeypatch.setattr(
-            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
-            lambda _path: _workspace_resolution(
-                kind=WorkspaceScopeKind.WORKTREE,
-                scoped_existing_paths=(PYTHON_SOURCE,),
-            ),
-        )
-        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", python_calls.append)
-        monkeypatch.setattr(
-            "teleclaude.quality.lint._run_tool",
-            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
-        )
-
-        LintRunner(project_root=tmp_path).run()
-
-        assert python_calls == [[PYTHON_SOURCE]]
-        assert [call for call in tool_calls if call[1] and call[1][0] == "cargo"] == []
 
     def test_mixed_python_and_rust_project_runs_both_pipelines(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -919,6 +909,7 @@ class TestFailingStepDiagnostic:
 
     def test_failing_guardrails_step_exits_nonzero(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A failing guardrails step causes the overall lint to exit non-zero."""
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_workspace_scope_resolution",
             lambda _path: _workspace_resolution(
@@ -1018,7 +1009,7 @@ class TestPathValidation:
             if hasattr(targets, "__iter__") and not isinstance(targets, str):
                 for t in targets:  # pyright: ignore[reportUnknownVariableType]
                     t_str = str(t)
-                    assert not t_str.startswith("/") or t_str.startswith(str(tmp_path)), (
+                    assert not Path(t_str).is_absolute() or t_str.startswith(str(tmp_path)), (
                         f"Absolute path '{t_str}' outside project root passed to pipeline"
                     )
 
@@ -1055,6 +1046,7 @@ class TestRunStep:
             pipe.steps = [_Recording()]  # pyright: ignore[reportAttributeAccessIssue]
             return pipe
 
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
         monkeypatch.setattr("teleclaude.quality.lint.PythonLintPipeline", _pipeline)
 
         runner = LintRunner(project_root=tmp_path)
@@ -1071,6 +1063,7 @@ class TestRunStep:
 
     def test_run_step_rejects_traversal_files(self, tmp_path: Path) -> None:
         """All files rejected by path validation → exit 1, not silent pass."""
+        (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
         runner = LintRunner(project_root=tmp_path)
         with pytest.raises(SystemExit) as exc_info:
             runner.run_step("guardrails", ["../etc/passwd"])

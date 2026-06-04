@@ -28,7 +28,7 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 | File                  | Location                                     | Model           | Owns                                                                                                                                                              |
 | --------------------- | -------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                                                                                        |
-| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_slug`, `project_name`, `language`, `languages`, `frontend_root`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
+| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
 | **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                                                                             |
 
 **The project config is a regular file committed to the repository.** It is never a
@@ -44,10 +44,8 @@ Valid in both project and global configs.
 ```yaml
 project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
-language: string # deprecated; use languages list
-languages: list[string] # project languages for quality tooling and init skeletons (e.g. [python, typescript])
 env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
-frontend_root: string # directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
+frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
 description: string
 business:
   domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)

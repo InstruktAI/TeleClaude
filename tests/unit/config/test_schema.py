@@ -16,6 +16,10 @@ from teleclaude.config.schema import (
     ProjectConfig,
 )
 
+_STRIPPED_EMAIL = "alice@example.com"
+_VALID_SLUG = "alpha-one"
+_FRONTEND_ROOT_VALUE = "frontend"
+
 
 class TestJobWhenConfig:
     @pytest.mark.unit
@@ -109,7 +113,7 @@ class TestSchemaValidators:
     @pytest.mark.unit
     def test_person_entry_strips_email(self) -> None:
         entry = PersonEntry.model_validate({"name": "Alice", "email": " alice@example.com "})
-        assert entry.email == "alice@example.com"
+        assert entry.email == _STRIPPED_EMAIL
 
     @pytest.mark.unit
     def test_project_slug_defaults_to_none_for_legacy_configs(self) -> None:
@@ -119,7 +123,7 @@ class TestSchemaValidators:
     @pytest.mark.unit
     def test_project_slug_accepts_well_formed_slug_and_trims_whitespace(self) -> None:
         config = ProjectConfig.model_validate({"project_slug": "  alpha-one  "})
-        assert config.project_slug == "alpha-one"
+        assert config.project_slug == _VALID_SLUG
 
     @pytest.mark.unit
     def test_project_slug_rejects_invalid_characters(self) -> None:
@@ -151,34 +155,16 @@ class TestSchemaValidators:
 
 
 class TestMultiLanguageConfig:
-    """ProjectConfig supports multi-language configuration via languages list."""
-
-    @pytest.mark.unit
-    def test_accepts_languages_list(self) -> None:
-        """ProjectConfig accepts a languages list with multiple entries."""
-        config = ProjectConfig.model_validate({"languages": ["python", "typescript"]})
-        assert config.languages == ["python", "typescript"]
-
-    @pytest.mark.unit
-    def test_languages_defaults_to_empty_list(self) -> None:
-        """languages defaults to empty list when absent."""
-        config = ProjectConfig.model_validate({})
-        assert config.languages == []
+    """ProjectConfig layout config (frontend_root)."""
 
     @pytest.mark.unit
     def test_accepts_frontend_root(self) -> None:
         """ProjectConfig accepts a frontend_root string."""
         config = ProjectConfig.model_validate({"frontend_root": "frontend"})
-        assert config.frontend_root == "frontend"
+        assert config.frontend_root == _FRONTEND_ROOT_VALUE
 
     @pytest.mark.unit
     def test_frontend_root_defaults_to_none(self) -> None:
         """frontend_root defaults to None when absent."""
         config = ProjectConfig.model_validate({})
         assert config.frontend_root is None
-
-    @pytest.mark.unit
-    def test_legacy_language_field_still_accepted(self) -> None:
-        """Backward compat: singular language field is still accepted."""
-        config = ProjectConfig.model_validate({"language": "python"})
-        assert config.language == "python"

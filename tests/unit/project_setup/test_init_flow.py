@@ -14,6 +14,9 @@ import teleclaude.project_setup.domain_seeds as domain_seeds
 import teleclaude.project_setup.init_flow as init_flow
 from teleclaude import project_manifest
 
+_SLUG_MY_PROJECT = "my-project"
+_SLUG_FRESH_PROJECT = "fresh-project"
+
 
 def test_is_teleclaude_project_detects_repo_layout(tmp_path: Path) -> None:
     marker = tmp_path / "teleclaude" / "project_setup" / "init_flow.py"
@@ -22,12 +25,6 @@ def test_is_teleclaude_project_detects_repo_layout(tmp_path: Path) -> None:
 
     assert init_flow._is_teleclaude_project(tmp_path) is True
     assert init_flow._is_teleclaude_project(tmp_path / "other") is False
-
-
-def test_prompt_yes_no_returns_default_when_stdin_is_not_a_tty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
-
-    assert init_flow._prompt_yes_no("Proceed?", default=False) is False
 
 
 def test_prompt_release_channel_updates_stable_channel_and_pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,7 +76,7 @@ def test_init_project_writes_project_slug_and_registers_root(tmp_path: Path, mon
 
     # Slug must be persisted in teleclaude.yml.
     config_payload = yaml.safe_load((project_root / "teleclaude.yml").read_text(encoding="utf-8"))
-    assert config_payload["project_slug"] == "my-project"
+    assert config_payload["project_slug"] == _SLUG_MY_PROJECT
 
     # Registry must contain the project root.
     assert manifest_path.exists()
@@ -127,7 +124,7 @@ def test_init_project_writes_project_slug_for_fresh_project(tmp_path: Path, monk
 
     # Slug must be persisted, derived from the directory name.
     config_payload = yaml.safe_load((project_root / "teleclaude.yml").read_text(encoding="utf-8"))
-    assert config_payload.get("project_slug") == "fresh-project"
+    assert config_payload.get("project_slug") == _SLUG_FRESH_PROJECT
 
     # Registry must still include the fresh project.
     assert manifest_path.exists()
@@ -155,82 +152,6 @@ def test_ensure_project_slug_raises_when_slug_cannot_be_derived(
 
     with pytest.raises(RuntimeError, match="project_slug"):
         init_flow._ensure_project_slug(project_root)
-
-
-class TestDetectAndSetLanguages:
-    """_detect_and_set_languages scans project root for language indicators."""
-
-    def test_detects_python_from_pyproject_toml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """pyproject.toml presence triggers Python detection."""
-        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
-        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n", encoding="utf-8")
-        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
-
-        init_flow._detect_and_set_languages(tmp_path)
-
-        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
-        assert "python" in config.get("languages", [])
-
-    def test_detects_typescript_from_package_json_with_dep(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """package.json with typescript in devDeps triggers TypeScript detection."""
-        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
-        frontend = tmp_path / "frontend"
-        frontend.mkdir()
-        (frontend / "package.json").write_text('{"devDependencies": {"typescript": "^5.0"}}', encoding="utf-8")
-        (frontend / "tsconfig.json").write_text("{}", encoding="utf-8")
-        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
-
-        init_flow._detect_and_set_languages(tmp_path)
-
-        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
-        assert "typescript" in config.get("languages", [])
-        assert config.get("frontend_root") == "frontend"
-
-    def test_no_indicators_leaves_config_unchanged(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No language indicators leaves languages unset."""
-        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
-        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
-
-        init_flow._detect_and_set_languages(tmp_path)
-
-        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
-        assert config.get("languages") is None or config.get("languages") == []
-
-    def test_skips_when_config_already_matches(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No config write when detected matches existing."""
-        (tmp_path / "teleclaude.yml").write_text("project_name: test\nlanguages:\n  - python\n", encoding="utf-8")
-        (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
-        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
-
-        original_mtime = (tmp_path / "teleclaude.yml").stat().st_mtime
-        init_flow._detect_and_set_languages(tmp_path)
-        # File should not have been rewritten
-        new_mtime = (tmp_path / "teleclaude.yml").stat().st_mtime
-        assert original_mtime == new_mtime
-
-    def test_detects_python_from_setup_py(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """setup.py presence triggers Python detection."""
-        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
-        (tmp_path / "setup.py").write_text("from setuptools import setup\n", encoding="utf-8")
-        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
-
-        init_flow._detect_and_set_languages(tmp_path)
-
-        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
-        assert "python" in config.get("languages", [])
-
-    def test_detects_typescript_from_tsconfig_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """tsconfig.json in project root triggers TypeScript detection."""
-        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
-        (tmp_path / "tsconfig.json").write_text("{}", encoding="utf-8")
-        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
-
-        init_flow._detect_and_set_languages(tmp_path)
-
-        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
-        assert "typescript" in config.get("languages", [])
 
 
 def test_init_project_does_not_spawn_subprocesses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

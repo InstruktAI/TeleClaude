@@ -67,7 +67,6 @@ tests/unit/chiptunes/test_player.py
 tests/unit/chiptunes/test_sid_parser.py
 tests/unit/cli/telec/handlers/test_auth_cmds.py
 tests/unit/cli/telec/handlers/test_bugs.py
-tests/unit/cli/telec/handlers/test_code.py
 tests/unit/cli/telec/handlers/test_config.py
 tests/unit/cli/telec/handlers/test_docs.py
 tests/unit/cli/telec/handlers/test_events_signals.py
@@ -147,7 +146,6 @@ tests/unit/config/test_loader.py
 tests/unit/config/test_remote_computers.py
 tests/unit/config/test_runtime_settings.py
 tests/unit/config/test_schema_export.py
-tests/unit/config/test_schema.py
 tests/unit/core/adapter_client/test__channels.py
 tests/unit/core/adapter_client/test__remote.py
 tests/unit/core/agent_coordinator/test__fanout.py
@@ -349,13 +347,9 @@ tests/unit/project_setup/test_git_filters.py
 tests/unit/project_setup/test_git_repo.py
 tests/unit/project_setup/test_gitattributes.py
 tests/unit/project_setup/test_hooks.py
-tests/unit/project_setup/test_init_flow.py
 tests/unit/project_setup/test_macos_setup.py
 tests/unit/project_setup/test_onboard_flow.py
-tests/unit/project_setup/test_skeleton.py
 tests/unit/quality/test_format.py
-tests/unit/quality/test_lint.py
-tests/unit/quality/test_test_runner.py
 tests/unit/quality/test_toolchain.py
 tests/unit/resource_validation/test_activation_trigger_validation_spec.py
 tests/unit/runtime/test_binaries.py

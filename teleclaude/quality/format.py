@@ -180,8 +180,7 @@ class FormatRunner:
         _run_format_tool(_cargo_fmt_command(scope), _rust_cwd(scope), "cargo fmt")
 
     def _should_format_python(self) -> bool:
-        """Format Python when declared or when using legacy no-language config."""
-        return not self._languages or "python" in self._languages
+        return "python" in self._languages
 
     def _resolve_frontend_root(self) -> Path:
         """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""

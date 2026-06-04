@@ -17,12 +17,11 @@ templates and produce a coverage report with actionable recommendations.
 ## Preconditions
 
 - The current working directory is the project root.
-- `teleclaude.yml` declares `languages` and optionally `frontend_root`.
 - Blessed templates exist under `templates/quality/{language}/` in the TeleClaude repo.
 
 ## Steps
 
-1. Read `teleclaude.yml` to get `languages` and `frontend_root`.
+1. Detect languages from repo artifacts (`pyproject.toml`, `setup.py`, or root Python files → python; `tsconfig.json` or `package.json` with typescript dep → typescript; `Cargo.toml` → rust). Read `frontend_root` from `teleclaude.yml` if present, defaulting to `frontend`.
 2. For each declared language, read the project's tool configs:
    - **Python**: `pyproject.toml` sections for ruff, pyright, mypy, guardrails.
    - **TypeScript**: `tsconfig.json`, `eslint.config.mjs`, `.prettierrc`,

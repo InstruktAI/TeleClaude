@@ -28,6 +28,13 @@ from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, Wor
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 
+_BRAND_NEW_FILE = "teleclaude/brand_new.py"
+_MODIFIED_FILE = "teleclaude/modified.py"
+_BRANCH_FEATURE = "feature-branch"
+_COMMIT_FLAG_F = "-F"
+_PATHSPEC_SEPARATOR = "--"
+_COMMIT_MSG = "fix(x): y"
+
 
 def _snap(
     *,
@@ -108,7 +115,7 @@ class TestGitHelpers:
         mock_repo.git.rev_parse.return_value = "feature-branch\n"
         with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
             result = _current_branch(tmp_path)
-        assert result == "feature-branch"
+        assert result == _BRANCH_FEATURE
 
     @pytest.mark.unit
     def test_current_branch_propagates_git_error(self, tmp_path: Path) -> None:
@@ -135,11 +142,11 @@ class TestCommitWorkspaceScope:
             kind=WorkspaceScopeKind.WORKTREE,
             has_session_identity=False,
             dirty_paths=(
-                DirtyPath("teleclaude/modified.py", DirtyOp.MODIFIED),
-                DirtyPath("teleclaude/brand_new.py", DirtyOp.MODIFIED),
+                DirtyPath(_MODIFIED_FILE, DirtyOp.MODIFIED),
+                DirtyPath(_BRAND_NEW_FILE, DirtyOp.MODIFIED),
             ),
-            scoped_dirty_paths=("teleclaude/modified.py", "teleclaude/brand_new.py"),
-            scoped_existing_paths=("teleclaude/modified.py", "teleclaude/brand_new.py"),
+            scoped_dirty_paths=(_MODIFIED_FILE, _BRAND_NEW_FILE),
+            scoped_existing_paths=(_MODIFIED_FILE, _BRAND_NEW_FILE),
         )
         staged_files: list[list[str]] = []
         repo = MagicMock()
@@ -149,7 +156,7 @@ class TestCommitWorkspaceScope:
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
             patch(
                 "teleclaude.cli.telec.handlers.code._working_tree_snapshot",
-                return_value=_snap(untracked=["teleclaude/brand_new.py"]),
+                return_value=_snap(untracked=[_BRAND_NEW_FILE]),
             ),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -168,10 +175,10 @@ class TestCommitWorkspaceScope:
         # Nothing staged (untracked dropped, modified doesn't need staging).
         assert staged_files == []
         # Pathspec contains ONLY the modified file; brand_new dropped.
-        _assert_pathspec_commit(repo, ["teleclaude/modified.py"])
+        _assert_pathspec_commit(repo, [_MODIFIED_FILE])
         # Behavioral assertion: the dropped file's PATH is surfaced so the
         # agent sees what got skipped. We do not lock the surrounding prose.
-        assert "teleclaude/brand_new.py" in capsys.readouterr().err
+        assert _BRAND_NEW_FILE in capsys.readouterr().err
 
     @pytest.mark.unit
     def test_pre_staged_untracked_in_scope_is_committed(self, tmp_path: Path) -> None:
@@ -645,7 +652,7 @@ class TestHandleCodeAdd:
         new_file.write_text("print('hi')\n")
         staged: list[list[str]] = []
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=["new.py"]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
@@ -679,7 +686,7 @@ class TestHandleCodeAdd:
         # partial staging.
         repo.git.diff.side_effect = ["partial.py", "partial.py"]
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
@@ -710,7 +717,7 @@ class TestHandleCodeAdd:
         repo = MagicMock()
         repo.git.diff.side_effect = ["deleted.py", "deleted.py"]
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
@@ -732,7 +739,7 @@ class TestHandleCodeAdd:
         resolved.write_text("merged content\n")
         staged: list[list[str]] = []
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=["resolved.py"]),
@@ -760,7 +767,7 @@ class TestHandleCodeAdd:
         f.write_text("changed\n")
         staged: list[list[str]] = []
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
@@ -786,7 +793,7 @@ class TestHandleCodeAdd:
         f = tmp_path / "clean.py"
         f.write_text("nothing changed\n")
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
@@ -808,7 +815,7 @@ class TestHandleCodeAdd:
     @pytest.mark.unit
     def test_missing_path_errors(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
@@ -845,7 +852,7 @@ class TestChangedWorkspaceScope:
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
         ):
             handle_code_changed([])
@@ -869,7 +876,7 @@ class TestChangedWorkspaceScope:
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
         ):
             handle_code_changed([])
@@ -881,20 +888,18 @@ def _assert_pathspec_commit(repo: MagicMock, expected_files: list[str]) -> None:
     """Assert the commit ran as a pathspec commit via a message file (-F)."""
     repo.git.commit.assert_called_once()
     args, kwargs = repo.git.commit.call_args
-    assert args[0] == "-F"
+    assert args[0] == _COMMIT_FLAG_F
     assert isinstance(args[1], str) and args[1]
-    assert args[2] == "--"
+    assert args[2] == _PATHSPEC_SEPARATOR
     assert list(args[3:]) == expected_files
     assert kwargs == {"with_extended_output": True}
 
 
 class TestWithTrailer:
     @pytest.mark.unit
-    def test_appends_trailer_when_absent(self) -> None:
+    def test_appends_trailer_when_absent(self, snapshot: SnapshotAssertion) -> None:
         out = _with_trailer("fix(x): y")
-        assert out.startswith("fix(x): y\n\n")
-        assert "Co-Authored-By: TeleClaude <noreply@instrukt.ai>" in out
-        assert out.endswith("\n")
+        assert out == snapshot
 
     @pytest.mark.unit
     def test_idempotent_when_trailer_present(self) -> None:
@@ -911,7 +916,7 @@ class TestHandleCodeCommitContract:
     ) -> None:
         """Bare `telec code commit` on main surfaces Path A/B/C (exit 1)."""
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
@@ -937,7 +942,7 @@ class TestHandleCodeCommitContract:
     def test_message_without_approved_also_surfaces_abc(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Missing --approved is the ABC trigger — message presence is irrelevant."""
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
@@ -958,13 +963,13 @@ class TestHandleCodeCommitContract:
         with (
             patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
             patch("teleclaude.cli.telec.handlers.code._commit_under_lock") as under_lock,
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
         ):
             handle_code_commit(["fix(x): y", "--approved"])
         assert under_lock.call_count == 1
-        assert under_lock.call_args.kwargs["message"] == "fix(x): y"
+        assert under_lock.call_args.kwargs["message"] == _COMMIT_MSG
         assert under_lock.call_args.kwargs["includes"] == []
 
     @pytest.mark.unit
@@ -973,12 +978,12 @@ class TestHandleCodeCommitContract:
         with (
             patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
             patch("teleclaude.cli.telec.handlers.code._commit_under_lock") as under_lock,
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
         ):
             handle_code_commit(["--approved", "fix(x): y", "--include", "a.py", "b.py"])
-        assert under_lock.call_args.kwargs["message"] == "fix(x): y"
+        assert under_lock.call_args.kwargs["message"] == _COMMIT_MSG
         assert under_lock.call_args.kwargs["includes"] == ["a.py", "b.py"]
 
     @pytest.mark.unit
@@ -987,12 +992,12 @@ class TestHandleCodeCommitContract:
         with (
             patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
             patch("teleclaude.cli.telec.handlers.code._commit_under_lock") as under_lock,
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
         ):
             handle_code_commit(["--include", "a.py", "b.py", "--approved", "fix(x): y"])
-        assert under_lock.call_args.kwargs["message"] == "fix(x): y"
+        assert under_lock.call_args.kwargs["message"] == _COMMIT_MSG
         assert under_lock.call_args.kwargs["includes"] == ["a.py", "b.py"]
 
     @pytest.mark.unit
@@ -1000,7 +1005,7 @@ class TestHandleCodeCommitContract:
         """If the message comes after --include, it gets swallowed into includes
         and we error because no message remains."""
         with (
-            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
             patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
             patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
@@ -1040,3 +1045,77 @@ class TestHandleCodeCommitContract:
         with pytest.raises(SystemExit) as exc:
             handle_code_commit(["--approved", "fix: x", "--include", "--include", "a.py"])
         assert exc.value.code == 2
+
+
+class TestPlainGitRepoWithoutTeleclaude:
+    """Reproduction: telec code ops must not raise in a git repo without teleclaude.yml."""
+
+    @pytest.mark.unit
+    def test_changed_does_not_raise_without_teleclaude_yml(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        resolution = WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.WORKTREE,
+            has_session_identity=False,
+            dirty_paths=(),
+            scoped_dirty_paths=(),
+            scoped_existing_paths=(),
+        )
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+        ):
+            handle_code_changed([])
+        assert not (tmp_path / "teleclaude.yml").exists()
+
+    @pytest.mark.unit
+    def test_add_does_not_raise_without_teleclaude_yml(self, tmp_path: Path) -> None:
+        new_file = tmp_path / "new.py"
+        new_file.write_text("print('hi')\n")
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=["new.py"]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(**{"git.diff.return_value": ""}),
+            ),
+            patch("teleclaude.cli.telec.handlers.code._stage_files"),
+        ):
+            handle_code_add(["new.py"])
+        assert not (tmp_path / "teleclaude.yml").exists()
+
+    @pytest.mark.unit
+    def test_commit_does_not_raise_without_teleclaude_yml(self, tmp_path: Path) -> None:
+        resolution = WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.WORKTREE,
+            has_session_identity=False,
+            dirty_paths=(DirtyPath("fix.py", DirtyOp.MODIFIED),),
+            scoped_dirty_paths=("fix.py",),
+            scoped_existing_paths=("fix.py",),
+        )
+        snapshot = MagicMock(
+            untracked=frozenset(),
+            staged=frozenset(),
+            partial_staged=frozenset(),
+            unmerged=frozenset(),
+            dirty=frozenset({"fix.py"}),
+        )
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_git_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="my-branch"),
+            patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
+            patch("teleclaude.cli.telec.handlers.code.wait_for_index_lock_clear"),
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._working_tree_snapshot", return_value=snapshot),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(**{"git.commit.return_value": ("", "1 file changed", "")}),
+            ),
+        ):
+            handle_code_commit(["--approved", "fix: dotfiles zshenv PATH"])
+        assert not (tmp_path / "teleclaude.yml").exists()

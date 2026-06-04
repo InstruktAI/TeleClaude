@@ -32,3 +32,13 @@
   
   '''
 # ---
+# name: TestWithTrailer.test_appends_trailer_when_absent
+  '''
+  fix(x): y
+  
+  🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)
+  
+  Co-Authored-By: TeleClaude <noreply@instrukt.ai>
+  
+  '''
+# ---

@@ -51,7 +51,7 @@ but they do not branch on git worktree state directly.
 | Session identity   | `$TMPDIR/teleclaude_identity.json`             |
 | Session transcript | Daemon transcript for the current session      |
 | Dirty paths        | `git status --porcelain --untracked-files=all` |
-| Project languages  | `teleclaude.yml` `language`/`languages` config |
+| Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list | CLI arguments (`telec code lint <files...>`)   |
 
 | Output                  | Description                                                               |
@@ -167,9 +167,9 @@ No `teleclaude_identity.json` present. This is a human or CI context.
 **Response:** Caller fallback. For lint this is source directories. For tests
 this is configured test directories. Expected behavior for manual runs.
 
-### Missing language config
+### No recognised language artifacts
 
-`teleclaude.yml` has no `language` or `languages` field.
+No Python, TypeScript, or Rust artifact is found at the project root or in a
+recognised frontend directory.
 
-**Response:** Project root used as the single lint target directory. Test
-fallback uses configured defaults.
+**Response:** Quality tools detect no languages and skip all pipelines. Use `telec code lint/test/format` after adding the appropriate language artifact.
