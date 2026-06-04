@@ -280,6 +280,7 @@ async def test_ensure_discord_infrastructure_withholds_project_routing_without_c
         cat_changes: dict[str, int],
         *,
         key: str | None = None,
+        create: bool = True,
     ) -> object | None:
         if name == "Projects - mac-mini":
             return None
@@ -294,7 +295,7 @@ async def test_ensure_discord_infrastructure_withholds_project_routing_without_c
     adapter._sync_project_forum_positions = AsyncMock()
     adapter._persist_discord_channel_ids = MagicMock()
 
-    computer = SimpleNamespace(name="mac-mini")
+    computer = SimpleNamespace(name="mac-mini", is_master=True)
     discord_config = SimpleNamespace(categories={})
     global_config = SimpleNamespace(people=[])
 

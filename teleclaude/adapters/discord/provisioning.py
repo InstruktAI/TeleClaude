@@ -126,9 +126,14 @@ class ProvisioningMixin:
         derives from. A same-name forum living in another category is invisible
         here and will not be reclaimed. When ``create`` is False, resolves in
         scope but never creates — shared forums are provisioned by the master
-        computer only.
+        computer only. A forum without a target category is never created;
+        callers must supply the per-computer or shared category.
         """
-        category_channels = getattr(category, "channels", None) if category is not None else None
+        if category is None:
+            logger.warning("Refusing to create forum '%s' without a target category", name)
+            return None
+
+        category_channels = getattr(category, "channels", None)
         guild_channels = getattr(guild, "channels", None)
         if category_channels is None and guild_channels is None:
             logger.warning("Guild channel cache not populated; refusing to create forum '%s'", name)
@@ -147,6 +152,9 @@ class ProvisioningMixin:
                 if found_id is not None:
                     logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
                     return found_id
+
+        if not create:
+            return None
 
         create_fn = getattr(guild, "create_forum", None)
         if not callable(create_fn):
