@@ -62,10 +62,8 @@ class ProjectHeader(TelecMixin, Widget):
         else:
             base_style = Style()
 
-        # Leading chevron occupies the 1-space indent slot so the folder stays
-        # aligned above the session [N] badges below it.
         chevron = "▶" if self.collapsed else "▼"
-        line.append(chevron, style=base_style)
+        line.append(f"{chevron} ", style=base_style)
         name = self.project.name
         if name:
             line.append(f"\U0001f4c1 {name} - {path}", style=base_style)
