@@ -57,8 +57,7 @@ async def test_removed_and_live_rows_share_a_slug(todos_db: TodosDb) -> None:
 
     with todos_db._sync_session() as session:
         statuses = {
-            row.id: row.status
-            for row in session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "recycled")).all()  # type: ignore[attr-defined]
+            row.id: row.status for row in session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "recycled")).all()
         }
     assert statuses == {row_id: "removed", "fresh-live-row": "active"}
 

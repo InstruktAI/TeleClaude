@@ -87,7 +87,7 @@ async def _snapshot(tmux_session: str, agent: str, shell_name: str, tail_chars: 
     try:
         pane = await collect_pane_snapshot(tmux_session, capture_lines=tail_chars)
         current_command = await get_current_command(tmux_session) if pane.session_exists else None
-        output = pane.output
+        output = pane.output_normalized
     except (OSError, ValueError, SubprocessTimeoutError):
         pane = None
         current_command = None

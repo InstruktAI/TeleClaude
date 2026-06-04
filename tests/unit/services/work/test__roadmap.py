@@ -23,7 +23,7 @@ async def test_remove_threads_project_root_into_soft_primitive() -> None:
         project_root="/path/to/project",
         _ensure_db=AsyncMock(return_value=fake_db),
     )
-    ops = RoadmapOps(base)  # type: ignore[arg-type]
+    ops = RoadmapOps(base)
 
     result = await ops.remove("doomed")
 
@@ -48,7 +48,7 @@ async def test_remove_preserves_soft_primitive_refusal() -> None:
         project_root="/path/to/project",
         _ensure_db=AsyncMock(return_value=fake_db),
     )
-    ops = RoadmapOps(base)  # type: ignore[arg-type]
+    ops = RoadmapOps(base)
 
     with pytest.raises(RemoveRefused) as exc_info:
         await ops.remove("doomed")
@@ -62,7 +62,7 @@ async def test_add_does_not_accept_before() -> None:
         project_root="/path/to/project",
         _ensure_db=AsyncMock(return_value=fake_db),
     )
-    ops = RoadmapOps(base)  # type: ignore[arg-type]
+    ops = RoadmapOps(base)
 
     assert "before" not in inspect.signature(ops.add).parameters
     with pytest.raises(TypeError):

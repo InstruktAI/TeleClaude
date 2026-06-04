@@ -54,7 +54,8 @@ def _ordered_metadata(
 
 def _render(content: str, metadata: Mapping[str, object]) -> str:
     post = frontmatter.Post(content, **metadata)
-    return frontmatter.dumps(post).rstrip() + "\n"
+    dumped: str = frontmatter.dumps(post)
+    return dumped.rstrip() + "\n"
 
 
 def update_file(third_party_root: Path, path: Path, *, scope: str, dry_run: bool = False) -> UpdateResult:

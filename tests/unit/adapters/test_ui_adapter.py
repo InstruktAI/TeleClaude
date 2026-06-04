@@ -85,9 +85,7 @@ class _ConcreteAdapter(UiAdapter):
     async def discover_peers(self) -> list[PeerInfo]:
         return []
 
-    async def poll_output_stream(  # type: ignore[override]
-        self, session: Session, timeout: float = 300.0
-    ) -> AsyncIterator[str]:
+    async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
         raise NotImplementedError
         yield ""  # pragma: no cover
 

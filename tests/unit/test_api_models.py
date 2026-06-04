@@ -495,7 +495,7 @@ class TestOperationCompletedEventDTO:
         accepted: list[str] = []
         for completion_event in _COMPLETION_EVENTS.values():
             dto = OperationCompletedEventDTO(
-                event=completion_event,  # type: ignore[arg-type]
+                event=completion_event,
                 operation_id="op-1",
                 error=None,
             )
@@ -506,7 +506,7 @@ class TestOperationCompletedEventDTO:
     def test_unknown_event_rejected(self) -> None:
         """Events outside the Literal raise ValidationError."""
         with pytest.raises(ValidationError):
-            OperationCompletedEventDTO(  # type: ignore[call-arg]
+            OperationCompletedEventDTO(
                 event="operation.unknown.completed",
                 operation_id="op-1",
             )

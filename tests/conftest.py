@@ -163,7 +163,7 @@ def _current_event_loop() -> asyncio.AbstractEventLoop | None:
     return loop
 
 
-def _sweep_asyncio_tasks(item) -> None:
+def _sweep_asyncio_tasks(item: pytest.Item) -> None:
     """Cancel + gather any asyncio tasks left running by the test.
 
     Per ``software-development/policy/test-resource-discipline`` rule 8: every

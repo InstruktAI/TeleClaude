@@ -5,7 +5,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
-from alembic import context  # pyright: ignore[reportAttributeAccessIssue]
+from alembic import context  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
 from teleclaude.core import (
     db_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]  # ensure models are registered
 )

@@ -15,6 +15,7 @@ from teleclaude.constants import (
     VOICE_TRANSCRIPTION_STATE_PENDING,
     VOICE_TRANSCRIPTION_STATE_SUCCEEDED,
 )
+from teleclaude.core import db_models
 from teleclaude.core.db import Db
 from teleclaude.core.origins import InputOrigin
 
@@ -39,7 +40,7 @@ async def _create_transcription(
     session_id: str = "session-1",
     audio_path: str = "/tmp/teleclaude_voice/voice-1.ogg",
     origin: str = InputOrigin.DISCORD.value,
-):
+) -> db_models.VoiceTranscription:
     return await db.create_voice_transcription(
         session_id=session_id,
         audio_path=audio_path,

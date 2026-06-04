@@ -406,7 +406,7 @@ class TestSendMessage:
     async def test_uses_template_outside_customer_window(self, adapter: WhatsAppAdapter) -> None:
         session = _make_session()
         expected_id = object()
-        phone = session.origin_metadata["whatsapp"]["phone_number"]  # type: ignore[index]
+        phone = session.origin_metadata["whatsapp"]["phone_number"]
         with (
             patch.object(adapter, "_send_text_message", AsyncMock()) as send_text,
             patch.object(adapter, "_send_template_message", AsyncMock(return_value=expected_id)) as send_template,

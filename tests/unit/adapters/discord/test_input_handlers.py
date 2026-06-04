@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TypedDict
+from typing import TypedDict, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -68,9 +68,9 @@ class DummyVoiceHandlers(InputHandlersMixin):
         return Session(session_id="sess-voice", computer_name="machine", tmux_session_name="tmux-voice", title="Voice")
 
     @staticmethod
-    def _require_async_callable(fn: object, *, label: str):
+    def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]:
         del label
-        return fn
+        return cast("Callable[..., Awaitable[object]]", fn)
 
     @staticmethod
     def _discord_actor_name(_author: object, user_id: str) -> str:
@@ -209,7 +209,7 @@ async def test_handle_launcher_click_provisions_discord_channel_after_session_cr
         def _resolve_project_from_forum(self, _forum_id: int) -> str | None:
             return "/tmp/project"
 
-        def _async_callable(self, fn, *, label):  # type: ignore[no-untyped-def]
+        def _async_callable(self, fn, *, label):
             del label
             return fn
 

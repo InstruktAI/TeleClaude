@@ -46,7 +46,7 @@ class _FakeHost(UiAdapter):
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         return ""
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
+    async def update_channel_title(self, session: Session) -> bool:
         return True
 
     async def close_channel(self, session: Session) -> bool:
@@ -84,6 +84,7 @@ class _FakeHost(UiAdapter):
 
     async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
         raise NotImplementedError
+        yield ""  # pragma: no cover  # makes function an async generator
 
     # --- Override output message tracking to use simple instance attrs ---
 

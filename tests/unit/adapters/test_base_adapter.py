@@ -21,7 +21,8 @@ class DummyAdapter(BaseAdapter):
     ADAPTER_KEY = "dummy"
 
     async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
-        return _empty_output_stream()
+        async for chunk in _empty_output_stream():
+            yield chunk
 
     async def send_general_message(self, text: str, *, metadata: object | None = None) -> str:
         return text
@@ -62,7 +63,7 @@ class DummyAdapter(BaseAdapter):
     async def create_channel(self, session: Session, title: str, metadata: object) -> str:
         return title
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
+    async def update_channel_title(self, session: Session) -> bool:
         return True
 
     async def close_channel(self, session: Session) -> bool:

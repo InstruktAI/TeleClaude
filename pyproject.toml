@@ -171,7 +171,7 @@
 [tool.mypy]
   # MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse
   enable_error_code=["literal-required"]
-  exclude          =["^.venv/", "^trees/", "^venv/"]
+  exclude          =["^.venv/", "^trees/", "^venv/", "^frontend/"]
   files            =["*.py", "jobs", "scripts", "teleclaude", "tests", "tools"]
   follow_imports   ="silent"                                                    # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution
   python_version   ="3.12"

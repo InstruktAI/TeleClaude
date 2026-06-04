@@ -278,7 +278,7 @@ class SessionMemoryExtractionJob(Job):
 
     def _resolve_identity_key(self, session: Session) -> str | None:
         """Derive the identity key from session origin_metadata."""
-        return derive_identity_key(session.origin_metadata)
+        return derive_identity_key(dict(session.origin_metadata))
 
     async def _extract_personal_memories(
         self,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core import db_models
 from teleclaude.memory.context import renderer as renderer_module
@@ -57,7 +58,7 @@ class TestRenderContext:
         assert renderer_module.render_context([]) == ""
 
     def test_render_context_emits_observation_and_summary_sections(
-        self, snapshot, monkeypatch: pytest.MonkeyPatch
+        self, snapshot: SnapshotAssertion, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
@@ -70,7 +71,7 @@ class TestRenderContext:
         assert rendered == snapshot
 
     def test_render_context_index_under_top_n_uses_expanded_heading(
-        self, snapshot, monkeypatch: pytest.MonkeyPatch
+        self, snapshot: SnapshotAssertion, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
@@ -88,7 +89,7 @@ class TestRenderContext:
         assert len(detail_headings) == 5
 
     def test_render_context_index_at_or_above_top_n_uses_top_n_heading(
-        self, snapshot, monkeypatch: pytest.MonkeyPatch
+        self, snapshot: SnapshotAssertion, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
@@ -108,7 +109,7 @@ class TestRenderContext:
         assert len(index_rows) == 50
 
     def test_render_context_index_caps_at_one_hundred_when_total_exceeds(
-        self, snapshot, monkeypatch: pytest.MonkeyPatch
+        self, snapshot: SnapshotAssertion, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(renderer_module.time, "time", lambda: 200)
         entries = [
