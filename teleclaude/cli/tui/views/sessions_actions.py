@@ -38,8 +38,11 @@ class SessionsViewActionsMixin:
     if TYPE_CHECKING:
         app: Any
         _nav_items: list[Widget]
+        _computers: list[Any]
         _projects: list[Any]
         _sessions: list[Any]
+        _collapsed_computers: set[str]
+        _collapsed_projects: set[str]
 
     def action_cursor_up(self) -> None:
         """Move the cursor to the previous sessions tree item."""
@@ -168,7 +171,22 @@ class SessionsViewActionsMixin:
         self._notify_state_changed()  # type: ignore[attr-defined]
 
     def action_collapse(self) -> None:
-        """Left: collapse selected session row."""
+        """Left: collapse the selected computer, project, or session row."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if isinstance(item, ComputerHeader):
+            name = item.data.computer.name
+            if name not in self._collapsed_computers:  # type: ignore[attr-defined]
+                self._collapsed_computers.add(name)  # type: ignore[attr-defined]
+                self._rebuild_tree()  # type: ignore[attr-defined]
+                self._notify_state_changed()  # type: ignore[attr-defined]
+            return
+        if isinstance(item, ProjectHeader):
+            path = item.project.path
+            if path not in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.add(path)  # type: ignore[attr-defined]
+                self._rebuild_tree()  # type: ignore[attr-defined]
+                self._notify_state_changed()  # type: ignore[attr-defined]
+            return
         row = self._current_session_row()  # type: ignore[attr-defined]
         if row and not row.collapsed:
             row.collapsed = True
@@ -176,7 +194,22 @@ class SessionsViewActionsMixin:
             self._notify_state_changed()  # type: ignore[attr-defined]
 
     def action_expand(self) -> None:
-        """Right: expand selected session row."""
+        """Right: expand the selected computer, project, or session row."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if isinstance(item, ComputerHeader):
+            name = item.data.computer.name
+            if name in self._collapsed_computers:  # type: ignore[attr-defined]
+                self._collapsed_computers.discard(name)  # type: ignore[attr-defined]
+                self._rebuild_tree()  # type: ignore[attr-defined]
+                self._notify_state_changed()  # type: ignore[attr-defined]
+            return
+        if isinstance(item, ProjectHeader):
+            path = item.project.path
+            if path in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.discard(path)  # type: ignore[attr-defined]
+                self._rebuild_tree()  # type: ignore[attr-defined]
+                self._notify_state_changed()  # type: ignore[attr-defined]
+            return
         row = self._current_session_row()  # type: ignore[attr-defined]
         if row and row.collapsed:
             row.collapsed = False
@@ -184,7 +217,7 @@ class SessionsViewActionsMixin:
             self._notify_state_changed()  # type: ignore[attr-defined]
 
     def action_expand_all(self) -> None:
-        """+ : expand all session rows."""
+        """= : expand all session rows (leaf level)."""
         for widget in self._nav_items:  # type: ignore[attr-defined]
             if isinstance(widget, SessionRow):
                 widget.collapsed = False
@@ -192,11 +225,36 @@ class SessionsViewActionsMixin:
         self._notify_state_changed()  # type: ignore[attr-defined]
 
     def action_collapse_all(self) -> None:
-        """- : collapse all session rows."""
+        """- : collapse all session rows (leaf level)."""
         for widget in self._nav_items:  # type: ignore[attr-defined]
             if isinstance(widget, SessionRow):
                 widget.collapsed = True
         self._collapsed_sessions.clear()  # type: ignore[attr-defined]
+        self._notify_state_changed()  # type: ignore[attr-defined]
+
+    def action_expand_structure(self) -> None:
+        """+ : expand every computer and project (structural level)."""
+        if not self._collapsed_computers and not self._collapsed_projects:  # type: ignore[attr-defined]
+            return
+        self._collapsed_computers.clear()  # type: ignore[attr-defined]
+        self._collapsed_projects.clear()  # type: ignore[attr-defined]
+        self._rebuild_tree()  # type: ignore[attr-defined]
+        self._notify_state_changed()  # type: ignore[attr-defined]
+
+    def action_collapse_structure(self) -> None:
+        """_ : collapse every computer and project (structural level)."""
+        context = self._resolve_context_for_cursor()
+        target_computer = context[0] if context else None
+        self._collapsed_computers = {c.name for c in self._computers}  # type: ignore[attr-defined]
+        self._collapsed_projects = {p.path for p in self._projects}  # type: ignore[attr-defined]
+        self._rebuild_tree()  # type: ignore[attr-defined]
+        if target_computer is not None:
+            for i, widget in enumerate(self._nav_items):  # type: ignore[attr-defined]
+                if isinstance(widget, ComputerHeader) and widget.data.computer.name == target_computer:
+                    self.cursor_index = i  # type: ignore[attr-defined]
+                    self._update_cursor_highlight()  # type: ignore[attr-defined]
+                    self._scroll_to_cursor()
+                    break
         self._notify_state_changed()  # type: ignore[attr-defined]
 
     def _resolve_context_for_cursor(self) -> tuple[str, str] | None:

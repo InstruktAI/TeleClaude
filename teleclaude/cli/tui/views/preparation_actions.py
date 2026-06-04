@@ -154,13 +154,43 @@ class PreparationViewActionsMixin:
         refresh_footer_bindings(self, self._sync_default_footer_action)
 
     def action_expand(self) -> None:
-        """Right: expand todo to show files."""
+        """Right: expand the selected computer, project, or todo."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if isinstance(item, ComputerHeader):
+            name = item.data.computer.name
+            if name in self._collapsed_computers:  # type: ignore[attr-defined]
+                self._collapsed_computers.discard(name)  # type: ignore[attr-defined]
+                self.post_message(StateChanged())  # type: ignore[attr-defined]
+                self._rebuild()  # type: ignore[attr-defined]
+            return
+        if isinstance(item, ProjectHeader):
+            path = item.project.path
+            if path in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.discard(path)  # type: ignore[attr-defined]
+                self.post_message(StateChanged())  # type: ignore[attr-defined]
+                self._rebuild()  # type: ignore[attr-defined]
+            return
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if row:
             self._expand_todo(row)  # type: ignore[attr-defined]
 
     def action_collapse(self) -> None:
-        """Left: collapse todo or jump to parent todo from file row."""
+        """Left: collapse the selected computer, project, todo, or jump from a file row."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if isinstance(item, ComputerHeader):
+            name = item.data.computer.name
+            if name not in self._collapsed_computers:  # type: ignore[attr-defined]
+                self._collapsed_computers.add(name)  # type: ignore[attr-defined]
+                self.post_message(StateChanged())  # type: ignore[attr-defined]
+                self._rebuild()  # type: ignore[attr-defined]
+            return
+        if isinstance(item, ProjectHeader):
+            path = item.project.path
+            if path not in self._collapsed_projects:  # type: ignore[attr-defined]
+                self._collapsed_projects.add(path)  # type: ignore[attr-defined]
+                self.post_message(StateChanged())  # type: ignore[attr-defined]
+                self._rebuild()  # type: ignore[attr-defined]
+            return
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if row:
             self._collapse_todo(row)  # type: ignore[attr-defined]
@@ -215,6 +245,31 @@ class PreparationViewActionsMixin:
         for widget in list(self._nav_items):  # type: ignore[attr-defined]
             if isinstance(widget, TodoRow) and self._is_expanded(widget.slug):  # type: ignore[attr-defined]
                 self._collapse_todo(widget)  # type: ignore[attr-defined]
+
+    def action_expand_structure(self) -> None:
+        """+ : expand every computer and project (structural level)."""
+        if not self._collapsed_computers and not self._collapsed_projects:  # type: ignore[attr-defined]
+            return
+        self._collapsed_computers.clear()  # type: ignore[attr-defined]
+        self._collapsed_projects.clear()  # type: ignore[attr-defined]
+        self.post_message(StateChanged())  # type: ignore[attr-defined]
+        self._rebuild()  # type: ignore[attr-defined]
+
+    def action_collapse_structure(self) -> None:
+        """_ : collapse every computer and project (structural level)."""
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        target_computer = context[0] if context else None
+        self._collapsed_computers = {p.computer or "local" for p in self._projects_with_todos}  # type: ignore[attr-defined]
+        self._collapsed_projects = {p.path for p in self._projects_with_todos}  # type: ignore[attr-defined]
+        self.post_message(StateChanged())  # type: ignore[attr-defined]
+        self._rebuild()  # type: ignore[attr-defined]
+        if target_computer is not None:
+            for i, widget in enumerate(self._nav_items):  # type: ignore[attr-defined]
+                if isinstance(widget, ComputerHeader) and widget.data.computer.name == target_computer:
+                    self.cursor_index = i  # type: ignore[attr-defined]
+                    self._update_cursor_highlight()  # type: ignore[attr-defined]
+                    self._nav_items[i].scroll_visible()  # type: ignore[attr-defined]
+                    break
 
     def action_preview_file(self) -> None:
         """Space: preview the current file in view mode (no focus)."""

@@ -63,6 +63,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding(
             "minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True), show=False
         ),
+        Binding("plus", "expand_structure", "Expand tree", show=False),
+        Binding("underscore", "collapse_structure", "Collapse tree", show=False),
         Binding("n", "new_todo", "Todo"),
         Binding("N", "new_project", "Project"),
         Binding("b", "new_bug", "Bug"),
@@ -85,6 +87,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         super().__init__(**kwargs)
         self._projects_with_todos: list[ProjectWithTodosDTO] = []
         self._expanded_todos: set[str] = set()
+        self._collapsed_computers: set[str] = set()
+        self._collapsed_projects: set[str] = set()
         self._icebox_projects: set[str] = set()
         self._delivered_projects: set[str] = set()
         self._trashed_projects: set[str] = set()
@@ -155,6 +159,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         expanded_todos = data.get("expanded_todos", [])
         if isinstance(expanded_todos, list):
             self._expanded_todos = {str(item) for item in expanded_todos}
+        collapsed_computers = data.get("collapsed_computers", [])
+        if isinstance(collapsed_computers, list):
+            self._collapsed_computers = {str(item) for item in collapsed_computers}
+        collapsed_projects = data.get("collapsed_projects", [])
+        if isinstance(collapsed_projects, list):
+            self._collapsed_projects = {str(item) for item in collapsed_projects}
         icebox_projects = data.get("icebox_projects", [])
         if isinstance(icebox_projects, list):
             self._icebox_projects = {str(item) for item in icebox_projects}
@@ -285,9 +295,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 session_count=comp_todo_count,
                 recent_activity=False,
             )
-            comp_header = ComputerHeader(data=comp_display)
+            comp_collapsed = comp_name in self._collapsed_computers
+            comp_header = ComputerHeader(data=comp_display, collapsed=comp_collapsed)
             widgets_to_mount.append(comp_header)
             self._nav_items.append(comp_header)
+            if comp_collapsed:
+                continue
 
             for project in projects_in_comp:
                 proj_info = ProjectDTO(
@@ -296,9 +309,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     path=project.path,
                     description=project.description,
                 )
-                header = ProjectHeader(project=proj_info, session_count=0)
+                proj_collapsed = project.path in self._collapsed_projects
+                header = ProjectHeader(project=proj_info, session_count=0, collapsed=proj_collapsed)
                 widgets_to_mount.append(header)
                 self._nav_items.append(header)
+                if proj_collapsed:
+                    continue
 
                 sections = project_sections[project.path]
                 rendered_any = False
@@ -598,6 +614,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         """Export the current expanded-todo, icebox, and trashed state for persistence."""
         return {
             "expanded_todos": sorted(self._expanded_todos),
+            "collapsed_computers": sorted(self._collapsed_computers),
+            "collapsed_projects": sorted(self._collapsed_projects),
             "icebox_projects": sorted(self._icebox_projects),
             "delivered_projects": sorted(self._delivered_projects),
             "trashed_projects": sorted(self._trashed_projects),

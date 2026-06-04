@@ -38,6 +38,8 @@ def _make_mixin() -> SessionsViewHighlightsMixin:
     obj._nav_items = []
     obj._sticky_session_ids = set()
     obj._collapsed_sessions = set()
+    obj._collapsed_computers = set()
+    obj._collapsed_projects = set()
     obj._optimistically_hidden_session_ids = set()
     obj._sessions = []
     obj._computers = []
@@ -117,8 +119,20 @@ def test_get_persisted_state_includes_required_keys() -> None:
     assert "output_highlights" in state
     assert "last_output_summary" in state
     assert "collapsed_sessions" in state
+    assert "collapsed_computers" in state
+    assert "collapsed_projects" in state
     assert "preview" in state
     assert "highlighted_session_id" in state
+
+
+@pytest.mark.unit
+def test_get_persisted_state_exports_collapsed_structure_sorted() -> None:
+    host = _make_mixin()
+    host._collapsed_computers.update({"zeta", "alpha"})
+    host._collapsed_projects.update({"/b", "/a"})
+    state = host.get_persisted_state()
+    assert state["collapsed_computers"] == ["alpha", "zeta"]
+    assert state["collapsed_projects"] == ["/a", "/b"]
 
 
 @pytest.mark.unit

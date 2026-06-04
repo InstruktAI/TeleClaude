@@ -30,9 +30,10 @@ class ComputerHeader(TelecMixin, Widget):
     }
     """
 
-    def __init__(self, data: ComputerDisplayInfo, **kwargs: object) -> None:
+    def __init__(self, data: ComputerDisplayInfo, collapsed: bool = False, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.data = data
+        self.collapsed = collapsed
 
     def render(self) -> Text:
         computer = self.data.computer
@@ -47,7 +48,8 @@ class ComputerHeader(TelecMixin, Widget):
         else:
             base_style = Style()
 
-        line.append(f"\U0001f5a5  {name}", style=base_style)
+        chevron = "▶" if self.collapsed else "▼"
+        line.append(f"{chevron} \U0001f5a5  {name}", style=base_style)
 
         if status != "online":
             style = Style(reverse=True, italic=True) if is_selected else Style(dim=True, italic=True)

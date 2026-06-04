@@ -79,8 +79,10 @@ class SessionsView(
         Binding("enter", "focus_pane", "Focus"),
         Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
         Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
-        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
-        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding("equals_sign", "expand_all", "All", show=False),
+        Binding("minus", "collapse_all", "None", show=False),
+        Binding("plus", "expand_structure", "Expand tree", show=False),
+        Binding("underscore", "collapse_structure", "Collapse tree", show=False),
         Binding("n", "new_session", "New"),
         Binding("n", "new_project", "New Project"),
         Binding("k", "kill_session", "Kill"),
@@ -105,6 +107,8 @@ class SessionsView(
         # session_id → {"text": str, "ts": float (monotonic)}
         self._last_output_summary: dict[str, dict[str, object]] = {}  # guard: loose-dict
         self._collapsed_sessions: set[str] = set()
+        self._collapsed_computers: set[str] = set()
+        self._collapsed_projects: set[str] = set()
         self._optimistically_hidden_session_ids: set[str] = set()
         # TreeInteractionState for Space double-press detection
         self._interaction = TreeInteractionState()
@@ -223,6 +227,14 @@ class SessionsView(
         collapsed_sessions = data.get("collapsed_sessions", [])
         if isinstance(collapsed_sessions, list):
             self._collapsed_sessions = {str(item) for item in collapsed_sessions}
+
+        collapsed_computers = data.get("collapsed_computers", [])
+        if isinstance(collapsed_computers, list):
+            self._collapsed_computers = {str(item) for item in collapsed_computers}
+
+        collapsed_projects = data.get("collapsed_projects", [])
+        if isinstance(collapsed_projects, list):
+            self._collapsed_projects = {str(item) for item in collapsed_projects}
 
         preview_data = data.get("preview")
         if isinstance(preview_data, dict):
@@ -357,29 +369,33 @@ class SessionsView(
     def _mount_node(self, container: VerticalScroll, node: TreeNode) -> None:
         """Recursively mount tree nodes as widgets."""
         if is_computer_node(node):
-            widget = ComputerHeader(data=node.data)
+            collapsed = node.data.computer.name in self._collapsed_computers
+            widget = ComputerHeader(data=node.data, collapsed=collapsed)
             container.mount(widget)
             self._nav_items.append(widget)
-            for child in node.children:
-                self._mount_node(container, child)
+            if not collapsed:
+                for child in node.children:
+                    self._mount_node(container, child)
 
         elif is_project_node(node):
             session_count = len([c for c in node.children if is_session_node(c)])
-            widget = ProjectHeader(project=node.data, session_count=session_count)
+            collapsed = node.data.path in self._collapsed_projects
+            widget = ProjectHeader(project=node.data, session_count=session_count, collapsed=collapsed)
             container.mount(widget)
             self._nav_items.append(widget)
-            for child in node.children:
-                self._mount_node(container, child)
-            # Closing separator after the last session in the group.
-            # The last SessionRow skips its own bottom connector (└---) to
-            # avoid a double line with the GroupSeparator.
-            if session_count > 0:
-                last_session_row = self._find_last_session_row_in_group(node)
-                container.mount(
-                    GroupSeparator(
-                        connector_col=self._project_group_separator_col(last_session_row),
+            if not collapsed:
+                for child in node.children:
+                    self._mount_node(container, child)
+                # Closing separator after the last session in the group.
+                # The last SessionRow skips its own bottom connector (└---) to
+                # avoid a double line with the GroupSeparator.
+                if session_count > 0:
+                    last_session_row = self._find_last_session_row_in_group(node)
+                    container.mount(
+                        GroupSeparator(
+                            connector_col=self._project_group_separator_col(last_session_row),
+                        )
                     )
-                )
 
         elif is_session_node(node):
             session_data: SessionDisplayInfo = node.data

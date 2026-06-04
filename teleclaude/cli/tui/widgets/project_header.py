@@ -33,12 +33,18 @@ class ProjectHeader(TelecMixin, Widget):
     """
 
     def __init__(
-        self, project: ProjectDTO, session_count: int = 0, show_connector: bool = True, **kwargs: object
+        self,
+        project: ProjectDTO,
+        session_count: int = 0,
+        show_connector: bool = True,
+        collapsed: bool = False,
+        **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
         self.project = project
         self.session_count = session_count
         self.show_connector = show_connector
+        self.collapsed = collapsed
 
     # Connector column — matches SessionRow._connector_col for depth=2
     CONNECTOR_COL = 2
@@ -56,8 +62,10 @@ class ProjectHeader(TelecMixin, Widget):
         else:
             base_style = Style()
 
-        # 1-space indent so folder aligns above session [N] badges
-        line.append(" ")
+        # Leading chevron occupies the 1-space indent slot so the folder stays
+        # aligned above the session [N] badges below it.
+        chevron = "▶" if self.collapsed else "▼"
+        line.append(chevron, style=base_style)
         name = self.project.name
         if name:
             line.append(f"\U0001f4c1 {name} - {path}", style=base_style)

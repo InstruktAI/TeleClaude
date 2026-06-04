@@ -9,10 +9,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from syrupy.assertion import SnapshotAssertion
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 
 from teleclaude.api_models import ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.views.preparation import PreparationView
+from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
+from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -22,6 +25,11 @@ _VERSION_BEFORE = 1
 _VERSION_AFTER = 2
 _READY_SLUG = "ready-todo"
 _PREP_SLUG = "prep-todo"
+
+
+def _binding_objects(view: PreparationView) -> list[Binding]:
+    """Return the Binding entries of a view's BINDINGS (Textual allows tuples too)."""
+    return [b for b in view.BINDINGS if isinstance(b, Binding)]
 
 
 class _PreparationHarness(App[None]):
@@ -226,21 +234,104 @@ def test_preparation_view_persists_trashed_state() -> None:
     assert "/path/to/trashed" in new_view._trashed_projects
 
 
+def _cursor_to(prep: PreparationView, widget_type: type) -> None:
+    prep.cursor_index = next(i for i, w in enumerate(prep._nav_items) if isinstance(w, widget_type))
+
+
+@pytest.mark.unit
+async def test_preparation_collapse_project_hides_todos_and_expand_restores() -> None:
+    app = _PreparationHarness()
+    async with app.run_test() as pilot:
+        prep = app.query_one("#preparation-view", PreparationView)
+        prep.update_data([_active_project()])
+        await pilot.pause()
+
+        _cursor_to(prep, ProjectHeader)
+        assert any(isinstance(w, TodoRow) for w in prep._nav_items)
+
+        prep.action_collapse()
+        await pilot.pause()
+        assert not any(isinstance(w, TodoRow) for w in prep._nav_items)
+        assert "/tmp/project" in prep._collapsed_projects
+
+        prep.action_expand()
+        await pilot.pause()
+        assert any(isinstance(w, TodoRow) for w in prep._nav_items)
+        assert "/tmp/project" not in prep._collapsed_projects
+
+
+@pytest.mark.unit
+async def test_preparation_collapse_computer_hides_projects_but_keeps_header() -> None:
+    app = _PreparationHarness()
+    async with app.run_test() as pilot:
+        prep = app.query_one("#preparation-view", PreparationView)
+        prep.update_data([_active_project()])
+        await pilot.pause()
+
+        _cursor_to(prep, ComputerHeader)
+        prep.action_collapse()
+        await pilot.pause()
+
+        assert any(isinstance(w, ComputerHeader) for w in prep._nav_items)
+        assert not any(isinstance(w, ProjectHeader) for w in prep._nav_items)
+        assert not any(isinstance(w, TodoRow) for w in prep._nav_items)
+        assert "local" in prep._collapsed_computers
+
+
+@pytest.mark.unit
+async def test_preparation_structure_keys_toggle_structure_without_touching_todos() -> None:
+    app = _PreparationHarness()
+    async with app.run_test() as pilot:
+        prep = app.query_one("#preparation-view", PreparationView)
+        prep.update_data([_active_project()])
+        await pilot.pause()
+        prep._expanded_todos.add(_READY_SLUG)
+
+        prep.action_collapse_structure()
+        await pilot.pause()
+        assert prep._collapsed_computers == {"local"}
+        assert prep._collapsed_projects == {"/tmp/project"}
+        assert _READY_SLUG in prep._expanded_todos
+        assert not any(isinstance(w, (ProjectHeader, TodoRow)) for w in prep._nav_items)
+
+        prep.action_expand_structure()
+        await pilot.pause()
+        assert prep._collapsed_computers == set()
+        assert prep._collapsed_projects == set()
+        assert any(isinstance(w, TodoRow) for w in prep._nav_items)
+
+
+@pytest.mark.unit
+def test_preparation_persists_collapsed_structure_round_trip() -> None:
+    view = PreparationView()
+    view._collapsed_computers.add("local")
+    view._collapsed_projects.add("/tmp/project")
+
+    state = view.get_persisted_state()
+    assert state["collapsed_computers"] == ["local"]
+    assert state["collapsed_projects"] == ["/tmp/project"]
+
+    new_view = PreparationView()
+    new_view.load_persisted_state({"collapsed_computers": ["local"], "collapsed_projects": ["/tmp/project"]})
+    assert new_view._collapsed_computers == {"local"}
+    assert new_view._collapsed_projects == {"/tmp/project"}
+
+
 @pytest.mark.unit
 def test_preparation_view_footer_bindings_match_shortened_labels() -> None:
     """The PreparationView footer must use the shortened labels from Task 6b."""
     view = PreparationView()
     # Check a few representative bindings
-    prep_binding = next(b for b in view.BINDINGS if b.action == "prepare")
+    prep_binding = next(b for b in _binding_objects(view) if b.action == "prepare")
     assert prep_binding.description == "Prep"
 
-    rcncl_binding = next(b for b in view.BINDINGS if b.action == "reconcile")
+    rcncl_binding = next(b for b in _binding_objects(view) if b.action == "reconcile")
     assert rcncl_binding.description == "Rcncl"
 
-    trsh_binding = next(b for b in view.BINDINGS if b.action == "toggle_trashed")
+    trsh_binding = next(b for b in _binding_objects(view) if b.action == "toggle_trashed")
     assert trsh_binding.description == "Trsh"
 
-    unr_binding = next(b for b in view.BINDINGS if b.action == "reactivate_selected")
+    unr_binding = next(b for b in _binding_objects(view) if b.action == "reactivate_selected")
     assert unr_binding.description == "Unr"
 
 
@@ -248,7 +339,7 @@ def test_preparation_view_footer_bindings_match_shortened_labels() -> None:
 def test_preparation_view_manual_reorder_bindings_are_removed() -> None:
     """Manual reorder bindings (shift+up/down) must be removed from PreparationView."""
     view = PreparationView()
-    actions = {b.action for b in view.BINDINGS}
+    actions = {b.action for b in _binding_objects(view)}
     assert "move_todo_up" not in actions
     assert "move_todo_down" not in actions
 
@@ -265,7 +356,7 @@ def test_preparation_view_footer_snapshot_at_120_cols(snapshot: SnapshotAssertio
     mock_screen = MagicMock()
     # Build the set of active bindings from view.BINDINGS
     active_bindings = {}
-    for binding in view.BINDINGS:
+    for binding in _binding_objects(view):
         # node, binding, enabled, tooltip
         active_bindings[binding.action] = (view, binding, True, "")
 

@@ -198,6 +198,8 @@ class SessionsViewHighlightsMixin:
                 if v.get("text")
             },
             "collapsed_sessions": sorted(self._collapsed_sessions),  # type: ignore[attr-defined]
+            "collapsed_computers": sorted(self._collapsed_computers),  # type: ignore[attr-defined]
+            "collapsed_projects": sorted(self._collapsed_projects),  # type: ignore[attr-defined]
             "preview": (  # type: ignore[attr-defined]
                 {"session_id": self.preview_session_id} if self.preview_session_id else None
             ),
