@@ -369,6 +369,11 @@ def _migrate_bug_artifact_to_input(conn: sqlite3.Connection) -> None:
         "UPDATE todo_artifacts SET name = 'input' "
         "WHERE name = 'bug' AND slug NOT IN (SELECT slug FROM todo_artifacts WHERE name = 'input')"
     )
+    dropped = [row[0] for row in conn.execute("SELECT slug FROM todo_artifacts WHERE name = 'bug'")]  # guard: raw-sql
+    if dropped:
+        # Rare: a slug already carried an `input` (e.g. delivered-slug reuse), so the
+        # bug row could not be renamed. Surface the drop rather than losing it silently.
+        logger.warning("bug->input migration dropped bug artifacts for slugs already carrying input: %s", dropped)
     conn.execute("DELETE FROM todo_artifacts WHERE name = 'bug'")  # guard: raw-sql
 
 

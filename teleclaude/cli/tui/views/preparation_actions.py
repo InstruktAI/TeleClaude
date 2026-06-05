@@ -26,7 +26,7 @@ from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.next_machine.lifecycle import is_ready_for_work
-from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE
+from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
@@ -492,9 +492,7 @@ class PreparationViewActionsMixin:
             todo_row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
             if not todo_row:
                 return
-            file_names = {name.lower() for name in todo_row.todo.files}
-            is_bug = "bug" in file_names or "bug.md" in file_names
-            kind = TODO_KIND_BUG if is_bug else TODO_KIND_CHANGE
+            kind = todo_row.todo.kind or TODO_KIND_FEATURE
             ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=todo_row.todo.lifecycle_phase)
             if not ready:
                 self.app.notify(
