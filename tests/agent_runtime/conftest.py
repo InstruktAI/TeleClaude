@@ -26,8 +26,6 @@ from teleclaude.core.tmux_bridge import _session as tmux_session_mod
 # Point config at the minimal test config before any teleclaude imports.
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-pytestmark = pytest.mark.functional
-
 
 @pytest.fixture
 async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator[AsyncClient, None]:

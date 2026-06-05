@@ -40,7 +40,7 @@ And tmux session creation + agent CLI launch are kicked off asynchronously by th
 And the response carries `status="success"`, `session_id`, `tmux_session_name`, and the resolved `agent`
 ```
 
-#### Principal binding from identity
+#### UC-SL2: Principal binding from identity
 
 ```
 Given the request supplies `origin_metadata` (web or terminal email payload)
@@ -48,6 +48,23 @@ When `create_session` resolves identity via the identity resolver
 Then `human_email` and `human_role` are populated from the identity context when not explicitly provided
 And when an `initiator_session_id` references a parent session, missing fields (human_email, human_role, principal) are inherited from the parent
 And a session creation without any resolved human_role AND no `system_role` raises ValueError — the request is rejected
+```
+
+#### UC-SL20: Single-user terminal caller resolves to admin
+
+```
+Given the daemon is in single-user mode
+And the request carries no explicit human_role
+When a terminal caller POSTs to /sessions
+Then the session record's human_role is admin, resolved by the auth layer (verify_caller), not by a model default
+```
+
+#### UC-SL21: Restricted role is jailed to the help-desk
+
+```
+Given the request carries a non-admin human_role and no system_role
+When the session is created
+Then the session's project_path is confined to the computer's help-desk directory
 ```
 
 #### Computer routing

@@ -18,11 +18,11 @@ description: 'Python-specific testing idioms layered over the generic testing po
    `tools/lint/forbid_unit_tests.py` (pre-commit) blocks any `tests/unit/**/test_*.py`. Python is a
    compiler-less language under the generic rule — behavior is verified by functional and smoke tests.
 2. **Test files mirror the feature spec.** A spec at `docs/project/spec/feature/<domain>/<slug>.md`
-   is covered by `tests/feature/<domain>/test_<slug>.py`. Tests for repository tooling live under
-   `tests/tooling/` and are exempt from the mirror.
+   is covered by `tests/<domain>/test_<slug>.py`. Contract-defining tooling (wrappers, git filters)
+   is not tested — see the generic policy.
 3. **Bind scenarios with the marker** `@pytest.mark.spec("<spec_id>", "<UC-id>")`. The
    functional/integration tier is a marker (`@pytest.mark.functional` / `@pytest.mark.integration`),
-   never a directory. Shared fixtures live in `tests/feature/conftest.py`.
+   never a directory. Shared fixtures live in `tests/conftest.py`.
 4. **Run via `uv run pytest`.** The harness is plain pytest — no watchdog, reaper, in-flight tracker,
    per-tier timeout markers, or custom wall. A test that can hang or leak is fixed (or moved to a
    self-cleaning integration test), not wrapped in harness.

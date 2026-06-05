@@ -18,8 +18,8 @@ description: 'TypeScript-specific testing idioms layered over the generic testin
    behavioral correctness — under the generic rule it is a compiler-less language for testing
    purposes. Behavior is verified by functional and smoke tests.
 2. **Test files mirror the feature spec.** A spec at `docs/project/spec/feature/<domain>/<slug>.md`
-   is covered by `<frontend_root>/tests/feature/<domain>/<slug>.test.ts`. Tests for tooling live
-   outside the feature mirror and are exempt.
+   is covered by `<frontend_root>/tests/<domain>/<slug>.test.ts`. Contract-defining tooling is not
+   tested — see the generic policy.
 3. **Bind scenarios** with the project's `spec("<spec_id>", "<UC-id>")` tag at the top of each test;
    the functional/integration tier is a per-test tag, never a directory.
 4. **Run through `package.json`** — invoke the declared `test` script (`npm test`), never `npx`

@@ -31,37 +31,13 @@ from teleclaude.quality.scope import (
 logger = logging.getLogger(__name__)
 
 
-def map_source_to_companion(source_path: str) -> str:
-    """Map a source file to its test companion.
-
-    ``teleclaude/x/y.py`` becomes ``tests/unit/x/test_y.py``.
-    """
-    parts = source_path.split("/")
-    if len(parts) < 2:
-        return f"tests/unit/test_{parts[0]}"
-    # Strip leading package directory, prepend tests/unit/, prefix filename with test_
-    subpath = parts[1:]
-    subpath[-1] = f"test_{subpath[-1]}"
-    return "tests/unit/" + "/".join(subpath)
-
-
 def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[str]:
-    """Map source files to companion test files, include directly-touched tests.
+    """Return the changed test files themselves, deduplicated and sorted.
 
-    Companions that do not exist on disk are omitted. Results are deduplicated
-    and sorted for determinism.
+    The spec-anchored model has no per-source companion file, so changed source
+    files yield no targets here; the caller runs the full lean suite in that case.
     """
-    targets: set[str] = set()
-
-    for f in touched_files:
-        if f.startswith("tests/") and f.endswith(".py"):
-            if (project_root / f).exists():
-                targets.add(f)
-        elif f.endswith(".py"):
-            companion = map_source_to_companion(f)
-            if (project_root / companion).exists():
-                targets.add(companion)
-
+    targets = {f for f in touched_files if f.startswith("tests/") and f.endswith(".py") and (project_root / f).exists()}
     return sorted(targets)
 
 
@@ -129,7 +105,14 @@ class TestRunner:
         self._scoped_files = set(validated)
         targets = resolve_test_targets(self._project_root, self._scoped_files)
         if not targets and not self._has_non_python_scoped_tests():
-            logger.info("No test companions found for scoped files — skipping")
+            # The spec-anchored model has no per-source companion file. If the change
+            # touched Python at all, run the full (lean) suite rather than silently
+            # skipping; only skip when nothing Python is in scope.
+            if any(f.endswith(".py") for f in self._scoped_files):
+                logger.info("No scoped companion — running the full Python suite")
+                self._is_full_suite = True
+                return self._read_configured_test_paths()
+            logger.info("No Python test targets in scope — skipping")
             sys.exit(0)
         return targets
 
@@ -265,7 +248,7 @@ class TestRunner:
             testpaths = data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", [])
             if testpaths:
                 return list(testpaths)
-        return ["tests/unit", "tests/integration"]
+        return ["tests"]
 
 
 def _cargo_test_command(scope: RustScope) -> list[str]:

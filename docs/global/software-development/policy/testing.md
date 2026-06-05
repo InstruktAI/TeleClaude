@@ -41,11 +41,20 @@ description: 'Testing doctrine: tests bind human-authored feature-spec scenarios
 ### File organization
 
 7. **One test file per feature spec, path-mirrored.** A feature spec at
-   `docs/project/spec/feature/<domain>/<slug>.md` is covered by a single test file whose path mirrors
-   it (the exact path and extension are resolved in the per-language policy). The spec determines the
-   test file's location and name — an agent never invents a test path. The functional/integration
-   distinction is a per-test marker, not a directory. Tests for repository tooling (not a product
-   feature) live outside the feature mirror and are exempt from it.
+   `docs/project/spec/feature/<domain>/<slug>.md` is covered by a single test file at
+   `tests/<domain>/test_<slug>.<ext>`. Domains are `snake_case`; spec slugs are `kebab-case`; the
+   `<slug>` in the filename is normalized to the language's module-naming rule — Python and Rust use
+   underscores (`session-lifecycle` → `test_session_lifecycle.py`), TypeScript keeps the hyphens
+   (`session-lifecycle.test.ts`). The spec determines the test file's location and name — an agent
+   never invents a test path. The functional vs integration distinction is a **per-test marker**
+   (`@pytest.mark.functional` / `@pytest.mark.integration`), never a directory.
+
+   **Contract-defining artifacts are not tested — the artifact is the spec.** A thin shim whose
+   behavior is its own declaration — a command wrapper, a git filter, a fixed-response tool — is not
+   tested: a test of it would only restate the contract it declares (the literal-echo anti-pattern).
+   Test feature behavior bound to a spec, never a declaration. If such a tool grows branchy
+   decision-logic worth catching, that is a signal to simplify the tool or move the logic into a
+   tested unit — not to add a test to the tool.
 
 ### Coverage and drift
 
@@ -70,8 +79,8 @@ description: 'Testing doctrine: tests bind human-authored feature-spec scenarios
 
 ### Spec structure (so scenarios have stable identity)
 
-11. A feature spec's scenarios live under a `## Behavioral contract` heading, each as a
-    `### UC-<area><n>:` subsection containing exactly one fenced Gherkin block. Scenario ids are
+11. A feature spec's scenarios live under a `### Behavioral contract` heading, each as a
+    `#### UC-<area><n>:` subsection containing exactly one fenced Gherkin block. Scenario ids are
     unique within a spec. A validator enforces this structure; it is what makes per-scenario binding,
     coverage, and fingerprinting reliable rather than best-effort.
 

@@ -19,6 +19,8 @@ from teleclaude.core.models._session import Session
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
+_SPEC = "project/spec/feature/agent_runtime/session-lifecycle"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,7 +65,8 @@ async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
 # ---------------------------------------------------------------------------
 
 
-async def test_single_user_session_gets_admin_from_auth(api: AsyncClient) -> None:
+@pytest.mark.spec(_SPEC, "UC-SL20")
+async def test_single_user_session_gets_admin_from_auth(api: AsyncClient, snapshot) -> None:
     """In single-user mode, a terminal caller gets admin from the auth layer.
 
     The session record must have human_role='admin' — not because of a model
@@ -72,7 +75,7 @@ async def test_single_user_session_gets_admin_from_auth(api: AsyncClient) -> Non
     data = await _create_session(api)
     session = await _get_session_from_db(api, data["session_id"])
     assert session is not None
-    assert session.human_role == "admin"
+    assert {"human_role": session.human_role} == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -80,13 +83,13 @@ async def test_single_user_session_gets_admin_from_auth(api: AsyncClient) -> Non
 # ---------------------------------------------------------------------------
 
 
-async def test_explicit_member_role_preserved(api: AsyncClient) -> None:
+async def test_explicit_member_role_preserved(api: AsyncClient, snapshot) -> None:
     """When the request carries human_role='member', the session record
     must reflect that — not silently upgrade to admin.
     """
     data = await _create_session(api, human_role="member")
     session = await _get_session_from_db(api, data["session_id"])
-    assert session.human_role == "member"
+    assert {"human_role": session.human_role} == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +97,7 @@ async def test_explicit_member_role_preserved(api: AsyncClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_system_session_has_no_human_role_fallback(api: AsyncClient) -> None:
+async def test_system_session_has_no_human_role_fallback(api: AsyncClient, snapshot) -> None:
     """A system session created with system_role metadata should not get
     human_role='admin' from a fallback. human_role comes from the auth
     layer (single-user → admin in this test), not from a model default.
@@ -104,9 +107,8 @@ async def test_system_session_has_no_human_role_fallback(api: AsyncClient) -> No
         metadata={"system_role": "system"},
     )
     session = await _get_session_from_db(api, data["session_id"])
-    assert session.system_role == "system"
-    # human_role is set by auth (single-user → admin), not by fallback
-    assert session.human_role == "admin"
+    # human_role is set by auth (single-user → admin), not by a fallback.
+    assert {"system_role": session.system_role, "human_role": session.human_role} == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +116,8 @@ async def test_system_session_has_no_human_role_fallback(api: AsyncClient) -> No
 # ---------------------------------------------------------------------------
 
 
-async def test_child_inherits_parent_human_role(api: AsyncClient) -> None:
+@pytest.mark.spec(_SPEC, "UC-SL2")
+async def test_child_inherits_parent_human_role(api: AsyncClient, snapshot) -> None:
     """When an agent session spawns a child via POST /sessions with
     x-caller-session-id, the child should inherit the parent's human_role.
     """
@@ -140,7 +143,7 @@ async def test_child_inherits_parent_human_role(api: AsyncClient) -> None:
     )
     assert child_resp.status_code == 200, f"child creation failed: {child_resp.text}"
     child = await _get_session_from_db(api, child_resp.json()["session_id"])
-    assert child.human_role == "member"
+    assert {"human_role": child.human_role} == snapshot
     assert child.initiator_session_id == parent_id
 
 
@@ -249,7 +252,8 @@ async def test_from_dict_preserves_null_human_role() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_restricted_role_jailed_to_help_desk(api: AsyncClient, tmp_path: Path) -> None:
+@pytest.mark.spec(_SPEC, "UC-SL21")
+async def test_restricted_role_jailed_to_help_desk(api: AsyncClient, tmp_path: Path, snapshot) -> None:
     """A session with human_role='newcomer' (non-admin, no system_role)
     should be jailed to the help-desk directory.
     """
@@ -259,4 +263,4 @@ async def test_restricted_role_jailed_to_help_desk(api: AsyncClient, tmp_path: P
     data = await _create_session(api, human_role="newcomer")
     session = await _get_session_from_db(api, data["session_id"])
     assert session.project_path is not None
-    assert session.project_path.endswith("help-desk")
+    assert {"jailed_dir": Path(session.project_path).name} == snapshot

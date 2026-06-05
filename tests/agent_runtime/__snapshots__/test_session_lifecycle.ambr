@@ -1,0 +1,27 @@
+# serializer version: 1
+# name: test_child_inherits_parent_human_role
+  dict({
+    'human_role': 'member',
+  })
+# ---
+# name: test_explicit_member_role_preserved
+  dict({
+    'human_role': 'member',
+  })
+# ---
+# name: test_restricted_role_jailed_to_help_desk
+  dict({
+    'jailed_dir': 'help-desk',
+  })
+# ---
+# name: test_single_user_session_gets_admin_from_auth
+  dict({
+    'human_role': 'admin',
+  })
+# ---
+# name: test_system_session_has_no_human_role_fallback
+  dict({
+    'human_role': 'admin',
+    'system_role': 'system',
+  })
+# ---
