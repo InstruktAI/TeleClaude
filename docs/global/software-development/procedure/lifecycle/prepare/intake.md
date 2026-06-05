@@ -37,9 +37,9 @@ below) for the hard gate that decides.
   feature spec(s) at
   `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named,
   NEVER slug-named. Contains the business value summary and the Gherkin
-  acceptance scenarios. Frontmatter `status: target`,
-  `delivered_by` accumulates this slug. The Gherkin is authored here during
-  intake — there is no separate test-specs phase.
+  acceptance scenarios. Frontmatter `delivered_by` includes this slug.
+  The Gherkin is authored here during intake — there is no separate
+  test-specs phase.
   **Produced ONLY when the work is a user-visible product capability** (see
   classification step). Skipped for contract/CLI-surface refinements,
   implementation-only work, and infrastructure work.
@@ -48,14 +48,14 @@ below) for the hard gate that decides.
   invariants), note them in the PRD scope. The architecture phase authors
   those updates.
 - **Spec-diff companion (migration-window only).** During the v1 → v2
-  migration window, if the feature spec exists with `applies_to: both` and
-  v2 will diverge from the parent for this delivery, author a sibling
+  migration window, if the feature spec exists and v2 will diverge from
+  the parent for this delivery, author a sibling
   `<concept-name>-v2-diff.md` companion of `type: spec-diff` capturing
   only the delta (Replaces / Adds / Removes / Why). Do NOT fork the
   parent spec. The diff is deleted (merged into the parent) when the
   relevant v2 cutover delivers. See
   `software-development/principle/documentation-first-development` section
-  10 for the three-state architecture.
+  10 for the spec-diff infrastructure.
 
 The PRD is scaffolding. The feature spec snippet — when warranted — is the
 durable behavioral contract that survives delivery.
@@ -96,8 +96,8 @@ Decision rule:
   child per pillar for the per-context implementation slice. All children's
   `delivered_by` accumulates on the SAME feature spec snippet (chosen primary
   context for the feature). Each child has its own PRD workflow.artifact for
-  its slice's scope. Children deliver independently; feature spec flips
-  `target → actual` only when ALL children deliver.
+  its slice's scope. Children deliver independently; feature spec's
+  `delivered_by:` clears only when ALL children deliver.
 - **Multi-pillar feature, slices MUST land together** (e.g., a new event
   taxonomy where every consumer needs the coordinated update on the same
   day) → keep a single todo with multiple per-context commits. Independence
@@ -302,7 +302,7 @@ re-engages and stamps approval.
 ## Outputs
 
 - **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure. **Always produced.**
-- **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — **produced ONLY for Category A work** (user-visible product capability per step 1.5). Concept-named, never slug-named. Frontmatter `status: target`, `delivered_by` includes this slug.
+- **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — **produced ONLY for Category A work** (user-visible product capability per step 1.5). Concept-named, never slug-named. Frontmatter `delivered_by` includes this slug.
 - **Domain spec / CLI-surface spec / architecture doc touchpoints noted in PRD** — for Category B work (contract/CLI-surface refinement). The architecture phase authors the actual updates; intake names the affected docs in the PRD's "Docs to author or update" section.
 - **No durable doc** for Category C work (implementation-only / refactor / tooling). PRD only.
 - **`prd_approved` stamp** — recorded when the real human confirms. The PO emulator cannot stamp this; the real human always owns final approval.

@@ -46,14 +46,13 @@ Frontmatter `delivered_by` accumulates this slug on EVERY edited snippet.
 
 **Spec-diff companion (migration-window only).** During the v1 → v2
 migration window, if an edit would diverge v2 behavior from an existing
-`applies_to: both` spec, do NOT fork the parent. Author a sibling
+parent spec, do NOT fork the parent. Author a sibling
 `<stem>-v2-diff.md` companion of `type: spec-diff` capturing only the
 delta sections (Replaces / Adds / Removes / Why). Frontmatter
-`diff_of: <parent-spec-id>`, `applies_to: v2` (implicit, schema-enforced),
-`delivered_by` includes this slug. The diff is deleted (merged into the
-parent) when the relevant v2 cutover delivers. See
-`software-development/principle/documentation-first-development` section
-10 for the three-state architecture this serves.
+`diff_of: <parent-spec-id>`, `delivered_by` includes this slug. The diff
+is deleted (merged into the parent) when the relevant v2 cutover delivers.
+See `software-development/principle/documentation-first-development`
+section 10 for the spec-diff infrastructure.
 
 For decisions that DON'T survive delivery (implementation-tactic choices,
 library selection, internal sequencing within a build), keep them ephemeral.
@@ -140,8 +139,8 @@ confident about and which you're inferring.
 
 ### 4. Write the thin architecture index artifact
 
-Author the design content into the affected snippets first (set frontmatter
-`status: target` and add this slug to `delivered_by` on every edited snippet).
+Author the design content into the affected snippets first (add this slug
+to `delivered_by` on every edited snippet).
 Then write the thin index artifact:
 
 ```
@@ -179,7 +178,7 @@ architecture artifact to resolve each finding, then advance again.
 
 - **Domain-spec / architecture-v2 design-doc snippet updates** — the
   code-grounded design, authored directly into the affected snippets with
-  frontmatter `status: target` and this slug added to `delivered_by`.
+  this slug added to `delivered_by`.
 - **Thin `architecture` index artifact** — written via
   `telec todo artifacts write {slug} architecture <content>`; logs which
   snippets were touched and why, NOT the design body.
