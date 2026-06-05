@@ -24,7 +24,12 @@ from teleclaude.api.session_create_launch import (
     resolve_enabled_agent,
     resolve_launch_kind,
 )
-from teleclaude.api.session_create_remote import dispatch_session_create_to_peer, is_remote_create_target
+from teleclaude.api.session_remote import (
+    dispatch_session_close_to_peer,
+    dispatch_session_create_to_peer,
+    is_remote_create_target,
+    is_remote_target,
+)
 from teleclaude.api.sessions_actions_routes import _infer_role_from_message, _rewrite_codex_next_startup_message
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -587,19 +592,32 @@ async def create_session(
 async def end_session(
     request: Request,
     session_id: str,
+    computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_end),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """End session via CloseSessionCommand through the command system."""
     user_agent = request.headers.get("user-agent", "no-ua")
     identity_email = request.headers.get("x-web-email", "none")
     logger.info(
-        "DELETE /sessions/%s (ua=%s, identity=%s)",
+        "DELETE /sessions/%s (computer=%s, ua=%s, identity=%s)",
         session_id,
+        computer,
         user_agent,
         identity_email,
     )
 
     await check_session_access(request, session_id, require_owner=True)
+
+    if computer and is_remote_target(computer, config.computer.name):
+        await dispatch_session_close_to_peer(_STATE.client, computer, session_id)
+        return JSONResponse(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+            status_code=202,
+            content={
+                "status": "accepted",
+                "message": f"Session {session_id} closing on {computer}",
+            },
+        )
+
     try:
         cmd = CloseSessionCommand(session_id=session_id)
         service = get_command_service()

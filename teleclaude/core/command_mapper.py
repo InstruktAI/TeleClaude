@@ -2,7 +2,7 @@
 
 from typing import cast
 
-from teleclaude.constants import EVENT_NEW_SESSION
+from teleclaude.constants import EVENT_END_SESSION, EVENT_NEW_SESSION
 from teleclaude.core.agents import get_default_agent, get_known_agents
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
@@ -222,7 +222,7 @@ class CommandMapper:
                 agent_name=agent_name,
             )
 
-        if cmd_name == "end_session":
+        if cmd_name == EVENT_END_SESSION:
             return CloseSessionCommand(session_id=session_id or "")
 
         if cmd_name == "get_session_data":

@@ -250,6 +250,7 @@ REDIS_MSG_SYSTEM = "system"
 
 # Redis event types
 EVENT_NEW_SESSION = "new_session"
+EVENT_END_SESSION = "end_session"
 
 # Output stream markers
 OUTPUT_COMPLETE_MARKER = "[Output Complete]"
