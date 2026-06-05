@@ -1,0 +1,26 @@
+# serializer version: 1
+# name: test_create_help_exposes_canonical_kind_choices
+  dict({
+    'stderr': '',
+    'stdout': '''
+      Usage:
+        telec todo create <slug> <content> --kind <feature|change|bug> [--after <deps>] [--silent] [--plan]
+      
+        Create a todo with substantive content
+      
+      Options:
+        --after                 Comma-separated dependency slugs
+        --kind                  Required. The work-unit's entry point into the lifecycle: feature|change|bug.
+        --silent                Create silently — suppress pickup notification
+        --plan                  Content is a complete implementation-plan; skip prepare to build (--kind change only).
+      
+      Notes:
+        Creates the todo entry, canonical state, and stores content as the input artifact.
+        Emits workflow.todo.created for autonomous pickup unless --silent is set.
+        --kind is required: feature|change|bug.
+        --plan is valid only with --kind change and treats content as a complete implementation plan.
+      
+  
+    ''',
+  })
+# ---
