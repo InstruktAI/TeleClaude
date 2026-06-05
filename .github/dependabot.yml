@@ -1,7 +1,13 @@
-# Dependabot version updates.
-# Majors are ignored (manual review only). Minor/patch are grouped per ecosystem
-# and auto-merged once the "Lint and Test" workflow passes — see the
+# Dependabot configuration.
+#
+# Version updates: majors ignored (manual review only), minor/patch grouped per
+# ecosystem and auto-merged once "Lint and Test" passes — see the
 # dependabot-auto-merge job in .github/workflows/lint-test.yaml.
+#
+# Security updates: enabled at the repo level (automated-security-fixes) and
+# unaffected by the major ignore below — `update-types` only gates version
+# updates, so advisory fixes (including major bumps) always open. The
+# `applies-to: security-updates` groups batch those advisory PRs per ecosystem.
 version: 2
 updates:
   - package-ecosystem: "uv"
@@ -19,8 +25,12 @@ updates:
         update-types: ["version-update:semver-major"]
     groups:
       python:
+        applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: "npm"
     directory: "/"
@@ -37,8 +47,12 @@ updates:
         update-types: ["version-update:semver-major"]
     groups:
       npm-root:
+        applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      npm-root-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: "npm"
     directory: "/frontend"
@@ -55,8 +69,12 @@ updates:
         update-types: ["version-update:semver-major"]
     groups:
       npm-frontend:
+        applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      npm-frontend-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: "cargo"
     directory: "/"
@@ -73,8 +91,12 @@ updates:
         update-types: ["version-update:semver-major"]
     groups:
       cargo:
+        applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -88,5 +110,9 @@ updates:
       include: "scope"
     groups:
       actions:
+        applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
