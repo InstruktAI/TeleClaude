@@ -255,7 +255,7 @@ class TodoRow(TelecMixin, Widget):
     def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
         """Compute column widths from actual data: max rendered length + gap.
 
-        Column order: P | I | B | R | D
+        Column order: K | P | I | B | R | D
         """
         maxes: dict[str, int] = {"K": 0, "P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
         for t in todos:
