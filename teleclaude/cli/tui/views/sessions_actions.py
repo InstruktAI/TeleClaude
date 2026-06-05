@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
+from teleclaude.cli.tui.layout_model import enforce_i1
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     KillSessionRequest,
@@ -100,11 +101,9 @@ class SessionsViewActionsMixin:
                 self._clear_session_highlights(session_id)  # type: ignore[attr-defined]
                 self.preview_session_id = None  # type: ignore[attr-defined]
                 self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
+                self._notify_state_changed()  # type: ignore[attr-defined]
             else:
-                self.preview_session_id = session_id  # type: ignore[attr-defined]
-                self._clear_session_highlights(session_id)  # type: ignore[attr-defined]
-                self.post_message(PreviewChanged(session_id, request_focus=False))  # type: ignore[attr-defined]
-            self._notify_state_changed()  # type: ignore[attr-defined]
+                self._apply_preview_selection(session_id, request_focus=False)  # type: ignore[attr-defined]
 
         elif decision.action == TreeInteractionAction.TOGGLE_STICKY:
             self._toggle_sticky(session_id)
@@ -135,8 +134,17 @@ class SessionsViewActionsMixin:
             if isinstance(widget, SessionRow):
                 widget.is_sticky = widget.session_id in self._sticky_session_ids  # type: ignore[attr-defined]
 
+        self._enforce_i1_after_sticky_change()  # type: ignore[attr-defined]
         self.post_message(StickyChanged(self._sticky_session_ids.copy()))  # type: ignore[attr-defined]
         self._notify_state_changed()  # type: ignore[attr-defined]
+
+    def _enforce_i1_after_sticky_change(self) -> None:
+        """Clear preview if a sticky mutation created a dual reference."""
+        next_preview = enforce_i1(self._sticky_session_ids, self.preview_session_id)  # type: ignore[attr-defined]
+        if next_preview == self.preview_session_id:  # type: ignore[attr-defined]
+            return
+        self.preview_session_id = next_preview  # type: ignore[attr-defined]
+        self.post_message(PreviewChanged(next_preview, request_focus=False))  # type: ignore[attr-defined]
 
     def action_focus_pane(self) -> None:
         """Enter: on a session — preview AND focus the tmux pane.
@@ -159,17 +167,9 @@ class SessionsViewActionsMixin:
             self._revive_headless(row, request_focus=True)  # type: ignore[attr-defined]
             return
 
-        session_id = row.session_id
-
-        # Set preview
-        self.preview_session_id = session_id  # type: ignore[attr-defined]
-
-        # Clear highlights
-        self._clear_session_highlights(session_id)  # type: ignore[attr-defined]
-
-        # Post with request_focus=True — pane shows AND cursor transfers to it
-        self.post_message(PreviewChanged(session_id, request_focus=True))  # type: ignore[attr-defined]
-        self._notify_state_changed()  # type: ignore[attr-defined]
+        # Preview AND focus the pane (sticky-aware via I1): selecting a sticky
+        # focuses its existing pane instead of duplicating it as a preview.
+        self._apply_preview_selection(row.session_id, request_focus=True)  # type: ignore[attr-defined]
 
     def action_collapse(self) -> None:
         """Left: collapse the selected computer, project, or session row."""
@@ -511,6 +511,7 @@ class SessionsViewActionsMixin:
             if isinstance(widget, SessionRow):
                 widget.is_sticky = widget.session_id in self._sticky_session_ids  # type: ignore[attr-defined]
 
+        self._enforce_i1_after_sticky_change()  # type: ignore[attr-defined]
         self.post_message(StickyChanged(self._sticky_session_ids.copy()))  # type: ignore[attr-defined]
         self._notify_state_changed()  # type: ignore[attr-defined]
 

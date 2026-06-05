@@ -19,14 +19,14 @@ Define the user-facing interaction model for previewing and pinning sessions in 
 
 ## Inputs/Outputs
 
-- **Input:** User press events (single press, double press) on session list items; current session visibility state (preview set, sticky set).
-- **Output:** Updated preview/sticky state in the TUI reducer; tmux pane layout changes (slot add/remove/swap).
+- **Input:** User press events (single press, double press) on session list items; current Sessions-view visibility state (`preview_id`, `sticky_ids`).
+- **Output:** Updated preview/sticky state from the Sessions-view owner; tmux pane layout changes (slot add/remove/swap).
 
 ### Concepts
 
 **Preview**: A temporary pane shown alongside the TUI. Only one preview can exist at a time. Navigating to a different session replaces the preview. The preview is the weakest form of visibility — any other action can dismiss it.
 
-**Sticky**: A pinned pane that persists in the layout regardless of navigation. Multiple stickies can coexist (up to `MAX_STICKY_PANES`). Stickies are the strongest form of visibility — they persist until the user explicitly removes them.
+**Sticky**: A pinned pane that persists in the layout regardless of navigation. Multiple stickies can coexist (up to `MAX_STICKY = 5`). Stickies are the strongest form of visibility — they persist until the user explicitly removes them.
 
 **Precedence**: Sticky > Preview. The user's most recent action always wins for determining what stays visible.
 
@@ -55,15 +55,15 @@ This also minimizes layout disruption:
 
 - If no preview was active before un-stickying: the slot count stays the same (sticky slot becomes preview slot). Zero layout change.
 - If a preview was active: the old preview is dismissed and replaced. Slot count still stays the same. Zero layout change.
-- The alternative (removing the pane entirely) would always change the layout, causing a full pane rebuild.
+- The alternative (removing the pane entirely) would always change the layout, causing unnecessary pane churn.
 
 ### Guard period
 
-After a double press (toggle sticky), a brief guard period (~300ms) suppresses the next single press on the same session. This prevents the second press of the double-press gesture from being interpreted as a new single press (which would toggle the preview).
+`TreeInteractionState` owns double-press detection and guard timing. After a double press (toggle sticky), its `double_press_threshold` guard (`0.65s`) suppresses the next single press on the same session. This prevents the second press of the double-press gesture from being interpreted as a new single press (which would toggle the preview).
 
 ## Invariants
 
-1. **A session is either previewed, sticky, or neither — never both.** The reducer enforces mutual exclusivity: adding a sticky clears preview for that session; adding a preview for a sticky session is a no-op (the session is already visible).
+1. **A session is either previewed, sticky, or neither — never both.** The Sessions view enforces mutual exclusivity through `enforce_i1()`: adding a sticky clears preview for that session; selecting a sticky clears preview rather than creating a duplicate.
 
 2. **Un-sticky always transitions to preview.** Removing a sticky never leaves the session invisible. The session becomes the active preview, preserving the user's focus.
 
@@ -71,13 +71,13 @@ After a double press (toggle sticky), a brief guard period (~300ms) suppresses t
 
 4. **Sticky is authoritative.** A sticky pane persists across navigation, tab switches, and preview changes. Only an explicit double-press removes it.
 
-5. **Layout stability.** The interaction model is designed to minimize full layout rebuilds. Preview swaps use lightweight pane content replacement (respawn-pane). Only changes to the total slot count trigger a full layout rebuild.
+5. **Layout stability.** The interaction model is designed to avoid unnecessary pane churn. Preview swaps use lightweight pane content replacement (respawn-pane). Changes to the total slot count trigger a minimal reflow that preserves surviving pane ids, splits only added cells, and kills only removed cells.
 
 ## Failure modes
 
 | Scenario                                      | Behavior                                                                                      | Recovery                                                            |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Preview set for a session that is also sticky | Reducer clears preview; sticky takes precedence                                               | Automatic                                                           |
-| Un-sticky with stale preview state            | Reducer sets preview to the un-stickied session, overwriting any stale value                  | Automatic                                                           |
+| Preview set for a session that is also sticky | Sessions view clears preview; sticky takes precedence                                        | Automatic                                                           |
+| Un-sticky with stale preview state            | Sessions view sets preview to the un-stickied session, overwriting any stale value           | Automatic                                                           |
 | Double press detected as two single presses   | Guard period suppresses second press                                                          | Automatic; tune guard duration if still occurring                   |
-| Layout rebuild on un-sticky                   | Should not happen if preview transition is correct; indicates slot count changed unexpectedly | Check that preview was set before sticky was removed in the reducer |
+| Layout rebuild on un-sticky                   | Should not happen if preview transition is correct; indicates slot count changed unexpectedly | Check that preview was set before sticky was removed in the Sessions view |

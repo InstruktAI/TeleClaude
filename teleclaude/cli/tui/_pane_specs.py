@@ -66,11 +66,15 @@ class LayoutSpec:
 
 
 LAYOUT_SPECS: dict[int, LayoutSpec] = {
-    # Total panes include the TUI pane.
+    # Total panes include the TUI pane. Session indices run clockwise from the
+    # top cell nearest the TUI, so adding/removing a pane keeps existing
+    # sessions in their cells (index-preserving across adjacent tiers).
     1: LayoutSpec(rows=1, cols=1, grid=[["T"]]),
     2: LayoutSpec(rows=1, cols=2, grid=[["T", 1]]),
     3: LayoutSpec(rows=2, cols=2, grid=[["T", 1], ["T", 2]]),
     4: LayoutSpec(rows=2, cols=2, grid=[["T", 1], [3, 2]]),
-    5: LayoutSpec(rows=2, cols=3, grid=[["T", 1, 3], [None, 2, 4]]),
-    6: LayoutSpec(rows=2, cols=3, grid=[["T", 1, 3], [5, 2, 4]]),
+    # tui+4: TUI spans the full left column; sessions 1-4 fill the right 2x2.
+    5: LayoutSpec(rows=2, cols=3, grid=[["T", 1, 2], ["T", 4, 3]]),
+    # tui+5: session 5 takes the bottom-left cell; 1-4 keep their tui+4 cells.
+    6: LayoutSpec(rows=2, cols=3, grid=[["T", 1, 2], [5, 4, 3]]),
 }

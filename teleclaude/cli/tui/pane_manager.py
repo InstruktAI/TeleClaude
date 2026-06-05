@@ -40,6 +40,9 @@ class _PaneLayoutState:
     tree_node_has_focus: bool = False
     layout_signature: tuple[object, ...] | None = None
     bg_signature: tuple[object, ...] | None = None
+    # Ordered cell assignment from the last applied layout. Diffing the new
+    # desired assignment against this drives same-tier in-place swaps.
+    cell_specs: list[SessionPaneSpec] | None = None
 
 
 @dataclass
@@ -368,6 +371,10 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 )
 
         self._layout_state.layout_signature = self._compute_layout_signature()
+        # Seed the cell assignment so the first post-reload apply_layout takes
+        # the same-tier in-place path instead of rebuilding (which would kill
+        # the panes just adopted from the previous process).
+        self._layout_state.cell_specs = self._build_session_specs()
         self._reload_session_panes.clear()
 
     def _run_tmux(self, *args: str) -> str:
@@ -387,8 +394,14 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 check=True,
             )
             return result.stdout.strip()
-        except subprocess.CalledProcessError:
-            return ""
+        except subprocess.CalledProcessError as exc:
+            logger.error(
+                "tmux command failed: args=%s returncode=%s stderr=%s",
+                list(args),
+                exc.returncode,
+                (exc.stderr or "").strip(),
+            )
+            raise
 
     def _get_current_pane_id(self) -> str | None:
         """Get the pane ID where this TUI process is running.

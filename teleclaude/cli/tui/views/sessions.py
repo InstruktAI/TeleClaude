@@ -13,7 +13,8 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
-from teleclaude.cli.tui.messages import PreviewChanged, ReviveSessionRequest, StateChanged
+from teleclaude.cli.tui.layout_model import enforce_i1
+from teleclaude.cli.tui.messages import FocusPaneRequest, PreviewChanged, ReviveSessionRequest, StateChanged
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     SessionDisplayInfo,
@@ -241,6 +242,10 @@ class SessionsView(
             preview_id = preview_data.get("session_id")
             if isinstance(preview_id, str) and preview_id:
                 self.preview_session_id = preview_id
+
+        # Self-heal a corrupt persisted snapshot where the preview is also a
+        # sticky (invariant I1): drop the preview so it is never a duplicate.
+        self.preview_session_id = enforce_i1(self._sticky_session_ids, self.preview_session_id)
 
         highlighted = data.get("highlighted_session_id")
         if isinstance(highlighted, str) and highlighted:
@@ -578,6 +583,27 @@ class SessionsView(
         if changed:
             self._notify_state_changed()
 
+    def _apply_preview_selection(self, session_id: str, *, request_focus: bool) -> None:
+        """Route a preview selection through invariant I1 for every gesture.
+
+        Selecting a sticky session never sets it as the preview (that would
+        duplicate the sticky pane); instead the preview is cleared and, when
+        focus was requested, the existing sticky pane is focused. Selecting a
+        non-sticky session sets or swaps the preview as usual.
+        """
+        self._clear_session_highlights(session_id)
+        if session_id in self._sticky_session_ids:
+            if self.preview_session_id is not None:
+                self.preview_session_id = None
+                self.post_message(PreviewChanged(None, request_focus=False))
+            if request_focus:
+                self.post_message(FocusPaneRequest(session_id))
+            self._notify_state_changed()
+            return
+        self.preview_session_id = session_id
+        self.post_message(PreviewChanged(session_id, request_focus=request_focus))
+        self._notify_state_changed()
+
     # --- Mouse click handling (widget-level Pressed messages) ---
 
     def on_session_row_pressed(self, message: SessionRow.Pressed) -> None:
@@ -610,9 +636,7 @@ class SessionsView(
             self._toggle_sticky(session_id)
             if was_sticky:
                 # Preserve pane-slot stability: removed sticky immediately becomes preview.
-                self.preview_session_id = session_id
-                self.post_message(PreviewChanged(session_id, request_focus=False))
-                self._notify_state_changed()
+                self._apply_preview_selection(session_id, request_focus=False)
             self._last_click_time = 0.0
             self._last_click_session = None
             return
@@ -626,11 +650,8 @@ class SessionsView(
             self.focus()
             return
 
-        # Single click: preview with focus
-        self.preview_session_id = session_id
-        self._clear_session_highlights(session_id)
-        self.post_message(PreviewChanged(session_id, request_focus=True))
-        self._notify_state_changed()
+        # Single click: preview with focus (sticky-aware via I1).
+        self._apply_preview_selection(session_id, request_focus=True)
         self.focus()
 
     def on_computer_header_pressed(self, message: ComputerHeader.Pressed) -> None:

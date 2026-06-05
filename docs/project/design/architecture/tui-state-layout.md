@@ -9,20 +9,23 @@ applies_to: v1
 status: mixed
 delivered_by:
   - roadmap-trash-reveal-ui
+  - tui-sticky-layout-unify
 ---
 
 # Tui State Layout — Design
 
 ## Purpose
 
-Define the single source of truth for TUI state and deterministic pane layout derived from it, so session panes remain stable across tabs and all view interactions share one state model. The TUI is a local UI client of the API server; it owns its view state and must not mutate core daemon state directly. Applies to all TUI views in `teleclaude/cli/tui/views/` (Sessions, Preparation) and shared UI components (tab bar, modals, widgets) which emit intents but do not own state.
+Define the single source of truth for TUI state and deterministic pane layout derived from it, so session panes remain stable across tabs and all view interactions share one state model. The TUI is a local UI client of the API server; it owns its view state and must not mutate core daemon state directly. Applies to all TUI views in `teleclaude/cli/tui/views/` (Sessions, Preparation) and shared UI components (tab bar, modals, widgets) which emit messages but do not own state.
 
 ```mermaid
 flowchart LR
-    Input[User Input] --> Intent[Intent Mapping]
-    Intent --> State[Shared TUI State]
-    State --> Layout[Derived Layout]
-    Layout --> Panes[Pane Manager]
+    Input[User Input] --> Sel[Sticky-aware selector]
+    Sel --> State[Sessions-view state<br/>sticky_ids + preview_id, I1]
+    State --> Msg[PreviewChanged / StickyChanged]
+    Msg --> Bridge[Pane bridge mirror]
+    Bridge --> Desired["desired() cell assignment"]
+    Desired --> Panes[Pane Manager diff]
     State --> Render[View Render]
 ```
 
@@ -33,7 +36,7 @@ flowchart LR
 - Mouse/keyboard events from the TUI runtime
 - Session list updates from the API cache
 - Focus changes (computer/project)
-- Persisted sticky state from `~/.teleclaude/tui_todo state (todos.db)`
+- Persisted local TUI state from `$TELECLAUDE_HOME/state/tui_state.json`
 
 **Outputs:**
 
@@ -42,10 +45,14 @@ flowchart LR
 
 ## Invariants
 
-- **Single State Object**: All TUI interactions mutate a single shared state object.
-- **Derived Layout**: Pane layout is computed from state only; no hidden child or active pane fields.
+- **Single State Owner**: The Sessions view owns the layout state — an ordered `sticky_ids` list (max `MAX_STICKY = 5`) and a single `preview_id`. The pane bridge holds a mirror that is re-synced from this owner on every data refresh; no second source of truth exists.
+- **I1 — No Dual Reference**: `preview_id` is never also in `sticky_ids`. Enforced at every mutation boundary (all preview gestures route through one sticky-aware selector) and on persisted-state load (a corrupt `preview in sticky` snapshot self-heals by dropping the preview). This makes "a duplicate pane in place of the preview window" structurally impossible.
+- **Derived Layout**: The non-TUI cell assignment is the pure function `desired(sticky_ids, preview_id)` (see Layout derivation). No hidden child or active-pane fields participate.
+- **Minimal Reflow Only On Tier Change**: Tier changes apply the smallest tmux delta that preserves surviving session pane ids: split added cells, kill removed cells, and move existing panes only where geometry requires it. Same-tier transitions swap only the cells whose assigned session changed (`respawn-pane -k` on that single pane); stable panes are never destroyed.
+- **Orphans Reaped, Stable Panes Preserved**: At render entry, live non-TUI panes that no tracked session maps to are reaped (a crashed process or a stale reflow can leak one). Tracked panes backing a desired session are never killed as part of this sweep. Column widths are set with explicit split percentages, never `select-layout even-horizontal`, so a stray pane can no longer leak an extra column.
+- **Clockwise, Index-Preserving Grids**: `LAYOUT_SPECS` numbers session cells clockwise from the cell nearest the TUI, so growing or shrinking the grid by one keeps every surviving session in its cell (see the pane-count table).
 - **Stable Panes Across Tabs**: Switching tabs must not hide or reflow panes.
-- **No View-Local Pane Calls**: Views emit intents only; layout is applied centrally.
+- **No View-Local Pane Calls**: Views post `PreviewChanged` / `StickyChanged` messages only; layout is applied centrally by the pane bridge.
 - **Sticky Is Authoritative**: Sticky panes persist until explicitly removed.
 - **Pane Lifecycle Is Tmux-Anchored**: Preview and sticky panes live and die by tmux liveness plus explicit `SessionClosed` events. Snapshot diffs from the daemon (bootstrap refresh, per-computer initial events on WS reconnect) never destroy pane state — a daemon restart must not kill the user's preview/sticky panes while their underlying agent tmux sessions are alive.
 - **Un-Sticky Transitions to Preview**: When a sticky session is removed (double-press), that session becomes the active preview. Any previously active preview is dismissed. This preserves the user's focus on the session they just interacted with and minimizes layout disruption.
@@ -65,14 +72,19 @@ Bracketed-paste forwarding from tmux into the TUI pane is a documented runtime r
 
 ### State model
 
-- `selection`: currently selected item
-- `preview`: `{ session_id, show_child } | null`
-- `sticky`: list of `{ session_id, show_child }`
+The Sessions view is the single owner of layout state:
+
+- `sticky_ids`: ordered list of sticky session ids, capped at `MAX_STICKY = 5`.
+- `preview_id`: the single previewed session (or doc), or `null`. Held by the
+  reactive `preview_session_id`; never equal to a member of `sticky_ids` (I1).
 - `collapsed`: set of collapsed session ids (session-level row fold)
 - `collapsed_computers` / `collapsed_projects`: structural fold of whole computers (keyed by computer name) and projects (keyed by computer + path, since the same path can exist on multiple computers). Persisted per view via `get_persisted_state` / `load_persisted_state`, in both the Sessions and Preparation trees. A collapsed computer hides its project headers and all their descendants; a collapsed project hides its sessions/todos while keeping its own header.
+- `selection`: currently selected tree item
 - `focus`: computer/project focus stack
 - `scroll`: scroll offset and window bounds
 - `output_working`: set of session ids that must render `out: Working...` until authoritative turn completion (`agent_stop`)
+
+The canonical derivation and invariant live in `teleclaude/cli/tui/layout_model.py` (`desired()`, `enforce_i1()`, `diff_cells()`, `orphan_panes()`); the pane bridge keeps a mirror that is re-synced from this owner on every data refresh.
 
 ## Primary flows
 
@@ -82,14 +94,13 @@ Bracketed-paste forwarding from tmux into the TUI pane is a documented runtime r
 sequenceDiagram
     participant User
     participant TUI
-    participant Reducer
-    participant Layout
     participant PaneManager
 
     User->>TUI: Click/Key event
-    TUI->>Reducer: Intent
-    Reducer->>Layout: New state
-    Layout->>PaneManager: Apply layout
+    TUI->>TUI: Sticky-aware selector (enforce I1)
+    TUI->>PaneManager: PreviewChanged / StickyChanged
+    PaneManager->>PaneManager: desired() + diff cells
+    PaneManager->>PaneManager: swap (same tier) or minimal reflow (tier change)
 ```
 
 ### 2. Preview vs Sticky Resolution
@@ -103,14 +114,21 @@ flowchart TD
     KeepPreview --> Layout
 ```
 
-### Reducer architecture
+### State and layout architecture
 
-#### Intent set
+Production TUI views own their state as Textual reactive attributes and emit
+Textual `Message`s for cross-widget effects; there is no central reducer object.
+The Sessions view owns `sticky_ids` + `preview_id` and posts `PreviewChanged` /
+`StickyChanged`; the pane bridge consumes those, mirrors the state, and drives
+the pane manager through the canonical `layout_model`. The logical interactions
+below name the user-facing operations (not reducer intents).
+
+#### Logical interactions
 
 - `SelectItem(session_id, source)`
-- `SetPreview(session_id, show_child)`
+- `SetPreview(session_id)`
 - `ClearPreview()`
-- `ToggleSticky(session_id, show_child)`
+- `ToggleSticky(session_id)`
 - `Collapse(session_id)` / `Expand(session_id)`
 - `ExpandAll()` / `CollapseAll()`
 - `FocusComputer(name)` / `FocusProject(path)` / `FocusBack()`
@@ -132,31 +150,61 @@ flowchart TD
 - `OpenFilePane(cmd)` / `CloseFilePane()`
 - `SelectTab(view_id)`
 
-#### Reducer contract
+#### State contract
 
-- The reducer is the only place that mutates `TuiState`.
-- Views emit intents; they do not mutate state or call pane layout directly.
-- Every reducer update is followed by layout derivation + apply.
-- Exception handling (confirmation modals, missing tmux sessions, or missing files) is handled before emitting intents; reducer remains pure.
+- The Sessions view is the only owner of `sticky_ids` + `preview_id`; the pane bridge mirror is re-synced from it on every data refresh.
+- Views post `PreviewChanged` / `StickyChanged`; they do not call the pane manager directly.
+- Every preview gesture routes through one sticky-aware selector that enforces I1.
+- Exception handling (confirmation modals, missing tmux sessions, missing files) happens before posting messages.
 
-#### Layout derivation
+#### Layout derivation — `desired(sticky_ids, preview_id)`
 
-- `active_session_id = preview.session_id` if preview set, else `null`
-- `child_session_id = child_of(preview.session_id)` **only if** `preview.show_child`
-- `sticky_session_ids = [s.session_id for s in sticky]`
-- If `preview.session_id` is sticky, reducer clears preview (no duplication)
-- If a sticky is removed, the removed session becomes the active preview (un-sticky → preview transition)
+`desired()` returns the ordered list of sessions occupying the non-TUI cells:
+
+- `preview_id is None` **or** `preview_id in sticky_ids` → `sticky_ids`.
+- `len(sticky_ids) < MAX_STICKY` → `sticky_ids + [preview_id]` (preview is an added pane).
+- `len(sticky_ids) == MAX_STICKY` and preview not sticky → `sticky_ids[:MAX_STICKY-1] + [preview_id]`; the **last sticky pane is borrowed** to show the preview and reverts to that sticky when the preview clears (same tier → in-place swap).
+
+`tier = 1 + len(desired)` indexes `LAYOUT_SPECS`. The renderer diffs the new
+cell assignment against the previous: same tier → `respawn-pane -k` only on the
+cells whose session changed; tier change → a minimal reflow that preserves
+surviving pane ids, splits added cells, and kills removed cells. The 4↔5 boundary
+uses explicit pane moves because the TUI pane changes between top-left and
+full-left shapes. Removing a sticky (`un-sticky → preview`) promotes that session
+to `preview_id`, dismissing any prior preview.
+
+#### Pane-count matrix
+
+TUI spans the left; session cells run clockwise from the cell nearest the TUI
+(`T` = TUI pane, digits = session cell index):
+
+```
+tui+1 (tier 2)   tui+2 (tier 3)   tui+3 (tier 4)   tui+4 (tier 5)   tui+5 (tier 6)
+┌────┬────┐      ┌────┬────┐      ┌────┬────┐      ┌───┬───┬───┐    ┌───┬───┬───┐
+│    │    │      │    │ 1  │      │ T  │ 1  │      │ T │ 1 │ 2 │    │ T │ 1 │ 2 │
+│ T  │ 1  │      │ T  ├────┤      ├────┼────┤      │ T ├───┼───┤    ├───┼───┼───┤
+│    │    │      │    │ 2  │      │ 3  │ 2  │      │ T │ 4 │ 3 │    │ 5 │ 4 │ 3 │
+└────┴────┘      └────┴────┘      └────┴────┘      └───┴───┴───┘    └───┴───┴───┘
+```
+
+Adjacent tiers are index-preserving: growing tui+4 → tui+5 only adds session 5
+at the bottom-left; sessions 1–4 keep their cells.
 
 ### Interaction mapping (Sessions)
 
-- Single click on session line: `SetPreview(session_id, show_child=True)`
-- Double click on session title line: `ToggleSticky(session_id, show_child=True)`
-- Double click on session ID line: `ToggleSticky(session_id, show_child=False)`
-- Enter on session: `SetPreview(session_id, show_child=True)`
-- Enter on project: `StartSession(project_path)`
-- `a` on project: `ToggleProjectStickySessions(project_path)`
-- `R` on session: `RestartSession(session_id)`
-- `k` on session (after confirm): `KillSession(session_id)`
+All preview gestures funnel through one sticky-aware selector that enforces I1:
+selecting a **sticky** session clears the preview (and focuses the existing
+sticky pane on focus intent) rather than duplicating it as a preview; selecting
+a **non-sticky** session sets/swaps the preview.
+
+- Single click on a session: set/swap preview (with focus), sticky-aware.
+- Enter on a session: set/swap preview **and** focus the pane, sticky-aware.
+- Space on a session: preview toggle (no focus); pressing the active preview again clears it.
+- Double click / double Space on a session: toggle sticky (un-sticky promotes the session to preview).
+- Enter on project: open new-session modal.
+- `a` on project/computer: batch toggle sticky for that scope.
+- `R` on session: restart session.
+- `k` on session (after confirm): kill session.
 - `←`/`→` on a session: collapse/expand that row; on a project or computer header: collapse/expand that node's whole subtree.
 - `=`/`-`: expand/collapse every session row (leaf fold).
 - `+`/`_` (shift): expand/collapse every computer and project (structural fold); session rows are untouched.
@@ -221,14 +269,16 @@ A new `TodoStatus.REMOVED` value extends the TUI status enum, with its own glyph
 #### Edge cases and exceptions
 
 - **Selection effects**: selection by click may trigger preview; selection by arrow requires Enter.
-- **Missing tmux session**: intent still emitted; side-effect handler reports error and leaves state unchanged.
+- **Missing tmux session**: message still posted; side-effect handler reports error and leaves state unchanged.
 - **Missing file**: `ViewFile/EditFile` ignored with user notice; state unchanged.
-- **Sticky + Preview conflict**: reducer clears preview when sticky is set for same session.
+- **Sticky + Preview conflict**: the sticky-aware selector enforces I1 — a selection that would set the preview to a sticky clears the preview instead.
 - **Un-sticky transition**: removing a sticky sets that session as the active preview, dismissing any previous preview. See `@docs/project/design/ux/session-preview-sticky.md`.
 - **Tab switching**: `SelectTab(view_id)` must not alter preview or sticky.
 
 ## Failure modes
 
 - **Hidden Panes on Tab Switch**: Indicates layout is still tied to view switching, not state.
-- **Child Pane Persists**: Indicates derived layout is bypassed by stale child fields.
-- **Sticky Drift**: Indicates state is split across views or layout is not centrally applied.
+- **Duplicate Pane Where the Preview Should Be**: Indicates a preview gesture bypassed the sticky-aware selector and set `preview_id` to a sticky (I1 violated).
+- **Orphan Columns / Dead-Dot Half-Panes**: Indicates a relayout ran `select-layout even-horizontal` or skipped orphan reaping, so a stray live pane became an extra column. Column widths must come from explicit split percentages and orphans must be reaped at render entry.
+- **Pane Churn on Same-Tier Change**: Indicates the renderer rebuilt the grid instead of swapping only the changed cells — relayout must happen only on tier change.
+- **Sticky Drift**: Indicates the bridge mirror was not re-synced from the Sessions-view owner, or state is split across views.

@@ -20,7 +20,7 @@ from teleclaude.cli.tui.messages import (
     StickyChanged,
 )
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
-from teleclaude.cli.tui.state import DocPreviewState
+from teleclaude.cli.tui.types import DocPreviewState
 
 logger = get_logger(__name__)
 

@@ -12,10 +12,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui._pane_specs import LAYOUT_SPECS, LayoutCell, SessionPaneSpec
+from teleclaude.cli.tui.layout_model import CellOp, desired, diff_cells, orphan_panes
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui._pane_specs import ComputerInfo, LayoutSpec
-    from teleclaude.cli.tui.state import DocPreviewState
+    from teleclaude.cli.tui.types import DocPreviewState
 
 logger = get_logger(__name__)
 
@@ -37,13 +38,20 @@ class PaneLayoutMixin:
     """Layout management methods for TmuxPaneManager."""
 
     def apply_layout(self, request: LayoutRequest | None = None, **legacy_kwargs: object) -> None:
-        """Apply a deterministic layout from session ids."""
+        """Apply a deterministic layout from session ids.
+
+        A relayout (split/kill panes) happens only when the tier (pane count)
+        changes. Same-tier transitions swap the content of just the cells whose
+        assigned session changed, leaving every stable pane untouched. Genuine
+        orphans (live non-TUI panes absent from the layout) are reaped at entry.
+        """
         if not self._in_tmux:  # type: ignore[attr-defined]
             return
         if request is None:
             request = LayoutRequest(**legacy_kwargs)
 
         self._reconcile()  # type: ignore[attr-defined]
+        self._reap_orphans()
         logger.debug(
             "apply_layout: active=%s sticky=%s doc_preview=%s focus=%s tui_pane=%s active_pane=%s",
             request.active_session_id if request.active_session_id else None,
@@ -62,28 +70,113 @@ class PaneLayoutMixin:
             request.sticky_session_ids,
             request.get_computer_info,
         )
-        previous_active = self._active_spec  # type: ignore[attr-defined]
-        prev_command = previous_active.command if previous_active else None
         self._active_spec = active_spec  # type: ignore[attr-defined]
 
-        if self._layout_is_unchanged():
-            logger.debug(
-                "apply_layout: layout unchanged, active_spec=%s active_session=%s active_pane=%s",
-                active_spec.session_id if active_spec else None,
-                self.state.active_session_id if self.state.active_session_id else None,  # type: ignore[attr-defined]
-                self._active_pane_id,  # type: ignore[attr-defined]
-            )
-            self._handle_unchanged_layout(active_spec, prev_command, request.focus)
+        cell_specs = self._build_session_specs()
+        new_tier = 1 + len(cell_specs)
+        if new_tier not in LAYOUT_SPECS:
+            logger.warning("apply_layout: no layout for tier=%d", new_tier)
             return
 
-        logger.debug(
-            "apply_layout: layout CHANGED, calling _render_layout (specs=%d)",
-            len(self._build_session_specs()),
-        )
-        self._render_layout()
+        prev_cells = self._layout_state.cell_specs  # type: ignore[attr-defined]
+        same_tier = prev_cells is not None and len(prev_cells) == len(cell_specs)
+        if same_tier and self._swap_changed_cells(prev_cells, cell_specs):
+            self._layout_state.cell_specs = cell_specs  # type: ignore[attr-defined]
+            self._layout_state.layout_signature = self._compute_layout_signature()  # type: ignore[attr-defined]
+            self._refresh_backgrounds_if_needed()
+            if request.focus and active_spec:
+                self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
+            return
+
+        logger.debug("apply_layout: tier changed -> minimal reflow (specs=%d)", len(cell_specs))
+        self._reflow_layout(prev_cells, cell_specs)
+        self._layout_state.cell_specs = cell_specs  # type: ignore[attr-defined]
         self.invalidate_bg_cache()
         if request.focus and active_spec:
             self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
+
+    def _reap_orphans(self) -> None:
+        """Kill live non-TUI panes that no tracked session maps to.
+
+        A relayout or a crashed process can leave a live pane that nothing
+        tracks; ``select-layout`` and grid splits would otherwise count it as an
+        extra column. Stable, tracked panes are never touched here.
+        """
+        if not self._tui_pane_id:  # type: ignore[attr-defined]
+            return
+        output = self._run_tmux("list-panes", "-F", "#{pane_id}")  # type: ignore[attr-defined]
+        live = {pane.strip() for pane in output.split("\n") if pane.strip()}
+        tracked = set(self.state.session_to_pane.values())  # type: ignore[attr-defined]
+        for pane in orphan_panes(live, self._tui_pane_id, tracked):  # type: ignore[attr-defined]
+            self._run_tmux("kill-pane", "-t", pane)  # type: ignore[attr-defined]
+            logger.debug("_reap_orphans: killed untracked pane %s", pane)
+
+    def _cell_fingerprint(self, spec: SessionPaneSpec) -> str:
+        """Identity of a cell's content: session plus any doc command."""
+        return f"{spec.session_id}\x00{spec.command or ''}"
+
+    def _swap_changed_cells(
+        self,
+        prev_cells: list[SessionPaneSpec],
+        new_cells: list[SessionPaneSpec],
+    ) -> bool:
+        """Respawn only the cells whose content changed (same-tier transition).
+
+        Returns ``False`` to request a full reflow when a target pane is missing
+        or dead, so the caller falls back to ``_render_layout``.
+        """
+        diff = diff_cells(
+            [self._cell_fingerprint(spec) for spec in prev_cells],
+            [self._cell_fingerprint(spec) for spec in new_cells],
+        )
+        if diff.tier_changed:
+            return False
+        for cell in diff.cells:
+            prev_spec = prev_cells[cell.index - 1]
+            pane = self._existing_cell_pane(prev_spec)
+            if pane is None:
+                return False
+            if cell.op is CellOp.KEEP:
+                continue
+            new_spec = new_cells[cell.index - 1]
+            self._respawn_cell(pane, prev_spec, new_spec)
+        self.state.active_session_id = next(  # type: ignore[attr-defined]
+            (spec.session_id for spec in new_cells if not spec.is_sticky), None
+        )
+        return True
+
+    def _existing_cell_pane(self, spec: SessionPaneSpec) -> str | None:
+        """Return the live pane for an existing cell, or request a reflow."""
+        pane = self.state.session_to_pane.get(spec.session_id)  # type: ignore[attr-defined]
+        if pane and pane != self._tui_pane_id and self._get_pane_exists(pane):  # type: ignore[attr-defined]
+            return pane
+        logger.debug(
+            "_swap_changed_cells: missing live pane for %s (pane=%s); reflowing",
+            spec.session_id,
+            pane,
+        )
+        return None
+
+    def _respawn_cell(
+        self,
+        pane: str,
+        prev_spec: SessionPaneSpec,
+        new_spec: SessionPaneSpec,
+    ) -> None:
+        """Swap one pane's content in place without rebuilding the grid."""
+        attach_cmd = self._build_pane_command(new_spec)
+        self._run_tmux("respawn-pane", "-k", "-t", pane, attach_cmd)  # type: ignore[attr-defined]
+        self.state.session_to_pane.pop(prev_spec.session_id, None)  # type: ignore[attr-defined]
+        self.state.session_to_pane[new_spec.session_id] = pane  # type: ignore[attr-defined]
+        if new_spec.tmux_session_name:
+            self._set_pane_background(  # type: ignore[attr-defined]
+                pane,
+                new_spec.tmux_session_name,
+                new_spec.active_agent,
+                is_tree_selected=self._is_tree_selected_session(new_spec.session_id),
+            )
+        else:
+            self._set_doc_pane_background(pane, agent=new_spec.active_agent)  # type: ignore[attr-defined]
 
     def _build_sticky_specs(
         self,
@@ -131,35 +224,6 @@ class PaneLayoutMixin:
             )
         return None
 
-    def _handle_unchanged_layout(
-        self,
-        active_spec: SessionPaneSpec | None,
-        prev_command: str | None,
-        focus: bool,
-    ) -> None:
-        if active_spec and self.state.active_session_id != active_spec.session_id:  # type: ignore[attr-defined]
-            self._update_active_pane(active_spec)
-        elif self._active_doc_command_changed(active_spec, prev_command):
-            self._update_active_pane(active_spec)
-
-        if focus and active_spec:
-            self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
-        if not active_spec:
-            self._clear_active_state_if_sticky()
-        self._refresh_backgrounds_if_needed()
-
-    def _active_doc_command_changed(
-        self,
-        active_spec: SessionPaneSpec | None,
-        prev_command: str | None,
-    ) -> bool:
-        return bool(
-            active_spec
-            and active_spec.command
-            and self.state.active_session_id == active_spec.session_id  # type: ignore[attr-defined]
-            and active_spec.command != prev_command
-        )
-
     def _refresh_backgrounds_if_needed(self) -> None:
         """Refresh pane backgrounds only when selection or agent state changed."""
         bg_signature = self._compute_bg_signature()
@@ -170,13 +234,24 @@ class PaneLayoutMixin:
         self._set_tui_pane_background()  # type: ignore[attr-defined]
 
     def _build_session_specs(self) -> list[SessionPaneSpec]:
-        session_specs: list[SessionPaneSpec] = list(self._sticky_specs)  # type: ignore[attr-defined]
+        """Ordered cell specs derived from ``desired()`` (incl. the borrow rule).
+
+        ``desired()`` already bounds the result to ``MAX_STICKY`` sessions, so no
+        truncation is needed here. Sticky specs win on id collision so a preview
+        that equals a sticky never displaces the sticky cell.
+        """
+        sticky_specs = list(self._sticky_specs)  # type: ignore[attr-defined]
         active_spec = self._active_spec  # type: ignore[attr-defined]
-        if active_spec and not any(spec.session_id == active_spec.session_id for spec in session_specs):
-            session_specs.append(active_spec)
-        if len(session_specs) > 5:
-            session_specs = session_specs[:5]
-        return session_specs
+        by_id: dict[str, SessionPaneSpec] = {}
+        if active_spec is not None:
+            by_id[active_spec.session_id] = active_spec
+        for spec in sticky_specs:
+            by_id[spec.session_id] = spec
+        ordered = desired(
+            [spec.session_id for spec in sticky_specs],
+            active_spec.session_id if active_spec else None,
+        )
+        return [by_id[session_id] for session_id in ordered if session_id in by_id]
 
     def _compute_layout_signature(self) -> tuple[object, ...] | None:
         session_specs = self._build_session_specs()
@@ -184,7 +259,7 @@ class PaneLayoutMixin:
         layout = LAYOUT_SPECS.get(total_panes)
         if not layout:
             return None
-        structural_keys = tuple(spec.session_id if spec.is_sticky else "__active__" for spec in session_specs)
+        structural_keys = tuple((spec.session_id, spec.command) for spec in session_specs)
         return (
             layout.rows,
             layout.cols,
@@ -216,14 +291,6 @@ class PaneLayoutMixin:
         """Force background re-application on next apply_layout."""
         self._bg_signature = None  # type: ignore[attr-defined]
 
-    def _clear_active_state_if_sticky(self) -> None:
-        """Clear active_session_id when active has been promoted to sticky."""
-        if not self.state.active_session_id:  # type: ignore[attr-defined]
-            return
-        active_session_id = self.state.active_session_id  # type: ignore[attr-defined]
-        if any(spec.session_id == active_session_id for spec in self._sticky_specs):  # type: ignore[attr-defined]
-            self.state.active_session_id = None  # type: ignore[attr-defined]
-
     def _refresh_session_pane_backgrounds(self) -> None:
         """Refresh pane backgrounds for all tracked session panes."""
         if not self._in_tmux:  # type: ignore[attr-defined]
@@ -247,56 +314,6 @@ class PaneLayoutMixin:
                 is_tree_selected=self._is_tree_selected_session(session_id),
             )
 
-    def _update_active_pane(self, active_spec: SessionPaneSpec) -> None:
-        """Swap the active pane content without rebuilding layout."""
-        if not self._in_tmux:  # type: ignore[attr-defined]
-            return
-        active_pane = self._active_pane_id  # type: ignore[attr-defined]
-        if not active_pane or not self._get_pane_exists(active_pane):  # type: ignore[attr-defined]
-            logger.debug(
-                "_update_active_pane: active pane missing or dead (%s), falling back to _render_layout",
-                active_pane,
-            )
-            self._render_layout()
-            return
-        if active_pane == self._tui_pane_id:  # type: ignore[attr-defined]
-            logger.error(
-                "_update_active_pane: active_pane == tui_pane_id (%s), refusing to respawn TUI - rebuilding layout",
-                self._tui_pane_id,  # type: ignore[attr-defined]
-            )
-            self.state.active_session_id = None  # type: ignore[attr-defined]
-            self._render_layout()
-            return
-
-        logger.debug(
-            "_update_active_pane: respawning pane %s with session %s (tmux=%s)",
-            active_pane,
-            active_spec.session_id,
-            active_spec.tmux_session_name,
-        )
-        attach_cmd = self._build_pane_command(active_spec)
-        self._run_tmux("respawn-pane", "-k", "-t", active_pane, attach_cmd)  # type: ignore[attr-defined]
-
-        stale_ids = [
-            session_id
-            for session_id, pane_id in self.state.session_to_pane.items()  # type: ignore[attr-defined]
-            if pane_id == active_pane
-        ]
-        for session_id in stale_ids:
-            self.state.session_to_pane.pop(session_id, None)  # type: ignore[attr-defined]
-        self.state.session_to_pane[active_spec.session_id] = active_pane  # type: ignore[attr-defined]
-        self.state.active_session_id = active_spec.session_id  # type: ignore[attr-defined]
-
-        if active_spec.tmux_session_name:
-            self._set_pane_background(  # type: ignore[attr-defined]
-                active_pane,
-                active_spec.tmux_session_name,
-                active_spec.active_agent,
-                is_tree_selected=self._is_tree_selected_session(active_spec.session_id),
-            )
-        else:
-            self._set_doc_pane_background(active_pane, agent=active_spec.active_agent)  # type: ignore[attr-defined]
-
     def _layout_is_unchanged(self) -> bool:
         signature = self._compute_layout_signature()
         if signature is None:
@@ -319,8 +336,6 @@ class PaneLayoutMixin:
             [spec.session_id for spec in session_specs if spec.is_sticky],
             next((spec.session_id for spec in session_specs if not spec.is_sticky), None),
         )
-        if len(session_specs) > 5:
-            logger.warning("_render_layout: truncating session panes from %d to 5", len(session_specs))
 
         total_panes = 1 + len(session_specs)
         layout = LAYOUT_SPECS.get(total_panes)
@@ -330,9 +345,232 @@ class PaneLayoutMixin:
 
         self._cleanup_all_session_panes()  # type: ignore[attr-defined]
         col_top_panes = self._render_top_row(layout, session_specs, total_panes)
-        self._normalize_layout_columns(layout)
         self._render_bottom_row(layout, session_specs, col_top_panes)
         self._finalize_layout_render()
+
+    def _reflow_layout(
+        self,
+        prev_cells: list[SessionPaneSpec] | None,
+        session_specs: list[SessionPaneSpec],
+    ) -> None:
+        """Apply a tier-change delta while preserving surviving session panes."""
+        if prev_cells is None:
+            self._render_layout()
+            return
+        if not self._prepare_tui_pane():
+            return
+
+        total_panes = 1 + len(session_specs)
+        layout = LAYOUT_SPECS.get(total_panes)
+        if not layout:
+            logger.warning("_reflow_layout: no layout for total=%d", total_panes)
+            return
+
+        prev_total = 1 + len(prev_cells)
+        if self._can_transition_four_to_five(prev_cells, session_specs):
+            self._transition_four_to_five(prev_cells, session_specs)
+        elif self._can_transition_five_to_four(prev_cells, session_specs):
+            self._transition_five_to_four(prev_cells, session_specs)
+        else:
+            self._kill_removed_cells(prev_cells, session_specs)
+            self._render_existing_aware_layout(layout, session_specs, total_panes)
+
+        logger.debug(
+            "_reflow_layout: done. previous_total=%d total=%d tracked=%s",
+            prev_total,
+            total_panes,
+            dict(self.state.session_to_pane),  # type: ignore[attr-defined]
+        )
+        self._finalize_layout_render()
+
+    def _can_transition_four_to_five(
+        self,
+        prev_cells: list[SessionPaneSpec],
+        session_specs: list[SessionPaneSpec],
+    ) -> bool:
+        prev_ids = [spec.session_id for spec in prev_cells]
+        new_ids = [spec.session_id for spec in session_specs]
+        return len(prev_ids) == 3 and len(new_ids) == 4 and prev_ids == new_ids[:3]
+
+    def _can_transition_five_to_four(
+        self,
+        prev_cells: list[SessionPaneSpec],
+        session_specs: list[SessionPaneSpec],
+    ) -> bool:
+        prev_ids = [spec.session_id for spec in prev_cells]
+        new_ids = [spec.session_id for spec in session_specs]
+        return len(prev_ids) == 4 and len(new_ids) == 3 and prev_ids[:3] == new_ids
+
+    def _transition_four_to_five(
+        self,
+        prev_cells: list[SessionPaneSpec],
+        session_specs: list[SessionPaneSpec],
+    ) -> None:
+        panes = self._require_transition_panes(prev_cells)
+        if panes is None:
+            self._kill_removed_cells(prev_cells, session_specs)
+            self._render_existing_aware_layout(LAYOUT_SPECS[5], session_specs, 5)
+            return
+
+        first, second, third = panes
+        temp = self._run_tmux(  # type: ignore[attr-defined]
+            "split-window",
+            "-t",
+            first,
+            "-h",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_id}",
+        )
+        self._run_tmux("swap-pane", "-s", second, "-t", temp)  # type: ignore[attr-defined]
+        self._run_tmux("swap-pane", "-s", third, "-t", temp)  # type: ignore[attr-defined]
+        self._run_tmux("kill-pane", "-t", temp)  # type: ignore[attr-defined]
+
+        added_spec = session_specs[3]
+        attach_cmd = self._build_pane_command(added_spec)
+        added_pane = self._run_tmux(  # type: ignore[attr-defined]
+            "split-window",
+            "-t",
+            third,
+            "-h",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            attach_cmd,
+        )
+        self._run_tmux("swap-pane", "-s", third, "-t", added_pane)  # type: ignore[attr-defined]
+        self._track_session_pane(added_spec, added_pane)
+        self._sync_surviving_cell_content(prev_cells, session_specs)
+
+    def _transition_five_to_four(
+        self,
+        prev_cells: list[SessionPaneSpec],
+        session_specs: list[SessionPaneSpec],
+    ) -> None:
+        panes = self._require_transition_panes(prev_cells[:3])
+        if panes is None:
+            self._kill_removed_cells(prev_cells, session_specs)
+            self._render_existing_aware_layout(LAYOUT_SPECS[4], session_specs, 4)
+            return
+
+        first, second, third = panes
+        removed_id = prev_cells[3].session_id
+        removed_pane = self.state.session_to_pane.pop(removed_id, None)  # type: ignore[attr-defined]
+        if removed_pane and self._get_pane_exists(removed_pane):  # type: ignore[attr-defined]
+            self._run_tmux("kill-pane", "-t", removed_pane)  # type: ignore[attr-defined]
+
+        temp = self._run_tmux(  # type: ignore[attr-defined]
+            "split-window",
+            "-t",
+            self._tui_pane_id,  # type: ignore[attr-defined]
+            "-v",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_id}",
+        )
+        self._run_tmux("swap-pane", "-s", third, "-t", temp)  # type: ignore[attr-defined]
+        self._run_tmux("kill-pane", "-t", temp)  # type: ignore[attr-defined]
+        self._run_tmux("join-pane", "-s", second, "-t", first, "-v", "-d")  # type: ignore[attr-defined]
+        self._sync_surviving_cell_content(prev_cells, session_specs)
+
+    def _require_transition_panes(self, specs: list[SessionPaneSpec]) -> tuple[str, str, str] | None:
+        panes = [self._existing_cell_pane(spec) for spec in specs]
+        first, second, third = panes
+        if first is None or second is None or third is None:
+            return None
+        return first, second, third
+
+    def _kill_removed_cells(
+        self,
+        prev_cells: list[SessionPaneSpec],
+        session_specs: list[SessionPaneSpec],
+    ) -> None:
+        desired_ids = {spec.session_id for spec in session_specs}
+        for spec in prev_cells:
+            if spec.session_id in desired_ids:
+                continue
+            pane = self.state.session_to_pane.pop(spec.session_id, None)  # type: ignore[attr-defined]
+            if pane and self._get_pane_exists(pane):  # type: ignore[attr-defined]
+                self._run_tmux("kill-pane", "-t", pane)  # type: ignore[attr-defined]
+
+    def _render_existing_aware_layout(
+        self,
+        layout: LayoutSpec,
+        session_specs: list[SessionPaneSpec],
+        total_panes: int,
+    ) -> None:
+        col_top_panes = self._render_existing_aware_top_row(layout, session_specs, total_panes)
+        self._render_existing_aware_bottom_row(layout, session_specs, col_top_panes)
+        self._sync_surviving_cell_content(self._layout_state.cell_specs or [], session_specs)  # type: ignore[attr-defined]
+
+    def _render_existing_aware_top_row(
+        self,
+        layout: LayoutSpec,
+        session_specs: list[SessionPaneSpec],
+        total_panes: int,
+    ) -> list[str | None]:
+        col_top_panes: list[str | None] = [self._tui_pane_id] + [None] * (layout.cols - 1)  # type: ignore[attr-defined]
+        for col in range(1, layout.cols):
+            spec = self._get_layout_spec(session_specs, layout.grid[0][col])
+            if not spec:
+                continue
+            existing = self._existing_cell_pane(spec)
+            if existing:
+                col_top_panes[col] = existing
+                continue
+            split_target, split_args = self._top_row_split_request(layout, col, col_top_panes, total_panes)
+            pane_id = self._split_top_row_pane(spec, split_target, split_args)
+            if pane_id:
+                col_top_panes[col] = pane_id
+                self._track_session_pane(spec, pane_id)
+        return col_top_panes
+
+    def _render_existing_aware_bottom_row(
+        self,
+        layout: LayoutSpec,
+        session_specs: list[SessionPaneSpec],
+        col_top_panes: list[str | None],
+    ) -> None:
+        if layout.rows <= 1:
+            return
+        for col in range(layout.cols):
+            spec = self._get_layout_spec(session_specs, layout.grid[1][col])
+            target_pane = col_top_panes[col]
+            if not spec or not target_pane:
+                continue
+            if self._existing_cell_pane(spec):
+                continue
+            attach_cmd = self._build_pane_command(spec)
+            pane_id = self._run_tmux(  # type: ignore[attr-defined]
+                "split-window",
+                "-t",
+                target_pane,
+                "-v",
+                "-d",
+                "-P",
+                "-F",
+                "#{pane_id}",
+                attach_cmd,
+            )
+            if pane_id:
+                self._track_session_pane(spec, pane_id)
+
+    def _sync_surviving_cell_content(
+        self,
+        prev_cells: list[SessionPaneSpec],
+        session_specs: list[SessionPaneSpec],
+    ) -> None:
+        prev_by_id = {spec.session_id: spec for spec in prev_cells}
+        for spec in session_specs:
+            prev_spec = prev_by_id.get(spec.session_id)
+            if not prev_spec or self._cell_fingerprint(prev_spec) == self._cell_fingerprint(spec):
+                continue
+            pane = self._existing_cell_pane(prev_spec)
+            if pane:
+                self._respawn_cell(pane, prev_spec, spec)
 
     def _prepare_tui_pane(self) -> bool:
         if not self._in_tmux:  # type: ignore[attr-defined]
@@ -382,9 +620,15 @@ class PaneLayoutMixin:
             split_args = ["-h"]
             if layout.cols == 2 and total_panes <= 3:
                 split_args.extend(["-p", "60"])
+            elif layout.cols == 3:
+                # Give the two right-hand session columns ~66% so explicit widths
+                # bound the column count, instead of select-layout which would
+                # count any stray live pane as an extra column.
+                split_args.extend(["-p", "66"])
             split_args.append("-d")
             return self._tui_pane_id or "", split_args  # type: ignore[attr-defined]
-        return col_top_panes[col - 1] or "", ["-h", "-d"]
+        extra = ["-p", "50"] if layout.cols == 3 else []
+        return col_top_panes[col - 1] or "", ["-h", *extra, "-d"]
 
     def _split_top_row_pane(
         self,
@@ -403,10 +647,6 @@ class PaneLayoutMixin:
             "#{pane_id}",
             attach_cmd,
         )
-
-    def _normalize_layout_columns(self, layout: LayoutSpec) -> None:
-        if layout.cols == 3:
-            self._run_tmux("select-layout", "even-horizontal")  # type: ignore[attr-defined]
 
     def _render_bottom_row(
         self,

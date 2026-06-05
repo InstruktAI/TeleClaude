@@ -81,11 +81,13 @@ class ThemeMode(str, Enum):
     LIGHT = "light"
 
 
-@dataclass
-class StickySessionInfo:
-    """Sticky session state for multi-pane view."""
+@dataclass(frozen=True)
+class DocPreviewState:
+    """Active document preview shown in the side pane."""
 
-    session_id: str
+    doc_id: str
+    command: str
+    title: str
 
 
 type CursesWindow = curses.window

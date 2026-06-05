@@ -170,8 +170,3 @@ def save_state(state: dict[str, object]) -> None:  # guard: loose-dict - namespa
         logger.debug("Saved TUI state to %s", TUI_STATE_PATH)
     except OSError as exc:
         logger.error("Failed to save TUI state to %s: %s", TUI_STATE_PATH, exc)
-
-
-# --- Legacy compatibility stub (old controller.py still imports this) ---
-def save_sticky_state(_state: object) -> None:
-    """Legacy compatibility stub for old controller.py imports."""
