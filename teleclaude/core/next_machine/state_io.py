@@ -49,7 +49,7 @@ from teleclaude.core.next_machine.git_ops import (
     get_origin_main_sha,
     run_git_command,
 )
-from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG, KIND_FEATURE
 from teleclaude.core.next_machine.lifecycle import (
     PREPARE_LIFECYCLE_PHASES,
     LifecyclePhase,
@@ -575,7 +575,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
     has_prd = _has_artifact_content(cwd, slug, ARTIFACT_PRD)
     has_legacy_requirements = _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS)
-    if kind not in FAST_TRACK_PREPARED_KINDS and not (has_prd or has_legacy_requirements):
+    if kind == KIND_FEATURE and not (has_prd or has_legacy_requirements):
         raise ValueError(f"Missing prd artifact with content for {slug}")
     if kind != KIND_BUG and not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
@@ -621,7 +621,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     writer = StateWriter(state)
 
     review_mgr = ReviewManager(writer)
-    if kind in FAST_TRACK_PREPARED_KINDS:
+    if kind != KIND_FEATURE:
         review_mgr.stamp_verdict("requirements_review", "skipped")
     else:
         review_mgr.stamp_verdict("requirements_review", "approve")

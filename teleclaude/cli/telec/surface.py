@@ -433,7 +433,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args="<slug> <content> --kind <kind> [--after <deps>] [--silent]",
+                args="<slug> <content> --kind <kind> [--after <deps>] [--silent] [--plan]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
@@ -445,6 +445,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ),
                     ),
                     Flag("--silent", desc="Create silently — suppress pickup notification"),
+                    Flag(
+                        "--plan",
+                        desc="Content is a complete implementation-plan; skip prepare to build (--kind change only).",
+                    ),
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",

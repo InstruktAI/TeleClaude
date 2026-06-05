@@ -343,6 +343,7 @@ def _handle_todo_create(args: list[str]) -> None:
     content: str | None = None
     after: list[str] | None = None
     silent = False
+    plan = False
     kind_value: str | None = None
 
     _VALID_KINDS_STR = "|".join(sorted(ALL_DUMP_KINDS))
@@ -355,6 +356,9 @@ def _handle_todo_create(args: list[str]) -> None:
             i += 2
         elif arg == "--silent":
             silent = True
+            i += 1
+        elif arg == "--plan":
+            plan = True
             i += 1
         elif arg == "--kind" and i + 1 < len(args):
             kind_value = args[i + 1]
@@ -406,6 +410,7 @@ def _handle_todo_create(args: list[str]) -> None:
         kind=dump_kind,
         cwd=str(resolve_invocation_cwd()),
         silent=silent,
+        plan=plan,
     )
     result = tool_api_request(
         "POST",

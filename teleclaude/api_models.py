@@ -356,6 +356,7 @@ class TodoDumpRequest(BaseModel):
     after: list[str] | None = None
     cwd: str | None = None
     silent: bool = False
+    plan: bool = False
 
 
 # WebSocket Event DTOs

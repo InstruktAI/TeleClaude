@@ -521,6 +521,12 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         if not request.content.strip():
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
 
+        if request.plan and request.kind != "change":
+            raise HTTPException(
+                status_code=400,
+                detail="--plan supplies a complete implementation-plan and is only valid with --kind change",
+            )
+
         state = default_state()
         state["kind"] = request.kind
 
@@ -531,16 +537,28 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 await todos_db.add_to_roadmap(slug, after=request.after if request.after else None, session=session)
                 await todos_db.write_state(slug, state, session=session)
 
-                input_content = f"# {slug} — Input\n\n{request.content}\n"
-                written_artifact_name = ARTIFACT_INPUT
-                written_artifact_body = input_content
-                await todos_db.write_artifact(
-                    slug,
-                    ARTIFACT_INPUT,
-                    input_content,
-                    updated_by="api.todo.create",
-                    session=session,
-                )
+                if request.plan:
+                    plan_content = f"# {slug} — Implementation Plan\n\n{request.content}\n"
+                    written_artifact_name = ARTIFACT_IMPLEMENTATION_PLAN
+                    written_artifact_body = plan_content
+                    await todos_db.write_artifact(
+                        slug,
+                        ARTIFACT_IMPLEMENTATION_PLAN,
+                        plan_content,
+                        updated_by="api.todo.create.plan",
+                        session=session,
+                    )
+                else:
+                    input_content = f"# {slug} — Input\n\n{request.content}\n"
+                    written_artifact_name = ARTIFACT_INPUT
+                    written_artifact_body = input_content
+                    await todos_db.write_artifact(
+                        slug,
+                        ARTIFACT_INPUT,
+                        input_content,
+                        updated_by="api.todo.create",
+                        session=session,
+                    )
 
         todos_db.on_committed("todo_updated")
 
@@ -553,9 +571,10 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 artifact_body=written_artifact_body,
             )
 
-        if request.kind == "bug":
-            # Stamp DOR, grounding baseline, and review approvals so the bug
-            # enters the fix lane with the canonical lifecycle already `prepared`.
+        if request.kind == "bug" or request.plan:
+            # Stamp DOR, grounding baseline, and review approvals so a bug (fix
+            # lane) or a --plan change (complete plan supplied) is immediately
+            # `prepared` and skips the prepare phase.
             final_state = apply_prepared_state(effective_cwd, slug)
             state["lifecycle_phase"] = str(final_state.get("lifecycle_phase", state.get("lifecycle_phase", "draft")))
             todos_db.on_committed("todo_updated")
@@ -581,7 +600,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
             slug=slug,
             kind=request.kind,
             cwd=effective_cwd,
-            artifact=ARTIFACT_INPUT,
+            artifact=ARTIFACT_IMPLEMENTATION_PLAN if request.plan else ARTIFACT_INPUT,
         )
 
         return _SlugStatusResponse(status="ok", slug=slug)
