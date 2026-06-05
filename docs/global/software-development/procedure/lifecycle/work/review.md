@@ -22,8 +22,8 @@ Verify the implementation against the PRD, prepared artifacts, and standards, an
 
 ## Preconditions
 
-- `telec todo artifacts read {slug} prd` exists (or `bug` for bug fixes). Legacy
-  todos may carry `requirements`; use it only when `prd` is absent.
+- The approved intent artifact exists — `prd` for a `feature`, `input` for a
+  `change`/`bug` (see `software-development/concept/approved-intent-artifact`).
 - `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix).
 - `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections (unless bug fix).
@@ -102,11 +102,13 @@ incomplete — stop and execute the missing lane before writing the verdict.
 
 #### Scope verification
 
-The delivery must match the PRD — nothing more, nothing less.
+The delivery must match the approved intent (`prd` for a `feature`, `input` for a
+`change`/`bug`; see `software-development/concept/approved-intent-artifact`) —
+nothing more, nothing less.
 
-For each PRD success criterion, produce a `Scope verification` entry in `review-findings.md`:
+For each approved-intent success criterion (a `prd` criterion, or a goal/outcome stated in `input`), produce a `Scope verification` entry in `review-findings.md`:
 
-1. Quote the criterion verbatim from `prd` (or legacy `requirements` when PRD is absent).
+1. Quote the criterion verbatim from the approved intent artifact.
 2. Name the specific code change in the diff that delivers the criterion (file, function, line range).
 3. Name the test whose passing demonstrates the criterion is delivered.
 4. State, in one sentence, how the code change and the passing test together satisfy the criterion.
@@ -445,9 +447,9 @@ changes.
 
 #### Bug fix review
 
-When `telec todo artifacts read {slug} bug` exists, use it as the intent source instead of `prd`. Verify:
+When `kind == "bug"`, the `input` artifact is the bug report and the intent source (no `prd`). Verify:
 
-1. Fix addresses the symptom described in `bug.md`.
+1. Fix addresses the symptom described in `input`.
 2. Root cause analysis is sound.
 3. Fix is minimal and targeted.
 4. Investigation and documentation sections are complete.

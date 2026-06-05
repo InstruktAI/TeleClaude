@@ -24,9 +24,10 @@ it without guessing and a reviewer finds no surprises.
 ## Preconditions
 
 - `telec todo artifacts read {slug} implementation-plan` exists.
-- `telec todo artifacts read {slug} prd` exists and is approved. If this is a
-  legacy todo with no PRD yet, `input` may be used only as a compatibility
-  fallback and must be called out in findings.
+- The approved intent artifact exists (see
+  `software-development/concept/approved-intent-artifact`): `prd` for a `feature`,
+  `input` for a `change`. For a `change`, the absence of a PRD is the intended
+  design — do NOT treat it as a defect or raise a finding for it.
 
 ## Steps
 
@@ -35,10 +36,9 @@ First read the software-development principles as listed in the software-develop
 ### 1. Read context
 
 - `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
-- `telec todo artifacts read {slug} prd` — the approved product contract it must satisfy.
+- The approved intent artifact — `prd` for a `feature`, `input` for a `change` — the contract the plan must satisfy.
 - `telec todo artifacts read {slug} architecture` — when present.
 - `telec todo artifacts read {slug} test-specs` — when present.
-- `telec todo artifacts read {slug} input` — compatibility fallback only when PRD is absent.
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
 - Apply the domain-context loading rule from the preparation artifact quality
@@ -51,7 +51,7 @@ Structural coverage ("a task exists for this requirement") is not sufficient.
 Produce a `Delivery analysis` section in `plan-review-findings.md` with one
 entry per requirement success criterion.
 
-For each success criterion in `prd`:
+For each success criterion in the approved intent artifact (`prd` for a `feature`, or each goal/outcome stated in `input` for a `change`):
 
 1. Reference the criterion by `@prd#section-header` — do not copy its text.
 2. Reference the task body (or multiple tasks' bodies) that delivers it by

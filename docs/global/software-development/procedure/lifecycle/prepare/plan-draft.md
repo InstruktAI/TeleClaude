@@ -36,7 +36,10 @@ for one builder session, this phase owns the split.
 
 ## Preconditions
 
-1. `telec todo artifacts read {slug} prd` exists and is human-approved.
+1. The approved intent artifact exists — `prd` for a `feature`, `input` for a
+   `change` (see `software-development/concept/approved-intent-artifact`). A
+   `change` has no PRD by design; `input` is its intent. Drafts from a `feature`
+   PRD are human-approved before this phase.
 2. `architecture` is either reviewer-approved or explicitly skipped.
 3. Slug is active (not icebox, not delivered).
 

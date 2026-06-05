@@ -21,10 +21,10 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 ## Preconditions
 
 - `telec todo artifacts read {slug} implementation-plan` exists and is readable.
-- `telec todo artifacts read {slug} prd` exists and is readable — **unless**
-  the todo is prepped (`state.kind == "prepped"`), in which case there is no
-  PRD artifact and the implementation-plan is the sole spec. Legacy todos may
-  carry `requirements`; use it only when `prd` is absent.
+- The approved intent artifact is readable — `prd` for a `feature`, or `input`
+  for a `change`/`bug` (see `software-development/concept/approved-intent-artifact`).
+  For `change`/`bug` there is no PRD; that is intended, not a defect, and the
+  implementation-plan (or, for a bug, the fix) is grounded in `input`.
 - `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes `## Build Gates (Builder)`.
 - The todo scope is implementable in one build phase.
