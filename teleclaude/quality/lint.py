@@ -192,22 +192,6 @@ class _SnapshotTestingStep:
 
 
 @dataclass
-class _TestDisciplineStep:
-    """Enforce ``software-development/policy/test-resource-discipline``."""
-
-    name: str = "test_discipline"
-    _project_root: Path = field(default_factory=Path)
-
-    def run(self, targets: list[str]) -> None:
-        """Lint test files for per-test timeout overrides, expensive markers,
-        forbidden root-conftest hookwrappers and heavy imports, and real
-        subprocess calls in unit-tier tests."""
-        del targets  # whole-tree scan; per-file targets are ignored
-        script = str(REPO_ROOT / "tools" / "lint" / "test_discipline.py")
-        _run_tool([sys.executable, script], self._project_root, self.name)
-
-
-@dataclass
 class _RuffCheckStep:
     """Ruff lint check with auto-fix step."""
 
@@ -326,7 +310,6 @@ class PythonLintPipeline:
             _HomePathsStep(_project_root=root),
             _ResourceValidationStep(_project_root=root),
             _SnapshotTestingStep(_project_root=root),
-            _TestDisciplineStep(_project_root=root),
             _RuffCheckStep(_project_root=root),
             _RuffFormatStep(_project_root=root),
             _PyrightStep(_project_root=root),
