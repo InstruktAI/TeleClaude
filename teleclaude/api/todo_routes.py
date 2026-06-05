@@ -36,7 +36,6 @@ from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
-    ARTIFACT_BUG,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
     ARTIFACT_NAMES_RETIRED,
@@ -506,7 +505,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
     Kind selects the entry point (see TodoDumpRequest):
       - "feature" | "change": content is the "input" artifact; enters prepare
         (feature authors a PRD, change drafts a plan directly).
-      - "bug": content is the "bug" artifact; apply_prepared_state stamps the
+      - "bug": content is the "input" artifact; apply_prepared_state stamps the
         canonical lifecycle `prepared` so it enters the fix lane directly.
     ``silent`` suppresses dispatch (parking).
     """
@@ -532,25 +531,16 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 await todos_db.add_to_roadmap(slug, after=request.after if request.after else None, session=session)
                 await todos_db.write_state(slug, state, session=session)
 
-                if request.kind == "bug":
-                    await todos_db.write_artifact(
-                        slug,
-                        ARTIFACT_BUG,
-                        request.content,
-                        updated_by="api.todo.create.bug",
-                        session=session,
-                    )
-                else:
-                    input_content = f"# {slug} — Input\n\n{request.content}\n"
-                    written_artifact_name = ARTIFACT_INPUT
-                    written_artifact_body = input_content
-                    await todos_db.write_artifact(
-                        slug,
-                        ARTIFACT_INPUT,
-                        input_content,
-                        updated_by="api.todo.create",
-                        session=session,
-                    )
+                input_content = f"# {slug} — Input\n\n{request.content}\n"
+                written_artifact_name = ARTIFACT_INPUT
+                written_artifact_body = input_content
+                await todos_db.write_artifact(
+                    slug,
+                    ARTIFACT_INPUT,
+                    input_content,
+                    updated_by="api.todo.create",
+                    session=session,
+                )
 
         todos_db.on_committed("todo_updated")
 
@@ -591,7 +581,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
             slug=slug,
             kind=request.kind,
             cwd=effective_cwd,
-            artifact=ARTIFACT_BUG if request.kind == "bug" else ARTIFACT_INPUT,
+            artifact=ARTIFACT_INPUT,
         )
 
         return _SlugStatusResponse(status="ok", slug=slug)

@@ -18,28 +18,28 @@ visibility: 'public'
 ## Goal
 
 Investigate a bug using systematic debugging, apply the minimal fix, and document
-findings in `bug.md` for reviewer verification.
+findings in the `input` artifact for reviewer verification.
 
 ## Preconditions
 
-- `telec todo artifacts read {slug} bug` exists with symptom and discovery context.
+- `telec todo artifacts read {slug} input` exists with symptom and discovery context.
 - Worktree is available for the slug.
 
 ## Steps
 
-1. Read `telec todo artifacts read {slug} bug` to understand the symptom and discovery context.
+1. Read `telec todo artifacts read {slug} input` to understand the symptom and discovery context.
 2. Follow the systematic debugging procedure before making changes — reproduce first,
    then bisect and isolate the root cause.
 3. Encode the reproduction as a failing test. Write a test that triggers the bug.
    Run the test suite — the new test must FAIL (RED). If you cannot write a test
-   for it, document why in `bug.md`.
-4. Document the investigation in the `## Investigation` section of `bug.md`.
+   for it, document why in the `input` artifact.
+4. Document the investigation in the `## Investigation` section of the `input` artifact.
 5. Identify and document the root cause in the `## Root Cause` section.
 6. Apply the minimal fix required.
 7. Run the test suite — the reproduction test must now PASS (GREEN). The fix is
    not complete until the test passes.
 8. Document what changed in the `## Fix Applied` section.
-9. Commit the fix and `bug.md` updates together.
+9. Commit the fix and the `input` artifact updates together.
 10. Run tests: `telec code test`.
 11. Run lint: `telec code lint`.
 12. Commit all remaining files in the worktree. Everything in the worktree belongs to the task.
@@ -53,7 +53,7 @@ findings in `bug.md` for reviewer verification.
 
 ## Outputs
 
-- Updated `bug.md` with Investigation, Root Cause, and Fix Applied sections.
+- Updated the `input` artifact with Investigation, Root Cause, and Fix Applied sections.
 - Reproduction test for the bug.
 - Commits for the fix.
 

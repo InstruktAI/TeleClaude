@@ -355,6 +355,23 @@ def _purge_holder_payload(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_bug_artifact_to_input(conn: sqlite3.Connection) -> None:
+    """Collapse the legacy ``bug`` artifact into ``input``.
+
+    Kind is authoritative (``kind == "bug"`` drives the fix lane); the bug report
+    now lives in the universal ``input`` artifact. Rename existing rows where the
+    slug has no ``input`` yet, then drop any leftover ``bug`` rows. Idempotent —
+    re-running finds no ``bug`` rows.
+    """
+    if not _table_exists(conn, "todo_artifacts"):
+        return
+    conn.execute(  # guard: raw-sql - one-time artifact-name collapse on existing local DBs
+        "UPDATE todo_artifacts SET name = 'input' "
+        "WHERE name = 'bug' AND slug NOT IN (SELECT slug FROM todo_artifacts WHERE name = 'input')"
+    )
+    conn.execute("DELETE FROM todo_artifacts WHERE name = 'bug'")  # guard: raw-sql
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -369,6 +386,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
             _migrate_roadmap_pending_purge_paths(conn)
             _migrate_roadmap_ordering_columns(conn)
             _purge_holder_payload(conn)
+        _migrate_bug_artifact_to_input(conn)
         conn.commit()
     finally:
         conn.close()

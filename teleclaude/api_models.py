@@ -343,7 +343,7 @@ class TodoDumpRequest(BaseModel):
     ``kind`` is required and selects the lifecycle entry point:
       - "feature": content is the "input" artifact; enters intake (authors a PRD).
       - "change":  content is the "input" artifact; enters plan drafting (no PRD).
-      - "bug":     content is the "bug" artifact; skips prepare and enters the fix lane.
+      - "bug":     content is the "input" artifact; skips prepare and enters the fix lane.
 
     ``silent`` creates the todo without dispatching an orchestrator (parking).
     """

@@ -111,6 +111,9 @@ ARTIFACT_ARCHITECTURE = "architecture"
 # `ARTIFACT_NAMES` entry once no in-flight todos carry the artifact.
 ARTIFACT_TEST_SPECS = "test-specs"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
+# DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is
+# authoritative). Retained only for READ/REMOVE of pre-collapse todos; the on-open
+# migration `_migrate_bug_artifact_to_input` renames existing rows to "input".
 ARTIFACT_BUG = "bug"
 ARTIFACT_QUALITY_CHECKLIST = "quality-checklist"
 ARTIFACT_DESIGN_SPEC = "design-spec"
@@ -167,6 +170,7 @@ ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
     {
         ARTIFACT_TEST_SPECS,
         ARTIFACT_SPEC_REVIEW_FINDINGS,
+        ARTIFACT_BUG,
     }
 )
 

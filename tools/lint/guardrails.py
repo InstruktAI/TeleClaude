@@ -641,9 +641,7 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
     ),
     PatternRule(
         name="divergent-kind-vocabulary",
-        pattern=re.compile(
-            r"""\bkind\s*(?::\s*\w+\s*)?=(?!=)\s*["'](?:feature|todo|refactor|migration|bug|prepped|draft)["']"""
-        ),
+        pattern=re.compile(r"""\bkind\s*(?::\s*\w+\s*)?=(?!=)\s*["'](?:feature|change|bug)["']"""),
         scan_dirs=["teleclaude"],
         glob="*.py",
         exclude_prefixes=(
