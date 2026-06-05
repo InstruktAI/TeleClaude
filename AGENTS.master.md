@@ -19,7 +19,7 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 
 ## Databases
 
-- **Daemon DB:** `~/.teleclaude/teleclaude.db` (resolved from `config.database.path`) — sessions, operations, tokens, availability.
+- **Daemon DB:** `~/.teleclaude/teleclaude.db` (hardcoded as `MAIN_DB_PATH` in `teleclaude/paths.py`, under `$TELECLAUDE_HOME`, default `~/.teleclaude`) — sessions, operations, tokens, availability.
 - **Mirrors DB:** `~/.teleclaude/mirrors.db` — transcript mirrors, used by `telec history search`. Separate database.
 - **Todos DB:** `{project_root}/.teleclaude/todos.db` — per-project todo state, artifacts, and roadmap. One per project. **Authoritative for v1 workflow surfaces** (API, TUI, `/next-*` orchestrators, integration).
 
