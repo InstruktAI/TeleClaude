@@ -556,7 +556,7 @@ const ARTIFACT_NAMES: &[&str] = &[
     "review-findings",
 ];
 
-const TODO_KINDS: &[&str] = &["feature", "bug", "refactor", "migration", "prepped"];
+const TODO_KINDS: &[&str] = &["feature", "change", "bug"];
 
 const LIFECYCLE_PHASES: &[&str] = &[
     "draft",

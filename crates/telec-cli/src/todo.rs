@@ -78,8 +78,8 @@ pub struct CreateArgs {
     /// Comma-separated dependency slugs.
     #[arg(long)]
     pub after: Option<String>,
-    /// Work item kind. Defaults to `feature`.
-    #[arg(long, default_value = "feature")]
+    /// Work item kind: feature | change | bug.
+    #[arg(long)]
     pub kind: String,
     /// Optional free-form description.
     #[arg(long)]
@@ -566,12 +566,10 @@ where
 pub(crate) fn parse_kind(raw: &str) -> Result<TodoKind> {
     match raw {
         "feature" => Ok(TodoKind::Feature),
+        "change" => Ok(TodoKind::Change),
         "bug" => Ok(TodoKind::Bug),
-        "refactor" => Ok(TodoKind::Refactor),
-        "migration" => Ok(TodoKind::Migration),
-        "prepped" => Ok(TodoKind::Prepped),
         other => Err(anyhow!(
-            "unknown --kind {other:?}; expected feature|bug|refactor|migration|prepped"
+            "unknown --kind {other:?}; expected feature|change|bug"
         )),
     }
 }
@@ -654,8 +652,8 @@ mod tests {
     #[test]
     fn parse_kind_accepts_canonical_values() {
         assert!(matches!(parse_kind("feature"), Ok(TodoKind::Feature)));
+        assert!(matches!(parse_kind("change"), Ok(TodoKind::Change)));
         assert!(matches!(parse_kind("bug"), Ok(TodoKind::Bug)));
-        assert!(matches!(parse_kind("prepped"), Ok(TodoKind::Prepped)));
     }
 
     #[test]

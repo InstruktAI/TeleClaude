@@ -54,10 +54,8 @@ pub enum LifecycleStage {
 #[sqlx(type_name = "workflow.todo_kind", rename_all = "snake_case")]
 pub enum TodoKind {
     Feature,
+    Change,
     Bug,
-    Refactor,
-    Migration,
-    Prepped,
 }
 
 impl Default for TodoKind {

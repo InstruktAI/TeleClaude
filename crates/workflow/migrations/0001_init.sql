@@ -50,10 +50,8 @@ create type workflow.lifecycle_phase as enum (
 -- todo_state JSON blob and the `--kind` flag of `telec todo create`.
 create type workflow.todo_kind as enum (
   'feature',
-  'bug',
-  'refactor',
-  'migration',
-  'prepped'
+  'change',
+  'bug'
 );
 
 -- Roadmap entry status. Mirrors v1's `roadmap.status` text column values.
