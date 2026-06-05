@@ -39,7 +39,6 @@ class PeerInfo:
     ip: str | None = None
     role: str | None = None
     system_stats: SystemStats | None = None
-    tmux_binary: str | None = None
 
 
 def _int_or_none(value: object) -> int | None:

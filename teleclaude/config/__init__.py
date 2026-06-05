@@ -461,23 +461,6 @@ def _deep_merge(
     return result
 
 
-def _validate_disallowed_runtime_keys(user_config: dict[str, object]) -> None:  # guard: loose-dict
-    """Reject config keys that must be runtime policy, not user configuration."""
-    disallowed: list[str] = []
-
-    computer = user_config.get("computer")
-    if isinstance(computer, dict) and "tmux_binary" in computer:
-        disallowed.append("computer.tmux_binary")
-
-    if disallowed:
-        joined = ", ".join(disallowed)
-        raise ValueError(
-            "config.yml contains disallowed runtime keys: "
-            f"{joined}. "
-            "Agent and tmux binaries are now hardcoded runtime policy and cannot be configured."
-        )
-
-
 def _require_agents_section(raw_config: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
     """Require an explicit top-level `agents` mapping in config.yml."""
     agents_raw = raw_config.get("agents")
@@ -931,8 +914,6 @@ def _load_config_from_disk(path: Path) -> Config:
         raw_user_config = yaml.safe_load(f)
 
     user_config: Any = expand_env_vars(raw_user_config) if isinstance(raw_user_config, dict) else {}
-    if isinstance(user_config, dict):
-        _validate_disallowed_runtime_keys(user_config)
 
     experiments_path = path.parent / "experiments.yml"
     if experiments_path.exists():
@@ -947,7 +928,7 @@ def _load_config_from_disk(path: Path) -> Config:
                     user_config["experiments"].extend(exp_list)
 
     if isinstance(user_config, dict):
-        _validate_disallowed_runtime_keys(user_config)
+        pass
 
     merged = _deep_merge(DEFAULT_CONFIG, user_config)  # type: ignore[arg-type]
     return _build_config(merged)

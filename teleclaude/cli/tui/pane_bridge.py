@@ -136,7 +136,6 @@ class PaneManagerBridge(TelecMixin, Widget):
             is_local=api_info.is_local,
             user=api_info.user,
             host=api_info.host,
-            tmux_binary=api_info.tmux_binary,
         )
 
     def _mark_layout_dirty(self, *, focus: bool = False) -> None:

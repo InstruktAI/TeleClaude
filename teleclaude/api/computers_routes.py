@@ -42,7 +42,6 @@ async def list_computers(
                 user=info.user,
                 host=info.host,
                 is_local=True,
-                tmux_binary=info.tmux_binary,
             )
         ]
 

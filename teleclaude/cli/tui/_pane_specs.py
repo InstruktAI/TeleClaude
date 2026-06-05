@@ -14,7 +14,6 @@ class ComputerInfo:
     is_local: bool
     user: str | None = None
     host: str | None = None
-    tmux_binary: str | None = None
 
     @property
     def is_remote(self) -> bool:

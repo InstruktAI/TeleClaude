@@ -289,7 +289,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 user="",
                 host=comp_name,
                 is_local=(comp_name == "local"),
-                tmux_binary="tmux",
             )
             comp_display = ComputerDisplayInfo(
                 computer=comp_info,

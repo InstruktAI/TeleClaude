@@ -192,7 +192,6 @@ class ComputerDTO(BaseModel):
     user: str | None = None
     host: str | None = None
     is_local: bool
-    tmux_binary: str | None = None
 
 
 class ProjectDTO(BaseModel):

@@ -26,8 +26,8 @@ Capture authoritative documentation for project dependencies and store concise i
 1. **Define the brief**
    - Clarify the exact topic(s) to document and what will count as done.
    - Check whether docs already exist:
-     - Global: `~/.teleclaude/docs/third-party/index.md`
-     - Project: `docs/third-party/index.md`
+     - Global: `~/.teleclaude/docs/third-party/index.yaml`
+     - Project: `docs/third-party/index.yaml`
    - If docs exist and are current, return them instead of re-researching.
 
 2. **Gather authoritative sources**

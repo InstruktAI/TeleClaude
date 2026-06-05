@@ -160,7 +160,6 @@ def build_tree(
                     user=None,
                     host=None,
                     is_local=(computer_name == "local"),
-                    tmux_binary=None,
                 ),
                 session_count=0,
                 recent_activity=False,
