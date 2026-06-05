@@ -38,13 +38,21 @@ _LEGACY_KIND_MAP = {
     "migration": KIND_CHANGE,
     "chore": KIND_CHANGE,
     "prepped": KIND_CHANGE,
+    "built": KIND_CHANGE,
 }
 
 
 def canonical_kind(raw: str | None) -> str:
-    """Normalize any historical or current kind to the canonical {feature, change, bug}."""
-    if not raw:
-        return KIND_FEATURE
-    if raw in KIND_ENTRY_PHASE:
+    """Normalize a present kind to the canonical {feature, change, bug}.
+
+    Current kinds pass through; known pre-collapse kinds map to their successor.
+    An empty or unknown kind is corruption and raises (fail-fast) — a caller that
+    legitimately backfills a missing kind on a pre-collapse row does so explicitly
+    (see ``upcycle_state_dict``), never through a silent fallback here.
+    """
+    if raw is not None and raw in KIND_ENTRY_PHASE:
         return raw
-    return _LEGACY_KIND_MAP.get(raw, KIND_FEATURE)
+    mapped = _LEGACY_KIND_MAP.get(raw) if raw else None
+    if mapped is not None:
+        return mapped
+    raise ValueError(f"unknown todo kind: {raw!r}")

@@ -360,8 +360,9 @@ def _migrate_bug_artifact_to_input(conn: sqlite3.Connection) -> None:
 
     Kind is authoritative (``kind == "bug"`` drives the fix lane); the bug report
     now lives in the universal ``input`` artifact. Rename existing rows where the
-    slug has no ``input`` yet, then drop any leftover ``bug`` rows. Idempotent —
-    re-running finds no ``bug`` rows.
+    slug has no ``input`` yet. Bug rows that cannot be renamed — the rare case where
+    the slug already carries an ``input`` — are preserved in place (readable under
+    the retired ``bug`` name), never deleted, so the report is not lost. Idempotent.
     """
     if not _table_exists(conn, "todo_artifacts"):
         return
@@ -369,12 +370,12 @@ def _migrate_bug_artifact_to_input(conn: sqlite3.Connection) -> None:
         "UPDATE todo_artifacts SET name = 'input' "
         "WHERE name = 'bug' AND slug NOT IN (SELECT slug FROM todo_artifacts WHERE name = 'input')"
     )
-    dropped = [row[0] for row in conn.execute("SELECT slug FROM todo_artifacts WHERE name = 'bug'")]  # guard: raw-sql
-    if dropped:
-        # Rare: a slug already carried an `input` (e.g. delivered-slug reuse), so the
-        # bug row could not be renamed. Surface the drop rather than losing it silently.
-        logger.warning("bug->input migration dropped bug artifacts for slugs already carrying input: %s", dropped)
-    conn.execute("DELETE FROM todo_artifacts WHERE name = 'bug'")  # guard: raw-sql
+    collided = [row[0] for row in conn.execute("SELECT slug FROM todo_artifacts WHERE name = 'bug'")]  # guard: raw-sql
+    if collided:
+        # The slug already carries an `input`, so the bug row keeps its content under
+        # the retired `bug` name for manual reconciliation — deleting it would lose
+        # the persisted bug report.
+        logger.warning("bug->input migration left bug artifacts in place (slug already has input): %s", collided)
 
 
 def _bootstrap_todos_db(db_path: str) -> None:

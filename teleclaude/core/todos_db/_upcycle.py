@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, canonical_kind
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_FEATURE, canonical_kind
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
@@ -262,8 +262,11 @@ def upcycle_state_dict(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     latest = _upcycle_to_latest(raw)
     # Kind normalization is unconditional, not gated on a schema-version hop: a row
     # already at the latest version can still carry a pre-collapse legacy kind
-    # (refactor/migration/prepped/draft/todo). Canonicalize on every read.
-    latest["kind"] = canonical_kind(_text(latest, "kind"))
+    # (refactor/migration/prepped/draft/todo). A present kind is canonicalized (an
+    # unknown one fails fast); a missing kind on a pre-collapse row is an explicit
+    # legacy backfill, never a silent fallback.
+    raw_kind = _text(latest, "kind")
+    latest["kind"] = canonical_kind(raw_kind) if raw_kind else KIND_FEATURE
     model = TodoState.model_validate(latest)
     return cast(dict[str, StateValue], model.model_dump(exclude_none=True))
 

@@ -56,8 +56,8 @@ pub struct WorkflowCreateArgs {
     /// Dependency slugs. Repeat the flag or pass comma-separated values.
     #[arg(long, action = ArgAction::Append, value_delimiter = ',')]
     pub after: Vec<String>,
-    /// Work item kind. Defaults to `feature`.
-    #[arg(long, default_value = "feature")]
+    /// Work item kind: feature | change | bug.
+    #[arg(long)]
     pub kind: String,
     /// Optional free-form description.
     #[arg(long)]
