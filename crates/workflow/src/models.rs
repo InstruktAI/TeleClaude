@@ -58,12 +58,6 @@ pub enum TodoKind {
     Bug,
 }
 
-impl Default for TodoKind {
-    fn default() -> Self {
-        Self::Feature
-    }
-}
-
 /// Dispatch hint for todo creation events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -223,11 +217,6 @@ mod tests {
     fn todo_kind_serde_round_trip_feature() {
         let encoded = serde_json::to_string(&TodoKind::Feature).expect("serialize");
         assert_eq!(encoded, "\"feature\"");
-    }
-
-    #[test]
-    fn todo_kind_default_is_feature() {
-        assert_eq!(TodoKind::default(), TodoKind::Feature);
     }
 
     #[test]

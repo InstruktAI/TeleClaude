@@ -40,7 +40,6 @@ pub struct TodoCreated {
     pub project_id: ProjectId,
     pub lifecycle_phase: LifecyclePhase,
     pub created_at: DateTime<Utc>,
-    #[serde(default)]
     pub kind: TodoKind,
     #[serde(default)]
     pub creation_mode: CreationMode,
@@ -180,6 +179,7 @@ mod tests {
         project_id: ProjectId,
         lifecycle_phase: LifecyclePhase,
         created_at: DateTime<Utc>,
+        kind: TodoKind,
     }
 
     #[derive(Serialize)]
@@ -270,6 +270,7 @@ mod tests {
             project_id: sample_project_id(),
             lifecycle_phase: LifecyclePhase::PrdDrafting,
             created_at: fixed_timestamp(),
+            kind: TodoKind::Bug,
         };
         let encoded = serde_json::to_string(&legacy).expect("serialize legacy TodoCreated");
 
@@ -280,11 +281,28 @@ mod tests {
         assert_eq!(decoded.project_id, legacy.project_id);
         assert_eq!(decoded.lifecycle_phase, legacy.lifecycle_phase);
         assert_eq!(decoded.created_at, legacy.created_at);
-        assert_eq!(decoded.kind, TodoKind::Feature);
+        assert_eq!(decoded.kind, TodoKind::Bug);
         assert_eq!(decoded.creation_mode, CreationMode::Pickup);
         assert!(decoded.pickup_requested);
         assert!(decoded.created_by_principal.is_empty());
         assert!(decoded.project_path.is_empty());
+    }
+
+    #[test]
+    fn todo_created_missing_kind_is_rejected() {
+        // kind is mandatory: an event without it must fail to deserialize (no silent default).
+        let json = serde_json::json!({
+            "todo_id": sample_todo_id(),
+            "slug": sample_slug(),
+            "project_id": sample_project_id(),
+            "lifecycle_phase": LifecyclePhase::Draft,
+            "created_at": fixed_timestamp(),
+        });
+        let result: Result<TodoCreated, _> = serde_json::from_value(json);
+        assert!(
+            result.is_err(),
+            "missing kind must be rejected, not defaulted"
+        );
     }
 
     #[test]
