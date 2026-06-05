@@ -36,7 +36,7 @@ from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd, resolve_state_root
 from teleclaude.session_identity import get_session_id
 from teleclaude.slug import validate_slug
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TodoDumpKind
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
 
 if TYPE_CHECKING:
     pass
@@ -346,7 +346,7 @@ def _handle_todo_create(args: list[str]) -> None:
     plan = False
     kind_value: str | None = None
 
-    _VALID_KINDS_STR = "|".join(sorted(ALL_DUMP_KINDS))
+    _VALID_KINDS_STR = TODO_KIND_USAGE
 
     i = 0
     while i < len(args):

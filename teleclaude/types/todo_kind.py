@@ -25,8 +25,14 @@ TODO_KIND_BUG: Final = "bug"
 # explicit kind, and the read boundary hard-fails on a missing kind.
 TODO_KIND_DEFAULT: Final = TODO_KIND_FEATURE
 
-# All valid values accepted by the CLI --kind flag and the API dump endpoint.
-ALL_DUMP_KINDS: frozenset[str] = frozenset({TODO_KIND_FEATURE, TODO_KIND_CHANGE, TODO_KIND_BUG})
-
 # Literal type alias for static type checking at API boundaries.
 TodoDumpKind = Literal["feature", "change", "bug"]
+
+# All valid values accepted by the CLI --kind flag and the API dump endpoint.
+TODO_KIND_CHOICES: Final[tuple[TodoDumpKind, ...]] = (
+    TODO_KIND_FEATURE,
+    TODO_KIND_CHANGE,
+    TODO_KIND_BUG,
+)
+TODO_KIND_USAGE: Final[str] = "|".join(TODO_KIND_CHOICES)
+ALL_DUMP_KINDS: frozenset[str] = frozenset(TODO_KIND_CHOICES)

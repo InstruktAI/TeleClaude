@@ -20,9 +20,10 @@ description: 'Todo creation — `telec todo create <slug> <content> --kind <kind
 The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, plus a creative-machine entrypoint that does not itself create todo entries:
 
 - **`telec todo create <slug> <content> --kind <kind>`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is a required flag — no default, no fallback, missing kind exits with a usage error. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
-  - `--kind <kind>` — **required**. Canonical kind value. Valid values: `feature`, `refactor`, `migration`, `todo` (→ prepare lane), `bug` (→ bug-fix lane), `prepped` (content is a complete plan; skip prepare), `draft` (park idea; no lifecycle). No default — callers must be explicit.
+  - `--kind <kind>` — **required**. Canonical kind value. Valid values: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (fix lane). No default — callers must be explicit.
   - `--silent` — sets `silent=True` on the request. The route still creates the todo and still emits `workflow.todo.created`, but with `pickup_requested=false` and `creation_mode="silent"`, so the lifecycle router skips dispatch.
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
+  - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
@@ -35,10 +36,10 @@ The Todo aggregate's invariants — unique kebab-case slug, fixed kind, `after` 
 The workflow service emits the event with this payload:
 
 - `slug` — the created slug.
-- `kind` — canonical kind, mapped onto the canonical kind set: `None`/`""` → `"feature"`; `"draft"` → `"feature"`; `"prepped"` → `"prepped"` (routes `/next-work` bypass lane); `"bug"` → `"bug"`; canonical kinds (`"feature"`, `"refactor"`, `"migration"`, `"todo"`) pass through.
+- `kind` — canonical kind from the request: `feature`, `change`, or `bug`.
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
 - `pickup_requested` — boolean, true unless the caller passed `--silent`.
-- `lifecycle_phase` — the post-write `lifecycle_phase` value (`"prepared"` for `prepped` and `bug`, `"draft"` otherwise).
+- `lifecycle_phase` — the post-write `lifecycle_phase` value (`"prepared"` for `bug` and `--plan`, `"draft"` otherwise).
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 
@@ -67,13 +68,13 @@ And the todo waits silently until a human invokes the next action
 
 ```
 Given a human or agent already has a complete implementation plan
-When they run `telec todo create my-feature "<content>" --kind prepped`
-Then the request carries kind="prepped"
+When they run `telec todo create my-feature "<content>" --kind change --plan`
+Then the request carries kind="change" and plan=true
 And the route writes the content as the `implementation-plan` artifact (body prefixed "# my-feature — Implementation Plan")
 And the route applies the prepared-state primitives so lifecycle_phase becomes "prepared"
-And the route emits workflow.todo.created with canonical kind="prepped" and pickup_requested=true
+And the route emits workflow.todo.created with canonical kind="change" and pickup_requested=true
 And the lifecycle router dispatches /next-work (build), bypassing prepare
-And the CLI prints "Created todo: my-feature (kind=prepped)"
+And the CLI prints "Created todo: my-feature (kind=change)"
 ```
 
 ```
@@ -107,10 +108,21 @@ And no todo entry mutation happens for slugs that already exist; design only orc
 ```
 Given a customer-support agent files a bug via "telec bugs report '<description>'"
 When the workflow service handles the bug creation with kind="bug"
-Then it writes state + todo entry + `bug` artifact and applies prepared-state primitives
+Then it writes state + todo entry + `input` artifact and applies prepared-state primitives
 And the workflow service emits workflow.todo.created with canonical kind="bug" and pickup_requested=true
 And the lifecycle router consumes the event and dispatches /next-work for the bug lane
 And the bug skips the demo phase per the kind=bug lifecycle gate
+```
+
+### Behavioral contract
+
+#### UC-WTC1: Create help exposes canonical kind choices
+
+```gherkin
+Given an operator needs to create a todo
+When they run `telec todo create --help`
+Then the usage line shows the canonical `--kind <feature|change|bug>` values
+And the help does not advertise retired kind values
 ```
 
 ### Cross-context references
@@ -122,12 +134,11 @@ And the bug skips the demo phase per the kind=bug lifecycle gate
 ## Known caveats
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
-- `--kind` is **required** on `telec todo create`. Omitting it exits with a usage error and no API call is made. There is no default — callers must be explicit. The full set of valid kinds is the canonical kind vocabulary (feature, refactor, migration, todo, bug, prepped, draft). Use `--kind prepped` to skip the prepare phase (HUMAN-IN-THE-LOOP required).
-- `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` (except when `kind=="draft"`, an internal-only lane with no CLI surface). `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
-- `--kind prepped` requires human-in-the-loop per the platform's autonomy policy: an agent does not autonomously bypass prepare. Operator-grade.
+- `--kind` is **required** on `telec todo create`. Omitting it exits with a usage error and no API call is made. There is no default — callers must be explicit. The full set of valid kinds is `feature`, `change`, and `bug`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should skip prepare.
+- `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` after a successful create. `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
 - The `bugs report` / `bugs create` helpers wrap the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
-- The lifecycle router routes purely on the event payload's `kind` and `pickup_requested`; it does not read todo state during dispatch. Missing/unknown kinds degrade to the default todo lane (`/next-prepare`).
+- The lifecycle router routes purely on the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`; it does not read todo state during dispatch. `telec todo create` emits only canonical `feature`, `change`, or `bug` kinds.
 - `telec todo design` (and the deprecated `co-create` alias) is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
-- The `prepped` lane writes content prefixed with `# <slug> — Implementation Plan\n\n` and the default lane writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
+- The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` and the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
 - The `workflow.todo.created` payload's `todo_id`, `project_id`, and `created_by_principal` may not be populated by every emitter; downstream consumers fill them via serde defaults.

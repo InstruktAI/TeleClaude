@@ -97,7 +97,7 @@ And the instruction tells the operator to inspect via "telec todo show my-featur
 
 - Prepare runs on `main` with no worktree. The machine itself does not branch; the work-state machine is the first stage that materializes a per-slug worktree.
 - A holder entry cannot itself enter prepare. The orchestrator is always routed to its direct, runnable children — even when the holder is the explicit slug argument.
-- `prepped` kind Todos skip the prepare lifecycle entirely; they are expected to land in `work` with an `implementation-plan` Artifact already present.
+- A `change` created with `--plan` skips the prepare lifecycle entirely; it lands in `work` with an `implementation-plan` Artifact already present.
 - The PRD gate is the only mandatory human approval. Architecture and plan advance on the reviewer Worker's verdict; `--architecture-skipped` exists precisely so that not every Todo has to pay the architecture phase. There is no separate test-specs phase — Gherkin acceptance scenarios are authored into the feature spec snippet during intake.
 - A PRD authored in standin / emulated-PO mode cannot be Stamped `prd_approved`. The gate requires a real-human principal regardless of how plausible the emulated approval looks.
 - The drift check is a real gate, not advisory. Any Artifact whose per-class derivation collapses to pending or substantive blocks `prepared` until the affected Artifact has been Stamped `drift-reviewed` after analysis. Cosmetic stamps are scoped to the evidence anchor they were made at and expire lazily when new evidence arrives — see `@spec/feature/workflow/drift-detection`.

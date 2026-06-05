@@ -48,11 +48,11 @@ And the CLI renders the affected snippet path, slug role, and live-deliverer cou
 ```
 
 ```
-Given a Todo whose persisted state has kind="draft" (created via "telec todo create" and not yet promoted)
+Given a Todo that has not yet received a worktree or feature branch
 When the removal operation runs
 Then the entry is soft-removed exactly as for any other Todo
 And the delivered-slug cleanup cascade is **skipped** (no worktree, no branch, no workspace teardown)
-Because draft Todos never received a worktree or feature branch in the first place
+Because there are no slug-keyed working resources to tear down
 ```
 
 ```

@@ -44,7 +44,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 : Durable, row-id-keyed metadata captured on the roadmap row at soft-remove time, alongside `removed_at`. It holds `prev_status` — the status the entry held immediately before removal (`active` or `icebox`) — and `removed_deps` — a snapshot of the entry's own outgoing `after` edges as they were at removal. Both exist only so reactivation can restore the entry's own footprint exactly. The snapshot is necessary because `roadmap_deps` is slug-keyed with no row identity: the live outgoing edges MUST be scrubbed at soft-remove (or a same-slug recreate would inherit/collide with them), so they can only survive for reactivation by being parked here. Legacy rows removed before this metadata existed have neither; reactivation falls back to `prev_status=icebox` and no outgoing-edge restore.
 
 **Kind**
-: Categorical label for the type of work: `feature`, `bug`, `refactor`, `migration`, `prepped`. Determines which lifecycle gates apply (e.g., `bug` skips the demo phase in finalize; `prepped` skips prepare).
+: Categorical label for the lifecycle entry point: `feature`, `change`, or `bug`. A `feature` enters PRD/intake, a `change` enters plan drafting without a PRD, and a `bug` enters the fix lane. A complete-plan creation is expressed by `--plan` on a `change`, not by a separate kind.
 
 **Stage** (per glossary)
 : Top-level lifecycle band: `draft`, `prepare`, `work`, `integrate`, `delivered`. Each stage is a coherent body of work with its own state machine inside.
@@ -151,7 +151,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 
 ### Section ordering
 
-The default roadmap order is derived, not manually positioned. The dependency tree is preserved (a row nests under its `after`/holder parent), and sibling rows sort newest-first with slug breaking ties. Active rows are grouped into a **Ready** band above an **In prep** band — a row is Ready when all `after` dependencies are delivered and either its kind is `bug` / `prepped` or its lifecycle phase is one of `prepared`, `build_started`, `build_complete`, `review_changes_requested`, `review_approved`. Within each band, rows sort newest-first by `ready_since`, falling back to `created_at` when a row has not yet entered the ready state. This grouping governs ordering only; the UI renders the active list as a single tree without band header lines. Delivered rows sort by `delivered_at`; icebox rows by `updated_at`. `ready_since` is stamped by the lifecycle state machine when a row first becomes ready and cleared on freeze and deliver. Removed rows are persisted for recovery but absent from the default order.
+The default roadmap order is derived, not manually positioned. The dependency tree is preserved (a row nests under its `after`/holder parent), and sibling rows sort newest-first with slug breaking ties. Active rows are grouped into a **Ready** band above an **In prep** band — a row is Ready when all `after` dependencies are delivered and either its kind is `bug` or its lifecycle phase is one of `prepared`, `build_started`, `build_complete`, `review_changes_requested`, `review_approved`. Within each band, rows sort newest-first by `ready_since`, falling back to `created_at` when a row has not yet entered the ready state. This grouping governs ordering only; the UI renders the active list as a single tree without band header lines. Delivered rows sort by `delivered_at`; icebox rows by `updated_at`. `ready_since` is stamped by the lifecycle state machine when a row first becomes ready and cleared on freeze and deliver. Removed rows are persisted for recovery but absent from the default order.
 
 #### Artifact (aggregate, lives inside Todo)
 
@@ -681,7 +681,7 @@ When the operator runs `telec workflow todo update <slug> [<content>] [--artifac
 Then workflow applies all supplied fields in a single transaction
 And dependency inputs REPLACE the entire `after` set (not patch)
 And positional content writes a new artifact version (default kind `input`, or the kind named by `--artifact`)
-And `--artifact implementation-plan` writes content as the implementation plan artifact and enforces the existing prepped HITL guard when paired with kind=prepped
+And `--artifact implementation-plan` writes content as the implementation plan artifact without introducing a separate prepared-work kind
 And update can NEVER move lifecycle phase (phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs)
 And on success emits workflow.todo.updated with a change_summary listing the mutated fields
 And on any partial-failure rolls back so previous state is fully preserved
@@ -787,7 +787,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.
 - [`todo-management`](../feature/workflow/todo-management.md) — Per-project ordered todo-list access through todo-scoped commands; derived section ordering; delivery transition.
 - [`todo-icebox`](../feature/workflow/todo-icebox.md) — Frozen-but-recoverable state for Todo entries; iceboxed entries do not participate in dependency resolution.
-- [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--kind prepped` skips prepare; bug-kind helpers route to `/next-work`.
+- [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` skips prepare; bug-kind helpers route to `/next-work`.
 - [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
 - [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
 
@@ -802,7 +802,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 
 ## Allowed values
 
-- `kind`: `feature`, `bug`, `refactor`, `migration`, `prepped`.
+- `kind`: `feature`, `change`, `bug`.
 - `stage`: `draft`, `prepare`, `work`, `integrate`, `delivered`.
 - `prepare phases`: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `prepared`.
 - `work phases`: `pending`, `building`, `review_pending`, `review_complete`, `fixing`, `finalize_pending`, `finalize_ready`.
@@ -818,7 +818,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - Todo rename is target behavior delivered by `telec-todo-rename`. Its rollback-tested atomic unit excludes terminal/audit and closed-but-revivable daemon reference reconciliation for `operations.slug`, `sessions.working_slug`, and `sessions.subdir`; those rows are repaired after commit on a best-effort, idempotent basis.
 - The state machine is a Rust crate (`crates/state_machine`) embedded by workflow. State machine state lives in `workflow.state_transitions`; transitions are persisted as the source of truth for phase advances.
 - Per-project isolation: each project has its own `.teleclaude/todos.db` (v1 SQLite) or its own Postgres schema (v2, possibly `<project>_workflow`). No cross-project queries.
-- `prepped` kind todos skip the prepare lifecycle entirely. Used when a human or agent has authored a complete implementation plan and wants to jump to build. Use `--kind prepped` on `telec todo create`. HUMAN-IN-THE-LOOP REQUIRED.
+- `--plan` on `telec todo create ... --kind change` supplies a complete implementation plan and marks the todo prepared, so the lifecycle router dispatches `/next-work`. It is explicit creation evidence, not a kind.
 - `bug` kind todos skip the demo phase during finalize and require the orchestrator to manually mark `build complete` before advancing (per agent memory gotcha).
 - The orchestrator (`teleclaude/core/next_machine/` in v1) is a CONSUMER of workflow, not part of it. The orchestrator dispatches sessions, reads workflow state, calls workflow mutations. Workflow itself has no opinion about WHO advances todos — it enforces invariants on transitions and exposes events.
 - Reviewer findings artifacts are workflow artifacts (per the canonical list) even though they're produced by review sessions. The state machine treats `review-findings` artifact presence + verdict as the trigger for advance.

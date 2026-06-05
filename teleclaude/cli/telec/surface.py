@@ -3,6 +3,7 @@
 from __future__ import annotations  # noqa: I001
 
 from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
+from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
 from .surface_types import (
     CommandAuth,
@@ -433,16 +434,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args="<slug> <content> --kind <kind> [--after <deps>] [--silent] [--plan]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--silent] [--plan]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
                     Flag(
                         "--kind",
-                        desc=(
-                            "Required. The work-unit's entry point into the lifecycle: "
-                            "feature (→ intake / PRD), change (→ plan; no PRD), bug (→ fix lane)."
-                        ),
+                        desc=(f"Required. The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}."),
                     ),
                     Flag("--silent", desc="Create silently — suppress pickup notification"),
                     Flag(
@@ -453,7 +451,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
                     "Emits workflow.todo.created for autonomous pickup unless --silent is set.",
-                    "--kind is required: feature | change | bug.",
+                    f"--kind is required: {TODO_KIND_USAGE}.",
+                    "--plan is valid only with --kind change and treats content as a complete implementation plan.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

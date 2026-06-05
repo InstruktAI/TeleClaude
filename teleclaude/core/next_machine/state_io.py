@@ -546,8 +546,8 @@ def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
 def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Stamp all authoritative state required to make a todo `prepared`.
 
-    Fast-track path used by ``--kind prepped`` to short-circuit
-    the full prepare lifecycle.
+    Fast-track path used by ``--plan`` on a change todo to short-circuit the
+    full prepare lifecycle.
     Validates that the PRD (or legacy requirements) and implementation-plan artifacts exist and
     that a git HEAD is reachable BEFORE any state is persisted. Only after
     validation succeeds does the function generate the quality-checklist
