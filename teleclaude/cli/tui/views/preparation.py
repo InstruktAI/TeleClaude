@@ -204,6 +204,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 version_total=dto.version_total,
                 after=dto.after,
                 group=dto.group,
+                kind=dto.kind,
                 lifecycle_phase=dto.lifecycle_phase,
                 integration_phase=dto.integration_phase,
                 finalize_status=dto.finalize_status,

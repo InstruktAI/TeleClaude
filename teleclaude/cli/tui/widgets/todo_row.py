@@ -24,6 +24,7 @@ _DIM = Style(dim=True)
 
 _PHASE_PREFIX_LIFECYCLE = "P"
 _PHASE_PREFIX_INTEGRATION = "I"
+_PHASE_PREFIX_KIND = "K"
 
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
@@ -186,6 +187,11 @@ def _gold_color() -> str:
     return _GOLD_DARK if is_dark_mode() else _GOLD_LIGHT
 
 
+def _kind_color() -> str:
+    """Return the theme-aware color for the K:<kind> tag."""
+    return "color(109)" if is_dark_mode() else "color(66)"
+
+
 def _icebox_color() -> str:
     """Return the theme-aware icebox color (light blue)."""
     return _ICEBOX_DARK if is_dark_mode() else _ICEBOX_LIGHT
@@ -251,8 +257,10 @@ class TodoRow(TelecMixin, Widget):
 
         Column order: P | I | B | R | D
         """
-        maxes: dict[str, int] = {"P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
+        maxes: dict[str, int] = {"K": 0, "P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
         for t in todos:
+            if t.kind:
+                maxes["K"] = max(maxes["K"], len(f"{_PHASE_PREFIX_KIND}:{t.kind}"))
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
@@ -273,10 +281,11 @@ class TodoRow(TelecMixin, Widget):
             if t.deferrals_status:
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
-        # Compute max rendered width across the mutually exclusive column paths
-        path_prepare = sized["P"]
-        path_integration = sized["P"]  # I renders in P slot
-        path_work = sized["B"] + sized["R"] + sized["D"]
+        # K renders first on every row and is orthogonal to the phase/work columns.
+        k = sized["K"]
+        path_prepare = k + sized["P"]
+        path_integration = k + sized["P"]  # I renders in P slot
+        path_work = k + sized["B"] + sized["R"] + sized["D"]
         sized["_max"] = max(path_prepare, path_integration, path_work) + 1  # +1 trailing dot
         return sized
 
@@ -310,44 +319,39 @@ class TodoRow(TelecMixin, Widget):
         return self._col_widths.get("_max", 0)
 
     def _build_columns(self) -> Text:
-        """Build aligned property columns. Prepare rows use P, work rows use B/R/F/D."""
+        """Build aligned columns. K:<kind> renders first, then phase (P/I) or work (B/R/D)."""
         target = self._total_col_width()
 
-        # Holders show no phase columns — status is the projection's leaf aggregate.
+        # Holders show no columns — status is the projection's leaf aggregate.
         if self.todo.is_holder:
             return _pad(Text(), target)
 
+        w = self._col_widths
+        result = Text()
+        # K:<kind> is orthogonal to phase and renders first on every non-holder row.
+        result.append_text(
+            self._build_col(
+                _PHASE_PREFIX_KIND, self.todo.kind or "", w.get("K", 0), Style(color=_kind_color(), bold=True)
+            )
+        )
+
         # Icebox items show P:icebox only — no work-phase columns
         if self.todo.status == TodoStatus.ICEBOX:
-            result = Text()
             result.append_text(
                 self._build_col(
-                    _PHASE_PREFIX_LIFECYCLE,
-                    "icebox",
-                    self._col_widths.get("P", 0),
-                    Style(color=_icebox_color(), bold=True),
+                    _PHASE_PREFIX_LIFECYCLE, "icebox", w.get("P", 0), Style(color=_icebox_color(), bold=True)
                 )
             )
             return _pad(result, target)
 
         # Trashed items show T:age only
         if self.todo.status == TodoStatus.REMOVED:
-            result = Text()
             age = format_relative_time(self.todo.removed_at) if self.todo.removed_at else ""
-            result.append_text(
-                self._build_col(
-                    "T",
-                    age,
-                    self._col_widths.get("P", 0),
-                    Style(color=_trashed_color(), bold=True),
-                )
-            )
+            result.append_text(self._build_col("T", age, w.get("P", 0), Style(color=_trashed_color(), bold=True)))
             return _pad(result, target)
 
-        result = Text()
         ok = _ok_color()
         gold = _gold_color()
-        w = self._col_widths
 
         # Phase detection: top-to-bottom, first match wins.
 

@@ -23,6 +23,7 @@ class TodoItem:
     version_total: int = 0
     after: list[str] = field(default_factory=list)
     group: str | None = None
+    kind: str | None = None
     lifecycle_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
