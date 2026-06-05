@@ -1,13 +1,10 @@
 ---
-id: project/spec/feature/agent_runtime/daemon-lifecycle
-type: spec
-domain: software-development
-scope: project
-visibility: public
-description: The long-running agent_runtime service process lifecycle — single-instance lock, staged
-  startup (storage → operations → session cache warm → adapters → event platform → request
-  surface → projects cache warm), shutdown ordering, and the request-surface restart loop
-  that keeps the service's external surface alive across crashes.
+id: 'project/spec/feature/agent_runtime/daemon-lifecycle'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+description: 'The long-running agent_runtime service process lifecycle — single-instance lock, staged startup (storage → operations → session cache warm → adapters → event platform → request surface → projects cache warm), shutdown ordering, and the request-surface restart loop that keeps the service''s external surface alive across crashes.'
 ---
 
 # Daemon Lifecycle — Spec
