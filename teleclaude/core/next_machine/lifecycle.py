@@ -42,7 +42,6 @@ from teleclaude.core.next_machine.kinds import (
     FAST_TRACK_PREPARED_KINDS,
     FEATURE_PREPARE_KINDS,
     KIND_BUG,
-    KIND_PREPPED,
     PLAN_ONLY_PREPARE_KINDS,
 )
 from teleclaude.paths import MAIN_DB_PATH
@@ -546,8 +545,6 @@ def adopt_prepare_handoff_phase(
     repo_root: str | None = None,
 ) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts."""
-    if model.kind == KIND_PREPPED:
-        return LifecyclePhase.PREPARED
     if model.kind == KIND_BUG:
         return LifecyclePhase.PREPARED
     if _non_drift_prepare_blockers(model):

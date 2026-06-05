@@ -440,11 +440,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag(
                         "--kind",
                         desc=(
-                            "Required. Work category and lifecycle lane: "
-                            "feature|refactor|migration|todo (→ prepare lane), "
-                            "bug (→ bug-fix lane), "
-                            "prepped (content is a complete plan; skip prepare), "
-                            "draft (park idea; no lifecycle)."
+                            "Required. The work-unit's entry point into the lifecycle: "
+                            "feature (→ intake / PRD), change (→ plan; no PRD), bug (→ fix lane)."
                         ),
                     ),
                     Flag("--silent", desc="Create silently — suppress pickup notification"),
@@ -452,7 +449,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
                     "Emits workflow.todo.created for autonomous pickup unless --silent is set.",
-                    "--kind is required; use --kind=prepped to skip prepare (HUMAN-IN-THE-LOOP required).",
+                    "--kind is required: feature | change | bug.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

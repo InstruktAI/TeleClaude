@@ -99,9 +99,6 @@ class IntegrationPhase(StrEnum):
     DELIVERED = "delivered"
 
 
-# Fallback todo kind when state.kind is absent or non-string (singular use).
-TODO_KIND_DEFAULT = "todo"
-
 # Todo artifact names — canonical values for the `name` column of todo_artifacts.
 ARTIFACT_INPUT = "input"
 ARTIFACT_PRD = "prd"

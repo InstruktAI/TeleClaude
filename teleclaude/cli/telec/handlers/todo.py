@@ -415,8 +415,7 @@ def _handle_todo_create(args: list[str]) -> None:
     )
 
     if isinstance(result, dict) and result.get("status") == "ok":
-        suffix = f" (kind={dump_kind})" if dump_kind != "todo" else ""
-        print(f"Created todo: {slug}{suffix}")
+        print(f"Created todo: {slug} (kind={dump_kind})")
     else:
         print(f"Error: unexpected response: {result}")
         raise SystemExit(1)

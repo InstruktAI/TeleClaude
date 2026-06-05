@@ -20,7 +20,7 @@ from teleclaude.constants import (
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TEST_SPECS,
 )
-from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_TODO
+from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE
 from teleclaude.slug import normalize_slug, validate_slug
 from teleclaude.types.todos import DorState, TodoState
 
@@ -247,7 +247,7 @@ def _parse_roadmap_index(path: Path, *, status: str, seen_slugs: set[str]) -> li
                 status=status,
                 marker=(match.group("marker") or "").strip(),
                 description=description,
-                kind=KIND_TODO,
+                kind=KIND_FEATURE,
             )
         )
     return entries
@@ -281,7 +281,7 @@ def _parse_delivered_index(path: Path, *, seen_slugs: set[str]) -> list[_LegacyE
                 status="delivered",
                 marker="x",
                 description=description,
-                kind=KIND_TODO,
+                kind=KIND_FEATURE,
                 delivered_at=delivered_at,
                 delivered_commit=delivered_commit,
             )

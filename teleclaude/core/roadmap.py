@@ -11,7 +11,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.constants import TODO_KIND_DEFAULT, IntegrationPhase, RoadmapStatus
+from teleclaude.constants import IntegrationPhase, RoadmapStatus
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     derive_build_status,
@@ -22,6 +22,7 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
 
 logger = get_logger(__name__)
 

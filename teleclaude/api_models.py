@@ -340,25 +340,20 @@ class SetAgentStatusRequest(BaseModel):
 class TodoDumpRequest(BaseModel):
     """Request body for POST /todos/dump.
 
-    The ``kind`` field selects the lifecycle lane and content category:
-      - "feature" | "refactor" | "migration" | "todo": content kinds — content is
-        written as the "input" artifact and the todo enters the prepare phase.
-      - "bug": bug-fix lane — content is written as the "bug" artifact and the todo
-        enters the work phase directly.
-      - "draft": parked idea — content is written as the "input" artifact but the
-        todo does not enter any lifecycle phase. No event is emitted.
-      - "prepped": pre-prepared lane — content is written as the "implementation-plan"
-        artifact and the todo is stamped prepared (ready for build), skipping the
-        prepare phase entirely.
-      - None (legacy / backward-compat): treated as "todo" (prepare lane).
+    ``kind`` is required and selects the lifecycle entry point:
+      - "feature": content is the "input" artifact; enters intake (authors a PRD).
+      - "change":  content is the "input" artifact; enters plan drafting (no PRD).
+      - "bug":     content is the "bug" artifact; skips prepare and enters the fix lane.
+
+    ``silent`` creates the todo without dispatching an orchestrator (parking).
     """
 
     model_config = ConfigDict(frozen=True)
 
     slug: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
+    kind: TodoDumpKind
     after: list[str] | None = None
-    kind: TodoDumpKind | None = None
     cwd: str | None = None
     silent: bool = False
 

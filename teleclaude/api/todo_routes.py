@@ -47,7 +47,6 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import apply_prepared_state, reconcile_phase_state
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -504,13 +503,12 @@ async def diff_artifact(
 async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
     """Create a todo: state + artifact + todo entry in todos.db.
 
-    Kind variants (see TodoDumpRequest for the full contract):
-      - None (default): writes an "input" artifact; enters the normal prepare lifecycle.
-      - "bug": writes a "bug" artifact; stamps DOR/grounding/verdicts via
-        apply_prepared_state so the canonical lifecycle is immediately `prepared`.
-      - "draft": writes an "input" artifact with lifecycle_phase="draft"; bypasses lifecycle.
-      - "prepped": writes the content as an "implementation-plan" artifact; stamps
-        all prepare primitives so the todo is immediately ready for build.
+    Kind selects the entry point (see TodoDumpRequest):
+      - "feature" | "change": content is the "input" artifact; enters prepare
+        (feature authors a PRD, change drafts a plan directly).
+      - "bug": content is the "bug" artifact; apply_prepared_state stamps the
+        canonical lifecycle `prepared` so it enters the fix lane directly.
+    ``silent`` suppresses dispatch (parking).
     """
     slug = request.slug
     try:
@@ -525,10 +523,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
 
         state = default_state()
-        if request.kind is not None:
-            state["kind"] = request.kind
-        if request.kind == "draft":
-            state["lifecycle_phase"] = LifecyclePhase.DRAFT.value
+        state["kind"] = request.kind
 
         written_artifact_name = ""
         written_artifact_body = ""
@@ -543,17 +538,6 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                         ARTIFACT_BUG,
                         request.content,
                         updated_by="api.todo.create.bug",
-                        session=session,
-                    )
-                elif request.kind == "prepped":
-                    plan_content = f"# {slug} — Implementation Plan\n\n{request.content}\n"
-                    written_artifact_name = ARTIFACT_IMPLEMENTATION_PLAN
-                    written_artifact_body = plan_content
-                    await todos_db.write_artifact(
-                        slug,
-                        ARTIFACT_IMPLEMENTATION_PLAN,
-                        plan_content,
-                        updated_by="api.todo.create.prepped",
                         session=session,
                     )
                 else:
@@ -579,38 +563,35 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 artifact_body=written_artifact_body,
             )
 
-        if request.kind in ("prepped", "bug"):
-            # Stamp DOR, grounding baseline, and review approvals so the
-            # canonical lifecycle is immediately `prepared`.
+        if request.kind == "bug":
+            # Stamp DOR, grounding baseline, and review approvals so the bug
+            # enters the fix lane with the canonical lifecycle already `prepared`.
             final_state = apply_prepared_state(effective_cwd, slug)
             state["lifecycle_phase"] = str(final_state.get("lifecycle_phase", state.get("lifecycle_phase", "draft")))
             todos_db.on_committed("todo_updated")
 
-        if request.kind != "draft":
-            await emit_event(
-                event="workflow.todo.created",
-                source="api.todo.create",
-                level=EventLevel.WORKFLOW,
-                domain="software-development",
-                payload={
-                    "slug": slug,
-                    "kind": map_v1_kind_to_canonical(request.kind),
-                    "creation_mode": "silent" if request.silent else "pickup",
-                    "pickup_requested": not request.silent,
-                    "lifecycle_phase": str(state.get("lifecycle_phase", "draft")),
-                    "created_at": datetime.now(UTC).isoformat(),
-                    "project_path": effective_cwd,
-                },
-            )
+        await emit_event(
+            event="workflow.todo.created",
+            source="api.todo.create",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            payload={
+                "slug": slug,
+                "kind": map_v1_kind_to_canonical(request.kind),
+                "creation_mode": "silent" if request.silent else "pickup",
+                "pickup_requested": not request.silent,
+                "lifecycle_phase": str(state.get("lifecycle_phase", "draft")),
+                "created_at": datetime.now(UTC).isoformat(),
+                "project_path": effective_cwd,
+            },
+        )
 
         logger.info(
             "todo creation completed",
             slug=slug,
-            kind=request.kind or "todo",
+            kind=request.kind,
             cwd=effective_cwd,
-            artifact=ARTIFACT_IMPLEMENTATION_PLAN
-            if request.kind == "prepped"
-            else (ARTIFACT_BUG if request.kind == "bug" else ARTIFACT_INPUT),
+            artifact=ARTIFACT_BUG if request.kind == "bug" else ARTIFACT_INPUT,
         )
 
         return _SlugStatusResponse(status="ok", slug=slug)

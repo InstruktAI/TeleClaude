@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_DRAFT, KIND_FEATURE, KIND_TODO
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, canonical_kind
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
@@ -89,7 +89,7 @@ def _review_verdict(raw: dict[str, StateValue], review_key: str) -> str:
 
 def _infer_v1_lifecycle_phase(raw: dict[str, StateValue]) -> str:
     kind = _text(raw, "kind")
-    if kind == KIND_DRAFT:
+    if kind == "draft":  # legacy kind (pre-collapse): a parked draft maps to the DRAFT phase
         return LifecyclePhase.DRAFT.value
 
     lifecycle = _text(raw, "lifecycle_phase")
@@ -218,8 +218,7 @@ def _upcycle_v2_to_v3(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated.pop("prepare_pair", None)
     migrated.pop("grounding", None)
     migrated.setdefault("approvals", {})
-    if migrated.get("kind") == KIND_TODO:
-        migrated["kind"] = KIND_FEATURE
+    migrated["kind"] = canonical_kind(_text(migrated, "kind"))
     migrated["schema_version"] = _V3_SCHEMA_VERSION
     return migrated
 

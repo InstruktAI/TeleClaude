@@ -8,10 +8,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import config
-from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_PREPPED, KIND_TODO
+from teleclaude.core.next_machine.kinds import KIND_BUG, canonical_kind
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
-from teleclaude.types.todo_kind import PREPARE_LANE_KINDS
+from teleclaude.types.lifecycle import LifecyclePhase
 
 logger = get_logger(__name__)
 
@@ -59,41 +59,27 @@ class LifecycleRouterCartridge:
                 return event
             kind_raw = event.payload.get("kind")
             kind = kind_raw if isinstance(kind_raw, str) else None
-            await self._dispatch_router_lane(slug, kind)
+            phase_raw = event.payload.get("lifecycle_phase")
+            phase = phase_raw if isinstance(phase_raw, str) else None
+            await self._dispatch_router_lane(slug, kind, phase)
             return event
 
         _ = context
         return event
 
-    async def _dispatch_router_lane(self, slug: str, kind: str | None) -> None:
-        """Dispatch a todo creation event to the correct orchestrator based on ``kind``.
+    async def _dispatch_router_lane(self, slug: str, kind: str | None, lifecycle_phase: str | None) -> None:
+        """Dispatch a todo creation event to the correct orchestrator.
 
-        Routing is a pure function of the ``kind`` payload field: no todo state
-        is read during dispatch. Missing and unknown kinds degrade to the
-        default todo lane.
+        Routing is a pure function of the canonical kind plus creation evidence:
+        a bug, or an already-prepared todo (a supplied ``--plan``), skips prepare
+        and enters the work lane; feature/change enter prepare, where the state
+        machine derives the kind's entry phase (PRD for feature, plan for change).
         """
         project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
         dispatch_args: RunSessionArgs
-        resolved_kind: str
+        resolved_kind = canonical_kind(kind)
 
-        if kind == KIND_PREPPED:
-            resolved_kind = KIND_PREPPED
-            dispatch_args = {
-                "command": "/next-work",
-                "project_path": project_path,
-                "args": slug,
-                "detach": True,
-            }
-        elif kind == "built":
-            resolved_kind = "built"
-            dispatch_args = {
-                "command": "/next-work",
-                "project_path": project_path,
-                "args": slug,
-                "detach": True,
-            }
-        elif kind == KIND_BUG:
-            resolved_kind = KIND_BUG
+        if resolved_kind == KIND_BUG:
             dispatch_args = {
                 "command": "/next-work",
                 "project_path": project_path,
@@ -102,23 +88,14 @@ class LifecycleRouterCartridge:
                 "thinking_mode": "slow",
                 "detach": True,
             }
-        elif kind in PREPARE_LANE_KINDS:
-            resolved_kind = KIND_TODO
+        elif lifecycle_phase == LifecyclePhase.PREPARED.value:
             dispatch_args = {
-                "command": "/next-prepare",
+                "command": "/next-work",
                 "project_path": project_path,
                 "args": slug,
                 "detach": True,
-                "additional_context": "human_in_loop: false\n",
             }
         else:
-            if kind is not None:
-                logger.warning(
-                    "unknown kind, degrading to todo lane",
-                    slug=slug,
-                    kind=kind,
-                )
-            resolved_kind = KIND_TODO
             dispatch_args = {
                 "command": "/next-prepare",
                 "project_path": project_path,

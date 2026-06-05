@@ -49,7 +49,7 @@ from teleclaude.core.next_machine.git_ops import (
     get_origin_main_sha,
     run_git_command,
 )
-from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG, KIND_PREPPED
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
 from teleclaude.core.next_machine.lifecycle import (
     PREPARE_LIFECYCLE_PHASES,
     LifecyclePhase,
@@ -763,16 +763,6 @@ def is_bug_todo(cwd: str, slug: str) -> bool:
     return state.get("kind") == KIND_BUG
 
 
-def is_prepped_todo(cwd: str, slug: str) -> bool:
-    """Return True when the todo state has kind == KIND_PREPPED.
-
-    Prepped todos were born with a complete implementation plan and skipped the
-    prepare phase entirely. They have no PRD artifact — the plan is the sole spec.
-    """
-    state = read_phase_state(cwd, slug)
-    return state.get("kind") == KIND_PREPPED
-
-
 # Artifact keys that can be stamped after worker output is verified.
 _PREPARE_ARTIFACT_NAMES = {
     STATE_KEY_PRD: ARTIFACT_PRD,
@@ -812,7 +802,6 @@ __all__ = [
     "apply_prepared_state",
     "has_pending_deferrals",
     "is_bug_todo",
-    "is_prepped_todo",
     "mark_phase_state",
     "read_breakdown_state",
     "read_phase_state",
