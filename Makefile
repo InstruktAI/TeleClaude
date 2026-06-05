@@ -1,4 +1,4 @@
-.PHONY: help install link certs format lint check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
+.PHONY: help install link certs format lint check-no-unit-tests test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -21,10 +21,9 @@ help:
 	@echo "Code Quality:"
 	@echo "  make format       Format code with ruff"
 	@echo "  make lint                 Run repo-wide linting checks"
-	@echo "  make check-test-mapping   Check 1:1 source-to-test mapping (expected to fail during overhaul)"
+	@echo "  make check-no-unit-tests  Verify no forbidden unit tests exist"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test-unit        Run unit tests only"
 	@echo "  make test-e2e         Run integration/e2e tests only"
 	@echo "  make test             Run repo-wide tests"
 	@echo "  make coverage         Run tests with coverage report"
@@ -73,13 +72,8 @@ lint:
 	@telec code lint --all
 	@echo "✓ Lint checks passed"
 
-check-test-mapping:
-	@uv run python tools/lint/test_mapping.py
-
-test-unit:
-	@echo "Running unit tests..."
-	@uv run pytest tests/unit/ -v
-	@echo "✓ Unit tests passed"
+check-no-unit-tests:
+	@uv run python tools/lint/forbid_unit_tests.py
 
 test-e2e:
 	@echo "Running integration/e2e tests..."

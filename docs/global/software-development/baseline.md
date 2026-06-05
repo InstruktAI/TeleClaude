@@ -3,7 +3,6 @@
 @~/.teleclaude/docs/software-development/policy/commits.md
 @~/.teleclaude/docs/software-development/policy/testing.md
 @~/.teleclaude/docs/software-development/policy/code-quality-practices.md
-@~/.teleclaude/docs/software-development/policy/test-structure.md
 @~/.teleclaude/docs/software-development/policy/linting-requirements.md
 @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 @~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md

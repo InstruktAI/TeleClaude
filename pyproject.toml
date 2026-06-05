@@ -317,7 +317,7 @@
   max_supported_python="3.14"
 
 [tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-n", "auto", "-q", "--instafail"]
+  addopts=["--strict-config", "--strict-markers", "--tb=short", "-q"]
   asyncio_mode="auto"
   filterwarnings=[
     "ignore:.*datetime.utcnow.*:DeprecationWarning",
@@ -329,87 +329,12 @@
   markers=[
     "functional: Real API/auth/DB chain tests with local harnessed dependencies",
     "integration: Integration tests (slower, real components)",
-    "timeout: Test timeout marker",
-    "unit: Unit tests (fast, isolated, mocked)",
+    "spec(spec_id, scenario_id): Bind this test to a feature-spec Gherkin scenario",
   ]
   python_classes=["Test*"]
   python_files=["test_*.py"]
   python_functions=["test_*"]
-  session_timeout=40
   testpaths=["tests"]
-  timeout=5
-  timeout_method="signal"
-
-[tool.test-mapping]
-  exclude=[
-    "teleclaude/core/metadata.py",  # Pure Pydantic model, no logic
-    "teleclaude/logging_config.py", # Delegates to instrukt_ai_logging
-  ]
-  # guard: ratchet-down — centrally classified tests with no honest single teleclaude/** source companion
-  orphan-exclude=[
-    "tests/unit/adapters/discord/test_headless_title.py",                          # Cross-module: Discord title prefix spans channel_ops.py and Session metadata.
-    "tests/unit/adapters/telegram/test_send_message_topic_guard.py",               # Cross-module: Telegram topic guard spans message_ops.py and adapter metadata.
-    "tests/unit/cli/telec/handlers/test_todo_artifacts.py",                        # Deferred split: todo artifact CLI assertions share handlers/todo.py with other specs.
-    "tests/unit/cli/telec/handlers/test_todo_create_kind_specs.py",               # Deferred split: create --kind specs cover handlers/todo.py; no standalone todo_create_kind_specs.py companion.
-    "tests/unit/cli/telec/handlers/test_todo_lifecycle_dump_specs.py",             # Deferred split: dump event contract spans handlers/todo.py and event envelope.
-    "tests/unit/cli/telec/test_surface_export.py",                                 # Deferred split: surface export assertions belong with occupied cli/telec/surface.py companion.
-    "tests/unit/cli/tui/test_pane_resilience_under_ws_reconnect.py",               # Cross-module: pane survival across WS reconnect spans SessionsView, TmuxPaneManager catalog, and per-computer SessionsInitialEvent merge in TelecAppWsMixin.
-    "tests/unit/cli/tui/test_resource_cleanup.py",                                 # Cross-module: cleanup spans TelecApp, app_media state, and SessionsView resources.
-    "tests/unit/config/test_build_config.py",                                      # Package-boundary: the _build_config assembly parser lives in config/__init__.py with no standalone module companion.
-    "tests/unit/config/test_config_independent_schemas.py",                        # Cross-module: config schema isolation spans loader, schema, context, and git helper.
-    "tests/unit/config/test_remote_computers.py",                                  # Cross-module: remote-computer config spec spans _remote_computers submodule, __init__ parser, and sample-config docs.
-    "tests/unit/core/db/test_outbox_isolation.py",                                 # Cross-module: outbox isolation spans Db, connection_factory, hook receiver, and daemon outbox.
-    "tests/unit/core/db/test_receiver_write_elimination.py",                       # Cross-module: receiver write elimination spans hook receiver, db paths, and daemon outbox.
-    "tests/unit/core/db/test_typed_results.py",                                    # Cross-module: typed result contract spans todos_db mixins and mirrors store.
-    "tests/unit/core/integration/test_auto_enqueue.py",                            # Cross-module: integration auto-enqueue spans step_functions readiness checks and TodosDb state.
-    "tests/unit/core/integration/test_queue_transitions.py",                       # Cross-module: queue transition contract spans IntegrationQueue and readiness projection keys.
-    "tests/unit/core/integration/test_step_delivery_bookkeeping.py",               # Cross-module: delivery bookkeeping spans checkpoint, readiness projection, and step_functions.
-    "tests/unit/core/integration/test_worktree_guards.py",                         # Cross-module: integration worktree guard validates step_functions against worktree state.
-    "tests/unit/core/migrations/test_add_operations_error_payload.py",             # Mapper-gap: migration filenames carry numeric prefixes (046_add_operations_error_payload.py) and do not fit the 1:1 mirror convention.
-    "tests/unit/core/migrations/test_drop_session_metadata_column.py",             # Mapper-gap: migration filenames carry numeric prefixes (045_drop_session_metadata_column.py) and do not fit the 1:1 mirror convention.
-    "tests/unit/core/next_machine/test_authoritative_phase_clearing.py",           # Cross-module: phase clearing spans lifecycle normalization and TodoState data.
-    "tests/unit/core/next_machine/test_authoritative_phase_fields_specs.py",       # Deferred split: authoritative phase specs span CLI todo handler, state_io, and types.
-    "tests/unit/core/next_machine/test_prepare_lifecycle_pair_model_specs.py",     # Deferred split: prepare lifecycle specs span lifecycle, output formatting, state_io, and worktrees.
-    "tests/unit/core/next_machine/test_stamp_verdict.py",                          # Cross-module: verdict stamping spans state_io persistence and TodosDb/TodoState.
-    "tests/unit/core/operations/test_service_todo_rename.py",                      # Cross-module: todo rename receipt contract spans operations service idempotency/dispatch and next_machine.rename bridge.
-    "tests/unit/core/test_channel_metadata_cleanup.py",                            # Cross-module: metadata cleanup spans session command handlers and command metadata models.
-    "tests/unit/core/test_command_wrapping.py",                                    # Cross-module: command wrapping spans API sessions, auth identity, command handlers, and command types.
-    "tests/unit/core/test_db.py",                                                  # Package-boundary: core/db package public session-principal contract has no single module companion.
-    "tests/unit/core/test_documentation_deliverables.py",                          # Cross-module: documentation deliverable checks span generated artifacts and repository docs.
-    "tests/unit/core/test_domain_events.py",                                       # Cross-module: domain event emission spans API routes, command handlers, event bus, and operations.
-    "tests/unit/core/test_metadata_driven_dispatch.py",                            # Cross-module: metadata dispatch spans Redis messaging metadata and command type models.
-    "tests/unit/core/test_output_pipeline_design_spec.py",                         # Cross-module: output pipeline design spans UI adapter, output poller, and polling coordinator.
-    "tests/unit/core/test_receipt_operations.py",                                  # Cross-module: receipt operations span todo API routes, caller identity, and operations service.
-    "tests/unit/core/test_todo_watcher_removal.py",                                # Deferred decision: stale watcher-removal spec has no import owner and must be rehomed or retired.
-    "tests/unit/core/test_working_slug_derivation.py",                             # Cross-module: working slug derivation spans session handlers and create-session command types.
-    "tests/unit/core/todos_db/test_mutation_callback.py",                          # Cross-module: mutation callback spans state_io singleton access and TodosDb hooks.
-    "tests/unit/core/todos_db/test_sqlalchemy_engine.py",                          # Package-boundary: todos_db package engine contract is exposed through package-level TodosDb.
-    "tests/unit/events/cartridges/test_todo_lifecycle_router_specs.py",            # Deferred decision: router spec imports only envelope types; ownership needs event-router split.
-    "tests/unit/hooks/checkpoint/test__init__.py",                                 # Package-boundary: hooks.checkpoint public exports compose checkpoint messages across helper internals.
-    "tests/unit/hooks/receiver/test__init__.py",                                   # Package-boundary: hooks.receiver public entrypoints span receiver package helpers and database paths.
-    "tests/unit/install/test_git_wrapper_permissions.py",                          # Mapper-gap: shell wrapper under teleclaude/install/wrappers has no Python source companion.
-    "tests/unit/jobs/test_dependency_upgrade.py",                                  # Mapper-gap: jobs/dependency_upgrade.py is outside current teleclaude/** mapper roots.
-    "tests/unit/jobs/test_project_backup.py",                                      # Mapper-gap: jobs/project_backup.py is outside current teleclaude/** mapper roots.
-    "tests/unit/jobs/test_session_memory_extraction.py",                           # Mapper-gap: jobs/session_memory_extraction.py is outside current teleclaude/** mapper roots.
-    "tests/unit/jobs/test_youtube_scraper.py",                                     # Mapper-gap: jobs/youtube_scraper.py is outside current teleclaude/** mapper roots.
-    "tests/unit/mirrors/test_sqlalchemy_engine.py",                                # Cross-module: mirror SQLAlchemy contract spans mirrors.store records and tombstone helpers.
-    "tests/unit/resource_validation/test__init__.py",                              # Package-boundary: resource_validation package export contract has no single module companion.
-    "tests/unit/resource_validation/test_activation_trigger_validation_spec.py",   # Cross-module: activation trigger validation spans package models and snippet validator.
-    "tests/unit/resource_validation/test_unified_severity_spec.py",                # Cross-module: severity contract spans resource_validation and sync-facing model usage.
-    "tests/unit/session_scoping/test__extractors.py",                              # Package-boundary: _extractors package dispatch spans claude, codex, and gemini extractors.
-    "tests/unit/session_scoping/test__init__.py",                                  # Package-boundary: session_scoping public API re-exports _api and _types contracts.
-    "tests/unit/test_asyncio_task_naming.py",                                      # Cross-module: asyncio task naming checks runtime task creation policy across daemon flows.
-    "tests/unit/test_daemon_headless_pipeline.py",                                 # Cross-module: headless daemon pipeline spans config CLI, hook outbox, docs handler, and identity.
-    "tests/unit/test_pydantic_to_typescript_codegen.py",                           # Deferred decision: unsafe move; codegen spec currently fails when run directly.
-    "tests/unit/tools/lint/test_guardrails.py",                                    # Mapper-gap: tools/lint/guardrails.py is outside current teleclaude/** mapper roots.
-    "tests/unit/tools/lint/test_markdown.py",                                      # Mapper-gap: tools/lint/markdown.py is outside current teleclaude/** mapper roots.
-    "tests/unit/tools/test_migration.py",                                          # Mapper-gap: Makefile/tool migration checks target repository tooling outside teleclaude/** roots.
-    "tests/unit/tools/test_session_scope.py",                                      # Mapper-gap: session scope tooling checks repository scripts outside teleclaude/** roots.
-    "tests/unit/tools/test_shell_scoping.py",                                      # Mapper-gap: shell scoping checks tool wrappers outside teleclaude/** roots.
-    "tests/unit/tools/test_update_third_party_frontmatter.py",                     # Mapper-gap: tools/update_third_party_frontmatter.py is outside current teleclaude/** mapper roots.
-    "tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py", # Cross-module: Redis wire format spans metadata models, snapshots, and transport.
-    "tests/unit/transport/redis_transport/test_target_computer_named_field.py",    # Cross-module: target-computer wire field spans command mapper, metadata models, and transport.
-  ]
 
 [tool.coverage.run]
   branch=true

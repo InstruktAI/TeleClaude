@@ -24,9 +24,7 @@ Create a predictable Python project skeleton with standardized tooling and verif
 2. **Define Makefile targets**
    - `make format` (formatters as configured)
    - `make lint` (lint + type check)
-   - `make test-unit` (unit tests)
-   - `make test-e2e` (integration tests, if applicable)
-   - `make test` (full repo-wide suite)
+   - `make test` (the spec-bound functional/smoke suite)
 
 3. **Wire tool configuration**
    - Configure format/lint/type tools inside `pyproject.toml`.

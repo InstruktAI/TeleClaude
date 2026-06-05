@@ -44,9 +44,14 @@ First read the software-development principles as listed in the software-develop
    the verification contract.
 3. Read the implementation-plan artifact via
    `telec todo artifacts read {slug} implementation-plan` and identify unchecked tasks.
-4. Determine the build mode from the nature of the work:
-   - **Spec-satisfaction (default):** Pre-written xfail test specs exist. For each task, remove the expected-failure marker, then write the implementation that makes the test pass. This is the standard RED-GREEN-REFACTOR flow.
-   - **Characterization:** The deliverable is test coverage for existing untested code (no pre-written specs). Follow the OBSERVE-ASSERT-VERIFY cycle from the testing policy. Coverage depth at meaningful public boundaries is the primary output — pin actual behavior, verify each test catches mutations, discard shallow tests that survive production faults.
+4. Work from the scenario delta. The prepared artifacts identify the feature-spec scenarios this
+   todo delivers — added, changed, and removed. For each:
+   - **Added scenario** — bind it: write the test at the spec-mirrored path, confirm it fails,
+     implement, confirm it passes.
+   - **Changed scenario** — update the bound test to the new contract, confirm it fails against the
+     current code, update the code, confirm it passes.
+   - **Removed scenario** — delete its bound test, then the code it exclusively covered.
+   You bind the scenarios the spec defines; you never invent what to test. See `policy/testing`.
 5. Execute tasks sequentially:
    - Follow the build mode determined in step 4.
    - Commit changes for the task (one commit per task).
@@ -82,9 +87,9 @@ First read the software-development principles as listed in the software-develop
 
 1. All tasks in `implementation-plan.md` are `[x]`.
 2. Tests pass: `telec code test`.
-3. All expected-failure markers removed for in-scope test specifications (spec-satisfaction mode).
-4. No test assertions weakened or deleted from spec-delivered tests (spec-satisfaction mode).
-   For characterization mode: each test verified via mutation check (VERIFY step).
+3. Every in-scope added or changed scenario is bound and passing; removed scenarios' tests are deleted.
+4. No spec-bound assertion weakened or deleted; the coverage tool reports no orphan or stale bindings
+   for in-scope specs.
 5. Lint passes: `telec code lint`.
 6. User-facing verification:
    - For browser-based frontend or web UI changes, run a Playwright smoke test in a real browser that exercises the changed path. Record the path exercised and the observed result in `quality-checklist.md` under the Build section.

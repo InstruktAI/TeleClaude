@@ -8,7 +8,6 @@ test dispatch (pytest + vitest). See design doc
 from __future__ import annotations
 
 import logging
-import resource
 import subprocess
 import sys
 import tomllib
@@ -16,7 +15,6 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.quality import test_watchdog
 from teleclaude.quality.scope import (
     CargoWorkspaceError,
     RustScope,
@@ -68,47 +66,9 @@ def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[st
 
 
 def run_pytest(args: list[str], cwd: Path | None = None) -> int:
-    """Run pytest with the given arguments. Returns exit code.
-
-    Three-layer hang defense:
-    - Per-test ``timeout`` (unit=1s, functional/integration=5s in
-      ``tests/conftest.py``) flags a runaway test body via pytest-timeout.
-    - Master-process watchdog (``teleclaude.quality.test_watchdog``) polls
-      ``${TMPDIR}/teleclaude_pytest_worker_*.json`` every 500 ms and SIGKILLs
-      any xdist worker whose current test has exceeded 2x its tier budget,
-      logging the offending nodeid before the kill. Sits outside the worker
-      so a syscall-level deadlock cannot suppress the diagnostic.
-    - ``session_timeout = 35`` (pyproject) caps total wall clock as a backstop;
-      ``pytest_sessionfinish`` / ``pytest_keyboard_interrupt`` print per-worker
-      in-flight tests at that instant.
-
-    Sweeps zombie pytest trees from prior runs before invoking, and cleans up
-    leftover worker files on exit.
-
-    Justified subprocess: pytest is an external tool invocation.
-    Per ``software-development/policy/test-resource-discipline`` rules 14-15.
-    """
-    try:
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        if soft < 4096:
-            resource.setrlimit(resource.RLIMIT_NOFILE, (min(4096, hard), hard))
-    except (OSError, ValueError) as exc:
-        # Best-effort: a low fd limit only risks "too many open files" under heavy
-        # xdist fan-out; surface it without aborting the run.
-        logger.warning("Could not raise file-descriptor limit for pytest: %s", exc)
-    subprocess.run(["pkill", "-9", "-f", "pytest tests"], check=False)
-    subprocess.run(["pkill", "-9", "-f", "uv run pytest"], check=False)
-    test_watchdog.cleanup_inflight_files()
-    proc = subprocess.Popen(
-        ["uv", "run", "pytest", *args],
-        cwd=str(cwd) if cwd else None,
-        start_new_session=True,
-    )
-    try:
-        poller = test_watchdog.WatchdogPoller(pytest_proc_poll=proc.poll)
-        return poller.poll_until_exit()
-    finally:
-        test_watchdog.cleanup_inflight_files()
+    """Run pytest with the given arguments. Returns its exit code."""
+    result = subprocess.run(["uv", "run", "pytest", *args], cwd=str(cwd) if cwd else None, check=False)
+    return result.returncode
 
 
 class TestRunner:
@@ -235,18 +195,20 @@ class TestRunner:
         )
 
     def _run_vitest(self) -> None:
-        """Run vitest for TypeScript tests from frontend_root."""
+        """Run the frontend test suite via its declared package.json ``test`` script."""
         frontend_root = self._resolve_frontend_root()
         if not frontend_root.exists():
-            logger.info("Frontend root %s does not exist — skipping vitest", frontend_root)
+            logger.info("Frontend root %s does not exist — skipping frontend tests", frontend_root)
             return
-        logger.info("Running vitest from %s", frontend_root)
-        # Justified subprocess: vitest is an external Node.js tool with no Python API
-        vitest_args = ["-u", "--run"] if self._update_snapshots else ["run"]
-        vitest_args.extend(["--config", "vitest.cli.config.ts"])
-        result = subprocess.run(["npx", "--yes", "vitest", *vitest_args], cwd=str(frontend_root), check=False)
+        logger.info("Running frontend tests via npm from %s", frontend_root)
+        # The frontend owns its runner and config in package.json; invoke that single
+        # entry point. Snapshot updates forward through to the underlying runner.
+        cmd = ["npm", "test"]
+        if self._update_snapshots:
+            cmd += ["--", "-u"]
+        result = subprocess.run(cmd, cwd=str(frontend_root), check=False)
         if result.returncode != 0:
-            logger.error("vitest failed (exit %d)", result.returncode)
+            logger.error("frontend tests failed (exit %d)", result.returncode)
             sys.exit(result.returncode)
 
     def _should_run_rust_tests(self) -> bool:

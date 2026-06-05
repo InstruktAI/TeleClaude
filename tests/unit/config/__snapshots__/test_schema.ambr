@@ -1,7 +1,0 @@
-# serializer version: 1
-# name: TestSchemaValidators.test_global_env_allow_list_uses_same_validation
-  list([
-    'OPENAI_API_KEY',
-    '_CUSTOM',
-  ])
-# ---

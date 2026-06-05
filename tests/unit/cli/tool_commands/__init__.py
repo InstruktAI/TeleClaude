@@ -1,1 +1,0 @@
-"""tool command characterization tests."""

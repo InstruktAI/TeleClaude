@@ -8,7 +8,22 @@ visibility: 'public'
 
 # Rust Testing — Policy
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/testing.md
+
 ## Rules
+
+### Spec-binding and the unit-test exception
+
+- **Rust keeps colocated unit tests** — the documented exception to the generic no-agent-unit-test
+  rule. The compiler, type system, and ownership enforce the unit-level correctness that dynamic
+  languages chase with tests, and `#[cfg(test)] mod tests` over pure functions is idiomatic and
+  cheap. These colocated units are not spec-bound.
+- **Spec-bound behavior lives in integration tests** at `crates/<crate>/tests/<slug>.rs`, mirroring
+  the feature spec `docs/project/spec/feature/<domain>/<slug>.md` (the domain resolves to a crate).
+  Each test binds its scenario with a `// spec: <spec_id> <UC-id>` comment that the coverage tool
+  parses. Functional, smoke, and integration levels follow the generic policy.
 
 ### Dependency injection — the wiring model
 

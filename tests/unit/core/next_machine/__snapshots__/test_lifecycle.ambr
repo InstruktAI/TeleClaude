@@ -1,4 +1,0 @@
-# serializer version: 1
-# name: TestIsReadyForWork.test_pre_prepared_todo_blocked
-  "lifecycle_phase 'plan_review' is before 'prepared'"
-# ---

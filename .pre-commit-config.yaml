@@ -47,6 +47,12 @@ repos:
     language: system
     files: \.md$
     pass_filenames: false
+  - id: forbid-unit-tests
+    name: Forbid unit tests (tools/lint/forbid_unit_tests.py)
+    entry: uv run python tools/lint/forbid_unit_tests.py
+    language: system
+    files: ^tests/.*\.py$
+    pass_filenames: false
 - repo: local
   hooks:
   - id: check-cli-help

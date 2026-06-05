@@ -22,28 +22,11 @@ from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import Db
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.tmux_bridge import _session as tmux_session_mod
-from teleclaude.quality.subprocess_reaper import reap_new_descendants, snapshot_descendants
 
 # Point config at the minimal test config before any teleclaude imports.
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 pytestmark = pytest.mark.functional
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_protocol(item, nextitem):
-    """Reap attached subprocess descendants after every functional test.
-
-    Functional tests are the tier that can spawn real subprocesses. The per-test
-    pytest-timeout flags any hang; this hookwrapper exists so a worker holding a
-    leaked child's stdout pipe can still exit and print that flag instead of
-    deadlocking. Scoped to ``tests/functional/`` by living in this conftest — unit
-    tests pay zero psutil cost. Per ``software-development/policy/test-resource-discipline``
-    rule 16 (marker-scoped subprocess infrastructure).
-    """
-    before = snapshot_descendants()
-    yield
-    reap_new_descendants(before)
 
 
 @pytest.fixture

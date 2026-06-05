@@ -1,8 +1,0 @@
-# serializer version: 1
-# name: TestCreateAndEnsureSession.test_create_tmux_session_sources_agent_env_from_private_file
-  '''
-  export GOOGLE_APPLICATION_CREDENTIALS=/keys/google.json
-  export OPENAI_VOICE=alloy
-  
-  '''
-# ---

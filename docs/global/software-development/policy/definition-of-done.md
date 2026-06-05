@@ -37,14 +37,13 @@ Before considering ANY work complete, verify ALL criteria are met:
 
 - [ ] Pre-commit hooks pass
 - [ ] All tests pass
-- [ ] Expected-failure markers removed for all in-scope test specifications
-- [ ] Test specs delivered for all new behavioral requirements
-- [ ] Bug fixes include reproduction test
-- [ ] No test assertions weakened or deleted from spec-delivered tests
-- [ ] New tests added for new functionality
-- [ ] Edge cases have test coverage
+- [ ] Every in-scope added or changed scenario is bound (functional or smoke); no binding is stale
+- [ ] Removed scenarios' tests are deleted; no orphan bindings remain
+- [ ] No spec-bound assertion was weakened or deleted
+- [ ] Bug fixes bind a regression scenario reproducing the defect at a real boundary
+- [ ] Coverage tool reports no duplicate, orphan, or stale bindings for in-scope specs
 - [ ] Tests are deterministic (no flaky tests)
-- [ ] Test names are descriptive
+- [ ] Test names are descriptive behavioral specifications
 - [ ] Tests verify behavior, not implementation
 - [ ] Tests do not assert logger calls/log levels, config/model/native shapes, private helpers, constructor/DI wiring, or mock-call echoes as primary evidence
 - [ ] Browser-based frontend or web UI changes pass a Playwright smoke test

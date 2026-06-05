@@ -1,8 +1,0 @@
-# serializer version: 1
-# name: test_action_remove_artifact_todo_row_confirmation_message
-  '''
-  Remove todo 'my-slug'?
-  
-  This action cannot be undone.
-  '''
-# ---

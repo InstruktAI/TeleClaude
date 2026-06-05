@@ -32,7 +32,7 @@ Outputs: `prd`, optional `architecture`, optional `test-specs`, `implementation-
 
 Build-review-fix-finalize cycle:
 
-- **Build** — satisfy existing test specifications by implementing the code they specify; execute implementation plan task-by-task, commit per task
+- **Build** — bind the feature-spec scenarios in scope and implement the code that satisfies them (RED-GREEN by scenario delta); execute implementation plan task-by-task, commit per task
 - **Review** — parallel review lanes (scope, code, principles, security, tests, errors, types, comments, docs)
 - **Fix** — address review findings minimally, re-review (capped at `max_review_rounds`)
 - **Finalize** — integrate latest main, push branch, hand off to integration

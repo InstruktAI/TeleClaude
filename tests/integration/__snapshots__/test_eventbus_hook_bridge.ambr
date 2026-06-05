@@ -1,0 +1,10 @@
+# serializer version: 1
+# name: test_session_lifecycle_event_becomes_session_hookevent
+  dict({
+    'properties': dict({
+      'session_id': 'sess-1',
+    }),
+    'source': 'system',
+    'type': 'session.started',
+  })
+# ---

@@ -1,7 +1,0 @@
-# serializer version: 1
-# name: test_gemini_launch_profiles
-  dict({
-    'default': '--dangerously-skip-permissions',
-    'restricted': '--sandbox --add-dir ~/.teleclaude/docs,/var/log/instrukt-ai',
-  })
-# ---

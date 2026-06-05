@@ -52,13 +52,14 @@ These gates are absolute. Load before the first edit, every time.
 **Functional code or tests** (write, modify, refactor, or fix):
 
 ```
-telec docs get software-development/policy/testing software-development/policy/code-quality-practices software-development/policy/test-structure software-development/policy/linting-requirements software-development/policy/definition-of-done
+telec docs get software-development/policy/testing software-development/policy/code-quality-practices software-development/policy/linting-requirements software-development/policy/definition-of-done
 ```
 
 Additionally, load the language-specific policy for the code you are touching:
 
-- Python: `telec docs get software-development/policy/python/core`
-- TypeScript: `telec docs get software-development/policy/typescript/core`
+- Python: `telec docs get software-development/policy/python/core software-development/policy/python/testing`
+- TypeScript: `telec docs get software-development/policy/typescript/core software-development/policy/typescript/testing`
+- Rust: `telec docs get software-development/policy/rust/core software-development/policy/rust/testing`
 
 **Documentation snippets** (create or edit):
 
