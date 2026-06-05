@@ -260,6 +260,10 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
 def upcycle_state_dict(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     """Return the latest state shape without mutating persisted storage."""
     latest = _upcycle_to_latest(raw)
+    # Kind normalization is unconditional, not gated on a schema-version hop: a row
+    # already at the latest version can still carry a pre-collapse legacy kind
+    # (refactor/migration/prepped/draft/todo). Canonicalize on every read.
+    latest["kind"] = canonical_kind(_text(latest, "kind"))
     model = TodoState.model_validate(latest)
     return cast(dict[str, StateValue], model.model_dump(exclude_none=True))
 
