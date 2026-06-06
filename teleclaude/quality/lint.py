@@ -19,7 +19,6 @@ from typing import Protocol
 import yaml
 
 from teleclaude.paths import REPO_ROOT
-from teleclaude.quality.package_manager import PackageManager, PackageManagerCommands, commands_for
 from teleclaude.quality.scope import (
     CargoWorkspaceError,
     RustScope,
@@ -323,23 +322,18 @@ class PythonLintPipeline:
         return [s.name for s in self.steps]
 
 
-def _default_commands() -> PackageManagerCommands:
-    return PackageManagerCommands(PackageManager.NPM)
-
-
 @dataclass
 class _EslintStep:
     """ESLint check step for TypeScript."""
 
     name: str = "eslint"
     _frontend_root: Path = field(default_factory=Path)
-    _commands: PackageManagerCommands = field(default_factory=_default_commands)
 
     def run(self, targets: list[str]) -> None:
         """Execute eslint against TypeScript targets."""
         if not targets:
             return
-        cmd = self._commands.exec("eslint", targets)
+        cmd = ["npx", "--yes", "eslint", *targets]
         _run_tool(cmd, self._frontend_root, self.name)
 
 
@@ -349,23 +343,21 @@ class _TscStep:
 
     name: str = "tsc"
     _frontend_root: Path = field(default_factory=Path)
-    _commands: PackageManagerCommands = field(default_factory=_default_commands)
 
     def run(self, targets: list[str]) -> None:
         """Execute tsc type-checking (project-wide, not file-scoped)."""
         _ = targets  # tsc --noEmit checks the whole project
-        cmd = self._commands.exec("tsc", ["--noEmit"])
+        cmd = ["npx", "--yes", "tsc", "--noEmit"]
         _run_tool(cmd, self._frontend_root, self.name)
 
 
 class TypeScriptLintPipeline:
     """TypeScript lint pipeline with eslint and tsc steps."""
 
-    def __init__(self, frontend_root: Path) -> None:
-        commands = commands_for(frontend_root)
+    def __init__(self, _project_root: Path, frontend_root: Path) -> None:
         self.steps: list[PipelineStep] = [
-            _EslintStep(_frontend_root=frontend_root, _commands=commands),
-            _TscStep(_frontend_root=frontend_root, _commands=commands),
+            _EslintStep(_frontend_root=frontend_root),
+            _TscStep(_frontend_root=frontend_root),
         ]
 
     def describe(self) -> list[str]:
@@ -614,7 +606,7 @@ class LintRunner:
         if not targets:
             logger.info("No TypeScript targets in scope — skipping TypeScript lint")
             return
-        pipeline = TypeScriptLintPipeline(frontend_root)
+        pipeline = TypeScriptLintPipeline(self._project_root, frontend_root)
         for step in pipeline.steps:
             step.run(targets)
 
@@ -640,7 +632,7 @@ class LintRunner:
                 steps[s.name] = s
         if "typescript" in languages:
             frontend_root = self._resolve_frontend_root()
-            for s in TypeScriptLintPipeline(frontend_root).steps:
+            for s in TypeScriptLintPipeline(self._project_root, frontend_root).steps:
                 steps[s.name] = s
         return steps
 
