@@ -314,7 +314,8 @@ async def test_session_ownership_resolver_prefers_local_database() -> None:
 
 
 async def test_session_ownership_resolver_returns_cached_remote_owner() -> None:
-    snapshot = _snapshot("session-1", computer="PeerComputer")
+    peer = "PeerComputer"
+    snapshot = _snapshot("session-1", computer=peer)
 
     ownership = await resolve_session_ownership(
         "session-1",
@@ -323,7 +324,7 @@ async def test_session_ownership_resolver_returns_cached_remote_owner() -> None:
     )
 
     assert isinstance(ownership, RemoteOwnership)
-    assert ownership.computer == "PeerComputer"
+    assert ownership.computer == peer
     assert ownership.snapshot is snapshot
 
 
