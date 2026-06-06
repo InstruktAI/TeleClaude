@@ -193,8 +193,10 @@ lets recovery verify the captured audio still exists before resubmitting.
    contract below: a row recovered with `notice_message_id=NULL` is resubmitted
    with a fresh placeholder rather than an edit, since no original placeholder is
    known to exist.
-2. The row transitions `in_progress` when the speech-to-text call starts and
-   `succeeded` once the transcription is fed to the session.
+2. The row transitions `in_progress` when the speech-to-text call starts,
+   `succeeded` once the transcription is fed to the session, and `failed` when
+   the bounded speech-to-text call times out or terminally fails. Blocking STT
+   backend setup must run off the event loop so this timeout can fire.
 3. If the owning task is cancelled during shutdown (the voice flow runs as a
    tracked task, cancelled at shutdown step 9 before adapters stop at step 10 —
    see `daemon-lifecycle#shutdown-ordering`), the cancellation handler marks the

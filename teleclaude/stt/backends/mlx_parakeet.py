@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from importlib import import_module
 from pathlib import Path
+from threading import Lock
 
 from instrukt_ai_logging import get_logger
 
@@ -32,6 +33,7 @@ class MLXParakeetBackend:
         self._model = None
         self._model_ref = self._resolve_model_ref()
         self._cli_bin = self._resolve_cli_bin()
+        self._model_lock = Lock()
         self._validate_config()
 
     def _validate_config(self) -> None:
@@ -77,6 +79,10 @@ class MLXParakeetBackend:
         return resolve_model_ref(configured_ref or DEFAULT_MODEL)
 
     def _ensure_model(self) -> bool:
+        with self._model_lock:
+            return self._ensure_model_locked()
+
+    def _ensure_model_locked(self) -> bool:
         global load_stt_model, mlx_audio_import_error, _mlx_audio_import_attempted
 
         # CLI-only mode: never import mlx_audio when CLI backend exists.
@@ -130,7 +136,7 @@ class MLXParakeetBackend:
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
-        if not self._ensure_model():
+        if not await asyncio.to_thread(self._ensure_model):
             raise RuntimeError("Parakeet STT unavailable")
 
         if self._model is None and self._cli_bin:

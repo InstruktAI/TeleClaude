@@ -204,7 +204,9 @@ Typing is naturally replaced by output from the polling cadence (`send_output_up
 Voice transcription is durable across daemon restart and bounded against a hung
 backend. The transcription runs as a tracked task (not awaited inline on the
 adapter event loop) and its lifecycle is persisted in the daemon-owned
-`voice_transcriptions` table. The durability and recovery contract is
+`voice_transcriptions` table. STT backends must keep blocking model setup and
+transcription work off the event loop so the core wall-clock timeout remains
+enforceable. The durability and recovery contract is
 authoritative in `database#voice-transcription-durability-and-recovery` and
 `daemon-lifecycle#post-adapter-completion-tasks`; this table is the happy-path
 view.
