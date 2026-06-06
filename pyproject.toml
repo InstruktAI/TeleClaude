@@ -209,10 +209,12 @@
       "misc",
       "no-any-return",
       "no-untyped-call",
+      "no-untyped-def",
       "return-value",
       "type-arg",
       "var-annotated",
     ]
+    disallow_incomplete_defs=false
     disallow_untyped_defs=false
     module="tests.*"
 

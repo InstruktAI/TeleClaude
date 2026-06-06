@@ -42,7 +42,7 @@ async def test_session_lifecycle_event_becomes_session_hookevent(snapshot) -> No
     # Then it emits a system-sourced session.started HookEvent carrying the session_id.
     # The emitted shape is the contract; snapshot it per the string-assertion paradigm.
     dispatcher = _CapturingDispatcher()
-    bridge = EventBusBridge(dispatcher)  # type: ignore[arg-type]
+    bridge = EventBusBridge(dispatcher)
 
     await bridge._handle(TeleClaudeEvents.SESSION_STARTED, SessionLifecycleContext(session_id="sess-1"))
 
@@ -55,6 +55,6 @@ async def test_dispatch_failure_is_logged_not_raised() -> None:
     # Given a dispatcher that raises,
     # When the bridge handles an event,
     # Then the exception is swallowed (logged) and never escapes _handle.
-    bridge = EventBusBridge(_RaisingDispatcher())  # type: ignore[arg-type]
+    bridge = EventBusBridge(_RaisingDispatcher())
 
     await bridge._handle(TeleClaudeEvents.SESSION_STARTED, SessionLifecycleContext(session_id="s1"))
