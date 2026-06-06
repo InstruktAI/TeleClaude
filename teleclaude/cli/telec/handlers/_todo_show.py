@@ -5,6 +5,7 @@ from __future__ import annotations
 import json as _json
 
 from teleclaude.cli.tool_client import tool_api_request
+from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = ["_handle_todo_show"]
 
@@ -29,12 +30,12 @@ def _handle_todo_show(args: list[str]) -> None:
             print(_USAGE)
             raise SystemExit(1)
 
-    params: dict[str, str] = {}
+    params: dict[str, str] = {"cwd": str(resolve_invocation_cwd())}
     if include_artifact_content:
         params["include_artifact_content"] = "true"
     if include_removed:
         params["include_removed"] = "true"
-    result = tool_api_request("GET", f"/todos/{slug}/show", params=params or None)
+    result = tool_api_request("GET", f"/todos/{slug}/show", params=params)
 
     if isinstance(result, dict) and "slug" in result:
         print(_json.dumps(result, indent=2))

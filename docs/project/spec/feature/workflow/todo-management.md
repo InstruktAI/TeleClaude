@@ -51,6 +51,42 @@ And each section contains dependency-tree entries with nested children
 And an empty visible section is omitted from the JSON object
 ```
 
+#### UC-WM1: Show reads the caller's project
+
+```
+Given the operator is inside a project worktree
+When the operator runs "telec todo show feature-x"
+Then the CLI sends the invocation working directory to the workflow service
+And the service resolves the show payload from that project rather than the daemon default directory
+```
+
+#### UC-WM2: Artifact listing reads the caller's project
+
+```
+Given the operator is inside a project worktree
+When the operator runs "telec todo artifacts list feature-x"
+Then the CLI sends the invocation working directory to the workflow service
+And the service lists artifacts from that project rather than the daemon default directory
+```
+
+#### UC-WM3: Artifact body reads the caller's project
+
+```
+Given the operator is inside a project worktree
+When the operator runs "telec todo artifacts read feature-x prd"
+Then the CLI sends the invocation working directory to the workflow service
+And the service reads the artifact from that project rather than the daemon default directory
+```
+
+#### UC-WM4: Slug reactivation targets the caller's project
+
+```
+Given the operator is inside a project worktree
+When the operator runs "telec todo reactivate feature-x"
+Then the CLI sends the invocation working directory to the workflow service
+And the service resolves the removed slug from that project rather than the daemon default directory
+```
+
 ```
 Given active todos [ready-a, prep-b]
 And ready-a has all after dependencies delivered and a ready lifecycle phase

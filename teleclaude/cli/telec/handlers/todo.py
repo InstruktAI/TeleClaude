@@ -662,7 +662,11 @@ def _handle_artifacts_list(args: list[str]) -> None:
         raise SystemExit(1)
 
     slug = args[0]
-    result = tool_api_request("GET", f"/todos/artifacts/{slug}")
+    result = tool_api_request(
+        "GET",
+        f"/todos/artifacts/{slug}",
+        params={"cwd": str(resolve_invocation_cwd())},
+    )
     if isinstance(result, dict):
         artifacts = result.get("artifacts", [])
         if not artifacts:
@@ -682,7 +686,11 @@ def _handle_artifacts_read(args: list[str]) -> None:
 
     slug, name = args[0], args[1]
     _validate_artifact_name(name)
-    result = tool_api_request("GET", f"/todos/artifacts/{slug}/{name}")
+    result = tool_api_request(
+        "GET",
+        f"/todos/artifacts/{slug}/{name}",
+        params={"cwd": str(resolve_invocation_cwd())},
+    )
     if isinstance(result, dict):
         print(result.get("content", ""))
     else:
@@ -925,7 +933,11 @@ def _handle_todo_reactivate(args: list[str]) -> None:
         raise SystemExit(1)
 
     slug = args[0]
-    result = tool_api_request("POST", f"/todos/{slug}/reactivate")
+    result = tool_api_request(
+        "POST",
+        f"/todos/{slug}/reactivate",
+        json_body={"cwd": str(resolve_invocation_cwd())},
+    )
 
     if isinstance(result, dict) and result.get("slug"):
         print(f"Restored todo: {result['slug']}")
