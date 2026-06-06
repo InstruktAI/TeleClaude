@@ -1,4 +1,4 @@
-"""Remote session creation over Redis request/response."""
+"""Remote session operations over Redis request/response."""
 
 from __future__ import annotations
 
@@ -15,21 +15,28 @@ from teleclaude.api.session_create_launch import (
 )
 from teleclaude.api.sessions_actions_routes import _rewrite_codex_next_startup_message
 from teleclaude.api_models import CreateSessionRequest, CreateSessionResponseDTO
-from teleclaude.constants import EVENT_NEW_SESSION
+from teleclaude.constants import EVENT_END_SESSION, EVENT_NEW_SESSION
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.shell_identity import require_shell_safe_identifier
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 REMOTE_CREATE_TIMEOUT_SECONDS = 30.0
+REMOTE_CLOSE_TIMEOUT_SECONDS = 30.0
 
 logger = get_logger(__name__)
 
 
+def is_remote_target(computer: str | None, local_computer: str) -> bool:
+    """Return whether a request targets a peer computer rather than this one."""
+    return bool(computer) and computer not in ("local", local_computer)
+
+
 def is_remote_create_target(computer: str, local_computer: str) -> bool:
     """Return whether a create request targets a peer computer."""
-    return computer not in ("local", local_computer)
+    return is_remote_target(computer, local_computer)
 
 
 def _remote_session_fields(envelope_text: str) -> tuple[str, str]:
@@ -162,3 +169,76 @@ async def dispatch_session_create_to_peer(
         computer=target_computer,
         agent=effective_agent,
     )
+
+
+def _assert_remote_close_success(envelope_text: str, *, session_id: str, target_computer: str) -> None:
+    """Validate a peer's close response envelope, raising HTTPException on failure."""
+    try:
+        envelope_obj: object = json.loads(envelope_text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Remote session close returned invalid JSON") from exc
+
+    if not isinstance(envelope_obj, dict):
+        raise HTTPException(status_code=502, detail="Remote session close returned invalid response")
+
+    envelope = cast(JsonDict, envelope_obj)
+    status = envelope.get("status")
+    if status == "success":
+        return
+
+    detail = str(envelope.get("error") or f"Remote session close failed for {session_id}")
+    logger.warning(
+        "Remote session close rejected",
+        target_computer=target_computer,
+        session_id=session_id,
+        detail=detail,
+    )
+    raise HTTPException(status_code=502, detail=detail)
+
+
+async def dispatch_session_close_to_peer(
+    client: AdapterClient | None,
+    target_computer: str,
+    session_id: str,
+) -> None:
+    """Close a session on a peer computer through Redis request/response.
+
+    The peer maps the ``end_session`` command to its own ``CloseSessionCommand``
+    and runs it against its local session store — the authority for sessions it
+    owns. This daemon never holds the peer's session row, so the close must be
+    forwarded rather than resolved locally.
+    """
+    if client is None:
+        raise HTTPException(status_code=503, detail="Remote session close is unavailable")
+
+    metadata = MessageMetadata(origin=InputOrigin.TERMINAL.value)
+    try:
+        message_id = await client.send_request(
+            target_computer,
+            EVENT_END_SESSION,
+            metadata,
+            session_id=session_id,
+        )
+        response_text = await client.read_response(
+            message_id,
+            timeout=REMOTE_CLOSE_TIMEOUT_SECONDS,
+            target_computer=target_computer,
+        )
+    except TimeoutError as exc:
+        logger.warning(
+            "Remote session close timed out",
+            target_computer=target_computer,
+            session_id=session_id,
+            timeout=REMOTE_CLOSE_TIMEOUT_SECONDS,
+        )
+        raise HTTPException(status_code=504, detail="Remote session close timed out") from exc
+    except (RuntimeError, OSError) as exc:
+        logger.error(
+            "Remote session close transport unavailable",
+            target_computer=target_computer,
+            session_id=session_id,
+            error=str(exc),
+        )
+        raise HTTPException(status_code=503, detail="Remote session close transport unavailable") from exc
+
+    _assert_remote_close_success(response_text, session_id=session_id, target_computer=target_computer)
