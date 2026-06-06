@@ -175,9 +175,7 @@ class SessionSnapshot(
             thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,
             active_agent=str(data.get("active_agent")) if data.get("active_agent") else None,
             status=str(data["status"]),
-            origin_metadata=(
-                dict(data["origin_metadata"]) if isinstance(data.get("origin_metadata"), dict) else {}
-            ),
+            origin_metadata=(dict(_om) if isinstance((_om := data.get("origin_metadata")), dict) else {}),
             created_at=str(data.get("created_at")) if data.get("created_at") else None,
             last_activity=str(data.get("last_activity")) if data.get("last_activity") else None,
             last_input=str(data.get("last_input")) if data.get("last_input") else None,
