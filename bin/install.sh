@@ -467,6 +467,89 @@ check_node() {
     print_success "Found Node.js $NODE_VERSION and npm $NPM_VERSION"
 }
 
+# Ensure corepack is present and enabled. Corepack ships bundled-but-disabled
+# with most Node builds, is being unbundled in newer Node, and is split out by
+# some distros — so we install it if missing rather than assume it exists.
+setup_corepack() {
+    print_info "Ensuring corepack..."
+    if ! command -v corepack &> /dev/null; then
+        print_info "corepack not found — installing via npm"
+        if ! npm install -g corepack >> "$LOG_FILE" 2>&1; then
+            print_error "Failed to install corepack"
+            exit 1
+        fi
+    fi
+    corepack enable >> "$LOG_FILE" 2>&1 || print_warning "corepack enable failed (continuing)"
+    print_success "corepack ready"
+}
+
+# Detect the frontend package manager. Mirrors the detection order in
+# teleclaude/quality/package_manager.py (corepack pin first, then lockfile);
+# duplicated here because bootstrap runs before the Python environment exists.
+detect_frontend_pm() {
+    local fr="$1"
+    local pinned
+    pinned=$(sed -nE 's/.*"packageManager"[[:space:]]*:[[:space:]]*"([a-z]+)@.*/\1/p' "$fr/package.json" 2>/dev/null)
+    if [ -n "$pinned" ]; then
+        echo "$pinned"
+        return
+    fi
+    if [ -f "$fr/bun.lock" ] || [ -f "$fr/bun.lockb" ]; then echo bun; return; fi
+    if [ -f "$fr/pnpm-lock.yaml" ]; then echo pnpm; return; fi
+    if [ -f "$fr/yarn.lock" ]; then echo yarn; return; fi
+    if [ -f "$fr/package-lock.json" ]; then echo npm; return; fi
+    echo npm
+}
+
+# Install frontend dependencies with the detected package manager, then seed the
+# corepack packageManager pin when absent so the manager is self-documenting and
+# deterministic on future installs.
+setup_frontend() {
+    local fr="$INSTALL_DIR/frontend"
+    if [ ! -f "$fr/package.json" ]; then
+        return 0
+    fi
+
+    print_header "Installing Frontend Dependencies"
+
+    local pm
+    pm=$(detect_frontend_pm "$fr")
+    print_info "Detected package manager: $pm"
+
+    local -a install_cmd
+    case "$pm" in
+        npm)  install_cmd=(npm ci) ;;
+        pnpm) install_cmd=(pnpm install --frozen-lockfile) ;;
+        bun)  install_cmd=(bun install --frozen-lockfile) ;;
+        yarn)
+            if [ -f "$fr/.yarnrc.yml" ]; then
+                install_cmd=(yarn install --immutable)
+            else
+                install_cmd=(yarn install --frozen-lockfile)
+            fi
+            ;;
+        *) install_cmd=(npm ci) ;;
+    esac
+
+    print_info "Running: ${install_cmd[*]}"
+    if ! (cd "$fr" && "${install_cmd[@]}"); then
+        print_error "Frontend dependency install failed (${install_cmd[*]})"
+        exit 1
+    fi
+
+    if ! grep -q '"packageManager"' "$fr/package.json"; then
+        local version
+        version=$( (cd "$fr" && "$pm" --version 2>/dev/null) )
+        if [ -n "$version" ]; then
+            print_info "Seeding packageManager: $pm@$version"
+            (cd "$fr" && corepack use "$pm@$version") >> "$LOG_FILE" 2>&1 \
+                || print_warning "corepack use failed; packageManager not seeded"
+        fi
+    fi
+
+    print_success "Frontend dependencies installed"
+}
+
 # Install system dependencies
 install_system_deps() {
     print_header "Installing System Dependencies"
@@ -797,6 +880,8 @@ main() {
 
     install_system_deps
     install_python_deps
+    setup_corepack
+    setup_frontend
     setup_agents_interactive
     ensure_env_file
     validate_config

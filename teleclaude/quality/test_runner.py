@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.quality.package_manager import commands_for
 from teleclaude.quality.scope import (
     CargoWorkspaceError,
     RustScope,
@@ -183,12 +184,11 @@ class TestRunner:
         if not frontend_root.exists():
             logger.info("Frontend root %s does not exist — skipping frontend tests", frontend_root)
             return
-        logger.info("Running frontend tests via npm from %s", frontend_root)
-        # The frontend owns its runner and config in package.json; invoke that single
-        # entry point. Snapshot updates forward through to the underlying runner.
-        cmd = ["npm", "test"]
-        if self._update_snapshots:
-            cmd += ["--", "-u"]
+        commands = commands_for(frontend_root)
+        logger.info("Running frontend tests via %s from %s", commands.manager.value, frontend_root)
+        # The frontend owns its runner and config in package.json; invoke its
+        # ``test`` script. Snapshot updates forward through to the underlying runner.
+        cmd = commands.run_script("test", ["-u"] if self._update_snapshots else [])
         result = subprocess.run(cmd, cwd=str(frontend_root), check=False)
         if result.returncode != 0:
             logger.error("frontend tests failed (exit %d)", result.returncode)
