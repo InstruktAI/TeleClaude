@@ -132,6 +132,8 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             data[b"platform_message_id"] = metadata.platform_message_id.encode("utf-8")
         if metadata.launch_intent:
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
+        if metadata.origin_metadata:
+            data[b"origin_metadata"] = json.dumps(metadata.origin_metadata).encode("utf-8")
         # Identity travels as command payload (not transport metadata) so a session
         # created on a peer carries the initiating human's identity — the receiver's
         # identity gate needs human_role or system_role.

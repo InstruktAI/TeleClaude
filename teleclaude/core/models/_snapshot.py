@@ -60,6 +60,7 @@ class RedisInboundMessage:
     project_path: str | None = None
     title: str | None = None
     origin: str | None = None
+    origin_metadata: dict[str, object] | None = None  # guard: loose-dict
     launch_intent: dict[str, object] | None = None  # guard: loose-dict
     reply_stream: str | None = None
     human_email: str | None = None
@@ -81,6 +82,7 @@ class SessionSnapshot(
     thinking_mode: str | None
     active_agent: str | None
     status: str
+    origin_metadata: dict[str, object] = field(default_factory=dict)  # guard: loose-dict
     project_path: str | None = None
     subdir: str | None = None
     visibility: str | None = "private"
@@ -99,6 +101,7 @@ class SessionSnapshot(
             "thinking_mode": self.thinking_mode,
             "active_agent": self.active_agent,
             "status": self.status,
+            "origin_metadata": self.origin_metadata,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
             "closed_at": self.closed_at,
@@ -138,6 +141,7 @@ class SessionSnapshot(
             thinking_mode=session.thinking_mode,
             active_agent=session.active_agent,
             status=session.lifecycle_status,
+            origin_metadata=dict(session.origin_metadata),
             created_at=session.created_at.isoformat() if session.created_at else None,
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
@@ -171,6 +175,9 @@ class SessionSnapshot(
             thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,
             active_agent=str(data.get("active_agent")) if data.get("active_agent") else None,
             status=str(data["status"]),
+            origin_metadata=(
+                dict(data["origin_metadata"]) if isinstance(data.get("origin_metadata"), dict) else {}
+            ),
             created_at=str(data.get("created_at")) if data.get("created_at") else None,
             last_activity=str(data.get("last_activity")) if data.get("last_activity") else None,
             last_input=str(data.get("last_input")) if data.get("last_input") else None,

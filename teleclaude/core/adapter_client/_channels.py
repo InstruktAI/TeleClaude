@@ -81,7 +81,8 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     ) -> object | None:
         """Execute a task on a single UI adapter lane.
 
-        Caller must provision channels via ensure_ui_channels() first.
+        Normal output callers provision channels via ensure_ui_channels() first;
+        control-only cached status routes can run against existing metadata.
         """
         display_title = await get_display_title_for_session(session)
         logger.debug(

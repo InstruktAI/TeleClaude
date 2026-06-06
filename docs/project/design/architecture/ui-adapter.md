@@ -194,10 +194,10 @@ UI adapters fire platform typing indicators in response to lifecycle status even
 | --------------- | ------------------------- | -------------------------------- |
 | `accepted`      | `user_prompt_submit` hook | Request a throttled typing pulse |
 | `active`        | `session_start` hook      | Request a throttled typing pulse |
-| `active_output` | `tool_use` hook           | No direct adapter API call       |
+| `active_output` | `tool_use` hook           | Request a throttled typing pulse |
 | `completed`     | `agent_stop` hook         | Footer/badge decoration only     |
 
-Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` remains an observer status for internal and websocket consumers, not a direct UI side-effect trigger.
+Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` is the status-derived activity pulse for ongoing agent work and must not render visible message content.
 
 ### 8. Voice Message Processing
 

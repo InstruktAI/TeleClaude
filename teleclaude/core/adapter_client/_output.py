@@ -14,6 +14,8 @@ from teleclaude.core.models import (
     CleanupTrigger,
     DiscordAdapterMetadata,
     MessageMetadata,
+    Session,
+    SessionOriginMetadata,
     TelegramAdapterMetadata,
     WhatsAppAdapterMetadata,
 )
@@ -21,7 +23,7 @@ from teleclaude.core.origins import InputOrigin
 
 if TYPE_CHECKING:
     from teleclaude.adapters.base_adapter import BaseAdapter
-    from teleclaude.core.models import Session
+    from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
 
@@ -48,8 +50,11 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             method: str,
             *args: object,
             include_adapters: set[str] | None = None,
+            ensure_channels: bool = True,
             **kwargs: object,
         ) -> object: ...
+
+        cache: "DaemonCache | None"
 
     @staticmethod
     def _message_ids_from_result(result: object) -> list[str]:
@@ -95,6 +100,36 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         if not isinstance(adapter, UiAdapter):
             return None
         return "discord"
+
+    def _get_cached_session_for_ui_dispatch(self, session_id: str) -> "Session | None":
+        """Rebuild enough Session state from a remote cache snapshot for UI control routing."""
+        cache = self.cache
+        if cache is None:
+            return None
+        for snapshot in cache.get_sessions():
+            if snapshot.session_id != session_id:
+                continue
+            return Session(
+                session_id=snapshot.session_id,
+                computer_name=snapshot.computer or "",
+                tmux_session_name=snapshot.tmux_session_name or "",
+                title=snapshot.title,
+                last_input_origin=snapshot.last_input_origin,
+                origin_metadata=cast(SessionOriginMetadata, dict(snapshot.origin_metadata)),
+                system_role=snapshot.system_role,
+                job=snapshot.job,
+                project_path=snapshot.project_path,
+                subdir=snapshot.subdir,
+                initiator_session_id=snapshot.initiator_session_id,
+                detached=snapshot.detached,
+                native_session_id=snapshot.native_session_id,
+                active_agent=snapshot.active_agent,
+                thinking_mode=snapshot.thinking_mode,
+                human_email=snapshot.human_email,
+                human_role=snapshot.human_role,
+                lifecycle_status=snapshot.status,
+            )
+        return None
 
     def _origin_section_has_channel(self, session: "Session", adapter_type: str) -> bool:
         """Return True when the adapter's origin section carries a provisioned channel."""
@@ -576,8 +611,12 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         decides which status values it cares about and what to do with them.
         """
         session = await db.get_session(session_id)
+        ensure_channels = True
         if session is None:
-            return
+            session = self._get_cached_session_for_ui_dispatch(session_id)
+            if session is None:
+                return
+            ensure_channels = False
         origin_adapter = self._resolve_origin_ui_adapter(session)
         admin_target = self._resolve_admin_output_target(session, origin_adapter)
         if origin_adapter is not None:
@@ -586,6 +625,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 "on_session_status",
                 status,
                 include_adapters={origin_adapter},
+                ensure_channels=ensure_channels,
             )
         if admin_target is not None:
             await self._route_to_ui(
@@ -593,6 +633,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 "on_session_status",
                 status,
                 include_adapters={admin_target},
+                ensure_channels=ensure_channels,
             )
 
     async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> None:

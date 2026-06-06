@@ -238,6 +238,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 platform_message_id=parsed.platform_message_id,
                 project_path=parsed.project_path,
                 title=parsed.title,
+                origin_metadata=parsed.origin_metadata,
                 launch_intent=launch_intent_obj,
                 human_email=parsed.human_email,
                 human_role=parsed.human_role,
@@ -385,6 +386,15 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                     launch_intent = cast(JsonDict, parsed_intent)
             except json.JSONDecodeError:
                 logger.warning("Invalid launch_intent JSON in message")
+        origin_metadata: JsonDict | None = None
+        origin_metadata_raw = _decode_redis_text(data, b"origin_metadata")
+        if origin_metadata_raw:
+            try:
+                parsed_origin_metadata = json.loads(origin_metadata_raw)
+                if isinstance(parsed_origin_metadata, dict):
+                    origin_metadata = cast(JsonDict, parsed_origin_metadata)
+            except json.JSONDecodeError:
+                logger.warning("Invalid origin_metadata JSON in message")
 
         return RedisInboundMessage(
             msg_type=msg_type,
@@ -398,6 +408,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             project_path=_decode_redis_text(data, b"project_path"),
             title=_decode_redis_text(data, b"title"),
             origin=origin_raw,
+            origin_metadata=origin_metadata,
             launch_intent=launch_intent,
             human_email=_decode_redis_text(data, b"human_email"),
             human_role=_decode_redis_text(data, b"human_role"),

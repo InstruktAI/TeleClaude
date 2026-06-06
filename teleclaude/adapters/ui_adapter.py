@@ -936,10 +936,11 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
         Dispatched by ``AdapterClient.dispatch_session_status`` after origin
         resolution — only the responsible adapter is invoked. The adapter owns
-        its own status-filter policy: typing fires on ``active`` / ``accepted``
-        for non-headless sessions; badge fires only on ``accepted``.
+        its own status-filter policy: typing fires on ``active`` / ``accepted`` /
+        ``active_output`` for non-headless sessions; badge fires only on
+        ``accepted``.
         """
-        if status not in ("active", "accepted"):
+        if status not in ("active", "accepted", "active_output"):
             return
         if session.lifecycle_status == "headless":
             logger.debug(

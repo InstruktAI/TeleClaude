@@ -23,6 +23,7 @@ from ._remote import _RemoteMixin
 
 if TYPE_CHECKING:
     from teleclaude.core.agent_coordinator import AgentCoordinator
+    from teleclaude.core.cache import DaemonCache
     from teleclaude.core.events import AgentEventContext
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
@@ -74,6 +75,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         # Redis is a transport, not an adapter: kept off the adapter registry so
         # adapter counts, UI resolution, and headless detection stay honest.
         self.transport: RedisTransport | None = None
+        self.cache: DaemonCache | None = None
         # Per-adapter startup outcome (disabled/misconfigured/error/ok), surfaced to the user.
         self.adapter_status: dict[str, AdapterStatusReport] = {}
         self.is_shutting_down = False
@@ -275,6 +277,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         method: str,
         *args: object,
         include_adapters: set[str] | None = None,
+        ensure_channels: bool = True,
         **kwargs: object,
     ) -> object:
         """Send operation to the selected UI adapters, returning the entry point result.
@@ -287,7 +290,8 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         flows must pass explicit include_adapters rather than relying on
         implicit all-adapter fanout.
         """
-        session = await self.ensure_ui_channels(session, include_adapters=include_adapters)
+        if ensure_channels:
+            session = await self.ensure_ui_channels(session, include_adapters=include_adapters)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))

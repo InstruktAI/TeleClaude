@@ -304,6 +304,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 get_adapter=lambda: self.client.transport,
             )
         )
+        self.client.cache = self.cache
         logger.info("DaemonCache initialized")
 
         # Initialize TTS manager for direct speech (no event bus coupling)

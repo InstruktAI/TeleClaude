@@ -46,7 +46,7 @@ This spec owns recipient selection only.
 | `ORIGIN_ONLY` | `origin_endpoint` only                               | Never fan out to non-origin admin destinations.                                                    |
 | `ADMIN_ONLY`  | `admin_lane_destinations` only                       | Used for explicit admin reflection traffic.                                                        |
 | `DUAL`        | `origin_endpoint` + Discord admin lane when eligible | Origin UI plus an admin copy on Discord when origin is not Discord and session is not system-role. |
-| `CTRL`        | Internal control channels only                       | Not part of user/admin UI fan-out.                                                                 |
+| `CTRL`        | Internal control channels only                       | Not part of user/admin UI message fan-out; status controls may request throttled typing pulses.    |
 
 ### Message intent to scope mapping
 
@@ -58,7 +58,7 @@ This spec owns recipient selection only.
 | `input_reflection_text`              | `ADMIN_ONLY`  | Extra admin reflection goes to Discord only when origin is not Discord.               |
 | `input_reflection_voice`             | `ADMIN_ONLY`  | Same reflection lane policy as text input.                                            |
 | `input_reflection_mcp`               | `ADMIN_ONLY`  | Same reflection lane policy as text/voice input.                                      |
-| `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not UI content. |
+| `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not visible UI content. |
 
 ### Reflection lane contract
 
@@ -83,6 +83,8 @@ Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessi
 - Sessions with a non-UI origin (terminal, system, etc.) still get the admin copy when eligible, so agent output remains visible.
 - Final-output repair (`reconcile_outstanding_final_outputs`) follows the same dual-lane rule when repairing persisted output.
 - Channel provisioning for the admin copy is on-demand via the same path the reflection lane uses.
+- Lifecycle status controls (`accepted`, `active`, `active_output`) may request throttled typing pulses on the origin and Discord admin lanes. These are platform presence signals, not message delivery, and must not render visible UI content.
+- Cache-backed remote session status dispatch uses existing origin metadata to request presence pulses. It must not provision local channels for cache-only remote sessions.
 
 #### Non-negotiable routing rules
 
@@ -141,6 +143,7 @@ Projection must honor origin freshness before crossing a user source entry. If t
 - Telegram does not render admin reflections.
 - Admin-lane recipients can still render multiple internal placements. That is adapter behavior, not core routing policy.
 - Command acknowledgements and lifecycle chatter are not cross-adapter broadcasts. Targeted origin delivery and Discord admin reflection are the only supported UI routing patterns.
+- Status-derived typing pulses are not lifecycle chatter and not message broadcasts; they are throttled platform presence signals scoped to the same origin/admin adapter selection rules.
 
 ## See Also
 
