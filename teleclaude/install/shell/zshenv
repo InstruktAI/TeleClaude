@@ -11,3 +11,4 @@ case ":$PATH:" in
   ":$TC_HOME/bin:"*) ;;
   *) export PATH="$TC_HOME/bin:$PATH" ;;
 esac
+. "$HOME/.cargo/env"

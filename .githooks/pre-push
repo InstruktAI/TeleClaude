@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Put cargo on PATH for the Rust lint step. The daemon that dispatches
+# integration pushes runs under a hardcoded launchd PATH that omits
+# ~/.cargo/bin, so the hook must source the toolchain env itself.
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+
 MARKER="TELECLAUDE_PRE_PUSH_MAIN_GUARD_BLOCK"
 LOG_FILE="${HOME}/.teleclaude/logs/guardrails.log"
 
