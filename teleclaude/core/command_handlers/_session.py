@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+from teleclaude.constants import EVENT_END_SESSION, HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -19,7 +19,8 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
-from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionSnapshot
+from teleclaude.core.models import ComputerInfo, MessageMetadata, ProjectInfo, Session, SessionSnapshot
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.roadmap import assemble_roadmap_from_db, recently_delivered_cutoff
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
@@ -27,7 +28,7 @@ from teleclaude.core.session_title import initial_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
-from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand, InternalCommand
+from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
@@ -35,25 +36,6 @@ from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-
-
-async def forward_command(
-    cmd: InternalCommand,
-    *,
-    target_computer: str,
-    client: "AdapterClient",
-) -> None:
-    """Forward a command to a remote computer via redis transport."""
-    session_id = getattr(cmd, "session_id", "unknown")
-    transport = client.transport
-    if transport is None or not hasattr(transport, "send_system_command"):
-        raise ValueError(f"Redis transport not available — cannot forward to {target_computer}")
-    await transport.send_system_command(  # type: ignore[attr-defined]
-        target_computer,
-        "close_session",
-        {"session_id": session_id},
-    )
-
 
 logger = get_logger(__name__)
 
@@ -612,10 +594,12 @@ async def close_session(
                 session.computer_name,
                 session.session_id,
             )
-            await forward_command(
-                _cmd,
+            await client.dispatch_remote_command(
                 target_computer=session.computer_name,
-                client=client,
+                command=EVENT_END_SESSION,
+                metadata=MessageMetadata(origin=InputOrigin.TERMINAL.value),
+                session_id=session.session_id,
+                wait_for_response=False,
             )
             return
 

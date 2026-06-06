@@ -8,18 +8,167 @@ No fallback to admin should exist for sessions without explicit identity.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from teleclaude.api import auth as auth_mod
+from teleclaude.api import sessions_routes
+from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
+from teleclaude.api.session_remote import dispatch_session_close_to_peer
+from teleclaude.constants import EVENT_END_SESSION
+from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
+from teleclaude.core.command_handlers import _session as session_handler_mod
+from teleclaude.core.identity import IdentityContext
+from teleclaude.core.models import MessageMetadata, SessionSnapshot
 from teleclaude.core.models._session import Session
+from teleclaude.core.origins import InputOrigin
+from teleclaude.types.commands import CloseSessionCommand
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 _SPEC = "project/spec/feature/agent_runtime/session-lifecycle"
+
+
+class _RemoteDispatchHarness(_RemoteMixin):
+    """Small transport harness for command-stream remote dispatch behavior."""
+
+    def __init__(
+        self,
+        response_text: str | None = None,
+        *,
+        read_error: BaseException | None = None,
+    ) -> None:
+        self.response_text = response_text
+        self.read_error = read_error
+        self.sent: list[dict[str, object]] = []
+        self.reads: list[dict[str, object]] = []
+
+    async def send_request(
+        self,
+        computer_name: str,
+        command: str,
+        metadata: MessageMetadata,
+        session_id: str | None = None,
+    ) -> str:
+        del metadata
+        self.sent.append(
+            {
+                "computer": computer_name,
+                "command": command,
+                "session_id": session_id,
+            }
+        )
+        return "message-1"
+
+    async def read_response(
+        self,
+        message_id: str,
+        timeout: float = 3.0,
+        target_computer: str | None = None,
+    ) -> str:
+        self.reads.append(
+            {
+                "message_id": message_id,
+                "target_computer": target_computer,
+                "timeout": timeout,
+            }
+        )
+        if self.read_error is not None:
+            raise self.read_error
+        if self.response_text is None:
+            raise AssertionError("response_text is required when read_response is reached")
+        return self.response_text
+
+
+class _RemoteCloseClient:
+    def __init__(self, dispatch_error: BaseException | None = None) -> None:
+        self.dispatch_error = dispatch_error
+        self.dispatches: list[dict[str, object]] = []
+
+    async def dispatch_remote_command(
+        self,
+        target_computer: str,
+        command: str,
+        metadata: MessageMetadata,
+        *,
+        session_id: str | None = None,
+        timeout: float = 3.0,
+        wait_for_response: bool = True,
+    ) -> object:
+        self.dispatches.append(
+            {
+                "target_computer": target_computer,
+                "command": command,
+                "origin": metadata.origin,
+                "session_id": session_id,
+                "timeout": timeout,
+                "wait_for_response": wait_for_response,
+            }
+        )
+        if self.dispatch_error is not None:
+            raise self.dispatch_error
+        return None
+
+
+class _OwnershipDb:
+    def __init__(self, session: Session | None) -> None:
+        self.session = session
+
+    async def get_session(self, session_id: str) -> Session | None:
+        if self.session is None or self.session.session_id != session_id:
+            return None
+        return self.session
+
+
+class _OwnershipCache:
+    def __init__(self, sessions: list[SessionSnapshot]) -> None:
+        self.sessions = sessions
+
+    def get_sessions(self, computer: str | None = None) -> list[SessionSnapshot]:
+        if computer is None:
+            return self.sessions
+        return [session for session in self.sessions if session.computer == computer]
+
+
+def _snapshot(
+    session_id: str,
+    *,
+    computer: str = "PeerComputer",
+    human_email: str | None = None,
+    human_role: str | None = None,
+) -> SessionSnapshot:
+    return SessionSnapshot(
+        session_id=session_id,
+        last_input_origin="terminal",
+        title="remote session",
+        thinking_mode="slow",
+        active_agent="claude",
+        status="active",
+        computer=computer,
+        human_email=human_email,
+        human_role=human_role,
+    )
+
+
+def _install_member_identity_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _MemberIdentityResolver:
+        registered_people_count = 1
+
+        @staticmethod
+        def resolve_by_email(email: str) -> IdentityContext:
+            return IdentityContext(
+                person_name="Member",
+                person_email=email.strip().lower(),
+                person_role="member",
+            )
+
+    monkeypatch.setattr(auth_mod, "get_identity_resolver", lambda: _MemberIdentityResolver())
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +207,356 @@ async def _create_session(
 async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
     """Load session directly from DB (attached to the client by conftest)."""
     return await api.db.get_session(session_id)
+
+
+# ---------------------------------------------------------------------------
+# Remote dispatch primitive
+# ---------------------------------------------------------------------------
+
+
+async def test_remote_dispatch_returns_success_envelope_data() -> None:
+    envelope = json.dumps({"status": "success", "data": {"accepted": True}})
+    client = _RemoteDispatchHarness(envelope)
+
+    data = await client.dispatch_remote_command(
+        "PeerComputer",
+        EVENT_END_SESSION,
+        MessageMetadata(origin=InputOrigin.TERMINAL.value),
+        session_id="session-1",
+        timeout=12.0,
+    )
+
+    assert data == {"accepted": True}
+    assert client.sent == [
+        {
+            "computer": "PeerComputer",
+            "command": EVENT_END_SESSION,
+            "session_id": "session-1",
+        }
+    ]
+    assert client.reads == [
+        {
+            "message_id": "message-1",
+            "target_computer": "PeerComputer",
+            "timeout": 12.0,
+        }
+    ]
+
+
+async def test_remote_dispatch_error_envelope_raises_domain_error() -> None:
+    envelope = json.dumps({"status": "error", "error": "peer rejected close"})
+    client = _RemoteDispatchHarness(envelope)
+
+    with pytest.raises(RemoteDispatchError):
+        await client.dispatch_remote_command(
+            "PeerComputer",
+            EVENT_END_SESSION,
+            MessageMetadata(origin=InputOrigin.TERMINAL.value),
+            session_id="session-1",
+        )
+
+
+async def test_remote_dispatch_timeout_propagates() -> None:
+    client = _RemoteDispatchHarness(read_error=TimeoutError())
+
+    with pytest.raises(TimeoutError):
+        await client.dispatch_remote_command(
+            "PeerComputer",
+            EVENT_END_SESSION,
+            MessageMetadata(origin=InputOrigin.TERMINAL.value),
+            session_id="session-1",
+        )
+
+
+async def test_remote_dispatch_fire_and_forget_sends_command_without_reading_response() -> None:
+    client = _RemoteDispatchHarness()
+
+    data = await client.dispatch_remote_command(
+        "PeerComputer",
+        EVENT_END_SESSION,
+        MessageMetadata(origin=InputOrigin.TERMINAL.value),
+        session_id="session-1",
+        wait_for_response=False,
+    )
+
+    assert data is None
+    assert client.sent == [
+        {
+            "computer": "PeerComputer",
+            "command": EVENT_END_SESSION,
+            "session_id": "session-1",
+        }
+    ]
+    assert client.reads == []
+
+
+# ---------------------------------------------------------------------------
+# Session ownership resolver
+# ---------------------------------------------------------------------------
+
+
+async def test_session_ownership_resolver_prefers_local_database() -> None:
+    local = Session(
+        session_id="session-1",
+        computer_name="TestComputer",
+        tmux_session_name="tc-session-1",
+        title="local session",
+    )
+
+    ownership = await resolve_session_ownership(
+        "session-1",
+        db=_OwnershipDb(local),
+        cache=_OwnershipCache([_snapshot("session-1")]),
+    )
+
+    assert isinstance(ownership, LocalOwnership)
+    assert ownership.session is local
+
+
+async def test_session_ownership_resolver_returns_cached_remote_owner() -> None:
+    snapshot = _snapshot("session-1", computer="PeerComputer")
+
+    ownership = await resolve_session_ownership(
+        "session-1",
+        db=_OwnershipDb(None),
+        cache=_OwnershipCache([snapshot]),
+    )
+
+    assert isinstance(ownership, RemoteOwnership)
+    assert ownership.computer == "PeerComputer"
+    assert ownership.snapshot is snapshot
+
+
+async def test_session_ownership_resolver_returns_none_for_unknown_session() -> None:
+    ownership = await resolve_session_ownership(
+        "missing-session",
+        db=_OwnershipDb(None),
+        cache=_OwnershipCache([_snapshot("session-1")]),
+    )
+
+    assert ownership is None
+
+
+# ---------------------------------------------------------------------------
+# Remote close command handler
+# ---------------------------------------------------------------------------
+
+
+async def test_close_session_for_peer_owned_row_dispatches_command_typed_remote_close(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del api
+    client = _RemoteCloseClient()
+    session = Session(
+        session_id="session-1",
+        computer_name="PeerComputer",
+        tmux_session_name="tc-session-1",
+        title="remote session",
+    )
+    monkeypatch.setattr(session_handler_mod.tmux_bridge, "session_exists", AsyncMock(return_value=False))
+
+    await session_handler_mod.close_session.__wrapped__(
+        session,
+        CloseSessionCommand(session_id="session-1"),
+        client,
+    )
+
+    assert client.dispatches == [
+        {
+            "target_computer": "PeerComputer",
+            "command": EVENT_END_SESSION,
+            "origin": InputOrigin.TERMINAL.value,
+            "session_id": "session-1",
+            "timeout": 3.0,
+            "wait_for_response": False,
+        }
+    ]
+
+
+async def test_close_session_for_locally_present_row_does_not_dispatch_remote_close(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del api
+    client = _RemoteCloseClient()
+    session = Session(
+        session_id="session-1",
+        computer_name="PeerComputer",
+        tmux_session_name="tc-session-1",
+        title="local session",
+    )
+    terminate = AsyncMock(return_value=True)
+    monkeypatch.setattr(session_handler_mod.tmux_bridge, "session_exists", AsyncMock(return_value=True))
+    monkeypatch.setattr(session_handler_mod, "terminate_session", terminate)
+    monkeypatch.setattr(session_handler_mod.event_bus, "emit", lambda *args, **kwargs: None)
+
+    await session_handler_mod.close_session.__wrapped__(
+        session,
+        CloseSessionCommand(session_id="session-1"),
+        client,
+    )
+
+    assert client.dispatches == []
+    terminate.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Remote close API helper
+# ---------------------------------------------------------------------------
+
+
+async def test_dispatch_session_close_to_peer_uses_request_response_primitive() -> None:
+    client = _RemoteCloseClient()
+
+    await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
+
+    assert client.dispatches == [
+        {
+            "target_computer": "PeerComputer",
+            "command": EVENT_END_SESSION,
+            "origin": "terminal",
+            "session_id": "session-1",
+            "timeout": 30.0,
+            "wait_for_response": True,
+        }
+    ]
+
+
+async def test_dispatch_session_close_to_peer_maps_target_error_to_bad_gateway() -> None:
+    client = _RemoteCloseClient(RemoteDispatchError("peer rejected close"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
+
+    assert exc_info.value.status_code == 502
+
+
+async def test_dispatch_session_close_to_peer_maps_transport_error_to_unavailable() -> None:
+    client = _RemoteCloseClient(RuntimeError("redis unavailable"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
+
+    assert exc_info.value.status_code == 503
+
+
+async def test_dispatch_session_close_to_peer_maps_timeout_to_gateway_timeout() -> None:
+    client = _RemoteCloseClient(TimeoutError())
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
+
+    assert exc_info.value.status_code == 504
+
+
+# ---------------------------------------------------------------------------
+# Remote close API boundary
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_remote_session_forwards_to_cached_owner_and_returns_completion_event(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _RemoteCloseClient()
+    cache = _OwnershipCache(
+        [
+            _snapshot(
+                "remote-session",
+                computer="PeerComputer",
+                human_email="owner@example.com",
+                human_role="member",
+            )
+        ]
+    )
+    _install_member_identity_resolver(monkeypatch)
+    monkeypatch.setattr(sessions_routes._STATE, "client", client)
+    monkeypatch.setattr(sessions_routes._STATE, "cache", cache)
+
+    response = await api.delete(
+        "/sessions/remote-session",
+        params={"computer": "PeerComputer"},
+        headers={
+            "x-web-user-email": "owner@example.com",
+            "x-web-user-role": "member",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["completion_event"] == CloseSessionCommand(session_id="remote-session").completion_event
+    assert body["message"]
+    assert client.dispatches == [
+        {
+            "target_computer": "PeerComputer",
+            "command": EVENT_END_SESSION,
+            "origin": InputOrigin.TERMINAL.value,
+            "session_id": "remote-session",
+            "timeout": 30.0,
+            "wait_for_response": True,
+        }
+    ]
+
+
+async def test_delete_remote_session_rejects_non_owner_web_identity(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _OwnershipCache(
+        [
+            _snapshot(
+                "remote-session",
+                computer="PeerComputer",
+                human_email="owner@example.com",
+                human_role="member",
+            )
+        ]
+    )
+    _install_member_identity_resolver(monkeypatch)
+    monkeypatch.setattr(sessions_routes._STATE, "client", _RemoteCloseClient())
+    monkeypatch.setattr(sessions_routes._STATE, "cache", cache)
+
+    response = await api.delete(
+        "/sessions/remote-session",
+        params={"computer": "PeerComputer"},
+        headers={
+            "x-web-user-email": "other@example.com",
+            "x-web-user-role": "member",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+async def test_delete_remote_session_rejects_requested_computer_mismatch(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _OwnershipCache(
+        [
+            _snapshot(
+                "remote-session",
+                computer="PeerComputer",
+                human_email="owner@example.com",
+                human_role="member",
+            )
+        ]
+    )
+    _install_member_identity_resolver(monkeypatch)
+    monkeypatch.setattr(sessions_routes._STATE, "client", _RemoteCloseClient())
+    monkeypatch.setattr(sessions_routes._STATE, "cache", cache)
+
+    response = await api.delete(
+        "/sessions/remote-session",
+        params={"computer": "OtherComputer"},
+        headers={
+            "x-web-user-email": "owner@example.com",
+            "x-web-user-role": "member",
+        },
+    )
+
+    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------

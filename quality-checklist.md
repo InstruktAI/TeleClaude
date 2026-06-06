@@ -1,16 +1,20 @@
 ## Build Gates (Builder)
 
-- [x] Task 1: Refactor `useAgentTheming` to an external-store hook
-- [x] Task 2: Remove effect-driven query snapshot syncing from live hooks
-- [x] Task 3: Move render-phase ref writes to commit-safe locations
-- [x] Task 4: Correct `useSessionTree` memoization dependencies
-- [x] Task 5: Resolve layout stylesheet and exhaustive-deps warnings
-- [x] Task 6: Add executable verification commands and browser smoke evidence
+- [x] Task 1: Add the unified typed remote-dispatch primitive
+- [x] Task 2: Add the session-ownership resolver
+- [x] Task 3: Migrate the `_session.py` close-forward path and remove `forward_command`
+- [x] Task 4: Migrate `session_remote.py` close path onto the primitive
+- [x] Task 5: Address carried-over remote-close authorization, completion-event, and API-boundary findings
 
-### Browser Smoke Verification
-- Path: `frontend/e2e/react19-cleanup.spec.ts` was added to test the chat page rendering, session tree navigation, and theming toggle functionality.
-- Observed result: `DATABASE_URL="/tmp/teleclaude-react19-smoke-main-lint.db" AUTH_SECRET='teleclaude-e2e-secret-for-local-smoke' AUTH_URL='http://localhost:3000' pnpm run test:e2e e2e/react19-cleanup.spec.ts` passed in Chromium under Node.js v22.22.3 after rebuilding `better-sqlite3`.
+### Verification
 
-### Local Dependency Installation
-- **Issue**: `pnpm install` fails locally due to Node.js v26 incompatibility with `better-sqlite3@11.10.0` (specifically a `GetPrototype` missing member in `v8::Object` in `node-gyp`).
-- **Result**: The ambient Node.js v26 install/build failure remains separate from the React lint cleanup result, as instructed by the PRD. Local browser verification was completed with pnpm-managed Node.js v22.22.3 and a rebuilt `better-sqlite3` native binding.
+- `uv run pytest tests/agent_runtime/test_session_lifecycle.py`: PASS (`24 passed`, `5 snapshots passed`)
+- `uv run ruff check teleclaude/core/adapter_client/_remote.py teleclaude/api/session_ownership.py teleclaude/core/command_handlers/_session.py teleclaude/api/session_remote.py teleclaude/api/sessions_routes.py tests/agent_runtime/test_session_lifecycle.py`: PASS
+- `telec code test`: PASS
+- `telec code lint`: PASS
+- `rg -n "forward_command" teleclaude tests`: no matches
+
+### User-Facing Verification
+
+- Path: `DELETE /sessions/{id}?computer=<peer>` exercised through `tests/agent_runtime/test_session_lifecycle.py::test_delete_remote_session_forwards_to_cached_owner_and_returns_completion_event`.
+- Observed result: the route accepts a cached peer-owned remote close with HTTP 202, returns the close `completion_event`, and dispatches to the cached owning computer without requiring a local DB row.

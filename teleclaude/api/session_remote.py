@@ -16,6 +16,7 @@ from teleclaude.api.session_create_launch import (
 from teleclaude.api.sessions_actions_routes import _rewrite_codex_next_startup_message
 from teleclaude.api_models import CreateSessionRequest, CreateSessionResponseDTO
 from teleclaude.constants import EVENT_END_SESSION, EVENT_NEW_SESSION
+from teleclaude.core.adapter_client._remote import RemoteDispatchError
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.shell_identity import require_shell_safe_identifier
@@ -171,31 +172,6 @@ async def dispatch_session_create_to_peer(
     )
 
 
-def _assert_remote_close_success(envelope_text: str, *, session_id: str, target_computer: str) -> None:
-    """Validate a peer's close response envelope, raising HTTPException on failure."""
-    try:
-        envelope_obj: object = json.loads(envelope_text)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail="Remote session close returned invalid JSON") from exc
-
-    if not isinstance(envelope_obj, dict):
-        raise HTTPException(status_code=502, detail="Remote session close returned invalid response")
-
-    envelope = cast(JsonDict, envelope_obj)
-    status = envelope.get("status")
-    if status == "success":
-        return
-
-    detail = str(envelope.get("error") or f"Remote session close failed for {session_id}")
-    logger.warning(
-        "Remote session close rejected",
-        target_computer=target_computer,
-        session_id=session_id,
-        detail=detail,
-    )
-    raise HTTPException(status_code=502, detail=detail)
-
-
 async def dispatch_session_close_to_peer(
     client: AdapterClient | None,
     target_computer: str,
@@ -213,17 +189,21 @@ async def dispatch_session_close_to_peer(
 
     metadata = MessageMetadata(origin=InputOrigin.TERMINAL.value)
     try:
-        message_id = await client.send_request(
+        await client.dispatch_remote_command(
             target_computer,
             EVENT_END_SESSION,
             metadata,
             session_id=session_id,
-        )
-        response_text = await client.read_response(
-            message_id,
             timeout=REMOTE_CLOSE_TIMEOUT_SECONDS,
-            target_computer=target_computer,
         )
+    except RemoteDispatchError as exc:
+        logger.warning(
+            "Remote session close rejected",
+            target_computer=target_computer,
+            session_id=session_id,
+            detail=str(exc),
+        )
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except TimeoutError as exc:
         logger.warning(
             "Remote session close timed out",
@@ -240,5 +220,3 @@ async def dispatch_session_close_to_peer(
             error=str(exc),
         )
         raise HTTPException(status_code=503, detail="Remote session close transport unavailable") from exc
-
-    _assert_remote_close_success(response_text, session_id=session_id, target_computer=target_computer)

@@ -24,6 +24,7 @@ from teleclaude.api.session_create_launch import (
     resolve_enabled_agent,
     resolve_launch_kind,
 )
+from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_remote import (
     dispatch_session_close_to_peer,
     dispatch_session_create_to_peer,
@@ -123,6 +124,35 @@ def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) 
 
     # Contributor/newcomer/unknown: own sessions only
     return [s for s in sessions if s.human_email == email]
+
+
+def _check_remote_session_owner(request: Request, ownership: RemoteOwnership) -> None:
+    """Verify owner-only access against a cached peer-owned session."""
+    email = request.headers.get("x-web-user-email")
+    role = request.headers.get("x-web-user-role")
+
+    if not email:
+        return
+    if role == HUMAN_ROLE_ADMIN:
+        return
+    if ownership.snapshot.human_email == email:
+        return
+
+    raise HTTPException(status_code=403, detail="Forbidden: not session owner")
+
+
+def _close_accepted(command: CloseSessionCommand, *, location_label: str | None = None) -> JSONResponse:
+    message = f"Session {command.session_id} closing"
+    if location_label is not None:
+        message = f"{message} on {location_label}"
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "message": message,
+            "completion_event": command.completion_event,
+        },
+    )
 
 
 def enrich_human_names(dtos: list[SessionDTO]) -> list[SessionDTO]:
@@ -606,31 +636,31 @@ async def end_session(
         identity_email,
     )
 
-    await check_session_access(request, session_id, require_owner=True)
-
     if computer and is_remote_target(computer, config.computer.name):
-        await dispatch_session_close_to_peer(_STATE.client, computer, session_id)
-        return JSONResponse(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
-            status_code=202,
-            content={
-                "status": "accepted",
-                "message": f"Session {session_id} closing on {computer}",
-            },
-        )
+        ownership = await resolve_session_ownership(session_id, db=db, cache=_STATE.cache)
+        target_computer: str | None = None
+        if isinstance(ownership, RemoteOwnership):
+            if ownership.computer != computer:
+                raise HTTPException(status_code=404, detail="Session not found on requested computer")
+            _check_remote_session_owner(request, ownership)
+            target_computer = ownership.computer
+        elif ownership is None:
+            await check_session_access(request, session_id, require_owner=True)
+            target_computer = computer
+
+        if target_computer is not None:
+            cmd = CloseSessionCommand(session_id=session_id)
+            await dispatch_session_close_to_peer(_STATE.client, target_computer, session_id)
+            return _close_accepted(cmd, location_label=target_computer)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+
+    await check_session_access(request, session_id, require_owner=True)
 
     try:
         cmd = CloseSessionCommand(session_id=session_id)
         service = get_command_service()
         await service.close_session(cmd)
 
-        return JSONResponse(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
-            status_code=202,
-            content={
-                "status": "accepted",
-                "message": f"Session {session_id} closing",
-                "completion_event": cmd.completion_event,
-            },
-        )
+        return _close_accepted(cmd)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
     except HTTPException as exc:
         raise exc
     except Exception as e:
