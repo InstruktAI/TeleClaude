@@ -76,6 +76,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] README and docs updated to reflect current behavior
 - [ ] User-facing interface documentation updated for new/changed commands
 - [ ] If new configuration surface introduced, relevant documentation and tooling updated
+- [ ] Affected doc snippets (spec/principle/policy/concept/ADR) updated to reflect changed behavior, or a no-doc-impact justification recorded
 
 ### 7. Commit Hygiene
 

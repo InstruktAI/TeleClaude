@@ -9,6 +9,7 @@ date: '2026-06-06'
 adr_status: 'accepted'
 number: '15'
 ---
+
 # Kind as Lifecycle Entry Point — ADR
 
 ## Context
@@ -84,6 +85,14 @@ references so no-PRD work is first-class.
   `input` stays immutable; analyze only reads it.
 - The "kind fixed at creation" invariant becomes "fixed once assigned": a
   kind-less todo's kind is assigned exactly once, by analyze on human approval.
+- A `change` carries no PRD/PO intent gate but a **mandatory doc-snippet
+  reflection obligation**. Because the change lane skips the PRD — where the
+  doc-first "snippets to author or update" deliverable otherwise lives — the
+  plan-draft step owns identifying and authoring the affected pending snippets,
+  and the plan-review documentation lane hard-gates it (with an explicit
+  `doc_impact_none: <reason>` escape, mirroring `architecture_skipped`). This is
+  what makes it safe for a `change` to bypass PO oversight: it may skip intent
+  review, but it cannot silently drift documented behavior.
 
 ## Alternatives Considered
 

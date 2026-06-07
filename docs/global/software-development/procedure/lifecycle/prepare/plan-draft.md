@@ -119,6 +119,7 @@ work that will fail gate validation. Split first:
 If the work passes the scope/size gate, continue to plan drafting.
 
 <!-- planned:code-intelligence-foundation -->
+
 ### 2c. Derive the change's blast radius (before drafting)
 
 - **Treat the codebase blueprint as a discovery tool, not an oracle** — it generates structural candidates; the planner verifies each against the source and decides relevance.
@@ -186,6 +187,27 @@ are reflected as task verification steps.
 
 A plan that does not anticipate review lanes will produce review findings that cost
 more to fix than they cost to prevent.
+
+### 4b. Reflect the behavioral delta in doc snippets (mandatory)
+
+Per `software-development/principle/documentation-first-development`, the prepare
+phase authors the pending snippets that describe the work's intended state. A
+`change` has no PRD, so this step owns that identification for the no-PRD lane
+(and confirms it for a `feature` whose PRD already lists them):
+
+- Identify every doc snippet (spec / principle / policy / concept / ADR) whose
+  contract the work's behavioral delta changes or adds.
+- Author or update each as a **pending** snippet carrying `delivered_by: [{slug}]`
+  — in-context `<!-- planned:{slug} -->` blocks for additions, or a
+  `<stem>.{slug}.md` companion for a wholesale rework (see the doc-snippet
+  authoring procedure).
+- Add a plan task for each snippet so the builder produces it and the
+  documentation review lane has a named deliverable to validate.
+- If the change genuinely has no documented-behavior impact, record an explicit
+  `doc_impact_none: <reason>` note in the plan rather than silently omitting docs.
+
+A change that alters documented behavior without a corresponding snippet update
+(and without a `doc_impact_none` justification) is not plan-complete.
 
 ### 5. Write artifacts
 

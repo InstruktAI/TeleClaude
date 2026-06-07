@@ -129,8 +129,13 @@ and the plan task that produces it:
   and mock-call-echo assertions are not acceptable deliverables.
 - **Security**: name the validation point, the auth check, and the task that
   adds them.
-- **Documentation**: name the doc file, the section updated, and the task
-  that updates it.
+- **Documentation (hard gate)**: name the doc snippet id, the section, and the
+  task that updates it as a pending snippet (`delivered_by`). A `change` is the
+  high-risk case — it has no PRD, so its doc reflection lives only here: a
+  behavioral delta with neither a snippet update nor an explicit
+  `doc_impact_none: <reason>` is a Requirement-Violation (blocking), not a soft
+  finding. The reviewer does not approve the plan until the delta is reflected
+  or justified.
 - **Config surface**: name the config key, the wizard entry, the sample line,
   and the spec section — each with the task that delivers it.
 - **Browser-based frontend or web UI**: name the Playwright smoke path and

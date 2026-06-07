@@ -54,9 +54,9 @@ Validation rules:
 
 The prepare orchestrator already runs on `main` with no worktree — it's authorized to write snippets to the canonical doc layer. Authoring or updating the pending snippet for the work being prepared is now a regular prepare deliverable:
 
-- The PRD includes a "snippets to author or update" section listing the snippets the delivery will produce or change.
+- For a `feature`, the PRD includes a "snippets to author or update" section listing the snippets the delivery will produce or change. For a `change` (no PRD — intent is the `input` artifact), the plan-draft step owns the same identification: it names the affected snippets and authors/updates them. No SDLC kind is exempt — every behavioral delta is reflected in the doc layer, or the plan carries an explicit no-doc-impact justification.
 - The prepare worker writes the pending snippets to `docs/` as part of preparation, with `delivered_by` pointing at the slug being prepared.
-- The plan reviewer verifies the snippets exist, accurately describe the intended state, and that the implementation plan delivers what the snippets promise.
+- The plan reviewer verifies the snippets exist, accurately describe the intended state, and that the implementation plan delivers what the snippets promise. This documentation lane is a hard gate: a behavioral delta with neither a snippet update nor a recorded no-doc-impact justification blocks the plan.
 - The snippets land on `main` via the normal prepare commit flow, before any work-phase worktree branches off.
 
 The work phase then has the pending snippets as the authoritative design reference. Build workers reference them directly; reviewers check the build against them.
