@@ -25,6 +25,16 @@ class TodosDb(
     """Database interface for todo lifecycle state and artifacts."""
 
 
+def todos_db_path(project_root_or_cwd: str | Path) -> Path:
+    """Canonical todos.db path at the resolved state root — the single source of truth.
+
+    Every todos.db access (getters, raw-sqlite readers, existence checks) routes
+    through here. Constructing the path inline from a raw project root bypasses
+    ``resolve_state_root`` and can materialize a stray db inside a git worktree.
+    """
+    return resolve_state_root(project_root_or_cwd) / ".teleclaude" / "todos.db"
+
+
 _instances: dict[str, TodosDb] = {}
 
 # Hook called whenever get_todos_db or get_todos_db_sync creates a new instance.
@@ -48,15 +58,15 @@ def set_todos_mutation_hook(hook: Callable[[TodosDb, str], None] | None) -> None
 
 async def get_todos_db(project_root_or_cwd: str | Path) -> TodosDb:
     """Return a TodosDb instance for the canonical state root, creating if needed."""
-    project_root = str(resolve_state_root(project_root_or_cwd))
-    db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
-    if db_path not in _instances:
-        instance = TodosDb(db_path)
+    db_path = todos_db_path(project_root_or_cwd)
+    key = str(db_path)
+    if key not in _instances:
+        instance = TodosDb(key)
         await instance.initialize()
         if _new_instance_hook is not None:
-            _new_instance_hook(instance, project_root)
-        _instances[db_path] = instance
-    return _instances[db_path]
+            _new_instance_hook(instance, str(db_path.parent.parent))
+        _instances[key] = instance
+    return _instances[key]
 
 
 async def close_todos_db_instances() -> None:
@@ -69,15 +79,15 @@ async def close_todos_db_instances() -> None:
 
 def get_todos_db_sync(project_root_or_cwd: str | Path) -> TodosDb:
     """Sync sibling of get_todos_db: resolve project root, return cached TodosDb."""
-    project_root = str(resolve_state_root(project_root_or_cwd))
-    db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
-    if db_path not in _instances:
-        instance = TodosDb(db_path)
+    db_path = todos_db_path(project_root_or_cwd)
+    key = str(db_path)
+    if key not in _instances:
+        instance = TodosDb(key)
         instance.initialize_sync()
         if _new_instance_hook is not None:
-            _new_instance_hook(instance, project_root)
-        _instances[db_path] = instance
-    return _instances[db_path]
+            _new_instance_hook(instance, str(db_path.parent.parent))
+        _instances[key] = instance
+    return _instances[key]
 
 
 __all__ = [
@@ -89,4 +99,5 @@ __all__ = [
     "get_todos_db",
     "get_todos_db_sync",
     "set_todos_mutation_hook",
+    "todos_db_path",
 ]

@@ -6,7 +6,6 @@ DB-backed todo list assembly for CLI, API, and TUI.
 import json
 import time
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
@@ -20,7 +19,7 @@ from teleclaude.core.next_machine.lifecycle import (
     is_ready_for_work,
     require_lifecycle_phase,
 )
-from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
 
@@ -229,9 +228,8 @@ def assemble_roadmap_from_db(
     value must be a clean ISO timestamp produced by the caller.
     """
     started_at = time.perf_counter()
-    db = TodosDb(str(Path(project_path) / ".teleclaude" / "todos.db"))
     init_started_at = time.perf_counter()
-    db.initialize_sync()
+    db = get_todos_db_sync(project_path)
     init_dt = time.perf_counter() - init_started_at
 
     conn_open_started_at = time.perf_counter()

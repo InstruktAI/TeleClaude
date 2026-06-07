@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.core.todos_db import get_todos_db_sync, todos_db_path
 
 
 def artifact_display_filename(artifact_name: str) -> str:
@@ -14,7 +14,7 @@ def artifact_display_filename(artifact_name: str) -> str:
 
 def _require_todos_db(project_root: Path) -> Path:
     """Refuse silent DB creation: artifact ops require the project DB to exist."""
-    db_path = project_root / ".teleclaude" / "todos.db"
+    db_path = todos_db_path(project_root)
     if not db_path.exists():
         raise FileNotFoundError(f"Todos DB not found: {db_path}")
     return db_path

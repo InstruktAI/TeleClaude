@@ -14,8 +14,8 @@ from teleclaude.constants import (
     TYPE_SUFFIX,
     RoadmapStatus,
 )
+from teleclaude.core.todos_db import todos_db_path
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
-from teleclaude.project_root import resolve_state_root
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     _CODE_FENCE_LINE,
@@ -238,15 +238,9 @@ def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
     Falls back to the canonical state root (main repo) when invoked from a
     git worktree where ``.teleclaude/todos.db`` is not present.
     """
-    db_path = project_root / ".teleclaude" / "todos.db"
+    db_path = todos_db_path(project_root)
     if not db_path.exists():
-        state_root = resolve_state_root(project_root)
-        if state_root != project_root:
-            fallback = state_root / ".teleclaude" / "todos.db"
-            if fallback.exists():
-                db_path = fallback
-        if not db_path.exists():
-            return {}
+        return {}
     conn = sqlite3.connect(db_path)
     try:
         # A real todo exists in ``todo_state``; the legacy ``roadmap`` table only
@@ -856,9 +850,7 @@ def _resolve_roadmap_status_map(project_root: Path) -> dict[str, str] | None:
     the delivered_by roadmap-validity check rather than flagging every slug as
     missing. An empty map with a present DB is a real empty roadmap and still runs.
     """
-    if (project_root / ".teleclaude" / "todos.db").exists() or (
-        resolve_state_root(project_root) / ".teleclaude" / "todos.db"
-    ).exists():
+    if todos_db_path(project_root).exists():
         return build_roadmap_status_map(project_root)
     return None
 
