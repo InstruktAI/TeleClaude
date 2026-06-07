@@ -4,8 +4,6 @@ id: 'project/design/cli-authorization-matrix'
 scope: 'project'
 type: 'design'
 visibility: 'public'
-applies_to: 'v1'
-status: 'mixed'
 ---
 
 # CLI Authorization Matrix — Design
@@ -99,7 +97,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                                                                                                                              |
 | `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                                                                                                                           |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                                                                                                                             |
-| `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). Status: target — delivered_by roadmap-trash-reveal-ui. |
+| `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). delivered_by roadmap-trash-reveal-ui. |
 | `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members.                                                                                                          |
 | `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                                                                                                                             |
 | `telec todo reconcile`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Re-aligning the lifecycle pointer from current evidence is orchestration. Same boundary as prepare/work.                                                                                                                      |

@@ -21,11 +21,11 @@ the schema of Context snippets so the Index, selection policy, and CRUD
 surface never observe broken frontmatter, broken Required reads, wrong IDs,
 or wrong taxonomy sections.
 
-Validation is shape-only for lifecycle metadata. `status: actual` forbids
-`delivered_by`; `status: target` and `status: mixed` require a non-empty
-`delivered_by` list. Relationship decisions such as whether a slug exists in
-the todo list, whether all slugs have delivered, and when a snippet flips to
-actual are owned by lifecycle callers, not by the snippet validator.
+Validation is shape-only for lifecycle metadata. `delivered_by`, when
+present, must be a non-empty list of slug strings; absence means the snippet
+is current. No `status` field is validated or required. Relationship
+decisions such as whether a slug exists in the todo list or all slugs have
+delivered are owned by lifecycle callers, not by the snippet validator.
 
 ## Canonical fields
 
@@ -48,22 +48,15 @@ Scenario: ID does not match path
 ```
 
 ```
-Scenario: status actual carries delivered_by
-  Given a snippet with status "actual" and a non-empty delivered_by list
+Scenario: delivered_by is an empty list
+  Given a snippet with an empty delivered_by list
   When validation runs
-  Then a "status actual forbids delivered_by" finding is reported
-```
-
-```
-Scenario: status target missing delivered_by
-  Given a snippet with status "target" and no delivered_by key
-  When validation runs
-  Then a "status target missing delivered_by" finding is reported
+  Then a "snippet_delivered_by_invalid_shape" finding is reported
 ```
 
 ```
 Scenario: delivered_by relationship state is not validated here
-  Given a snippet with status "target" and delivered_by ["future-slug"]
+  Given a snippet with delivered_by ["future-slug"]
   When snippet frontmatter validation runs
   Then the shape is accepted
   And lifecycle code remains responsible for delivery-time reconciliation

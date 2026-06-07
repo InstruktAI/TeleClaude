@@ -4,7 +4,6 @@ type: spec
 domain: software-development
 scope: project
 visibility: public
-status: target
 delivered_by:
   - v2-config-cutover
 description: Config bounded context — effective configuration resolved from layered
@@ -105,7 +104,7 @@ Gherkin acceptance scenarios and implementation grounding. v1 entries are
 inventory snapshots delivered by `inventory-v1-config`; v2 entries will
 be added as `v2-config-cutover` lands the cutover work.
 
-#### v1 features (applies_to: v1)
+#### v1 features
 
 - **Layered Overlay Resolution** — `docs/project/spec/feature/config/layered-overlay-resolution.md` — Three independent `teleclaude.yml` overlays (global, project, per-person) loaded side-by-side into an `AppConfig`; v1 does not merge them.
 - **Machine Config Load** — `docs/project/spec/feature/config/machine-config-load.md` — Per-machine `config.yml` loaded at module import; deep-merged with `DEFAULT_CONFIG`, env-var expanded, optional sibling `experiments.yml` merged into the experiments list.
@@ -123,9 +122,9 @@ be added as `v2-config-cutover` lands the cutover work.
 - **Subscription Routing** — `docs/project/spec/feature/config/subscription-routing.md` — Subscriptions are a `type`-discriminated union of `JobSubscription` and `YoutubeSubscription`; each carries a `SubscriptionNotification` with `preferred_channel` (default `telegram`).
 - **Person Identity Schema** — `docs/project/spec/feature/config/person-identity-schema.md` — `PersonEntry` declares per-person identity in the global `people` list with a required non-empty stripped email, role enum, and nested expertise mapping; `proficiency` is the deprecated single-level form.
 - **Runtime TTS Toggle** — `docs/project/spec/feature/config/runtime-tts-toggle.md` — `RuntimeSettings` is a separate mutable layer persisted as JSON with debounced (0.5s) writes; only `tts.enabled` is mutable today; `parse_patch` strictly rejects unknown keys and non-bool values.
-- **Setup Wizard** — `docs/project/spec/feature/config/setup-wizard.md` — `telec config wizard` is the canonical single TeleClaude-owned interactive surface for every persisted setup value. Guarantees: single setup surface, idempotent re-runs, secret hygiene, partial-resume, at-a-glance status, release-channel + permissions/preflight coverage. `status: target` until `simplify-install-flow-cleanup` + `install-wizard-enrichment` both deliver.
-- **Machine Config Write** — `docs/project/spec/feature/config/machine-config-write.md` — `save_machine_config` mirrors `save_project_config`'s atomic-replace contract for the dataclass-backed machine `config.yml`. Sanctioned write path for machine-level config; v1 does not emit `config.effective.updated` from this writer. `status: target` until `install-wizard-enrichment` delivers the helper alongside its first consumer (the wizard's system-identity step).
-- **Atomic Env File Write** — `docs/project/spec/feature/config/atomic-env-file-write.md` — `set_env_var` is promoted from `target.write_text(...)` to the tmp-file + flush+fsync + `os.replace` pattern so the wizard's per-section atomic-write contract holds uniformly across YAML, machine config, and `.env` surfaces. `status: target` until `install-wizard-enrichment` delivers the writer change.
+- **Setup Wizard** — `docs/project/spec/feature/config/setup-wizard.md` — `telec config wizard` is the canonical single TeleClaude-owned interactive surface for every persisted setup value. Guarantees: single setup surface, idempotent re-runs, secret hygiene, partial-resume, at-a-glance status, release-channel + permissions/preflight coverage. Pending delivery of `simplify-install-flow-cleanup` + `install-wizard-enrichment`.
+- **Machine Config Write** — `docs/project/spec/feature/config/machine-config-write.md` — `save_machine_config` mirrors `save_project_config`'s atomic-replace contract for the dataclass-backed machine `config.yml`. Sanctioned write path for machine-level config; v1 does not emit `config.effective.updated` from this writer. Pending delivery of `install-wizard-enrichment`.
+- **Atomic Env File Write** — `docs/project/spec/feature/config/atomic-env-file-write.md` — `set_env_var` is promoted from `target.write_text(...)` to the tmp-file + flush+fsync + `os.replace` pattern so the wizard's per-section atomic-write contract holds uniformly across YAML, machine config, and `.env` surfaces. Pending delivery of `install-wizard-enrichment`.
 - **Agent Env Allow List** — `docs/project/spec/feature/config/agent-env-allow-list.md` — `GlobalConfig.env_allow_list` and `ProjectConfig.env_allow_list` form the user-configurable authorization surface for ambient environment variables entering agent tmux sessions. Global entries cover local agent skills across projects; project entries add repository-specific names. The regular project `.env` remains application/runtime input; agent access requires listing each variable name explicitly.
 
 ### Context map position

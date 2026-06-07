@@ -5,7 +5,6 @@ id: 'project/design/architecture/work-state-machine'
 scope: 'project'
 type: 'design'
 visibility: 'public'
-status: 'actual'
 ---
 
 # Work State Machine — Design

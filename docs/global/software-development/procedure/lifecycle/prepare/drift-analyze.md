@@ -5,7 +5,6 @@ id: 'software-development/procedure/lifecycle/prepare/drift-analyze'
 scope: 'domain'
 type: 'procedure'
 visibility: 'public'
-status: 'target'
 ---
 
 # Drift Analyze — Procedure

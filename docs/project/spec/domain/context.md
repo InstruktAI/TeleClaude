@@ -4,7 +4,6 @@ type: spec
 domain: software-development
 scope: project
 visibility: public
-status: target
 delivered_by:
   - v2-context
 description: Context bounded context — file-based context engineering. Owns docs,
@@ -85,12 +84,12 @@ This context does NOT own: workflow state (`workflow`), live agent sessions (`ag
 #### Index (aggregate, doc-specific)
 
 - **Root:** `Index`
-- **Contains:** entries for every doc snippet in scope (id, type, domain, scope, description, visibility, status, delivered_by when applicable, source path, last-indexed timestamp).
+- **Contains:** entries for every doc snippet in scope (id, type, domain, scope, description, visibility, delivered_by when applicable, source path, last-indexed timestamp).
 - **Invariants:**
   - Fully derived from source files; no hand-edits ever.
   - Re-running sync on unchanged sources produces byte-identical index output.
   - One index per scope (global, project, third-party).
-  - **Snippet validation is shape-only for lifecycle frontmatter.** Context validates `status` / `delivered_by` shape: `actual` forbids `delivered_by`, while `target` and `mixed` require a non-empty list. Roadmap relationship state is owned by lifecycle callers, so validation does not reject unknown slugs and does not enforce delivered-but-unflipped drift.
+  - **Snippet validation is shape-only for lifecycle frontmatter.** Context validates `delivered_by` shape: when present it must be a non-empty list of slug strings; absence means the snippet is current. No `status` field is validated or required. Roadmap relationship state is owned by lifecycle callers, so validation does not reject unknown slugs and does not enforce delivery-lag drift.
   - **Snippet frontmatter parse/render is the shared filesystem primitive.** Context owns the canonical frontmatter primitives (`_split_frontmatter`, `_render_frontmatter`, `_iter_snippet_files`, `_delivered_by`) used by lifecycle callers. Integration uses them for delivery-time `delivered_by` reconciliation before the squash-merge commit; workflow uses them for retention-purge reconciliation and decision-time orphan refusal. Context supplies the file engine. Workflow/integration own lifecycle decisions and commit timing; the v2 docs-authority target centralizes serialized writes and exact pathspec staging inside context.
 
 ### Domain events emitted
@@ -160,12 +159,12 @@ And directs the operator to .agents/ for project-local items
 ```
 Given an agent needs context
 When the agent runs `telec context docs list --area policy --domain software-development`
-Then context returns snippet metadata for matching snippets, with status prefixes for target/mixed entries
+Then context returns snippet metadata for matching snippets, with " (delivered by: …)" suffix for pending entries
 When the agent runs `telec context docs get <id> [<id>...]`
 Then context returns the full snippet content for those ids, with any cross-snippet "Required reads (not loaded)" listed for explicit follow-up fetch
 ```
 
-#### v1 inventory (applies_to: v1)
+#### v1 inventory
 
 The v1 implementation behavior is inventoried in concept-named feature specs under `docs/project/spec/feature/context/`. These describe what v1 actually does today across the knowledge surface and the agent_artifacts surface that v2 folds into this single bounded context. They are NOT a v2 target — they are the parity contract v2 work satisfies or intentionally sheds.
 

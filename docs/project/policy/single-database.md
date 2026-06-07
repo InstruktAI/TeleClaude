@@ -4,7 +4,6 @@ id: 'project/policy/single-database'
 scope: 'project'
 type: 'policy'
 visibility: 'public'
-status: 'actual'
 ---
 
 # Database Boundaries — Policy

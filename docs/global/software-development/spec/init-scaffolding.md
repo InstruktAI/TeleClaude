@@ -108,20 +108,20 @@ id: 'project/{taxonomy}/{slug}'
 type: '{taxonomy}'
 scope: 'project'
 description: '{concise description of what this snippet documents}'
-status: 'actual'
 generated_by: 'telec-init'
 generated_at: '{ISO8601 timestamp}'
 ---
 ```
 
-Required fields: `id`, `type`, `scope`, `description`, `status`,
-`generated_by`, `generated_at`.
+Required fields: `id`, `type`, `scope`, `description`, `generated_by`,
+`generated_at`.
 
 - `generated_by: telec-init` marks the snippet as auto-generated.
 - `generated_at` records when the snippet was last generated or refreshed.
-- `status: actual` marks generated code-grounded snippets as current
-  implementation truth. Analysis does not generate `target` or `mixed`
-  snippets; those belong to an approved design delivery with an owning slug.
+- Generated snippets describe current behavior; absence of `delivered_by`
+  is the current-state signal. Design-delivery snippets that describe intended
+  future state carry `delivered_by: [<owning-slug>]`; analysis does not
+  generate those.
 - `scope` is always `project` for enrichment-generated snippets.
 
 ### Merge Rules for Re-analysis

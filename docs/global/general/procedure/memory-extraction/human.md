@@ -4,9 +4,7 @@ type: procedure
 domain: general
 scope: global
 visibility: public
-status: target
 delivered_by: [v2-memory]
-applies_to: v2
 activation_trigger: 'Use when invoked as the human-category memory miner via /extract-memory-human against a session mirror'
 description: Thin wrapper around the general memory-extraction procedure for the human-category memory miner. Binds the agent to the human vocabulary, subject-resolution rules, and out-of-scope boundary defined in the human extraction feature spec.
 ---

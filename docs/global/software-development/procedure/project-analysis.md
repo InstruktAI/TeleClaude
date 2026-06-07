@@ -111,9 +111,10 @@ cleanup pass.
   domain spec, tool spec, policy, procedure, or design doc. Do not create a
   feature spec for work whose audience is agents or operators.
 - **Current versus target truth:** onboarding analysis is code-grounded
-  inventory. Generated snippets describe current behavior and use
-  `status: actual`. `target` and `mixed` belong to an approved design delivery
-  that declares its owning slug; do not invent them during brownfield analysis.
+  inventory. Generated snippets describe current behavior; they carry no
+  `delivered_by` (absence = current). Design-delivery snippets that describe
+  intended future state carry `delivered_by: [<owning-slug>]`; do not invent
+  those during brownfield analysis.
 - **Skip:** if the candidate only restates source files, repeats global
   policy, or fills a taxonomy slot without changing future-agent behavior, do
   not author it.
@@ -220,8 +221,7 @@ Generated snippets must:
 - Use `project/` scope IDs from the scaffolding schema. Flat IDs such as
   `project/design/architecture` remain valid; nested spec IDs are reserved for
   earned domain specs and Category A feature specs.
-- Include `generated_by: telec-init`, `generated_at: <ISO8601>`, and
-  `status: actual` in frontmatter.
+- Include `generated_by: telec-init` and `generated_at: <ISO8601>` in frontmatter.
 - Declare `visibility` deliberately. Default to `internal`. Promote a single
   snippet to `public` only when both hold: (a) the content reveals nothing
   sensitive (no credentials, no private infra topology, no internal personnel

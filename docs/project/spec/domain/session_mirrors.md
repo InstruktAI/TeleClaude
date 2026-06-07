@@ -4,7 +4,6 @@ type: spec
 domain: software-development
 scope: project
 visibility: public
-status: target
 delivered_by: [v2-session-mirrors, v2-session-mirrors-cutover]
 description: Session Mirrors bounded context — eternal text extracts of agent sessions for historical search. One mirror per session, independent of session lifetime, text-only.
 ---
@@ -203,7 +202,7 @@ And agent_runtime's event is not failed (the session ended either way)
 And operators may manually trigger re-extraction if the file becomes readable later
 ```
 
-#### v1 inventory snippets (applies_to: v1)
+#### v1 inventory snippets
 
 The following concept-named feature spec snippets document the v1 implementation as it actually behaves. They are parity targets for v2 deliveries and historical reference once cutover lands.
 

@@ -4,7 +4,6 @@ id: project/spec/telec-cli-surface
 scope: project
 type: spec
 visibility: public
-status: mixed
 delivered_by:
   - task-kind-and-kindless-intake
 ---
@@ -116,7 +115,7 @@ subcommands:
     description: 'Manage work items.'
     subcommands:
       create:
-        description: 'Create a substantive todo with content. Content is REQUIRED — an empty-content invocation is refused at the workflow service boundary and writes nothing (no roadmap row, no state row, no artifact row, no artifact-version row, no workflow.todo.created event). Replaces the v1 empty-skeleton path that produced misleading (stage=draft, phase=draft, state=in_progress) rows with no input artifact. The substantive-create outcome is identical regardless of which surface (`telec todo create` or `telec workflow todo create`) was invoked. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-1, UC-WFL-2.)'
+        description: 'Create a substantive todo with content. Content is REQUIRED — an empty-content invocation is refused at the workflow service boundary and writes nothing (no roadmap row, no state row, no artifact row, no artifact-version row, no workflow.todo.created event). Replaces the v1 empty-skeleton path that produced misleading (stage=draft, phase=draft, state=in_progress) rows with no input artifact. The substantive-create outcome is identical regardless of which surface (`telec todo create` or `telec workflow todo create`) was invoked. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-1, UC-WFL-2.)'
         args:
           - slug: 'string'
           - content: 'string (REQUIRED)'
@@ -126,17 +125,17 @@ subcommands:
           --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo — the content is stored as the input artifact and /analyze-todo-input classifies it, proposing a kind for human approval (it proposes only; it never executes). task is a non-SDLC action lane, created silent and grooming a task-plan.'
           --group: 'Optional grouping label for the todo entry.'
           --description: 'Optional todo-entry description.'
-          --silent: 'Persist without triggering autonomous pickup dispatch. The workflow.todo.created event is still emitted with creation_mode=silent and pickup_requested=false so cache/audit consumers observe the new aggregate; only the pickup dispatch consumers gate themselves on pickup_requested. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: UC-WFL-19.)'
+          --silent: 'Persist without triggering autonomous pickup dispatch. The workflow.todo.created event is still emitted with creation_mode=silent and pickup_requested=false so cache/audit consumers observe the new aggregate; only the pickup dispatch consumers gate themselves on pickup_requested. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: UC-WFL-19.)'
       list:
-        description: 'List todo entries grouped into sections (active, optionally delivered, optionally icebox, optionally removed). Default output shows only active entries; each visibility section opts in via its own flag pair (`--include-*` to interleave, `--*-only` to isolate). Each section''s tree is independent — cross-section edges drop out automatically. Soft-removed entries (status=removed) are hidden by default and only appear under the explicit `--include-removed` / `--removed-only` opt-in (UC-WFL-14); each removed row renders with its durable row id and `removed_at` age so the operator sees how much grace window remains. (status: mixed — active/delivered/icebox visibility is `actual`; the removed-row visibility opt-in is `target — delivered_by roadmap-trash-reveal-ui`.)'
+        description: 'List todo entries grouped into sections (active, optionally delivered, optionally icebox, optionally removed). Default output shows only active entries; each visibility section opts in via its own flag pair (`--include-*` to interleave, `--*-only` to isolate). Each section''s tree is independent — cross-section edges drop out automatically. Soft-removed entries (status=removed) are hidden by default and only appear under the explicit `--include-removed` / `--removed-only` opt-in (UC-WFL-14); each removed row renders with its durable row id and `removed_at` age so the operator sees how much grace window remains. (active/delivered/icebox visibility is current; the removed-row visibility opt-in is pending, delivered_by roadmap-trash-reveal-ui.)'
         flags:
           --include-icebox: 'Interleave iceboxed entries alongside active entries.'
           --icebox-only: 'Show only iceboxed entries.'
           --include-delivered: 'Interleave the recent delivery history alongside active entries (defaults to a recent window; combine with --since).'
           --delivered-only: 'Show only delivered entries.'
           --since: 'Delivered-section window — duration (7d, 72h, 2w) or ISO date. Implies --include-delivered.'
-          --include-removed: 'Interleave soft-removed entries alongside active entries; each removed row renders with `removed_at` age. (status: target — delivered_by roadmap-trash-reveal-ui.)'
-          --removed-only: 'Show only soft-removed entries (no active/icebox/delivered). (status: target — delivered_by roadmap-trash-reveal-ui.)'
+          --include-removed: 'Interleave soft-removed entries alongside active entries; each removed row renders with `removed_at` age. (delivered_by roadmap-trash-reveal-ui.)'
+          --removed-only: 'Show only soft-removed entries (no active/icebox/delivered). (delivered_by roadmap-trash-reveal-ui.)'
           --json: 'Emit a sectioned JSON object keyed by section name.'
         notes:
           - 'The --include-removed / --removed-only reveal is strictly opt-in; the default and every other read surface continue to hide soft-removed entries (workflow domain spec, "Removed entries are invisible to every default read path" invariant).'
@@ -172,7 +171,7 @@ subcommands:
           --into: 'Space-separated child slugs.'
           --project-root: 'Project root (default: cwd).'
       remove:
-        description: 'Soft-remove a todo: its roadmap row is marked `removed` with a `removed_at` tombstone, `prev_status`, and a `removed_deps` snapshot of its outgoing dependency edges; state, artifacts, and full version history are retained and the todo disappears from all default reads. ALL slug-keyed teardown happens now (while the slug unambiguously names this entry): both directions of its roadmap_deps edges are scrubbed and its worktree, local + remote branch, and workspace dir are removed. After a fixed recovery window a routine sweep hard-purges the row by durable row id (FK-cascaded state/artifacts/versions only — zero slug-keyed operations, so a reused-slug live todo is never touched). A fail-closed reactivation primitive (addressed by roadmap row id) restores a not-yet-purged removed todo (prev_status + replayed removed_deps) until then. (status: target — delivered_by roadmap-soft-delete-retention; authoritative contract: project/spec/domain/workflow.)'
+        description: 'Soft-remove a todo: its roadmap row is marked `removed` with a `removed_at` tombstone, `prev_status`, and a `removed_deps` snapshot of its outgoing dependency edges; state, artifacts, and full version history are retained and the todo disappears from all default reads. ALL slug-keyed teardown happens now (while the slug unambiguously names this entry): both directions of its roadmap_deps edges are scrubbed and its worktree, local + remote branch, and workspace dir are removed. After a fixed recovery window a routine sweep hard-purges the row by durable row id (FK-cascaded state/artifacts/versions only — zero slug-keyed operations, so a reused-slug live todo is never touched). A fail-closed reactivation primitive (addressed by roadmap row id) restores a not-yet-purged removed todo (prev_status + replayed removed_deps) until then. (delivered_by roadmap-soft-delete-retention; authoritative contract: project/spec/domain/workflow.)'
         args:
           - slug: 'string'
         flags:
@@ -192,14 +191,14 @@ subcommands:
         flags:
           --commit: 'Commit hash (auto-detects HEAD if omitted).'
       rename:
-        description: 'Atomically rename a live todo''s slug across todos.db, doc-snippet delivered_by frontmatter, and the on-disk worktree/branch/workspace. All-or-nothing with rollback if any leg fails; refused if the new slug is held by any non-removed entry, or if in-flight work is bound to the old slug. On success prints a summary naming old→new and the surfaces moved. Receipt-backed async (status: target — delivered_by telec-todo-rename).'
+        description: 'Atomically rename a live todo''s slug across todos.db, doc-snippet delivered_by frontmatter, and the on-disk worktree/branch/workspace. All-or-nothing with rollback if any leg fails; refused if the new slug is held by any non-removed entry, or if in-flight work is bound to the old slug. On success prints a summary naming old→new and the surfaces moved. Receipt-backed async (delivered_by telec-todo-rename).'
         args:
           - old_slug: 'string'
           - new_slug: 'string'
         flags:
           --project-root: 'Project root (default: cwd).'
       reactivate:
-        description: 'Restore a soft-removed todo addressed by slug. Resolves the slug against the set of removed rows for that slug (UC-WFL-14) and dispatches the row-id-addressed reactivation primitive (UC-WFL-12). Fail-closed: refuses with a typed diagnostic and changes nothing when the slug names no removed row, when multiple removed rows share the slug (ambiguous — the diagnostic lists each candidate''s roadmap row id and removed_at so the operator can disambiguate via the reveal surface), or when a live (active/icebox) entry already holds the slug (live_twin_exists — carries the primitive''s structured reason). On success the entry''s footprint is restored (prev_status, replayed removed_deps, retained state/artifacts/versions become addressable again) and the daemon fires `todo_updated` so cached views refresh. (status: target — delivered_by roadmap-trash-reveal-ui; authoritative contract: project/spec/domain/workflow UC-WFL-12, UC-WFL-15.)'
+        description: 'Restore a soft-removed todo addressed by slug. Resolves the slug against the set of removed rows for that slug (UC-WFL-14) and dispatches the row-id-addressed reactivation primitive (UC-WFL-12). Fail-closed: refuses with a typed diagnostic and changes nothing when the slug names no removed row, when multiple removed rows share the slug (ambiguous — the diagnostic lists each candidate''s roadmap row id and removed_at so the operator can disambiguate via the reveal surface), or when a live (active/icebox) entry already holds the slug (live_twin_exists — carries the primitive''s structured reason). On success the entry''s footprint is restored (prev_status, replayed removed_deps, retained state/artifacts/versions become addressable again) and the daemon fires `todo_updated` so cached views refresh. (delivered_by roadmap-trash-reveal-ui; authoritative contract: project/spec/domain/workflow UC-WFL-12, UC-WFL-15.)'
         args:
           - slug: 'string'
         auth:
@@ -207,12 +206,12 @@ subcommands:
           human: '_HR_MEMBER'
         auth_rationale: 'Mirrors telec todo remove (the inverse operation) and the icebox restore (same trust shape: an operator/member restoring a recoverable state on a todo they own).'
       show:
-        description: 'Display the diagnostic state payload for a todo by slug. The default payload is artifact-body-light and diagnostic-rich: lifecycle state, roadmap facts, approvals, review verdicts, drift stamps, work/finalize progress, audit/events, next command hints, and artifact provenance are included, while `artifacts` is only a list of artifact names. Artifact bodies are omitted by default and can be restored under a separate `artifact_content` object with `--include-artifact-content`. Default soft-remove behavior is unchanged — a soft-removed slug refuses with a not-found diagnostic (default-hide invariant). With `--include-removed`, the resolver also searches removed rows for that slug and surfaces the show payload when exactly one removed row matches; ambiguous-slug and no-removed-row diagnostics use the same structured-reason vocabulary as `telec todo reactivate`. (show is `status: actual` for the default behavior and artifact-content opt-in; the `--include-removed` opt-in is `status: target — delivered_by roadmap-trash-reveal-ui`.)'
+        description: 'Display the diagnostic state payload for a todo by slug. The default payload is artifact-body-light and diagnostic-rich: lifecycle state, roadmap facts, approvals, review verdicts, drift stamps, work/finalize progress, audit/events, next command hints, and artifact provenance are included, while `artifacts` is only a list of artifact names. Artifact bodies are omitted by default and can be restored under a separate `artifact_content` object with `--include-artifact-content`. Default soft-remove behavior is unchanged — a soft-removed slug refuses with a not-found diagnostic (default-hide invariant). With `--include-removed`, the resolver also searches removed rows for that slug and surfaces the show payload when exactly one removed row matches; ambiguous-slug and no-removed-row diagnostics use the same structured-reason vocabulary as `telec todo reactivate`. (the default behavior and artifact-content opt-in are current; the `--include-removed` opt-in is pending, delivered_by roadmap-trash-reveal-ui.)'
         args:
           - slug: 'string'
         flags:
           --include-artifact-content: 'Include artifact body content under the `artifact_content` object. The `artifacts` field remains a list of artifact names.'
-          --include-removed: 'Also resolve the slug against the set of soft-removed rows; surfaces the show payload for a uniquely-matching removed row, or a typed ambiguity/no-match diagnostic — never returns a live row through this flag. (status: target — delivered_by roadmap-trash-reveal-ui.)'
+          --include-removed: 'Also resolve the slug against the set of soft-removed rows; surfaces the show payload for a uniquely-matching removed row, or a typed ambiguity/no-match diagnostic — never returns a live row through this flag. (delivered_by roadmap-trash-reveal-ui.)'
       artifacts:
         description: 'Manage todo artifacts in todos.db.'
         subcommands:
@@ -263,13 +262,13 @@ subcommands:
           --build-complete: 'Complete implementation work and move to build_complete.'
           --finalize-ready: 'Mark the reviewed worktree ready for finalize handoff.'
   workflow:
-    description: 'Target v2 bounded-context namespace for workflow operations. Mirrors the workflow service contract and is the durable surface that survives the v1→v2 cutover. `telec todo ...` remains as transition compatibility; both spellings route to the same workflow service. (status: target — delivered_by v2-workflow-cli-refinement-commands.)'
+    description: 'Target v2 bounded-context namespace for workflow operations. Mirrors the workflow service contract and is the durable surface that survives the v1→v2 cutover. `telec todo ...` remains as transition compatibility; both spellings route to the same workflow service. (delivered_by v2-workflow-cli-refinement-commands.)'
     subcommands:
       todo:
         description: 'Workflow-namespace todo operations.'
         subcommands:
           create:
-            description: 'Create a substantive todo with content via the target v2 namespace. Semantics are identical to `telec todo create` (UC-WFL-1, UC-WFL-19). (status: target — delivered_by v2-workflow-cli-refinement-commands.)'
+            description: 'Create a substantive todo with content via the target v2 namespace. Semantics are identical to `telec todo create` (UC-WFL-1, UC-WFL-19). (delivered_by v2-workflow-cli-refinement-commands.)'
             args:
               - slug: 'string'
               - content: 'string (REQUIRED)'
@@ -282,7 +281,7 @@ subcommands:
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
               --input-file: 'Read content from path instead of positional argument.'
           update:
-            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); implementation-plan content is selected explicitly with `--artifact implementation-plan` plus the appropriate kind. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through the writable-allowlist gate (retired artifact kinds — test-specs, spec-review-findings — are refused). On success emits workflow.todo.updated with a change_summary listing the mutated fields. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
+            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); implementation-plan content is selected explicitly with `--artifact implementation-plan` plus the appropriate kind. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through the writable-allowlist gate (retired artifact kinds — test-specs, spec-review-findings — are refused). On success emits workflow.todo.updated with a change_summary listing the mutated fields. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
             args:
               - slug: 'string'
               - content: 'string (optional)'
@@ -294,14 +293,14 @@ subcommands:
               --description: 'New todo-entry description.'
               --kind: 'New todo kind (validated against the canonical set).'
           rename:
-            description: 'Workflow-namespace alias for `telec todo rename`. Atomically rename a live todo''s slug across todos.db, doc-snippet delivered_by frontmatter, and the on-disk worktree/branch/workspace. (status: target — delivered_by telec-todo-rename + v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-13.)'
+            description: 'Workflow-namespace alias for `telec todo rename`. Atomically rename a live todo''s slug across todos.db, doc-snippet delivered_by frontmatter, and the on-disk worktree/branch/workspace. (delivered_by telec-todo-rename + v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-13.)'
             args:
               - old_slug: 'string'
               - new_slug: 'string'
             flags:
               --project-root: 'Project root (default: cwd).'
           diff:
-            description: 'Refinement diff for a single todo. Gathers, for the named slug only: each workflow-artifact diff between the artifact''s current version digest and its most recent approved/reviewed baseline digest (notably prd, architecture index, implementation-plan); PLUS each doc snippet whose frontmatter `delivered_by` list includes the slug, diffed against the git SHA that was current when the snippet acquired the slug (or against `main` HEAD for snippets without recorded provenance). Output is anchored by digest (artifacts) and git SHA (snippets) so a reviewer can re-verify deterministically. Reports nothing for slugs that own no artifact deltas and no delivered_by snippet membership. Implemented in terms of the low-level `workflow artifacts diff` primitive; never bypasses the digest-anchored version history. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-18.)'
+            description: 'Refinement diff for a single todo. Gathers, for the named slug only: each workflow-artifact diff between the artifact''s current version digest and its most recent approved/reviewed baseline digest (notably prd, architecture index, implementation-plan); PLUS each doc snippet whose frontmatter `delivered_by` list includes the slug, diffed against the git SHA that was current when the snippet acquired the slug (or against `main` HEAD for snippets without recorded provenance). Output is anchored by digest (artifacts) and git SHA (snippets) so a reviewer can re-verify deterministically. Reports nothing for slugs that own no artifact deltas and no delivered_by snippet membership. Implemented in terms of the low-level `workflow artifacts diff` primitive; never bypasses the digest-anchored version history. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-18.)'
             args:
               - slug: 'string'
             flags:
@@ -310,7 +309,7 @@ subcommands:
         description: 'Workflow-namespace artifact operations.'
         subcommands:
           diff:
-            description: 'Low-level artifact diff primitive — unified diff between two exact artifact versions resolved by digest in the artifact-version history. The todo-scoped `telec workflow todo diff` (UC-WFL-18) is implemented in terms of this primitive. (status: target — delivered_by v2-workflow-cli-refinement-commands.)'
+            description: 'Low-level artifact diff primitive — unified diff between two exact artifact versions resolved by digest in the artifact-version history. The todo-scoped `telec workflow todo diff` (UC-WFL-18) is implemented in terms of this primitive. (delivered_by v2-workflow-cli-refinement-commands.)'
             args:
               - slug: 'string'
               - name: 'artifact kind'

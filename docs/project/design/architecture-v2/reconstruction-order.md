@@ -68,9 +68,8 @@ block feature work.
   parity-gate check is part of every per-service alpha acceptance:
   inventory v1's feature surface for this service from the existing
   `feature/<service>/*.md` specs, confirm v2 covers every item or has
-  a paired v2-diff. Until v1-spec-cleanup retires the `applies_to`
-  field, v1 feature specs are tagged `applies_to: v1, status: actual`
-  and serve as the parity-target inventory.
+  a paired v2-diff. The `applies_to` and `status` lifecycle fields have been retired. v1 feature specs carry no lifecycle field; v2 divergence is captured in `-v2-diff` spec-diff companions.
+  v1 feature specs serve as the parity-target inventory.
 
 ## Primary flows
 

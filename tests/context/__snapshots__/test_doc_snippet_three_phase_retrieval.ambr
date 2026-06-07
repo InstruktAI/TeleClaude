@@ -1,0 +1,18 @@
+# serializer version: 1
+# name: test_phase1_appends_delivered_by_suffix_for_pending_snippets
+  '''
+  # PHASE 1: Snippet Index (IDs + descriptions)
+  # Review the snippets below and select the IDs you need.
+  # Filter with --areas <principle|concept|policy|procedure|design|spec|adr> and/or --domains <software-development|creative|marketing|customer-relations> (omit for all)
+  
+  project/spec/feature/context/current-snippet: A current snippet with no pending state.
+  project/spec/feature/context/pending-snippet: A pending snippet owned by two slugs. (delivered by: slug-a,slug-b)
+  
+  # ⚠️  IMPORTANT: Call `telec docs get` again with the snippet IDs of interest!
+  
+  # NOTE (migration-window, deprecated and will be removed post-v2-cutover):
+  # Specs may have a sibling `<stem>-v2-diff.md` of `type: spec-diff` capturing v2 divergence
+  # from the parent. Read parent + companion together to understand v2 behavior.
+  # See `software-development/principle/documentation-first-development` section 10.
+  '''
+# ---

@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-description: 'Integration-time flip of status target or mixed snippets when a delivery slug reaches delivered todo status.'
+description: 'Integration-time clearing of delivered_by slugs from pending snippets when a delivery slug reaches delivered todo status.'
 ---
 
 # Lifecycle Marker Reconciliation — Spec
@@ -17,19 +17,18 @@ description: 'Integration-time flip of status target or mixed snippets when a de
 ## What it is
 
 Lifecycle marker reconciliation keeps documentation-first metadata aligned
-with todo delivery. When a snippet is authored ahead of implementation it
-is marked `status: target` or `status: mixed` with a `delivered_by` list of
-todo slugs. When the integrator is about to commit a delivered candidate,
-it pre-applies the current slug as delivered, reconciles only snippets that
+with todo delivery. A pending snippet carries a `delivered_by` list of todo
+slugs. When the integrator is about to commit a delivered candidate, it
+pre-applies the current slug as delivered, reconciles only snippets that
 reference that slug, and stages the resulting snippet writes in the integration
 worktree before the merge commit prompt is returned.
 
-The reconciler still performs the same metadata transformation: if every
-listed slug is delivered, `status` and `delivered_by` are removed so the
-snippet becomes implicit `actual`; if only some slugs are delivered, those
-slugs are removed from `delivered_by` and the snippet remains `target` or
-`mixed`. `telec sync` validates snippet shape and builds/deploys indexes; it
-does not perform delivery-driven snippet mutations.
+The reconciler clears the delivered slug from `delivered_by`. If every listed
+slug is now delivered, `delivered_by` is removed entirely and the snippet
+becomes the current platform contract. If some slugs remain, those are
+rewritten as the new `delivered_by` list and the snippet stays pending.
+`telec sync` validates snippet shape and builds/deploys indexes; it does not
+perform delivery-driven snippet mutations.
 
 ## Canonical fields
 
@@ -37,23 +36,22 @@ does not perform delivery-driven snippet mutations.
 
 ```
 Scenario: All delivered_by slugs are delivered by the current candidate
-  Given a snippet with status "target" and delivered_by ["alpha", "beta"]
+  Given a snippet with delivered_by ["alpha", "beta"]
   And the todo status map reports "alpha" delivered
   And the current integration candidate is "beta"
   When the candidate merge succeeds in the integration worktree
   Then reconciliation treats "beta" as delivered before writing
-  And status and delivered_by are removed from frontmatter
+  And delivered_by is removed from frontmatter
   And the snippet path is staged before the commit prompt is returned
 ```
 
 ```
 Scenario: Some delivered_by slugs are still pending
-  Given a snippet with status "mixed" and delivered_by ["alpha", "beta"]
+  Given a snippet with delivered_by ["alpha", "beta"]
   And the current integration candidate is "alpha"
   And "beta" is not delivered
   When reconciliation runs in the integration worktree
   Then delivered_by is rewritten to ["beta"]
-  And status remains "mixed"
   And the snippet path is staged with the candidate merge
 ```
 
@@ -95,5 +93,5 @@ Scenario: Staging failure aborts the merge prompt
 
 - Reconciliation is candidate-scoped at write time. It deliberately avoids
   cleaning unrelated stale snippets.
-- The flip collapses to implicit `actual` by removing `status` and
-  `delivered_by` entirely rather than writing `status: actual` explicitly.
+- When the last slug is cleared, `delivered_by` is removed entirely — no
+  `status` field is written.

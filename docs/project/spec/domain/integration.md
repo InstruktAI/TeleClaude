@@ -4,7 +4,6 @@ type: spec
 domain: software-development
 scope: project
 visibility: public
-status: target
 delivered_by:
   - v2-integration
   - v2-integration-cutover
@@ -321,7 +320,7 @@ And v1 webhook receivers retire
 And rollback procedure: revert the cutover PR + (if URLs were changed at the external provider) reconfigure provider URL back to v1
 ```
 
-#### v1 feature inventory (applies_to: v1)
+#### v1 feature inventory
 
 Per-feature specs cataloging v1 integration behavior, authored under
 `inventory-v1-integration`. v2 implementers consult these for parity.

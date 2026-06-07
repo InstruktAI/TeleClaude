@@ -20,8 +20,8 @@ The Index is exposed to agents and operators through a three-phase
 retrieval flow:
 
 1. **Phase 1 — discover.** `telec docs index` returns curated metadata
-   (IDs, descriptions, status prefixes) so the caller can pick what to
-   load.
+   (IDs, descriptions, and a ` (delivered by: …)` suffix for pending entries)
+   so the caller can pick what to load.
 2. **Phase 2 — fetch.** `telec docs get <id> [<id>...]` returns full
    content for the chosen IDs, with a `# Required reads (not loaded)`
    header listing dependency IDs the body referenced.
@@ -37,14 +37,15 @@ resolved identity; the same gate applies to any phase-3 follow-up fetch.
 
 ### Use cases
 
+#### UC-3PR1: Phase-1 index renders delivered_by suffix for pending snippets
+
 ```
 Given a logged-in operator with the default terminal role
 When they run telec docs index --areas policy --domains software-development
 Then phase 1 returns matching snippet metadata sorted by scope then ID
 And each entry shows its ID and one-line description
-And snippets with status: target render with prefix [target → slug1,slug2]
-And snippets with status: mixed render with prefix [mixed → slug]
-And snippets with no lifecycle status render with no prefix
+And pending snippets (those with delivered_by) append " (delivered by: slug1,slug2)" to their line
+And current snippets (no delivered_by) render with no suffix
 ```
 
 ```

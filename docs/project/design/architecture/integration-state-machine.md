@@ -5,7 +5,6 @@ id: 'project/design/architecture/integration-state-machine'
 scope: 'project'
 type: 'design'
 visibility: 'public'
-applies_to: 'v1'
 ---
 
 # Integration State Machine — Design

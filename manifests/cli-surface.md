@@ -322,7 +322,7 @@ List snippet IDs and metadata (phase 1)
 
 **Notes:**
 
-- Non-actual snippets render with a [target → slug] or [mixed → slug] prefix in phase 1 output.
+- Pending snippets (those with delivered_by) append ` (delivered by: slug1,slug2)` at the end of the phase-1 line.
 
 ### `telec docs get`
 

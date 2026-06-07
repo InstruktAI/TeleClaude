@@ -4,7 +4,6 @@ type: spec
 domain: software-development
 scope: project
 visibility: public
-status: target
 delivered_by: [v2-memory, v2-memory-cutover]
 description: Memory bounded context — durable observations the platform accumulates about humans and projects. Triple-shaped, event-store-semantic, dedup-disciplined; the substrate of cross-session continuity. Scraper-only writes; pattern-matcher jobs read.
 ---

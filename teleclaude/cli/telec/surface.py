@@ -414,7 +414,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--target", desc="Filter to snippets delivered by slug"),
                 ],
                 notes=[
-                    "Live snippets only by default; pending net-new snippets are hidden until you pass their delivering --target slug.",
+                    "Pending snippets (those with delivered_by) append ` (delivered by: slug1,slug2)` at the end of the phase-1 line.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

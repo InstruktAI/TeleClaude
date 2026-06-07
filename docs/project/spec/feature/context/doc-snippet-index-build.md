@@ -67,13 +67,13 @@ And the mtime is preserved
 ```
 Given a snippet with no lifecycle metadata
 When the lifecycle-metadata copy step runs
-Then status and delivered_by are omitted from the index entry
+Then delivered_by is omitted from the index entry
 ```
 
 ```
-Given a snippet with status: target and delivered_by: [slug-a]
+Given a snippet with delivered_by: [slug-a]
 When the lifecycle-metadata copy step runs
-Then both fields are copied into the index entry verbatim
+Then delivered_by is copied into the index entry verbatim
 ```
 
 ### Cross-context references

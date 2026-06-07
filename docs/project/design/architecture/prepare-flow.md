@@ -4,7 +4,6 @@ id: 'project/design/architecture/prepare-flow'
 scope: 'project'
 type: 'design'
 visibility: 'public'
-status: 'target'
 ---
 
 # Prepare Flow — Design

@@ -5,7 +5,6 @@ domain: 'software-development'
 scope: 'project'
 visibility: 'public'
 description: 'Every domain event the platform emits — producer context, named consumers, payload field set in domain terms. The contract that defines cross-context coordination.'
-status: 'mixed'
 ---
 
 # Domain Event Catalog — Spec
@@ -88,7 +87,7 @@ Each event below carries:
 `workflow.todo.renamed` carries `old_slug` + `new_slug` so slug-keyed
 consumers (`frontend`, `telec-tui`, `integration`) can re-key rather than
 orphan cache entries — see `project/spec/domain/workflow` for the full entry.
-`status: mixed` / `delivered_by: telec-todo-rename` until that delivery lands.
+Pending delivery of `telec-todo-rename` (carried via `delivered_by`).
 
 `workflow.todo.created` carries an extended payload — `creation_mode`
 (`pickup` | `silent`) and `pickup_requested` (boolean) — added by

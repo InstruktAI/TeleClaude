@@ -4,7 +4,6 @@ type: spec
 domain: software-development
 scope: project
 visibility: public
-status: target
 delivered_by:
   - v2-identity-cutover
 description: Identity bounded context — principals (people, machines, sessions), tokens,
@@ -130,7 +129,7 @@ This context does NOT own: session lifecycle (`agent_runtime`), workflow state (
 
 #### v1 inventory (parity reference)
 
-The bullets below index the v1 feature spec snippets that pin the behavior v2 must satisfy. Each entry describes what v1 actually does today — NOT what v2 provides (v2 is `status: target` at the spec level until cutover lands). Use these as the parity contract for `v2-identity-cutover`.
+The bullets below index the v1 feature spec snippets that pin the behavior v2 must satisfy. Each entry describes what v1 actually does today — NOT what v2 provides (v2 is pending cutover). Use these as the parity contract for `v2-identity-cutover`.
 
 - v1 inventory: [principal resolution](../feature/identity/principal-resolution.md) — derive the canonical `(principal, role)` pair for a session via inherited → human → system precedence.
 - v1 inventory: [session token issuance](../feature/identity/session-token-issuance.md) — issue a UUID4 session token for `system:*` principals at bootstrap; persist hash, return plaintext once.

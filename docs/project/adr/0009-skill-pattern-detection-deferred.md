@@ -26,7 +26,7 @@ Meanwhile memory has a clear, closed product loop (friction â†’ project memory â
 
 ## Decision
 
-Skill pattern detection is deferred. The `skill-miner` consumer is removed from v2 architecture docs (transport-rules.md, agent_runtime spec, context-map). The forward-looking design for if/when skills return is captured at `docs/project/design/architecture-v2/skills-personal-curation.md` (type: design, status: target).
+Skill pattern detection is deferred. The `skill-miner` consumer is removed from v2 architecture docs (transport-rules.md, agent_runtime spec, context-map). The forward-looking design for if/when skills return is captured at `docs/project/design/architecture-v2/skills-personal-curation.md` (type: design, delivered_by: [skills-personal-curation]).
 
 If skills return, they will be **per-human curation of vetted external libraries**, NOT memory-promoted internal mining:
 
@@ -50,7 +50,7 @@ The skill-pattern-detection data path (tool-call sequences, frequency, co-occurr
 
 - Three consumers shrinks to two. The `skill-miner` consumer entry in `agent_runtime.extractor_cursors` is removed.
 - We lose any signal value the skill-miner might have produced. Acceptable: that value is hypothetical, and the discipline cost of preserving it is real.
-- "Deferred" decisions tend to accumulate. If skills don't come back in any form, the design doc itself becomes documentation debt. Mitigation: the design doc's `status: target` + `delivered_by: [skills-personal-curation]` keeps it tagged as not-yet-built; we can deprecate it cleanly if we decide later that skills will never come.
+- "Deferred" decisions tend to accumulate. If skills don't come back in any form, the design doc itself becomes documentation debt. Mitigation: the design doc's `delivered_by: [skills-personal-curation]` keeps it tagged as not-yet-built; we can deprecate it cleanly if we decide later that skills will never come.
 
 ## Alternatives Considered
 

@@ -2,7 +2,6 @@
 description: 'Canonical projection contract for reflecting session source truth into UI adapters.'
 id: 'project/spec/session-projection'
 scope: 'project'
-status: 'actual'
 type: 'spec'
 visibility: 'public'
 ---

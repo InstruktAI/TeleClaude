@@ -2,7 +2,6 @@
 description: 'Architecture, schema, worker design, and retry policy for the durable inbound message queue.'
 id: 'project/spec/inbound-queue'
 scope: 'project'
-status: 'actual'
 type: 'spec'
 visibility: 'public'
 ---
