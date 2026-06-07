@@ -141,3 +141,7 @@ Work is NOT done if ANY of these are true:
 ## Exceptions
 
 - Emergency hotfixes may defer non-critical DoD items with explicit follow-up tickets.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/definition-of-done/lanes.md — the review-time enforcement of these gates. Each review lane is a DoD gate (or the requirement contract) checked at review; the catalog is referenced by the build reviewer, the commit reviewer, and the planner.

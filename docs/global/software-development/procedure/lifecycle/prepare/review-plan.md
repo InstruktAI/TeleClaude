@@ -120,8 +120,11 @@ Apply the DoD-driven review-awareness rule from the preparation artifact
 quality policy. Produce a `Lane anticipation` section in
 `plan-review-findings.md` with one entry per requirement, per triggered lane.
 
-Each entry names the specific artifact the build-review lane will validate
-and the plan task that produces it:
+The authoritative lane set is the review-lanes catalog
+(`software-development/policy/definition-of-done/lanes`) — anticipate every lane
+it lists that this work triggers. Each entry names the specific artifact the
+build-review lane will validate and the plan task that produces it; the key lanes
+to pre-satisfy:
 
 - **Tests**: name the test file and the specific behavior each task observes at
   a meaningful boundary. "Tests" as a category is not compliance. Logger,
