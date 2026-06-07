@@ -456,6 +456,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Emits workflow.todo.created for autonomous pickup unless --silent is set.",
                     f"--kind is required: {TODO_KIND_USAGE}.",
                     "--plan is valid only with --kind change and treats content as a complete implementation plan.",
+                    "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
+                    "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

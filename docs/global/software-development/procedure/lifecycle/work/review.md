@@ -178,49 +178,19 @@ Security violations are **Critical** findings.
 
 #### Test coverage check
 
-This lane fires **always**, not only when test files changed. The absence of tests for new behavior is itself a finding. The presence of tests is **not** evidence of adequate review. Weak, tautological, prose-lock, or implementation-detail tests are findings even when coverage exists.
+This lane **applies** `software-development/policy/testing` (and the relevant per-language testing policy) to the change under review. Those policies are the single source of truth for what a test is, how coverage is measured, and which tests are weak — this lane does not restate them. Read them and apply them; do not re-derive their rules here.
 
-Read the changed or newly added tests directly. Map each one to the production behavior it claims to protect. Do not infer test value from file names, coverage output, or suite counts.
+This lane fires **always**, not only when test files changed. Read any changed or newly added tests directly and map each to the production behavior it claims to protect — never infer test value from file names, coverage output, or suite counts. The presence of tests is not evidence of adequate review.
 
-Before approving a changed or added test, answer all three:
+Apply the policy, not a per-function reflex:
 
-1. What behavior, decision, or failure path does this test pin?
-2. At what meaningful boundary is that behavior observed?
-3. What real bug in **our** code would this test catch?
+- **Coverage is the scenario inventory, not "every new function."** A coverage finding requires an **unbound feature-spec scenario this change delivers**. Absent such a scenario — platform-internal machinery, or a contract-defining / thin artifact (the artifact is its own spec) — there is nothing to bind, and "missing tests" is **not** a finding.
+- **Never request an agent-authored unit test.** Where no compiler enforces unit-level correctness (Python, TypeScript) they are forbidden by policy. If branchy internal logic genuinely warrants coverage, the finding is to **extract it to a scenario-bound functional test** — never "add a test here."
+- **Spec-delivered test specs:** every assertion from the spec-delivery commit must still exist; a removed or weakened assertion is a **Critical** finding (diff the spec-delivery commit against the final state).
+- **Weak tests are findings even when coverage exists.** Apply every weak-test anti-pattern the testing policy enumerates — the policy owns the full list; do not re-list it here.
+- **Browser / web UI changes** must include Playwright smoke evidence from build.
 
-If you cannot answer those questions concretely, the test is weak and does not count as meaningful coverage.
-
-- Are prepare-delivered test specs satisfied? Diff the spec delivery commit against the
-  final state to verify no assertions were weakened or deleted.
-- Every assertion from the spec commit must still exist. Removed or weakened assertion = **Critical** finding.
-- New functionality must have corresponding tests.
-- Edge cases and error paths must have coverage.
-- Browser-based frontend or web UI changes must include Playwright smoke verification evidence from build.
-- Tests must verify behavior, not implementation details.
-- Reject tests whose primary assertion is prose, wording, formatting, or any string content asserted by literal/substring/prefix/suffix/pattern. Snapshots are the only sanctioned path for any rendered text. No execution-significant carve-out — protocol identifiers go through named constants whose values are snapshot-governed at the schema layer.
-- Reject substring/`startswith`/`endswith`/regex assertions against string content, including `assert "x" in s`, `s.startswith(...)`, `expect(s).toContain(...)`, and regex matches.
-- Reject error-message text assertions (`exc.message`, `.args[0]`, rendered error prose). Test the exception type and structured fields; snapshot the rendered prose at the renderer's boundary.
-- Reject tests whose primary assertion is shape, signatures, keys, properties, constants, configuration echoes, or literal structure checks without proving decision logic or behavior.
-- Reject tests whose primary assertion is logger calls, log levels, `caplog`
-  records, log text, metrics, traces, or diagnostic telemetry from ordinary
-  feature code. Logs are diagnostics, not product behavior. Only
-  observability/logging adapter tests may assert telemetry, and only through
-  the adapter's public boundary.
-- Reject tests that prove native struct/model/config shape instead of accepted
-  external input, rejected invalid input, wire/API payload behavior, or
-  effective runtime behavior.
-- Reject tests that merely reconstruct an expected literal, structure, or payload from values already visible in the implementation or fixture and compare it back without proving semantics.
-- Reject tests that only confirm a primitive side effect or passthrough occurred when no application-owned branch, validation rule, guard, or failure path was exercised.
-- Reject tests whose only evidence is mock or spy interaction unless the interaction itself is the contract being tested at an architectural boundary.
-- Reject constructor, dependency-injection, container, factory, and configuration
-  wiring captures unless the test observes the downstream behavior the wiring
-  enables at a meaningful boundary.
-- Reject tests that primarily verify framework, library, serializer, ORM, or other third-party behavior instead of our logic.
-- Reject tests that pin private helpers, internal state, or refactor-sensitive implementation details when the same behavior can be checked at a public boundary.
-- Reject characterization tests that pin observed behavior but provide no credible bug-catching value or mutation-sanity reasoning.
-- Reject truthy or non-specific assertions that a trivially wrong implementation could satisfy.
-- Reject redundant duplicate coverage across files when one test home is sufficient.
-- Reject `@pytest.mark.parametrize`, fixture `params=`, and equivalent table-driven patterns. The unit of testing is the code-coverage path, not the input row — most parametrize tables are N redundant runs through one path. When fixing a parametrize finding, the cleanup is **not** "split into N tests, one per row": identify the distinct paths exercised, keep one test per path with one representative input, delete every redundant run. There is no legitimate exception.
+Before crediting any test as meaningful coverage, answer concretely: what behavior or failure path does it pin, at what boundary, and what real bug in **our** code would it catch? If you cannot, it is weak and does not count.
 - Reject **meta-tests that statically scan production source** (`ast.parse`, `rglob("*.py")` over `teleclaude/`, regex over file contents) to enforce a structural rule. Static rules belong in either (a) the production code's type/signature surface (make the parameter required so Python rejects the call), (b) `tools/lint/` running in `make lint`, or (c) the type checker (pyright/mypy). A test that runs every CI cycle to enforce a static property is paying per-test cost for what should be a one-shot lint or a Python `TypeError`.
 - Reject **placeholder or xfail "spec" tests** that document intended-but-not-yet-implemented behavior. The spec-anchored model has no waiting-to-flip tests: an unbound scenario is tracked as coverage backlog by the coverage tool, not as a test sitting in `tests/`. A test exists only to bind a scenario it currently satisfies. Also verify each binding is honest — it drives the real system for its scenario without mocking the thing under test — and that the coverage tool reports no orphan, stale, or duplicate bindings for in-scope specs.
 - Reject **refactor-leftover existence checks** — `assert not (_REPO_ROOT / "old_file.py").exists()` and shape variants. The git history records what was removed; the test adds nothing.
