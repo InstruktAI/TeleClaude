@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 _PYTHON_EXTENSIONS = (".py", ".pyi")
 _TYPESCRIPT_EXTENSIONS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+_MARKDOWN_EXTENSIONS = (".md",)
 _PRETTIER_EXTENSIONS = (
     ".md",
     ".mdx",
@@ -297,6 +298,15 @@ def python_files(paths: list[str]) -> list[str]:
 def typescript_files(paths: list[str]) -> list[str]:
     """Return only JavaScript/TypeScript targets from *paths*."""
     return [path for path in paths if path.endswith(_TYPESCRIPT_EXTENSIONS)]
+
+
+def markdown_files(paths: list[str]) -> list[str]:
+    """Return only Markdown targets from *paths*.
+
+    Directories are not passed through — markdown.py expects file paths and
+    the full-run path uses repo-wide scanning rather than dir targets.
+    """
+    return [path for path in paths if path.endswith(_MARKDOWN_EXTENSIONS)]
 
 
 def prettier_files(paths: list[str]) -> list[str]:

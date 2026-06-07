@@ -855,9 +855,48 @@ def _resolve_roadmap_status_map(project_root: Path) -> dict[str, str] | None:
     return None
 
 
-def validate_all_snippets(project_root: Path) -> None:
-    """Validate all doc snippets under the project. Collects validation findings."""
+def validate_all_snippets(project_root: Path, *, paths: list[Path] | None = None) -> None:
+    """Validate all doc snippets under the project. Collects validation findings.
+
+    When *paths* is provided, only those files are validated (per-file scoped mode).
+    Repo-wide passes (_validate_baseline_dedup, validate_third_party_docs) are skipped
+    in scoped mode — they require the full repo and stay on full runs only.
+    """
     domains = load_domains(project_root)
+
+    if paths is not None:
+        snippet_roots = _iter_snippet_roots(project_root)
+        for path in paths:
+            if path.name == "index.yaml" or path.suffix != ".md":
+                continue
+            if _is_third_party_doc(path, project_root):
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except OSError as exc:
+                    _error("snippet_read_failed", path=str(path), error=str(exc))
+                    continue
+                validate_third_party_doc(path, text, project_root)
+            else:
+                containing_root: Path | None = None
+                for root in snippet_roots:
+                    try:
+                        path.resolve().relative_to(root.resolve())
+                        containing_root = root
+                        break
+                    except ValueError:
+                        continue
+                if containing_root is None:
+                    continue
+                if is_excluded_snippet_path(path, containing_root):
+                    continue
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except OSError as exc:
+                    _error("snippet_read_failed", path=str(path), error=str(exc))
+                    continue
+                validate_snippet(path, text, project_root, domains=domains)
+        return
+
     roadmap_status_map = _resolve_roadmap_status_map(project_root)
     snippet_roots = _iter_snippet_roots(project_root)
     for snippets_root in snippet_roots:

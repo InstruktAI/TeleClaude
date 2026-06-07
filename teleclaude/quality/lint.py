@@ -26,6 +26,7 @@ from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
     get_project_languages,
+    markdown_files,
     python_files,
     resolve_rust_scope,
     resolve_workspace_scope_resolution,
@@ -104,16 +105,22 @@ class _MarkdownStep:
 
     name: str = "markdown"
     _project_root: Path = field(default_factory=Path)
+    _run_all: bool = False
 
     def run(self, targets: list[str]) -> None:
-        """Execute markdown validation (repo-wide, not file-scoped).
+        """Execute markdown validation.
 
-        Same scheme as guardrails: bundled script lives under TeleClaude's
-        REPO_ROOT; cwd stays on the project being linted.
+        File-scoped: passes only .md targets to the script so foreign
+        in-flight docs are ignored. Full-run: repo-wide scan (no args).
         """
-        _ = targets  # markdown validation is repo-wide
         script = str(REPO_ROOT / "tools" / "lint" / "markdown.py")
-        cmd = [sys.executable, script]
+        if self._run_all:
+            cmd = [sys.executable, script]
+        else:
+            md = markdown_files(targets)
+            if not md:
+                return
+            cmd = [sys.executable, script, *md]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -138,10 +145,18 @@ class _ResourceValidationStep:
 
     name: str = "resource_validation"
     _project_root: Path = field(default_factory=Path)
+    _run_all: bool = False
 
     def run(self, targets: list[str]) -> None:
-        """Execute resource validation (repo-wide, not file-scoped)."""
-        _ = targets  # resource validation is repo-wide
+        """Execute resource validation on full runs only.
+
+        Repo-wide cross-ref validation is inherently global — skip on
+        file-scoped runs to avoid blocking an agent's commit on foreign
+        in-flight docs.
+        """
+        _ = targets  # resource validation is repo-wide (full runs only)
+        if not self._run_all:
+            return
         cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sync", "--skip-deploy"]
         _run_tool(cmd, self._project_root, self.name)
 
@@ -302,13 +317,13 @@ class PythonLintPipeline:
     ``name`` for diagnostics and a ``run(targets)`` method.
     """
 
-    def __init__(self, project_root: Path) -> None:
+    def __init__(self, project_root: Path, *, run_all: bool = False) -> None:
         root = project_root
         self.steps: list[PipelineStep] = [
             GuardrailsStep(_project_root=root),
-            _MarkdownStep(_project_root=root),
+            _MarkdownStep(_project_root=root, _run_all=run_all),
             _HomePathsStep(_project_root=root),
-            _ResourceValidationStep(_project_root=root),
+            _ResourceValidationStep(_project_root=root, _run_all=run_all),
             _SnapshotTestingStep(_project_root=root),
             _RuffCheckStep(_project_root=root),
             _RuffFormatStep(_project_root=root),
@@ -446,13 +461,13 @@ def _rust_cwd(scope: RustScope) -> Path:
 _pipeline_ctx: list[Path | None] = [None]  # mutable container for active project root
 
 
-def run_pipeline(targets: list[str]) -> None:
+def run_pipeline(targets: list[str], *, run_all: bool = False) -> None:
     """Run the Python lint pipeline against the given targets.
 
     Uses the project root set by the active LintRunner, falling back to cwd.
     """
     root = _pipeline_ctx[0] or Path.cwd()
-    pipeline = PythonLintPipeline(project_root=root)
+    pipeline = PythonLintPipeline(project_root=root, run_all=run_all)
     for step in pipeline.steps:
         step.run(targets)
 
@@ -488,6 +503,7 @@ class LintRunner:
         typescript_scope: list[str] | None = None
         rust_scope: list[str] | None = None
         rust_run_all = False
+        file_scoped = False
 
         if files is not None:
             targets = validate_scoped_paths(files, self._project_root)
@@ -498,6 +514,7 @@ class LintRunner:
                 logger.info("No files provided — nothing to lint")
                 return
             logger.info("Explicit files provided — bypassing scoping (%d files)", len(targets))
+            file_scoped = True
             typescript_scope = targets
             rust_scope = targets
         elif run_all:
@@ -508,13 +525,14 @@ class LintRunner:
             scope_resolution = self._resolve_workspace_scope_resolution()
             targets = self._targets_from_workspace_scope(scope_resolution, languages)
             if self._is_file_scoped_resolution(scope_resolution):
+                file_scoped = True
                 typescript_scope = targets
                 rust_scope = targets
             else:
                 rust_run_all = True
 
         if self._should_run_python_pipeline(languages):
-            run_pipeline(targets)
+            run_pipeline(targets, run_all=not file_scoped)
 
         if "rust" in languages:
             self._run_rust_pipeline(files=rust_scope, run_all=rust_run_all)

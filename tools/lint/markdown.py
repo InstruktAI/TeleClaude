@@ -201,49 +201,68 @@ def _find_markdown_files(repo_root: Path) -> list[Path]:
     return sorted(files)
 
 
-def main() -> int:
-    """Run markdown validation.
-
-    Returns:
-        0 if all validations pass, 1 if errors found
-    """
-    repo_root = REPO_ROOT
-    markdown_files = _find_markdown_files(repo_root)
-    domains = load_domains(repo_root)
-
-    if not markdown_files:
-        return 0
-
+def _validate_files(file_paths: list[Path], domains: set[str]) -> list[str]:
+    """Run per-file checks (mermaid + frontmatter) over the given file list."""
     all_errors: list[str] = []
-
-    for file_path in markdown_files:
+    for file_path in file_paths:
         try:
             text = file_path.read_text(encoding="utf-8")
         except Exception as exc:
             all_errors.append(f"{file_path}: Failed to read file: {exc}")
             continue
 
-        # Validate Mermaid diagrams (all markdown files)
         mermaid_errors = _validate_mermaid_diagrams(file_path, text)
         all_errors.extend(mermaid_errors)
 
-        # Validate frontmatter (only for files that have it)
         if text.lstrip().startswith("---"):
             try:
                 post = frontmatter.loads(text)
                 metadata: Mapping[str, object] = post.metadata or {}
-
-                # Only validate frontmatter for snippet docs (skip baseline, README, etc.)
-                # Baseline docs don't have frontmatter by design
                 if "baseline" not in str(file_path) and metadata:
                     frontmatter_errors = _validate_frontmatter(file_path, metadata, domains=domains)
                     all_errors.extend(frontmatter_errors)
             except Exception as exc:
                 all_errors.append(f"{file_path}: Failed to parse frontmatter: {exc}")
+    return all_errors
 
-    clear_errors()
-    validate_all_snippets(repo_root)
-    all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
+
+def main() -> int:
+    """Run markdown validation.
+
+    When file paths are provided as argv, validates only those files (scoped).
+    With no args, validates repo-wide (full-run fallback for --all / CI).
+
+    Returns:
+        0 if all validations pass, 1 if errors found
+    """
+    repo_root = Path.cwd().resolve()
+    domains = load_domains(repo_root)
+
+    file_args = sys.argv[1:]
+    if file_args:
+        resolved: list[Path] = []
+        for arg in file_args:
+            p = Path(arg)
+            if not p.is_absolute():
+                p = (repo_root / p).resolve()
+            if p.exists() and p.suffix == ".md":
+                resolved.append(p)
+        if not resolved:
+            return 0
+
+        all_errors = _validate_files(resolved, domains)
+        clear_errors()
+        validate_all_snippets(repo_root, paths=resolved)
+        all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
+    else:
+        markdown_files_list = _find_markdown_files(repo_root)
+        if not markdown_files_list:
+            return 0
+
+        all_errors = _validate_files(markdown_files_list, domains)
+        clear_errors()
+        validate_all_snippets(repo_root)
+        all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
 
     if all_errors:
         print("\n❌ Markdown validation failed:\n", file=sys.stderr)

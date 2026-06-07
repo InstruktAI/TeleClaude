@@ -83,6 +83,13 @@ but they do not branch on git worktree state directly.
    directories, and `telec code test` uses configured test directories.
 8. **Tool environment is uv-managed.** Scoping decides what to check; uv decides
    which Python project tool executable and dependency environment to use.
+9. **Doc/markdown validation follows the same file-scoped vs full-run split.**
+   On file-scoped runs (worktree, shared branch with session identity, explicit
+   files), the markdown step validates only the changed `.md` files; the
+   resource-validation step (`telec sync --validate-only`) is skipped entirely.
+   On full runs (`--all`, shared branch without session identity, CI), both run
+   repo-wide. This prevents an agent's scoped lint from failing on another
+   agent's in-flight malformed docs.
 
 ## Primary flows
 
@@ -145,6 +152,18 @@ telec code lint <files...>
 telec code lint --step ruff_check <staged files from pre-commit>
   → run single step against provided files
   → no scoping logic involved
+```
+
+### Doc/markdown validation scoping
+
+```
+telec code lint (file-scoped: worktree, session-scoped, or explicit files)
+  → markdown step: pass only .md files in targets to markdown.py
+  → resource-validation step: skip (repo-wide cross-ref is not file-scopable)
+
+telec code lint --all (full run: CI, make lint, no-session shared branch)
+  → markdown step: repo-wide scan (no file args passed to markdown.py)
+  → resource-validation step: run telec sync --validate-only
 ```
 
 ## Failure modes
