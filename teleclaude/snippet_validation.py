@@ -78,19 +78,37 @@ def validate_snippet_id_format(
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest), None
 
 
-def is_companion(path: Path) -> bool:
-    """A companion is ``<stem>.<slug>.md`` — a sibling of an existing ``<stem>.md``.
+def companion_slug(path: Path) -> str | None:
+    """Sole owner of the companion filename grammar.
 
+    A companion is ``<stem>.<slug>.md`` — a sibling of an existing ``<stem>.md``.
     Snippet stems and slugs are kebab-case (dot-free), so a companion is the only
     ``.md`` file whose name carries a dot before the extension; the segment before
-    that final dot names the parent stem. A companion is the full next version of
-    its parent and deliberately shares the parent's id, so id↔path checks exempt it.
+    that final dot names the parent stem, the segment after names the delivering
+    slug. Returns the slug when ``path`` is a companion, else ``None``. A companion
+    is the full next version of its parent and deliberately shares the parent's id,
+    so id↔path checks exempt it.
     """
     base = path.name[:-3] if path.name.endswith(".md") else path.name
     if "." not in base:
-        return False
-    stem = base.rsplit(".", 1)[0]
-    return (path.parent / f"{stem}.md").exists()
+        return None
+    stem, slug = base.rsplit(".", 1)
+    if not slug or not (path.parent / f"{stem}.md").exists():
+        return None
+    return slug
+
+
+def companion_parent(path: Path) -> Path | None:
+    """The parent ``<stem>.md`` of a companion ``<stem>.<slug>.md``, or ``None``."""
+    if companion_slug(path) is None:
+        return None
+    stem = path.name[:-3].rsplit(".", 1)[0]
+    return path.parent / f"{stem}.md"
+
+
+def is_companion(path: Path) -> bool:
+    """Whether ``path`` is a companion ``<stem>.<slug>.md`` (see :func:`companion_slug`)."""
+    return companion_slug(path) is not None
 
 
 def expected_snippet_id_for_path(

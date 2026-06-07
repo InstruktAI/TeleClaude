@@ -541,8 +541,11 @@ def _do_merge(
         try:
             if reconcile_delivered_snippets(integration_wt, key.slug):
                 _run_git(["add", "-A"], cwd=wt)
-        except Exception:
-            logger.warning("delivered-snippet reconciliation failed for %s (non-fatal)", key.slug)
+        except OSError:
+            # Non-fatal: never fail an already-clean merge over doc reconciliation.
+            # Narrow to filesystem errors with a traceback — a programming error in
+            # the reconcile path must still surface rather than be swallowed.
+            logger.exception("delivered-snippet reconciliation failed for %s (non-fatal)", key.slug)
 
         # Read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)

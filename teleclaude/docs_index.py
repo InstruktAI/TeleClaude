@@ -28,7 +28,7 @@ from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
-from teleclaude.snippet_validation import is_companion, load_domains
+from teleclaude.snippet_validation import companion_slug, is_companion, load_domains
 
 __all__ = ["load_domains"]
 
@@ -504,10 +504,9 @@ def _superseding_slugs(file_path: Path) -> list[str]:
     if "." in stem:
         return []  # the file itself is a companion, not a parent
     slugs: set[str] = set()
-    prefix = f"{stem}."
     for sibling in file_path.parent.glob(f"{stem}.*.md"):
-        slug = sibling.name[:-3][len(prefix) :]
-        if slug and "." not in slug:
+        slug = companion_slug(sibling)
+        if slug:
             slugs.add(slug)
     try:
         body = file_path.read_text(encoding="utf-8")

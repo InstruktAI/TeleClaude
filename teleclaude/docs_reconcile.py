@@ -12,6 +12,7 @@ import yaml
 from teleclaude.constants import RoadmapStatus
 from teleclaude.doc_body import strip_planned_markers
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
+from teleclaude.snippet_validation import companion_parent, companion_slug
 
 
 @dataclass(frozen=True)
@@ -229,14 +230,9 @@ def reconcile_snippets_for_purged_slugs(
 
 def _companion_parent(path: Path, slug: str) -> Path | None:
     """If ``path`` is the ``slug``'s companion ``<stem>.<slug>.md``, return its ``<stem>.md``."""
-    base = path.name[:-3] if path.name.endswith(".md") else path.name
-    if "." not in base:
+    if companion_slug(path) != slug:
         return None
-    stem, suffix = base.rsplit(".", 1)
-    if suffix != slug:
-        return None
-    parent = path.parent / f"{stem}.md"
-    return parent if parent.exists() else None
+    return companion_parent(path)
 
 
 def _clear_delivered_slug(content: str, slug: str) -> str:
