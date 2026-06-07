@@ -83,6 +83,36 @@ Then the loop iterates up to the prepare loop limit and exits with a non-recover
 And the instruction tells the operator to inspect via "telec todo show my-feature" and surface the issue to the user
 ```
 
+<!-- planned:dep-gated-prepare-autodispatch -->
+
+### Auto-continue
+
+Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
+
+### Behavioral contract
+
+#### UC-WPS1: PREPARED auto-continues into unblocked child prepare
+
+```gherkin
+Given "parent" reaches lifecycle_phase=PREPARED and "child" has edge {child: [parent]} and child's prepare gate is now satisfied
+When the orchestrator calls "telec todo prepare parent" and the machine derives PREPARED
+Then the machine, in addition to emitting parent's prepared-cleanup, derives the now-unblocked dependent children (prepare gate satisfied for every dep)
+And for each such child it emits a CONCRETE auto-continue operation — not a human-in-the-loop suggestion
+And the emitted operation reuses an open prepare worker: it locates the parent's live prepare worker via the slug+command match and emits "telec sessions send <parent_worker> '<drive prepare for child>'" so the child's prepare builds on the parent's just-frozen design held in that worker's context
+And when no live parent prepare worker exists it falls back to a fresh "telec sessions run --command /next-prepare --args child"
+And when auto-continue reuses the parent worker, that worker is NOT ended by prepared-cleanup; only other live parent sessions (e.g. reviewers) are ended
+```
+
+#### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
+
+```gherkin
+Given "parent" reaches PREPARED but has no dependent children whose prepare gate it satisfies
+When the machine derives PREPARED
+Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
+```
+
+<!-- /planned:dep-gated-prepare-autodispatch -->
+
 ### Cross-context references
 
 - `agent_runtime` — drafting Phases load procedures into the orchestrator session inline; reviewer Phases (architecture-review, plan-review) and the drift-analyzer dispatch a worker session.
@@ -101,3 +131,9 @@ And the instruction tells the operator to inspect via "telec todo show my-featur
 - The drift check is a real gate, not advisory. Any Artifact whose per-class derivation collapses to pending or substantive blocks `prepared` until the affected Artifact has been Stamped `drift-reviewed` after analysis. Cosmetic stamps are scoped to the evidence anchor they were made at and expire lazily when new evidence arrives — see `@spec/feature/workflow/drift-detection`.
 - The prepare loop limit is a contradiction detector, not a workload knob. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - The machine does not auto-add the slug to the todo list when called on a holder; auto-add happens only after holder resolution confirms the slug is a leaf prepare target.
+
+<!-- planned:dep-gated-prepare-autodispatch -->
+
+- **Auto-continue at PREPARED is concrete, not advisory.** When a parent reaches `PREPARED` it unblocks the **prepare** gate (not the work gate) of its dependents — so the dependents' prepare auto-continues immediately, while their work still waits for the parent's delivery (see `@spec/feature/workflow/dependency-graph`). The continuation is dispatched, not suggested to the human.
+- **Worker reuse preserves context.** Auto-continue prefers reusing the parent's open prepare worker via `telec sessions send` (the existing reuse-or-spawn dispatch keyed by parent slug + `/next-prepare`), because that worker holds the parent's just-frozen design. One worker thus carries multiple slugs in context across the dependency chain. A fresh `telec sessions run` is the fallback only when no parent worker is live; the parent's design is still recoverable from its now-frozen artifacts and snippets. No session↔slug rebinding is required: the reuse lookup is always keyed by the _parent_ slug (whose worker title is intact), and that worker then drives the child inline.
+<!-- /planned:dep-gated-prepare-autodispatch -->

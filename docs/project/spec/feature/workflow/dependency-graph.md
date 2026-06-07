@@ -22,9 +22,29 @@ Todo entries can declare ordering constraints via `after` edges: "A is `after: [
 The graph has two responsibilities:
 
 1. **Refuse cycles at the boundary.** Mutations that would introduce a cycle are rejected before they reach durable storage. Cycle detection is pure depth-first traversal over an in-memory snapshot of the current graph plus the proposed edge set — no state is mutated on the failure path.
-2. **Gate dispatch by readiness.** The prepare and work orchestrators consult the graph when resolving the next runnable slug. A candidate whose `after` list contains any slug that is not delivered is skipped. Pending, in-progress, and iceboxed dependencies all leave the candidate blocked; only delivery clears the gate.
+2. **Gate dispatch by readiness.** The prepare and work orchestrators consult the graph when resolving the next runnable slug. Each candidate's `after` list is evaluated against the lane it is entering: the prepare lane waits for parent `PREPARED`, while the work lane waits for parent delivery.
 
 Mutations land via `telec todo set-deps`, which converges on the workflow service's set-deps capability after passing validation.
+
+<!-- planned:dep-gated-prepare-autodispatch -->
+
+### Phase-specific gates (two gates, both directions)
+
+A dependency is **phase-specific**: a single `after` edge projects into two distinct gates keyed to the dependent's lane, and each clears at a different milestone of the parent.
+
+- **Prepare gate** — a candidate entering the **prepare** lane is blocked until every `after` parent has reached `PREPARED` (its design is frozen). The prepare lane reads the parent's frozen artifacts, so the parent's design freeze — not its delivery — is the unblock condition.
+- **Work gate** — a candidate entering the **work/build** lane is blocked until every `after` parent is `delivered` (merged to `main`). The work lane builds on the parent's merged code, so delivery is the unblock condition.
+
+`PREPARED` is a durable freeze, not a decaying signal: reaching it clears the prepare gate and does not un-clear. A later parent re-derivation does not reopen the prepare gate; it surfaces on the dependent as upstream-artifact drift (see `@spec/feature/workflow/drift-detection`) and routes the dependent to re-review. Drift propagates the signal; it does not author the change.
+
+Both gates apply in **both dispatch directions**:
+
+1. **Create-time dispatch** — when a todo is created (`workflow.todo.created`), the lifecycle router consults the dependency graph before auto-dispatching. A dep-blocked child is not auto-dispatched (see `@spec/feature/workflow/todo-creation`).
+2. **Resolution-time dispatch** — when the prepare/work orchestrators resolve the next runnable slug, the same phase-specific gate skips dep-blocked candidates.
+
+The prepared-set used by the prepare gate, like the delivered-set used by the work gate, is computed with holder roll-up: a holder dependency is satisfied for the prepare gate when every direct child has reached `PREPARED`, mirroring `effective_delivered_slugs_for_dependencies` for the delivered-set.
+
+<!-- /planned:dep-gated-prepare-autodispatch -->
 
 ## Canonical fields
 
@@ -84,6 +104,40 @@ Then all existing edges for that slug are removed
 And the workflow service reports "dependencies cleared for 'alpha'"
 ```
 
+<!-- planned:dep-gated-prepare-autodispatch -->
+
+### Behavioral contract
+
+#### UC-WDG1: Prepare gate waits for parent PREPARED
+
+```gherkin
+Given entries [parent, child] with edge {child: [parent]} and parent at lifecycle_phase=plan_drafting (not yet PREPARED)
+When the prepare orchestrator resolves the next prepare-runnable slug
+Then "child" is skipped because the prepare gate requires "parent" to be PREPARED
+And the resolver reports the candidate as dependency-blocked for the prepare lane
+```
+
+#### UC-WDG2: PREPARED clears only the prepare gate
+
+```gherkin
+Given entries [parent, child] with edge {child: [parent]} and parent at lifecycle_phase=PREPARED but not delivered
+When the prepare orchestrator resolves the next prepare-runnable slug
+Then "child" is prepare-runnable because the prepare gate is cleared by PREPARED
+And the same "child" is still WORK-blocked until "parent" is delivered
+```
+
+#### UC-WDG3: Create-time dispatch honors the prepare gate
+
+```gherkin
+Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
+When the lifecycle router consumes workflow.todo.created for "child"
+Then the router consults the dependency graph and finds the prepare gate unsatisfied
+And the router does not auto-dispatch /next-prepare for "child"
+And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
+```
+
+<!-- /planned:dep-gated-prepare-autodispatch -->
+
 ### Cross-context references
 
 - `workflow` orchestration internals — prepare and work pickup consult the dependency graph against the delivered set to decide what is runnable.
@@ -92,6 +146,12 @@ And the workflow service reports "dependencies cleared for 'alpha'"
 
 - Cycle detection runs BEFORE persistence at the workflow boundary, so durable state is never observed in a cyclic state.
 - The graph is per-project: one todo list, one dependency graph, one project root. There is no cross-project dependency.
-- Only `delivered` clears a dependency. `icebox`, `pending`, and `in_progress` all leave the gate closed. Removing a dep edge (or marking the parent delivered) is the only way to unblock a candidate whose dep is iceboxed.
+- Dependency satisfaction is lane-specific. `delivered` clears the work gate; `PREPARED` clears the prepare gate. `icebox`, `pending`, and lifecycle phases before `PREPARED` leave the prepare gate closed. Removing a dep edge is the only way to unblock a candidate whose dep is iceboxed.
 - `set-deps` is a full replacement: passing no `--after` clears all edges for the slug; there is no incremental add/remove surface. To merge edges, the caller must read the current edges first and submit the union.
 - At slug retirement, the workflow context scrubs the deleted slug out of other entries' `depends_on` lists — without that, removing a slug could leave dangling deps that block its dependents forever.
+
+<!-- planned:dep-gated-prepare-autodispatch -->
+
+- The gate is **phase-specific**. The **work** gate is cleared only by `delivered`. The **prepare** gate is cleared by the parent reaching `PREPARED` — a non-`delivered` lifecycle phase. `icebox`, and any lifecycle phase before `PREPARED`, leave the prepare gate closed.
+- Both gates are enforced at **create-time** (lifecycle router, before auto-dispatch) and at **resolution-time** (orchestrator next-runnable resolution). Before this change the router applied no dependency gate at create-time, which let a dep-blocked child auto-dispatch in parallel with its parent.
+<!-- /planned:dep-gated-prepare-autodispatch -->
