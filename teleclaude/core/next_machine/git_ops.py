@@ -132,7 +132,7 @@ def has_build_commits_beyond_main(worktree_cwd: str) -> bool:
     """Return True when the worktree branch has commits ahead of main."""
     try:
         repo = Repo(worktree_cwd)
-        base = repo.git.merge_base("HEAD", "main").strip()
+        base = repo.git.merge_base("HEAD", "origin/main").strip()
         log_output = repo.git.log("--oneline", f"{base}..HEAD")
         return bool(log_output.strip())
     except (GitCommandError, OSError) as exc:

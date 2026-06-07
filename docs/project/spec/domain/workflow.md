@@ -44,16 +44,16 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 : Durable, row-id-keyed metadata captured on the roadmap row at soft-remove time, alongside `removed_at`. It holds `prev_status` — the status the entry held immediately before removal (`active` or `icebox`) — and `removed_deps` — a snapshot of the entry's own outgoing `after` edges as they were at removal. Both exist only so reactivation can restore the entry's own footprint exactly. The snapshot is necessary because `roadmap_deps` is slug-keyed with no row identity: the live outgoing edges MUST be scrubbed at soft-remove (or a same-slug recreate would inherit/collide with them), so they can only survive for reactivation by being parked here. Legacy rows removed before this metadata existed have neither; reactivation falls back to `prev_status=icebox` and no outgoing-edge restore.
 
 **Kind**
-: Categorical label for the lifecycle entry point: `feature`, `change`, or `bug`. A `feature` enters PRD/intake, a `change` enters plan drafting without a PRD, and a `bug` enters the fix lane. A complete-plan creation is expressed by `--plan` on a `change`, not by a separate kind.
+: Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` and routed to `/analyze-todo-input`, which proposes a kind for human approval. Kind is fixed once assigned.
 
 **Stage** (per glossary)
 : Top-level lifecycle band: `draft`, `prepare`, `work`, `integrate`, `delivered`. Each stage is a coherent body of work with its own state machine inside.
 
 **Phase** (per glossary)
-: Sub-state within a stage. Examples for `prepare` stage: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `prepared`.
+: Sub-state within a stage. Examples for `prepare` stage: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `prepared`. A kind-less intake carries the pre-classification phases `unkinded` (created without a kind, awaiting `/analyze-todo-input`) and `kind_proposed` (analyze has proposed a kind, awaiting human approval) before a kind — and therefore a stage lane — is assigned.
 
 **Artifact** (workflow artifact — per glossary)
-: A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. (`test-specs` and `spec-review-findings` are retired legacy kinds, accepted only for reading/removing pre-cutover todos.)
+: A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. (`test-specs` and `spec-review-findings` are retired legacy kinds, accepted only for reading/removing pre-cutover todos.)
 
 **Roadmap**
 : Internal ordering/dependency storage for todos: rows, dependency edges, groupings, and statuses. It is surfaced to users as the ordered `telec todo list` view of "what's being worked on and what's next."
@@ -101,7 +101,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
   - A todo has exactly one current `(stage, phase)` at any moment.
   - Stage progression is strictly forward: `draft → prepare → work → integrate → delivered`. No backwards transitions; recovery from failure happens within the current stage's machine.
   - An artifact's version history is append-only; old versions are referenced by digest.
-  - A todo's `kind` is fixed at creation; changing kind requires deletion + recreation.
+  - A todo's `kind` is fixed once assigned. It may be unset at creation (a kind-less dump in the `unkinded` phase, awaiting `/analyze-todo-input`); analyze assigns it exactly once, on human approval. After assignment, changing kind requires deletion + recreation.
   - A todo cannot reach `delivered` stage without a non-empty `delivery_commit` and a successful integrate-state-machine terminal state.
   - Dependency cycles are forbidden — the dependency graph MUST be a DAG.
   - A todo's slug is immutable across its lifetime EXCEPT via the atomic
@@ -183,7 +183,11 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   `project_id → project_path` map (the bridge is payload-agnostic and reads
   the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
   Existing v2 Rust event consumers continue to see every prior field; the
-  contract is strict-additive.
+  contract is strict-additive. `kind` is **nullable**: a kind-less dump
+  (created without `--kind`) emits `kind = null` with `lifecycle_phase =
+  unkinded`, and the pickup routers dispatch `/analyze-todo-input`
+  (classification — it proposes a kind, it does not execute) instead of an
+  SDLC orchestrator.
 - **Visibility:** CLUSTER
 - **Known consumers:** `integration` (subscription notifications for
   "todo created"), audit log consumers, autonomous pickup consumers (the

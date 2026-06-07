@@ -118,6 +118,19 @@ work that will fail gate validation. Split first:
 
 If the work passes the scope/size gate, continue to plan drafting.
 
+<!-- planned:code-intelligence-foundation -->
+### 2c. Derive the change's blast radius (before drafting)
+
+- **Treat the codebase blueprint as a discovery tool, not an oracle** — it generates structural candidates; the planner verifies each against the source and decides relevance.
+- **Derive the blast radius before drafting** — refresh the blueprint, saturate domain-term queries to find seed symbols (stop when two rounds surface nothing new and every intended file/symbol has appeared), then take and union the dependency closure of each seed.
+- **Bias to over-inclusion** — a missed dependent is a build-time surprise; an extra candidate is a discarded read. Prefer false positives, prune with judgment.
+- **Blind-spot honesty** — the blueprint sees only parsed edges; dynamic dispatch, registry/string-keyed wiring, config-driven behavior, cross-language boundaries, and reflection are invisible — name the categories that apply and read those areas directly.
+- **Ground the plan in the verified result** — the change surface and test adjacency derive from the verified candidate set; when no blueprint is available, state the gap and fall back to manual exploration, never silently skip the step.
+
+The concrete blueprint tooling lives in the project's codebase-intelligence documentation; this step is tool-agnostic.
+
+<!-- /planned:code-intelligence-foundation -->
+
 ### 3. Draft the implementation plan
 
 Apply the plan-specific quality rules from the preparation artifact quality

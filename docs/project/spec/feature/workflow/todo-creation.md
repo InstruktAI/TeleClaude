@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-description: 'Todo creation — `telec todo create <slug> <content> --kind <kind>` is the single creation command (kind and content required), and `telec todo design` enters the creative state machine. The workflow service emits `workflow.todo.created` consumed by the lifecycle router.'
+description: 'Todo creation — `telec todo create <slug> <content> [--kind <kind>]` is the single creation command (content required; kind optional — a kind-less dump is classified by /analyze-todo-input), and `telec todo design` enters the creative state machine. The workflow service emits `workflow.todo.created` consumed by the lifecycle router.'
 ---
 
 # Workflow Todo Creation — Spec
@@ -19,8 +19,8 @@ description: 'Todo creation — `telec todo create <slug> <content> --kind <kind
 
 The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, plus a creative-machine entrypoint that does not itself create todo entries:
 
-- **`telec todo create <slug> <content> --kind <kind>`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is a required flag — no default, no fallback, missing kind exits with a usage error. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
-  - `--kind <kind>` — **required**. Canonical kind value. Valid values: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (fix lane). No default — callers must be explicit.
+- **`telec todo create <slug> <content> [--kind <kind>]`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is optional. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
+  - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (fix lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo enters the `unkinded` phase, and `/analyze-todo-input` is dispatched to classify it and propose a kind for human approval. The classifier proposes only — it never executes the work.
   - `--silent` — sets `silent=True` on the request. The route still creates the todo and still emits `workflow.todo.created`, but with `pickup_requested=false` and `creation_mode="silent"`, so the lifecycle router skips dispatch.
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
@@ -36,7 +36,7 @@ The Todo aggregate's invariants — unique kebab-case slug, fixed kind, `after` 
 The workflow service emits the event with this payload:
 
 - `slug` — the created slug.
-- `kind` — canonical kind from the request: `feature`, `change`, or `bug`.
+- `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
 - `pickup_requested` — boolean, true unless the caller passed `--silent`.
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`"prepared"` for `bug` and `--plan`, `"draft"` otherwise).
@@ -92,10 +92,21 @@ And no creation request is made
 ```
 
 ```
-Given an operator creates a todo with content but omits `--kind`
+Given a human dumps raw intent and omits `--kind`
 When the CLI parses the flags
-Then it prints "Error: --kind is required" and exits non-zero
-And no network call is made
+Then it submits a creation request with no kind (kind-less)
+And the workflow service creates the todo, stores the dump as the `input` artifact, and sets lifecycle_phase="unkinded"
+And the workflow service emits workflow.todo.created with kind=null and pickup_requested=true
+And the lifecycle router dispatches /analyze-todo-input, which classifies the dump and proposes a kind for human approval without executing any work
+```
+
+```
+Given a human (or an agent on their behalf) wants to park agreed future work that need not touch the codebase
+When they run `telec todo create call-supplier-api "<what to do, when, and any waits>" --kind task`
+Then the request carries kind="task" and is created silent (pickup_requested=false)
+And the workflow service writes state + `input` and emits workflow.todo.created with kind="task" and pickup_requested=false
+And the lifecycle router does not auto-dispatch; the task waits durably until a human or a dependency/time trigger starts it
+And when worked, an agent grooms the `task-plan` (ticking off steps, appending results) rather than producing a code commit
 ```
 
 ```
@@ -121,7 +132,8 @@ And the bug skips the demo phase per the kind=bug lifecycle gate
 ```gherkin
 Given an operator needs to create a todo
 When they run `telec todo create --help`
-Then the usage line shows the canonical `--kind <feature|change|bug>` values
+Then the usage line shows `--kind` as optional with values `feature|change|bug|task`
+And the help states that omitting `--kind` creates a kind-less todo classified by `/analyze-todo-input`
 And the help does not advertise retired kind values
 ```
 
@@ -134,10 +146,10 @@ And the help does not advertise retired kind values
 ## Known caveats
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
-- `--kind` is **required** on `telec todo create`. Omitting it exits with a usage error and no API call is made. There is no default — callers must be explicit. The full set of valid kinds is `feature`, `change`, and `bug`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should skip prepare.
+- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo whose `input` is classified by `/analyze-todo-input`, which proposes a kind for human approval (it proposes only — it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should skip prepare.
 - `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` after a successful create. `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
 - The `bugs report` / `bugs create` helpers wrap the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
-- The lifecycle router routes purely on the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`; it does not read todo state during dispatch. `telec todo create` emits only canonical `feature`, `change`, or `bug` kinds.
+- The lifecycle router routes purely on the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`; it does not read todo state during dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification.
 - `telec todo design` (and the deprecated `co-create` alias) is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
 - The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` and the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.

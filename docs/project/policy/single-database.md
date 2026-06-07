@@ -12,7 +12,7 @@ status: 'actual'
 ## Rules
 
 - Database files follow domain boundaries, not a single-file mandate.
-- All databases live under `~/.teleclaude/`.
+- All databases live under `~/.teleclaude/`, except the project-specific `todos.db` that live under `.teleclaude/` .
 - **Daemon operational database** (`~/.teleclaude/teleclaude.db`): sessions, hooks,
   memory, agent metadata — daemon plumbing with shared access patterns.
 - **Mirror database** (`~/.teleclaude/mirrors.db`): session transcript mirrors and
