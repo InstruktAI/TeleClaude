@@ -5,6 +5,7 @@
 @~/.teleclaude/docs/general/principle/grounding.md
 @~/.teleclaude/docs/general/policy/leadership.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
+@~/.teleclaude/docs/general/policy/documentation-discipline.md
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
 @~/.teleclaude/docs/general/policy/heartbeat.md
 @~/.teleclaude/docs/general/spec/tools/telec-cli.md
