@@ -22,7 +22,7 @@ from teleclaude.resource_validation import (
 
 pytestmark = pytest.mark.functional
 
-_RESOURCE_VALIDATION_ARG = "--validate-only"
+_RESOURCE_VALIDATION_ARG = "--skip-deploy"
 
 _GOOD_SNIPPET = """\
 ---
