@@ -50,8 +50,9 @@ def sync(
 
     - ``skip_deploy``: validate only, do not build/distribute. The read-only gate for
       pre-commit / CI / lint — it must not mutate the host's agent-runtime dirs.
-    - ``skip_validation``: skip validation entirely and deploy without blocking. The
-      live-reload path for the docs watcher (and bootstrap setup); NOT for agents.
+    - ``skip_validation``: skip the validate phase and deploy without blocking. The
+      docs watcher's live-reload path, and the deploy leg of :func:`sync_bootstrap`
+      (which validates non-blocking first). NOT an agent-facing bypass.
 
     Returns ``True`` on success, ``False`` if validation found errors.
     """
@@ -61,21 +62,10 @@ def sync(
     # paths. Configure the driver and re-smudge stale docs before anything reads them.
     ensure_git_filters(project_root)
 
-    # Phase 1: Validate (always blocks — there is no warn-and-pass mode).
-    if not skip_validation:
-        clear_errors()
-        errors: list[str] = []
-        validate_all_snippets(project_root)
-        errors.extend(validate_all_artifacts(project_root))
-        errors.extend(validate_jobs_config(project_root))
-        findings = get_errors()
-        if findings:
-            _print_findings(findings, quiet=False)
-            errors.extend(_format_finding(finding) for finding in findings)
-        if errors:
-            for error in errors:
-                print(error)
-            return False
+    # Phase 1: Validate. The telec sync command always blocks on findings; only the
+    # watcher's live-reload passes skip_validation to omit the phase entirely.
+    if not skip_validation and _collect_source_findings(project_root):
+        return False
 
     if skip_deploy:
         return True
@@ -93,6 +83,19 @@ def sync(
     _run_distribute(project_root)
 
     return True
+
+
+def sync_bootstrap(project_root: Path) -> None:
+    """Validate-and-report (non-blocking), then deploy. The project-bootstrap path.
+
+    Project bootstrap — ``telec projects init`` / ``onboard`` — is a human-run, one-time
+    setup, not an agent-facing recurring gate. It surfaces validation findings for the
+    human watching, then completes setup regardless, so onboarding a project that already
+    carries findings is never blocked. The commit gate enforces validation once real work
+    begins.
+    """
+    _collect_source_findings(project_root)
+    sync(project_root, skip_validation=True)
 
 
 def _record_snippet_provenance_from_environment(project_root: Path) -> int:
@@ -223,6 +226,27 @@ def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[
         reason = finding.get("reason", "")
         grouped.setdefault(code, {}).setdefault(reason, []).append(path)
     return grouped
+
+
+def _collect_source_findings(project_root: Path) -> list[str]:
+    """Run the snippet, artifact, and jobs-config validators; print findings; return them.
+
+    Single owner of the source-validation sequence. Callers decide whether findings
+    block: :func:`sync` aborts on a non-empty result, :func:`sync_bootstrap` reports
+    and continues.
+    """
+    clear_errors()
+    errors: list[str] = []
+    validate_all_snippets(project_root)
+    errors.extend(validate_all_artifacts(project_root))
+    errors.extend(validate_jobs_config(project_root))
+    findings = get_errors()
+    if findings:
+        _print_findings(findings, quiet=False)
+        errors.extend(_format_finding(finding) for finding in findings)
+    for error in errors:
+        print(error)
+    return errors
 
 
 def _format_finding(finding: dict[str, str]) -> str:

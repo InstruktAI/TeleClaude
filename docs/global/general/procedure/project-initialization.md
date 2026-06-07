@@ -71,8 +71,9 @@ Source: `teleclaude/project_setup/hooks.py:install_precommit_hook()`
 
 ### 6. Sync project artifacts
 
-Runs the bootstrap sync (validation skipped) to build snippet indexes, inflate
-`AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to agent runtimes.
+Runs the bootstrap sync — validation runs and reports findings without blocking — to build
+snippet indexes, inflate `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to
+agent runtimes.
 
 This step happens before slug persistence because `sync_project_artifacts()`
 materializes a bare `teleclaude.yml` for fresh projects. `telec projects init` then
@@ -136,7 +137,7 @@ Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 ## Recovery
 
 - `telec projects init` is idempotent. Re-running it is safe and will skip already-configured steps.
-- The bootstrap sync skips validation so init always completes; the commit gate validates once real work begins.
+- The bootstrap sync reports validation findings without blocking, so init always completes even when a project already carries findings; the commit gate validates once real work begins.
 
 ## See Also
 

@@ -25,7 +25,7 @@ belongs to the integration lifecycle before the delivery commit is made.
 The sync pipeline is:
 
 1. **Validate** — run snippet, artifact, and jobs-config validators.
-2. **Record provenance** *(best-effort)* — when a provenance back-end is
+2. **Record provenance** _(best-effort)_ — when a provenance back-end is
    configured, insert `delivered_by` memberships for audit. Back-end
    unavailability is caught and logged as a warning. This step never blocks
    phases 3–4.
@@ -135,6 +135,10 @@ Scenario: Delivery completes before sync
   symlinks may therefore remain broken until a full sync runs.
 - `--skip-validation` deploys unvalidated source; it is reserved for the docs
   watcher's live reload, where the commit gate remains the validation contract.
+- Project bootstrap (`telec projects init` / `onboard`, via `sync_bootstrap`)
+  validates and reports findings without blocking, then deploys — a human-run,
+  one-time setup path distinct from the always-blocking `telec sync` command.
+  The commit gate remains the validation contract for ongoing work.
 - The distribution step is optional in stripped-down deployments because a
   missing distribution entrypoint silently skips phase 4.
 - The v1 CLI namespace is `telec sync`. The v2 target is `telec context sync`.
