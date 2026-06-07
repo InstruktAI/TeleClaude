@@ -15,7 +15,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/concept/reviewer.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
-- @~/.teleclaude/docs/software-development/policy/definition-of-done/lanes.md
+- @~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
 
 ## Goal
 
@@ -76,7 +76,7 @@ Orchestrator-managed files (`telec todo list`) are part of the task context. Do 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
 Run every applicable lane defined in the review-lanes catalog
-(`software-development/policy/definition-of-done/lanes`, a Required read). The
+(`software-development/policy/definition-of-done-lanes`, a Required read). The
 catalog owns each lane's focus, severity guidance, and the DoD gate (or
 requirement contract) it answers to. Trigger conditions: scope, code, paradigm,
 principles, intelligence-boundaries, security, tests, errors, comments, logging,
@@ -96,7 +96,7 @@ the missing lane before writing the verdict.
 
 The full definition of every lane — focus, severity guidance, and the DoD gate or
 requirement contract each answers to — lives in the review-lanes catalog
-(`software-development/policy/definition-of-done/lanes`, a Required read). Execute
+(`software-development/policy/definition-of-done-lanes`, a Required read). Execute
 the applicable lanes from that catalog; the severity schema, citation rules, and
 verdict arithmetic below govern how their findings resolve to a verdict.
 

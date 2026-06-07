@@ -183,7 +183,7 @@ the briefing instead.
 Apply the DoD-driven review-awareness rule from the preparation artifact quality
 policy. The plan must pre-satisfy what the reviewer will check — the reviewer's
 lanes are the review-lanes catalog
-(`software-development/policy/definition-of-done/lanes`). For each PRD success
+(`software-development/policy/definition-of-done-lanes`). For each PRD success
 criterion, identify which lanes (DoD gates) it triggers and verify those
 implications are reflected as task verification steps.
 

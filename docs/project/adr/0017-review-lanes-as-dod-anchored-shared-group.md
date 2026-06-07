@@ -29,7 +29,7 @@ commit-review the same doc-reflection catch — the docs lane lived only inside
 ## Decision
 
 The lanes are the **review-time enforcement of the Definition of Done**. Extract
-them into one shared catalog, `software-development/policy/definition-of-done/lanes`
+them into one shared catalog, `software-development/policy/definition-of-done-lanes`
 (`type: concept`), co-located with the DoD gates they enforce.
 
 - **Option B (uniform):** the catalog holds **all** lanes, and each lane names its
@@ -45,10 +45,10 @@ them into one shared catalog, `software-development/policy/definition-of-done/la
   so build-review and commit-review inherit it as a backstop to the plan-review
   documentation hard gate.
 
-Structure: the DoD policy file `policy/definition-of-done.md` keeps its id
-`software-development/policy/definition-of-done` unchanged (≈12 references depend
-on it); the catalog is a sibling-path snippet at
-`policy/definition-of-done/lanes.md`. File and subfolder coexist with distinct ids.
+Structure: the catalog is the sibling file `policy/definition-of-done-lanes.md`,
+next to `policy/definition-of-done.md` (which keeps its id
+`software-development/policy/definition-of-done`). It is a separate snippet so
+reviewers `@`-include the lanes as a unit without pulling in the gate checklist.
 
 ## Consequences
 

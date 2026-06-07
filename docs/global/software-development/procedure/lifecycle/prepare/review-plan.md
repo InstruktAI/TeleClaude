@@ -121,7 +121,7 @@ quality policy. Produce a `Lane anticipation` section in
 `plan-review-findings.md` with one entry per requirement, per triggered lane.
 
 The authoritative lane set is the review-lanes catalog
-(`software-development/policy/definition-of-done/lanes`) — anticipate every lane
+(`software-development/policy/definition-of-done-lanes`) — anticipate every lane
 it lists that this work triggers. Each entry names the specific artifact the
 build-review lane will validate and the plan task that produces it; the key lanes
 to pre-satisfy:
