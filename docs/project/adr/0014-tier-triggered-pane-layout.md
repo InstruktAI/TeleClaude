@@ -9,6 +9,7 @@ date: '2026-06-03'
 adr_status: 'accepted'
 description: 'The Sessions-view pane renderer swaps same-tier cells in place and minimally reflows on tier change, replacing the destroy-and-rebuild + select-layout even-horizontal approach; one canonical state owner enforces invariant I1.'
 ---
+
 # ADR-0014: Tier-Triggered In-Place Pane Layout — ADR
 
 ## Context
@@ -27,7 +28,7 @@ regressions:
   persisted and survived restarts.
 - **Destroy-and-rebuild renderer.** Every layout change killed tracked panes and
   re-split, then ran `select-layout even-horizontal` for 3-column layouts.
-  `even-horizontal` counts *live* panes, so any orphan (a live pane untracked in
+  `even-horizontal` counts _live_ panes, so any orphan (a live pane untracked in
   `session_to_pane`, e.g. left by a crashed reflow) became an extra column —
   the "5 columns, last two bottom-half only dots" failure. Same-tier transitions
   (e.g. un-stickying one of five stickies) rebuilt the whole grid even though the

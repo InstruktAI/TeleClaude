@@ -59,14 +59,14 @@ Each tracked artifact is evaluated against every applicable class on every
 prepare call. The overall artifact drift status is the **most blocking**
 status across its classes (`substantive` > `pending` > `cosmetic` > `fresh`).
 
-| Class                  | Evidence checked                                                                                                | When pending                                                                                                |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **code**               | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to `referenced_paths`.                 | HEAD has moved AND at least one changed path overlaps `referenced_paths`.                                   |
-| **upstream-artifact**  | Digest of each upstream artifact (e.g., PRD digest at the time architecture was written) vs current digest.     | Any upstream artifact has been rewritten since this artifact was authored.                                  |
-| **owned-snippet**      | Digest of each doc snippet the Todo owns via `delivered_by` (recorded at artifact write time) vs current digest. | An owned snippet was edited outside this prepare flow since the artifact was authored.                      |
-| **upstream-snippet**   | Digest of each non-owned doc snippet the artifact references by ID, recorded at write time, vs current digest. | A referenced snippet's content has changed since the reference was recorded.                                |
-| **dependency-graph**   | The Todo's immediate `after` set and each direct dep's status at write time vs current. Shallow — not transitive. | The immediate dep set changed (added/removed) OR any direct dep's status flipped (e.g., a HELD dep is now DELIVERED). |
-| **age** _(policy)_     | Artifact `produced_at` vs configurable freshness window.                                                        | `produced_at` is older than the configured window for the artifact kind.                                    |
+| Class                 | Evidence checked                                                                                                  | When pending                                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **code**              | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to `referenced_paths`.                   | HEAD has moved AND at least one changed path overlaps `referenced_paths`.                                             |
+| **upstream-artifact** | Digest of each upstream artifact (e.g., PRD digest at the time architecture was written) vs current digest.       | Any upstream artifact has been rewritten since this artifact was authored.                                            |
+| **owned-snippet**     | Digest of each doc snippet the Todo owns via `delivered_by` (recorded at artifact write time) vs current digest.  | An owned snippet was edited outside this prepare flow since the artifact was authored.                                |
+| **upstream-snippet**  | Digest of each non-owned doc snippet the artifact references by ID, recorded at write time, vs current digest.    | A referenced snippet's content has changed since the reference was recorded.                                          |
+| **dependency-graph**  | The Todo's immediate `after` set and each direct dep's status at write time vs current. Shallow — not transitive. | The immediate dep set changed (added/removed) OR any direct dep's status flipped (e.g., a HELD dep is now DELIVERED). |
+| **age** _(policy)_    | Artifact `produced_at` vs configurable freshness window.                                                          | `produced_at` is older than the configured window for the artifact kind.                                              |
 
 ### Provenance recorded per artifact
 

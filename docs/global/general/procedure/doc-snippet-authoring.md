@@ -43,7 +43,6 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
 12. **Changing an existing snippet — ADD vs REPLACE.** A live snippet is never overwritten in place to describe a change before it is delivered. Decide which kind of change you are making and author it accordingly; both carry your delivering `<slug>`.
-
     - **ADD** (new content: a new Gherkin scenario, a new rule, a new section). Author it **in context under its correct heading**, wrapped in a planned marker that names the slug:
 
       ```
@@ -59,6 +58,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
     - **Ordering.** Two pending companions on the same parent MUST be dependency-ordered (`telec todo set-deps B --after A`) — never two independent reworks of one file in flight. Delivery is dependency-gated, so they merge-and-delete in order, each authored against the post-merge parent.
 
     - **Discoverability.** `telec docs index` flags pending work inline, never hiding it: `(delivered by: <slugs>)` on a brand-new snippet not yet live, `(superseded by: <slugs>)` on a live parent with a pending companion or planned section (derived from the filename/marker). Companions never get their own line. The pending **bodies** stay invisible until active — `telec docs get <id>` strips planned sections, and `telec docs get <id> --target <slug>` reveals that slug's. `telec docs index --target <slug>` narrows the listing to one todo's new snippets.
+
 13. **ADR discipline (decision capture).** If your snippet change embeds a non-trivial decision — one a future agent might reasonably ask "why was it done this way?" about — author an accompanying ADR per `general/policy/adr-discipline`, following `general/procedure/adr-authoring`. Specs, procedures, and principles describe the _current state_; ADRs preserve the _reasoning_. Do not embed reasoning logs in primary artifacts.
 
 ## Outputs

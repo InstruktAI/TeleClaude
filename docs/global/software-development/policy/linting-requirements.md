@@ -13,7 +13,7 @@ visibility: 'public'
 0. **Checks block; there is no passing warning tier.** Every agent-facing check is a blocker or it is removed. A warning that does not block is a silent failure — the gate-level form of the anti-pattern named in `software-development/principle/design-fundamentals` (Fail Fast): agents reliably do not act on warnings, so they accumulate into noise that hides the next real defect and trains everyone to ignore the channel.
    - There is no warn-and-pass flag: `telec sync` always blocks on findings (`--skip-deploy` is the read-only gate; it still blocks). Tool warnings (e.g. an `eslint` `warning`) must be configured as errors or the rule deleted.
    - A finding that needs human judgment blocks **with an explicit, auditable override** (a scoped `noqa` / `--approved` / declared exception that lands in the diff with a reason) — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
-   - The only validation bypass is the docs watcher's hidden, role-gated `--skip-validation` (live reload must not block; the commit gate is the contract). The only non-gating *output* is pure information (status/progress) — it signals nothing to act on.
+   - The only validation bypass is the docs watcher's hidden, role-gated `--skip-validation` (live reload must not block; the commit gate is the contract). The only non-gating _output_ is pure information (status/progress) — it signals nothing to act on.
 1. **Fix all lint violations before commit**
 2. **Do not suppress lint errors** unless explicitly approved and documented
 3. **All imports at module top level by default** (`import-outside-toplevel` is disallowed unless explicitly approved)

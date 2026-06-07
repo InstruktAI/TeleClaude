@@ -23,7 +23,7 @@ similarly-named tool. Disambiguation:
 
 - `graphify-rs` / `graphify-core` (crates.io, repo `TtTRz/graphify-rs`) — an
   **independent third-party Rust rewrite by a different author** (Rom Chung /
-  TtTRz), *not* an official port. It reuses the same
+  TtTRz), _not_ an official port. It reuses the same
   `detect → extract → build → cluster → analyze → export` pipeline and emits a
   **compatible `graph.json`**, but is a follower that tracks the Python upstream.
   As of 2026-06: v0.8.0 (Python is 0.8.31), ~37 stars / ~408 downloads, solo
@@ -79,6 +79,7 @@ recipe (tree-sitter grammar + `extract_<lang>` + suffix registration).
 ## Outputs
 
 `graphify-out/` →
+
 - `graph.json` — full queryable graph (node/edge schema below).
 - `graph.html` — interactive browser visualization.
 - `GRAPH_REPORT.md` — highlights: key concepts, god nodes, surprising
@@ -88,17 +89,25 @@ Optional exports: Mermaid call-flow HTML (`graphify export callflow-html`),
 Obsidian vault, Markdown wiki, SVG, GraphML (Gephi/yEd), Neo4j Cypher.
 
 Node/edge schema (from `ARCHITECTURE.md`):
+
 ```json
 {
-  "nodes": [{"id": "...", "label": "...", "source_file": "path", "source_location": "L42"}],
-  "edges": [{"source": "id_a", "target": "id_b", "relation": "calls|imports|...", "confidence": "EXTRACTED|INFERRED|AMBIGUOUS"}]
+  "nodes": [{ "id": "...", "label": "...", "source_file": "path", "source_location": "L42" }],
+  "edges": [
+    {
+      "source": "id_a",
+      "target": "id_b",
+      "relation": "calls|imports|...",
+      "confidence": "EXTRACTED|INFERRED|AMBIGUOUS"
+    }
+  ]
 }
 ```
 
 ## API / CLI / integration model
 
 - **Build:** `/graphify .` (in-IDE skill) or headless `graphify extract <path>
-  [--backend …] [--directed] [--force]`. Incremental: `--watch` auto-syncs on
+[--backend …] [--directed] [--force]`. Incremental: `--watch` auto-syncs on
   file change.
 - **Query (CLI):**
   - `graphify query "<question>"` — scoped natural-language subgraph answer

@@ -75,9 +75,9 @@ This also minimizes layout disruption:
 
 ## Failure modes
 
-| Scenario                                      | Behavior                                                                                      | Recovery                                                            |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Preview set for a session that is also sticky | Sessions view clears preview; sticky takes precedence                                        | Automatic                                                           |
-| Un-sticky with stale preview state            | Sessions view sets preview to the un-stickied session, overwriting any stale value           | Automatic                                                           |
-| Double press detected as two single presses   | Guard period suppresses second press                                                          | Automatic; tune guard duration if still occurring                   |
+| Scenario                                      | Behavior                                                                                      | Recovery                                                                  |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Preview set for a session that is also sticky | Sessions view clears preview; sticky takes precedence                                         | Automatic                                                                 |
+| Un-sticky with stale preview state            | Sessions view sets preview to the un-stickied session, overwriting any stale value            | Automatic                                                                 |
+| Double press detected as two single presses   | Guard period suppresses second press                                                          | Automatic; tune guard duration if still occurring                         |
 | Layout rebuild on un-sticky                   | Should not happen if preview transition is correct; indicates slot count changed unexpectedly | Check that preview was set before sticky was removed in the Sessions view |

@@ -75,7 +75,7 @@ description: 'Testing doctrine: tests bind human-authored feature-spec scenarios
     - **Added scenario** → bind it (write the test), confirm it fails, implement, confirm it passes.
     - **Changed scenario** → update the bound test to the new contract, confirm it fails against
       current code, update the code, confirm it passes.
-    The agent works from the delta it is handed; it does not re-derive what to test.
+      The agent works from the delta it is handed; it does not re-derive what to test.
 
 ### Spec structure (so scenarios have stable identity)
 
@@ -103,7 +103,7 @@ description: 'Testing doctrine: tests bind human-authored feature-spec scenarios
     of the same behavior across files.
 14. **One behavioral path per test.** A case is a code path, not an input row. Tests are
     deterministic, independent, and named so the name is a behavioral specification. Every test
-    answers: *what real bug in our code would this catch?*
+    answers: _what real bug in our code would this catch?_
 
 ## Rationale
 

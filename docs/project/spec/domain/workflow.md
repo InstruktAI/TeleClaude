@@ -184,7 +184,7 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   Existing v2 Rust event consumers continue to see every prior field; the
   contract is strict-additive. `kind` is **nullable**: a kind-less dump
   (created without `--kind`) emits `kind = null` with `lifecycle_phase =
-  unkinded`, and the pickup routers dispatch `/analyze-todo-input`
+unkinded`, and the pickup routers dispatch `/analyze-todo-input`
   (classification — it proposes a kind, it does not execute) instead of an
   SDLC orchestrator.
 - **Visibility:** CLUSTER

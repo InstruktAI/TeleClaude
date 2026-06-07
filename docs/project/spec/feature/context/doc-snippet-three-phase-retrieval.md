@@ -103,4 +103,4 @@ And Required reads resolution is NOT applied to that ID
 - Phase 1 third-party output ignores `--baseline-only` and `--target` filters
   entirely; third-party listings render on a separate track.
 - The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
-  docs *`. The verb rename is a known migration cleanup.
+docs *`. The verb rename is a known migration cleanup.

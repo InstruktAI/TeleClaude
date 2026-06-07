@@ -177,8 +177,8 @@ And all project dependencies are importable
   - Claude → block decision with reason.
   - Codex → block decision with reason.
   - Gemini → deny decision with reason.
-  When the adapter returns no decision, the receiver lets the stop event
-  continue to outbox enqueue; no v1 adapter exercises that branch.
+    When the adapter returns no decision, the receiver lets the stop event
+    continue to outbox enqueue; no v1 adapter exercises that branch.
 - Native metadata persistence always runs when a native session id or
   native log file is present. When the new native session id differs
   from the stored value, a native-session-refresh outbox entry is

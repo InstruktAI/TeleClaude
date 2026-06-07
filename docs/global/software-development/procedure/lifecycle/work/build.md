@@ -51,7 +51,7 @@ First read the software-development principles as listed in the software-develop
    - **Changed scenario** — update the bound test to the new contract, confirm it fails against the
      current code, update the code, confirm it passes.
    - **Removed scenario** — delete its bound test, then the code it exclusively covered.
-   You bind the scenarios the spec defines; you never invent what to test. See `policy/testing`.
+     You bind the scenarios the spec defines; you never invent what to test. See `policy/testing`.
 5. Execute tasks sequentially:
    - Follow the build mode determined in step 4.
    - Commit changes for the task (one commit per task).

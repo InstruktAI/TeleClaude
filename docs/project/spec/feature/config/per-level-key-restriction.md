@@ -148,12 +148,12 @@ And subsequent schema parsing produces its own type error against the actual sch
 
 Per-layer forbidden sets (any presence triggers rejection):
 
-| Layer / file                                               | Forbidden top-level keys                              |
-| ---------------------------------------------------------- | ----------------------------------------------------- |
-| Project overlay (`<project>/teleclaude.yml`)               | `people`, `ops`, `creds`, `notifications`, `timezone` |
-| Global overlay (`~/.teleclaude/teleclaude.yml`)            | `creds`, `notifications`, `timezone`                  |
-| Per-person overlay (`~/.teleclaude/people/<name>/teleclaude.yml`) | `people`, `ops`, `business`, `timezone`        |
-| Legacy `config.yml` (runtime)                              | `computer.tmux_binary`                                |
+| Layer / file                                                      | Forbidden top-level keys                              |
+| ----------------------------------------------------------------- | ----------------------------------------------------- |
+| Project overlay (`<project>/teleclaude.yml`)                      | `people`, `ops`, `creds`, `notifications`, `timezone` |
+| Global overlay (`~/.teleclaude/teleclaude.yml`)                   | `creds`, `notifications`, `timezone`                  |
+| Per-person overlay (`~/.teleclaude/people/<name>/teleclaude.yml`) | `people`, `ops`, `business`, `timezone`               |
+| Legacy `config.yml` (runtime)                                     | `computer.tmux_binary`                                |
 
 Error message shapes:
 

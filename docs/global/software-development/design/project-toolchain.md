@@ -17,7 +17,7 @@ machinery (its `Makefile`, configs, tools). Nothing is copied into the project. 
 only thing the platform mandates is the `Makefile`** (the operational plug); every
 tool and config behind it is detected and plugged onto, never prescribed. A project
 stays installable and testable with no TeleClaude present; TeleClaude adds workspace
-scoping, agent-facing simplification, and *offered* best-practice defaults on top of
+scoping, agent-facing simplification, and _offered_ best-practice defaults on top of
 what the project already wires up.
 
 ## Inputs/Outputs
@@ -25,12 +25,12 @@ what the project already wires up.
 **The project owns** a language-agnostic `Makefile` whose targets run whatever
 toolchains are present, plus the per-language configs and manifests:
 
-| Target | Does | Scoped? |
-| --- | --- | --- |
-| `make install` | provisions every present toolchain: `uv sync` (python); corepack + lockfile-detected package manager (pnpm/npm/yarn/bun) + frozen install (node, incl. frontend); `cargo fetch` (rust) | no |
-| `make lint [FILES]` | lints whatever is present, on `FILES` or all | yes |
-| `make test` | runs every suite present (python + frontend + rust) | no — there is no 1:1 source→test map |
-| `make format` | formats whatever is present | no |
+| Target              | Does                                                                                                                                                                                   | Scoped?                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `make install`      | provisions every present toolchain: `uv sync` (python); corepack + lockfile-detected package manager (pnpm/npm/yarn/bun) + frozen install (node, incl. frontend); `cargo fetch` (rust) | no                                   |
+| `make lint [FILES]` | lints whatever is present, on `FILES` or all                                                                                                                                           | yes                                  |
+| `make test`         | runs every suite present (python + frontend + rust)                                                                                                                                    | no — there is no 1:1 source→test map |
+| `make format`       | formats whatever is present                                                                                                                                                            | no                                   |
 
 **Blessed defaults** — configs the platform _offers_ (never prescribes) to seed a
 greenfield setup or raise a brownfield one that is missing or weaker. The agent

@@ -50,14 +50,14 @@ This spec owns recipient selection only.
 
 ### Message intent to scope mapping
 
-| Message intent                       | Scope         | Notes                                                                                 |
-| ------------------------------------ | ------------- | ------------------------------------------------------------------------------------- |
-| `feedback_notice_error_status`       | `ORIGIN_ONLY` | Includes notices, feedback prompts, and user-facing errors.                           |
-| `last_output_summary`                | `ORIGIN_ONLY` | Origin UX only, non-threaded/in-edit presentation only.                               |
-| `output_stream_chunk_final_threaded` | `DUAL`        | Includes incremental chunks, final output, and threaded blocks.                       |
-| `input_reflection_text`              | `ADMIN_ONLY`  | Extra admin reflection goes to Discord only when origin is not Discord.               |
-| `input_reflection_voice`             | `ADMIN_ONLY`  | Same reflection lane policy as text input.                                            |
-| `input_reflection_mcp`               | `ADMIN_ONLY`  | Same reflection lane policy as text/voice input.                                      |
+| Message intent                       | Scope         | Notes                                                                                         |
+| ------------------------------------ | ------------- | --------------------------------------------------------------------------------------------- |
+| `feedback_notice_error_status`       | `ORIGIN_ONLY` | Includes notices, feedback prompts, and user-facing errors.                                   |
+| `last_output_summary`                | `ORIGIN_ONLY` | Origin UX only, non-threaded/in-edit presentation only.                                       |
+| `output_stream_chunk_final_threaded` | `DUAL`        | Includes incremental chunks, final output, and threaded blocks.                               |
+| `input_reflection_text`              | `ADMIN_ONLY`  | Extra admin reflection goes to Discord only when origin is not Discord.                       |
+| `input_reflection_voice`             | `ADMIN_ONLY`  | Same reflection lane policy as text input.                                                    |
+| `input_reflection_mcp`               | `ADMIN_ONLY`  | Same reflection lane policy as text/voice input.                                              |
 | `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not visible UI content. |
 
 ### Reflection lane contract

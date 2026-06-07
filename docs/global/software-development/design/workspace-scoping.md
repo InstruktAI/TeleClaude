@@ -45,14 +45,14 @@ but they do not branch on git worktree state directly.
 
 ## Inputs/Outputs
 
-| Input              | Source                                         |
-| ------------------ | ---------------------------------------------- |
-| Execution context  | `resolve_workspace_scope_resolution()`         |
-| Session identity   | `$TMPDIR/teleclaude_identity.json`             |
-| Session transcript | Daemon transcript for the current session      |
-| Dirty paths        | `git status --porcelain --untracked-files=all` |
+| Input              | Source                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution context  | `resolve_workspace_scope_resolution()`                                                                                                   |
+| Session identity   | `$TMPDIR/teleclaude_identity.json`                                                                                                       |
+| Session transcript | Daemon transcript for the current session                                                                                                |
+| Dirty paths        | `git status --porcelain --untracked-files=all`                                                                                           |
 | Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
-| Explicit file list | CLI arguments (`telec code lint <files...>`)   |
+| Explicit file list | CLI arguments (`telec code lint <files...>`)                                                                                             |
 
 | Output                  | Description                                                               |
 | ----------------------- | ------------------------------------------------------------------------- |

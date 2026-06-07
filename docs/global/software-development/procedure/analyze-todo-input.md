@@ -7,6 +7,7 @@ visibility: 'public'
 activation_trigger: 'Use when a kind-less todo needs its raw human intent interpreted and classified into a kind'
 description: 'Interpret a kind-less todo''s raw input, classify it into a kind, and propose it for human approval — writing a task-plan when the dump is a task, or setting an SDLC kind so the normal lane takes over.'
 ---
+
 # Analyze Todo Input — Procedure
 
 ## Goal
@@ -36,9 +37,9 @@ never executes the work, and it never mutates the `input`.
    - fuzzy / multi-step / an action whose work need not touch the codebase
      (notify someone, hit an API on a schedule, run an operation, or fan out into
      several of the above) → `task`.
-   When the dump is genuinely ambiguous between an action and code work, prefer
-   `task`: a task can itself spawn `change`/`bug` todos, so it is the safe
-   container for "do some of this now, defer the code work."
+     When the dump is genuinely ambiguous between an action and code work, prefer
+     `task`: a task can itself spawn `change`/`bug` todos, so it is the safe
+     container for "do some of this now, defer the code work."
 
 3. **Write the proposal and set the proposed kind.**
    - For a **`task`**: write the **`task-plan`** artifact (see the blueprint below)
@@ -48,8 +49,8 @@ never executes the work, and it never mutates the `input`.
    - For an **SDLC kind** (`change`/`feature`/`bug`): set the kind with a one-line
      rationale; the kind's normal lane produces its own artifacts (PRD,
      `implementation-plan`). Do not write a `task-plan`.
-   The todo lands at `lifecycle_phase = kind_proposed`. **Stop here** — do not
-   execute steps, do not dispatch downstream work.
+     The todo lands at `lifecycle_phase = kind_proposed`. **Stop here** — do not
+     execute steps, do not dispatch downstream work.
 
 4. **Go idle.** The human reviews the proposal (`telec todo show {slug}` /
    `artifacts read {slug} task-plan`) and approves or corrects the kind. On
@@ -65,10 +66,10 @@ more structure than this is ceremony.
 
 - **Intent** — one line: "I read your dump as …".
 - **Steps** — an ordered, checkable list. Each step is one of:
-  - *do X* — a direct action an agent performs;
-  - *spawn `todo(kind=…)`* — create/defer a child todo (e.g. the code work as a
+  - _do X_ — a direct action an agent performs;
+  - _spawn `todo(kind=…)`_ — create/defer a child todo (e.g. the code work as a
     `change`, a later action as another `task`);
-  - *wait on `dep` / `time`* — a gate before the next step.
+  - _wait on `dep` / `time`_ — a gate before the next step.
 - **Status** — per step: `todo` / `done` / `blocked`.
 - **Log** — a short running record of what happened as steps complete.
 
