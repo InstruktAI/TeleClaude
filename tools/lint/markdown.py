@@ -105,17 +105,17 @@ def _find_line_number(content: str, block: str) -> int:
         return 0
 
 
-def _is_third_party_doc(file_path: Path) -> bool:
+def _is_third_party_doc(file_path: Path, repo_root: Path) -> bool:
     try:
-        rel = file_path.resolve().relative_to(REPO_ROOT.resolve())
+        rel = file_path.resolve().relative_to(repo_root.resolve())
     except ValueError:
         return False
     return len(rel.parts) >= 3 and rel.parts[0] == "docs" and rel.parts[1] == THIRD_PARTY_TYPE
 
 
-def _expected_third_party_id(file_path: Path) -> str | None:
+def _expected_third_party_id(file_path: Path, repo_root: Path) -> str | None:
     try:
-        rel = file_path.resolve().relative_to((REPO_ROOT / "docs" / THIRD_PARTY_TYPE).resolve())
+        rel = file_path.resolve().relative_to((repo_root / "docs" / THIRD_PARTY_TYPE).resolve())
     except ValueError:
         return None
     if rel.name == "index.md":
@@ -123,7 +123,9 @@ def _expected_third_party_id(file_path: Path) -> str | None:
     return f"{THIRD_PARTY_TYPE}/{rel.with_suffix('').as_posix()}"
 
 
-def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, domains: set[str]) -> list[str]:
+def _validate_frontmatter(
+    file_path: Path, metadata: Mapping[str, object], *, domains: set[str], repo_root: Path
+) -> list[str]:
     """Validate frontmatter completeness and correctness.
 
     Returns:
@@ -139,7 +141,7 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, do
             errors.append(f"{file_path}: Missing or invalid '{field}' in frontmatter")
 
     # Validate type against taxonomy
-    is_third_party = _is_third_party_doc(file_path)
+    is_third_party = _is_third_party_doc(file_path, repo_root)
     valid_types = [THIRD_PARTY_TYPE] if is_third_party else list(TAXONOMY_TYPES)
     snippet_type = metadata.get("type")
     if isinstance(snippet_type, str) and snippet_type not in valid_types:
@@ -154,7 +156,7 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, do
     snippet_id = metadata.get("id")
     if isinstance(snippet_id, str):
         if is_third_party:
-            expected_id = _expected_third_party_id(file_path)
+            expected_id = _expected_third_party_id(file_path, repo_root)
             if expected_id and snippet_id != expected_id:
                 errors.append(f"{file_path}: Snippet id '{snippet_id}' does not match path '{expected_id}'")
             return errors
@@ -166,7 +168,7 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, do
         # deliberately shares the parent's id; exempt it from id↔path checks.
         if is_companion(file_path):
             return errors
-        expected_id, path_error = expected_snippet_id_for_path(file_path, project_root=REPO_ROOT, domains=domains)
+        expected_id, path_error = expected_snippet_id_for_path(file_path, project_root=repo_root, domains=domains)
         if path_error:
             errors.append(f"{file_path}: Invalid doc path ({path_error})")
         elif expected_id and parsed_id and parsed_id.value() != expected_id:
@@ -201,7 +203,7 @@ def _find_markdown_files(repo_root: Path) -> list[Path]:
     return sorted(files)
 
 
-def _validate_files(file_paths: list[Path], domains: set[str]) -> list[str]:
+def _validate_files(file_paths: list[Path], domains: set[str], repo_root: Path) -> list[str]:
     """Run per-file checks (mermaid + frontmatter) over the given file list."""
     all_errors: list[str] = []
     for file_path in file_paths:
@@ -219,7 +221,9 @@ def _validate_files(file_paths: list[Path], domains: set[str]) -> list[str]:
                 post = frontmatter.loads(text)
                 metadata: Mapping[str, object] = post.metadata or {}
                 if "baseline" not in str(file_path) and metadata:
-                    frontmatter_errors = _validate_frontmatter(file_path, metadata, domains=domains)
+                    frontmatter_errors = _validate_frontmatter(
+                        file_path, metadata, domains=domains, repo_root=repo_root
+                    )
                     all_errors.extend(frontmatter_errors)
             except Exception as exc:
                 all_errors.append(f"{file_path}: Failed to parse frontmatter: {exc}")
@@ -250,7 +254,7 @@ def main() -> int:
         if not resolved:
             return 0
 
-        all_errors = _validate_files(resolved, domains)
+        all_errors = _validate_files(resolved, domains, repo_root)
         clear_errors()
         validate_all_snippets(repo_root, paths=resolved)
         all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
@@ -259,7 +263,7 @@ def main() -> int:
         if not markdown_files_list:
             return 0
 
-        all_errors = _validate_files(markdown_files_list, domains)
+        all_errors = _validate_files(markdown_files_list, domains, repo_root)
         clear_errors()
         validate_all_snippets(repo_root)
         all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
