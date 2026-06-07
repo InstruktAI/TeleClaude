@@ -8,17 +8,22 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
+from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
     resolve_workspace_scope_resolution,
 )
-from teleclaude.session_identity import get_system_role
+from teleclaude.session_identity import get_session_id, get_system_role
+
+logger = get_logger(__name__)
 
 # Mandated commit trailer (repo Commits policy). Auto-appended so it can never
 # be forgotten; idempotent — skipped if the message already carries it.
@@ -462,6 +467,13 @@ def _commit_under_lock(
         print(stdout)
     if stderr:
         print(stderr, file=sys.stderr)
+    if _current_branch(project_root) == "main":
+        try:
+            session_id = get_session_id()
+            if session_id:
+                record_authored_main_commit(session_id)
+        except Exception as exc:
+            logger.warning("Failed to record authored main commit checkpoint flag", error=str(exc))
     # system_role is retained on the signature for symmetry with prior gates;
     # the pathspec boundary makes a separate scope-enforcement step redundant.
     del system_role

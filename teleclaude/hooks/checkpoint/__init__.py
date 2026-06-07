@@ -41,13 +41,11 @@ from teleclaude.hooks.checkpoint._git import (
     _categorize_files,
     _command_likely_mutates_files,
     _current_branch,
-    _current_head_sha,
     _extract_apply_patch_paths,
     _extract_shell_command,
     _extract_shell_touched_paths,
     _extract_turn_file_signals,
     _file_matches_category,
-    _head_changed_since_anchor,
     _is_checkpoint_project_supported,
     _is_docs_only,
     _is_no_action_only,
@@ -59,7 +57,7 @@ from teleclaude.hooks.checkpoint._git import (
     _transcript_observability,
 )
 from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult, TranscriptObservability
-from teleclaude.hooks.checkpoint_flags import has_post_commit_review_flag, replace_post_commit_review_flag
+from teleclaude.hooks.checkpoint_flags import consume_authored_main_commit_flag, has_authored_main_commit_flag
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
@@ -84,7 +82,6 @@ __all__ = [
     "_compose_checkpoint_message",
     "_compute_log_since_window",
     "_current_branch",
-    "_current_head_sha",
     "_dedupe_strings",
     "_enrich_error",
     "_extract_apply_patch_paths",
@@ -97,7 +94,6 @@ __all__ = [
     "_has_evidence",
     "_has_evidence_after_index",
     "_has_status_evidence",
-    "_head_changed_since_anchor",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
     "_is_no_action_only",
@@ -127,26 +123,25 @@ def run_heuristics(
     timeline: TurnTimeline,
     context: CheckpointContext,
     log_since_window: str = "2m",
-    git_head_changed_this_turn: bool = False,
-    post_commit_review_already_seen: bool = False,
+    authored_main_commit: bool = False,
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
     result.on_main = _current_branch(context.project_path) == "main"
-    result.git_head_changed_this_turn = git_head_changed_this_turn
+    result.authored_main_commit = authored_main_commit
     result.commit_action_required = not _has_commit_evidence_after_last_mutation(
         timeline,
         git_files,
         context.project_path,
     )
-    if result.git_head_changed_this_turn and not git_files:
+    if result.authored_main_commit and not git_files:
         result.commit_action_required = False
 
     def append_required_action(action: str) -> None:
         if action not in result.required_actions:
             result.required_actions.append(action)
 
-    if result.on_main and result.git_head_changed_this_turn and not post_commit_review_already_seen:
+    if result.on_main and result.authored_main_commit:
         append_required_action(_post_commit_review_instruction())
         result.post_commit_review_action_required = True
 
@@ -413,19 +408,8 @@ def get_checkpoint_content(
             timeline,
             project_path,
         )
-        current_head_sha = _current_head_sha(project_path)
-        normalized_anchor_sha = (turn_anchor_sha or "").strip()
-        git_head_changed_this_turn = bool(
-            current_head_sha and normalized_anchor_sha and current_head_sha != normalized_anchor_sha
-        )
-        post_commit_review_already_seen = bool(
-            current_head_sha and has_post_commit_review_flag(session_id, current_head_sha)
-        )
-        force_main_commit_checkpoint = (
-            git_head_changed_this_turn
-            and _current_branch(project_path) == "main"
-            and not post_commit_review_already_seen
-        )
+        authored_main_commit = has_authored_main_commit_flag(session_id)
+        force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
 
         # Intentionally no full-session fallback:
         # checkpoint attribution must stay strictly turn-local.
@@ -448,8 +432,7 @@ def get_checkpoint_content(
                     "mode": "silent_no_changes",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
-                    "git_head_changed_this_turn": git_head_changed_this_turn,
-                    "post_commit_review_already_seen": post_commit_review_already_seen,
+                    "authored_main_commit": authored_main_commit,
                 },
             )
             return None
@@ -468,8 +451,7 @@ def get_checkpoint_content(
                     "mode": "silent_docs_only",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
-                    "git_head_changed_this_turn": git_head_changed_this_turn,
-                    "post_commit_review_already_seen": post_commit_review_already_seen,
+                    "authored_main_commit": authored_main_commit,
                 },
             )
             return None
@@ -486,15 +468,14 @@ def get_checkpoint_content(
             timeline,
             context,
             log_since_window=log_since_window,
-            git_head_changed_this_turn=git_head_changed_this_turn,
-            post_commit_review_already_seen=post_commit_review_already_seen,
+            authored_main_commit=authored_main_commit,
         )
 
         message = _compose_checkpoint_message(effective_files, result)
-        if result.post_commit_review_action_required and current_head_sha:
-            replace_post_commit_review_flag(session_id, current_head_sha)
+        if result.post_commit_review_action_required:
+            consume_authored_main_commit_flag(session_id)
         mode = (
-            "main_head_changed"
+            "main_commit_authored"
             if force_main_commit_checkpoint
             else "docs_only"
             if _is_docs_only(effective_files)
@@ -516,8 +497,7 @@ def get_checkpoint_content(
                 "mode": mode,
                 "message_len": len(message),
                 "used_session_fallback": used_session_fallback,
-                "git_head_changed_this_turn": git_head_changed_this_turn,
-                "post_commit_review_already_seen": post_commit_review_already_seen,
+                "authored_main_commit": authored_main_commit,
                 "post_commit_review_action_required": result.post_commit_review_action_required,
             },
         )

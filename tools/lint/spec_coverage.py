@@ -29,7 +29,7 @@ _TEST_ROOT = Path("tests")
 
 # A scenario id header, e.g. "#### UC-EB1: ..." -> "UC-EB1", or a named header
 # "#### Creating a session — happy path" -> the slugged name.
-_ID_HEADER = re.compile(r"^####\s+(UC-[A-Z]+\d+)\b", re.MULTILINE)
+_ID_HEADER = re.compile(r"^####\s+(UC-[A-Z]+\d+[A-Z]*)\b", re.MULTILINE)
 _FRONTMATTER_ID = re.compile(r"^id:\s*['\"]?([^'\"\n]+)['\"]?\s*$", re.MULTILINE)
 
 

@@ -168,14 +168,25 @@ def collect_inline_ref_errors(
     return errors
 
 
+def _resolve_home_doc_source_ref(project_root: Path, candidate: Path) -> Path:
+    try:
+        relative_doc = candidate.expanduser().relative_to(GLOBAL_SNIPPETS_DIR)
+    except ValueError:
+        return candidate
+    source_doc = project_root / "docs" / "global" / relative_doc
+    if source_doc.exists():
+        return source_doc
+    return candidate
+
+
 def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Path | None:  # pylint: disable=unused-argument
     if not ref.startswith("@"):
         return None
     target = ref[1:]
     if target.startswith("~"):
-        return Path(target).expanduser()
+        return _resolve_home_doc_source_ref(project_root, Path(target).expanduser())
     if target.startswith("./") or target.startswith("/"):
-        return Path(target)
+        return _resolve_home_doc_source_ref(project_root, Path(target))
     if target.startswith("../"):
         raise NotImplementedError("Relative refs with .. not supported")
     return (project_root / target).resolve()

@@ -1,0 +1,19 @@
+# serializer version: 1
+# name: test_main_branch_review_gate_follows_authored_commit_latch
+  dict({
+    'authored_payload': '''
+      [TeleClaude Checkpoint] - Context-aware checkpoint
+      
+      Required actions (BLOCKING — do not resume user-facing work until all complete):
+      1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
+      2. Docs check: if relevant, update existing docs or add a new doc
+      3. All steps done — only then proceed
+      
+      Execute every required action above before responding to the user.
+      
+      Response policy: complete ALL required actions first. Do not compose the debrief until every action is done. Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. Do not mention checkpoint chores.
+      
+      Escape hatch (last resort only, and only when there is no actionable information left): run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. Re-enable by removing that file.
+    ''',
+  })
+# ---

@@ -29,9 +29,10 @@ itself with the checkpoint instruction.
 The engine is gated by session-scoped flag markers: a persistent **clear
 flag** disables checkpoints for the session entirely; turn scoping
 prevents ordinary file-change checkpoints from re-firing after a
-checkpoint has been delivered; and a SHA-scoped **post-commit review
-flag** prevents the main-branch post-commit review action from re-firing
-for the same HEAD.
+checkpoint has been delivered; and a fixed-name **authored main commit
+marker** is recorded when this session commits on `main` through the
+sealed `telec code commit` path, then consumed when the post-commit
+review action is surfaced.
 
 ## Canonical fields
 
@@ -96,35 +97,35 @@ Then the per-turn recheck flag is consumed
 And the next agent-stop in the new turn may fire a fresh checkpoint
 ```
 
-#### UC-CP5A: Main-branch post-commit review action is edge-triggered per HEAD
+#### UC-CP5A: Main-branch post-commit review action follows session authorship
 
 ```gherkin
 Given the current branch is main
-And the current HEAD differs from the turn-start anchor SHA
-And no post-commit review flag exists for the current HEAD
+And this session authored a main commit through the sealed `telec code commit` path
+And the session-scoped authored-main-commit marker is present
 When the heuristic engine evaluates the turn window
 Then the result includes the post-commit review-gate surfacing action
 And that action instructs the agent to set a non-blocking 5-minute heartbeat when it recommends review
 And if that heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review
 And waits for REVIEW COMPLETE before reporting completion
-And a post-commit review flag for the current HEAD is recorded under the session flag store
-And older post-commit review flags for the same session are removed
+And the authored-main-commit marker is consumed
 
 Given the current branch is main
-And the current HEAD differs from the turn-start anchor SHA
-And a post-commit review flag already exists for the current HEAD
+And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session
+And the session-scoped authored-main-commit marker is absent
 And there are no turn-local dirty files
-When the heuristic engine evaluates the turn window again before a new commit
+When the heuristic engine evaluates the turn window
 Then it produces no checkpoint
-And does not emit the post-commit review-gate surfacing action again
+And does not emit the post-commit review-gate surfacing action
 
 Given the current branch is main
-And the current HEAD differs from the turn-start anchor SHA
-And a post-commit review flag already exists for the current HEAD
+And the session-scoped authored-main-commit marker is present
 And there are turn-local dirty files
 When the heuristic engine evaluates the turn window
 Then ordinary checkpoint classification still runs for those files
-And only the post-commit review-gate surfacing action is suppressed
+And the post-commit review-gate surfacing action is emitted once
+And the authored-main-commit marker is consumed
+And no system role, including integrator, is exempt from this authorship rule
 ```
 
 #### UC-CP6: Per-adapter checkpoint response payloads
@@ -198,6 +199,11 @@ And the heuristic engine runs branch detection against the worktree, not the rep
 - The clear flag persists across turns until explicitly removed; it is
   the user/operator's responsibility to delete it to re-enable
   checkpoints.
+- The main-branch post-commit review gate is driven by a session-scoped
+  authored-main-commit latch recorded by `telec code commit` and consumed
+  when the review action surfaces. The latch is not SHA-keyed, so rebases
+  and peer HEAD movement do not re-arm it; raw `git commit` does not mark
+  authorship and remains an accepted out-of-scope gap.
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects
