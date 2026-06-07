@@ -7,8 +7,6 @@ visibility: public
 status: target
 delivered_by:
   - v2-config-cutover
-  - simplify-install-flow-cleanup
-  - install-wizard-enrichment
 description: Config bounded context — effective configuration resolved from layered
   YAML overlays. Owns the model, validation, and overlay computation. Consumed by
   every service.

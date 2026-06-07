@@ -4,7 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by: [integrate-deliveredby-flip]
 description: 'Curated baseline.md files of @-refs that anchor the always-loaded snippet set per scope.'
 ---
 

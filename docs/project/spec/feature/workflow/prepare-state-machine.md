@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by:
-  - drift-detection-consolidation
 description: 'Phase A state machine driving a Todo from draft input through PRD → architecture → plan to prepared, returning the next orchestrator instruction on each call.'
 ---
 

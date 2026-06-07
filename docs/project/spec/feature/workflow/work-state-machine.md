@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by:
-  - drift-detection-consolidation
 description: 'Phase B state machine driving a prepared Todo through build → review → fix → terminal finalize_ready inside a per-slug worktree, with a single-flight lock per (project_root, slug) and caller-session ownership for finalize.'
 ---
 

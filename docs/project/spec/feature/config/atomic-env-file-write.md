@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by:
-  - 'install-wizard-enrichment'
 description: 'The env-file writer mutates `.env` atomically — dump line-edited content to a sibling temp file, durably flush, atomically replace, cleanup on failure — so per-section wizard writes satisfy the setup-wizard idempotency contract.'
 ---
 

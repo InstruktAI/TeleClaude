@@ -1,14 +1,11 @@
 ---
-description: Per-command authorization matrix for telec CLI across all system and
-  human roles.
-id: project/design/cli-authorization-matrix
-scope: project
-type: design
-visibility: public
-applies_to: v1
-status: mixed
-delivered_by:
-  - roadmap-trash-reveal-ui
+description: 'Per-command authorization matrix for telec CLI across all system and human roles.'
+id: 'project/design/cli-authorization-matrix'
+scope: 'project'
+type: 'design'
+visibility: 'public'
+applies_to: 'v1'
+status: 'mixed'
 ---
 
 # CLI Authorization Matrix — Design

@@ -1,5 +1,5 @@
 ---
-description: 'Automatic cleanup of Telegram message clutter for a clean UI.'
+description: 'Automatic cleanup of UiAdapter message clutter for a clean UI.'
 id: 'project/policy/ux-message-cleanup'
 scope: 'project'
 type: 'policy'
@@ -10,7 +10,7 @@ visibility: 'public'
 
 ## Rules
 
-Track user input and feedback messages for automatic deletion to keep Telegram topics clean and focused on AI output.
+Track user input and feedback messages for automatic deletion to keep UiAdapter topics clean and focused on AI output.
 
 **Message Categories**:
 
@@ -34,7 +34,7 @@ Track user input and feedback messages for automatic deletion to keep Telegram t
 
 ## Rationale
 
-Without cleanup, Telegram topics become cluttered with:
+Without cleanup, UiAdapter topics become cluttered with:
 
 - Redundant user messages (visible in AI output anyway)
 - Stale feedback ("Sending..." when already sent)
@@ -46,14 +46,13 @@ Clean topics keep focus on the AI conversation and make session history scannabl
 
 Applies to:
 
-- All UI adapters (Telegram, future Slack/WhatsApp)
+- All UI adapters (Discord, Telegram, future Slack/WhatsApp)
 - User message handlers in input_handlers.py
 - Feedback emission in adapter_client.py and ui_adapter.py
 - Voice message transcription flows
 
 Does NOT apply to:
 
-- Transport adapters (Redis - no UI messages)
 - API adapter (no persistent message history)
 - Tool-call interfaces (no persistent message concepts)
 
@@ -63,7 +62,7 @@ Does NOT apply to:
 
 - Use `AdapterClient.send_message(..., cleanup_trigger=CleanupTrigger.NEXT_NOTICE)` for feedback
 - Call `AdapterClient.pre_handle_command(session, origin)` before processing user input
-- Never use raw Telegram `reply_text` - always route through tracking APIs
+- Never use raw UiAdapter `reply_text` - always route through tracking APIs
 
 **Testing**:
 

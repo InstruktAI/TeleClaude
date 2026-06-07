@@ -1,10 +1,9 @@
 ---
-id: project/design/architecture-v2/docs-authority
-type: design
-scope: project
-domain: software-development
-description: v2 docs-authority design for serialized docs writes, delivered-by reconciliation, file watching, and sync triggering inside the context service.
-delivered_by: [integrate-deliveredby-flip]
+id: 'project/design/architecture-v2/docs-authority'
+type: 'design'
+scope: 'project'
+domain: 'software-development'
+description: 'v2 docs-authority design for serialized docs writes, delivered-by reconciliation, file watching, and sync triggering inside the context service.'
 ---
 
 # Docs Authority — Design

@@ -5,8 +5,6 @@ scope: 'project'
 type: 'design'
 visibility: 'public'
 status: 'target'
-delivered_by:
-  - drift-detection-consolidation
 ---
 
 # Prepare Flow — Design

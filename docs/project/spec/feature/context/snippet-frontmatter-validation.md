@@ -4,7 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by: [integrate-deliveredby-flip]
 description: 'Schema, path, ref, and section-shape validation enforced on every taxonomy source snippet during telec sync.'
 ---
 

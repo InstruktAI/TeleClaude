@@ -4,7 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by: [integrate-deliveredby-flip]
 description: 'Integration-time flip of status target or mixed snippets when a delivery slug reaches delivered todo status.'
 ---
 

@@ -249,8 +249,14 @@ def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
             return {}
     conn = sqlite3.connect(db_path)
     try:
+        # A real todo exists in ``todo_state``; the legacy ``roadmap`` table only
+        # carries the delivered/removed status (until ``v2-workflow-drop-roadmap``
+        # migrates it). Join so orphaned roadmap rows with no real todo are excluded
+        # — otherwise a phantom slug would read as a live deliverer.
         rows = conn.execute(
-            "SELECT slug, status FROM roadmap WHERE status IN (?, ?, ?, ?)",  # guard: raw-sql
+            "SELECT r.slug, r.status FROM roadmap r "  # guard: raw-sql
+            "JOIN todo_state ts ON ts.slug = r.slug "
+            "WHERE r.status IN (?, ?, ?, ?)",
             _ROADMAP_STATUS_VALUES,
         ).fetchall()
     except sqlite3.OperationalError as exc:
@@ -292,14 +298,44 @@ def _validate_delivered_by(
         _error("snippet_delivered_by_invalid_shape", path=str(path))
 
 
+_LIVE_ROADMAP_STATUSES = frozenset({RoadmapStatus.ACTIVE.value, RoadmapStatus.ICEBOX.value})
+
+
+def _validate_delivered_by_roadmap(
+    path: Path,
+    meta: Mapping[str, object],
+    roadmap_status_map: Mapping[str, str],
+) -> None:
+    """Flag any delivered_by slug that is not a live (active/icebox) todo.
+
+    A valid pending marker names an in-flight todo. A slug resolving to a
+    delivered/removed todo should have been cleared on delivery; one resolving to
+    nothing is a typo or a deleted todo. Both are anomalies — not legacy to tolerate
+    — so they fail validation and must be removed.
+    """
+    delivered_by = _as_str_list(meta.get("delivered_by"))
+    for slug in delivered_by:
+        status = roadmap_status_map.get(slug)
+        if status in _LIVE_ROADMAP_STATUSES:
+            continue
+        reason = "no such todo (typo or deleted)" if status is None else f"todo is {status}, not in flight"
+        _error("snippet_delivered_by_invalid_slug", path=str(path), slug=slug, reason=reason)
+
+
 def validate_snippet(
     path: Path,
     content: str,
     project_root: Path,
     *,
     domains: set[str],
+    roadmap_status_map: Mapping[str, str] | None = None,
 ) -> None:
-    """Validate a single doc snippet. Collects validation findings via ``_error``."""
+    """Validate a single doc snippet. Collects validation findings via ``_error``.
+
+    When ``roadmap_status_map`` is provided, delivered_by slugs are also checked
+    against the live roadmap (existence + in-flight status); when ``None`` the
+    snippet is validated for shape only (roadmap-agnostic callers).
+    """
     if _is_third_party_doc(path, project_root):
         validate_third_party_doc(path, content, project_root)
         return
@@ -355,6 +391,8 @@ def validate_snippet(
     snippet_type = _snippet_type_for_validation(path, meta)
     _validate_activation_trigger(path, meta, snippet_type=snippet_type)
     _validate_delivered_by(path, meta)
+    if roadmap_status_map is not None:
+        _validate_delivered_by_roadmap(path, meta, roadmap_status_map)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, domains=domains)
@@ -811,9 +849,24 @@ def _validate_baseline_dedup(project_root: Path) -> None:
                     _error("baseline_dedup_violation", path=str(container), snippet_id=snippet_id, domain=domain)
 
 
+def _resolve_roadmap_status_map(project_root: Path) -> dict[str, str] | None:
+    """Load the roadmap slug→status map, or ``None`` when no todos DB is reachable.
+
+    Returning ``None`` (DB genuinely absent — fresh clone, CI without state) skips
+    the delivered_by roadmap-validity check rather than flagging every slug as
+    missing. An empty map with a present DB is a real empty roadmap and still runs.
+    """
+    if (project_root / ".teleclaude" / "todos.db").exists() or (
+        resolve_state_root(project_root) / ".teleclaude" / "todos.db"
+    ).exists():
+        return build_roadmap_status_map(project_root)
+    return None
+
+
 def validate_all_snippets(project_root: Path) -> None:
     """Validate all doc snippets under the project. Collects validation findings."""
     domains = load_domains(project_root)
+    roadmap_status_map = _resolve_roadmap_status_map(project_root)
     snippet_roots = _iter_snippet_roots(project_root)
     for snippets_root in snippet_roots:
         try:
@@ -833,6 +886,6 @@ def validate_all_snippets(project_root: Path) -> None:
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
-            validate_snippet(path, text, project_root, domains=domains)
+            validate_snippet(path, text, project_root, domains=domains, roadmap_status_map=roadmap_status_map)
     _validate_baseline_dedup(project_root)
     validate_third_party_docs(project_root)

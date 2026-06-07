@@ -4,7 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by: [integrate-deliveredby-flip]
 description: 'telec sync validates source, records best-effort provenance, builds indexes, and distributes artifacts under --validate-only / --warn-only semantics.'
 ---
 

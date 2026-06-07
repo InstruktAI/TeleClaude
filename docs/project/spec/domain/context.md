@@ -7,7 +7,6 @@ visibility: public
 status: target
 delivered_by:
   - v2-context
-  - integrate-deliveredby-flip
 description: Context bounded context — file-based context engineering. Owns docs,
   skills, commands, and agent files. Validates, deploys, exposes CRUD. Foundation
   for self-improvement loops.

@@ -6,8 +6,6 @@ scope: 'domain'
 type: 'procedure'
 visibility: 'public'
 status: 'target'
-delivered_by:
-  - drift-detection-consolidation
 ---
 
 # Drift Analyze — Procedure

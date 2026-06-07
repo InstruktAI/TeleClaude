@@ -412,20 +412,11 @@ def _commit_under_lock(
     if to_stage:
         _stage_files(to_stage, project_root)
 
-    # Every --include path must contribute a change. Verify each declared
-    # include is either currently dirty (modified-tracked) or now staged
-    # (was-untracked, just added). A clean path is an agent error.
-    if includes:
-        # Include the just-staged paths in the dirty set so the
-        # was-untracked + --include path is recognized as dirty.
-        dirty_set = snapshot.dirty | set(to_stage)
-        missing_inc = [path for path in includes if path not in dirty_set]
-        if missing_inc:
-            print(
-                "ERROR: --include path(s) have no changes to commit:\n  " + "\n  ".join(missing_inc),
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
+    # --include is a conscious force-include — the agent's final decision to put
+    # these paths in the commit. We do not pre-reject it: a clean declared path is
+    # a harmless no-op (git records nothing for it) and a non-existent one git
+    # rejects naturally. Second-guessing an explicit include only produces
+    # false-positives that block legitimate commits.
 
     # Partial-staging guard inside the pathspec. `git commit -- <path>`
     # records the working-tree version of <path>, not just the staged hunks.

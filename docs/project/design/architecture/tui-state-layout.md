@@ -1,15 +1,11 @@
 ---
-description: State-driven layout model for the Telec TUI sessions and preparation
-  views.
-id: project/design/architecture/tui-state-layout
-scope: project
-type: design
-visibility: public
-applies_to: v1
-status: mixed
-delivered_by:
-  - roadmap-trash-reveal-ui
-  - tui-sticky-layout-unify
+description: 'State-driven layout model for the Telec TUI sessions and preparation views.'
+id: 'project/design/architecture/tui-state-layout'
+scope: 'project'
+type: 'design'
+visibility: 'public'
+applies_to: 'v1'
+status: 'mixed'
 ---
 
 # Tui State Layout — Design

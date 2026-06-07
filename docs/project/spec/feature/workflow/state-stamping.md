@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-delivered_by:
-  - drift-detection-consolidation
 description: 'The `telec todo stamp` command and the validated state-write boundary it goes through — approvals, review verdicts, skip stamps, drift-reviewed acknowledgments, build-complete and finalize-ready handoffs.'
 ---
 

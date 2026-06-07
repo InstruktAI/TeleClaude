@@ -5,7 +5,6 @@ scope: 'project'
 domain: 'software-development'
 type: 'design'
 visibility: 'public'
-delivered_by: [integrate-deliveredby-flip]
 ---
 
 # Services — Design
