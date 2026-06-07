@@ -6,13 +6,14 @@
   # Filter with --areas <principle|concept|policy|procedure|design|spec|adr> and/or --domains <software-development|creative|marketing|customer-relations> (omit for all)
   
   project/spec/feature/context/current-snippet: A current snippet with no pending state.
-  project/spec/feature/context/pending-snippet: A pending snippet owned by two slugs. (delivered by: slug-a,slug-b)
+  project/spec/feature/context/pending-snippet: A pending snippet owned by two slugs.  (delivered by: slug-a, slug-b)
   
   # ⚠️  IMPORTANT: Call `telec docs get` again with the snippet IDs of interest!
   
-  # NOTE (migration-window, deprecated and will be removed post-v2-cutover):
-  # Specs may have a sibling `<stem>-v2-diff.md` of `type: spec-diff` capturing v2 divergence
-  # from the parent. Read parent + companion together to understand v2 behavior.
-  # See `software-development/principle/documentation-first-development` section 10.
+  # NOTE: Pending work is flagged inline, never hidden: `(delivered by: slug)` marks a
+  # not-yet-live NEW snippet; `(superseded by: slug)` marks a LIVE snippet with an incoming
+  # rework (companion file or planned section). The bodies stay invisible until active —
+  # `telec docs get` strips planned sections; `telec docs get <id> --target <slug>` reveals them.
+  # `telec docs index --target <slug>` focuses on one todo's new snippets.
   '''
 # ---
