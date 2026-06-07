@@ -73,13 +73,13 @@ Example:
 #### Todo (aggregate)
 
 - **Root:** TodoEntry
-- **Contains:** Artifact (input | prd | architecture | test-specs | implementation-plan | task-plan | bug | quality-checklist | design-spec | deferrals | review-findings), VersionedArtifact, StageState
+- **Contains:** Artifact (input | prd | architecture | test-specs | implementation-plan | bug | quality-checklist | design-spec | deferrals | review-findings), VersionedArtifact, StageState
 - **Invariants:**
   - A todo has exactly one current StageState at any moment.
   - An artifact's version history is append-only.
   - A todo cannot move to `delivered` stage without a non-empty `delivery_commit`.
 - **Identifier:** slug (kebab-case, unique per project)
-- **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional). A kind-less creation stores the dump as `input` and is classified by `/analyze-todo-input` (which proposes a kind for approval). Reaches terminal `delivered` after integration. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create <slug> <content> --kind <kind>` (both content and kind required). Reaches terminal `delivered` after integration. Frozen aggregates move to icebox.
 ```
 
 #### Domain events emitted

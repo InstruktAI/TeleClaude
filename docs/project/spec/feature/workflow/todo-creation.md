@@ -4,6 +4,8 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
+delivered_by:
+  - task-kind-and-kindless-intake
 description: 'Todo creation — `telec todo create <slug> <content> [--kind <kind>]` is the single creation command (content required; kind optional — a kind-less dump is classified by /analyze-todo-input), and `telec todo design` enters the creative state machine. The workflow service emits `workflow.todo.created` consumed by the lifecycle router.'
 ---
 

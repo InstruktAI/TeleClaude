@@ -9,6 +9,7 @@ delivered_by:
   - v2-workflow-cutover
   - roadmap-trash-reveal-ui
   - v2-workflow-cli-refinement-commands
+  - task-kind-and-kindless-intake
 applies_to: v2
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
