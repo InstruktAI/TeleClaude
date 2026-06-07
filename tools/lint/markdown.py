@@ -24,6 +24,7 @@ from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.resource_validation import clear_errors, get_errors, validate_all_snippets
 from teleclaude.snippet_validation import (
     expected_snippet_id_for_path,
+    is_companion,
     load_domains,
     validate_snippet_id_format,
 )
@@ -161,6 +162,10 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, do
         parsed_id, id_error = validate_snippet_id_format(snippet_id, domains=domains)
         if id_error:
             errors.append(f"{file_path}: Invalid snippet id '{snippet_id}' ({id_error})")
+        # A companion `<stem>.<slug>.md` is the full next version of `<stem>.md` and
+        # deliberately shares the parent's id; exempt it from id↔path checks.
+        if is_companion(file_path):
+            return errors
         expected_id, path_error = expected_snippet_id_for_path(file_path, project_root=REPO_ROOT, domains=domains)
         if path_error:
             errors.append(f"{file_path}: Invalid doc path ({path_error})")

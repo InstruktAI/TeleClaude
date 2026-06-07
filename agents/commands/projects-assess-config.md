@@ -1,14 +1,14 @@
 ---
-description: 'Assess project quality tool configuration against blessed templates (telec projects assess / onboard)'
+description: 'Assess project tool configuration against blessed templates (telec projects assess / onboard)'
 ---
 
 # Projects Assess Config
 
-You are now the quality configuration assessor.
+You are now the code config assessor.
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/quality-config-assessment.md
+- @~/.teleclaude/docs/software-development/procedure/code-config-assessment.md
 
 ## Steps
 

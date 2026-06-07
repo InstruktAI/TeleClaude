@@ -42,7 +42,23 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 9. After any doc change, run `telec sync` to deploy all artifacts. Commit the regenerated index files as part of the task — they are build outputs of the sync step and reflect the current truth of the docs directory.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
-12. **Spec-diff companion sync (migration-window discipline).** If the snippet being edited is `type: spec` AND a sibling `<stem>-v2-diff.md` companion exists (file convention for `type: spec-diff` per `general/spec/snippet-authoring-schema`), the SAME operation also reviews the companion and updates it if your edit affects what the diff describes. The relationship is intelligence-managed — no lint enforces it. The same discipline applies when authoring a new `spec-diff`: read the parent spec first, write only the delta sections (Replaces / Adds / Removes / Why), do not duplicate parent content. See `software-development/principle/documentation-first-development` section 10 for the spec-diff companion infrastructure.
+12. **Changing an existing snippet — ADD vs REPLACE.** A live snippet is never overwritten in place to describe a change before it is delivered. Decide which kind of change you are making and author it accordingly; both carry your delivering `<slug>`.
+
+    - **ADD** (new content: a new Gherkin scenario, a new rule, a new section). Author it **in context under its correct heading**, wrapped in a planned marker that names the slug:
+
+      ```
+      <!-- planned:<slug> -->
+      ...the new content...
+      <!-- /planned:<slug> -->
+      ```
+
+      Gherkin appends as more `#### UC-…` blocks; never reshuffle. On delivery the two marker lines are removed and the content stays exactly where it is, now live.
+
+    - **REPLACE** (a wholesale rework). Author a **companion file** `<stem>.<slug>.md` as a sibling of the parent `<stem>.md` — the **complete next version** of the parent, not a diff: a full snippet with the parent's own frontmatter (including its `id`) and a full body. The link is **the filename alone** — do **not** add any frontmatter field to the parent. The index derives a `(superseded by: <slug>)` suffix on the parent's line from the companion's existence, so reading the index shows a replacement is in flight; the companion itself never gets its own index line. On delivery the companion's content **replaces** the parent file and the companion is deleted (handled by the integration machine). The validator detects the companion by its sibling filename and validates it as a full snippet, exempting only the id↔path / id-collision checks since it deliberately shares the parent's id.
+
+    - **Ordering.** Two pending companions on the same parent MUST be dependency-ordered (`telec todo set-deps B --after A`) — never two independent reworks of one file in flight. Delivery is dependency-gated, so they merge-and-delete in order, each authored against the post-merge parent.
+
+    - **Discoverability.** `telec docs index` flags pending work inline, never hiding it: `(delivered by: <slugs>)` on a brand-new snippet not yet live, `(superseded by: <slugs>)` on a live parent with a pending companion or planned section (derived from the filename/marker). Companions never get their own line. The pending **bodies** stay invisible until active — `telec docs get <id>` strips planned sections, and `telec docs get <id> --target <slug>` reveals that slug's. `telec docs index --target <slug>` narrows the listing to one todo's new snippets.
 13. **ADR discipline (decision capture).** If your snippet change embeds a non-trivial decision — one a future agent might reasonably ask "why was it done this way?" about — author an accompanying ADR per `general/policy/adr-discipline`, following `general/procedure/adr-authoring`. Specs, procedures, and principles describe the _current state_; ADRs preserve the _reasoning_. Do not embed reasoning logs in primary artifacts.
 
 ## Outputs

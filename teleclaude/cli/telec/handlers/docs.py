@@ -111,10 +111,19 @@ def _handle_docs_get(args: list[str]) -> None:
     """Handle telec docs get."""
     project_root = resolve_invocation_cwd()
     snippet_ids: list[str] = []
+    target_slug: str | None = None
 
     i = 0
     while i < len(args):
         arg = args[i]
+        if arg == "--target" and i + 1 < len(args):
+            target_slug = args[i + 1].strip()
+            i += 2
+            continue
+        if arg == "--target":
+            print("Missing value for --target.")
+            print(_usage("docs", "get"))
+            raise SystemExit(1)
         if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("docs", "get"))
@@ -139,6 +148,7 @@ def _handle_docs_get(args: list[str]) -> None:
         baseline_only=False,
         include_third_party=False,
         domains=None,
+        target_slug=target_slug,
         effective_human_role=effective_role,
         config=config,
     )

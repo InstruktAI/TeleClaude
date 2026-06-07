@@ -23,11 +23,12 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
 )
+from teleclaude.doc_body import PLANNED_BLOCK_RE
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
-from teleclaude.snippet_validation import load_domains
+from teleclaude.snippet_validation import is_companion, load_domains
 
 __all__ = ["load_domains"]
 
@@ -114,6 +115,7 @@ class SnippetEntry(TypedDict):
     source_project: NotRequired[str]
     visibility: NotRequired[str]
     delivered_by: NotRequired[list[str]]
+    superseded_by: NotRequired[list[str]]
 
 
 class IndexPayload(TypedDict):
@@ -490,6 +492,47 @@ def check_global_collisions(
 # ---------------------------------------------------------------------------
 
 
+def _superseding_slugs(file_path: Path) -> list[str]:
+    """Pending slugs touching this live parent, derived from the filesystem — not frontmatter.
+
+    A slug supersedes the parent when it owns a companion ``<stem>.<slug>.md`` (full
+    replacement) or an in-body ``<!-- planned:slug -->`` block (additive). The index renders
+    these as a ``(superseded by: …)`` suffix on the parent's line; the relationship is carried
+    by the filename and the marker, so it needs no frontmatter and auto-clears on delivery.
+    """
+    stem = file_path.name[:-3] if file_path.name.endswith(".md") else file_path.name
+    if "." in stem:
+        return []  # the file itself is a companion, not a parent
+    slugs: set[str] = set()
+    prefix = f"{stem}."
+    for sibling in file_path.parent.glob(f"{stem}.*.md"):
+        slug = sibling.name[:-3][len(prefix) :]
+        if slug and "." not in slug:
+            slugs.add(slug)
+    try:
+        body = file_path.read_text(encoding="utf-8")
+    except OSError:
+        body = ""
+    slugs.update(match.group("slug") for match in PLANNED_BLOCK_RE.finditer(body))
+    return sorted(slugs)
+
+
+def _attach_superseding_slugs(entry: SnippetEntry, file_path: Path) -> None:
+    slugs = _superseding_slugs(file_path)
+    if slugs:
+        entry["superseded_by"] = slugs
+
+
+def _eligible_snippet_files(snippets_root: Path, *, include_baseline: bool) -> list[Path]:
+    """Sorted snippet files for indexing, excluding companions.
+
+    A companion ``<stem>.<slug>.md`` (sibling of an existing ``<stem>.md``) shares the
+    parent's id and is the parent's pending replacement — it is never a standalone index
+    entry. See ``software-development/principle/documentation-first-development`` section 10.
+    """
+    return sorted(f for f in snippet_files(snippets_root, include_baseline=include_baseline) if not is_companion(f))
+
+
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
     """Build the index.yaml payload for a snippet root. Modifies files as side effects
     (normalizes titles, removes stale indexes)."""
@@ -508,7 +551,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
     except ValueError:
         include_baseline = False
 
-    files = sorted(snippet_files(snippets_root, include_baseline=include_baseline))
+    files = _eligible_snippet_files(snippets_root, include_baseline=include_baseline)
     if not files:
         return {"project_root": str(project_root), "snippets_root": str(snippets_root), "snippets": []}
 
@@ -581,6 +624,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         else:
             entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
         _copy_delivered_by_metadata(entry, metadata)
+        _attach_superseding_slugs(entry, file_path)
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])

@@ -78,6 +78,21 @@ def validate_snippet_id_format(
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest), None
 
 
+def is_companion(path: Path) -> bool:
+    """A companion is ``<stem>.<slug>.md`` — a sibling of an existing ``<stem>.md``.
+
+    Snippet stems and slugs are kebab-case (dot-free), so a companion is the only
+    ``.md`` file whose name carries a dot before the extension; the segment before
+    that final dot names the parent stem. A companion is the full next version of
+    its parent and deliberately shares the parent's id, so id↔path checks exempt it.
+    """
+    base = path.name[:-3] if path.name.endswith(".md") else path.name
+    if "." not in base:
+        return False
+    stem = base.rsplit(".", 1)[0]
+    return (path.parent / f"{stem}.md").exists()
+
+
 def expected_snippet_id_for_path(
     path: Path,
     *,

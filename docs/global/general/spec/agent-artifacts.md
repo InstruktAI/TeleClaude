@@ -52,8 +52,8 @@ the H1 title, ordered from general to concrete: concept → principle → policy
 2. `## Required reads` (only if needed)
 3. Activation line: `You are now the <Role>.`
 4. `## Purpose`
-5. `## Inputs`
-6. `## Outputs`
+5. `## Inputs` — **conditional** (see the content contract below)
+6. `## Outputs` — **conditional** (see the content contract below)
 7. `## Steps`
 8. `## Discipline`
 
@@ -63,14 +63,27 @@ Commands are thin wrappers — session entry points, not procedure manuals. A co
 answers three questions: who am I, what do I know, and what did I receive. The
 procedure handles the rest.
 
+**Inputs and Outputs are conditional, not default.** A command MUST NOT declare
+`## Inputs` or `## Outputs` when a counterpart procedure governs its work — the
+procedure owns them (its `## Preconditions`/`## Outputs`), and repeating them on the
+command is duplication. They may appear ONLY on a self-contained command that has no
+such counterpart. This rule is not machine-enforced — it is a judgement and cannot be:
+a command may list several procedures as required reads for _context_ without any one
+of them being the counterpart that owns its inputs and outputs. Apply the judgement;
+when a single procedure clearly governs the command's work, that is the counterpart.
+
 **What belongs in each section:**
 
 - **Required reads**: The procedure that governs this command's work, plus the role
   concept. This is how the agent learns what to do — not from inline steps.
 - **Purpose**: One sentence. What this command achieves, not how.
-- **Inputs**: Arguments, flags, and what the agent receives. No validation logic.
-- **Outputs**: What the agent must produce — report format, files, state changes.
-  Describe the shape, not the process of producing it.
+- **Inputs** (conditional): Arguments and flags, only on a self-contained command with
+  no counterpart procedure. No validation logic. When a counterpart exists, the
+  argument lives in frontmatter (`argument-hint`/`parameters`) and the rest in the
+  procedure — omit this section.
+- **Outputs** (conditional): What the agent must produce — report shape, files, state
+  changes — only on a self-contained command. When a counterpart procedure exists, its
+  `## Outputs` owns this; omit the section.
 - **Steps**: The mechanical invocation sequence only. Parse args, call a CLI command,
   read a file, act on the result. If a step requires judgement, it belongs in the
   procedure, not here.

@@ -37,6 +37,7 @@ from teleclaude.resource_validation._models import (
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots
 from teleclaude.snippet_validation import (
     expected_snippet_id_for_path,
+    is_companion,
     load_domains,
     validate_inline_ref_format,
     validate_snippet_id_format,
@@ -323,8 +324,12 @@ def validate_snippet(
         body = content
     lines = body.splitlines()
 
+    # A companion `<stem>.<slug>.md` is the full next version of `<stem>.md` and
+    # deliberately shares the parent's id; validate it as a full snippet but exempt
+    # the id↔path checks. See documentation-first-development section 10.
+    companion = is_companion(path)
     expected_id, path_error = expected_snippet_id_for_path(path, project_root=project_root, domains=domains)
-    if path_error:
+    if path_error and not companion:
         _error("snippet_invalid_path", path=str(path), reason=path_error)
 
     parsed_id = None
@@ -338,7 +343,7 @@ def validate_snippet(
                 reason=id_error,
                 snippet_id=snippet_id,
             )
-    if expected_id and parsed_id and parsed_id.value() != expected_id:
+    if expected_id and parsed_id and parsed_id.value() != expected_id and not companion:
         _error(
             "snippet_id_path_mismatch",
             path=str(path),

@@ -30,6 +30,7 @@ from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.docs_reconcile import reconcile_delivered_snippets
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
 
@@ -534,7 +535,16 @@ def _do_merge(
             return True, ""
 
     if rc == 0:
-        # Clean merge — read stats from integration worktree, context from repo root
+        # Clean merge — fold the delivered slug's pending doc state into the live
+        # contract (companions swapped in, planned markers stripped, delivered_by
+        # cleared), then re-stage so the reconciliation rides the integrator's commit.
+        try:
+            if reconcile_delivered_snippets(integration_wt, key.slug):
+                _run_git(["add", "-A"], cwd=wt)
+        except Exception:
+            logger.warning("delivered-snippet reconciliation failed for %s (non-fatal)", key.slug)
+
+        # Read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)

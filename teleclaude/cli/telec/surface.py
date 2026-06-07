@@ -411,14 +411,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--target", desc="Filter to snippets delivered by slug"),
                 ],
                 notes=[
-                    "Non-actual snippets render with a [target → slug] or [mixed → slug] prefix in phase 1 output.",
+                    "Live snippets only by default; pending net-new snippets are hidden until you pass their delivering --target slug.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "get": CommandDef(
                 desc="Fetch full snippet content by ID (phase 2)",
-                args="<id> [id...]",
-                flags=[_H],
+                args="<id> [id...] [--target <slug>]",
+                flags=[
+                    _H,
+                    Flag("--target", desc="Include the slug's planned sections in the body (default: strip all)"),
+                ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
         },

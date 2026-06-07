@@ -25,6 +25,9 @@ Create a predictable Python project skeleton with standardized tooling and verif
    - `make format` (formatters as configured)
    - `make lint` (lint + type check)
    - `make test` (the spec-bound functional/smoke suite)
+   <!-- planned:project-toolchain -->
+   - `make install` (provision every present toolchain — `uv sync` for python; corepack + detected package manager for node/frontend; `cargo fetch` for rust). The `Makefile` is the only mandate, and `telec code install` defers to this target. See `software-development/design/project-toolchain`.
+   <!-- /planned:project-toolchain -->
 
 3. **Wire tool configuration**
    - Configure format/lint/type tools inside `pyproject.toml`.

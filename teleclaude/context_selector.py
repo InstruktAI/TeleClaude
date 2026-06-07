@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +17,12 @@ from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     SNIPPET_VISIBILITY_INTERNAL,
     TAXONOMY_TYPES,
+)
+from teleclaude.doc_body import (
+    INLINE_REF_RE,
+    apply_planned_sections,
+    resolve_inline_refs,
+    split_frontmatter,
 )
 from teleclaude.docs_index import extract_required_reads, get_project_slug
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR, REPO_ROOT
@@ -42,6 +47,7 @@ class SnippetMeta:
     project_root: Path | None = None
     visibility: str = SNIPPET_VISIBILITY_INTERNAL
     delivered_by: tuple[str, ...] = ()
+    superseded_by: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -59,8 +65,6 @@ def _scope_rank(scope: str | None) -> int:
         return 3
     return SCOPE_ORDER.get(scope, 3)
 
-
-_INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 
 _TEST_ENABLED_ENV = "TELECLAUDE_GET_CONTEXT_TESTING"
 _index_cache: dict[str, tuple[float, list[SnippetMeta]]] = {}
@@ -130,22 +134,6 @@ def _write_test_output(
                 handle.write(",".join(row) + "\n")
     except Exception:
         return
-
-
-def _split_frontmatter(content: str) -> tuple[str, str]:
-    """Split frontmatter header from body, preserving header verbatim."""
-    if not content.startswith("---"):
-        return "", content
-    lines = content.splitlines(keepends=True)
-    if not lines:
-        return "", content
-    # Find the closing frontmatter fence.
-    for idx in range(1, len(lines)):
-        if lines[idx].strip() == "---":
-            head = "".join(lines[: idx + 1])
-            body = "".join(lines[idx + 1 :])
-            return head, body
-    return "", content
 
 
 def _domain_for_snippet(snippet: SnippetMeta, *, project_domains: dict[str, Path]) -> str:
@@ -220,27 +208,6 @@ def _is_cross_project_snippet_id(snippet_id: str, *, domain_prefixes: set[str]) 
     return True
 
 
-def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -> str:
-    """Expand @<path>.md references to absolute paths for tool consumption."""
-    head, body = _split_frontmatter(content)
-
-    def _expand(match: re.Match[str]) -> str:
-        ref = match.group(1)
-        if "://" in ref:
-            return match.group(0)
-        candidate = Path(ref).expanduser()
-        if not candidate.is_absolute():
-            if str(candidate).startswith("docs/"):
-                candidate = (root_path / candidate).resolve()
-            else:
-                candidate = (snippet_path.parent / candidate).resolve()
-        else:
-            candidate = candidate.resolve()
-        return f"@{candidate}"
-
-    return f"{head}{_INLINE_REF_RE.sub(_expand, body)}"
-
-
 def _load_index(
     index_path: Path,
     *,
@@ -308,6 +275,12 @@ def _load_index(
                 if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by)
                 else ()
             )
+            raw_superseded_by = item.get("superseded_by")
+            superseded_by = (
+                tuple(raw_superseded_by)
+                if isinstance(raw_superseded_by, list) and all(isinstance(slug, str) for slug in raw_superseded_by)
+                else ()
+            )
             loaded_entries.append(
                 SnippetMeta(
                     snippet_id=snippet_id,
@@ -319,6 +292,7 @@ def _load_index(
                     project_root=root_path,
                     visibility=visibility,
                     delivered_by=delivered_by,
+                    superseded_by=superseded_by,
                 )
             )
         _index_cache[cache_key] = (mtime, loaded_entries)
@@ -340,6 +314,7 @@ def _load_index(
                 project_root=project_root or snippet.project_root,
                 visibility=snippet.visibility or SNIPPET_VISIBILITY_INTERNAL,
                 delivered_by=snippet.delivered_by,
+                superseded_by=snippet.superseded_by,
             )
         )
 
@@ -382,7 +357,7 @@ def _load_baseline_ids(
             return set()
 
     baseline_ids: set[str] = set()
-    for match in _INLINE_REF_RE.finditer(content):
+    for match in INLINE_REF_RE.finditer(content):
         ref = match.group(1)
         candidate = Path(ref).expanduser()
         if not candidate.is_absolute():
@@ -695,7 +670,12 @@ def _build_phase1_output(
         test_csv_path=test_csv_path,
     )
     for snippet in ordered:
-        parts.append(f"{snippet.snippet_id}: {snippet.description or ''}".strip())
+        line = f"{snippet.snippet_id}: {snippet.description or ''}".strip()
+        if snippet.delivered_by:
+            line += f"  (delivered by: {', '.join(snippet.delivered_by)})"
+        if snippet.superseded_by:
+            line += f"  (superseded by: {', '.join(snippet.superseded_by)})"
+        parts.append(line)
     if third_party_entries:
         parts.append("")
         parts.append("# Third-party documentation (not part of taxonomy)")
@@ -705,10 +685,11 @@ def _build_phase1_output(
     parts.extend(
         [
             "",
-            "# NOTE (migration-window, deprecated and will be removed post-v2-cutover):",
-            "# Specs may have a sibling `<stem>-v2-diff.md` of `type: spec-diff` capturing v2 divergence",
-            "# from the parent. Read parent + companion together to understand v2 behavior.",
-            "# See `software-development/principle/documentation-first-development` section 10.",
+            "# NOTE: Pending work is flagged inline, never hidden: `(delivered by: slug)` marks a",
+            "# not-yet-live NEW snippet; `(superseded by: slug)` marks a LIVE snippet with an incoming",
+            "# rework (companion file or planned section). The bodies stay invisible until active —",
+            "# `telec docs get` strips planned sections; `telec docs get <id> --target <slug>` reveals them.",
+            "# `telec docs index --target <slug>` focuses on one todo's new snippets.",
         ]
     )
     return "\n".join(parts)
@@ -735,14 +716,16 @@ def _read_selected_snippet_body(
     project_root: Path,
     global_root: Path,
     global_snippets_root: Path,
+    target_slug: str | None,
 ) -> str | None:
     try:
         raw = snippet.path.read_text(encoding="utf-8")
         root_path = (
             global_root if global_snippets_root in snippet.path.parents else (snippet.project_root or project_root)
         )
-        content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
-        _, body = _split_frontmatter(content)
+        content = resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
+        _, body = split_frontmatter(content)
+        body = apply_planned_sections(body, target_slug)
         return strip_required_reads_section(body)
     except Exception as exc:
         logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
@@ -861,7 +844,10 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         global_root=global_root,
         snippets_by_path=snippets_by_path,
     )
-    if target_slug is not None:
+    if not snippet_ids and target_slug is not None:
+        # Index --target: focus on one todo's not-yet-live new snippets. Without a
+        # target the listing shows everything, flagging pending work inline via the
+        # (delivered by:) / (superseded by:) suffixes rather than hiding it.
         snippets = [snippet for snippet in snippets if target_slug in snippet.delivered_by]
         third_party_entries = []
 
@@ -933,6 +919,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
             project_root=project_root,
             global_root=global_root,
             global_snippets_root=global_snippets_root,
+            target_slug=target_slug,
         )
         if body is None:
             continue
@@ -963,7 +950,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
                 continue
             try:
                 raw = entry.path.read_text(encoding="utf-8")
-                _, body = _split_frontmatter(raw)
+                _, body = split_frontmatter(raw)
             except Exception as exc:
                 logger.exception("context_selector_read_failed", path=str(entry.path), error=str(exc))
                 continue

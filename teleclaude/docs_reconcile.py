@@ -10,6 +10,7 @@ from typing import Literal, TypedDict, cast
 import yaml
 
 from teleclaude.constants import RoadmapStatus
+from teleclaude.doc_body import strip_planned_markers
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 
 
@@ -224,6 +225,72 @@ def reconcile_snippets_for_purged_slugs(
     if not purged_slug_tuple:
         return []
     return _planned_snippet_writes(project_root, roadmap_status_map, _purged_metadata_planner(purged_slug_tuple))
+
+
+def _companion_parent(path: Path, slug: str) -> Path | None:
+    """If ``path`` is the ``slug``'s companion ``<stem>.<slug>.md``, return its ``<stem>.md``."""
+    base = path.name[:-3] if path.name.endswith(".md") else path.name
+    if "." not in base:
+        return None
+    stem, suffix = base.rsplit(".", 1)
+    if suffix != slug:
+        return None
+    parent = path.parent / f"{stem}.md"
+    return parent if parent.exists() else None
+
+
+def _clear_delivered_slug(content: str, slug: str) -> str:
+    """Strip ``slug`` from a snippet's ``delivered_by`` frontmatter, dropping an empty key."""
+    parsed = _split_frontmatter(content)
+    if parsed is None:
+        return content
+    metadata, body = parsed
+    delivered_by = _delivered_by(metadata)
+    if slug not in delivered_by:
+        return content
+    remaining = [existing for existing in delivered_by if existing != slug]
+    next_metadata = cast(SnippetFrontmatter, dict(metadata))
+    if remaining:
+        next_metadata["delivered_by"] = remaining
+    else:
+        next_metadata.pop("delivered_by", None)
+    return _render_frontmatter(next_metadata, body)
+
+
+def reconcile_delivered_snippets(project_root: Path, slug: str) -> list[Path]:
+    """Fold a delivered slug's pending doc state into the live contract.
+
+    On delivery the slug's pending material becomes live, so this:
+    - replaces each parent ``<stem>.md`` with its companion ``<stem>.<slug>.md`` and
+      deletes the companion,
+    - removes the slug's ``<!-- planned:slug -->`` marker lines, keeping their content,
+    - drops the slug from any ``delivered_by`` frontmatter (the snippet is now live).
+
+    Idempotent: a second run finds no companions, markers, or memberships to change.
+    Returns the changed and removed paths.
+    """
+    changed: list[Path] = []
+
+    # 1. Swap companions into their parents first, so later passes see the live body.
+    for path in _iter_snippet_files(project_root):
+        parent = _companion_parent(path, slug)
+        if parent is None:
+            continue
+        parent.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        path.unlink()
+        changed.extend((parent, path))
+
+    # 2. Strip planned markers and clear delivered_by from the now-live snippets.
+    for path in _iter_snippet_files(project_root):
+        original = path.read_text(encoding="utf-8")
+        updated = _clear_delivered_slug(strip_planned_markers(original, slug), slug)
+        if updated == original:
+            continue
+        path.write_text(updated, encoding="utf-8")
+        if path not in changed:
+            changed.append(path)
+
+    return changed
 
 
 def rewrite_delivered_by_slug(

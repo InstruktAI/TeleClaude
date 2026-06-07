@@ -15,16 +15,6 @@ You are now the Reviewer.
 
 Re-run the reviewer test-quality lane against an existing test scope and write a durable audit report.
 
-## Inputs
-
-- Audit scope: `$ARGUMENTS`
-- If no scope is provided, audit the full test suite in the current repository.
-
-## Outputs
-
-- One audit report under `reports/test-suite-audit/`
-- A concise summary of scope, finding counts, and report path
-
 ## Steps
 
 1. Resolve the audit scope from `$ARGUMENTS`. If none is provided, use the full suite.

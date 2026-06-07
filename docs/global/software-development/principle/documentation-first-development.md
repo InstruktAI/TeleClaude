@@ -69,9 +69,16 @@ When a todo reaches `delivered`, the integration lifecycle clears any snippet wh
 - If there are still pending slugs in `delivered_by:`, the slug is removed from the list and the snippet remains pending (remaining slugs still in flight).
 - `telec sync` does not own this lifecycle mutation; it validates snippet shape, rebuilds indexes, and distributes the source state it receives.
 
+On the same delivery pass the integrator also dissolves the slug's **companions** and **planned sections** into their parents (see §10):
+
+- For each companion `<stem>.<slug>.md` (linked to its parent by filename alone): the companion's content **replaces** the parent file and the companion is deleted.
+- For each `<!-- planned:<slug> -->` marker: strip the marker lines; the content stays in place, now live.
+
+The doc layer self-heals to one authoritative snippet per concept — no companions, no markers, no lineage props left.
+
 ### 4. Discoverability surfaces ownership
 
-`telec docs index` renders the owning slugs inline for every pending snippet — current snippets render with no prefix, pending snippets render with a `[delivered_by → slug]` prefix that names the owning slugs. The same listing answers "what is the state of this snippet?" and "who is on the hook to close the gap?" without a second lookup.
+`telec docs index` renders the owning slugs inline for every pending snippet — current snippets render with no suffix, a brand-new pending snippet renders with a `(delivered by: <slugs>)` suffix, and a live snippet with an incoming change renders with a `(superseded by: <slugs>)` suffix. The same listing answers "what is the state of this snippet?" and "who is on the hook to close the gap?" without a second lookup.
 
 A worker preparing or building a slug runs `telec docs index --target <slug>` to see exactly which snippets it owns. This is the canonical query that makes the doc-first discipline operational rather than aspirational: the worker asks the system what it has been put on the hook for, and the system answers.
 
@@ -164,73 +171,79 @@ Ephemeral workflow.artifacts (PRD, implementation plan, review findings, drift a
 
 The prepare state machine still has phases; each phase's output shifts to docs (or stays workflow.artifact for the scaffolding). A phase with nothing to author (e.g., architecture phase on a Gherkin-only feature enrichment) produces no doc change and advances naturally.
 
-### 10. Migration versioning via the spec-diff companion
+### 10. Changing a live snippet — planned sections and companions
 
-> **Migration-window note.** During an active migration (e.g., v1→v2), divergences between the two implementation tracks live in `-v2-diff.md` companions. Post-cutover, when no diffs remain, the doc layer has zero version awareness — only `delivered_by:` for pending state.
+A live snippet (one without `delivered_by:`) describes current truth and is
+never overwritten in place to describe a change before that change ships. The
+change is authored as one of two shapes, both keyed by the delivering `<slug>`,
+both reconciled into the parent on delivery.
 
-When a project has a v1 → v2 (or vN → vN+1) migration boundary, **specs are
-the single authoritative platform contract.** Forking the same spec into a
-v1 copy and a v2 copy creates skew the moment either copy moves. Two
-states cover every real case:
+#### 10a. ADD — planned section
 
-#### 10a. Two states
+New content (a new scenario, rule, or section) is authored **in context under
+its heading**, wrapped in a planned marker:
 
-1. **Base spec** — the **default for platform specs**.
-   Behavior is invariant across v1 and v2 implementations. Both
-   implementations realize the same words. When either implementation changes the spec, the other inherits the change automatically.
-
-2. **Base spec + `-v2-diff.md` companion** — the concept exists in both versions but v2 changes how
-   it works. The parent stays as the shared platform spec; a
-   sibling `<stem>-v2-diff.md` snippet captures only the delta v2
-   introduces. Required sections: `Replaces` / `Adds` / `Removes` / `Why`. Reader contract:
-   to understand v2 behavior, read parent + diff together.
-
-#### 10b. The spec-diff companion in detail
-
-Path: lives as a sibling to its parent, suffix `-v2-diff.md`. Example:
-`docs/project/spec/feature/workflow/todo-creation.md` is the parent;
-`todo-creation-v2-diff.md` next to it is the companion.
-
-Frontmatter:
-
-```yaml
-type: spec-diff
-diff_of: project/spec/feature/<context>/<concept> # parent id, validated
-delivered_by: [<v2-cutover-slug>] # the v2 todo that ships the divergence
+```
+<!-- planned:<slug> -->
+...new content...
+<!-- /planned:<slug> -->
 ```
 
-Required sections:
+On delivery the marker lines are removed; the content stays in place, now live.
+Gherkin appends as more `#### UC-…` blocks and is never reshuffled.
 
-- **Replaces** — invariants from the parent that v2 overrides. State the
-  parent's invariant verbatim, then state v2's replacement.
-- **Adds** — capabilities v2 introduces beyond the parent spec.
-- **Removes** — parent capabilities v2 drops.
-- **Why** — rationale for the divergence (one paragraph; links to the
-  decision artifact if useful).
+#### 10b. REPLACE — companion
 
-Sections may be empty (e.g., a pure-additive diff has empty Replaces and
-Removes); intelligence omits the empty sections rather than leaving
-"none" placeholders.
+A wholesale rework is authored as a sibling companion `<stem>.<slug>.md` — the
+**complete next version** of the parent, not a diff. It is a full snippet: the
+same frontmatter as the parent (including its `id`) and a full body. On delivery
+its content simply **replaces** the parent file. The link is **the filename
+alone** — no field is added to the parent. The companion is located by its
+sibling filename and validated as a full snippet, exempt only from the id↔path
+and id-collision checks (it deliberately shares the parent's id).
 
-#### 10c. Lifecycle and sync discipline
+#### 10c. Swap in on delivery
 
-- **Authoring time.** When an agent edits a parent spec that has a
-  `-v2-diff.md` companion, the SAME operation updates the companion if
-  the edit affects what the diff describes. Discipline lives in
-  `general/procedure/doc-snippet-authoring`; no automated lint enforces
-  it — intelligence is the sync mechanism, just like with any other
-  cross-snippet coherence.
+When the slug delivers, the integration machine reconciles the doc layer
+programmatically (no agent step), folding the slug's pending state into the live
+contract before the integrator's commit:
 
-- **Cutover time.** When the relevant `v2-<pillar>-cutover` todo
-  delivers, an intelligence pass merges every spec-diff targeting that
-  pillar's specs into the parents (apply Replaces, append Adds, delete
-  Removes; carry forward Why content where it adds context to the
-  merged spec). The diff files are then deleted. After cutover the
-  parent specs describe v2 behavior directly.
+- Each companion `<stem>.<slug>.md` **replaces** its parent `<stem>.md`; the
+  companion is then **deleted**.
+- Each `<!-- planned:<slug> -->` block loses its marker lines; the content stays
+  in place, now live.
+- The slug is removed from any `delivered_by:` list (the field is dropped when the
+  slug was its last entry).
 
-- **Migration is COMPLETE** when zero `spec-diff` snippets exist. The doc layer is back to one
-  authoritative spec per concept with no v-prefixed bookkeeping —
-  exactly the steady state we want post-cutover.
+Two pending companions on the same parent MUST be dependency-ordered
+(`telec todo set-deps B --after A`); delivery is dependency-gated, so they apply
+in order, each written against the post-swap parent.
+
+#### 10d. Discoverability
+
+Pending work is **flagged inline, never hidden**. `telec docs index` annotates
+each line:
+
+- `(delivered by: <slugs>)` — a brand-new snippet, not yet live (read from its
+  own `delivered_by:` field),
+- `(superseded by: <slugs>)` — a live snippet with a pending change, **derived**
+  from the filesystem (a sibling companion file or an in-body planned marker),
+  not from any frontmatter field.
+
+A slug name on an index line is coordination metadata, not actionable content, so
+showing it carries no priming risk. The pending **bodies** are what stay
+invisible: `telec docs get <id>` strips planned sections (the live contract only),
+and `telec docs get <id> --target <slug>` reveals that slug's planned content for
+the builder who owns it. Companions never get their own index line. `telec docs
+index --target <slug>` narrows the listing to one todo's new snippets.
+
+#### 10e. Migration is just a slug
+
+A v1→v2 migration boundary uses this same mechanism with no special machinery:
+the cutover slug (e.g. `v2-config-cutover`) owns the companions
+`<stem>.v2-config-cutover.md`. Migration is COMPLETE when that slug delivers and
+zero companions remain — the doc layer returns to one authoritative snippet per
+concept with no version bookkeeping.
 
 Required on design docs under `docs/project/design/architecture/` (v1),
 `architecture-v2/` (v2), and on feature snippets under
@@ -248,6 +261,10 @@ A feature whose acceptance scenarios cross multiple bounded contexts (pillars) g
 5. If the slices MUST land together (e.g., a new event taxonomy where every consumer needs the coordinated update on the same day), intake keeps a single todo with multiple per-context commits. Independence is the discriminator.
 
 The human reviewer confirms the split decomposition before child todos are dispatched. Auto-splitting without review risks fragmenting features the human wanted atomic.
+
+### 12. Agent artifacts arrive at delivery, never pre-created
+
+Agent artifacts (commands, skills, agents) are **not** doc snippets and do not carry `delivered_by:`. A snippet can sit on `main` in a pending state because the index flags it; an artifact cannot — it compiles into the live runtime (`~/.claude`, etc.), so a half-authored artifact on `main` is a live, broken tool. Therefore an artifact is authored inside its delivering todo's worktree and reaches `main` only when the integrator delivers that todo. There is no pending-artifact state to mark: until the todo delivers, the artifact does not exist on `main`. Its design intent still lives doc-first — in the governing procedure snippet, which carries the `delivered_by:` — and the thin artifact ships alongside it at delivery.
 
 ## Tensions
 

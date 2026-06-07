@@ -33,9 +33,18 @@ Create or update agent artifacts that follow the schema and compile correctly fo
    List order defines position. Use `$name` references in the body. See the
    agent-artifacts spec for the full schema.
 5. Add the artifact title (`# ...`) for all artifacts.
-6. Apply the artifact-specific rules below.
-7. **ADR discipline (decision capture).** If your artifact change embeds a non-trivial decision — one a future agent might reasonably ask "why was it done this way?" about — author an accompanying ADR per `general/policy/adr-discipline`, following `general/procedure/adr-authoring`. Artifacts describe the _current behavior_; ADRs preserve the _reasoning_. Do not embed reasoning logs in primary artifacts.
-8. After any doc change, run `telec sync`.
+6. Apply the artifact-specific schema from the agent-artifacts spec.
+7. **Keep commands thin; Inputs/Outputs are conditional.** A command is a session
+   entry point — who am I, what do I know, what did I receive — not a procedure manual.
+   It carries only `## Purpose` (one sentence), `## Required reads` (its governing
+   procedure + role), `## Steps` (mechanical invocation), and `## Discipline`. It MUST
+   NOT declare `## Inputs` or `## Outputs` when a counterpart procedure governs its work:
+   the argument lives in frontmatter (`argument-hint`/`parameters`) and the outputs in
+   the procedure's `## Outputs`. Add Inputs/Outputs ONLY to a self-contained command that
+   has no such counterpart. This is a judgement, not a machine check — listing several
+   procedures for context is not the same as having one that owns your inputs and outputs.
+8. **ADR discipline (decision capture).** If your artifact change embeds a non-trivial decision — one a future agent might reasonably ask "why was it done this way?" about — author an accompanying ADR per `general/policy/adr-discipline`, following `general/procedure/adr-authoring`. Artifacts describe the _current behavior_; ADRs preserve the _reasoning_. Do not embed reasoning logs in primary artifacts.
+9. After any doc change, run `telec sync`.
 
 ## Outputs
 
