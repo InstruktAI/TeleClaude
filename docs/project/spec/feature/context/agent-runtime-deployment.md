@@ -118,11 +118,9 @@ Scenario: Distribution invoked directly in no-deploy mode
 - Worktree-aware docs sourcing prevents the easy bug of "synced from a
   worktree but deployed main-branch docs". A worktree whose `docs/` is
   missing, however, falls back silently rather than erroring.
-- `--warn-only` is forwarded to the distribution step. The step's return
-  code is checked conditionally on `--warn-only`, so a warn-only run
-  **suppresses** a non-zero distribution exit rather than surfacing it.
-  Operators relying on the exit code to detect a distribution crash will
-  see a silent success instead.
+- The distribution step is always fatal: a non-zero distribution exit propagates
+  and fails the sync (there is no suppress-on-warn mode). The docs watcher, which
+  must not block, catches that failure at its own subprocess boundary instead.
 - The deployed `index.yaml` is rewritten in-place during deployment.
   Consumers reading the working-tree index will see different
   `project_root` values than the deployed one — this is expected, not

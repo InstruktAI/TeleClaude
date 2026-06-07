@@ -296,7 +296,7 @@ proceeds.
 
 - A set of schema-valid doc snippets under `docs/project/`.
 - A concise summary of what was created/updated.
-- A `telec sync --validate-only` run confirming snippet validity.
+- A `telec sync --skip-deploy` run confirming snippet validity.
 
 ## Recovery
 

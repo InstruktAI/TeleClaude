@@ -111,7 +111,7 @@ Generate doc snippets following the company scaffolding spec:
 
 After snippet generation:
 
-- Run `telec sync --validate-only` to confirm snippet validity.
+- Run `telec sync --skip-deploy` to confirm snippet validity.
 - Update `meta.yaml` with:
   - `last_onboarded_at` timestamp.
   - Incremented `onboard_count`.

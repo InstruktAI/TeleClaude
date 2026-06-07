@@ -164,7 +164,7 @@ onboard:
 
 build-artifacts:
 	@$(MAKE) generate-types
-	@uv run -m teleclaude.cli.telec sync --warn-only
+	@uv run -m teleclaude.cli.telec sync
 
 generate-types:
 	@uv run -m teleclaude.codegen.pydantic_to_typescript

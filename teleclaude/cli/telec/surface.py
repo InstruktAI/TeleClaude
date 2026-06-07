@@ -387,12 +387,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
         auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
     ),
     "sync": CommandDef(
-        desc="Validate, build indexes, and deploy artifacts",
-        args="[--warn-only] [--validate-only]",
+        desc="Validate (always blocks), then build indexes and deploy artifacts",
+        args="[--skip-deploy]",
         flags=[
             _H,
-            Flag("--warn-only", desc="Warn but don't fail"),
-            Flag("--validate-only", desc="Validate without building"),
+            Flag("--skip-deploy", desc="Validate only; do not build or deploy (read-only gate)"),
+        ],
+        notes=[
+            "Validation always blocks — there is no warn-and-pass mode.",
+            "--skip-deploy is the read-only gate (pre-commit / CI / lint); it never mutates the host.",
         ],
         auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),

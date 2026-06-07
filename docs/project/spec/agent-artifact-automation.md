@@ -17,7 +17,7 @@ change in this repo.
 
 - **Service label**: `ai.instrukt.teleclaude.artifacts`
 - **Trigger**: launchd WatchPaths on `.agents/`, `docs/`, and `teleclaude.yml`
-- **Command**: `telec sync --warn-only`
+- **Command**: the docs watcher (`teleclaude.cli.watch`), which deploys on change via the hidden, watcher-only `telec sync --skip-validation` — live reload never blocks; the commit gate is the real validation contract.
 
 ## Allowed values
 

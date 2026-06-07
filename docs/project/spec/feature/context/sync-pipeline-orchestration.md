@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-description: 'telec sync validates source, records best-effort provenance, builds indexes, and distributes artifacts under --validate-only / --warn-only semantics.'
+description: 'telec sync validates source (always blocking), records best-effort provenance, builds indexes, and distributes artifacts; --skip-deploy is the read-only gate, --skip-validation is the watcher-only live-reload bypass.'
 ---
 
 # Sync Pipeline Orchestration — Spec
@@ -30,15 +30,17 @@ The sync pipeline is:
    unavailability is caught and logged as a warning. This step never blocks
    phases 3–4.
 3. **Build indexes** — write fresh derived doc indexes from source snippets.
-4. **Distribute** — invoke the distribution step in deploy mode, optionally
-   in warn-only mode.
+4. **Distribute** — invoke the distribution step in deploy mode.
 
-Two flags govern scope and failure semantics:
+Validation always blocks: any finding stops the pipeline and `telec sync` exits
+non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 
-- `--validate-only` — return after validation; no index build, symlink repair,
-  or distribution step.
-- `--warn-only` — print validation findings without exiting non-zero, and
-  forward the flag into the distribution step.
+- `--skip-deploy` — validate only; return after validation with no index build,
+  symlink repair, or distribution. The read-only gate for pre-commit / CI / lint;
+  it must not mutate the host's agent-runtime dirs, and it still blocks on findings.
+- `--skip-validation` — skip validation entirely and deploy without blocking.
+  Hidden and role-gated to the docs watcher (live reload must never stall on a
+  mid-edit state); the commit gate is the real validation contract. Not for agents.
 
 Validation findings are stdout text grouped by error code and reason; there is
 no machine-readable output channel today.
@@ -59,30 +61,38 @@ Scenario: Full sync on a clean Mother project checkout
 ```
 
 ```
-Scenario: Validation-only run exits before derived outputs
-  Given the operator wants to lint without deploying
-  When telec sync --validate-only is invoked
+Scenario: --skip-deploy validates but produces no derived outputs
+  Given the operator wants to validate without deploying
+  When telec sync --skip-deploy is invoked
   Then validators run once
   And no index build, symlink repair, or distribution step runs
+  And the run exits zero only when validation is clean
 ```
 
 ```
-Scenario: Warn-only sync with non-fatal validation findings
-  Given snippet validation reports a non-fatal finding
-  When telec sync --warn-only is invoked
-  Then validation findings are printed grouped by error code and reason
-  And the validation phase does not abort the pipeline
-  And --warn-only is forwarded to the distribution step
-  And the sync proceeds through index build and distribute
+Scenario: Validation findings always block
+  Given snippet, artifact, or jobs-config validation reports a finding
+  When telec sync (with or without --skip-deploy) is invoked
+  Then the findings are printed grouped by error code and reason
+  And the pipeline aborts before any deploy
+  And the run exits non-zero
 ```
 
 ```
-Scenario: Distribution step fails under --warn-only and the failure is suppressed
-  Given telec sync --warn-only is invoked
-  And the distribution step exits non-zero due to a runtime error
-  When the pipeline checks the distribution step's exit conditionally on --warn-only
-  Then the non-zero exit is not raised as an error
-  And sync returns success regardless of the distribution step's exit code
+Scenario: The docs watcher bypasses validation to live-reload
+  Given the docs watcher authorizes the hidden --skip-validation flag
+  When telec sync --skip-validation is invoked
+  Then validation is skipped entirely
+  And the pipeline records provenance, builds indexes, and distributes
+  And the run never blocks on source validity
+```
+
+```
+Scenario: A non-watcher caller is rejected from bypassing validation
+  Given a caller that is not the docs watcher
+  When it invokes telec sync --skip-validation
+  Then the command is rejected and exits non-zero
+  And no deploy occurs
 ```
 
 ```
@@ -121,9 +131,10 @@ Scenario: Delivery completes before sync
   for sync to complete. When the back-end is unavailable, provenance rows are
   skipped and a warning is emitted. Drift between sync runs and the
   provenance store is expected until the back-end is healthy again.
-- `--validate-only` exits before index build and symlink repair. Broken tracked
+- `--skip-deploy` exits before index build and symlink repair. Broken tracked
   symlinks may therefore remain broken until a full sync runs.
-- `--warn-only` is risky because distribution-step failures are suppressed.
+- `--skip-validation` deploys unvalidated source; it is reserved for the docs
+  watcher's live reload, where the commit gate remains the validation contract.
 - The distribution step is optional in stripped-down deployments because a
   missing distribution entrypoint silently skips phase 4.
 - The v1 CLI namespace is `telec sync`. The v2 target is `telec context sync`.

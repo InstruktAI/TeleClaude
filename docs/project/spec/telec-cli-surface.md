@@ -100,10 +100,9 @@ subcommands:
   version:
     description: 'Print version, channel, and commit hash.'
   sync:
-    description: 'Validate refs and build doc artifacts.'
+    description: 'Validate (always blocks), then build doc artifacts and deploy.'
     flags:
-      --warn-only: "Warn but don't fail."
-      --validate-only: 'Validate without building.'
+      --skip-deploy: 'Validate only; do not build or deploy (read-only gate for pre-commit / CI / lint).'
       --project-root: 'Project root (default: cwd).'
   docs:
     description: 'Query documentation snippets.'

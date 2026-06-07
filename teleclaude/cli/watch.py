@@ -150,11 +150,15 @@ class SmartWatcher(FileSystemEventHandler):
             "-m",
             "teleclaude.cli.telec",
             "sync",
-            "--warn-only",
+            "--skip-validation",
         ]
         env = os.environ.copy()
         env["TELEC_INVOCATION_CWD"] = str(self.project_root)
         env["PWD"] = str(self.project_root)
+        # Authorize the hidden, watcher-only --skip-validation flag. Live reload must
+        # deploy without ever blocking on a transient mid-edit state; the commit gate is
+        # the real validation contract. No other caller may set this.
+        env["TELEC_DOCS_WATCHER"] = "1"
 
         try:
             result = subprocess.run(

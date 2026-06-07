@@ -40,12 +40,20 @@ class SnippetProvenanceRecord:
 def sync(
     project_root: Path,
     *,
-    validate_only: bool = False,
-    warn_only: bool = False,
+    skip_deploy: bool = False,
+    skip_validation: bool = False,
 ) -> bool:
-    """Run the full sync pipeline: validate → record provenance → build indexes → distribute artifacts.
+    """Run the sync pipeline over its two phases: validate, then deploy.
 
-    Returns True if successful, False if validation errors occurred.
+    Validation always blocks — any finding returns ``False`` and stops the pipeline.
+    The two flags each skip one phase:
+
+    - ``skip_deploy``: validate only, do not build/distribute. The read-only gate for
+      pre-commit / CI / lint — it must not mutate the host's agent-runtime dirs.
+    - ``skip_validation``: skip validation entirely and deploy without blocking. The
+      live-reload path for the docs watcher (and bootstrap setup); NOT for agents.
+
+    Returns ``True`` on success, ``False`` if validation found errors.
     """
     # Phase 0: Self-heal the docs git filter. The smudge/clean driver lives in
     # per-clone .git/config, so a fresh checkout has the .gitattributes rule but
@@ -53,27 +61,24 @@ def sync(
     # paths. Configure the driver and re-smudge stale docs before anything reads them.
     ensure_git_filters(project_root)
 
-    clear_errors()
-    errors: list[str] = []
-
-    # Phase 1: Validate
-    validate_all_snippets(project_root)
-    artifact_errors = validate_all_artifacts(project_root)
-    errors.extend(artifact_errors)
-    errors.extend(validate_jobs_config(project_root))
-    findings = get_errors()
-    if findings:
-        _print_findings(findings, quiet=warn_only)
-        errors.extend(_format_finding(finding) for finding in findings)
-
-    if errors:
-        for error in errors:
-            print(error)
-        if not warn_only:
+    # Phase 1: Validate (always blocks — there is no warn-and-pass mode).
+    if not skip_validation:
+        clear_errors()
+        errors: list[str] = []
+        validate_all_snippets(project_root)
+        errors.extend(validate_all_artifacts(project_root))
+        errors.extend(validate_jobs_config(project_root))
+        findings = get_errors()
+        if findings:
+            _print_findings(findings, quiet=False)
+            errors.extend(_format_finding(finding) for finding in findings)
+        if errors:
+            for error in errors:
+                print(error)
             return False
 
-    if validate_only:
-        return warn_only or not errors
+    if skip_deploy:
+        return True
 
     # Phase 2: Record provenance
     _record_snippet_provenance_from_environment(project_root)
@@ -85,7 +90,7 @@ def sync(
             print(f"Index: {path}")
 
     # Phase 4: Build and deploy artifacts
-    _run_distribute(project_root, warn_only=warn_only)
+    _run_distribute(project_root)
 
     return True
 
@@ -189,7 +194,7 @@ def _collect_snippet_provenance_records(project_root: Path, head_sha: str) -> li
     return records
 
 
-def _run_distribute(project_root: Path, *, warn_only: bool) -> None:
+def _run_distribute(project_root: Path) -> None:
     """Run distribute.py to transpile and deploy artifacts."""
     script_path = REPO_ROOT / "scripts" / "distribute.py"
     if not script_path.exists():
@@ -202,11 +207,9 @@ def _run_distribute(project_root: Path, *, warn_only: bool) -> None:
         str(project_root),
         "--deploy",
     ]
-    if warn_only:
-        cmd.append("--warn-only")
 
     env = os.environ.copy()
-    subprocess.run(cmd, cwd=project_root, check=not warn_only, env=env)
+    subprocess.run(cmd, cwd=project_root, check=True, env=env)
 
 
 def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[str]]]:

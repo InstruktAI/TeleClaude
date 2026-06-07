@@ -50,11 +50,11 @@ def _teleclaude_version() -> str:
     return result
 
 
-def _run_sync(project_root: Path, *, validate_only: bool, warn_only: bool) -> bool:
+def _run_sync(project_root: Path, *, skip_deploy: bool, skip_validation: bool) -> bool:
     result: bool = importlib.import_module("teleclaude.sync").sync(
         project_root,
-        validate_only=validate_only,
-        warn_only=warn_only,
+        skip_deploy=skip_deploy,
+        skip_validation=skip_validation,
     )
     return result
 
@@ -93,21 +93,25 @@ def _handle_version() -> None:
 def _handle_sync(args: list[str]) -> None:
     """Handle telec sync command."""
     project_root = resolve_state_root(resolve_invocation_cwd())
-    warn_only = False
-    validate_only = False
+    skip_deploy = False
+    skip_validation = False
 
     i = 0
     while i < len(args):
-        if args[i] == "--warn-only":
-            warn_only = True
+        if args[i] == "--skip-deploy":
+            skip_deploy = True
             i += 1
-        elif args[i] == "--validate-only":
-            validate_only = True
+        elif args[i] == "--skip-validation":
+            # Hidden, watcher-only: the live-reload watcher must never block. Reject
+            # for any other caller — agents must not bypass the validation gate.
+            if os.environ.get("TELEC_DOCS_WATCHER") != "1":
+                raise SystemExit("--skip-validation is reserved for the docs watcher")
+            skip_validation = True
             i += 1
         else:
             i += 1
 
-    ok = _run_sync(project_root, validate_only=validate_only, warn_only=warn_only)
+    ok = _run_sync(project_root, skip_deploy=skip_deploy, skip_validation=skip_validation)
     if not ok:
         raise SystemExit(1)
 
