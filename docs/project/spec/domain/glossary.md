@@ -40,7 +40,7 @@ Appears in: `agent_runtime`, `session_ledger`, `identity` (`session_tokens`), `w
 
 Appears in: `workflow`, `agent_artifacts`. Different concepts. Scope by phrase.
 
-- **Workflow artifact** (or **preparation artifact**, **todo artifact**) — a document produced during a todo's prepare or work phase: `input`, `prd`, `architecture`, `test-specs`, `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `review-findings`. Stored as TEXT in `workflow.artifacts`. Authored by prepare/build workers; consumed by reviewers and the next worker in the lifecycle.
+- **Workflow artifact** (or **preparation artifact**, **todo artifact**) — a document produced during a todo's prepare or work phase: `input`, `prd`, `architecture`, `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is retained only for legacy read/remove compatibility; new bug todo content is authored in `input`. Authored by prepare/build workers; consumed by reviewers and the next worker in the lifecycle.
 - **Agent artifact** — a deployable file or directory under `agents/` that defines an agent's behavior: slash commands, skills, addenda, manifests. Inflated and distributed by `agent_artifacts` to deployed runtime directories (`~/.claude/`, `~/.codex/`, `~/.gemini/`).
 
 **Rule:** never use "artifact" unqualified across contexts. Inside `workflow`, "artifact" alone is fine. Inside `agent_artifacts`, "artifact" alone is fine. In any cross-context doc, qualify.

@@ -44,9 +44,10 @@ The lifecycle is designed for autonomy without losing rigor.
 
 - Downstream work derives from upstream artifact authority instead of
   re-inventing it.
-- `requirements` and `test-specs` stay in the same hot scope so acceptance does
-  not drift from intent.
-- `implementation-plan` derives from both `requirements` and `test-specs`.
+- PRD intent and feature-spec acceptance scenarios stay in the same hot scope
+  so acceptance does not drift from intent.
+- `implementation-plan` derives from PRD intent, optional architecture, and
+  in-scope feature-spec scenarios.
 - Automation computes what can be computed so human and AI judgment can focus on
   interpretation, trade-offs, and decisions.
 - Structural context is an SDLC input where available; it does not replace
@@ -65,17 +66,17 @@ persistent pair of workers.
 
 Produces:
 
-- `requirements`
-- `test-specs`
+- `prd`
+- optional `architecture`
 - `implementation-plan`
 
 Rigor is preserved by:
 
 - pair-based discovery that surfaces hidden assumptions before writing
-- converging requirements before downstream work
-- human approval of requirements before specs begin
-- keeping specs close to requirements while context is hot
-- deriving the plan from both requirements and specs
+- converging PRD intent before downstream work
+- human approval of the PRD before derived artifacts
+- keeping acceptance scenarios close to intent while context is hot
+- deriving the plan from PRD intent, optional architecture, and scenarios
 - turn-based writer/reviewer accountability for each artifact
 
 ### Work
@@ -125,8 +126,8 @@ Writer/reviewer by artifact or step:
 | Lifecycle element     | Writer | Reviewer | Mode       |
 | --------------------- | ------ | -------- | ---------- |
 | `discovery`           | —      | —        | pair-based |
-| `requirements`        | `A`    | `B`      | turn-based |
-| `test-specs`          | `A`    | `B`      | turn-based |
+| `prd`                 | `A`    | human    | turn-based |
+| `architecture`        | `A`    | `B`      | turn-based |
 | `implementation-plan` | `B`    | `A`      | turn-based |
 | `build`               | `B`    | —        | turn-based |
 | `review`              | —      | `A`      | turn-based |
@@ -163,10 +164,10 @@ These are continuous pressures across the lifecycle, not isolated later phases:
 
 ## Failure modes
 
-- `test-specs` drift from `requirements` because they are written cold or too
-  late.
-- `implementation-plan` drifts from `requirements` and `test-specs` because it
-  is treated as an independent reinterpretation.
+- Feature-spec acceptance scenarios drift from PRD intent because they are
+  written cold or too late.
+- `implementation-plan` drifts from PRD intent and feature-spec scenarios
+  because it is treated as an independent reinterpretation.
 - Builders consume only one artifact and lose the full authority chain.
 - Review checks only local correctness and ignores intent or acceptance.
 - Integration is treated as “merge after approval” instead of concurrency-safe

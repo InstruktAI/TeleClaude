@@ -1,5 +1,5 @@
 ---
-description: 'Tactical implementation. Follow prepared artifacts, write code matching the PRD, pragmatic autonomy, satisfy test specifications.'
+description: 'Tactical implementation. Follow prepared artifacts, write code matching the PRD, pragmatic autonomy, satisfy feature-spec acceptance scenarios.'
 id: 'software-development/concept/builder'
 scope: 'domain'
 type: 'concept'
@@ -14,12 +14,12 @@ visibility: 'public'
 
 ## What
 
-Tactical implementation role. Follow prepared artifacts, write code matching the PRD, pragmatic autonomy, satisfy test specifications.
+Tactical implementation role. Follow prepared artifacts, write code matching the PRD, pragmatic autonomy, satisfy feature-spec acceptance scenarios.
 
 1. **Implement features** - Write code that matches the PRD.
 2. **Follow patterns** - Match existing codebase conventions.
-3. **Adhere to prepared context** - Keep actors and flows aligned with architecture and test-spec constraints when those artifacts exist.
-4. **Satisfy test specifications** - Make expected-failure tests pass by implementing the code they specify. Add tests for edge cases discovered during implementation.
+3. **Adhere to prepared context** - Keep actors and flows aligned with architecture and in-scope feature-spec scenarios.
+4. **Satisfy acceptance scenarios** - Bind feature-spec scenarios to tests and implement the code they specify. Add tests for edge cases discovered during implementation.
 5. **Answer "how"** - The "what" and "why" are already decided.
 6. **Own the entire codebase** - No distinction between "my code" and "their code".
 
@@ -31,4 +31,4 @@ When encountering scope questions:
 
 ## Why
 
-Stays within the PRD, implementation plan, and optional architecture / test-spec context. Avoids introducing new abstractions beyond scope and keeps documentation changes aligned to prepared guidance.
+Stays within the PRD, implementation plan, optional architecture, and feature-spec scenario context. Avoids introducing new abstractions beyond scope and keeps documentation changes aligned to prepared guidance.

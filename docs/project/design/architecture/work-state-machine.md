@@ -46,7 +46,6 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 - `telec todo artifacts read {slug} prd` — product intent and success criteria (from Phase A)
 - `telec todo artifacts read {slug} architecture` — optional technical context and constraints (from Phase A)
-- `telec todo artifacts read {slug} test-specs` — optional prose verification contract (from Phase A)
 - `telec todo artifacts read {slug} implementation-plan` — execution plan with task checkboxes (from Phase A)
 - `todos.db` state — build/review status, finalize state, review rounds
 - `telec todo artifacts read {slug} quality-checklist` — build and review gate checkboxes
@@ -168,8 +167,8 @@ flowchart TD
     P1["1. Resolve slug<br/>(explicit or first ready item)"]
     P2["2. Dependency gating<br/>(all deps must be done)"]
     P3["3. Stash debt check<br/>(git stash forbidden)"]
-    P4["4. Artifact existence<br/>(prd + plan, optional architecture/test-specs)"]
-    P4b["4b. Test spec verification<br/>(when test-specs are present)"]
+    P4["4. Artifact existence<br/>(prd + plan, optional architecture)"]
+    P4b["4b. Scenario scope check<br/>(when feature-spec scenarios are in scope)"]
     P5["5. Preparation freshness<br/>(grounding must be valid)"]
     P6["6. Worktree management<br/>(ensure + prep + sync)"]
     P7["7. Clean check<br/>(uncommitted changes)"]
@@ -194,7 +193,7 @@ sequenceDiagram
 
     Note over O,B: Build Phase
     O->>B: telec sessions run --command /next-build --args slug
-    B->>B: Satisfy test specs, implement tasks, commit per task
+    B->>B: Bind feature-spec scenarios, implement tasks, commit per task
     B->>B: Check all tasks [x], run scoped build gates, repo-wide lint/test when explicitly requested
     B-->>O: BUILD COMPLETE: slug
     O->>B: wait for `telec todo stamp slug --build-complete`

@@ -20,13 +20,12 @@ Sequential artifact production with review gates:
 - **Human refinement / handoff** — human edits preparation artifacts directly, then runs `telec todo reconcile [slug]`
 - **Intake** — derive and approve `prd` from `input` or live conversation
 - **Architecture** — derive and approve the code-grounded technical brief, or skip with reason when it does not earn its place
-- **Test specs** — derive and approve prose behavioral specs, or skip with reason for trivial covered work
-- **Plan drafting** — produce `implementation-plan` (or split the todo); plan tasks reference PRD criteria, architecture constraints, and test-spec cases
+- **Plan drafting** — produce `implementation-plan` (or split the todo); plan tasks reference PRD criteria, architecture constraints, and feature-spec scenarios
 - **Plan review** — validate plan against policies, DoD gates, review lanes
 - **Readiness gate** — formal DOR validation on the complete artifact set
 - **Grounding check** — verify freshness of referenced files and policies
 
-Outputs: `prd`, optional `architecture`, optional `test-specs`, `implementation-plan`.
+Outputs: `prd`, optional `architecture`, `implementation-plan`.
 
 ### 2. Work (`telec todo work`)
 

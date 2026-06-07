@@ -1,5 +1,5 @@
 ---
-description: 'Quality rules for preparation artifacts (PRD, architecture, test specs, and plans). Shared by creators and reviewers.'
+description: 'Quality rules for preparation artifacts (PRD, architecture, and plans). Shared by creators and reviewers.'
 id: 'software-development/policy/preparation-artifact-quality'
 scope: 'domain'
 type: 'policy'
@@ -13,19 +13,19 @@ visibility: 'public'
 ### Referencing upstream intent
 
 Downstream artifacts reference upstream intent — they do not copy it.
-Architecture, test specs, plans, and reviews point at the upstream source by
+Architecture, plans, and reviews point at the upstream source by
 artifact path and markdown section header. The reference IS the contract; the
 upstream artifact is the single source of truth for its own text.
 
 - Reference form: `@{artifact-name}#{section-header}` (e.g.
   `@prd#success-criteria`, `@architecture#state-ownership`,
-  `@test-specs#case-3-rename-with-dependents`). When pointing at a whole
+  `@implementation-plan#task-3-rename-with-dependents`). When pointing at a whole
   artifact rather than a section, drop the `#`-suffix.
 - Markdown headers in upstream artifacts are the anchor surface. Authors of
-  upstream artifacts (PRD, architecture, test-specs) MUST give each
-  addressable unit — every success criterion, every architectural decision,
-  every test case — its own stable header so downstream artifacts can point
-  at it.
+  referenced artifacts (PRD, architecture, implementation-plan) MUST give
+  each addressable unit — every success criterion, every architectural
+  decision, every plan task — its own stable header so downstream artifacts
+  can point at it.
 - Verbatim copy-paste, block-quoting, embedding, or paraphrasing of upstream
   text into the downstream artifact is defective. The source text lives in
   one place; duplicating it creates drift and turns mismatches into a
@@ -54,7 +54,7 @@ review-awareness cannot be evaluated without them.
 
 ### Grounding
 
-PRD, architecture, test specs, and plans reference codebase patterns, existing APIs, or
+PRD, architecture, and plans reference codebase patterns, existing APIs, or
 documented conventions — not invented abstractions.
 
 - If the codebase has an established way to do X, the artifact says "using
@@ -155,7 +155,7 @@ Quality rules:
 
 ### DoD-driven review-awareness
 
-PRD, architecture, test specs, and plans must anticipate what the code reviewer will check.
+PRD, architecture, and plans must anticipate what the code reviewer will check.
 This is an evidence-producing rule, not a mental check.
 
 For each PRD criterion, produce a **DoD-implications block** naming the DoD
@@ -178,30 +178,29 @@ A PRD criterion without a concrete evidence statement per triggered gate is
 incomplete. A plan task without a named deliverable per triggered gate is
 incomplete.
 
-### Test specification quality
+### Acceptance scenario quality
 
-Test specifications delivered during the prepare phase are prose behavioral
+Feature-spec acceptance scenarios authored during intake are prose behavioral
 contracts. They do not create source files or executable tests during prepare.
 Quality rules:
 
-- **Behavioral focus**: test specs encode observable behavior (inputs, outputs,
-  side effects), not implementation structure. A test that asserts a specific
-  internal function call is implementation leakage.
-- **Forbidden assertion targets**: test specs must not prescribe logger-call,
+- **Behavioral focus**: scenarios encode observable behavior (inputs, outputs,
+  side effects), not implementation structure. A scenario that asserts a
+  specific internal function call is implementation leakage.
+- **Forbidden assertion targets**: scenarios must not prescribe logger-call,
   log-level, metric/trace, config/model/native-shape, private-helper,
   constructor-wiring, or mock-call-echo assertions. Logs are diagnostic evidence,
   not feature behavior. Config and native models are tested through accepted and
   rejected external inputs, wire/API payloads, or effective runtime behavior.
-- **No source code**: specs may name existing test surfaces or expected
+- **No source code**: scenarios may name existing test surfaces or expected
   assertions, but must not include executable test code, helper function bodies,
   or expected-failure markers. The builder writes or updates tests during work.
-- **No implementation leakage in test structure**: test organization, helper
+- **No implementation leakage in scenario structure**: test organization, helper
   names, and fixture details must not prescribe internal architecture. Test what
   the code does, not how it is structured.
-- **Grounding against existing test patterns**: new test specs must follow the
+- **Grounding against existing test patterns**: new scenario-derived tests must follow the
   existing test conventions in the codebase (naming, fixtures, assertion style).
-  A test spec that introduces a novel testing pattern without justification is
-  defective.
+  A scenario that requires a novel testing pattern without justification is defective.
 
 ### Plan-specific quality
 
@@ -210,19 +209,19 @@ Plans must provide enough detail for a builder to execute without guessing:
 - **Every task begins with references to the upstream items it delivers** —
   by artifact path and section header, e.g.
   `Delivers: prd#criterion-a, prd#criterion-b, architecture#event-naming,
-test-specs#case-rename-conflict`. The task body then describes the work
+docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task body then describes the work
   and must name each referenced item in its delivery description — showing
   which change satisfies which reference. A task that references items it
   does not deliver, or delivers work not traceable to any referenced upstream
   item, is defective. Copy-pasting the upstream text into the task is
   defective; the reference is the contract.
 - Every task has a rationale explaining _why_ this approach, not just _what_.
-- Every task has a verification step that references specific test-spec cases,
+- Every task has a verification step that references specific feature-spec scenarios,
   existing tests, or direct checks: a test to satisfy, behavior to observe, or check to run.
   "Tests" as an abstract category is not compliance — name the specific test
   file and the behavior observed at a meaningful boundary. Do not name
   logger/config/native-shape/private-helper/wiring assertions as deliverables.
-- Tasks trace to PRD, architecture, or test-specs. No orphan tasks
+- Tasks trace to PRD, architecture, or feature-spec scenarios. No orphan tasks
   (gold-plating) and no orphan PRD criteria (coverage gaps).
 - Referenced file paths are explicit in the plan tasks for grounding and
   staleness review.
@@ -243,10 +242,10 @@ test-specs#case-rename-conflict`. The task body then describes the work
 
 ## Scope
 
-- Applies to all preparation artifacts: `prd`, `architecture`, `test-specs`,
+- Applies to all preparation artifacts: `prd`, `architecture`,
   `implementation-plan`, and readiness reports.
 - Applies to all agents creating or reviewing these artifacts: intake,
-  architecture, specs, plan, reviewers, and gate assessors.
+  architecture, plan, reviewers, and gate assessors.
 
 ## Enforcement
 

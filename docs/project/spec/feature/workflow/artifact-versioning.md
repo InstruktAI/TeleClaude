@@ -17,7 +17,7 @@ description: 'Multi-version storage of workflow Artifacts — every write append
 
 ## What it is
 
-The Artifact aggregate inside the `workflow` bounded context persists every Artifact write (PRD, architecture, test-specs, implementation-plan, etc.) as a content-addressed version. Each write computes the SHA256 digest of the content, appends a new version record, and updates the current-version pointer in place. Previous versions remain addressable by digest so the workflow service can render unified diffs between any two versions on demand.
+The Artifact aggregate inside the `workflow` bounded context persists every Artifact write (PRD, architecture, implementation-plan, etc.) as a content-addressed version. Each write computes the SHA256 digest of the content, appends a new version record, and updates the current-version pointer in place. Previous versions remain addressable by digest so the workflow service can render unified diffs between any two versions on demand.
 
 Artifact provenance — the `origin/main` SHA at write time (captured via the workflow's origin-main-sha helper, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's lifecycle state (the artifact lifecycle stamp), not on the artifact version itself. The artifact records stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp is the carrier of the extended drift-evidence fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `dependency_set_at_write`, `produced_at`) — see `@spec/feature/workflow/drift-detection` for their per-class semantics and the single workflow provenance boundary that populates them.
 
@@ -73,6 +73,23 @@ When the workflow service validates the artifact name against the canonical list
 Then it rejects the call with "Unknown artifact name" and the canonical list before any state mutation
 ```
 
+#### UC-WAV7: API refuses retired artifact writes
+
+```gherkin
+Given a known legacy artifact kind is retained for read/remove compatibility
+When an agent attempts to write that retired artifact kind through the workflow API
+Then the workflow service rejects the call as retired read-only before any state mutation
+```
+
+#### UC-WAV8: CLI refuses retired artifact writes
+
+```gherkin
+Given a known legacy artifact kind is retained for read/remove compatibility
+When an agent attempts to write that retired artifact kind through telec todo artifacts write
+Then the CLI rejects the request as retired read-only before calling the workflow API
+And the writable kind list excludes the retired artifact kind
+```
+
 ```
 Given a todo whose entry status is delivered
 When an agent attempts to write any artifact for that slug
@@ -86,8 +103,9 @@ Then the workflow service refuses with a "delivered (read-only)" error
 
 ## Known caveats
 
-- The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `test-specs`, `implementation-plan`).
+- The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `implementation-plan`).
 - The `input` artifact has special status: once `requirements` exists, the workflow service refuses further `input` writes with a "frozen" conflict, and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+- The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.
 - Artifact writes against a delivered todo are blocked to keep delivered todos read-only.

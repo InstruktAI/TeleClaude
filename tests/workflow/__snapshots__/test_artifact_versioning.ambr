@@ -1,0 +1,17 @@
+# serializer version: 1
+# name: test_api_refuses_retired_bug_artifact_writes
+  dict({
+    'detail': "artifact kind 'bug' is retired: no longer produced. Reads and removes of pre-cutover todos remain supported; writes are refused.",
+    'status_code': 422,
+  })
+# ---
+# name: test_cli_refuses_retired_bug_artifact_writes_before_api_call
+  dict({
+    'stderr': '''
+      Artifact kind 'bug' is retired (read-only).
+      Writable kinds: architecture, architecture-review-findings, deferrals, design-spec, implementation-plan, input, plan-review-findings, prd, quality-checklist, requirements, requirements-review-findings, review-findings
+  
+    ''',
+    'stdout': '',
+  })
+# ---

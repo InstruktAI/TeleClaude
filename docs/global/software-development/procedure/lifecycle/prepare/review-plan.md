@@ -1,5 +1,5 @@
 ---
-description: 'Plan review phase. Validate implementation-plan against PRD, optional architecture/test-specs, policies, DoD gates, and review lane expectations.'
+description: 'Plan review phase. Validate implementation-plan against PRD, optional architecture, feature-spec scenarios, policies, DoD gates, and review lane expectations.'
 domain: 'software-development'
 id: 'software-development/procedure/lifecycle/prepare/review-plan'
 scope: 'domain'
@@ -18,7 +18,7 @@ visibility: 'public'
 ## Goal
 
 Validate `implementation-plan` against approved PRD, optional architecture,
-optional test-specs, policies, Definition of Done gates, and review lane expectations. The plan must be good enough that a builder can execute
+in-scope feature-spec scenarios, policies, Definition of Done gates, and review lane expectations. The plan must be good enough that a builder can execute
 it without guessing and a reviewer finds no surprises.
 
 ## Preconditions
@@ -38,7 +38,7 @@ First read the software-development principles as listed in the software-develop
 - `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
 - The approved intent artifact — `prd` for a `feature`, `input` for a `change` — the contract the plan must satisfy.
 - `telec todo artifacts read {slug} architecture` — when present.
-- `telec todo artifacts read {slug} test-specs` — when present.
+- `telec todo artifacts read {slug} input` — compatibility fallback only when PRD is absent.
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
 - Apply the domain-context loading rule from the preparation artifact quality
@@ -71,8 +71,8 @@ Findings:
   the requirement's name whose body narrows the criterion is a
   Requirement-Violation regardless of whether the task exists.
 - Task references criteria it does not deliver -> Critical.
-- Orphan task (no PRD criterion, architecture constraint, or test-spec case) -> Important (gold-plating risk).
-- Task contradicts PRD, architecture, or test-specs -> Critical.
+- Orphan task (no PRD criterion, architecture constraint, or feature-spec scenario) -> Important (gold-plating risk).
+- Task contradicts PRD, architecture, or in-scope feature-spec scenarios -> Critical.
 - Task copy-pastes upstream text instead of referencing it by
   `@artifact#section-header` -> Important (per
   `policy/preparation-artifact-quality` §Referencing upstream intent).
@@ -185,7 +185,7 @@ Localized means all of the following are true:
 
 Not allowed — route via `needs_work` instead:
 
-- Adding new tasks not traceable to PRD, architecture, or test-specs.
+- Adding new tasks not traceable to PRD, architecture, or feature-spec scenarios.
 - Changing scope or splitting the todo.
 - Inventing architectural decisions not grounded in PRD, architecture, or codebase.
 
@@ -253,5 +253,5 @@ Findings artifact: plan-review-findings when NEEDS WORK
   mark `needs_work`. The state machine will dispatch the plan drafter again
   with the findings.
 - If upstream artifacts themselves are the problem (plan is correct but PRD,
-  architecture, or test-specs are wrong), flag as blocker — the affected
+  architecture, or in-scope feature specs are wrong), flag as blocker — the affected
   upstream artifact must be re-reviewed first.

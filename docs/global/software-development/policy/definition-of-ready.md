@@ -42,7 +42,7 @@ Gates (all required):
      cost exceeds the session-size benefit, don't split.
 
 3. **Verification**
-   - Executable test specifications (expected-failure-marked) exist for all behavioral requirements.
+   - Feature-spec acceptance scenarios or equivalent observable verification criteria exist for all behavioral requirements.
    - There is a clear way to verify completion through executable tests or
      observable system behavior. Logs may support manual diagnosis, but they
      are not default automated assertion targets for feature behavior.

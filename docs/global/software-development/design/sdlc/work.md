@@ -24,7 +24,7 @@ build-review-fix loops.
 
 - `prd`
 - optional `architecture`
-- optional `test-specs`
+- in-scope feature-spec scenarios
 - `implementation-plan`
 - computed supporting context and evidence where automation can provide it
 
@@ -61,7 +61,7 @@ Lead/support:
 
 How rigor is preserved:
 
-- execution is constrained by `prd + optional architecture + optional test-specs + implementation-plan`
+- execution is constrained by `prd + optional architecture + feature-spec scenarios + implementation-plan`
 - `A` prevents drift away from intended outcome and user value
 
 Automation supplies:

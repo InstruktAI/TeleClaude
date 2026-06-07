@@ -620,7 +620,7 @@ def _validate_artifact_name(name: str) -> None:
 
 
 def _validate_artifact_name_write(name: str) -> None:
-    """Refuse retired or read-only artifact names for writes."""
+    """Refuse retired or unknown artifact names for writes."""
     if name not in ARTIFACT_NAMES_WRITABLE:
         if name in ARTIFACT_NAMES_RETIRED:
             print(f"Artifact kind '{name}' is retired (read-only).", file=sys.stderr)

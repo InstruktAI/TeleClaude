@@ -18,7 +18,6 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
     ARTIFACT_REQUIREMENTS,
-    ARTIFACT_TEST_SPECS,
 )
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE
 from teleclaude.slug import normalize_slug, validate_slug
@@ -30,7 +29,6 @@ _LEGACY_MARKER_FILES = ("roadmap.md", "icebox.md", "delivered.md", "bugs.md")
 _ARTIFACT_STATE_FIELDS = {
     ARTIFACT_INPUT: "input",
     ARTIFACT_REQUIREMENTS: "requirements",
-    ARTIFACT_TEST_SPECS: "test_specs",
     ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
     "art": "art",
     "visuals": "visuals",
@@ -371,8 +369,6 @@ def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str)
             if ARTIFACT_IMPLEMENTATION_PLAN in artifacts:
                 state.approvals.plan_approved.approved = True
                 state.approvals.plan_approved.approved_at = now
-        if not state.artifacts.test_specs.produced_at:
-            state.artifacts.test_specs.produced_at = now
 
     return state.model_dump(mode="json")
 

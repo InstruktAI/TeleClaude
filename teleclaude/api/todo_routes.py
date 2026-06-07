@@ -42,7 +42,6 @@ from teleclaude.constants import (
     ARTIFACT_NAMES_WRITABLE,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
-    ARTIFACT_TEST_SPECS,
 )
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
@@ -73,7 +72,6 @@ _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_ARCHITECTURE,
-    ARTIFACT_TEST_SPECS,
     ARTIFACT_IMPLEMENTATION_PLAN,
 }
 

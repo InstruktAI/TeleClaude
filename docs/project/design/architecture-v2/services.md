@@ -142,7 +142,7 @@ and TUI also embed it for read queries.
 
 - todos
 - roadmap entries and dependencies
-- workflow artifacts (input, PRD, architecture, test specs, implementation
+- workflow artifacts (input, PRD, architecture, implementation
   plan, etc.) — content stored as TEXT columns in Postgres
 - workflow state machines (prepare/work/integrate lifecycle)
 - local bookkeeping operations

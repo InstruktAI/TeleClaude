@@ -27,7 +27,7 @@ instructed by the state machine and supervises their progress.
 
 - Target slug has completed preparation (state: PREPARED).
 - `telec todo artifacts read {slug} prd` and `telec todo artifacts read {slug} implementation-plan` exist and are approved.
-- Optional `architecture` and `test-specs` artifacts are approved or explicitly skipped.
+- Optional `architecture` artifacts are approved or explicitly skipped.
 - Worktree is available or can be created for the slug.
 
 ## Steps
@@ -37,7 +37,7 @@ instructed by the state machine and supervises their progress.
 Call `telec todo work [slug]`. Read the returned instruction block and execute it.
 Let the state machine resolve holders and queue selection before reading execution
 artifacts; read the resolved child's `implementation-plan` (with `prd`, optional
-`architecture`, and optional `test-specs` as context) before dispatching. Never read
+`architecture`, and in-scope feature-spec scenarios as context) before dispatching. Never read
 holder artifacts as executable work input.
 
 When the state machine instructs a dispatch, select `--mode`:

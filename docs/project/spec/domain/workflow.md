@@ -50,7 +50,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 : Sub-state within a stage. Examples for `prepare` stage: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `prepared`. A kind-less intake carries the pre-classification phases `unkinded` (created without a kind, awaiting `/analyze-todo-input`) and `kind_proposed` (analyze has proposed a kind, awaiting human approval) before a kind — and therefore a stage lane — is assigned.
 
 **Artifact** (workflow artifact — per glossary)
-: A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. (`test-specs` and `spec-review-findings` are retired legacy kinds, accepted only for reading/removing pre-cutover todos.)
+: A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
 
 **Roadmap**
 : Internal ordering/dependency storage for todos: rows, dependency edges, groupings, and statuses. It is surfaced to users as the ordered `telec todo list` view of "what's being worked on and what's next."
@@ -696,9 +696,9 @@ Then it rejects with a typed ambiguous-update diagnostic and changes nothing
 ```
 
 ```
-Given an artifact written by update collides with the `_artifact_name_to_state_key` retired set (test-specs, spec-review-findings)
+Given an artifact written by update names an unknown artifact kind
 When the workflow service validates the artifact name on the write path
-Then the request is refused via the writable-allowlist gate (consistent with `telec todo artifacts write`); reads/removes of pre-cutover todos remain available
+Then the request is refused by canonical artifact-kind validation before any state mutation
 ```
 
 #### UC-WFL-18: Refinement diff for a todo (artifacts + owned snippets)
@@ -810,7 +810,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - `integrate phases`: per `integration-state-machine` design doc (squash, conflict-resolve, lint, test, push, deliver).
 - `roadmap status` (persisted): `active`, `icebox`, `delivered`, `removed`.
 - `todo-list display state` (derived for the todo-list view from persisted roadmap status + lifecycle phase): `pending`, `ready`, `in_progress`, `delivered`, `icebox`. (`removed` is persisted-only — excluded from the default view, surfaced only via the recovery UI.)
-- `artifact kind`: `input`, `prd`, `architecture`, `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. (`test-specs`, `spec-review-findings` retired; legacy read/remove only.)
+- `artifact kind`: `input`, `prd`, `architecture`, `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`.
 - `verdict`: `approve`, `needs_work`, `needs_decision`.
 
 ## Known caveats

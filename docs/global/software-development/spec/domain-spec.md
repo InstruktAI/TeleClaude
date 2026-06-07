@@ -73,7 +73,7 @@ Example:
 #### Todo (aggregate)
 
 - **Root:** TodoEntry
-- **Contains:** Artifact (input | prd | architecture | test-specs | implementation-plan | bug | quality-checklist | design-spec | deferrals | review-findings), VersionedArtifact, StageState
+- **Contains:** Artifact (input | prd | architecture | implementation-plan | bug | quality-checklist | design-spec | deferrals | review-findings), VersionedArtifact, StageState
 - **Invariants:**
   - A todo has exactly one current StageState at any moment.
   - An artifact's version history is append-only.

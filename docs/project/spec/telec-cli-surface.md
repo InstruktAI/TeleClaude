@@ -281,13 +281,13 @@ subcommands:
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
               --input-file: 'Read content from path instead of positional argument.'
           update:
-            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); implementation-plan content is selected explicitly with `--artifact implementation-plan` plus the appropriate kind. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through the writable-allowlist gate (retired artifact kinds — test-specs, spec-review-findings — are refused). On success emits workflow.todo.updated with a change_summary listing the mutated fields. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
+            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); implementation-plan content is selected explicitly with `--artifact implementation-plan` plus the appropriate kind. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through canonical artifact-kind validation; unknown kinds are refused before mutation. On success emits workflow.todo.updated with a change_summary listing the mutated fields. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
             args:
               - slug: 'string'
               - content: 'string (optional)'
             flags:
               --project-root: 'Project root (default: cwd).'
-              --artifact: 'Artifact kind to write the positional content as (default `input`). Must be a writable kind per ARTIFACT_NAMES_WRITABLE.'
+              --artifact: 'Artifact kind to write the positional content as (default `input`). Must be a canonical artifact kind per ARTIFACT_NAMES.'
               --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. The supplied set REPLACES the existing dependency set in full (not patched/appended).'
               --group: 'New grouping label.'
               --description: 'New todo-entry description.'

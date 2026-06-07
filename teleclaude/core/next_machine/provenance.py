@@ -16,17 +16,15 @@ from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
-    ARTIFACT_TEST_SPECS,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
-    STATE_KEY_TEST_SPECS,
 )
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_origin_main_sha
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_SNIPPETS_DIR
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry
 
 if TYPE_CHECKING:
@@ -37,7 +35,6 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     ARTIFACT_PRD: STATE_KEY_PRD,
     ARTIFACT_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     ARTIFACT_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
-    ARTIFACT_TEST_SPECS: STATE_KEY_TEST_SPECS,
     ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
 }
 
@@ -230,7 +227,7 @@ def _project_ref_to_id(rel_ref: str) -> str:
 def _global_ref_to_id(ref: str) -> str:
     raw = ref.removeprefix("@")
     path = Path(raw).expanduser()
-    roots = (GLOBAL_SNIPPETS_DIR, Path.home() / ".teleclaude" / "docs")
+    roots = (GLOBAL_SNIPPETS_DIR, DEFAULT_TELECLAUDE_HOME / "docs")
     for root in roots:
         expanded_root = root.expanduser()
         for candidate_path, candidate_root in ((path, expanded_root), (path.resolve(), expanded_root.resolve())):

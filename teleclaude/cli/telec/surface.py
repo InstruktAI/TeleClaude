@@ -630,25 +630,22 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[_H],
-                        notes=[
-                            "Writable names exclude retired kinds (test-specs, spec-review-findings); "
-                            "those remain readable/removable for pre-cutover todos only.",
-                        ],
+                        notes=["Legacy bug artifacts are read-only; write bug todo content to input."],
                         examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
-                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
                         flags=[_H],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
@@ -662,7 +659,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "remove": CommandDef(
                         desc="Remove a todo artifact and its version history",
-                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         notes=[
                             "Refuses input because it is the seed artifact for a todo.",

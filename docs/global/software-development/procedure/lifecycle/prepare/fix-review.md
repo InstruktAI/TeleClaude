@@ -14,8 +14,7 @@ visibility: 'public'
 Your focus this turn is to address reviewer findings on the current phase's
 artifact, in this session, using the same procedure you used to draft the
 artifact. There is no separate "fixer" identity — the BA fixes PRD findings,
-the Architect fixes architecture findings, the Test Spec Author fixes
-test-spec findings, the Planner fixes plan findings. After fixes, advance the
+the Architect fixes architecture findings, the Planner fixes plan findings. After fixes, advance the
 state machine; it routes back to the reviewer.
 
 ### Outcome
@@ -23,7 +22,6 @@ state machine; it routes back to the reviewer.
 Read the relevant findings artifact for the active phase:
 
 - Architecture phase: `telec todo artifacts read {slug} architecture-review-findings`
-- Test spec phase: `telec todo artifacts read {slug} spec-review-findings`
 - Plan phase: `telec todo artifacts read {slug} plan-review-findings`
 
 The PRD has no review-findings artifact because the PRD has no automated
@@ -42,7 +40,7 @@ Extract:
 ## Preconditions
 
 - The relevant findings artifact exists with a non-`APPROVE` verdict.
-- The current phase's procedure is loaded (BA, Architect, Test Spec Author, or
+- The current phase's procedure is loaded (BA, Architect, or
   Planner — the same procedure that drafted the artifact under review).
 
 ## Steps

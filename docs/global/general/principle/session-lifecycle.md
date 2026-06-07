@@ -44,7 +44,7 @@ context. Only the caller does.
 ## Implications
 
 - **Artifacts are the evidence trail.** The todo state (`todos.db`) and workflow
-  artifacts (`prd`, optional `architecture` and `test-specs`, `implementation-plan`,
+  artifacts (`prd`, optional `architecture`, `implementation-plan`,
   review findings, deferrals) are the durable record. Design artifacts to be
   self-contained and readable by any future agent or human.
 - **State machine owns cleanup.** On successful terminal states the state machine emits

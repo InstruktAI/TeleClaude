@@ -12,7 +12,7 @@ visibility: 'public'
 > **Detailed state machine documentation:**
 >
 > - [Lifecycle State Machines — Overview](lifecycle-state-machines.md) — end-to-end flow, roles, how the three phases connect
-> - [Prepare Flow (Phase A)](prepare-flow.md) — PRD → Architecture → Test specs → Plan with PRD-only human approval and downstream review gates
+> - [Prepare Flow (Phase A)](prepare-flow.md) — PRD → Architecture → Plan with PRD-only human approval and downstream review gates
 > - [Work State Machine (Phase B)](work-state-machine.md) — build/review/fix/finalize routing
 > - [Integration State Machine (Phase C)](integration-state-machine.md) — 12 states, lease-serialized merge-to-main delivery
 
@@ -22,7 +22,7 @@ The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phas
 
 1. **Canonical phase pointer**: It reads the persisted `lifecycle_phase` pointer and routes from that state:
    - todo list (`todos.db`) (item discovery)
-   - prepared workflow artifacts: `prd`, optional `architecture` / `test-specs`,
+   - prepared workflow artifacts: `prd`, optional `architecture`,
      and `implementation-plan` (preparation check)
    - `todo state (todos.db)` (build/review phase tracking)
 2. **Phases**:
@@ -56,7 +56,6 @@ stateDiagram-v2
 - `todos.db` todo list - Work item registry with priorities
 - `telec todo artifacts read {slug} prd` - Product intent and requirements contract
 - `telec todo artifacts read {slug} architecture` - Optional technical brief
-- `telec todo artifacts read {slug} test-specs` - Optional behavioral specs
 - `telec todo artifacts read {slug} implementation-plan` - Execution plan
 - `todos.db` state - Phase tracking (build, review)
 - `telec todo artifacts read {slug} deferrals` - Identified technical debt

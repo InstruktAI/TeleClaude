@@ -129,7 +129,7 @@ findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
 - Point workers to the prepared artifact contract: `prd` for intent and requirements,
-  optional `architecture` / `test-specs` when present, and `implementation-plan`
+  optional `architecture` when present, and `implementation-plan`
   for the execution spine. Legacy `requirements` is only a fallback when no `prd`
   exists.
 - Reference project docs or standards.

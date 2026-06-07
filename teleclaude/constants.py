@@ -104,12 +104,6 @@ ARTIFACT_INPUT = "input"
 ARTIFACT_PRD = "prd"
 ARTIFACT_REQUIREMENTS = "requirements"
 ARTIFACT_ARCHITECTURE = "architecture"
-# DEPRECATED: the test-specs prepare phase was removed (doc-first model: Gherkin
-# lives in the feature spec authored at intake). No writer exists. Kept only so
-# CLI validation accepts the artifact name on older todos that still carry it,
-# so they can be read and removed during cleanup. Drop this constant and its
-# `ARTIFACT_NAMES` entry once no in-flight todos carry the artifact.
-ARTIFACT_TEST_SPECS = "test-specs"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 # DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is
 # authoritative). Retained only for READ/REMOVE of pre-collapse todos; the on-open
@@ -125,19 +119,15 @@ ARTIFACT_DEFERRALS = "deferrals"
 # todos carry the artifact.
 ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS = "requirements-review-findings"
 ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS = "architecture-review-findings"
-# DEPRECATED with the test-specs phase removal; retained for CLI read/remove of
-# older todos only. Drop once no in-flight todos carry it.
-ARTIFACT_SPEC_REVIEW_FINDINGS = "spec-review-findings"
 ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
 # TodoState state-dict keys for artifacts. Separate namespace from ARTIFACT_* names:
-# state keys use underscores ("test_specs"), artifact names use hyphens ("test-specs").
+# state keys use underscores ("implementation_plan"), artifact names use hyphens ("implementation-plan").
 # Convert via teleclaude.core.next_machine.artifacts.artifact_name_to_state_key.
 STATE_KEY_INPUT = "input"
 STATE_KEY_PRD = "prd"
 STATE_KEY_REQUIREMENTS = "requirements"
 STATE_KEY_ARCHITECTURE = "architecture"
-STATE_KEY_TEST_SPECS = "test_specs"
 STATE_KEY_IMPLEMENTATION_PLAN = "implementation_plan"
 
 ARTIFACT_NAMES: frozenset[str] = frozenset(
@@ -146,7 +136,6 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_PRD,
         ARTIFACT_REQUIREMENTS,
         ARTIFACT_ARCHITECTURE,
-        ARTIFACT_TEST_SPECS,
         ARTIFACT_IMPLEMENTATION_PLAN,
         ARTIFACT_BUG,
         ARTIFACT_QUALITY_CHECKLIST,
@@ -154,30 +143,17 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_DEFERRALS,
         ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
         ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS,
-        ARTIFACT_SPEC_REVIEW_FINDINGS,
         ARTIFACT_PLAN_REVIEW_FINDINGS,
         ARTIFACT_REVIEW_FINDINGS,
     }
 )
 
-# Retired artifact kinds — accepted only for READ/REMOVE of pre-cutover todos.
-# Writes are refused at the API and CLI write boundaries (see
-# ``ARTIFACT_NAMES_WRITABLE``). Drop entries once no in-flight todos carry them.
-# Note: ``requirements-review-findings`` is NOT retired here; the workflow
-# domain spec and CLI surface still declare it canonical/writable. Its in-file
-# DEPRECATED comment above is advisory pending a separate retirement change.
 ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
     {
-        ARTIFACT_TEST_SPECS,
-        ARTIFACT_SPEC_REVIEW_FINDINGS,
         ARTIFACT_BUG,
     }
 )
 
-# Writable allowlist: the canonical set minus retired kinds. The API write route
-# and ``telec todo artifacts write`` validate against this stricter set so writes
-# to retired artifacts are refused while reads/removes of pre-cutover todos still
-# work via ``ARTIFACT_NAMES``.
 ARTIFACT_NAMES_WRITABLE: frozenset[str] = ARTIFACT_NAMES - ARTIFACT_NAMES_RETIRED
 
 

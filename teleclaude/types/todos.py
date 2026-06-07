@@ -178,7 +178,6 @@ class ArtifactsState(BaseModel):
     prd: ArtifactEntry = Field(default_factory=ArtifactEntry)
     requirements: ArtifactEntry = Field(default_factory=ArtifactEntry)
     architecture: ArtifactEntry = Field(default_factory=ArtifactEntry)
-    test_specs: ArtifactEntry = Field(default_factory=ArtifactEntry)
     implementation_plan: ArtifactEntry = Field(default_factory=ArtifactEntry)
     art: ArtifactEntry = Field(default_factory=ArtifactEntry)
     visuals: ArtifactEntry = Field(default_factory=ArtifactEntry)

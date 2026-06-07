@@ -19,7 +19,6 @@ itself is artifact-agnostic.
 Typical phase/artifact combinations:
 
 - `architecture-review-findings` → target: `architecture`
-- `spec-review-findings` → target: `test-specs`
 - `plan-review-findings` → target: `implementation-plan`
 - `review-findings` → target: source code in the worktree
 
@@ -44,7 +43,7 @@ New prepare work uses human `prd_approved` rather than a requirements review pha
    - Apply the minimal fix to the target artifact.
    - Verify via commit hooks (lint + unit tests) after each fix.
    - Commit one fix per issue when the target is code. For artifact targets
-     (`architecture`, `test-specs`, `implementation-plan`, or legacy `requirements`),
+     (`architecture`, `implementation-plan`, or legacy `requirements`),
      persist the updated artifact via
      `telec todo artifacts write {slug} {target_artifact_name} "<content>"`.
 
@@ -68,7 +67,7 @@ New prepare work uses human `prd_approved` rather than a requirements review pha
 
 ## Outputs
 
-- Updated target artifact (code, `architecture`, `test-specs`, `implementation-plan`,
+- Updated target artifact (code, `architecture`, `implementation-plan`,
   or legacy `requirements`).
 - Updated findings artifact with a "Fixes Applied" section and a verdict reflecting
   the remaining unresolved Requirement-Violation, Critical, and Important findings.
