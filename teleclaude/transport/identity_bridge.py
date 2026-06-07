@@ -281,7 +281,7 @@ class IdentityBridge:
 
     def _handle_raw_message(self, raw: object) -> None:
         """Decode and dispatch a single pub/sub payload, tolerating decode errors."""
-        if not isinstance(raw, (bytes, str)):
+        if not isinstance(raw, bytes | str):
             logger.warning(
                 "Identity envelope payload has unexpected type",
                 payload_type=type(raw).__name__,

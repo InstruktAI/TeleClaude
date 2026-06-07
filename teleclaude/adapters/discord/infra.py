@@ -527,7 +527,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         return tuple(errors)
 
     def _is_transient_launcher_update_error(self, exc: Exception) -> bool:
-        if isinstance(exc, (OSError, TimeoutError)):
+        if isinstance(exc, OSError | TimeoutError):
             return True
         status = getattr(exc, "status", None)
         return isinstance(status, int) and status in {429, 500, 502, 503, 504}

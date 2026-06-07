@@ -30,7 +30,7 @@ def parse_collapsed_projects(value: object) -> set[tuple[str, str]]:
     for item in value:
         if isinstance(item, str):
             parsed.add(("local", item))
-        elif isinstance(item, (list, tuple)) and len(item) == 2:
+        elif isinstance(item, list | tuple) and len(item) == 2:
             parsed.add((str(item[0]), str(item[1])))
     return parsed
 

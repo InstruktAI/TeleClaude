@@ -61,7 +61,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         """Normalize adapter message-send results into concrete message IDs."""
         if result is None:
             return []
-        if isinstance(result, (list, tuple)):
+        if isinstance(result, list | tuple):
             return [str(item) for item in result if item]
         return [str(result)] if result else []
 
