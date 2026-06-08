@@ -1,0 +1,38 @@
+# serializer version: 1
+# name: test_prepared_auto_continue_reuses_parent_prepare_worker
+  '''
+  PREPARED: parent is ready for work.
+  
+  AUTO-CONTINUE:
+  Execute in order:
+  telec sessions send sess-parent-worker "parent is PREPARED and frozen in your context; drive prepare for unblocked child child: telec todo prepare child"
+  
+  telec sessions end sess-parent-reviewer
+  
+  AUTO-CONTINUE dispatched dependent prepare work.
+  '''
+# ---
+# name: test_prepared_auto_continue_spawns_fresh_when_parent_worker_is_absent
+  '''
+  PREPARED: parent is ready for work.
+  
+  AUTO-CONTINUE:
+  Execute in order:
+  telec sessions run --command /next-prepare --args child --project /repo
+  
+  telec sessions end sess-parent-reviewer
+  telec sessions end self
+  
+  AUTO-CONTINUE dispatched dependent prepare work.
+  '''
+# ---
+# name: test_prepared_cleanup_is_unchanged_without_unblocked_children
+  '''
+  telec sessions end sess-parent-reviewer
+  telec sessions end self
+  
+  PREPARED: parent is ready for work.
+  
+  DECISION REQUIRED: Continue preparation work, or start the build/review cycle with telec todo work parent.
+  '''
+# ---

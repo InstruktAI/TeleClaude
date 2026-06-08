@@ -44,6 +44,8 @@ from teleclaude.core.next_machine._types import PreparePhase as _PP
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
     HolderResolutionReason,
+    deps_satisfied,
+    effective_prepared_slugs_for_dependencies,
     resolve_runnable_holder_children_db,
 )
 from teleclaude.core.todos_db import get_todos_db
@@ -83,7 +85,7 @@ def _format_holder_prepare_instruction(
     if reason is HolderResolutionReason.DEPS_UNSATISFIED:
         return (
             f"Holder '{holder_slug}' has direct children, but none are prepare-runnable because "
-            "their dependencies are not delivered yet."
+            "their dependencies have not reached the PREPARED gate yet."
         )
     if reason is HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP:
         return f"Holder '{holder_slug}' has child todos, but none are active todo-list entries."
@@ -122,6 +124,8 @@ async def _hydrate_artifact_presence_for_adoption(
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
     """Find the first todo still in the prepare lane."""
     entries = await todos_db.list_roadmap()
+    deps = await todos_db.load_deps()
+    prepared = await effective_prepared_slugs_for_dependencies(todos_db)
     for entry in entries:
         slug = entry["slug"]
         state = await todos_db.read_state(slug)
@@ -129,6 +133,8 @@ async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
             continue
         lifecycle = require_lifecycle_phase(state.get("lifecycle_phase"), context=f"_find_next_prepare_slug_db({slug})")
         if lifecycle != LifecyclePhase.PREPARED and not is_work_lifecycle_phase(lifecycle):
+            if not deps_satisfied(deps, prepared, slug):
+                continue
             return slug
     return None
 

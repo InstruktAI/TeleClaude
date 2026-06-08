@@ -9,6 +9,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import config
 from teleclaude.core.next_machine.kinds import KIND_BUG, canonical_kind
+from teleclaude.core.next_machine.slug_resolution import (
+    deps_satisfied,
+    effective_delivered_slugs_for_dependencies,
+    effective_prepared_slugs_for_dependencies,
+)
+from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.types.lifecycle import LifecyclePhase
@@ -61,13 +67,22 @@ class LifecycleRouterCartridge:
             kind = kind_raw if isinstance(kind_raw, str) else None
             phase_raw = event.payload.get("lifecycle_phase")
             phase = phase_raw if isinstance(phase_raw, str) else None
-            await self._dispatch_router_lane(slug, kind, phase)
+            project_path_raw = event.payload.get("project_path")
+            project_path = project_path_raw if isinstance(project_path_raw, str) else None
+            await self._dispatch_router_lane(slug, kind, phase, project_path=project_path)
             return event
 
         _ = context
         return event
 
-    async def _dispatch_router_lane(self, slug: str, kind: str | None, lifecycle_phase: str | None) -> None:
+    async def _dispatch_router_lane(
+        self,
+        slug: str,
+        kind: str | None,
+        lifecycle_phase: str | None,
+        *,
+        project_path: str | None = None,
+    ) -> None:
         """Dispatch a todo creation event to the correct orchestrator.
 
         Routing is a pure function of the canonical kind plus creation evidence:
@@ -75,14 +90,26 @@ class LifecycleRouterCartridge:
         and enters the work lane; feature/change enter prepare, where the state
         machine derives the kind's entry phase (PRD for feature, plan for change).
         """
-        project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
+        effective_project_path = project_path or os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
         dispatch_args: RunSessionArgs
         resolved_kind = canonical_kind(kind)
+        todos_db = await get_todos_db(effective_project_path)
+        dependencies = await todos_db.load_deps()
+        work_lane = resolved_kind == KIND_BUG or lifecycle_phase == LifecyclePhase.PREPARED.value
+        satisfied = (
+            await effective_delivered_slugs_for_dependencies(todos_db)
+            if work_lane
+            else await effective_prepared_slugs_for_dependencies(todos_db)
+        )
+        if not deps_satisfied(dependencies, satisfied, slug):
+            unmet = [dep for dep in dependencies.get(slug, []) if dep not in satisfied]
+            logger.info("workflow.todo.created skipped: dependency-blocked", slug=slug, unmet=unmet)
+            return
 
         if resolved_kind == KIND_BUG:
             dispatch_args = {
                 "command": "/next-work",
-                "project_path": project_path,
+                "project_path": effective_project_path,
                 "args": slug,
                 "agent": "claude",
                 "thinking_mode": "slow",
@@ -91,14 +118,14 @@ class LifecycleRouterCartridge:
         elif lifecycle_phase == LifecyclePhase.PREPARED.value:
             dispatch_args = {
                 "command": "/next-work",
-                "project_path": project_path,
+                "project_path": effective_project_path,
                 "args": slug,
                 "detach": True,
             }
         else:
             dispatch_args = {
                 "command": "/next-prepare",
-                "project_path": project_path,
+                "project_path": effective_project_path,
                 "args": slug,
                 "detach": True,
                 "additional_context": "human_in_loop: false\n",

@@ -15,6 +15,7 @@ from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
     is_ready_for_work,
+    is_work_lifecycle_phase,
     lifecycle_phase_index,
 )
 
@@ -166,10 +167,10 @@ async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
     return ready
 
 
-def _deps_satisfied(dependencies: dict[str, list[str]], delivered: set[str], slug: str) -> bool:
-    """Return whether all todo dependencies for ``slug`` have delivered."""
+def deps_satisfied(dependencies: dict[str, list[str]], satisfied_set: set[str], slug: str) -> bool:
+    """Return whether all todo dependencies for ``slug`` are in ``satisfied_set``."""
     slug_deps = dependencies.get(slug, [])
-    return not slug_deps or all(dep in delivered for dep in slug_deps)
+    return not slug_deps or all(dep in satisfied_set for dep in slug_deps)
 
 
 def _children_by_group(entries: list[RoadmapRow]) -> dict[str, list[str]]:
@@ -205,6 +206,43 @@ async def effective_delivered_slugs_for_dependencies(
     """
     effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
     entries = await todos_db.list_roadmap(include_delivered=True)
+    grouped_children = _children_by_group(entries)
+    candidates = {entry["slug"] for entry in entries}
+
+    changed = True
+    while changed:
+        changed = False
+        for slug in candidates - effective:
+            children = await _resolve_holder_children_from_entries(todos_db, slug, grouped_children)
+            if children and all(child in effective for child in children):
+                effective.add(slug)
+                changed = True
+
+    return effective
+
+
+def _state_counts_as_dependency_prepared(state: dict[str, StateValue] | None) -> bool:
+    """Return True when a todo has crossed the prepare dependency gate."""
+    if state is None:
+        return False
+    phase = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+    return phase == LifecyclePhase.PREPARED or (phase is not None and is_work_lifecycle_phase(phase))
+
+
+async def effective_prepared_slugs_for_dependencies(
+    todos_db: TodosDb,
+    delivered: set[str] | None = None,
+) -> set[str]:
+    """Return delivered/prepared slugs plus holders whose children are all prepared."""
+    effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
+    entries = await todos_db.list_roadmap(include_delivered=True)
+    for entry in entries:
+        slug = entry["slug"]
+        if slug in effective:
+            continue
+        if _state_counts_as_dependency_prepared(await todos_db.read_state(slug)):
+            effective.add(slug)
+
     grouped_children = _children_by_group(entries)
     candidates = {entry["slug"] for entry in entries}
 
@@ -260,7 +298,11 @@ async def resolve_runnable_holder_children_db(
     entries = await todos_db.list_roadmap()
     active_slugs = {entry["slug"] for entry in entries}
     delivered = await todos_db.delivered_slugs()
-    dependency_delivered = await effective_delivered_slugs_for_dependencies(todos_db, delivered)
+    dependency_satisfied = (
+        await effective_prepared_slugs_for_dependencies(todos_db, delivered)
+        if mode is HolderResolutionMode.PREPARE
+        else await effective_delivered_slugs_for_dependencies(todos_db, delivered)
+    )
     runnable: list[str] = []
     has_children_in_roadmap = False
     has_incomplete_children = False
@@ -291,7 +333,7 @@ async def resolve_runnable_holder_children_db(
                 has_not_ready = True
                 continue
 
-        if not _deps_satisfied(dependencies, dependency_delivered, child):
+        if not deps_satisfied(dependencies, dependency_satisfied, child):
             has_deps_blocked = True
             continue
 
@@ -354,7 +396,7 @@ async def resolve_next_work_queue_db(
         if not is_ready:
             continue
 
-        if not _deps_satisfied(dependencies, dependency_delivered, found_slug):
+        if not deps_satisfied(dependencies, dependency_delivered, found_slug):
             saw_deps_blocked = True
             continue
 
@@ -418,7 +460,9 @@ __all__ = [
     "WorkQueueResolutionReason",
     "_get_item_phase_db",
     "_is_ready_for_work_db",
+    "deps_satisfied",
     "effective_delivered_slugs_for_dependencies",
+    "effective_prepared_slugs_for_dependencies",
     "get_item_phase",
     "resolve_holder_children_db",
     "resolve_next_work_queue_db",

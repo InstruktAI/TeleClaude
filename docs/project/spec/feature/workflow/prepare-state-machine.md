@@ -83,7 +83,6 @@ Then the loop iterates up to the prepare loop limit and exits with a non-recover
 And the instruction tells the operator to inspect via "telec todo show my-feature" and surface the issue to the user
 ```
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 ### Auto-continue
 
@@ -111,7 +110,6 @@ When the machine derives PREPARED
 Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
 ```
 
-<!-- /planned:dep-gated-prepare-autodispatch -->
 
 ### Cross-context references
 
@@ -132,8 +130,6 @@ Then it emits the normal prepared-cleanup (end all live parent sessions, includi
 - The prepare loop limit is a contradiction detector, not a workload knob. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - The machine does not auto-add the slug to the todo list when called on a holder; auto-add happens only after holder resolution confirms the slug is a leaf prepare target.
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 - **Auto-continue at PREPARED is concrete, not advisory.** When a parent reaches `PREPARED` it unblocks the **prepare** gate (not the work gate) of its dependents — so the dependents' prepare auto-continues immediately, while their work still waits for the parent's delivery (see `@spec/feature/workflow/dependency-graph`). The continuation is dispatched, not suggested to the human.
 - **Worker reuse preserves context.** Auto-continue prefers reusing the parent's open prepare worker via `telec sessions send` (the existing reuse-or-spawn dispatch keyed by parent slug + `/next-prepare`), because that worker holds the parent's just-frozen design. One worker thus carries multiple slugs in context across the dependency chain. A fresh `telec sessions run` is the fallback only when no parent worker is live; the parent's design is still recoverable from its now-frozen artifacts and snippets. No session↔slug rebinding is required: the reuse lookup is always keyed by the _parent_ slug (whose worker title is intact), and that worker then drives the child inline.
-<!-- /planned:dep-gated-prepare-autodispatch -->

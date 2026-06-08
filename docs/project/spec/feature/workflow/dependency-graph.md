@@ -26,7 +26,6 @@ The graph has two responsibilities:
 
 Mutations land via `telec todo set-deps`, which converges on the workflow service's set-deps capability after passing validation.
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 ### Phase-specific gates (two gates, both directions)
 
@@ -44,7 +43,6 @@ Both gates apply in **both dispatch directions**:
 
 The prepared-set used by the prepare gate, like the delivered-set used by the work gate, is computed with holder roll-up: a holder dependency is satisfied for the prepare gate when every direct child has reached `PREPARED`, mirroring `effective_delivered_slugs_for_dependencies` for the delivered-set.
 
-<!-- /planned:dep-gated-prepare-autodispatch -->
 
 ## Canonical fields
 
@@ -104,7 +102,6 @@ Then all existing edges for that slug are removed
 And the workflow service reports "dependencies cleared for 'alpha'"
 ```
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 ### Behavioral contract
 
@@ -136,7 +133,6 @@ And the router does not auto-dispatch /next-prepare for "child"
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
 ```
 
-<!-- /planned:dep-gated-prepare-autodispatch -->
 
 ### Cross-context references
 
@@ -150,8 +146,6 @@ And "child" waits until "parent" reaches PREPARED, which triggers auto-continue 
 - `set-deps` is a full replacement: passing no `--after` clears all edges for the slug; there is no incremental add/remove surface. To merge edges, the caller must read the current edges first and submit the union.
 - At slug retirement, the workflow context scrubs the deleted slug out of other entries' `depends_on` lists — without that, removing a slug could leave dangling deps that block its dependents forever.
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 - The gate is **phase-specific**. The **work** gate is cleared only by `delivered`. The **prepare** gate is cleared by the parent reaching `PREPARED` — a non-`delivered` lifecycle phase. `icebox`, and any lifecycle phase before `PREPARED`, leave the prepare gate closed.
 - Both gates are enforced at **create-time** (lifecycle router, before auto-dispatch) and at **resolution-time** (orchestrator next-runnable resolution). Before this change the router applied no dependency gate at create-time, which let a dep-blocked child auto-dispatch in parallel with its parent.
-<!-- /planned:dep-gated-prepare-autodispatch -->

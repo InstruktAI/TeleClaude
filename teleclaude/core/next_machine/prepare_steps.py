@@ -307,7 +307,7 @@ async def _prepare_dispatch(
                 additional_context=format_pending_classes_for_dispatch(drift_result),
                 recommended_mode=DRIFT_ANALYZER_RECOMMENDED_MODE,
             )
-        return await _prepare_step_prepared(db, slug)
+        return await _prepare_step_prepared(db, todos_db, slug, project_root=project_root)
     if phase == PreparePhase.BLOCKED:
         project_root = _derive_project_root(cwd, slug)
         drift_result = await _derive_and_commit_drift(todos_db=todos_db, slug=slug, cwd=project_root, state=state)

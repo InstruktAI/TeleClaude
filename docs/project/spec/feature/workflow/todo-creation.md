@@ -127,13 +127,11 @@ And the lifecycle router consumes the event and dispatches /next-work for the bu
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 ### Dependency gate at create-time
 
 Create-time dispatch is dependency-gated by the lane selected from the creation event. The executable scenarios are `UC-WTC2` and `UC-WTC3`.
 
-<!-- /planned:dep-gated-prepare-autodispatch -->
 
 ### Behavioral contract
 
@@ -147,7 +145,6 @@ And the help states that omitting `--kind` creates a kind-less todo classified b
 And the help does not advertise retired kind values
 ```
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 #### UC-WTC2: Dep-blocked create event is consumed without prepare dispatch
 
@@ -170,7 +167,6 @@ Then the router finds "child"'s prepare gate satisfied
 And the router dispatches /next-prepare for "child" as usual
 ```
 
-<!-- /planned:dep-gated-prepare-autodispatch -->
 
 ### Cross-context references
 
@@ -186,10 +182,8 @@ And the router dispatches /next-prepare for "child" as usual
 - The `bugs report` / `bugs create` helpers wrap the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification when dependency gates allow pickup.
 
-<!-- planned:dep-gated-prepare-autodispatch -->
 
 - **Dependency gate at create-time:** routing by `kind`/`lifecycle_phase`/`pickup_requested` selects the _lane_, but before auto-dispatching the router consults the dependency graph for the slug. A child with unsatisfied `after` dependencies for its lane (prepare lane → parents must be `PREPARED`; work lane → parents must be `delivered`, per `@spec/feature/workflow/dependency-graph`) is treated as silent: the event is still consumed but no orchestrator is dispatched. Only deps-satisfied todos auto-dispatch. This closes the create-time over-dispatch where `create parent; create child --after parent` spawned both orchestrators in parallel.
-<!-- /planned:dep-gated-prepare-autodispatch -->
 
 - `telec todo design` (and the deprecated `co-create` alias) is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.

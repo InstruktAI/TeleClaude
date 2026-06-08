@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.session_status import compute_agent_status
 
 TitlePrefixes = str | tuple[str, ...]
+PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
+    SlashCommand.NEXT_PREPARE.value,
+    SlashCommand.NEXT_PREPARE_INTAKE.value,
+    SlashCommand.NEXT_PREPARE_ARCHITECTURE.value,
+    SlashCommand.NEXT_PREPARE_PLAN.value,
+    SlashCommand.NEXT_REVIEW_ARCHITECTURE.value,
+    SlashCommand.NEXT_REVIEW_PLAN.value,
+    SlashCommand.NEXT_DRIFT_ANALYZE.value,
+)
 
 
 def _normalize_prefixes(title_prefixes: TitlePrefixes) -> tuple[str, ...]:
@@ -91,6 +100,21 @@ async def find_all_live_sessions_for_slug(
 _TITLE_SLUG_BOUNDARIES = (" ", "\t", "\n")
 
 
+def _matches_command_slug_title(title: str | None, slug: str, command_values: TitlePrefixes) -> bool:
+    """Return True when a root title matches ``/<command> <slug>`` with a slug boundary."""
+    normalized_title = (title or "").lstrip()
+    for command_value in _normalize_prefixes(command_values):
+        expected_title = f"/{command_value} {slug}"
+        if normalized_title == expected_title:
+            return True
+        if (
+            normalized_title.startswith(expected_title)
+            and normalized_title[len(expected_title) : len(expected_title) + 1] in _TITLE_SLUG_BOUNDARIES
+        ):
+            return True
+    return False
+
+
 async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: str) -> str | None:
     """Return the newest live prepare worker id for an exact slug+command match.
 
@@ -100,17 +124,25 @@ async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: st
     ``/cmd slug`` or to be followed by whitespace, so longer slugs that begin
     with the target slug as a prefix cannot match.
     """
-    expected_title = f"/{command_value} {slug}"
     sessions = await db.list_sessions(include_closed=False)
     for session in sessions:
         if session.subdir is not None:
             continue
-        title = (session.title or "").lstrip()
-        if title == expected_title:
-            return session.session_id
-        if (
-            title.startswith(expected_title)
-            and title[len(expected_title) : len(expected_title) + 1] in _TITLE_SLUG_BOUNDARIES
-        ):
+        if _matches_command_slug_title(session.title, slug, command_value):
             return session.session_id
     return None
+
+
+async def find_live_root_next_prepare_session_for_slug(db: Db, slug: str) -> str | None:
+    """Return the newest live root ``/next-prepare`` session for ``slug``."""
+    return await find_live_prepare_worker_for_slug(db, slug, SlashCommand.NEXT_PREPARE.value)
+
+
+async def find_live_root_prepare_lifecycle_sessions_for_slug(db: Db, slug: str) -> list[str]:
+    """Return live root prepare-lifecycle session ids for ``slug`` with exact slug-boundary matching."""
+    sessions = await db.list_sessions(include_closed=False)
+    return [
+        session.session_id
+        for session in sessions
+        if session.subdir is None and _matches_command_slug_title(session.title, slug, PREPARE_LIFECYCLE_COMMANDS)
+    ]

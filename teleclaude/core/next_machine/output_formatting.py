@@ -329,22 +329,42 @@ def format_error(code: str, message: str, next_call: str = "") -> str:
     return result
 
 
-def format_prepared(slug: str, session_ids_to_end: list[str] | None = None) -> str:
+def format_prepared(
+    slug: str,
+    session_ids_to_end: list[str] | None = None,
+    auto_continue_operations: list[str] | None = None,
+    *,
+    suppress_self_end: bool = False,
+) -> str:
     """Format the PREPARED terminal message for the prepare state machine.
 
-    When session_ids_to_end is provided, the output begins with end commands
-    for each session followed by `telec sessions end self` to end the
-    orchestrator. This is the single cleanup point for the prepare lifecycle.
+    Cleanup is the single cleanup point for the prepare lifecycle. When
+    auto-continue operations exist, they run before cleanup so fresh dispatches
+    are started before the current session ends.
     """
-    cleanup = ""
-    if session_ids_to_end:
-        end_lines = "\n".join(f"telec sessions end {sid}" for sid in session_ids_to_end)
-        cleanup = f"{end_lines}\ntelec sessions end self\n\n"
-    return (
-        f"{cleanup}PREPARED: {slug} is ready for work.\n\n"
-        f"DECISION REQUIRED: Continue preparation work, or start the build/review cycle "
-        f"with telec todo work {slug}."
+    operations = ""
+    if auto_continue_operations:
+        operation_lines = "\n".join(auto_continue_operations)
+        operations = f"AUTO-CONTINUE:\nExecute in order:\n{operation_lines}\n\n"
+
+    cleanup_lines = list(f"telec sessions end {sid}" for sid in session_ids_to_end or [])
+    if not suppress_self_end:
+        cleanup_lines.append("telec sessions end self")
+    cleanup = "\n".join(cleanup_lines)
+    cleanup_block = f"{cleanup}\n\n" if cleanup else ""
+
+    terminal_note = (
+        "AUTO-CONTINUE dispatched dependent prepare work."
+        if auto_continue_operations
+        else (
+            f"DECISION REQUIRED: Continue preparation work, or start the build/review cycle "
+            f"with telec todo work {slug}."
+        )
     )
+    if auto_continue_operations:
+        return f"PREPARED: {slug} is ready for work.\n\n{operations}{cleanup_block}{terminal_note}"
+
+    return f"{cleanup_block}PREPARED: {slug} is ready for work.\n\n{terminal_note}"
 
 
 def format_uncommitted_changes(slug: str) -> str:
