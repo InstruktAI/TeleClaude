@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'global'
 visibility: 'public'
-description: 'Template every bounded context''s canonical domain spec must follow — ubiquitous language, aggregates, events, use cases, context map position.'
+description: "Template every bounded context's canonical domain spec must follow — ubiquitous language, aggregates, events, use cases, context map position."
 ---
 
 # Domain Spec — Spec
@@ -73,13 +73,13 @@ Example:
 #### Todo (aggregate)
 
 - **Root:** TodoEntry
-- **Contains:** Artifact (input | prd | architecture | implementation-plan | bug | quality-checklist | design-spec | deferrals | review-findings), VersionedArtifact, StageState
+- **Contains:** Artifact (input | prd | architecture | implementation-plan | task-plan | bug | quality-checklist | design-spec | deferrals | review-findings), VersionedArtifact, StageState
 - **Invariants:**
   - A todo has exactly one current StageState at any moment.
   - An artifact's version history is append-only.
-  - A todo cannot move to `delivered` stage without a non-empty `delivery_commit`.
+  - An SDLC todo cannot move to `delivered` stage without a non-empty `delivery_commit`.
 - **Identifier:** slug (kebab-case, unique per project)
-- **Lifecycle:** Created via `telec todo create <slug> <content> --kind <kind>` (both content and kind required). Reaches terminal `delivered` after integration. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind may be omitted only for kind-less intake). Reaches terminal `delivered` after integration for SDLC kinds. Frozen aggregates move to icebox.
 ```
 
 #### Domain events emitted

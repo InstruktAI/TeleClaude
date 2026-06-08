@@ -105,6 +105,7 @@ ARTIFACT_PRD = "prd"
 ARTIFACT_REQUIREMENTS = "requirements"
 ARTIFACT_ARCHITECTURE = "architecture"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
+ARTIFACT_TASK_PLAN = "task-plan"
 # DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is
 # authoritative). Retained only for READ/REMOVE of pre-collapse todos; the on-open
 # migration `_migrate_bug_artifact_to_input` renames existing rows to "input".
@@ -129,6 +130,7 @@ STATE_KEY_PRD = "prd"
 STATE_KEY_REQUIREMENTS = "requirements"
 STATE_KEY_ARCHITECTURE = "architecture"
 STATE_KEY_IMPLEMENTATION_PLAN = "implementation_plan"
+STATE_KEY_TASK_PLAN = "task_plan"
 
 ARTIFACT_NAMES: frozenset[str] = frozenset(
     {
@@ -137,6 +139,7 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_REQUIREMENTS,
         ARTIFACT_ARCHITECTURE,
         ARTIFACT_IMPLEMENTATION_PLAN,
+        ARTIFACT_TASK_PLAN,
         ARTIFACT_BUG,
         ARTIFACT_QUALITY_CHECKLIST,
         ARTIFACT_DESIGN_SPEC,

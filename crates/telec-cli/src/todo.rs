@@ -78,9 +78,9 @@ pub struct CreateArgs {
     /// Comma-separated dependency slugs.
     #[arg(long)]
     pub after: Option<String>,
-    /// Work item kind: feature | change | bug.
+    /// Work item kind: feature | change | bug | task. Omit for kind-less intake.
     #[arg(long)]
-    pub kind: String,
+    pub kind: Option<String>,
     /// Optional free-form description.
     #[arg(long)]
     pub description: Option<String>,
@@ -254,7 +254,7 @@ async fn create(
 ) -> Result<i32> {
     let slug = Slug::new(&args.slug).context("parse todo slug")?;
     let after = parse_after(args.after.as_deref())?;
-    let kind = parse_kind(&args.kind)?;
+    let kind = args.kind.as_deref().map(parse_kind).transpose()?;
     let input_content = resolve_input_content(args.input.as_deref(), args.input_file.as_deref())?;
     let todo = service
         .create_todo(
@@ -568,8 +568,9 @@ pub(crate) fn parse_kind(raw: &str) -> Result<TodoKind> {
         "feature" => Ok(TodoKind::Feature),
         "change" => Ok(TodoKind::Change),
         "bug" => Ok(TodoKind::Bug),
+        "task" => Ok(TodoKind::Task),
         other => Err(anyhow!(
-            "unknown --kind {other:?}; expected feature|change|bug"
+            "unknown --kind {other:?}; expected feature|change|bug|task"
         )),
     }
 }
@@ -581,6 +582,7 @@ fn parse_artifact_name(raw: &str) -> Result<ArtifactName> {
         anyhow!(
             "unknown artifact name {raw:?}; expected one of input|prd|requirements|architecture|\
              test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|\
+             task-plan|\
              requirements-review-findings|architecture-review-findings|spec-review-findings|\
              plan-review-findings|review-findings"
         )
@@ -599,6 +601,7 @@ fn artifact_name_label(name: ArtifactName) -> &'static str {
         ArtifactName::QualityChecklist => "quality-checklist",
         ArtifactName::DesignSpec => "design-spec",
         ArtifactName::Deferrals => "deferrals",
+        ArtifactName::TaskPlan => "task-plan",
         ArtifactName::RequirementsReviewFindings => "requirements-review-findings",
         ArtifactName::ArchitectureReviewFindings => "architecture-review-findings",
         ArtifactName::SpecReviewFindings => "spec-review-findings",
@@ -654,6 +657,7 @@ mod tests {
         assert!(matches!(parse_kind("feature"), Ok(TodoKind::Feature)));
         assert!(matches!(parse_kind("change"), Ok(TodoKind::Change)));
         assert!(matches!(parse_kind("bug"), Ok(TodoKind::Bug)));
+        assert!(matches!(parse_kind("task"), Ok(TodoKind::Task)));
     }
 
     #[test]

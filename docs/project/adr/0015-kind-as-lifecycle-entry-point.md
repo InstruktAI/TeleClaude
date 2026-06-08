@@ -47,11 +47,12 @@ projections of it. A kind is normalized on every read via `canonical_kind()`.
 **Kind is optional at the human-intake boundary.** A kind-less creation stores
 the raw brain dump as the `input` artifact and routes to `/analyze-todo-input`,
 which interprets it and **proposes** a kind for human approval — writing a
-`task-plan` when it proposes `task`, or setting an SDLC kind (with a one-line
-rationale) so the normal lane takes over. The classification step proposes and
-never executes, so unframed human intent is never acted on unprompted. Kind is
-unset only in this pre-analysis window; once analyze assigns it and the human
-approves, it is fixed and normalized like any other. This relaxes the prior
+`task-plan` when it proposes `task`, or recording an SDLC proposal with a
+one-line rationale so the normal lane can take over after approval. The
+classification step proposes and never executes, so unframed human intent is
+never acted on unprompted. Kind is unset through this pre-approval window; once
+the human approves the proposal through `telec todo stamp --kind-approved`, it
+is fixed and normalized like any other. This relaxes the prior
 "kind mandatory at every input boundary" rule to "mandatory once classified."
 
 The evicted values become orthogonal inputs/state, not kinds:
@@ -84,7 +85,8 @@ references so no-PRD work is first-class.
 - New artifacts: `task-plan` (the actionable + bookkeeping artifact for `task`).
   `input` stays immutable; analyze only reads it.
 - The "kind fixed at creation" invariant becomes "fixed once assigned": a
-  kind-less todo's kind is assigned exactly once, by analyze on human approval.
+  kind-less todo's kind is proposed by analyze and assigned exactly once by
+  human approval through the stamp boundary.
 - A `change` carries no PRD/PO intent gate but a **mandatory doc-snippet
   reflection obligation**. Because the change lane skips the PRD — where the
   doc-first "snippets to author or update" deliverable otherwise lives — the

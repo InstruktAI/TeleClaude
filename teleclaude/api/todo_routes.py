@@ -42,6 +42,7 @@ from teleclaude.constants import (
     ARTIFACT_NAMES_WRITABLE,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TASK_PLAN,
 )
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
@@ -57,6 +58,8 @@ from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
+from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_TASK
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -73,6 +76,7 @@ _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_TASK_PLAN,
 }
 
 
@@ -501,10 +505,12 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
     """Create a todo: state + artifact + todo entry in todos.db.
 
     Kind selects the entry point (see TodoDumpRequest):
+      - omitted kind: content is the "input" artifact; enters analyzer proposal.
       - "feature" | "change": content is the "input" artifact; enters prepare
         (feature authors a PRD, change drafts a plan directly).
       - "bug": content is the "input" artifact; apply_prepared_state stamps the
         canonical lifecycle `prepared` so it enters the fix lane directly.
+      - "task": content is the "input" artifact; enters prepared and is forced silent.
     ``silent`` suppresses dispatch (parking).
     """
     slug = request.slug
@@ -519,14 +525,22 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         if not request.content.strip():
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
 
-        if request.plan and request.kind != "change":
+        if request.plan and request.kind != TODO_KIND_CHANGE:
             raise HTTPException(
                 status_code=400,
                 detail="--plan supplies a complete implementation-plan and is only valid with --kind change",
             )
 
         state = default_state()
-        state["kind"] = request.kind
+        if request.kind is None:
+            state["kind"] = None
+            state["lifecycle_phase"] = LifecyclePhase.UNKINDED.value
+        else:
+            state["kind"] = request.kind
+            if request.kind == TODO_KIND_TASK:
+                state["lifecycle_phase"] = LifecyclePhase.PREPARED.value
+        force_silent = request.kind == TODO_KIND_TASK
+        pickup_requested = not (request.silent or force_silent)
 
         written_artifact_name = ""
         written_artifact_body = ""
@@ -569,7 +583,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 artifact_body=written_artifact_body,
             )
 
-        if request.kind == "bug" or request.plan:
+        if request.kind == TODO_KIND_BUG or request.plan:
             # Stamp DOR, grounding baseline, and review approvals so a bug (fix
             # lane) or a --plan change (complete plan supplied) is immediately
             # `prepared` and skips the prepare phase.
@@ -584,9 +598,9 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
             domain="software-development",
             payload={
                 "slug": slug,
-                "kind": map_v1_kind_to_canonical(request.kind),
-                "creation_mode": "silent" if request.silent else "pickup",
-                "pickup_requested": not request.silent,
+                "kind": None if request.kind is None else map_v1_kind_to_canonical(request.kind),
+                "creation_mode": "pickup" if pickup_requested else "silent",
+                "pickup_requested": pickup_requested,
                 "lifecycle_phase": str(state.get("lifecycle_phase", "draft")),
                 "created_at": datetime.now(UTC).isoformat(),
                 "project_path": effective_cwd,

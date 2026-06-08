@@ -21,6 +21,8 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "workflow.lifecycle_phase", rename_all = "snake_case")]
 pub enum LifecyclePhase {
+    Unkinded,
+    KindProposed,
     Draft,
     PrdDrafting,
     PrdHumanApproval,
@@ -56,6 +58,7 @@ pub enum TodoKind {
     Feature,
     Change,
     Bug,
+    Task,
 }
 
 /// Dispatch hint for todo creation events.
@@ -89,6 +92,7 @@ pub enum ArtifactName {
     QualityChecklist,
     DesignSpec,
     Deferrals,
+    TaskPlan,
     RequirementsReviewFindings,
     ArchitectureReviewFindings,
     SpecReviewFindings,
@@ -102,7 +106,9 @@ impl LifecyclePhase {
     /// from `BuildStarted` through `HandedOff`.
     pub fn stage(self) -> LifecycleStage {
         match self {
-            Self::Draft
+            Self::Unkinded
+            | Self::KindProposed
+            | Self::Draft
             | Self::PrdDrafting
             | Self::PrdHumanApproval
             | Self::ArchitectureDrafting
@@ -134,7 +140,7 @@ pub struct Todo {
     pub id: TodoId,
     pub slug: Slug,
     pub project_id: ProjectId,
-    pub kind: TodoKind,
+    pub kind: Option<TodoKind>,
     pub lifecycle_phase: LifecyclePhase,
     pub group: Option<String>,
     pub after: Vec<Slug>,
@@ -220,6 +226,15 @@ mod tests {
     }
 
     #[test]
+    fn todo_kind_task_round_trips_as_task() {
+        let encoded = serde_json::to_string(&TodoKind::Task).expect("serialize");
+        let decoded: TodoKind = serde_json::from_str(&encoded).expect("deserialize");
+
+        assert_eq!(encoded, "\"task\"");
+        assert_eq!(decoded, TodoKind::Task);
+    }
+
+    #[test]
     fn creation_mode_default_is_pickup() {
         assert_eq!(CreationMode::default(), CreationMode::Pickup);
     }
@@ -260,6 +275,15 @@ mod tests {
     }
 
     #[test]
+    fn artifact_name_task_plan_round_trips_as_kebab_case() {
+        let encoded = serde_json::to_string(&ArtifactName::TaskPlan).expect("serialize");
+        let decoded: ArtifactName = serde_json::from_str(&encoded).expect("deserialize");
+
+        assert_eq!(encoded, "\"task-plan\"");
+        assert_eq!(decoded, ArtifactName::TaskPlan);
+    }
+
+    #[test]
     fn artifact_name_serde_decodes_longest_kebab_case_value() {
         let decoded: ArtifactName =
             serde_json::from_str("\"requirements-review-findings\"").expect("deserialize");
@@ -272,6 +296,26 @@ mod tests {
             LifecyclePhase::PlanDrafting.stage(),
             LifecycleStage::Prepare
         );
+    }
+
+    #[test]
+    fn lifecycle_phase_unkinded_round_trips_and_maps_to_prepare() {
+        let encoded = serde_json::to_string(&LifecyclePhase::Unkinded).expect("serialize");
+        let decoded: LifecyclePhase = serde_json::from_str(&encoded).expect("deserialize");
+
+        assert_eq!(encoded, "\"unkinded\"");
+        assert_eq!(decoded, LifecyclePhase::Unkinded);
+        assert_eq!(decoded.stage(), LifecycleStage::Prepare);
+    }
+
+    #[test]
+    fn lifecycle_phase_kind_proposed_round_trips_and_maps_to_prepare() {
+        let encoded = serde_json::to_string(&LifecyclePhase::KindProposed).expect("serialize");
+        let decoded: LifecyclePhase = serde_json::from_str(&encoded).expect("deserialize");
+
+        assert_eq!(encoded, "\"kind_proposed\"");
+        assert_eq!(decoded, LifecyclePhase::KindProposed);
+        assert_eq!(decoded.stage(), LifecycleStage::Prepare);
     }
 
     #[test]

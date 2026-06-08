@@ -340,10 +340,14 @@ class SetAgentStatusRequest(BaseModel):
 class TodoDumpRequest(BaseModel):
     """Request body for POST /todos/dump.
 
-    ``kind`` is required and selects the lifecycle entry point:
+    ``kind`` selects the lifecycle entry point when present:
       - "feature": content is the "input" artifact; enters intake (authors a PRD).
       - "change":  content is the "input" artifact; enters plan drafting (no PRD).
       - "bug":     content is the "input" artifact; skips prepare and enters the fix lane.
+      - "task":    content is the "input" artifact; created silent and tracked by task-plan.
+
+    Omitted ``kind`` creates an unkinded todo: content is stored as immutable
+    ``input`` and routed to /analyze-todo-input for proposal only.
 
     ``silent`` creates the todo without dispatching an orchestrator (parking).
     """
@@ -352,7 +356,7 @@ class TodoDumpRequest(BaseModel):
 
     slug: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
-    kind: TodoDumpKind
+    kind: TodoDumpKind | None = None
     after: list[str] | None = None
     cwd: str | None = None
     silent: bool = False

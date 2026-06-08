@@ -91,6 +91,28 @@ class LifecycleRouterCartridge:
         if not project_path:
             raise ValueError(f"Cannot dispatch lifecycle lane for {slug}: missing project_path")
         dispatch_args: RunSessionArgs
+        if kind is None or lifecycle_phase == LifecyclePhase.UNKINDED.value:
+            dispatch_args = {
+                "command": "/analyze-todo-input",
+                "project_path": project_path,
+                "args": slug,
+                "detach": True,
+                "additional_context": "human_in_loop: false\n",
+            }
+            api = TelecAPIClient()
+            await api.connect()
+            try:
+                await api.run_session(**dispatch_args)
+            finally:
+                await api.close()
+            logger.info(
+                "dispatched lane",
+                slug=slug,
+                kind="",
+                command=dispatch_args["command"],
+            )
+            return
+
         resolved_kind = canonical_kind(kind)
         todos_db = await get_todos_db(project_path)
         dependencies = await todos_db.load_deps()

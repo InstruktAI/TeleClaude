@@ -36,7 +36,7 @@ async fn create_todo_inserts_row_and_emits_event(pool: PgPool) {
             CreateTodoArgs {
                 project,
                 slug: slug.clone(),
-                kind: TodoKind::Feature,
+                kind: Some(TodoKind::Feature),
                 description: Some("first todo".to_owned()),
                 after: vec![],
                 group: None,
@@ -50,7 +50,7 @@ async fn create_todo_inserts_row_and_emits_event(pool: PgPool) {
 
     assert_eq!(todo.slug, slug);
     assert_eq!(todo.project_id, project);
-    assert_eq!(todo.kind, TodoKind::Feature);
+    assert_eq!(todo.kind, Some(TodoKind::Feature));
     assert_eq!(todo.description.as_deref(), Some("first todo"));
 
     // RV2: create_todo emits TodoCreated then ArtifactWritten (for the
@@ -72,7 +72,7 @@ async fn create_todo_rejects_duplicate_slug_in_same_project(pool: PgPool) {
         CreateTodoArgs {
             project,
             slug: slug.clone(),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,
@@ -89,7 +89,7 @@ async fn create_todo_rejects_duplicate_slug_in_same_project(pool: PgPool) {
             CreateTodoArgs {
                 project,
                 slug: slug.clone(),
-                kind: TodoKind::Bug,
+                kind: Some(TodoKind::Bug),
                 description: None,
                 after: vec![],
                 group: None,
@@ -114,7 +114,7 @@ async fn create_todo_pickup_emits_created_payload_with_pickup_requested(pool: Pg
         CreateTodoArgs {
             project,
             slug,
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,
@@ -141,7 +141,7 @@ async fn create_todo_silent_emits_created_payload_without_pickup_requested(pool:
         CreateTodoArgs {
             project,
             slug,
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,
@@ -168,7 +168,7 @@ async fn create_todo_created_payload_carries_project_root_path(pool: PgPool) {
         CreateTodoArgs {
             project,
             slug,
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,
@@ -194,7 +194,7 @@ async fn create_todo_created_payload_carries_kind_and_principal(pool: PgPool) {
         CreateTodoArgs {
             project,
             slug,
-            kind: TodoKind::Bug,
+            kind: Some(TodoKind::Bug),
             description: None,
             after: vec![],
             group: None,
@@ -207,7 +207,7 @@ async fn create_todo_created_payload_carries_kind_and_principal(pool: PgPool) {
     .expect("create_todo succeeds");
 
     let payload = decode_created_payload(&sink);
-    assert_eq!(payload.kind, TodoKind::Bug);
+    assert_eq!(payload.kind, Some(TodoKind::Bug));
     assert_eq!(payload.created_by_principal, common::HUMAN_PRINCIPAL_EMAIL);
 }
 
@@ -222,7 +222,7 @@ async fn create_todo_empty_input_returns_empty_input_artifact(pool: PgPool) {
             CreateTodoArgs {
                 project,
                 slug,
-                kind: TodoKind::Feature,
+                kind: Some(TodoKind::Feature),
                 description: None,
                 after: vec![],
                 group: None,
@@ -248,7 +248,7 @@ async fn list_todos_returns_only_target_project_rows(pool: PgPool) {
         CreateTodoArgs {
             project: project_a,
             slug: Slug::new("a-only").expect("slug"),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,
@@ -264,7 +264,7 @@ async fn list_todos_returns_only_target_project_rows(pool: PgPool) {
         CreateTodoArgs {
             project: project_b,
             slug: Slug::new("b-only").expect("slug"),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,
@@ -309,7 +309,7 @@ async fn update_todo_mutates_description_and_emits_event(pool: PgPool) {
         CreateTodoArgs {
             project,
             slug: slug.clone(),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: Some("before".to_owned()),
             after: vec![],
             group: None,
@@ -363,7 +363,7 @@ async fn delete_todo_removes_row_and_emits_event(pool: PgPool) {
         CreateTodoArgs {
             project,
             slug: slug.clone(),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,

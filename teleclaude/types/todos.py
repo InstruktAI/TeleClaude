@@ -8,9 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
 
 LifecyclePhaseValue = Literal[
+    "unkinded",
+    "kind_proposed",
     "draft",
     "prd_drafting",
     "prd_human_approval",
@@ -28,6 +30,7 @@ LifecyclePhaseValue = Literal[
 ]
 
 RoadmapStatusLiteral = Literal["active", "icebox", "delivered"]
+_PRE_KIND_PHASE_VALUES = frozenset({"unkinded", "kind_proposed"})
 
 
 class DorActions(BaseModel):
@@ -171,6 +174,17 @@ class ArtifactEntry(BaseModel):
     async_provenance_complete: bool = False
 
 
+class KindProposalState(BaseModel):
+    """Analyzer proposal awaiting human approval."""
+
+    proposed_kind: str = ""
+    rationale: str = ""
+    proposed_at: str = ""
+    caller_session_id: str = ""
+    approved_at: str = ""
+    approved_caller_session_id: str = ""
+
+
 class ArtifactsState(BaseModel):
     """Artifact lifecycle stamps."""
 
@@ -179,6 +193,7 @@ class ArtifactsState(BaseModel):
     requirements: ArtifactEntry = Field(default_factory=ArtifactEntry)
     architecture: ArtifactEntry = Field(default_factory=ArtifactEntry)
     implementation_plan: ArtifactEntry = Field(default_factory=ArtifactEntry)
+    task_plan: ArtifactEntry = Field(default_factory=ArtifactEntry)
     art: ArtifactEntry = Field(default_factory=ArtifactEntry)
     visuals: ArtifactEntry = Field(default_factory=ArtifactEntry)
     design_spec: ArtifactEntry = Field(default_factory=ArtifactEntry)
@@ -234,7 +249,8 @@ class TodoState(BaseModel):
     build_start_base_sha: str = ""
     build_completed_at: str = ""
     build_gate_claim_at: str = ""
-    kind: str = TODO_KIND_DEFAULT  # canonical values: see teleclaude.types.todo_kind.ALL_DUMP_KINDS
+    kind: str | None = TODO_KIND_DEFAULT  # canonical values: see teleclaude.types.todo_kind.ALL_DUMP_KINDS
+    kind_proposal: KindProposalState = Field(default_factory=KindProposalState)
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
@@ -279,6 +295,26 @@ class TodoState(BaseModel):
         if isinstance(lifecycle_phase, str):
             cleaned["lifecycle_phase"] = LEGACY_LIFECYCLE_PHASE_NORMALIZATION.get(lifecycle_phase, lifecycle_phase)
         return cleaned
+
+    @model_validator(mode="after")
+    def _validate_kind_window(self) -> TodoState:
+        """Keep nullable kind state bounded to the analyzer proposal window."""
+        if self.lifecycle_phase in _PRE_KIND_PHASE_VALUES:
+            if self.kind is not None:
+                raise ValueError("pre-kind lifecycle phases require kind to be unset")
+            if self.lifecycle_phase == "kind_proposed":
+                proposed_kind = self.kind_proposal.proposed_kind
+                if not proposed_kind:
+                    raise ValueError("kind_proposed state requires kind_proposal.proposed_kind")
+                if proposed_kind not in ALL_DUMP_KINDS:
+                    raise ValueError(f"unknown proposed kind: {proposed_kind!r}")
+            return self
+
+        if self.kind is None:
+            raise ValueError(f"lifecycle_phase {self.lifecycle_phase!r} requires a canonical kind")
+        if self.kind not in ALL_DUMP_KINDS:
+            raise ValueError(f"unknown todo kind: {self.kind!r}")
+        return self
 
     @classmethod
     def defaults(cls) -> TodoState:

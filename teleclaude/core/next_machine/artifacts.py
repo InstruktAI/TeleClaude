@@ -8,11 +8,13 @@ from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TASK_PLAN,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TASK_PLAN,
 )
 
 
@@ -34,5 +36,6 @@ def artifact_name_to_state_key(artifact_name: str) -> str:
         ARTIFACT_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
         ARTIFACT_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
         ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+        ARTIFACT_TASK_PLAN: STATE_KEY_TASK_PLAN,
     }
     return mapping.get(artifact_name, artifact_name.replace(".", "_").replace("-", "_"))
