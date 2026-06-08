@@ -94,7 +94,7 @@ docs/diagrams/
 .codex/
 .gemini/
 
-# Temporary backup of worktree todos folders
+# Temporary backup / scratch dirs
 .temp/
 .teleclaude*copy/
 

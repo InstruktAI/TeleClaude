@@ -64,7 +64,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 : An `after` relationship between roadmap entries. Todo A is `after: [B, C]` means A cannot start until B and C are `delivered`.
 
 **Icebox**
-: Frozen-but-recoverable state for roadmap entries that aren't being actively pursued. Lives at `todos/_icebox/`. Unfreeze restores to the active todo list.
+: Frozen-but-recoverable state for roadmap entries that aren't being actively pursued, tracked by `status=icebox` in the todos DB. Unfreeze restores to the active todo list.
 
 **Removed (soft-deleted)**
 : A roadmap entry that an operator/agent explicitly removed. The entry is marked `status=removed` with a `removed_at` tombstone timestamp; the row and the Todo's state, artifacts, and full artifact-version history are **retained** (not cascade-deleted). A removed entry is invisible to every default read path. It is the todo-store analogue of the closed-session soft-delete (`sessions.closed_at` + `lifecycle_status='closed'`), and follows that mechanism deliberately rather than introducing a divergent one.
@@ -167,7 +167,7 @@ The default roadmap order is derived, not manually positioned. The dependency tr
 
 - **Producer:** `workflow`
 - **Emitted when:** a new todo is added to the todo list (via `create`, the
-  `dump` compatibility alias, `split`, `bugs report`, `bugs create`). Always
+  `dump` compatibility alias, `split`, `bugs report`). Always
   emitted on successful creation regardless of `creation_mode` — silent mode
   suppresses pickup dispatch, not the state-change event.
 - **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
@@ -427,8 +427,7 @@ And emits workflow.todo.phase_advanced with verdict=approve
 ```
 Given an operator decides a todo entry is not currently being pursued
 When they run `telec todo freeze <slug>`
-Then workflow moves the entry's filesystem to todos/_icebox/<slug>/
-And marks the todo entry status=icebox
+Then workflow marks the todo entry status=icebox
 And the entry no longer participates in dependency resolution for active entries
 And emits workflow.roadmap.entry_moved with change_type=frozen
 And `telec todo list` no longer shows it by default

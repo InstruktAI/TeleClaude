@@ -92,7 +92,7 @@ Artifact types (not all are required every breath):
 - **Doc amendments** — principles, policies, or designs that need updating. The edit IS the artifact — no "action item to update docs later."
 - **Memory entries** — discoveries, patterns, friction, or gotchas. Saved to the Memory API where they accumulate and surface when searched.
 - **Principle refinements** — when the sensing reveals that a principle needs sharpening. Modified directly; git records the before and after.
-- **Vision seeds** — future possibilities not yet actionable. Placed in `ideas/` to incubate.
+- **Vision seeds** — future possibilities not yet actionable; captured to incubate, not acted on now.
 
 Each artifact flows to its natural home — not to meeting notes. The exhale produces artifacts in their final form. There is no transcription step. When the gathering closes, the harvest has already been metabolized. Nothing is left on the flip chart because there is no flip chart.
 

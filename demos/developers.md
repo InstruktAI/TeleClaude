@@ -653,7 +653,7 @@ telec bugs list
 
 **Under the hood:**
 
-- `telec bugs report` creates a todo-like scaffold under `todos/`
+- `telec bugs report` scaffolds a bug todo in the workflow store
 - It dispatches a fixer agent session running `/next-bugs-fix`
 - The fixer investigates the codebase, applies a fix, writes tests, and commits
 - Bug state is tracked like any other todo item
