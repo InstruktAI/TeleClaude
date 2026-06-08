@@ -1,20 +1,22 @@
 ---
-id: 'project/spec/feature/workflow/todo-creation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-delivered_by:
-  - task-kind-and-kindless-intake
-description: 'Todo creation — `telec todo create <slug> <content> [--kind <kind>]` is the single creation command (content required; kind optional — a kind-less dump is classified by /analyze-todo-input), and `telec todo design` enters the creative state machine. The workflow service emits `workflow.todo.created` consumed by the lifecycle router.'
+id: project/spec/feature/workflow/todo-creation
+type: spec
+domain: software-development
+scope: project
+visibility: public
+description: Todo creation — `telec todo create <slug> <content> [--kind <kind>]`
+  is the single creation command (content required; kind optional — a kind-less dump
+  is classified by /analyze-todo-input), and `telec todo design` enters the creative
+  state machine. The workflow service emits `workflow.todo.created` consumed by the
+  lifecycle router.
 ---
 
 # Workflow Todo Creation — Spec
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/software-development/spec/domain-spec.md
 - @docs/project/spec/domain/workflow.md
 
 ## What it is
@@ -29,7 +31,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
-The Todo aggregate's invariants — unique kebab-case slug, fixed kind, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for `workflow.todo.created`.
+The Todo aggregate's invariants — unique kebab-case slug, kind fixed once assigned, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for `workflow.todo.created`.
 
 ## Canonical fields
 
@@ -40,8 +42,8 @@ The workflow service emits the event with this payload:
 - `slug` — the created slug.
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
-- `pickup_requested` — boolean, true unless the caller passed `--silent`.
-- `lifecycle_phase` — the post-write `lifecycle_phase` value (`"prepared"` for `bug` and `--plan`, `"draft"` otherwise).
+- `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
+- `lifecycle_phase` — the post-write `lifecycle_phase` value (`"unkinded"` for kind-less creation, `"prepared"` for `bug`, `task`, and `--plan`, `"draft"` otherwise).
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 
@@ -50,7 +52,7 @@ The workflow service emits the event with this payload:
 ```
 Given a human or agent has a substantive idea written up
 When they run `telec todo create my-feature "<content>" --kind feature`
-Then the CLI validates that <content> is non-empty and --kind is present
+Then the CLI validates that <content> is non-empty and the provided --kind value is canonical
 And submits a creation request with kind="feature", silent=False
 And the workflow service creates the todo entry, default state, and an `input` artifact whose body is "# my-feature — Input\n\n<content>\n" in one transaction
 And the workflow service emits workflow.todo.created with kind="feature" and pickup_requested=true
@@ -99,14 +101,15 @@ When the CLI parses the flags
 Then it submits a creation request with no kind (kind-less)
 And the workflow service creates the todo, stores the dump as the `input` artifact, and sets lifecycle_phase="unkinded"
 And the workflow service emits workflow.todo.created with kind=null and pickup_requested=true
-And the lifecycle router dispatches /analyze-todo-input, which classifies the dump and proposes a kind for human approval without executing any work
+And the lifecycle router dispatches /analyze-todo-input, which records a proposal with `telec todo stamp --kind-proposed ...` without executing any work
+And the kind remains unset until a human approves the proposal with `telec todo stamp --kind-approved`
 ```
 
 ```
 Given a human (or an agent on their behalf) wants to park agreed future work that need not touch the codebase
 When they run `telec todo create call-supplier-api "<what to do, when, and any waits>" --kind task`
 Then the request carries kind="task" and is created silent (pickup_requested=false)
-And the workflow service writes state + `input` and emits workflow.todo.created with kind="task" and pickup_requested=false
+And the workflow service writes state + `input`, sets lifecycle_phase="prepared", and emits workflow.todo.created with kind="task" and pickup_requested=false
 And the lifecycle router does not auto-dispatch; the task waits durably until a human or a dependency/time trigger starts it
 And when worked, an agent grooms the `task-plan` (ticking off steps, appending results) rather than producing a code commit
 ```
@@ -127,11 +130,9 @@ And the lifecycle router consumes the event and dispatches /next-work for the bu
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
-
 ### Dependency gate at create-time
 
 Create-time dispatch is dependency-gated by the lane selected from the creation event. The executable scenarios are `UC-WTC2` and `UC-WTC3`.
-
 
 ### Behavioral contract
 
@@ -144,7 +145,6 @@ Then the usage line shows `--kind` as optional with values `feature|change|bug|t
 And the help states that omitting `--kind` creates a kind-less todo classified by `/analyze-todo-input`
 And the help does not advertise retired kind values
 ```
-
 
 #### UC-WTC2: Dep-blocked create event is consumed without prepare dispatch
 
@@ -167,7 +167,6 @@ Then the router finds "child"'s prepare gate satisfied
 And the router dispatches /next-prepare for "child" as usual
 ```
 
-
 ### Cross-context references
 
 - `operations` — async, receipt-backed long-running operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; create itself is synchronous.
@@ -181,7 +180,6 @@ And the router dispatches /next-prepare for "child" as usual
 - `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` after a successful create. `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
 - The `bugs report` / `bugs create` helpers wrap the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification when dependency gates allow pickup.
-
 
 - **Dependency gate at create-time:** routing by `kind`/`lifecycle_phase`/`pickup_requested` selects the _lane_, but before auto-dispatching the router consults the dependency graph for the slug. A child with unsatisfied `after` dependencies for its lane (prepare lane → parents must be `PREPARED`; work lane → parents must be `delivered`, per `@spec/feature/workflow/dependency-graph`) is treated as silent: the event is still consumed but no orchestrator is dispatched. Only deps-satisfied todos auto-dispatch. This closes the create-time over-dispatch where `create parent; create child --after parent` spawned both orchestrators in parallel.
 
