@@ -144,6 +144,34 @@ And signals that output projection may proceed when the user-reflection step is 
 And signals that output projection should defer when the origin is not yet fresh
 ```
 
+<!-- planned:suppress-command-body-in-projection -->
+#### UC-OPD1: Command-body expansion with ADDITIONAL CONTEXT projects as title plus that section, never the body
+
+```
+Given a user turn that is a slash-command expansion wrapped in command-message tags, carrying the full procedure body and an appended "ADDITIONAL CONTEXT:" section
+When that user turn is extracted for projection
+Then the projected text is the command title line followed by the ADDITIONAL CONTEXT section verbatim
+And the procedure body does not appear in the projected text
+```
+
+#### UC-OPD2: Command-body expansion without ADDITIONAL CONTEXT projects as the title line only
+
+```
+Given a user turn that is a slash-command expansion wrapped in command-message tags, carrying the full procedure body and no ADDITIONAL CONTEXT section
+When that user turn is extracted for projection
+Then the projected text is the command title line only
+And the procedure body does not appear in the projected text
+```
+
+#### UC-OPD3: A non-command user turn is projected unchanged
+
+```
+Given a user turn whose text is ordinary content with no command-message wrapper
+When that user turn is extracted for projection
+Then the projected text equals the original user text
+```
+<!-- /planned:suppress-command-body-in-projection -->
+
 #### Output cadence metrics
 
 ```

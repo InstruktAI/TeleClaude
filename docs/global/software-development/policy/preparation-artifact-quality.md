@@ -113,6 +113,39 @@ A correctly-shaped input lets intake classify and route. An input that
 prescribes doc paths skips classification and bakes in the author's
 (possibly wrong) routing guess.
 
+### Consuming upstream intent — HOW is a hypothesis, not a directive
+
+The producer-side rules above keep mechanism out of intent where possible. This
+rule is the consumer-side backstop for when it leaks through anyway — and it is
+the stronger of the two, because the consumer is the party standing in front of
+the code.
+
+Any mechanism named in an upstream artifact — a function, module, event, CLI
+verb, schema field, or sequence of calls in an `input`, `prd`, or `architecture`
+— is a **hypothesis to verify against the codebase, never a directive to
+execute**. The author consuming it owns the HOW.
+
+- **Treat every named mechanism as a grounding lead, not a settled decision.**
+  Open the code it points at and confirm the mechanism actually does what the
+  upstream artifact assumes. An upstream HOW that was never opened against the
+  source is unverified regardless of how confident it reads.
+- **When the verified HOW diverges from the suggestion, reality wins** — follow
+  the verified mechanism and **record the divergence** in the artifact you
+  produce (one line: "input suggested X; using Y because <code reality>"). The
+  record is the feedback signal that the upstream guess was wrong; without it the
+  same wrong mechanism silently re-propagates downstream.
+- **A mechanism divergence is the steward's call, taken without stopping the
+  human.** Surface to the human only when correcting the HOW forces a change in
+  scope or intent — and that is an upstream-layer change, handled by re-entering
+  that layer, not by quietly widening the current artifact.
+- **Inputs are never rejected for carrying HOW.** The lead is kept and tested,
+  not gated away — the mechanism hint is signal even when it is wrong.
+
+A plan or architecture that adopts an upstream mechanism it never verified
+against the code is defective **even when the mechanism happens to be correct**:
+the defect is the unverified adoption, because the next wrong guess rides the
+same unchecked path.
+
 ### PRD quality
 
 The PRD states what and why, never how. Architecture and plans state how. The
@@ -239,6 +272,15 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 - Shared quality rules between creators and reviewers ensure the creator
   targets the same bar the reviewer enforces. The reviewer is a safety net,
   not the first line of defense.
+- HOW must align with code reality, not up-front guesswork. Upstream intent is
+  authored before the code is examined, so its mechanism hints are
+  cache-of-a-guess, not source of truth (`general/principle/grounding`). An
+  agent that treats them as directives propagates errors no later gate catches.
+  Verifying and overriding at the point of consumption — rather than rejecting
+  the input at its boundary — puts the decision where the knowledge is, and
+  keeps the useful lead instead of discarding it. See
+  `project/adr/0020-upstream-how-is-a-hypothesis-not-a-gate` for why a
+  creation-time gate was rejected.
 
 ## Scope
 
