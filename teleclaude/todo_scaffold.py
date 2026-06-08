@@ -8,6 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql - narrow sync lookup must tolerate pre-migration local DBs
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SqlSession
 
 from teleclaude.constants import WORKTREE_DIR
@@ -128,22 +129,31 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
     applied newer schema migrations.
     """
 
-    with SqlSession(_create_sync_engine()) as db_session:
-        row = db_session.exec(  # type: ignore[call-overload]
-            text(
-                "SELECT active_agent, native_log_file, native_session_id "  # guard: raw-sql
-                "FROM sessions WHERE session_id = :session_id"
-            ).bindparams(session_id=session_id)
-        ).first()
-        try:
-            active_agent_raw, native_log_file_raw, native_session_id_raw = row
-        except (TypeError, ValueError):
-            fallback_row = db_session.get(db_models.Session, session_id)
-            if not fallback_row:
-                raise ValueError(f"Session {session_id} not found in database") from None
-            active_agent_raw = getattr(fallback_row, "active_agent", None)
-            native_log_file_raw = getattr(fallback_row, "native_log_file", None)
-            native_session_id_raw = getattr(fallback_row, "native_session_id", None)
+    try:
+        with SqlSession(_create_sync_engine()) as db_session:
+            row = db_session.exec(  # type: ignore[call-overload]
+                text(
+                    "SELECT active_agent, native_log_file, native_session_id "  # guard: raw-sql
+                    "FROM sessions WHERE session_id = :session_id"
+                ).bindparams(session_id=session_id)
+            ).first()
+            try:
+                active_agent_raw, native_log_file_raw, native_session_id_raw = row
+            except (TypeError, ValueError):
+                fallback_row = db_session.get(db_models.Session, session_id)
+                if not fallback_row:
+                    raise NoSessionTouchedFiles(f"Session {session_id} not found in database") from None
+                active_agent_raw = getattr(fallback_row, "active_agent", None)
+                native_log_file_raw = getattr(fallback_row, "native_log_file", None)
+                native_session_id_raw = getattr(fallback_row, "native_session_id", None)
+    except OperationalError as exc:
+        # An uninitialized session DB (no sessions table — fresh env, CI, or a
+        # test temp home) carries no transcript signal. Treat it like the
+        # integrator/fresh-shell case so the checkpoint scope falls back to
+        # pre-staged instead of crashing.
+        if "no such table" in str(exc).lower():
+            raise NoSessionTouchedFiles(f"session DB unavailable for {session_id}") from exc
+        raise
 
     return (
         str(active_agent_raw) if active_agent_raw else None,
