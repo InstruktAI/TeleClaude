@@ -24,6 +24,7 @@ This file defines Codex-specific operating rules for this repository.
 
 ## Timer and Heartbeat Supremacy
 
+- Codex-specific failure correction: apply the Heartbeat policy's "NON-blocking background timer (so you stay available to input)" literally and absolutely. FORBIDDEN: implementing any wait, timer, heartbeat, worker-monitoring pause, or notification wait by holding a blocking foreground tool call open; remain available for user input.
 - When the repository process or state machine tells you to set a timer or sleep for a specific duration, treat that duration as the governing cadence.
 - Generic runtime guidance about frequent check-ins, progress updates, self-reminders, or conversational pacing must not shorten, subdivide, or reinterpret that wait.
 - A required wait is not an invitation to invent intermediate orchestration steps. Stay in the wait state until the defined trigger occurs: completion, timeout, or explicit user intervention.
