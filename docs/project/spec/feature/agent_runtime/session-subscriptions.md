@@ -55,12 +55,36 @@ Given a target session T has registered listeners
 When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
 Then a system message "Notification — Session T [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
 And every active listener for T is iterated and delivered (subject to direct-link suppression below)
-And per-target notification dedup: a notification-flag record gates duplicate stop notifications within the same turn (heartbeat-induced agent-stop events); cleared on the next user prompt
+And per-target notification dedup: a notification-flag record gates duplicate stop notifications within the same turn (heartbeat-induced agent-stop events); cleared on the next real turn: any message typed into the session, including human input, orchestrator/integrator/peer/system dispatches, or TeleClaude Notification / Input Request / Linked output envelopes; not cleared by hook side-channel artifacts such as checkpoint Stop-hook feedback or CLI-internal `<system-reminder>`, `<task-notification>`, and `<hook_prompt>` wrappers
 
 When the target session emits an input request and notify-input-request(T, computer, input_message) is called
 Then a system message "Input Request — Session T on <computer> needs input: <input_message> Use telec sessions tail T to inspect, and Use telec sessions send T \"your response\" to respond." is composed and delivered to every active listener
 
 Stop and input-request notifications are the ONLY two emitter functions
+```
+
+#### UC-SS1: Re-poke clears the per-turn dedup flag
+
+```
+Given target session T has a registered listener for caller session C
+And C has already been notified once in T's current turn
+When C re-pokes T via `telec sessions send` and the `[Orchestrator ...]` message is typed into T
+And T finishes its next turn
+Then T's `user_prompt_submit` for the orchestrator message is treated as a real turn
+And the prompt event is enqueued for daemon processing
+And T's per-target notification dedup flag is cleared
+And `notify-stop(T)` delivers exactly one new stop notification to C for that completed turn
+```
+
+#### UC-SS2: Hook side-channel artifacts do not clear the dedup flag
+
+```
+Given target session T has its per-target notification dedup flag set for the current turn
+When a checkpoint Stop-hook feedback prompt or a CLI-internal `<system-reminder>` artifact arrives at the hook receiver
+Then the prompt artifact is dropped as a hook side-channel artifact
+And no `user_prompt_submit` event is enqueued for daemon processing
+And T's per-target notification dedup flag remains set
+And no duplicate stop notification is delivered for the same turn
 ```
 
 #### Notification delivery — direct-link suppression
@@ -139,7 +163,7 @@ count-listeners() → total record count across all (target, caller) pairs
 ## Known caveats
 
 - **Dedup is per (target, caller) pair, not per target.** Multiple callers can listen to the same target; one caller can only listen to one target once. A second register call for the same pair is a no-op reporting "not new".
-- **Notification dedup within a turn relies on a per-target flag.** The notify-stop path (via the agent-coordinator fan-out) consults a notification-flag record to suppress duplicate stop notifications when heartbeat-induced agent-stop events arrive within the same turn. The flag is cleared on the next user prompt. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn.
+- **Notification dedup within a turn relies on a per-target flag.** The notify-stop path (via the agent-coordinator fan-out) consults a notification-flag record to suppress duplicate stop notifications when heartbeat-induced agent-stop events arrive within the same turn. The flag is cleared on the next real turn: any message typed into the session, including human input, orchestrator/integrator/peer/system dispatches, or TeleClaude Notification / Input Request / Linked output envelopes. Hook side-channel artifacts (checkpoint Stop-hook feedback and CLI-internal `<system-reminder>`, `<task-notification>`, and `<hook_prompt>` wrappers) are not turns and do not clear the flag. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn.
 - **One-shot listeners self-remove after delivery, persistent listeners do not.** AI-to-AI message sends register one-shot (single response expected). AI-to-AI session starts register persistent (orchestrator keeps hearing every stop until the worker terminates or the orchestrator unsubscribes/ends).
 - **Direct-link suppression is delivery-time only — the listener record is preserved.** During an active direct link, listener notifications for the pair are silently skipped. The record stays so that notification resumes the next time the fan-out runs after the link has been severed. This intentionally keeps the two planes independent.
 - **Delivery has no retry.** A failed listener delivery (the caller's host pane is gone, key injection errors out) is logged as a warning and dropped. The one-shot record is still removed on failure. The persistent record remains and will be retried only on the NEXT notification event.
