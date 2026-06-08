@@ -309,19 +309,22 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         lines.append("")
         lines.append(f"Changed: {', '.join(result.categories)}")
 
-    # Required actions (numbered)
-    if result.required_actions:
+    # Required actions (numbered). The docs-check and commit instruction belong to the
+    # action list whenever any action applies — including a pending commit that has no
+    # other required action (e.g. an uncommitted docs-only turn). This guarantees an
+    # uncommitted change is never silently dropped on a branch that lacks code actions.
+    actions = list(result.required_actions)
+    if result.required_actions or result.commit_action_required:
+        actions.append(_docs_check_instruction())
+        if result.commit_action_required:
+            actions.append(commit_line)
+        actions.append("All steps done — only then proceed")
+
+    if actions:
         lines.append("")
         lines.append("Required actions (BLOCKING — do not resume user-facing work until all complete):")
-        for i, action in enumerate(result.required_actions, 1):
+        for i, action in enumerate(actions, 1):
             lines.append(f"{i}. {action}")
-        next_index = len(result.required_actions) + 1
-        lines.append(f"{next_index}. {_docs_check_instruction()}")
-        next_index += 1
-        if result.commit_action_required:
-            lines.append(f"{next_index}. {commit_line}")
-            next_index += 1
-        lines.append(f"{next_index}. All steps done — only then proceed")
 
     # Observations (bullet points)
     if result.observations:
@@ -331,7 +334,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
             lines.append(f"- {obs}")
 
     lines.append("")
-    if result.required_actions:
+    if actions:
         lines.append("Execute every required action above before responding to the user.")
     else:
         lines.append("Review and resolve the observations before responding to the user.")
@@ -437,9 +440,14 @@ def get_checkpoint_content(
             )
             return None
 
-        if _is_no_action_only(effective_files) and not force_main_commit_checkpoint:
+        docs_committed = _has_commit_evidence_after_last_mutation(
+            timeline,
+            effective_files,
+            project_path,
+        )
+        if _is_no_action_only(effective_files) and not force_main_commit_checkpoint and docs_committed:
             logger.info(
-                "Checkpoint payload skipped (docs/no-action changes only)",
+                "Checkpoint payload skipped (no-action changes only, already committed)",
                 extra={
                     **base_extra,
                     "timeline_has_data": timeline.has_data,

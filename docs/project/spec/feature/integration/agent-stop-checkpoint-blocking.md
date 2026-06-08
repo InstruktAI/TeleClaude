@@ -178,6 +178,21 @@ Then it composes the project path with the worktree subdirectory into a single w
 And the heuristic engine runs branch detection against the worktree, not the repo root
 ```
 
+#### UC-CP9: Uncommitted no-action changes still flag a commit
+
+```gherkin
+Given the only turn-local changes are no-action files (docs/**, *.md, *.txt, *.rst) and none are categorized as code
+And those changes have not been committed this turn
+When the heuristic engine evaluates the turn window
+Then a checkpoint is produced (not skipped)
+And it includes the `telec code commit` instruction so the uncommitted change is not silently dropped
+
+Given the only turn-local changes are no-action files
+And they were already committed this turn (commit evidence follows the last mutation)
+When the heuristic engine evaluates the turn window
+Then no checkpoint is produced
+```
+
 ### Cross-context references
 
 - Belongs (along with the receiver) to `agent_runtime` in the v2 fold,

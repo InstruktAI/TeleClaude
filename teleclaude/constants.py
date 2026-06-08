@@ -410,8 +410,6 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
 # Patterns for docs/non-code files (capture-only, no action required)
 CHECKPOINT_NO_ACTION_PATTERNS: list[str] = [
     "docs/**",
-    "todos/**",
-    "ideas/**",
     "*.md",
     "*.txt",
     "*.rst",
