@@ -111,19 +111,21 @@ And the second call observes the prepared worktree and reuses it
 And the same slug called concurrently from a different project root acquires a separate lock and runs in parallel
 ```
 
+#### UC-WSM1: Bug build dispatches the next-build worker with the plan + diagnosis contract
+
 ```
 Given a bug-kind Todo at lifecycle_phase=build_started
 When the orchestrator calls "telec todo work my-bug"
-Then the machine dispatches the next-bugs-fix worker instead of next-build
-And the BUG-FIX artifact contract is included in the worker note
+Then the machine dispatches the next-build worker (same as change/feature)
+And the artifact contract names the reviewed implementation-plan and the diagnosis as the worker's mandate
 And the lifecycle still requires an explicit "telec todo stamp my-bug --build-complete" before review can dispatch
 ```
 
 ### Cross-context references
 
-- `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, bugs-fixer, reviewer, deferrals worker, or finalizer session.
+- `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
 - `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload). `IntegrationTriggerCartridge` dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
-- `session_ledger` — the caller's session identity is propagated through the work entry, recorded on the finalize state, and used by the peer-conversation contract that lets the reviewer relay findings directly to the live builder/fixer.
+- `session_ledger` — the caller's session identity is propagated through the work entry, recorded on the finalize state, and used by the peer-conversation contract that lets the reviewer relay findings directly to the live builder.
 
 ## Known caveats
 

@@ -6,7 +6,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import config
-from teleclaude.core.next_machine.kinds import KIND_BUG, canonical_kind
+from teleclaude.core.next_machine.kinds import canonical_kind
 from teleclaude.core.next_machine.slug_resolution import (
     deps_satisfied,
     effective_delivered_slugs_for_dependencies,
@@ -116,7 +116,7 @@ class LifecycleRouterCartridge:
         resolved_kind = canonical_kind(kind)
         todos_db = await get_todos_db(project_path)
         dependencies = await todos_db.load_deps()
-        work_lane = resolved_kind == KIND_BUG or lifecycle_phase == LifecyclePhase.PREPARED.value
+        work_lane = lifecycle_phase == LifecyclePhase.PREPARED.value
         satisfied = (
             await effective_delivered_slugs_for_dependencies(todos_db)
             if work_lane
@@ -127,16 +127,7 @@ class LifecycleRouterCartridge:
             logger.info("workflow.todo.created skipped: dependency-blocked", slug=slug, unmet=unmet)
             return
 
-        if resolved_kind == KIND_BUG:
-            dispatch_args = {
-                "command": "/next-work",
-                "project_path": project_path,
-                "args": slug,
-                "agent": "claude",
-                "thinking_mode": "slow",
-                "detach": True,
-            }
-        elif lifecycle_phase == LifecyclePhase.PREPARED.value:
+        if lifecycle_phase == LifecyclePhase.PREPARED.value:
             dispatch_args = {
                 "command": "/next-work",
                 "project_path": project_path,

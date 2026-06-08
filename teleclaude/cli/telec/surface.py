@@ -630,14 +630,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[_H],
                         notes=["Legacy bug artifacts are read-only; write bug todo content to input."],
                         examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
@@ -645,7 +645,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
                         flags=[_H],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
@@ -659,7 +659,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "remove": CommandDef(
                         desc="Remove a todo artifact and its version history",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         notes=[
                             "Refuses input because it is the seed artifact for a todo.",
@@ -739,7 +739,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Bug reporting and tracking",
         subcommands={
             "report": CommandDef(
-                desc="Scaffold a bug from a description; lifecycle router dispatches /next-work",
+                desc="Scaffold a bug from a description; lifecycle router dispatches /next-prepare",
                 args="<description> [--slug <slug>] [--body <text>] [--project <name>]",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
@@ -749,7 +749,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "create": CommandDef(
-                desc="Scaffold a bug from a description; lifecycle router dispatches /next-work",
+                desc="Scaffold a bug from a description; lifecycle router dispatches /next-prepare",
                 args="<description> [--slug <slug>] [--project <name>]",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),

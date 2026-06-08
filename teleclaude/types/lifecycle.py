@@ -37,6 +37,7 @@ class LifecyclePhase(str, Enum):
     PRD_HUMAN_APPROVAL = "prd_human_approval"
     ARCHITECTURE_DRAFTING = "architecture_drafting"
     ARCHITECTURE_REVIEW = "architecture_review"
+    DIAGNOSE = "diagnose"
     PLAN_DRAFTING = "plan_drafting"
     PLAN_REVIEW = "plan_review"
     PREPARED = "prepared"
@@ -66,6 +67,7 @@ PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.PRD_HUMAN_APPROVAL,
         LifecyclePhase.ARCHITECTURE_DRAFTING,
         LifecyclePhase.ARCHITECTURE_REVIEW,
+        LifecyclePhase.DIAGNOSE,
         LifecyclePhase.PLAN_DRAFTING,
         LifecyclePhase.PLAN_REVIEW,
         LifecyclePhase.PREPARED,

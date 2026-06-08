@@ -66,6 +66,7 @@ class PreparePhase(str, Enum):
     PRD_HUMAN_APPROVAL = "prd_human_approval"
     ARCHITECTURE_DRAFTING = "architecture_drafting"
     ARCHITECTURE_REVIEW = "architecture_review"
+    DIAGNOSE = "diagnose"
     PLAN_DRAFTING = "plan_drafting"
     PLAN_REVIEW = "plan_review"
     PREPARED = "prepared"

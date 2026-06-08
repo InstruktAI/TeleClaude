@@ -56,6 +56,13 @@ Read the full context before writing anything:
   index/log; otherwise read the skip reason. Read the domain-spec / design-doc
   snippets it points at for the actual design content.
 - `telec todo artifacts read {slug} input` — the original human thinking (for intent).
+- `telec todo artifacts read {slug} diagnosis` — when present (a `bug` carries
+  this). It holds the code-grounded root cause, the prescribed fix approach, and
+  the verification approach. For a `bug` the plan's fix tasks and verification are
+  grounded in the diagnosis — reference its root-cause, fix-approach, and
+  verification-approach sections rather than re-deriving the cause. Consume it
+  exactly as `architecture` is consumed when present; no kind-specific branching
+  beyond reading the artifact.
 - The codebase: files that will be affected, adjacent patterns, existing implementations
   of similar functionality. Use a filtered `telec docs index --areas policy,spec` (add
   `--domains <domain>` to narrow) to surface relevant policies and specs.

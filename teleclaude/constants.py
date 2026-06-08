@@ -104,6 +104,7 @@ ARTIFACT_INPUT = "input"
 ARTIFACT_PRD = "prd"
 ARTIFACT_REQUIREMENTS = "requirements"
 ARTIFACT_ARCHITECTURE = "architecture"
+ARTIFACT_DIAGNOSIS = "diagnosis"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 ARTIFACT_TASK_PLAN = "task-plan"
 # DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is
@@ -129,6 +130,7 @@ STATE_KEY_INPUT = "input"
 STATE_KEY_PRD = "prd"
 STATE_KEY_REQUIREMENTS = "requirements"
 STATE_KEY_ARCHITECTURE = "architecture"
+STATE_KEY_DIAGNOSIS = "diagnosis"
 STATE_KEY_IMPLEMENTATION_PLAN = "implementation_plan"
 STATE_KEY_TASK_PLAN = "task_plan"
 
@@ -138,6 +140,7 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_PRD,
         ARTIFACT_REQUIREMENTS,
         ARTIFACT_ARCHITECTURE,
+        ARTIFACT_DIAGNOSIS,
         ARTIFACT_IMPLEMENTATION_PLAN,
         ARTIFACT_TASK_PLAN,
         ARTIFACT_BUG,
@@ -184,7 +187,6 @@ class SlashCommand(str, Enum):
     """Canonical slash commands dispatched to agent sessions."""
 
     NEXT_BUILD = "next-build"
-    NEXT_BUGS_FIX = "next-bugs-fix"
     NEXT_REVIEW_BUILD = "next-review-build"
     NEXT_REVIEW_PLAN = "next-review-plan"
     NEXT_REVIEW_ARCHITECTURE = "next-review-architecture"
@@ -192,6 +194,7 @@ class SlashCommand(str, Enum):
     NEXT_FINALIZE = "next-finalize"
     NEXT_PREPARE_INTAKE = "next-prepare-intake"
     NEXT_PREPARE_ARCHITECTURE = "next-prepare-architecture"
+    NEXT_PREPARE_DIAGNOSE = "next-prepare-diagnose"
     NEXT_PREPARE_PLAN = "next-prepare-plan"
     NEXT_EMULATE_PO = "next-emulate-po"
     NEXT_DRIFT_ANALYZE = "next-drift-analyze"
@@ -212,6 +215,7 @@ class JobRole(str, Enum):
     FINALIZER = "finalizer"
     INTAKER = "intaker"
     PLANNER = "planner"
+    DIAGNOSER = "diagnoser"
     ARCHITECT = "architect"
     ARCHITECTURE_REVIEWER = "architecture-reviewer"
     DRIFT_ANALYZER = "drift-analyzer"

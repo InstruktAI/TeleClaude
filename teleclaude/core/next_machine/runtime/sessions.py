@@ -11,6 +11,7 @@ PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
     SlashCommand.NEXT_PREPARE.value,
     SlashCommand.NEXT_PREPARE_INTAKE.value,
     SlashCommand.NEXT_PREPARE_ARCHITECTURE.value,
+    SlashCommand.NEXT_PREPARE_DIAGNOSE.value,
     SlashCommand.NEXT_PREPARE_PLAN.value,
     SlashCommand.NEXT_REVIEW_ARCHITECTURE.value,
     SlashCommand.NEXT_REVIEW_PLAN.value,

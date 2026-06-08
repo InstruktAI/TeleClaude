@@ -1,14 +1,10 @@
 ---
-id: project/spec/feature/workflow/todo-creation
-type: spec
-domain: software-development
-scope: project
-visibility: public
-description: Todo creation — `telec todo create <slug> <content> [--kind <kind>]`
-  is the single creation command (content required; kind optional — a kind-less dump
-  is classified by /analyze-todo-input), and `telec todo design` enters the creative
-  state machine. The workflow service emits `workflow.todo.created` consumed by the
-  lifecycle router.
+id: 'project/spec/feature/workflow/todo-creation'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+description: 'Todo creation — `telec todo create <slug> <content> [--kind <kind>]` is the single creation command (content required; kind optional — a kind-less dump is classified by /analyze-todo-input), and `telec todo design` enters the creative state machine. The workflow service emits `workflow.todo.created` consumed by the lifecycle router.'
 ---
 
 # Workflow Todo Creation — Spec
@@ -24,7 +20,7 @@ description: Todo creation — `telec todo create <slug> <content> [--kind <kind
 The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, plus a creative-machine entrypoint that does not itself create todo entries:
 
 - **`telec todo create <slug> <content> [--kind <kind>]`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is optional. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
-  - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (fix lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo enters the `unkinded` phase, and `/analyze-todo-input` is dispatched to classify it and propose a kind for human approval. The classifier proposes only — it never executes the work.
+  - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo enters the `unkinded` phase, and `/analyze-todo-input` is dispatched to classify it and propose a kind for human approval. The classifier proposes only — it never executes the work.
   - `--silent` — sets `silent=True` on the request. The route still creates the todo and still emits `workflow.todo.created`, but with `pickup_requested=false` and `creation_mode="silent"`, so the lifecycle router skips dispatch.
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
@@ -43,7 +39,7 @@ The workflow service emits the event with this payload:
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
 - `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
-- `lifecycle_phase` — the post-write `lifecycle_phase` value (`"unkinded"` for kind-less creation, `"prepared"` for `bug`, `task`, and `--plan`, `"draft"` otherwise).
+- `lifecycle_phase` — the post-write `lifecycle_phase` value (`"unkinded"` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 
@@ -121,18 +117,20 @@ Then it returns one of: DESIGN_DISCOVERY_REQUIRED, DESIGN_SPEC_PENDING_CONFIRMAT
 And no todo entry mutation happens for slugs that already exist; design only orchestrates creative phases
 ```
 
+#### UC-WTC4: Bug creation enters the diagnose phase and dispatches the prepare lane
+
 ```
 Given a customer-support agent files a bug via "telec bugs report '<description>'"
 When the workflow service handles the bug creation with kind="bug"
-Then it writes state + todo entry + `input` artifact and applies prepared-state primitives
+Then it writes state + todo entry + `input` artifact and enters the diagnose phase
 And the workflow service emits workflow.todo.created with canonical kind="bug" and pickup_requested=true
-And the lifecycle router consumes the event and dispatches /next-work for the bug lane
+And the lifecycle router consumes the event and dispatches /next-prepare for the bug lane (diagnosis → plan → plan-review)
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
 ### Dependency gate at create-time
 
-Create-time dispatch is dependency-gated by the lane selected from the creation event. The executable scenarios are `UC-WTC2` and `UC-WTC3`.
+Create-time dispatch is dependency-gated by the lane selected from the creation event. The executable scenarios are `UC-WTC2`, `UC-WTC3`, and `UC-WTC4`.
 
 ### Behavioral contract
 

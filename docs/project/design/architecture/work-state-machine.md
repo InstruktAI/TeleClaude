@@ -273,7 +273,7 @@ sequenceDiagram
 | Sub-Phase   | Command              | Worker Role  | Thinking Mode      | Output                        |
 | ----------- | -------------------- | ------------ | ------------------ | ----------------------------- |
 | Build       | `/next-build`        | Builder      | `med`              | Code, tests, commits          |
-| Build (bug) | `/next-bugs-fix`     | Builder      | `med`              | Bug fix, investigation        |
+| Build (bug) | `/next-build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN) |
 | Review      | `/next-review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict |
 | Fix         | `/next-fix-review`   | Fixer        | `med`              | Fix commits                   |
 | Deferrals   | `/next-defer`        | Orchestrator | —                  | New todos from deferrals      |

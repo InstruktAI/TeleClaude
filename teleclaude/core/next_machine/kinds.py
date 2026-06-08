@@ -18,18 +18,19 @@ KIND_TASK = TODO_KIND_TASK
 # Single source of truth: the phase each kind enters the lifecycle at.
 #   feature → author a PRD (full prepare)
 #   change  → draft a plan directly (no PRD; intent is the input artifact)
-#   bug     → skip prepare; the fix lane investigates from the input artifact
+#   bug     → verify a diagnosis first, then draft a plan (same plan→review pipeline)
 #   task    → non-SDLC; no automatic pickup, but prepared for task-plan work
 KIND_ENTRY_PHASE: dict[str, LifecyclePhase] = {
     KIND_FEATURE: LifecyclePhase.PRD_DRAFTING,
     KIND_CHANGE: LifecyclePhase.PLAN_DRAFTING,
-    KIND_BUG: LifecyclePhase.PREPARED,
+    KIND_BUG: LifecyclePhase.DIAGNOSE,
     KIND_TASK: LifecyclePhase.PREPARED,
 }
 
 # Projections of KIND_ENTRY_PHASE for membership checks. Derived, never edited directly.
 FEATURE_PREPARE_KINDS = frozenset(k for k, p in KIND_ENTRY_PHASE.items() if p is LifecyclePhase.PRD_DRAFTING)
 PLAN_ONLY_PREPARE_KINDS = frozenset(k for k, p in KIND_ENTRY_PHASE.items() if p is LifecyclePhase.PLAN_DRAFTING)
+BUG_DIAGNOSE_KINDS = frozenset(k for k, p in KIND_ENTRY_PHASE.items() if p is LifecyclePhase.DIAGNOSE)
 FAST_TRACK_PREPARED_KINDS = frozenset(k for k, p in KIND_ENTRY_PHASE.items() if p is LifecyclePhase.PREPARED)
 PLAN_WITHOUT_INTENT_UPSTREAM_KINDS = PLAN_ONLY_PREPARE_KINDS
 

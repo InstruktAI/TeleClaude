@@ -4,20 +4,20 @@
     'stderr': '',
     'stdout': '''
       Usage:
-        telec todo create <slug> <content> --kind <feature|change|bug> [--after <deps>] [--silent] [--plan]
+        telec todo create <slug> <content> [--kind <feature|change|bug|task>] [--after <deps>] [--silent] [--plan]
       
         Create a todo with substantive content
       
       Options:
         --after                 Comma-separated dependency slugs
-        --kind                  Required. The work-unit's entry point into the lifecycle: feature|change|bug.
+        --kind                  Optional. The work-unit's entry point into the lifecycle: feature|change|bug|task.
         --silent                Create silently — suppress pickup notification
         --plan                  Content is a complete implementation-plan; skip prepare to build (--kind change only).
       
       Notes:
         Creates the todo entry, canonical state, and stores content as the input artifact.
         Emits workflow.todo.created for autonomous pickup unless --silent is set.
-        --kind is required: feature|change|bug.
+        Omitting --kind creates a kind-less todo classified by /analyze-todo-input; it proposes only and never executes.
         --plan is valid only with --kind change and treats content as a complete implementation plan.
         Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
       

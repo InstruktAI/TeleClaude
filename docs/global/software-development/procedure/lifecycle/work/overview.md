@@ -108,11 +108,15 @@ If `deferrals.md` exists, the state machine dispatches deferral resolution via
 
 ### 7. Bug fix
 
-For bug-type work items, the state machine dispatches `next-bugs-fix` instead of
-the standard build flow. The bug fixer follows systematic debugging methodology.
+For bug-type work items, the state machine dispatches `next-build` — the same
+builder as a change/feature. The bug's mandate is the reviewed
+`implementation-plan` plus the `diagnosis` (code-grounded root cause, fix
+approach, and verification approach produced in the prepare phase); the builder
+executes the plan and drives the reproduction test RED→GREEN. Diagnosis happens
+upstream in the prepare phase, not here.
 
-Its post-completion bookkeeping matches the normal build path: the fixer stamps
-`telec todo stamp [slug] --build-complete`, then the orchestrator re-enters
+Its post-completion bookkeeping matches the normal build path: the build worker
+stamps `telec todo stamp [slug] --build-complete`, then the orchestrator re-enters
 `telec todo work [slug]`.
 
 ## Outputs
@@ -135,4 +139,3 @@ Its post-completion bookkeeping matches the normal build path: the fixer stamps
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review-findings.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/work/bug-fix.md

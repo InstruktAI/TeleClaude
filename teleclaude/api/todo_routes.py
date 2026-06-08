@@ -36,6 +36,7 @@ from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
+    ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
     ARTIFACT_NAMES_RETIRED,
@@ -75,6 +76,7 @@ _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_ARCHITECTURE,
+    ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_TASK_PLAN,
 }
@@ -539,6 +541,8 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
             state["kind"] = request.kind
             if request.kind == TODO_KIND_TASK:
                 state["lifecycle_phase"] = LifecyclePhase.PREPARED.value
+            elif request.kind == TODO_KIND_BUG:
+                state["lifecycle_phase"] = LifecyclePhase.DIAGNOSE.value
         force_silent = request.kind == TODO_KIND_TASK
         pickup_requested = not (request.silent or force_silent)
 
@@ -583,10 +587,10 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 artifact_body=written_artifact_body,
             )
 
-        if request.kind == TODO_KIND_BUG or request.plan:
-            # Stamp DOR, grounding baseline, and review approvals so a bug (fix
-            # lane) or a --plan change (complete plan supplied) is immediately
-            # `prepared` and skips the prepare phase.
+        if request.plan:
+            # Stamp DOR, grounding baseline, and review approvals so a --plan
+            # change (complete plan supplied) is immediately `prepared` and skips
+            # the prepare phase.
             final_state = apply_prepared_state(effective_cwd, slug)
             state["lifecycle_phase"] = str(final_state.get("lifecycle_phase", state.get("lifecycle_phase", "draft")))
             todos_db.on_committed("todo_updated")

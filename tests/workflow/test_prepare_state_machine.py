@@ -9,14 +9,29 @@ from typing import cast
 
 import pytest
 
+from teleclaude.constants import STATE_KEY_DIAGNOSIS, STATE_KEY_IMPLEMENTATION_PLAN
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.kinds import (
+    BUG_DIAGNOSE_KINDS,
+    FAST_TRACK_PREPARED_KINDS,
+    KIND_BUG,
+    KIND_TASK,
+)
+from teleclaude.core.next_machine.lifecycle import (
+    LIFECYCLE_PHASE_ORDER,
+    LifecyclePhase,
+    adopt_prepare_handoff_phase,
+    is_ready_for_work,
+)
 from teleclaude.core.next_machine.prepare_step_support import prepare_step_prepared
+from teleclaude.core.next_machine.work_steps import _artifact_contract_note
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.types.todos import TodoState
 
-pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
+pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/workflow/prepare-state-machine"
+_WORK_SPEC = "project/spec/feature/workflow/work-state-machine"
 _PROJECT_ROOT = "/repo"
 _PARENT = "parent"
 _CHILD = "child"
@@ -120,6 +135,48 @@ async def test_prepared_auto_continue_spawns_fresh_when_parent_worker_is_absent(
     _, output = await prepare_step_prepared(cast(Db, db), todos_db, _PARENT, project_root=_PROJECT_ROOT)
 
     assert output == snapshot
+
+
+def _bug_model() -> TodoState:
+    return TodoState(kind=KIND_BUG, schema_version=4)
+
+
+def test_bug_kind_routes_through_diagnose_not_fast_track() -> None:
+    assert KIND_BUG in BUG_DIAGNOSE_KINDS
+    assert KIND_BUG not in FAST_TRACK_PREPARED_KINDS
+    assert KIND_TASK in FAST_TRACK_PREPARED_KINDS
+    arch_review = LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.ARCHITECTURE_REVIEW)
+    diagnose = LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.DIAGNOSE)
+    plan_drafting = LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.PLAN_DRAFTING)
+    assert arch_review < diagnose < plan_drafting
+
+
+def test_bug_derives_diagnose_until_diagnosis_then_flows_like_a_plan() -> None:
+    model = _bug_model()
+    assert adopt_prepare_handoff_phase(model, artifact_presence={}) == LifecyclePhase.DIAGNOSE
+
+    with_diagnosis = {STATE_KEY_DIAGNOSIS: True}
+    assert adopt_prepare_handoff_phase(model, artifact_presence=with_diagnosis) == LifecyclePhase.PLAN_DRAFTING
+
+    with_plan = {STATE_KEY_DIAGNOSIS: True, STATE_KEY_IMPLEMENTATION_PLAN: True}
+    assert adopt_prepare_handoff_phase(model, artifact_presence=with_plan) == LifecyclePhase.PLAN_REVIEW
+
+    model.plan_review.verdict = "approve"
+    assert adopt_prepare_handoff_phase(model, artifact_presence=with_plan) == LifecyclePhase.PREPARED
+
+
+def test_bug_is_not_work_ready_before_prepared() -> None:
+    diagnose_ready, _ = is_ready_for_work(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.DIAGNOSE.value)
+    plan_ready, _ = is_ready_for_work(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value)
+    prepared_ready, _ = is_ready_for_work(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PREPARED.value)
+    assert diagnose_ready is False
+    assert plan_ready is False
+    assert prepared_ready is True
+
+
+@pytest.mark.spec(_WORK_SPEC, "UC-WSM1")
+def test_bug_work_mandate_names_plan_and_diagnosis(snapshot: object) -> None:
+    assert _artifact_contract_note("my-bug", KIND_BUG) == snapshot
 
 
 @pytest.mark.spec(_SPEC, "UC-WPS2")

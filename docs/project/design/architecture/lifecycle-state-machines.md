@@ -115,7 +115,7 @@ sequenceDiagram
     loop Until PREPARED
         Orchestrator->>Prepare: telec todo prepare [slug]
         Prepare-->>Orchestrator: instruction (dispatch worker)
-        Note over Orchestrator: Dispatches intake, architecture,<br/>plan, review, or gate workers
+        Note over Orchestrator: Dispatches intake, architecture,<br/>diagnose (bug), plan, review, or gate workers
     end
     Prepare-->>Orchestrator: PREPARED
 
@@ -179,10 +179,10 @@ All workers are dispatched via `telec sessions run`. The machine specifies the c
 
 | Phase    | Worker Role                   | Command                                                                    | Thinking Mode      |
 | -------- | ----------------------------- | -------------------------------------------------------------------------- | ------------------ |
-| Prepare  | Intaker / Architect / Planner | `/next-prepare-intake`, `/next-prepare-architecture`, `/next-prepare-plan` | `slow`             |
+| Prepare  | Intaker / Architect / Diagnoser / Planner | `/next-prepare-intake`, `/next-prepare-architecture`, `/next-prepare-diagnose` (bug), `/next-prepare-plan` | `slow`             |
 | Prepare  | Drift Analyzer                | `/next-drift-analyze`                                                      | `fast`             |
 | Prepare  | Reviewer                      | `/next-review-architecture`, `/next-review-plan`                           | `slow`             |
-| Build    | Builder                       | `/next-build` (or `/next-bugs-fix`)                                        | `med`              |
+| Build    | Builder                       | `/next-build` (all kinds, incl. bug)                                       | `med`              |
 | Review   | Reviewer                      | `/next-review-build`                                                       | `slow` (mandatory) |
 | Fix      | Fixer                         | `/next-fix-review`                                                         | `med`              |
 | Finalize | Finalizer                     | `/next-finalize`                                                           | `med`              |

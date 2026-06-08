@@ -25,6 +25,7 @@ _WORKFLOW_TODO_CREATED = "workflow.todo.created"
 _SOURCE = "api.todo.create"
 _DOMAIN = "software-development"
 _KIND_CHANGE = "change"
+_KIND_BUG = "bug"
 _PARENT = "parent"
 _CHILD = "child"
 _NEXT_PREPARE = "/next-prepare"
@@ -47,13 +48,14 @@ async def _add_todo(
     *,
     lifecycle_phase: LifecyclePhase,
     after: list[str] | None = None,
+    kind: str = _KIND_CHANGE,
 ) -> None:
     await todos_db.add_to_roadmap(slug, after=after)
     await todos_db.write_state(
         slug,
         {
             "schema_version": 4,
-            "kind": _KIND_CHANGE,
+            "kind": kind,
             "phase": "pending",
             "lifecycle_phase": lifecycle_phase.value,
         },
@@ -157,3 +159,33 @@ async def test_lifecycle_router_dispatches_deps_satisfied_create_from_event_proj
     assert call["command"] == _NEXT_PREPARE
     assert call["args"] == _CHILD
     assert call["project_path"] == str(event_project)
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC4")
+async def test_lifecycle_router_dispatches_prepare_for_bug_in_diagnose(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    event_project = tmp_path / "event-project"
+    env_project = tmp_path / "env-project"
+    event_db = await _project_db(event_project)
+    await _add_todo(event_db, _CHILD, lifecycle_phase=LifecyclePhase.DIAGNOSE, kind=_KIND_BUG)
+    await get_todos_db(env_project)
+    monkeypatch.setenv("TELECLAUDE_PROJECT_PATH", str(env_project))
+    monkeypatch.setattr(lifecycle_router, "TelecAPIClient", _CapturingTelecAPIClient)
+    _CapturingTelecAPIClient.calls = []
+    event = _created_event(
+        {
+            "slug": _CHILD,
+            "kind": _KIND_BUG,
+            "pickup_requested": True,
+            "lifecycle_phase": LifecyclePhase.DIAGNOSE.value,
+            "project_path": str(event_project),
+        }
+    )
+
+    await LifecycleRouterCartridge().process(event, cast(PipelineContext, object()))
+
+    [call] = _CapturingTelecAPIClient.calls
+    assert call["command"] == _NEXT_PREPARE
+    assert call["args"] == _CHILD

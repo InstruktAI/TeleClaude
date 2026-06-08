@@ -28,6 +28,10 @@ it without guessing and a reviewer finds no surprises.
   `software-development/concept/approved-intent-artifact`): `prd` for a `feature`,
   `input` for a `change`. For a `change`, the absence of a PRD is the intended
   design — do NOT treat it as a defect or raise a finding for it.
+- For a `bug`, the approved intent is `input` (the reported symptom) and a
+  `diagnosis` artifact is present carrying the code-grounded root cause, fix
+  approach, and verification approach. The plan must be grounded in that
+  diagnosis; its absence on a `bug` is a blocker, not an approvable state.
 
 ## Steps
 
@@ -38,6 +42,9 @@ First read the software-development principles as listed in the software-develop
 - `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
 - The approved intent artifact — `prd` for a `feature`, `input` for a `change` — the contract the plan must satisfy.
 - `telec todo artifacts read {slug} architecture` — when present.
+- `telec todo artifacts read {slug} diagnosis` — when present (a `bug` carries
+  this; it holds the code-grounded root cause, fix approach, and verification
+  approach the plan must build on).
 - `telec todo artifacts read {slug} input` — compatibility fallback only when PRD is absent.
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
@@ -113,6 +120,28 @@ plan tasks against the domain specs loaded in step 1. Plans that reference
 non-existent APIs, wrong schema fields, or incorrect directory structures are
 defective — the builder will discover the error at build time, wasting a
 session.
+
+### 5a. Diagnosis validation (only when a `diagnosis` artifact is present)
+
+Applies only when the todo carries a `diagnosis` artifact (a `bug`). **Skip this
+section entirely otherwise** — it does not apply to a `feature` or `change`. This
+is the gate that substitutes for a separate diagnosis review: the diagnosis is
+scrutinized here, in the same cross-model pass, against the code.
+
+Read `telec todo artifacts read {slug} diagnosis` and validate:
+
+- **Root cause is code-grounded.** The diagnosis's root-cause section names
+  specific code (file/function/line) with evidence tying the symptom to it. A
+  plausible but ungrounded root cause is Critical — the fix would be built on an
+  unverified premise (the exact "delivered yet ineffective" failure this lane
+  exists to stop).
+- **Verification is adequate.** The plan's verification (derived from the
+  diagnosis's verification-approach) credibly proves the reported `input` symptom
+  is resolved. Where the bug is hard to reproduce, the plan must carry a concrete
+  task to build the functional/e2e coverage that captures it; a hand-waved or
+  absent verification approach is Critical.
+- **Fix addresses the cause, not the symptom**, and the plan's fix tasks trace to
+  the diagnosis's fix-approach.
 
 ### 6. Review lane anticipation
 

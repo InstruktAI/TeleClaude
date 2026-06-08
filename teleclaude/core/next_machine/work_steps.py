@@ -64,7 +64,12 @@ PREPARED_ARTIFACT_CONTRACT = (
     "to) is optional context when present. "
     "Legacy requirements is only a fallback when PRD is absent."
 )
-BUG_ARTIFACT_CONTRACT = "Bug artifact contract for {slug}: bug is the mandate for this fix."
+BUG_ARTIFACT_CONTRACT = (
+    "Bug artifact contract for {slug}: the reviewed implementation-plan is the execution "
+    "spine; the diagnosis is the verified root-cause context the plan grounds on; input is "
+    "the reported symptom. Write the reproduction test the diagnosis prescribes and drive it "
+    "red→green."
+)
 PLAN_ONLY_ARTIFACT_CONTRACT = (
     "Plan-only artifact contract for {slug}: implementation-plan is the intent and execution source "
     "for this {kind} work."
@@ -157,8 +162,6 @@ async def _handle_build_complete_claim(
         await _commit_writer(writer, todos_db, slug, state)
         builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
         if builder_id is None:
-            builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUGS_FIX.value}")
-        if builder_id is None:
             return False, format_error(
                 "BUILD_GATE_FAILED",
                 f"Build gates failed for {slug} and no live builder session exists to relay output. "
@@ -218,7 +221,7 @@ async def _work_step_build_started(
             next_call=f"telec todo prepare {slug}",
         )
 
-    command = SlashCommand.NEXT_BUGS_FIX if kind == KIND_BUG else SlashCommand.NEXT_BUILD
+    command = SlashCommand.NEXT_BUILD
     builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")
     if builder_id is not None:
         return False, (
@@ -404,8 +407,6 @@ async def _work_step_review_changes_requested(
 
     # Fix not yet committed: relay findings to live builder.
     builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
-    if builder_id is None:
-        builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUGS_FIX.value}")
     reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
 
     if builder_id is None:

@@ -269,6 +269,13 @@ async def _prepare_dispatch(
             loader_name="next-review-architecture",
             expected="an architecture review verdict and findings when needed",
         )
+    if phase == PreparePhase.DIAGNOSE:
+        return _load_procedure(
+            slug=slug,
+            command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
+            hat="Diagnoser",
+            expected="a `diagnosis` artifact",
+        )
     if phase == PreparePhase.PLAN_DRAFTING:
         return _load_procedure(
             slug=slug,

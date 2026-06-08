@@ -18,10 +18,12 @@ from pydantic import ValidationError
 
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
+    ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     STATE_KEY_ARCHITECTURE,
+    STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
@@ -60,6 +62,8 @@ _DRIFT_REVIEW_CASCADE: dict[str, tuple[str, ...]] = {
     STATE_KEY_REQUIREMENTS: ("requirements_review",),
     ARTIFACT_ARCHITECTURE: ("architecture_review", "plan_review"),
     STATE_KEY_ARCHITECTURE: ("architecture_review", "plan_review"),
+    ARTIFACT_DIAGNOSIS: ("plan_review",),
+    STATE_KEY_DIAGNOSIS: ("plan_review",),
     ARTIFACT_IMPLEMENTATION_PLAN: ("plan_review",),
     STATE_KEY_IMPLEMENTATION_PLAN: ("plan_review",),
 }

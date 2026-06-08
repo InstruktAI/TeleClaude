@@ -13,9 +13,11 @@ from datetime import UTC, datetime
 
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
+    ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_PRD,
     STATE_KEY_ARCHITECTURE,
+    STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
@@ -39,9 +41,9 @@ from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
 )
 from teleclaude.core.next_machine.kinds import (
+    BUG_DIAGNOSE_KINDS,
     FAST_TRACK_PREPARED_KINDS,
     FEATURE_PREPARE_KINDS,
-    KIND_BUG,
     PLAN_ONLY_PREPARE_KINDS,
 )
 from teleclaude.paths import MAIN_DB_PATH
@@ -126,6 +128,7 @@ _DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (STATE_KEY_PRD, STATE_KEY_PRD, _ALL_DRIFT_CLASSES),
     (STATE_KEY_REQUIREMENTS, STATE_KEY_REQUIREMENTS, _INTENT_DRIFT_CLASSES),
     (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE, _ALL_DRIFT_CLASSES),
+    (ARTIFACT_DIAGNOSIS, STATE_KEY_DIAGNOSIS, _ALL_DRIFT_CLASSES),
     (ARTIFACT_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN, _IMPLEMENTATION_PLAN_DRIFT_CLASSES),
 )
 _DRIFT_PRIORITY: tuple[ArtifactDriftStatus, ...] = (
@@ -179,8 +182,7 @@ def infer_lifecycle_stage(phase: LifecyclePhase) -> LifecycleStage:
 
 def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple[bool, str]:
     """Authoritative gate for entering or resuming the work lane."""
-    if kind == KIND_BUG:
-        return True, ""
+    _ = kind
     phase = coerce_lifecycle_phase(lifecycle_phase)
     if phase is None:
         return False, f"unknown lifecycle_phase {lifecycle_phase!r}"
@@ -500,6 +502,17 @@ def _plan_only_phase(
     return LifecyclePhase.PREPARED
 
 
+def _diagnose_phase(
+    model: TodoState,
+    *,
+    artifact_presence: _ArtifactPresence | None,
+    repo_root: str | None,
+) -> LifecyclePhase:
+    if not _artifact_present(model, STATE_KEY_DIAGNOSIS, artifact_presence=artifact_presence):
+        return LifecyclePhase.DIAGNOSE
+    return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+
+
 def _feature_phase(
     model: TodoState,
     *,
@@ -549,6 +562,8 @@ def adopt_prepare_handoff_phase(
         return LifecyclePhase.PREPARED
     if _non_drift_prepare_blockers(model):
         return LifecyclePhase.BLOCKED
+    if model.kind in BUG_DIAGNOSE_KINDS:
+        return _diagnose_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
     if model.kind in PLAN_ONLY_PREPARE_KINDS:
         return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
     return _feature_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
@@ -658,6 +673,8 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
         return _review_approved(model.architecture_review)
+    if phase == LifecyclePhase.DIAGNOSE:
+        return _artifact_exists(model, STATE_KEY_DIAGNOSIS)
     if phase == LifecyclePhase.PLAN_DRAFTING:
         return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:
@@ -694,6 +711,11 @@ def invalidate_downstream_on_refine(model: TodoState, refined_artifact: str) -> 
         _clear_prepare_review(model.plan_review)
         for key in (ARTIFACT_ARCHITECTURE, ARTIFACT_IMPLEMENTATION_PLAN):
             approvals.drift_reviewed.pop(key, None)
+    elif refined_artifact == ARTIFACT_DIAGNOSIS:
+        approvals.plan_approved = ApprovalStamp()
+        _clear_prepare_review(model.plan_review)
+        for key in (ARTIFACT_DIAGNOSIS, ARTIFACT_IMPLEMENTATION_PLAN):
+            approvals.drift_reviewed.pop(key, None)
     elif refined_artifact == ARTIFACT_IMPLEMENTATION_PLAN:
         approvals.plan_approved = ApprovalStamp()
         _clear_prepare_review(model.plan_review)
@@ -711,6 +733,8 @@ def _clear_prepare_target(model: TodoState, target: LifecyclePhase) -> None:
         invalidate_downstream_on_refine(model, ARTIFACT_PRD)
     elif target in (LifecyclePhase.ARCHITECTURE_DRAFTING, LifecyclePhase.ARCHITECTURE_REVIEW):
         invalidate_downstream_on_refine(model, ARTIFACT_ARCHITECTURE)
+    elif target == LifecyclePhase.DIAGNOSE:
+        invalidate_downstream_on_refine(model, ARTIFACT_DIAGNOSIS)
     elif target in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW):
         invalidate_downstream_on_refine(model, ARTIFACT_IMPLEMENTATION_PLAN)
 

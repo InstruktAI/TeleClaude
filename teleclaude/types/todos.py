@@ -18,6 +18,7 @@ LifecyclePhaseValue = Literal[
     "prd_human_approval",
     "architecture_drafting",
     "architecture_review",
+    "diagnose",
     "plan_drafting",
     "plan_review",
     "prepared",
@@ -192,6 +193,7 @@ class ArtifactsState(BaseModel):
     prd: ArtifactEntry = Field(default_factory=ArtifactEntry)
     requirements: ArtifactEntry = Field(default_factory=ArtifactEntry)
     architecture: ArtifactEntry = Field(default_factory=ArtifactEntry)
+    diagnosis: ArtifactEntry = Field(default_factory=ArtifactEntry)
     implementation_plan: ArtifactEntry = Field(default_factory=ArtifactEntry)
     task_plan: ArtifactEntry = Field(default_factory=ArtifactEntry)
     art: ArtifactEntry = Field(default_factory=ArtifactEntry)

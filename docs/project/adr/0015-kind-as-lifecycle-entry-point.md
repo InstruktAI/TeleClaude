@@ -6,7 +6,7 @@ scope: 'project'
 visibility: 'public'
 description: 'A kind names the lifecycle entry point: the SDLC kinds (feature/change/bug), the non-SDLC `task` kind, and an optional kind at intake (kind-less dumps are classified by /analyze-todo-input).'
 date: '2026-06-06'
-adr_status: 'accepted'
+adr_status: 'superseded'
 number: '15'
 ---
 

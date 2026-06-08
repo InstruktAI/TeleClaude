@@ -1,9 +1,9 @@
 ---
-description: Authoritative surface for the telec command-line tool.
-id: project/spec/telec-cli-surface
-scope: project
-type: spec
-visibility: public
+description: 'Authoritative surface for the telec command-line tool.'
+id: 'project/spec/telec-cli-surface'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # CLI Surface — Spec
@@ -218,12 +218,12 @@ subcommands:
             args:
               - slug: 'string'
           read:
-            description: 'Read one named artifact. Canonical names include input, prd, architecture, implementation-plan, task-plan, quality-checklist, design-spec, deferrals, requirements-review-findings, architecture-review-findings, plan-review-findings, and review-findings; retired artifacts remain read/remove-only where compatibility requires it.'
+            description: 'Read one named artifact. Canonical names include input, prd, architecture, implementation-plan, diagnosis, task-plan, quality-checklist, design-spec, deferrals, requirements-review-findings, architecture-review-findings, plan-review-findings, and review-findings; retired artifacts remain read/remove-only where compatibility requires it.'
             args:
               - slug: 'string'
               - name: 'artifact name'
           write:
-            description: 'Write one named artifact and append version history. Writable names include input, prd, architecture, implementation-plan, task-plan, quality-checklist, design-spec, deferrals, requirements-review-findings, architecture-review-findings, plan-review-findings, and review-findings.'
+            description: 'Write one named artifact and append version history. Writable names include input, prd, architecture, implementation-plan, diagnosis, task-plan, quality-checklist, design-spec, deferrals, requirements-review-findings, architecture-review-findings, plan-review-findings, and review-findings.'
             args:
               - slug: 'string'
               - name: 'artifact name'
@@ -339,9 +339,9 @@ subcommands:
     description: 'Manage bug reports and fixes.'
     subcommands:
       report:
-        description: 'Scaffold a bug from a description; lifecycle router dispatches /next-work.'
+        description: 'Scaffold a bug from a description; lifecycle router dispatches /next-prepare (diagnosis → plan → plan-review).'
       create:
-        description: 'Scaffold a bug from a description; lifecycle router dispatches /next-work. Accepts positional <description> or --description <text>; slug is auto-generated or overridden with --slug.'
+        description: 'Scaffold a bug from a description; lifecycle router dispatches /next-prepare (diagnosis → plan → plan-review). Accepts positional <description> or --description <text>; slug is auto-generated or overridden with --slug.'
       list:
         description: 'List in-flight bug fixes with status (prefers worktree state when present).'
   auth:

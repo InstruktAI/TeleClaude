@@ -577,7 +577,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     has_legacy_requirements = _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS)
     if kind == KIND_FEATURE and not (has_prd or has_legacy_requirements):
         raise ValueError(f"Missing prd artifact with content for {slug}")
-    if kind != KIND_BUG and not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
+    if not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
 
     rc, _current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
@@ -626,10 +626,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     else:
         review_mgr.stamp_verdict("requirements_review", "approve")
 
-    if kind == KIND_BUG:
-        review_mgr.stamp_verdict("plan_review", "skipped")
-    else:
-        review_mgr.stamp_verdict("plan_review", "approve")
+    review_mgr.stamp_verdict("plan_review", "approve")
 
     if input_digest:
         _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_INPUT, writer, db=db)
@@ -638,8 +635,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_PRD, writer, db=db)
     elif kind not in FAST_TRACK_PREPARED_KINDS and has_legacy_requirements:
         _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_REQUIREMENTS, writer, db=db)
-    if kind != KIND_BUG:
-        _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN, writer, db=db)
+    _sync_artifact_provenance_subset_from_db(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN, writer, db=db)
 
     payload = writer.commit_sync(db, slug)
     logger.info(
