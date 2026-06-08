@@ -7,16 +7,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from teleclaude.constants import CHECKPOINT_PREFIX
 from teleclaude.core.agents import AgentName
-from teleclaude.core.conversation_messages import is_machine_originated_user_text
 from teleclaude.core.models import JsonDict
-from teleclaude.output_projection.visibility import is_agent_cli_internal_text
+from teleclaude.output_projection.visibility import is_hook_side_channel_artifact
 
 from ._parsers import normalize_transcript_entry_message
 from ._utils import _parse_timestamp
 
-_CODEX_HOOK_PROMPT_RE = re.compile(r"^\s*<hook_prompt\b", re.DOTALL)
 _CLAUDE_TASK_NOTIFICATION_RE = re.compile(r"^\s*<task-notification\b", re.DOTALL)
 
 
@@ -88,20 +85,7 @@ def is_user_tool_result_only_message(message: Mapping[str, object]) -> bool:
 
 def _is_teleclaude_control_text(text: str) -> bool:
     """Return True for exact TeleClaude-owned non-human input envelopes."""
-    stripped = text.lstrip()
-    if stripped.startswith(CHECKPOINT_PREFIX) or stripped.startswith("[TeleClaude Checkpoint]"):
-        return True
-    if stripped.startswith("[TeleClaude Notification]"):
-        return True
-    if stripped.startswith("[TeleClaude Input Request]"):
-        return True
-    if is_machine_originated_user_text(stripped):
-        return True
-    if stripped.startswith("[TeleClaude Linked output") or stripped.startswith("[TeleClaude - Linked output"):
-        return True
-    if is_agent_cli_internal_text(stripped):
-        return True
-    return False
+    return is_hook_side_channel_artifact(text)
 
 
 def _is_claude_internal_user_entry(entry: Mapping[str, object], text: str | None) -> bool:
@@ -135,8 +119,6 @@ def _is_codex_internal_user_entry(entry: Mapping[str, object], text: str | None)
     """Classify Codex user-shaped runtime artifacts by native envelope."""
     if text is None:
         return False
-    if _CODEX_HOOK_PROMPT_RE.match(text):
-        return True
     return _is_teleclaude_control_text(text)
 
 

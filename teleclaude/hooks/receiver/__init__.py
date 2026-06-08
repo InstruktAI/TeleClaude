@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -20,11 +19,10 @@ from sqlmodel import select
 
 from teleclaude import paths as tc_paths
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import CHECKPOINT_PREFIX, DOMAIN_SCOPES, UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import DOMAIN_SCOPES, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
-from teleclaude.core.conversation_messages import is_machine_originated_user_text
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
@@ -56,6 +54,7 @@ from teleclaude.hooks.receiver._session import (
     _write_session_map_atomic,
     get_outbox_session,
 )
+from teleclaude.output_projection.visibility import is_hook_side_channel_artifact
 from teleclaude.utils.transcript import extract_workdir_from_transcript
 
 if TYPE_CHECKING:
@@ -80,10 +79,6 @@ _SESSION_EXPORT_BINDINGS = (
     _session_map_key,
     _write_session_map_atomic,
 )
-
-_CODEX_HOOK_PROMPT_RE = re.compile(r"^\s*<hook_prompt\b", re.DOTALL)
-_CLAUDE_HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
-_CLAUDE_CLI_INTERNAL_PROMPT_RE = re.compile(r"^\s*<(task-notification|system-reminder)\b", re.DOTALL)
 
 HOOK_RECEIVER_EXPORTS = [
     *_SESSION_EXPORTS,
@@ -791,36 +786,10 @@ def _persist_native_metadata(
     )
 
 
-def _is_teleclaude_system_prompt(prompt_text: str) -> bool:
-    """Return True for TeleClaude-owned prompt envelopes that are not user input."""
-    stripped = prompt_text.lstrip()
-    if stripped.startswith(CHECKPOINT_PREFIX) or stripped.startswith("[TeleClaude Checkpoint]"):
-        return True
-    if stripped.startswith("[TeleClaude Notification]"):
-        return True
-    if stripped.startswith("[TeleClaude Input Request]"):
-        return True
-    if stripped.startswith("[TeleClaude Linked output") or stripped.startswith("[TeleClaude - Linked output"):
-        return True
-    return is_machine_originated_user_text(stripped)
-
-
 def _is_system_injected_user_prompt(agent: str, prompt_text: str) -> bool:
     """Return True when a user_prompt_submit payload is an agent/runtime artifact."""
-    stripped = prompt_text.lstrip()
-    if _is_teleclaude_system_prompt(stripped):
-        return True
-
-    if agent == AgentName.CODEX.value and _CODEX_HOOK_PROMPT_RE.match(stripped):
-        return True
-
-    if agent == AgentName.CLAUDE.value:
-        if stripped.startswith(_CLAUDE_HOOK_FEEDBACK_PREFIXES):
-            return True
-        if _CLAUDE_CLI_INTERNAL_PROMPT_RE.match(stripped):
-            return True
-
-    return False
+    del agent
+    return is_hook_side_channel_artifact(prompt_text)
 
 
 def _handle_user_prompt_submit(

@@ -1,6 +1,6 @@
 """Visibility classification for transcript content.
 
-Two predicates with distinct responsibilities:
+Three predicates with distinct responsibilities:
 
 - ``is_agent_cli_internal_text`` matches agent-runtime artifacts that have no
   meaning outside the agent CLI that produced them: hook feedback prefixes,
@@ -13,13 +13,16 @@ Two predicates with distinct responsibilities:
   delivered to a session must NOT be classified as a real user turn that
   resets the checkpoint timer. The ``[TeleClaude`` prefix is *not* a strip
   trigger for projection — brackets are identity markers, not delete cues.
+
+- ``is_hook_side_channel_artifact`` matches the narrower set of hook-side
+  artifacts that must not count as typed-in turns.
 """
 
 from __future__ import annotations
 
 import re
 
-from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
+from teleclaude.constants import CHECKPOINT_PREFIX, TELECLAUDE_SYSTEM_PREFIX
 
 _HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
 
@@ -46,6 +49,14 @@ def is_agent_cli_internal_text(text: str) -> bool:
     if _INTERNAL_WRAPPER_RE.match(text):
         return True
     return False
+
+
+def is_hook_side_channel_artifact(text: str) -> bool:
+    """Return True when text is hook feedback or an agent CLI runtime wrapper."""
+    stripped = text.lstrip()
+    if stripped.startswith(CHECKPOINT_PREFIX) or stripped.startswith("[TeleClaude Checkpoint]"):
+        return True
+    return is_agent_cli_internal_text(text)
 
 
 def is_internal_user_text(text: str) -> bool:

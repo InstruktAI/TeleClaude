@@ -87,6 +87,18 @@ And the symmetric path applies for B → A
 And neither party needs to re-invoke `telec sessions send` for follow-up turns
 ```
 
+#### UC-DCL1: Non-bridge inter-actor turns cross-deliver; peer-bridge blocks never loop
+
+```
+Given an active direct link exists between members A and B
+And B's transcript contains a `[TeleClaude - Peer (A) ...]` block that was cross-delivered earlier
+And B's transcript contains an `[Orchestrator ...]` block typed into B
+When the cross-delivery collector bundles B's turn for A
+Then the peer-bridge block is excluded from the bundle
+And the orchestrator block is delivered as a real segment
+And no A-to-B-to-A echo segment is produced
+```
+
 #### Listener suppression while linked
 
 ```
