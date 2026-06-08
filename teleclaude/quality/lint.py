@@ -299,7 +299,10 @@ class _JscpdStep:
         cmd = [
             "npx",
             "--yes",
-            "jscpd",
+            # Pin the JS jscpd (camelCase --exitCode, --gitignore). Bare "jscpd"
+            # now resolves via npx to an incompatible Rust `cpd` (--exit-code,
+            # --no-gitignore), which breaks this invocation.
+            "jscpd@4",
             "--min-lines",
             "25",
             "--min-tokens",
