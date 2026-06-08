@@ -19,6 +19,7 @@ from teleclaude.cli.tui.animations.general import GlobalSky
 from teleclaude.cli.tui.animations.sprites.cars import CAR_SPRITE
 from teleclaude.cli.tui.animations.sprites.ufo import UFO_SPRITE
 from teleclaude.cli.tui.header_frames import build_header_frames
+from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
@@ -79,7 +80,7 @@ class TelecAppMediaMixin:
             status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
             status_bar.tts_enabled = new_val
         except Exception as e:
-            self.notify(f"Failed to toggle TTS: {e}", severity="error")  # type: ignore[attr-defined]
+            self.notify(f"Failed to toggle TTS: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
 
     # --- ChipTunes player controls ---
 
@@ -110,7 +111,7 @@ class TelecAppMediaMixin:
                 # No receipt tracking, no reconcile — button shows pause immediately.
                 # WS events correct the state once the worker is up.
         except Exception as e:
-            self.notify(f"Failed to pause/resume: {e}", severity="error")  # type: ignore[attr-defined]
+            self.notify(f"Failed to pause/resume: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_next(self) -> None:
@@ -123,7 +124,7 @@ class TelecAppMediaMixin:
             self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
         except Exception as e:
-            self.notify(f"Failed to skip track: {e}", severity="error")  # type: ignore[attr-defined]
+            self.notify(f"Failed to skip track: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_prev(self) -> None:
@@ -136,7 +137,7 @@ class TelecAppMediaMixin:
             self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
         except Exception as e:
-            self.notify(f"Failed to go to previous track: {e}", severity="error")  # type: ignore[attr-defined]
+            self.notify(f"Failed to go to previous track: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_stop(self) -> None:
@@ -155,7 +156,7 @@ class TelecAppMediaMixin:
             )
             self._cancel_chiptunes_reconcile()
         except Exception as e:
-            self.notify(f"Failed to stop: {e}", severity="error")  # type: ignore[attr-defined]
+            self.notify(f"Failed to stop: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
 
     def _apply_chiptunes_footer_state(
         self,
@@ -252,7 +253,7 @@ class TelecAppMediaMixin:
             try:
                 removed = await asyncio.to_thread(remove_favorite, sid_path)
             except OSError as e:
-                self.notify(f"Failed to remove favorite: {e}", severity="error")  # type: ignore[attr-defined]
+                self.notify(f"Failed to remove favorite: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
                 return
 
             if removed:
@@ -263,7 +264,7 @@ class TelecAppMediaMixin:
         try:
             await asyncio.to_thread(save_favorite, track, sid_path)
         except OSError as e:
-            self.notify(f"Failed to save favorite: {e}", severity="error")  # type: ignore[attr-defined]
+            self.notify(f"Failed to save favorite: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
             return
 
         footer.chiptunes_favorited = True
@@ -286,7 +287,7 @@ class TelecAppMediaMixin:
             try:
                 removed = await asyncio.to_thread(remove_dislike, sid_path)
             except OSError as e:
-                self.notify(f"Failed to remove dislike: {e}", severity="error")  # type: ignore[attr-defined]
+                self.notify(f"Failed to remove dislike: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
                 return
 
             if removed:
@@ -297,7 +298,7 @@ class TelecAppMediaMixin:
         try:
             await asyncio.to_thread(save_dislike, track, sid_path)
         except OSError as e:
-            self.notify(f"Failed to save dislike: {e}", severity="error")  # type: ignore[attr-defined]
+            self.notify(f"Failed to save dislike: {escape_markup(str(e))}", severity="error")  # type: ignore[attr-defined]
             return
 
         footer.chiptunes_disliked = True

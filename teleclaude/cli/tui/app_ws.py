@@ -33,6 +33,7 @@ from teleclaude.cli.tui.messages import (
     SessionUpdated,
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
+from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
@@ -175,7 +176,7 @@ class TelecAppWsMixin:
             return True
 
         if isinstance(event, ErrorEventDTO):
-            self.notify(event.data.message, severity="error")  # type: ignore[attr-defined]
+            self.notify(escape_markup(event.data.message), severity="error")  # type: ignore[attr-defined]
             return True
 
         if isinstance(event, OperationCompletedEventDTO):
@@ -183,7 +184,7 @@ class TelecAppWsMixin:
             # Successful completions stay silent — the relevant view already
             # reflects the new state through its own data refresh.
             if event.error:
-                self.notify(event.error, severity="error")  # type: ignore[attr-defined]
+                self.notify(escape_markup(event.error), severity="error")  # type: ignore[attr-defined]
             return True
 
         return False

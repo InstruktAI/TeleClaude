@@ -8,6 +8,7 @@ from typing import Protocol, TypedDict, cast
 
 import yaml
 
+from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.runtime.config import get_runtime_config
 
 
@@ -159,7 +160,7 @@ def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -> bool
         _write_raw_config(config_path, raw_config)
     except Exception as exc:
         _rollback_created_directory(project_path, created_project_dir)
-        app.notify(f"Failed to save project: {str(exc)[:80]}", severity="error")
+        app.notify(f"Failed to save project: {escape_markup(str(exc)[:80])}", severity="error")
         return False
 
     app.notify(f"Project '{result.name}' added")

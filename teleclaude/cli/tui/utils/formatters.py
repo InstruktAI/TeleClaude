@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from rich.markup import escape as _rich_escape
+
 
 def format_time(iso_timestamp: str | None) -> str:
     """Convert ISO timestamp to HH:MM:SS local time.
@@ -107,3 +109,8 @@ def session_display_index(index: int, parent_index: str | None = None) -> str:
     if parent_index:
         return f"{parent_index}.{index}"
     return str(index)
+
+
+def escape_markup(text: str) -> str:
+    """Escape Rich markup characters so text renders as plain text in markup-aware widgets."""
+    return _rich_escape(text)
