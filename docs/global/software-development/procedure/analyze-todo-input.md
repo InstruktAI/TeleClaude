@@ -5,7 +5,7 @@ domain: 'software-development'
 scope: 'domain'
 visibility: 'public'
 activation_trigger: 'Use when a kind-less todo needs its raw human intent interpreted and classified into a kind'
-description: "Interpret a kind-less todo's raw input, classify it into a kind, and propose it for human approval through the todo stamp boundary."
+description: 'Interpret a kind-less todo''s raw input, classify it into a kind, and propose it for human approval through the todo stamp boundary.'
 ---
 
 # Analyze Todo Input — Procedure
