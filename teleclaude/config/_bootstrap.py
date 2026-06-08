@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from pathlib import Path
 
 import yaml
 
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.runtime.config import get_runtime_config
 
 DeepMerge = Callable[[dict[str, object], dict[str, object]], dict[str, object]]  # guard: loose-dict - YAML config merge
 
@@ -22,14 +21,13 @@ def resolve_runtime_config_path(blueprint_path: Path, deep_merge: DeepMerge) -> 
     first run, and any blueprint keys missing from the runtime are merged in (runtime
     values win; placeholders preserved). The blueprint itself is never written.
 
-    An explicit ``TELECLAUDE_CONFIG_PATH`` (tests, alternate configs) is used
-    verbatim and bypasses seeding.
+    An explicit ``config_path`` in RuntimeConfig is used verbatim and bypasses seeding.
     """
-    env_path = os.getenv("TELECLAUDE_CONFIG_PATH")
-    if env_path:
-        return Path(env_path).expanduser().resolve()
+    rc = get_runtime_config()
+    if rc.config_path is not None:
+        return rc.config_path.expanduser().resolve()
 
-    runtime = TELECLAUDE_HOME / "config.yml"
+    runtime = rc.home / "config.yml"
     if not blueprint_path.exists():
         return runtime
 

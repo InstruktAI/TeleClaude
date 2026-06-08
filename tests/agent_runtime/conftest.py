@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 from collections.abc import AsyncGenerator, Awaitable
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,9 +21,6 @@ from teleclaude.core.command_service import CommandService
 from teleclaude.core.db import Db
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.tmux_bridge import _session as tmux_session_mod
-
-# Point config at the minimal test config before any teleclaude imports.
-os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 
 @pytest.fixture

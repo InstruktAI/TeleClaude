@@ -145,8 +145,14 @@ environment_variables:
   # complete until REDIS_URL is set). Also listed via _ADAPTER_ENV_VARS["redis"].
   - REDIS_URL
   - REDIS_PASSWORD
-  # Runtime state root + log control
+  # RuntimeConfig one-shot path controls. RuntimeConfig reads these once at
+  # process startup; tests seed RuntimeConfig directly instead of mutating env.
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
+  - TELECLAUDE_CONFIG_PATH # daemon runtime config.yml override; defaults under TELECLAUDE_HOME
+  - TELECLAUDE_ENV_PATH # .env path override for daemon config loading
+  - TELECLAUDE_PROJECT_CONFIG_PATH # project teleclaude.yml override for controlled test/operator launches
+  - TELECLAUDE_SESSION_TMPDIR_BASE # base directory for session-scoped temp files
+  # Log control
   - TELECLAUDE_LOG_LEVEL # daemon log level; listed in the Env subtab via _ADAPTER_ENV_VARS["system"]
   # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
   # commented out in .env / .env.sample and is NOT part of make install yet.
@@ -165,11 +171,19 @@ environment_variables:
   - FIRECRAWL_API_KEY
 ```
 
-`TELECLAUDE_HOME` is consumed by `teleclaude.paths` before path constants are
-created. It changes the root for runtime state files such as databases, logs,
-global docs, commands, people configs, and session temp directories. Tests set it
-before importing TeleClaude so runtime state cannot fall through to the real
-`~/.teleclaude` tree.
+`teleclaude.runtime.config` is the one-shot owner for the controlled path env
+surface. It reads `TELECLAUDE_HOME`, `TELECLAUDE_CONFIG_PATH`,
+`TELECLAUDE_ENV_PATH`, `TELECLAUDE_PROJECT_CONFIG_PATH`,
+and `TELECLAUDE_SESSION_TMPDIR_BASE` once at module import and freezes them into
+`RuntimeConfig`. Runtime code reads those values through `get_runtime_config()`
+rather than consulting or mutating process env later. Tests call
+`set_runtime_config(RuntimeConfig(...))` before importing any other TeleClaude
+module instead of setting env vars, so runtime state cannot fall through to the
+real `~/.teleclaude` tree.
+
+`RuntimeConfig.home` changes the root for runtime state files such as databases,
+logs, global docs, commands, people configs, and session temp directories. All
+path constants in `teleclaude.paths` derive from that frozen value.
 
 ### Daemon runtime config keys (`config.yml`)
 
@@ -179,7 +193,9 @@ runtime file from it on first run, and the daemon bootstrap (`teleclaude.config.
 merges any blueprint keys missing from the runtime file (runtime values win, `${VAR}`
 placeholders preserved). The TUI, daemon, and installer read and write only the runtime
 file; the blueprint is never mutated. `make install` writes opted-in agents' `enabled`
-state into the runtime file. `TELECLAUDE_CONFIG_PATH` overrides the path verbatim (tests).
+state into the runtime file. `RuntimeConfig.config_path` overrides the path
+verbatim. Operator launches can populate it through `TELECLAUDE_CONFIG_PATH` at
+process startup; tests seed it directly with `set_runtime_config(...)`.
 
 The `agents` config key for the Antigravity agent is `gemini`; its binary resolves to
 `agy` via `resolve_agent_binary`. The installer heals any legacy `agy:` key back to

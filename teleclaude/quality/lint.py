@@ -207,6 +207,20 @@ class _SnapshotTestingStep:
 
 
 @dataclass
+class _TestDisciplineStep:
+    """Runtime env mutation discipline enforcement."""
+
+    name: str = "test_discipline"
+    _project_root: Path = field(default_factory=Path)
+
+    def run(self, targets: list[str]) -> None:
+        """Run the controlled TELECLAUDE_* env mutation scanner."""
+        _ = targets  # the scanner owns its repo-wide scope.
+        script = str(REPO_ROOT / "tools" / "lint" / "test_discipline.py")
+        _run_tool([sys.executable, script, "--check"], self._project_root, self.name)
+
+
+@dataclass
 class _RuffCheckStep:
     """Ruff lint check with auto-fix step."""
 
@@ -325,6 +339,7 @@ class PythonLintPipeline:
             _HomePathsStep(_project_root=root),
             _ResourceValidationStep(_project_root=root, _run_all=run_all),
             _SnapshotTestingStep(_project_root=root),
+            _TestDisciplineStep(_project_root=root),
             _RuffCheckStep(_project_root=root),
             _RuffFormatStep(_project_root=root),
             _PyrightStep(_project_root=root),

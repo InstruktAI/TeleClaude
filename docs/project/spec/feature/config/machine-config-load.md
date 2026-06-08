@@ -43,12 +43,12 @@ And the resulting Config object is bound to the module-level `config` global
 And the module-level `config_path` global is set to the absolute path
 ```
 
-#### UC-CFG-LOAD-2: TELECLAUDE_CONFIG_PATH overrides the default
+#### UC-CFG-LOAD-2: RuntimeConfig.config_path overrides the default
 
 ```
-Given the env var TELECLAUDE_CONFIG_PATH is set to "tests/integration/config.yml"
+Given RuntimeConfig.config_path is set to "tests/integration/config.yml" before teleclaude.config imports
 When the machine config loads at process start
-Then _config_path is built from the env-var value, expanded for `~`
+Then _config_path is built from RuntimeConfig.config_path, expanded for `~`
 And if the path is relative it is resolved against _project_root
 And the file at the resolved path is loaded as the machine config
 ```
@@ -67,7 +67,7 @@ And no Config object is bound (import fails for every consumer)
 
 ```
 Given config.yml contains a value like "${DISCORD_TOKEN}" or "${REDIS_URL:-redis://localhost:6379}"
-And .env at <_project_root>/.env (or TELECLAUDE_ENV_PATH when set) has been sourced via load_dotenv
+And .env at RuntimeConfig.env_path when set, otherwise <_project_root>/.env, has been sourced via load_dotenv
 When the machine config loads
 Then env-var expansion walks the parsed YAML dict and substitutes each ${VAR} reference
 And substituted values flow into the merged config used by config construction
@@ -133,7 +133,7 @@ And config construction raises a validation error downstream because the require
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing
   or malformed file, and binds the runtime configuration aggregate. Tests
-  must point `TELECLAUDE_CONFIG_PATH` at a fixture before the config bounded
+  must seed `RuntimeConfig.config_path` with a fixture before the config bounded
   context initialises.
 - **Hot reload via the config bounded context's watcher.** The process-start
   load is still one-shot, but the running runtime owns an in-process config
@@ -155,12 +155,12 @@ And config construction raises a validation error downstream because the require
   `redis.passwrd` is silently dropped via merge.
 - **`experiments.yml` is positional, not declared.** The side-file is read
   from the same directory as the resolved `config.yml`. There is no env-var
-  override; if `TELECLAUDE_CONFIG_PATH` points elsewhere, the experiments
+  override; if `RuntimeConfig.config_path` points elsewhere, the experiments
   side-file moves with it.
 - **Non-dict YAML degrades to empty.** A `config.yml` whose top level is a
   list or scalar is silently coerced to an empty mapping. The downstream
   `agents` requirement then raises, but the failure surfaces later than the
   actual cause.
 - **`.env` loading is unconditional.** The env-file load runs even when the
-  file does not exist (no-op in that case). `TELECLAUDE_ENV_PATH` is
+  file does not exist (no-op in that case). `RuntimeConfig.env_path` is
   honored, but there is no signal that the file was missing.

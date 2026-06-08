@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 _SPAWN_EVENT = "domain.software-development.planning.todo_finalize_ready"
 
-IntegratorSpawnCallback = Callable[[str, str, str, str], Coroutine[Any, Any, Any] | None]
+IntegratorSpawnCallback = Callable[[str, str, str, str, str], Coroutine[Any, Any, Any] | None]
 
 
 class IntegrationTriggerCartridge:
@@ -58,6 +58,7 @@ class IntegrationTriggerCartridge:
         slug = str(payload.get("slug", ""))
         branch = str(payload.get("branch", ""))
         sha = str(payload.get("sha", ""))
+        project_path = str(payload.get("project_path", ""))
 
         logger.info(
             "Integration trigger processing %s (slug=%s, branch=%s, sha=%s)",
@@ -79,7 +80,7 @@ class IntegrationTriggerCartridge:
                     worker_session_id or "unknown",
                 )
                 return event
-            await self._spawn_integrator(slug, branch, sha, worker_session_id)
+            await self._spawn_integrator(slug, branch, sha, worker_session_id, project_path)
             self._spawned_event_keys.add(logical_key)
 
         return event
@@ -88,8 +89,17 @@ class IntegrationTriggerCartridge:
         """Return the stable cartridge identifier."""
         return self.name
 
-    async def _spawn_integrator(self, slug: str, branch: str, sha: str, caller_session_id: str) -> None:
+    async def _spawn_integrator(
+        self,
+        slug: str,
+        branch: str,
+        sha: str,
+        caller_session_id: str,
+        project_path: str,
+    ) -> None:
         """Ensure the singleton integrator session exists."""
+        if not project_path:
+            raise ValueError(f"Cannot spawn integrator for {slug}: missing project_path")
         logger.info(
             "spawning integrator for slug=%s branch=%s sha=%s caller=%s",
             slug,
@@ -97,7 +107,7 @@ class IntegrationTriggerCartridge:
             sha[:8] if sha else "",
             caller_session_id or "unknown",
         )
-        result = self._spawn_callback(slug, branch, sha, caller_session_id)
+        result = self._spawn_callback(slug, branch, sha, caller_session_id, project_path)
         if asyncio.iscoroutine(result):
             await result
         logger.info("spawn callback completed for %s", slug)

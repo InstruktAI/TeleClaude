@@ -6,13 +6,13 @@ Session-scoped files live under the TeleClaude session TMPDIR base.
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.paths import TMP_SESSIONS_DIR
+from teleclaude.runtime.config import get_runtime_config
 
 logger = get_logger("teleclaude.hooks.checkpoint_flags")
 
@@ -23,9 +23,9 @@ CHECKPOINT_AUTHORED_MAIN_COMMIT_FLAG = "teleclaude_checkpoint_authored_main_comm
 
 def session_tmp_base_dir() -> Path:
     """Return the base directory used for session-scoped checkpoint flags."""
-    base_override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
-    if base_override:
-        return Path(base_override).expanduser().resolve()
+    override = get_runtime_config().tmpdir_base
+    if override is not None:
+        return override.resolve()
     return TMP_SESSIONS_DIR.resolve()
 
 

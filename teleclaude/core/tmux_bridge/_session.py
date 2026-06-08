@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR
+from teleclaude.runtime.config import get_runtime_config
 from teleclaude.runtime.environment import filter_platform_session_environment, resolve_runtime_environment
 
 from ._pane import session_exists
@@ -72,9 +73,9 @@ def _build_tmux_shell_command(
 
 
 def _get_session_tmp_basedir() -> Path:
-    override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
-    if override:
-        return Path(override).expanduser()
+    override = get_runtime_config().tmpdir_base
+    if override is not None:
+        return override
     return TMP_SESSIONS_DIR
 
 

@@ -2,26 +2,34 @@
 # pylint: disable=broad-exception-caught,import-outside-toplevel
 
 import atexit
+import dataclasses
 import logging
-import os
 import shutil
 import tempfile
 from pathlib import Path
 
 import pytest
 
-import teleclaude.paths as tc_paths
-from teleclaude import paths
-from teleclaude.core.command_registry import reset_command_service
-from teleclaude.core.event_bus import event_bus
-
+# RuntimeConfig must be seeded before any other teleclaude module is imported,
+# because paths.py derives its module-level constants from get_runtime_config().
 _repo_root = Path(__file__).resolve().parents[1]
 _test_runtime_root = Path(tempfile.mkdtemp(prefix="teleclaude-pytest-")).resolve()
 atexit.register(shutil.rmtree, _test_runtime_root, ignore_errors=True)
 
-os.environ["TELECLAUDE_HOME"] = str(_test_runtime_root / ".teleclaude")
-os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_repo_root / "tests" / "integration" / "config.yml"))
-os.environ.setdefault("TELECLAUDE_ENV_PATH", str(_repo_root / "tests" / "integration" / ".env"))
+from teleclaude.runtime.config import RuntimeConfig, set_runtime_config
+
+set_runtime_config(
+    RuntimeConfig(
+        home=_test_runtime_root / ".teleclaude",
+        config_path=_repo_root / "tests" / "integration" / "config.yml",
+        env_path=_repo_root / "tests" / "integration" / ".env",
+    )
+)
+
+import teleclaude.paths as tc_paths
+from teleclaude import paths
+from teleclaude.core.command_registry import reset_command_service
+from teleclaude.core.event_bus import event_bus
 
 
 class _ClusterEmitRedisFake:
@@ -75,6 +83,8 @@ def _isolate_test_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Provide a consistent, isolated environment for each test."""
     from teleclaude.core import db as db_module  # startup boundary
     from teleclaude.core import session_cleanup, session_utils  # startup boundary
+    from teleclaude.runtime import config as _rc_module  # startup boundary
+    from teleclaude.runtime.config import get_runtime_config  # startup boundary
 
     project_root = tmp_path / "project"
     project_root.mkdir(parents=True, exist_ok=True)
@@ -82,7 +92,12 @@ def _isolate_test_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     if not config_path.exists():
         config_path.write_text("business:\n  domains:\n    software-development: docs\n", encoding="utf-8")
 
-    monkeypatch.setenv("TELECLAUDE_PROJECT_CONFIG_PATH", str(config_path))
+    # Patch the RuntimeConfig singleton for this test; monkeypatch restores it afterwards.
+    monkeypatch.setattr(
+        _rc_module,
+        "_instance",
+        dataclasses.replace(get_runtime_config(), project_config_path=config_path),
+    )
     db_module.db.db_path = str(tc_paths.MAIN_DB_PATH)
 
     try:

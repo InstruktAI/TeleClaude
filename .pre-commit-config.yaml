@@ -23,6 +23,11 @@ repos:
     language: system
     files: ^(tests/.*\.py|frontend/.*\.(ts|tsx))$
     pass_filenames: true
+  - id: test-discipline
+    name: Test discipline (telec code lint --step test_discipline)
+    entry: uv run python -m teleclaude.cli.telec code lint --step test_discipline
+    language: system
+    pass_filenames: false
   - id: ruff-check
     name: Ruff check (telec code lint --step ruff_check)
     entry: uv run python -m teleclaude.cli.telec code lint --step ruff_check

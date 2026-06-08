@@ -132,8 +132,6 @@ def _pytest_worker(worktree_cwd: str, pytest_args: list[str], result_queue: Any)
         ],
     ]
     os.chdir(worktree_root)
-    os.environ["TELECLAUDE_CONFIG_PATH"] = os.environ.get("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
-    os.environ["TELECLAUDE_ENV_PATH"] = os.environ.get("TELECLAUDE_ENV_PATH", "tests/integration/.env")
 
     stdout_buffer = io.StringIO()
     stderr_buffer = io.StringIO()

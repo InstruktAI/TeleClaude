@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
@@ -68,7 +66,7 @@ class LifecycleRouterCartridge:
             phase_raw = event.payload.get("lifecycle_phase")
             phase = phase_raw if isinstance(phase_raw, str) else None
             project_path_raw = event.payload.get("project_path")
-            project_path = project_path_raw if isinstance(project_path_raw, str) else None
+            project_path = project_path_raw if isinstance(project_path_raw, str) else ""
             await self._dispatch_router_lane(slug, kind, phase, project_path=project_path)
             return event
 
@@ -81,7 +79,7 @@ class LifecycleRouterCartridge:
         kind: str | None,
         lifecycle_phase: str | None,
         *,
-        project_path: str | None = None,
+        project_path: str,
     ) -> None:
         """Dispatch a todo creation event to the correct orchestrator.
 
@@ -90,10 +88,11 @@ class LifecycleRouterCartridge:
         and enters the work lane; feature/change enter prepare, where the state
         machine derives the kind's entry phase (PRD for feature, plan for change).
         """
-        effective_project_path = project_path or os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
+        if not project_path:
+            raise ValueError(f"Cannot dispatch lifecycle lane for {slug}: missing project_path")
         dispatch_args: RunSessionArgs
         resolved_kind = canonical_kind(kind)
-        todos_db = await get_todos_db(effective_project_path)
+        todos_db = await get_todos_db(project_path)
         dependencies = await todos_db.load_deps()
         work_lane = resolved_kind == KIND_BUG or lifecycle_phase == LifecyclePhase.PREPARED.value
         satisfied = (
@@ -109,7 +108,7 @@ class LifecycleRouterCartridge:
         if resolved_kind == KIND_BUG:
             dispatch_args = {
                 "command": "/next-work",
-                "project_path": effective_project_path,
+                "project_path": project_path,
                 "args": slug,
                 "agent": "claude",
                 "thinking_mode": "slow",
@@ -118,14 +117,14 @@ class LifecycleRouterCartridge:
         elif lifecycle_phase == LifecyclePhase.PREPARED.value:
             dispatch_args = {
                 "command": "/next-work",
-                "project_path": effective_project_path,
+                "project_path": project_path,
                 "args": slug,
                 "detach": True,
             }
         else:
             dispatch_args = {
                 "command": "/next-prepare",
-                "project_path": effective_project_path,
+                "project_path": project_path,
                 "args": slug,
                 "detach": True,
                 "additional_context": "human_in_loop: false\n",

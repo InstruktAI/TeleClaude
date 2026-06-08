@@ -26,6 +26,7 @@ import teleclaude.config as _tc_config_module
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.runtime.config import get_runtime_config
 
 logger = get_logger(__name__)
 
@@ -584,9 +585,9 @@ def resolve_env_file_path(env_path: Path | None = None) -> Path:
     """Resolve the target env file path for config writes."""
     if env_path is not None:
         return env_path.expanduser()
-    override = os.environ.get("TELECLAUDE_ENV_PATH")
-    if override:
-        return Path(override).expanduser()
+    rc_env_path = get_runtime_config().env_path
+    if rc_env_path is not None:
+        return rc_env_path
     return _DEFAULT_ENV_PATH
 
 

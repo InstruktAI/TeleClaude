@@ -4,13 +4,13 @@ Operates on the daemon's config.yml (not user-facing teleclaude.yml).
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
 import yaml
 
 from teleclaude.cli.telec import _maybe_show_help
+from teleclaude.runtime.config import get_runtime_config
 
 
 def handle_config_command(args: list[str]) -> None:
@@ -57,9 +57,9 @@ def _resolve_config_path(project_root: Path | None) -> Path:
     if project_root:
         return project_root / "config.yml"
 
-    env_path = os.getenv("TELECLAUDE_CONFIG_PATH")
-    if env_path:
-        return Path(env_path).expanduser().resolve()
+    rc = get_runtime_config()
+    if rc.config_path is not None:
+        return rc.config_path.expanduser().resolve()
 
     return Path.cwd() / "config.yml"
 

@@ -7,7 +7,6 @@ session spawn helper used by the integration trigger cartridge.
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from typing import TypedDict
 
@@ -210,6 +209,7 @@ async def spawn_integrator_session(
     branch: str,
     sha: str,
     caller_session_id: str,
+    project_path: str,
 ) -> _SpawnResult | None:
     """Spawn the singleton integrator session when none is already open.
 
@@ -244,8 +244,8 @@ async def spawn_integrator_session(
     # Caller identity is only required when spawning a new integrator session
     if not caller_session_id or caller_session_id == "unknown":
         raise ValueError(f"Cannot spawn integrator for {slug}: missing caller session identity")
-
-    project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
+    if not project_path:
+        raise ValueError(f"Cannot spawn integrator for {slug}: missing project_path")
 
     cmd = CreateSessionCommand(
         project_path=project_path,

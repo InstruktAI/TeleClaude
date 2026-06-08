@@ -747,7 +747,7 @@ def _collect_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | N
 
     for path in candidates:
         rel = path.relative_to(repo_root).as_posix()
-        if rel in {"teleclaude/paths.py", "tools/lint/guardrails.py"}:
+        if rel in {"teleclaude/paths.py", "teleclaude/runtime/config.py", "tools/lint/guardrails.py"}:
             continue
         try:
             source = path.read_text(encoding="utf-8")

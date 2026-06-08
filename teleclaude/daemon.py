@@ -529,6 +529,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                         "slug": slug,
                         "branch": branch,
                         "sha": sha,
+                        "project_path": project_root,
                         "worker_session_id": str(finalize_state.get("worker_session_id", "")),
                         "ready_at": str(finalize_state.get("ready_at", "")),
                     },

@@ -35,14 +35,15 @@ from teleclaude.constants import (
     WHATSAPP_API_VERSION,
 )
 from teleclaude.runtime.binaries import resolve_agent_binary, resolve_tmux_binary
+from teleclaude.runtime.config import get_runtime_config
 from teleclaude.utils import expand_env_vars
 
 # Project root (relative to this file)
 _project_root = Path(__file__).parent.parent.parent
 
-# Load .env (allow override for tests)
-_env_path = os.getenv("TELECLAUDE_ENV_PATH")
-_dotenv_path = Path(_env_path).expanduser() if _env_path else _project_root / ".env"
+# Load .env — path comes from RuntimeConfig; fallback to project root .env
+_rc_env_path = get_runtime_config().env_path
+_dotenv_path = _rc_env_path if _rc_env_path is not None else _project_root / ".env"
 if not _dotenv_path.is_absolute():
     _dotenv_path = (_project_root / _dotenv_path).resolve()
 

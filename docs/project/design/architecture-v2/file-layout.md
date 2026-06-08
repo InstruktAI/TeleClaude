@@ -64,7 +64,9 @@ reference this when deciding where new code goes.
   config, secrets, deployed slash commands (central source for all agent
   CLIs), shell wrapper init scripts, sandbox profiles, and small per-machine
   preferences. State lives in Postgres/Redis, not files; the home dir holds
-  authored/installed content only. Relocation via `TELECLAUDE_HOME` env var.
+  authored/installed content only. Relocation via the `TELECLAUDE_HOME` env var,
+  read once at process startup by `teleclaude.runtime.config` and frozen into
+  `RuntimeConfig.home`; no code reads it at runtime.
 - **`frontend/`** (Next.js) stays where it is, untouched by the Rust workspace.
 - **v1 Python stays in `teleclaude/`** at the repo root, untouched by v2
   until each v1 path is retired by a service migration.
@@ -300,8 +302,10 @@ at this scale. Many CLI tools use a single dotfile tree
 joins them. Self-contained tree means trivial backup (`tar`), uninstall
 (`rm -rf`), and move-machine (`rsync`).
 
-**Relocation:** `TELECLAUDE_HOME` env var. Set it; everything under
-`~/.teleclaude/` moves transparently. Same as v1.
+**Relocation:** `TELECLAUDE_HOME` env var. Set it before the process starts;
+`teleclaude.runtime.config` reads it exactly once during module import, freezes
+the value into `RuntimeConfig.home`, and all path constants derive from it.
+Everything under `~/.teleclaude/` moves transparently. Same as v1.
 
 **Migration from v1:** mostly nothing. The directory structure stays.
 Per-service data migrations (in each service's wave) read v1 SQLite content
