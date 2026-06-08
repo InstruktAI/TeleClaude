@@ -85,6 +85,9 @@ Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessi
 - Channel provisioning for the admin copy is on-demand via the same path the reflection lane uses.
 - Lifecycle status controls (`accepted`, `active`, `active_output`) may request throttled typing pulses on the origin and Discord admin lanes. These are platform presence signals, not message delivery, and must not render visible UI content.
 - Cache-backed remote session status dispatch uses existing origin metadata to request presence pulses. It must not provision local channels for cache-only remote sessions.
+<!-- planned:discord-turn-boundary-and-typing-indicator -->
+- For UI-origin input, the `accepted` presence pulse is requested at the input acceptance boundary (`deliver_inbound`), where all modalities converge, so the typing indicator appears promptly on input rather than only after the late `user_prompt_submit` hook or a `tool_use` (`active_output`) event. Terminal-origin input retains the `user_prompt_submit` emission. The pulse stays throttled and scoped to the same origin/admin lane selection.
+<!-- /planned:discord-turn-boundary-and-typing-indicator -->
 
 #### Non-negotiable routing rules
 
@@ -106,6 +109,10 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 `last_input_origin` records the most recent accepted interaction source for session continuity. It supports direct replies to the origin endpoint and tells projection whether a user source entry was already visible in a UI client. It is live routing/presence metadata, not a durable audit log and not a projection cursor.
 
 The field is set only at acceptance boundaries where normalized input becomes accepted core state. UI adapters pass origin metadata into the command layer; they do not mutate session state directly. Terminal input has no adapter acceptance boundary, so the terminal hook path records `terminal` at `user_prompt_submit`.
+
+<!-- planned:discord-turn-boundary-and-typing-indicator -->
+At the UI acceptance boundary, alongside recording `last_input_origin`, core opens the turn for the origin and eligible Discord-admin UI adapters: it resets the adapter-local output delivery receipt so the agent's next output starts a new message below the accepted input, and emits the early `accepted` presence signal that drives the typing pulse. This makes the acceptance boundary the single early turn-start signal for every UI modality (text, voice, and any future source), instead of relying on the transcript-driven boundary or the late agent hooks. Terminal input, which has no UI acceptance boundary, continues to derive its turn start from the `user_prompt_submit` hook.
+<!-- /planned:discord-turn-boundary-and-typing-indicator -->
 
 Current canonical origins are `telegram`, `discord`, `whatsapp`, `web`, and `terminal`.
 

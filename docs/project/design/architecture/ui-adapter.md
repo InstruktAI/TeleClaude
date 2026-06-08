@@ -101,6 +101,10 @@ stateDiagram-v2
     Closed --> [*]
 ```
 
+<!-- planned:discord-turn-boundary-and-typing-indicator -->
+**Early turn-open on input acceptance.** The `output_message_id` delivery receipt is also reset at the core input acceptance boundary (`deliver_inbound`), where every input modality converges, so the next live-output chunk after a user message opens a fresh message instead of editing the prior turn's message. The eager reset sets a `turn_open_pending` marker in the adapter's `origin_metadata`; the transcript-driven boundary check (`_maybe_clear_on_turn_boundary`) then adopts the new turn anchor and consumes the marker **without** a second clear, so the new turn's output is never split across two messages. Turn truth (the transcript cursor) stays upstream per the "No Turn Truth in Adapters" invariant — only the adapter-local delivery receipt is reset. Terminal-origin input has no UI acceptance boundary and keeps the purely transcript-driven reset.
+<!-- /planned:discord-turn-boundary-and-typing-indicator -->
+
 ### 3. User Input Normalization
 
 ```mermaid
@@ -198,6 +202,10 @@ UI adapters fire platform typing indicators in response to lifecycle status even
 | `completed`     | `agent_stop` hook         | Footer/badge decoration only     |
 
 Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` is the status-derived activity pulse for ongoing agent work and must not render visible message content.
+
+<!-- planned:discord-turn-boundary-and-typing-indicator -->
+For UI-origin input, the `accepted` presence signal is emitted at the core input **acceptance boundary** (`deliver_inbound`, where every modality converges), so the typing pulse appears immediately on input instead of waiting for the late `user_prompt_submit` hook or a `tool_use` (`active_output`) event. Terminal-origin input has no UI acceptance boundary and continues to emit `accepted` from the `user_prompt_submit` hook. The pulse remains throttled and subject to the same origin/admin lane selection — only the emission point moves earlier; the documented "pulses only from lifecycle status transitions" rule is unchanged.
+<!-- /planned:discord-turn-boundary-and-typing-indicator -->
 
 ### 8. Voice Message Processing
 
