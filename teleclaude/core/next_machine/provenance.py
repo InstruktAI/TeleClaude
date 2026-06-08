@@ -16,11 +16,13 @@ from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TASK_PLAN,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TASK_PLAN,
 )
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_origin_main_sha
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -36,6 +38,7 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     ARTIFACT_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     ARTIFACT_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+    ARTIFACT_TASK_PLAN: STATE_KEY_TASK_PLAN,
 }
 
 _ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {

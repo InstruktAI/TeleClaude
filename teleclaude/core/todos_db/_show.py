@@ -219,6 +219,7 @@ def _derive_state_block(state_model: TodoState) -> dict[str, StateValue]:
     return {
         "schema_version": state_model.schema_version,
         "kind": state_model.kind,
+        "kind_proposal": cast(StateValue, state_model.kind_proposal.model_dump()),
         "phase": state_model.phase,
         "lifecycle_phase": state_model.lifecycle_phase,
         "integration_phase": state_model.integration_phase,

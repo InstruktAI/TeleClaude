@@ -338,7 +338,7 @@ def _handle_todo_deliver(args: list[str]) -> None:
 
 
 def _handle_todo_create(args: list[str]) -> None:
-    """Handle telec todo create <slug> <content> --kind <kind> [--after <deps>] [--silent]."""
+    """Handle telec todo create <slug> <content> [--kind <kind>] [--after <deps>] [--silent]."""
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
@@ -391,17 +391,12 @@ def _handle_todo_create(args: list[str]) -> None:
         print(_usage("todo", "create"))
         raise SystemExit(1)
 
-    if kind_value is None:
-        print(f"Error: --kind is required. Valid values: {_VALID_KINDS_STR}")
-        print(_usage("todo", "create"))
-        raise SystemExit(1)
-
-    if kind_value not in ALL_DUMP_KINDS:
+    if kind_value is not None and kind_value not in ALL_DUMP_KINDS:
         print(f"Error: invalid --kind '{kind_value}'. Valid values: {_VALID_KINDS_STR}")
         print(_usage("todo", "create"))
         raise SystemExit(1)
 
-    dump_kind = cast(TodoDumpKind, kind_value)
+    dump_kind = cast(TodoDumpKind, kind_value) if kind_value is not None else None
 
     request = TodoDumpRequest(
         slug=slug,
@@ -420,7 +415,10 @@ def _handle_todo_create(args: list[str]) -> None:
     )
 
     if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Created todo: {slug} (kind={dump_kind})")
+        if dump_kind is None:
+            print(f"Created todo: {slug}")
+        else:
+            print(f"Created todo: {slug} (kind={dump_kind})")
     else:
         print(f"Error: unexpected response: {result}")
         raise SystemExit(1)
@@ -826,13 +824,16 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if not stamp_type:
         print(
             "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
-            "--drift-reviewed, --build-complete, "
+            "--drift-reviewed, --kind-proposed, --kind-approved, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
             "--art-approved, --visuals-approved)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
         print("--verdict requires --phase <phase>")
+        raise SystemExit(1)
+    if stamp_type == "kind_proposed" and not phase:
+        print(f"--kind-proposed requires <{TODO_KIND_USAGE}> <rationale>")
         raise SystemExit(1)
 
     if stamp_type == "finalize_ready":
@@ -892,6 +893,11 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             stamp_type = "drift_reviewed"
             value = _json.dumps({"artifact": args[i + 1], "verdict": args[i + 2], "reason": args[i + 3]})
             i += 4
+        elif arg == "--kind-proposed" and i + 2 < len(args):
+            stamp_type = "kind_proposed"
+            phase = args[i + 1]
+            value = args[i + 2]
+            i += 3
         elif arg == "--finalize-ready":
             stamp_type = "finalize_ready"
             value = ""
@@ -914,6 +920,7 @@ _STAMP_BOOLEAN_FLAGS = {
     "--art-approved": "creative_art_approved",
     "--visuals-approved": "creative_visuals_approved",
     "--build-complete": "build_complete",
+    "--kind-approved": "kind_approved",
 }
 
 _STAMP_REASON_FLAGS = {

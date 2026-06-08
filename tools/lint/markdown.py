@@ -36,6 +36,10 @@ MARKDOWN_DIRS = [
     "todos",  # Active work items
     "docs-3rd",  # Third-party research
 ]
+AGENT_ARTIFACT_DIRS = (
+    Path("agents/commands"),
+    Path("agents/skills"),
+)
 
 # Root-level markdown files to validate
 ROOT_MARKDOWN_FILES = ["README.md", "AGENTS.md"]
@@ -111,6 +115,14 @@ def _is_third_party_doc(file_path: Path, repo_root: Path) -> bool:
     except ValueError:
         return False
     return len(rel.parts) >= 3 and rel.parts[0] == "docs" and rel.parts[1] == THIRD_PARTY_TYPE
+
+
+def _is_agent_artifact(file_path: Path, repo_root: Path) -> bool:
+    try:
+        rel = file_path.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        return False
+    return any(rel == artifact_dir or rel.is_relative_to(artifact_dir) for artifact_dir in AGENT_ARTIFACT_DIRS)
 
 
 def _expected_third_party_id(file_path: Path, repo_root: Path) -> str | None:
@@ -216,7 +228,7 @@ def _validate_files(file_paths: list[Path], domains: set[str], repo_root: Path) 
         mermaid_errors = _validate_mermaid_diagrams(file_path, text)
         all_errors.extend(mermaid_errors)
 
-        if text.lstrip().startswith("---"):
+        if text.lstrip().startswith("---") and not _is_agent_artifact(file_path, repo_root):
             try:
                 post = frontmatter.loads(text)
                 metadata: Mapping[str, object] = post.metadata or {}

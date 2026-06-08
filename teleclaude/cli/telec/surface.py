@@ -440,13 +440,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--silent] [--plan]",
+                args=f"<slug> <content> [--kind <{TODO_KIND_USAGE}>] [--after <deps>] [--silent] [--plan]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
                     Flag(
                         "--kind",
-                        desc=(f"Required. The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}."),
+                        desc=(f"Optional. The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}."),
                     ),
                     Flag("--silent", desc="Create silently — suppress pickup notification"),
                     Flag(
@@ -457,7 +457,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
                     "Emits workflow.todo.created for autonomous pickup unless --silent is set.",
-                    f"--kind is required: {TODO_KIND_USAGE}.",
+                    "Omitting --kind creates a kind-less todo classified by /analyze-todo-input; it proposes only and never executes.",
                     "--plan is valid only with --kind change and treats content as a complete implementation plan.",
                     "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
@@ -630,14 +630,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[_H],
                         notes=["Legacy bug artifacts are read-only; write bug todo content to input."],
                         examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
@@ -645,7 +645,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
                         flags=[_H],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
@@ -659,7 +659,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "remove": CommandDef(
                         desc="Remove a todo artifact and its version history",
-                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         notes=[
                             "Refuses input because it is the seed artifact for a todo.",
@@ -704,7 +704,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args=(
                     "<slug> [--verdict <v> --phase <p>] [--prd-approved]"
                     " [--architecture-skipped <reason>]"
-                    " [--drift-reviewed <artifact> <verdict> <reason>] [--finalize-ready]"
+                    " [--drift-reviewed <artifact> <verdict> <reason>]"
+                    f" [--kind-proposed <{TODO_KIND_USAGE}> <rationale>] [--kind-approved]"
+                    " [--finalize-ready]"
                 ),
                 flags=[
                     _H,
@@ -716,10 +718,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--prd-approved", desc="Mark PRD as approved by the human"),
                     Flag("--architecture-skipped", desc="Skip architecture phase with a reason"),
                     Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
+                    Flag("--kind-proposed", desc=f"Record analyzer proposal: <{TODO_KIND_USAGE}> <rationale>"),
+                    Flag(
+                        "--kind-approved", desc="Approve the proposed kind and enter that kind's lifecycle entry phase"
+                    ),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
+                    'telec todo stamp my-slug --kind-proposed task "actionable task"',
+                    "telec todo stamp my-slug --kind-approved",
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
                 ],

@@ -11,8 +11,9 @@
 //! A todo always carries a 1:1 [`RoadmapEntry`] **and** an
 //! [`ArtifactName::Input`] artifact. `create_todo` opens a transaction,
 //! inserts the roadmap entry at the tail of the project's roadmap, inserts
-//! the todo at `lifecycle_phase = 'prd_drafting'`, persists the required
-//! input artifact (current row + append-only history), commits, then emits
+//! kinded todos at `lifecycle_phase = 'prd_drafting'` and kind-less todos at
+//! `lifecycle_phase = 'unkinded'`, persists the required input artifact
+//! (current row + append-only history), commits, then emits
 //! [`crate::events::TodoCreated`] followed by
 //! [`crate::events::ArtifactWritten`]. v2 deliberately refuses
 //! empty-input creation — the reviewer-flagged RV2 regression is closed by
@@ -44,7 +45,7 @@ use crate::service::WorkflowService;
 pub struct CreateTodoArgs {
     pub project: ProjectId,
     pub slug: Slug,
-    pub kind: TodoKind,
+    pub kind: Option<TodoKind>,
     pub description: Option<String>,
     pub after: Vec<Slug>,
     pub group: Option<String>,
@@ -139,6 +140,11 @@ impl WorkflowService {
             return Err(WorkflowError::EmptyInputArtifact);
         }
 
+        let lifecycle_phase = if kind.is_some() {
+            LifecyclePhase::PrdDrafting
+        } else {
+            LifecyclePhase::Unkinded
+        };
         let after_strings: Vec<String> = after.iter().map(|s| s.as_str().to_owned()).collect();
         let input_digest = sha256_hex(&input_content);
         let updated_by_value = updated_by(principal);
@@ -181,10 +187,7 @@ impl WorkflowService {
         .bind(roadmap_id)
         .bind(slug.as_str())
         .bind(kind)
-        // RV2: a brand-new todo with an input artifact starts at PrdDrafting,
-        // never Draft. Draft remains an enum variant only for migrated v1
-        // data; the state machine never produces it after migration.
-        .bind(LifecyclePhase::PrdDrafting)
+        .bind(lifecycle_phase)
         .bind(group.as_deref())
         .bind(description.as_deref())
         .bind(serde_json::to_value(&after_strings)?)

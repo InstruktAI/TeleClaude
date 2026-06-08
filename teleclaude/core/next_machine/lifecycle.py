@@ -545,7 +545,7 @@ def adopt_prepare_handoff_phase(
     repo_root: str | None = None,
 ) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts."""
-    if model.kind == KIND_BUG:
+    if model.kind in FAST_TRACK_PREPARED_KINDS:
         return LifecyclePhase.PREPARED
     if _non_drift_prepare_blockers(model):
         return LifecyclePhase.BLOCKED

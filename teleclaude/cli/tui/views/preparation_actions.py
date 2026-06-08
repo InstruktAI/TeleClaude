@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
 from teleclaude.api_models import TodoDumpRequest
@@ -26,7 +26,7 @@ from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.next_machine.lifecycle import is_ready_for_work
-from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE, TodoDumpKind
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
@@ -314,7 +314,7 @@ class PreparationViewActionsMixin:
             request = TodoDumpRequest(
                 slug=slug,
                 content=content.strip(),
-                kind=TODO_KIND_BUG if kind == TODO_KIND_BUG else None,
+                kind=cast(TodoDumpKind, kind) if kind in ALL_DUMP_KINDS else None,
                 cwd=project_root,
             )
 

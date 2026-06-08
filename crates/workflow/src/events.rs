@@ -6,7 +6,7 @@
 //! Payloads serialize to/from JSON via `serde` for the Redis Streams envelope.
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use shared::{ProjectId, Slug, TodoId};
 
 use crate::models::{ArtifactName, CreationMode, LifecyclePhase, TodoKind};
@@ -40,7 +40,8 @@ pub struct TodoCreated {
     pub project_id: ProjectId,
     pub lifecycle_phase: LifecyclePhase,
     pub created_at: DateTime<Utc>,
-    pub kind: TodoKind,
+    #[serde(deserialize_with = "deserialize_required_nullable_todo_kind")]
+    pub kind: Option<TodoKind>,
     #[serde(default)]
     pub creation_mode: CreationMode,
     #[serde(default = "crate::models::default_pickup_requested")]
@@ -49,6 +50,15 @@ pub struct TodoCreated {
     pub created_by_principal: String,
     #[serde(default)]
     pub project_path: String,
+}
+
+fn deserialize_required_nullable_todo_kind<'de, D>(
+    deserializer: D,
+) -> Result<Option<TodoKind>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<TodoKind>::deserialize(deserializer)
 }
 
 /// Emitted when a todo aggregate's mutable fields change.
@@ -251,7 +261,7 @@ mod tests {
             project_id: sample_project_id(),
             lifecycle_phase: LifecyclePhase::Draft,
             created_at: fixed_timestamp(),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             creation_mode: CreationMode::Pickup,
             pickup_requested: true,
             created_by_principal: "owner@example.com".to_owned(),
@@ -281,7 +291,7 @@ mod tests {
         assert_eq!(decoded.project_id, legacy.project_id);
         assert_eq!(decoded.lifecycle_phase, legacy.lifecycle_phase);
         assert_eq!(decoded.created_at, legacy.created_at);
-        assert_eq!(decoded.kind, TodoKind::Bug);
+        assert_eq!(decoded.kind, Some(TodoKind::Bug));
         assert_eq!(decoded.creation_mode, CreationMode::Pickup);
         assert!(decoded.pickup_requested);
         assert!(decoded.created_by_principal.is_empty());
@@ -313,7 +323,7 @@ mod tests {
             project_id: sample_project_id(),
             lifecycle_phase: LifecyclePhase::PrdDrafting,
             created_at: fixed_timestamp(),
-            kind: TodoKind::Bug,
+            kind: Some(TodoKind::Bug),
             creation_mode: CreationMode::Silent,
             pickup_requested: false,
             created_by_principal: "owner@example.com".to_owned(),
@@ -326,6 +336,29 @@ mod tests {
         assert_eq!(decoded, value);
         assert_eq!(decoded.creation_mode, CreationMode::Silent);
         assert!(!decoded.pickup_requested);
+    }
+
+    #[test]
+    fn todo_created_explicit_null_kind_round_trips_for_kindless_intake() {
+        let value = TodoCreated {
+            todo_id: sample_todo_id(),
+            slug: sample_slug(),
+            project_id: sample_project_id(),
+            lifecycle_phase: LifecyclePhase::Unkinded,
+            created_at: fixed_timestamp(),
+            kind: None,
+            creation_mode: CreationMode::Pickup,
+            pickup_requested: true,
+            created_by_principal: "owner@example.com".to_owned(),
+            project_path: "/tmp/test-project".to_owned(),
+        };
+
+        let encoded = serde_json::to_value(&value).expect("serialize TodoCreated");
+        assert_eq!(encoded["kind"], serde_json::Value::Null);
+
+        let decoded: TodoCreated =
+            serde_json::from_value(encoded).expect("deserialize TodoCreated");
+        assert_eq!(decoded, value);
     }
 
     #[test]

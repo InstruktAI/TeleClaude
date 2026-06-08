@@ -56,9 +56,9 @@ pub struct WorkflowCreateArgs {
     /// Dependency slugs. Repeat the flag or pass comma-separated values.
     #[arg(long, action = ArgAction::Append, value_delimiter = ',')]
     pub after: Vec<String>,
-    /// Work item kind: feature | change | bug.
+    /// Work item kind: feature | change | bug | task. Omit for kind-less intake.
     #[arg(long)]
-    pub kind: String,
+    pub kind: Option<String>,
     /// Optional free-form description.
     #[arg(long)]
     pub description: Option<String>,
@@ -101,7 +101,7 @@ async fn create_todo(
 ) -> Result<i32> {
     let slug = Slug::new(&args.slug).context("parse todo slug")?;
     let after = parse_after_values(args.after.iter().map(String::as_str))?;
-    let kind = parse_kind(&args.kind)?;
+    let kind = args.kind.as_deref().map(parse_kind).transpose()?;
     let input_content = resolve_content(args.content.as_deref(), args.input_file.as_deref())?;
     let creation_mode = if args.silent {
         CreationMode::Silent

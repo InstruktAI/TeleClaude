@@ -189,7 +189,7 @@ async fn deliver_roadmap_entry_marks_delivered_with_commit_hash(pool: PgPool) {
         CreateTodoArgs {
             project,
             slug: slug.clone(),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,

@@ -30,6 +30,8 @@ LEGACY_LIFECYCLE_PHASE_NORMALIZATION: dict[str, str] = {
 class LifecyclePhase(str, Enum):
     """Ordered software-development lifecycle phases."""
 
+    UNKINDED = "unkinded"
+    KIND_PROPOSED = "kind_proposed"
     DRAFT = "draft"
     PRD_DRAFTING = "prd_drafting"
     PRD_HUMAN_APPROVAL = "prd_human_approval"
@@ -57,6 +59,8 @@ LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = list(LifecyclePhase)
 
 PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
+        LifecyclePhase.UNKINDED,
+        LifecyclePhase.KIND_PROPOSED,
         LifecyclePhase.DRAFT,
         LifecyclePhase.PRD_DRAFTING,
         LifecyclePhase.PRD_HUMAN_APPROVAL,

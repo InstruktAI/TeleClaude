@@ -5,7 +5,7 @@ domain: 'software-development'
 scope: 'domain'
 visibility: 'public'
 activation_trigger: 'Use when a kind-less todo needs its raw human intent interpreted and classified into a kind'
-description: 'Interpret a kind-less todo''s raw input, classify it into a kind, and propose it for human approval — writing a task-plan when the dump is a task, or setting an SDLC kind so the normal lane takes over.'
+description: "Interpret a kind-less todo's raw input, classify it into a kind, and propose it for human approval through the todo stamp boundary."
 ---
 
 # Analyze Todo Input — Procedure
@@ -41,21 +41,25 @@ never executes the work, and it never mutates the `input`.
      `task`: a task can itself spawn `change`/`bug` todos, so it is the safe
      container for "do some of this now, defer the code work."
 
-3. **Write the proposal and set the proposed kind.**
-   - For a **`task`**: write the **`task-plan`** artifact (see the blueprint below)
-     and set kind = `task`. The task-plan opens with your one-line read of the
-     intent, then the steps. This single artifact is both the classification you
-     are proposing and the actionable bookkeeping.
-   - For an **SDLC kind** (`change`/`feature`/`bug`): set the kind with a one-line
-     rationale; the kind's normal lane produces its own artifacts (PRD,
-     `implementation-plan`). Do not write a `task-plan`.
-     The todo lands at `lifecycle_phase = kind_proposed`. **Stop here** — do not
-     execute steps, do not dispatch downstream work.
+3. **Record the proposal through the stamp boundary.**
+   - For a **`task`**: draft the **`task-plan`** content from the blueprint below,
+     then run `telec todo stamp {slug} --kind-proposed task "<task-plan proposal>"`.
+     The stamp records `kind_proposal.proposed_kind = task`, writes the
+     `task-plan`, leaves `kind` unset, and moves the todo to
+     `lifecycle_phase = kind_proposed`.
+   - For an **SDLC kind** (`change`/`feature`/`bug`): run
+     `telec todo stamp {slug} --kind-proposed <kind> "<one-line rationale>"`.
+     The stamp records the proposal rationale, leaves `kind` unset, writes no
+     `task-plan`, and moves the todo to `lifecycle_phase = kind_proposed`.
+   - Do not edit todo state directly, and do not write proposal fields by hand.
+     The stamp command is the validated state-write boundary.
 
 4. **Go idle.** The human reviews the proposal (`telec todo show {slug}` /
-   `artifacts read {slug} task-plan`) and approves or corrects the kind. On
-   approval the todo enters the assigned kind's normal entry; for a `task` it sits
-   silent until the human or a dependency/time trigger starts it.
+   `telec todo artifacts read {slug} task-plan`) and approves or corrects the
+   kind. On approval they run `telec todo stamp {slug} --kind-approved`, which
+   fixes `kind` exactly once and moves the todo to the assigned kind's normal
+   entry. For a `task`, approval lands it in the prepared/silent task lane until
+   the human or a dependency/time trigger starts it.
 
 ### The `task-plan` blueprint
 
@@ -79,9 +83,10 @@ The session is the hands; the task-plan is the memory.
 
 ## Outputs
 
-- A todo at `lifecycle_phase = kind_proposed` with a proposed kind set.
+- A todo at `lifecycle_phase = kind_proposed` with `kind_proposal.proposed_kind`
+  set and `kind` still unset.
 - For a `task`: a `task-plan` artifact (intent + steps + status + log).
-- For an SDLC kind: the kind set with a one-line rationale; no `task-plan`.
+- For an SDLC kind: a one-line proposal rationale; no `task-plan`.
 - The `input` artifact unchanged.
 
 ## Recovery
@@ -99,6 +104,7 @@ The session is the hands; the task-plan is the memory.
 You propose; you never act. The single failure mode here is sliding from "classify
 this dump" into "do this dump" — running a step, dispatching downstream work, or
 editing the `input`. Read the `input`, classify, write the proposal (a `task-plan`
-for a task, a kind + rationale otherwise), and go idle. The human's approval is the
-gate between your proposal and any work. When unsure between an action and code
-work, `task` is the safe container — it can always spawn the code work later.
+for a task, a kind + rationale otherwise) through `telec todo stamp
+--kind-proposed`, and go idle. The human's `--kind-approved` stamp is the gate
+between your proposal and any work. When unsure between an action and code work,
+`task` is the safe container — it can always spawn the code work later.

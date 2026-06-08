@@ -8,20 +8,23 @@ in the state machines.
 from __future__ import annotations
 
 from teleclaude.types.lifecycle import LifecyclePhase
-from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE
+from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE, TODO_KIND_TASK
 
 KIND_BUG = TODO_KIND_BUG
 KIND_CHANGE = TODO_KIND_CHANGE
 KIND_FEATURE = TODO_KIND_FEATURE
+KIND_TASK = TODO_KIND_TASK
 
 # Single source of truth: the phase each kind enters the lifecycle at.
 #   feature → author a PRD (full prepare)
 #   change  → draft a plan directly (no PRD; intent is the input artifact)
 #   bug     → skip prepare; the fix lane investigates from the input artifact
+#   task    → non-SDLC; no automatic pickup, but prepared for task-plan work
 KIND_ENTRY_PHASE: dict[str, LifecyclePhase] = {
     KIND_FEATURE: LifecyclePhase.PRD_DRAFTING,
     KIND_CHANGE: LifecyclePhase.PLAN_DRAFTING,
     KIND_BUG: LifecyclePhase.PREPARED,
+    KIND_TASK: LifecyclePhase.PREPARED,
 }
 
 # Projections of KIND_ENTRY_PHASE for membership checks. Derived, never edited directly.
@@ -30,7 +33,7 @@ PLAN_ONLY_PREPARE_KINDS = frozenset(k for k, p in KIND_ENTRY_PHASE.items() if p 
 FAST_TRACK_PREPARED_KINDS = frozenset(k for k, p in KIND_ENTRY_PHASE.items() if p is LifecyclePhase.PREPARED)
 PLAN_WITHOUT_INTENT_UPSTREAM_KINDS = PLAN_ONLY_PREPARE_KINDS
 
-# Pre-collapse kinds mapped onto the canonical {feature, change, bug} set.
+# Pre-collapse SDLC kinds map to their canonical lifecycle successors.
 _LEGACY_KIND_MAP = {
     "todo": KIND_FEATURE,
     "draft": KIND_FEATURE,
@@ -43,7 +46,7 @@ _LEGACY_KIND_MAP = {
 
 
 def canonical_kind(raw: str | None) -> str:
-    """Normalize a present kind to the canonical {feature, change, bug}.
+    """Normalize a present kind to the canonical {feature, change, bug, task}.
 
     Current kinds pass through; known pre-collapse kinds map to their successor.
     An empty or unknown kind is corruption and raises (fail-fast) — a caller that

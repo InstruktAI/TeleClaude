@@ -4,8 +4,6 @@ id: project/spec/telec-cli-surface
 scope: project
 type: spec
 visibility: public
-delivered_by:
-  - task-kind-and-kindless-intake
 ---
 
 # CLI Surface — Spec
@@ -220,25 +218,25 @@ subcommands:
             args:
               - slug: 'string'
           read:
-            description: 'Read one named artifact.'
+            description: 'Read one named artifact. Canonical names include input, prd, architecture, implementation-plan, task-plan, quality-checklist, design-spec, deferrals, requirements-review-findings, architecture-review-findings, plan-review-findings, and review-findings; retired artifacts remain read/remove-only where compatibility requires it.'
             args:
               - slug: 'string'
               - name: 'artifact name'
           write:
-            description: 'Write one named artifact and append version history.'
+            description: 'Write one named artifact and append version history. Writable names include input, prd, architecture, implementation-plan, task-plan, quality-checklist, design-spec, deferrals, requirements-review-findings, architecture-review-findings, plan-review-findings, and review-findings.'
             args:
               - slug: 'string'
               - name: 'artifact name'
               - content: 'string'
           diff:
-            description: 'Show a unified diff between two stored artifact versions.'
+            description: 'Show a unified diff between two stored artifact versions for a canonical artifact name, including task-plan.'
             args:
               - slug: 'string'
               - name: 'artifact name'
               - old_digest: 'string'
               - new_digest: 'string'
           remove:
-            description: 'Hard-delete one non-input artifact and all version rows for that artifact. Missing artifacts are a successful no-op.'
+            description: 'Hard-delete one non-input artifact and all version rows for that artifact, including task-plan. Missing artifacts are a successful no-op.'
             args:
               - slug: 'string'
               - name: 'artifact name (input is refused)'
@@ -254,6 +252,8 @@ subcommands:
           --prd-approved: 'Mark PRD approved by the real human.'
           --architecture-skipped: 'Skip architecture phase with a reason.'
           --drift-reviewed: 'Record drift review: artifact, substantive|cosmetic, reason.'
+          --kind-proposed: 'Record analyzer proposal: kind feature|change|bug|task plus rationale/proposal text. Valid only for unkinded todos; leaves kind unset and moves lifecycle_phase to kind_proposed.'
+          --kind-approved: 'Approve the recorded kind proposal. Valid only for kind_proposed todos with kind unset; fixes kind and moves to that kind''s entry phase.'
           --deferrals-processed: 'Mark the deferrals artifact as processed.'
           --design-spec-confirmed: 'Confirm creative design-spec human gate.'
           --art-approved: 'Approve creative art human gate.'
@@ -275,7 +275,7 @@ subcommands:
             flags:
               --project-root: 'Project root (default: cwd).'
               --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
-              --kind: 'Todo kind.'
+              --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo classified by /analyze-todo-input, which proposes a kind for human approval and never executes.'
               --group: 'Optional grouping label.'
               --description: 'Optional todo-entry description.'
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'

@@ -19,7 +19,7 @@ async fn seed_todo(svc: &workflow::WorkflowService, project: shared::ProjectId, 
         CreateTodoArgs {
             project,
             slug: slug.clone(),
-            kind: TodoKind::Feature,
+            kind: Some(TodoKind::Feature),
             description: None,
             after: vec![],
             group: None,
