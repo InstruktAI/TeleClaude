@@ -299,24 +299,23 @@ class _JscpdStep:
         cmd = [
             "npx",
             "--yes",
-            # Pin the JS jscpd (camelCase --exitCode, --gitignore). Bare "jscpd"
-            # now resolves via npx to an incompatible Rust `cpd` (--exit-code,
-            # --no-gitignore), which breaks this invocation.
-            "jscpd@4",
+            "jscpd",
             "--min-lines",
             "25",
             "--min-tokens",
             "150",
             "--mode",
             "strict",
-            "--exitCode",
+            "--exit-code",
             "1",
-            # Honor .gitignore — generated artifacts (AGENTS.md, dist/, etc.)
-            # are already classified there as the canonical source of truth
-            # for "what's a build output". This avoids the historical false
-            # positive between AGENTS.master.md and its inflated AGENTS.md
-            # without us maintaining a parallel hand-rolled exclusion list.
-            "--gitignore",
+            # DB migrations are immutable, self-contained snapshots; their
+            # boilerplate (SQLite column-drop table rebuild) is intentionally
+            # duplicated across revisions and must never be deduplicated.
+            "--ignore-pattern",
+            "**/migrations/**",
+            # .gitignore is honored by default (the current jscpd/cpd CLI exposes
+            # only --no-gitignore to opt out), so generated artifacts under dist/
+            # etc. stay excluded without a hand-rolled list.
             *py,
         ]
         _run_tool(cmd, self._project_root, self.name)
