@@ -475,7 +475,7 @@ class AgentCoordinator(
         # Emit activity event for all sessions
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
-        if session.lifecycle_status != "headless":
+        if session.lifecycle_status != "headless" and terminal_origin_recorded:
             now_ts = datetime.now(UTC).isoformat()
             self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
 

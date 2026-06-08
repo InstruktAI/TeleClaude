@@ -223,11 +223,6 @@ async def handle_voice(
 
     logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
 
-    # Drop pending QoS payloads before forwarding transcribed voice.
-    session = await db.get_session(cmd.session_id)
-    if session:
-        await client.break_threaded_turn(session)
-
     await process_message(
         ProcessMessageCommand(
             session_id=cmd.session_id,
@@ -348,11 +343,11 @@ async def deliver_inbound(
 
     active_agent = session.active_agent
 
-    async def _break_turn() -> None:
+    async def _start_input_turn() -> None:
         try:
-            await client.break_threaded_turn(session)
+            await client.start_input_turn(session)
         except Exception as exc:
-            logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id, exc)
+            logger.warning("start_input_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _tmux_inject() -> bool:
         working_dir = resolve_working_dir(session.project_path, session.subdir)
@@ -363,7 +358,7 @@ async def deliver_inbound(
             active_agent=active_agent,
         )
 
-    await _break_turn()
+    await _start_input_turn()
     results = await asyncio.gather(_tmux_inject(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):

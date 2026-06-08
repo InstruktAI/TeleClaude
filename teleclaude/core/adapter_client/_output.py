@@ -2,13 +2,15 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import (
     CleanupTrigger,
@@ -20,6 +22,8 @@ from teleclaude.core.models import (
     WhatsAppAdapterMetadata,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.status_contract import serialize_status_event
+from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from teleclaude.adapters.base_adapter import BaseAdapter
@@ -499,6 +503,66 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         session.session_id,
                         adapter_type,
                     )
+
+    async def start_input_turn(self, session: "Session") -> None:
+        """Open a UI turn for accepted inbound input and request early presence."""
+        await self.break_threaded_turn(session)
+
+        fresh_session = await db.get_session(session.session_id)
+        session_to_use = fresh_session or session
+        origin_adapter = self._resolve_origin_ui_adapter(session_to_use)
+        admin_target = self._resolve_admin_output_target(session_to_use, origin_adapter)
+
+        if origin_adapter is not None:
+            await self._route_to_ui(
+                session_to_use,
+                "open_input_turn",
+                include_adapters={origin_adapter},
+                ensure_channels=False,
+            )
+        if admin_target is not None:
+            await self._route_to_ui(
+                session_to_use,
+                "open_input_turn",
+                include_adapters={admin_target},
+                ensure_channels=False,
+            )
+
+        self._emit_input_accepted_status(session_to_use.session_id)
+
+    def _emit_input_accepted_status(self, session_id: str) -> None:
+        """Emit the canonical accepted status for a UI input acceptance boundary."""
+        try:
+            now_ts = datetime.now(UTC).isoformat()
+            canonical = serialize_status_event(
+                session_id=session_id,
+                status="accepted",
+                reason="user_prompt_accepted",
+                timestamp=now_ts,
+                last_activity_at=now_ts,
+            )
+            if canonical is None:
+                return
+            event_bus.emit(
+                TeleClaudeEvents.SESSION_STATUS,
+                SessionStatusContext(
+                    session_id=session_id,
+                    status="accepted",
+                    reason="user_prompt_accepted",
+                    timestamp=now_ts,
+                    last_activity_at=now_ts,
+                    message_intent=canonical.message_intent,
+                    delivery_scope=canonical.delivery_scope,
+                ),
+                visibility=EventVisibility.CLUSTER,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to emit input accepted status: %s",
+                exc,
+                exc_info=True,
+                extra={"session_id": session_id, "status": "accepted"},
+            )
 
     async def edit_message(
         self,

@@ -61,6 +61,7 @@ Invariants
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 - **Delivery Receipts Only**: Output message ids, char offsets, overflow state, and edit anchors are adapter-local receipts. They are not source truth and must not determine projection ordering.
+  Core may ask UI adapters to clear these receipts at accepted-input time so the next assistant output opens a new platform message. The adapter records `turn_open_pending` only as a reconciliation marker for that cleared receipt; it is not turn truth.
 - **Scope Contract**: Core defines recipients via delivery scope. Adapters must not broaden `ORIGIN_ONLY` recipient sets.
 - **Reflection Contract**: Discord is the single admin adapter. Core sends the extra admin reflection only to Discord when the origin is not Discord. Telegram suppresses reflections entirely.
 - **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
@@ -101,9 +102,18 @@ stateDiagram-v2
     Closed --> [*]
 ```
 
-<!-- planned:discord-turn-boundary-and-typing-indicator -->
-**Early turn-open on input acceptance.** The `output_message_id` delivery receipt is also reset at the core input acceptance boundary (`deliver_inbound`), where every input modality converges, so the next live-output chunk after a user message opens a fresh message instead of editing the prior turn's message. The eager reset sets a `turn_open_pending` marker in the adapter's `origin_metadata`; the transcript-driven boundary check (`_maybe_clear_on_turn_boundary`) then adopts the new turn anchor and consumes the marker **without** a second clear, so the new turn's output is never split across two messages. Turn truth (the transcript cursor) stays upstream per the "No Turn Truth in Adapters" invariant — only the adapter-local delivery receipt is reset. Terminal-origin input has no UI acceptance boundary and keeps the purely transcript-driven reset.
-<!-- /planned:discord-turn-boundary-and-typing-indicator -->
+
+Accepted UI input opens a fresh output receipt at the core input acceptance
+boundary (`deliver_inbound`), before the input is injected into the agent. The
+adapter clears `output_message_id` and `char_offset`, records
+`turn_open_pending`, and lets the next `send_output_update()` create a new
+message instead of editing the prior turn. When the transcript later exposes the
+same user boundary, `_maybe_clear_on_turn_boundary()` adopts the new
+`turn_anchor_ts` and clears `turn_open_pending` without clearing the receipt a
+second time. Turn truth stays upstream; only the adapter-local delivery receipt
+is reset. Terminal-origin input has no UI acceptance boundary and keeps the
+purely transcript-driven reset.
+
 
 ### 3. User Input Normalization
 
@@ -194,18 +204,22 @@ sequenceDiagram
 
 UI adapters fire platform typing indicators in response to lifecycle status events. This provides immediate user feedback that the agent is working.
 
-| Status          | Trigger                   | Adapter Action                   |
-| --------------- | ------------------------- | -------------------------------- |
-| `accepted`      | `user_prompt_submit` hook | Request a throttled typing pulse |
-| `active`        | `session_start` hook      | Request a throttled typing pulse |
-| `active_output` | `tool_use` hook           | Request a throttled typing pulse |
-| `completed`     | `agent_stop` hook         | Footer/badge decoration only     |
+| Status          | Trigger                                                                                                                                                                          | Adapter Action                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `accepted`      | `user_prompt_submit` hook<!-- planned:discord-turn-boundary-and-typing-indicator --> or UI input acceptance boundary<!-- /planned:discord-turn-boundary-and-typing-indicator --> | Request a throttled typing pulse |
+| `active`        | `session_start` hook                                                                                                                                                             | Request a throttled typing pulse |
+| `active_output` | `tool_use` hook                                                                                                                                                                  | Request a throttled typing pulse |
+| `completed`     | `agent_stop` hook                                                                                                                                                                | Footer/badge decoration only     |
 
 Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` is the status-derived activity pulse for ongoing agent work and must not render visible message content.
 
-<!-- planned:discord-turn-boundary-and-typing-indicator -->
-For UI-origin input, the `accepted` presence signal is emitted at the core input **acceptance boundary** (`deliver_inbound`, where every modality converges), so the typing pulse appears immediately on input instead of waiting for the late `user_prompt_submit` hook or a `tool_use` (`active_output`) event. Terminal-origin input has no UI acceptance boundary and continues to emit `accepted` from the `user_prompt_submit` hook. The pulse remains throttled and subject to the same origin/admin lane selection — only the emission point moves earlier; the documented "pulses only from lifecycle status transitions" rule is unchanged.
-<!-- /planned:discord-turn-boundary-and-typing-indicator -->
+
+For UI-origin input, Core emits `accepted` at the input acceptance boundary
+(`deliver_inbound`) so presence starts before any agent hook fires. The pulse
+remains throttled and subject to the same origin/admin lane selection; only the
+emission point moves earlier. Terminal-origin input keeps the late
+`user_prompt_submit` source because it has no UI acceptance boundary.
+
 
 ### 8. Voice Message Processing
 

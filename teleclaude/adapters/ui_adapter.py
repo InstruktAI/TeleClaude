@@ -644,20 +644,21 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """
         return 0
 
-    async def clear_turn_state(self, session: Session) -> None:
-        """Reset char_offset, clear output_message_id, and seal last_delivered_at.
-
-        Called from send_output_update when a new-turn boundary is detected so
-        the next delivery starts a fresh tracking message instead of editing a
-        stale one from the previous turn.
-        """
-        await self._set_char_offset(session, 0)
+    async def _write_cleared_turn_state(self, session: Session, **extra_fields: object) -> None:
         await self._set_origin_field(
             session,
+            char_offset=0,
             output_message_id=None,
             last_delivered_at=datetime.now(UTC).isoformat(),
+            **extra_fields,
         )
-        logger.debug("Turn state cleared: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
+
+    async def clear_turn_state(self, session: Session) -> None:
+        """Reset threaded delivery receipts so the next render sends fresh."""
+        await self._write_cleared_turn_state(session)
+
+    async def open_input_turn(self, session: Session) -> None:
+        await self._write_cleared_turn_state(session, turn_open_pending=True)
 
     async def _maybe_clear_on_turn_boundary(self, session: Session) -> None:
         """Reset per-adapter delivery state when a new turn has started.
@@ -683,10 +684,20 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
         stored_raw = self._origin_field(session, "turn_anchor_ts")
         stored_ts = _parse_timestamp(stored_raw) if isinstance(stored_raw, str) else None
+        turn_open_pending = self._origin_field(session, "turn_open_pending") is True
 
         if stored_ts is None:
-            # First delivery on this adapter — record the anchor without clearing.
-            await self._set_origin_field(session, turn_anchor_ts=latest_user_ts.isoformat())
+            pending_update = {"turn_open_pending": None} if turn_open_pending else {}
+            await self._set_origin_field(session, turn_anchor_ts=latest_user_ts.isoformat(), **pending_update)
+            return
+
+        if turn_open_pending:
+            if latest_user_ts > stored_ts:
+                await self._set_origin_field(
+                    session,
+                    turn_anchor_ts=latest_user_ts.isoformat(),
+                    turn_open_pending=None,
+                )
             return
 
         if latest_user_ts <= stored_ts:
