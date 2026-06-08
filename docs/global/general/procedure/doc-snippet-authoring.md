@@ -15,6 +15,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/general/policy/artifact-scope.md
 - @~/.teleclaude/docs/general/principle/priming.md
 - @~/.teleclaude/docs/general/principle/intent-first-documentation.md
+- @~/.teleclaude/docs/software-development/principle/documentation-first-development.md
 - @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 - @~/.teleclaude/docs/general/policy/snippet-value-contract.md
 - @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
