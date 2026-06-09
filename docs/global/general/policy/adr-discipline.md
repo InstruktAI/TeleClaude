@@ -21,7 +21,7 @@ description: 'When agents commit a non-trivial decision into documentation, the 
 - The ADR is authored BEFORE or ALONGSIDE the primary artifact change, never retroactively long after.
 - ADRs live at `docs/project/adr/NNNN-<kebab-case-title>.md` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/` — NOT under `design/`, because ADRs are reasoning records, not design exploration), follow the `type: adr` schema (Context / Decision / Consequences, with required `date`, `adr_status`, and `number` frontmatter), and are discovered via `telec docs index --areas adr`.
 - Primary artifacts (specs, procedures, principles) MUST describe the _current state_ — they are NOT reasoning logs. The reasoning belongs in the accompanying ADR, not inline.
-- When an ADR supersedes a prior decision, the new ADR's `supersedes` frontmatter cites the prior ADR's id, and the prior ADR's `adr_status` is updated to `superseded`.
+- ADRs are immutable historical records. A later decision NEVER mutates an earlier ADR — not its body, not its `adr_status`. When a new ADR supersedes a prior decision, it cites the prior ADR's id in its own `supersedes` frontmatter; that forward pointer is the entire record of the relationship. The prior ADR stays exactly as written (it remains a true record of what was decided then). Any "superseded by" view is derived from the forward pointer, the same way a live snippet's `(superseded by: <slug>)` marker is derived from its companion's existence rather than stored on the parent — never by editing the superseded ADR.
 
 ## Rationale
 

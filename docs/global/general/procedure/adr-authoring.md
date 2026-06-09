@@ -42,7 +42,7 @@ Capture a decision as a structured, discoverable record that future agents can f
    visibility: public
    number: NNNN
    date: YYYY-MM-DD
-   adr_status: accepted # or proposed | deprecated | superseded
+   adr_status: accepted # proposed | accepted | deprecated (superseded is a derived state, never hand-set by a superseding ADR)
    description: <one-line summary of the decision>
    # optional:
    # supersedes: [project/adr/0001-prior-decision]
@@ -60,14 +60,15 @@ Capture a decision as a structured, discoverable record that future agents can f
    - The consequences include the negative ones, not just the wins.
    - The ADR is discoverable: filename matches `id` frontmatter; number matches filename prefix; date is correct; status is accurate.
 
-6. **Update related artifacts.** If this ADR supersedes a prior one:
-   - Set the new ADR's `supersedes` frontmatter to the prior ADR's id.
-   - Update the prior ADR's `adr_status` to `superseded`.
+6. **Record supersession forward-only.** If this ADR supersedes a prior one, set
+   this ADR's `supersedes` frontmatter to the prior ADR's id. Do NOT modify the
+   prior ADR — ADRs are immutable historical records, and the forward `supersedes`
+   pointer is the entire record of the relationship.
 
 ## Outputs
 
 - A new file at `docs/project/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered).
-- If superseding: the prior ADR's `adr_status` set to `superseded`.
+- If superseding: this ADR's `supersedes` frontmatter cites the prior ADR's id. The prior ADR is left unchanged.
 
 ## Pre-completion checklist
 
@@ -78,6 +79,7 @@ Capture a decision as a structured, discoverable record that future agents can f
 - All required sections present (Context, Decision, Consequences).
 - Decision is stated as a decision, not a question or a narrative.
 - Consequences cover both directions (positive and negative).
+- No prior ADR was modified; supersession is recorded only via this ADR's `supersedes` frontmatter.
 - If superseding, the prior ADR has been updated.
 
 ## Discipline
