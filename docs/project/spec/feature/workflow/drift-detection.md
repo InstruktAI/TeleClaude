@@ -122,7 +122,10 @@ slug does not trigger drift).
 | `input`                |  ✓   | _(none)_              |   _(none)_    |        ✓         |        ✓         |  ✓  |
 | `prd`                  |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
 | `architecture` (index) |  ✓   | `prd`                 |       ✓       |        ✓         |        ✓         |  ✓  |
-| `implementation-plan`  |  ✓   | `architecture`, `prd` |   _(none)_    |        ✓         |        ✓         |  ✓  |
+| `implementation-plan`  |  ✓   | `architecture`, `prd`<!-- planned:fix-prepare-redispatches-drift-after-prepared -->, `diagnosis`<!-- /planned:fix-prepare-redispatches-drift-after-prepared --> |   _(none)_    |        ✓         |        ✓         |  ✓  |
+<!-- planned:fix-prepare-redispatches-drift-after-prepared -->
+| `diagnosis`            |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
+<!-- /planned:fix-prepare-redispatches-drift-after-prepared -->
 
 `owned-snippet` applies to artifacts whose authoring phase writes doc
 snippets directly (intake → feature spec; architecture → domain/design
@@ -324,6 +327,44 @@ Scenario: upstream-artifact drift invalidates downstream review
   And the plan review verdict is cleared
   And the machine routes back to architecture_drafting
 ```
+
+<!-- planned:fix-prepare-redispatches-drift-after-prepared -->
+#### UC-WDD1: Implementation-plan upstream derivation is fresh when diagnosis matches
+
+```gherkin
+Scenario: implementation-plan upstream derivation is fresh when diagnosis matches
+  Given a bug Todo whose implementation-plan recorded upstream_digests[diagnosis] = "<diagnosis-digest>"
+  And the current diagnosis artifact digest is "<diagnosis-digest>"
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review matches current upstream digests
+  When upstream-artifact drift is derived for implementation-plan
+  Then drift derivation reports implementation-plan = fresh
+  And implementation-plan has no pending upstream-artifact drift
+```
+
+#### UC-WDD2: Diagnosis rewrite drifts the bug implementation-plan
+
+```gherkin
+Scenario: diagnosis rewrite drifts the bug implementation-plan
+  Given a prepared bug Todo whose implementation-plan recorded upstream_digests[diagnosis] = "<old-diagnosis-digest>"
+  When the diagnosis artifact is rewritten and its current digest becomes "<new-diagnosis-digest>"
+  Then drift derivation reports drift.implementation-plan = pending
+  And the pending class is upstream-artifact
+```
+
+#### UC-WDD3: Prepared bug with matching diagnosis upstream stays terminal
+
+```gherkin
+Scenario: prepared bug with matching diagnosis upstream stays terminal
+  Given a bug Todo at lifecycle_phase=prepared with an approved implementation-plan
+  And the implementation-plan recorded upstream_digests[diagnosis] = "<diagnosis-digest>"
+  And the current diagnosis artifact digest is "<diagnosis-digest>"
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review matches current upstream digests
+  When the orchestrator calls "telec todo prepare my-bug"
+  Then drift derivation reports no pending upstream-artifact drift on implementation-plan
+  And the prepare machine settles at prepared
+  And no drift-analyzer worker is re-dispatched for implementation-plan
+```
+<!-- /planned:fix-prepare-redispatches-drift-after-prepared -->
 
 ```gherkin
 Scenario: owned-snippet drift on a target architecture snippet
