@@ -29,26 +29,25 @@ its evidence; the pointer is never authored by hand. Legacy phase strings on
 older Todos auto-upcycle on read; the canonical pointer is the single source of
 truth for "where is this Todo, right now."
 
-Re-derivation is a **consequence of artifact mutation**, not a separate command.
-When any prepare-lane artifact is written or removed, the workflow recomputes
-**objective drift** for the mutated artifact and its downstream dependents
-(`derive_lifecycle_drift` — digest, timestamp, and dependency-graph comparison;
-"the PRD changed since the plan was grounded against it" is a statement of fact),
-then re-derives `lifecycle_phase` from the post-mutation evidence through the same
-engine the state machine uses. When drift invalidates the grounding, the pointer
-derives to the re-grounding phase. Saving an artifact is therefore sufficient to
-keep the pointer correct; no manual realignment step exists or is needed.
+Keeping evidence current is a **consequence of artifact mutation**, not a
+separate command. When any drift-tracked artifact is written, removed, created,
+or cloned, the workflow recomputes and persists the **objective drift** signal
+for that artifact and its dependents (`derive_lifecycle_drift` — digest,
+timestamp, and dependency-graph comparison; "the PRD changed since the plan was
+grounded against it" is a statement of fact). Saving an artifact is therefore
+sufficient to keep the drift signal current; no manual realignment step exists or
+is needed. The pointer itself continues to be derived by the same evidence engine
+the state machines already use.
 
 Drift **detection** is objective and lives in code; drift **materiality** — does
 the change actually invalidate an approval or a downstream artifact — is a
-judgment reserved for intelligence (the drift-analysis worker, reviewers), never
-made by code (`general/principle/intelligence-boundaries`). A write or remove
-**never** clears a human's approval or a review verdict as a side effect:
-approvals stay bound to the digest they approved, drift exposes the mismatch, and
-intelligence decides whether the change is material. A cosmetic change
-(whitespace, a typo) flags drift but forces no rework; a substantive change is
-escalated to the drift-analysis judgment, which is what may rewind downstream
-work.
+judgment reserved for intelligence (the drift-analysis worker), never made by
+code (`general/principle/intelligence-boundaries`). The only mutation that clears
+a downstream review is the existing `substantive` drift-review cascade: a write or
+remove **never** clears a human's approval or a review verdict as a side effect.
+Approvals stay bound to the digest they approved; drift exposes the mismatch; a
+`substantive` drift-review verdict (stamped by intelligence) is what clears the
+affected downstream reviews, while a `cosmetic` verdict forces no rework.
 
 ## Canonical fields
 
