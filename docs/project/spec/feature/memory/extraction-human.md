@@ -57,7 +57,7 @@ This agent extracts triples **about the human as a person**. The boundary:
 - **Out of scope (defer to project extraction):** anything that is about the human's relationship to a specific project. E.g., "the human's feedback on TeleClaude's memory subsystem" is project memory (subject = `teleclaude`), not human memory. The moment an observation involves a project, it belongs to the project-extraction agent.
 - **Out of scope (discard entirely):** generic observations not tied to a specific human; behavioral patterns (those would belong to a future skill-detection capability, currently deferred).
 
-### Behavioral contract
+### Use cases
 
 #### Save a human observation
 

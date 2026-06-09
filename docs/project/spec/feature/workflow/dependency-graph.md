@@ -103,7 +103,7 @@ And the workflow service reports "dependencies cleared for 'alpha'"
 ```
 
 
-### Behavioral contract
+### Use cases
 
 #### UC-WDG1: Prepare gate waits for parent PREPARED
 

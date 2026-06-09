@@ -30,7 +30,7 @@ This mechanism is producer-side; consumer-side batching (if needed) is a separat
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Window collection
 

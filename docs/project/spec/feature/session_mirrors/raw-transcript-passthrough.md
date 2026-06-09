@@ -35,7 +35,7 @@ can peek at the end of a long transcript without streaming the whole file.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### CLI --raw with mirror present
 

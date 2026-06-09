@@ -33,7 +33,7 @@ whenever the mirror itself is rebuilt.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Input truncation and prompt shape
 

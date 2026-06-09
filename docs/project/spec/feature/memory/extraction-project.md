@@ -62,7 +62,7 @@ This agent extracts triples **about a project as an entity**. The boundary:
 - **Out of scope (defer to human extraction):** anything about the human's individual traits, preferences, goals, constraints that are not project-relational. Those belong to the human-category agent.
 - **Out of scope (discard entirely):** observations not tied to any specific project (the agent must NOT default to "the session's project" for content that isn't actually about that project); behavioral patterns (deferred skill-detection capability).
 
-### Behavioral contract
+### Use cases
 
 #### Save a project observation
 

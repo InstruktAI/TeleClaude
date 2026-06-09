@@ -32,7 +32,7 @@ isolation so one failing processor cannot block the others.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Agent-stop signal carries transcript_path
 

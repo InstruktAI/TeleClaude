@@ -21,7 +21,7 @@ A special `self` form is dispatched by orchestrators that want to restart themse
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Eligibility gates
 

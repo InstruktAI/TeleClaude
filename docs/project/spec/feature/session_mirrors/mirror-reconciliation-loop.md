@@ -33,7 +33,7 @@ the next transcript.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Periodic tick
 

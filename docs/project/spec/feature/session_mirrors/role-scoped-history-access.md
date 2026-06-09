@@ -35,7 +35,7 @@ The three role bands are:
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Admin sees all
 

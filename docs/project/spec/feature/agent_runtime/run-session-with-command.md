@@ -19,7 +19,7 @@ The run-session-with-command flow creates a brand-new agent session whose first 
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Agent resolution
 

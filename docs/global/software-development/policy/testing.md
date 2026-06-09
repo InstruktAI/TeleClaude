@@ -79,10 +79,13 @@ description: 'Testing doctrine: tests bind human-authored feature-spec scenarios
 
 ### Spec structure (so scenarios have stable identity)
 
-11. A feature spec's scenarios live under a `### Behavioral contract` heading, each as a
-    `#### UC-<area><n>:` subsection containing exactly one fenced Gherkin block. Scenario ids are
-    unique within a spec. A validator enforces this structure; it is what makes per-scenario binding,
-    coverage, and fingerprinting reliable rather than best-effort.
+11. A feature spec's scenarios live under a `### Use cases` heading. A scenario with a stable id is a
+    `#### UC-<area><n>:` subsection containing exactly one fenced Gherkin block; ids are unique within
+    a spec. A Gherkin block not yet under a `#### UC-` header is an **anonymous scenario** — the
+    measured id-assignment backlog: the validator reports it, it does not reject it. The validator
+    enforces the structure of what exists (the `### Use cases` section, well-formed and unique
+    `#### UC-` ids, one Gherkin block per id, no orphan bindings) — anonymous scenarios are the
+    backlog worked down as scenarios get bound, never a hard gate failure.
 
 ### Assertion craft (all languages)
 

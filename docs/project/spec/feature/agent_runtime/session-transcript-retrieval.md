@@ -23,7 +23,7 @@ This is the _on-demand_ live read. It is NOT the background polling-and-delivery
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Happy path
 
@@ -66,6 +66,19 @@ And status/timestamp/agent-status fields are still populated from session-ledger
 ```
 
 The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block.
+
+<!-- planned:fix-telec-sessions-tail-showing-closed-session-as-active -->
+#### UC-STR1: Terminal session agent status
+
+```
+Given the session ledger row is in a terminal lifecycle state (`closing` or `closed`)
+Or the row carries a `closed_at` marker
+When the transcript-retrieval flow computes the response's `agent_status`
+Then the terminal lifecycle marker is authoritative over activity timestamps
+And the response reports `agent_status="idle"` even when `last_agent_stop_at` is missing
+And the message projection still returns any transcript or fallback content available for that session
+```
+<!-- /planned:fix-telec-sessions-tail-showing-closed-session-as-active -->
 
 #### Role inference
 

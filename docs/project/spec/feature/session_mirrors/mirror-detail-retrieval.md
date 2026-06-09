@@ -27,7 +27,7 @@ conversation_text, and message_count.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Exact-or-prefix matching
 

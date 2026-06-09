@@ -35,7 +35,7 @@ field set.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Tombstone identity and uniqueness
 

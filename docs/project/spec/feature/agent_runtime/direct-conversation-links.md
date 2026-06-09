@@ -23,7 +23,7 @@ The link is an associative aggregate of a link record and its member records, pe
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Ignition: link creation via `--direct`
 

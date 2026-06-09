@@ -130,7 +130,7 @@ And the bug skips the demo phase per the kind=bug lifecycle gate
 
 Create-time dispatch is dependency-gated by the lane selected from the creation event. The executable scenarios are `UC-WTC2` and `UC-WTC3`.
 
-### Behavioral contract
+### Use cases
 
 #### UC-WTC1: Create help exposes canonical kind choices
 

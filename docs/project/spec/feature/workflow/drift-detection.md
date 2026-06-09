@@ -364,6 +364,26 @@ Scenario: prepared bug with matching diagnosis upstream stays terminal
   And the prepare machine settles at prepared
   And no drift-analyzer worker is re-dispatched for implementation-plan
 ```
+
+#### UC-WDD4: Diagnosis upstream derivation detects input rewrites
+
+```gherkin
+Scenario: diagnosis upstream derivation detects input rewrites
+  Given a bug Todo whose diagnosis recorded upstream_digests[input] = "<old-input-digest>"
+  When the input artifact is rewritten and its current digest becomes "<new-input-digest>"
+  Then drift derivation reports drift.diagnosis = pending
+  And the pending class is upstream-artifact
+```
+
+#### UC-WDD5: Upstream topology is shared by provenance, stamps, and drift derivation
+
+```gherkin
+Scenario: upstream topology is shared by provenance, stamps, and drift derivation
+  Given a bug Todo with input, diagnosis, and implementation-plan artifacts
+  When provenance is recorded, a drift-reviewed stamp is anchored, and upstream-artifact drift is derived
+  Then all three surfaces evaluate implementation-plan against prd, architecture, and diagnosis
+  And all three surfaces evaluate diagnosis against input
+```
 <!-- /planned:fix-prepare-redispatches-drift-after-prepared -->
 
 ```gherkin

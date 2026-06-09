@@ -21,7 +21,7 @@ This is distinct from — and intentionally separated from — the bidirectional
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Listener registration is per-caller deduped
 

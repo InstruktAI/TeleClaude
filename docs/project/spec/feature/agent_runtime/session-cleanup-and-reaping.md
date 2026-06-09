@@ -25,7 +25,7 @@ The cleanup loop runs on the maintenance service tick (every hour by default). A
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### terminate-session — happy path
 

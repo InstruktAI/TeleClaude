@@ -24,7 +24,7 @@ Both paths converge on the host-pane orchestration layer's key-injection primiti
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Structured message — happy path
 

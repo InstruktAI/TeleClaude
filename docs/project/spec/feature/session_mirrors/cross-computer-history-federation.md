@@ -33,7 +33,7 @@ raw-transcript capability depending on `--raw`.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Search fan-out across multiple computers
 

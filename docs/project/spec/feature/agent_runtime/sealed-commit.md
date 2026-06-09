@@ -31,7 +31,7 @@ On the repo-root `main` branch, a non-integrator agent invoking `telec code comm
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Wrapper redirects raw git commit to telec code commit
 

@@ -21,7 +21,7 @@ Once a TeleClaude session id is resolved, revival delegates to the same restart-
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### TeleClaude session id form (no `--agent`)
 

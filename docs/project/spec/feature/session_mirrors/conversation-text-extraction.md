@@ -37,7 +37,7 @@ instead of writing a row.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Filter to text-only user/assistant messages
 

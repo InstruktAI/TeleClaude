@@ -26,7 +26,7 @@ listing executes (see `role-scoped-history-access`).
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Identity filter applies to both columns
 

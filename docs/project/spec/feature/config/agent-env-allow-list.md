@@ -44,7 +44,7 @@ env_allow_list:
   - PROJECT_SPECIFIC_TOKEN
 ```
 
-### Behavioral contract
+### Use cases
 
 ```
 Given the global teleclaude.yml has env_allow_list

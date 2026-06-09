@@ -33,7 +33,7 @@ store query runs. Results sort by `timestamp_start` falling back to
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Term composition and full-text match
 

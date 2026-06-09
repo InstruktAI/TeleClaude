@@ -19,7 +19,7 @@ The agent_runtime bounded context is hosted by a single long-running service pro
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Single-instance lock
 

@@ -36,7 +36,7 @@ engine has confirmed the schema exists.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Initial bootstrap
 

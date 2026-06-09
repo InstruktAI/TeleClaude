@@ -32,7 +32,7 @@ still has the identity values it captured.
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Session record lookup
 

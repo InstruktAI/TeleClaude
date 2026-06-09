@@ -25,7 +25,7 @@ Distinct from this lane: the on-demand transcript retrieval surface (which proje
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Per-session polling registration
 

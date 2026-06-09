@@ -21,7 +21,7 @@ The surface is stateless. Every function shells out to the configured terminal m
 
 ## Canonical fields
 
-### Behavioral contract
+### Use cases
 
 #### Host-pane creation is idempotent through ensure-host-pane
 

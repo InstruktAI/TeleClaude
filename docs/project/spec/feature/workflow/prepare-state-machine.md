@@ -88,7 +88,7 @@ And the instruction tells the operator to inspect via "telec todo show my-featur
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
 
-### Behavioral contract
+### Use cases
 
 #### UC-WPS1: PREPARED auto-continues into unblocked child prepare
 
