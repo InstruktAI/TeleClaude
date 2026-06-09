@@ -144,6 +144,39 @@ And signals that output projection may proceed when the user-reflection step is 
 And signals that output projection should defer when the origin is not yet fresh
 ```
 
+<!-- planned:discord-reflection-misattributed-to-agent -->
+#### UC-OPD4: Discord admin reflection preserves user attribution for text input
+
+```
+Given a session whose latest fresh user turn originated outside Discord
+And the user's display identity and avatar are available to the reflection lane
+When the user-reflection step projects that turn to the Discord admin lane
+Then Discord renders the reflected user text with the user's display identity
+And Discord does not render that reflected user text as the agent or bot
+And the presence or timing of turn-boundary typing indicators does not change the attribution
+```
+
+#### UC-OPD5: Discord reflection webhook failure never posts user text as the bot
+
+```
+Given a session whose latest fresh user turn originated outside Discord
+And Discord cannot create or send through the reflection webhook
+When the user-reflection step attempts to project that turn to the Discord admin lane
+Then the normal Discord bot-send path is not used for that reflected user text
+And the projection remains retryable, failed, or dropped according to the reflection lane contract
+And no Discord message appears under the agent or bot identity containing that reflected user text
+```
+
+#### UC-OPD6: Discord user transcription displays use user attribution or do not render
+
+```
+Given a Discord-origin voice input is transcribed for a session
+When the transcription display is delivered back to Discord
+Then Discord renders the transcribed user text with the user's display identity when it can be resolved
+And if the user's display identity cannot be resolved, Discord does not render the transcribed user text as the agent or bot
+```
+<!-- /planned:discord-reflection-misattributed-to-agent -->
+
 <!-- planned:suppress-command-body-in-projection -->
 #### UC-OPD1: Command-body expansion with ADDITIONAL CONTEXT projects as title plus that section, never the body
 
