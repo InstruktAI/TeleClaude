@@ -26,7 +26,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
+from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine.kinds import PLAN_WITHOUT_INTENT_UPSTREAM_KINDS
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
@@ -55,12 +55,6 @@ _STATE_KEY_TO_ARTIFACT: dict[str, str] = {
     STATE_KEY_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     STATE_KEY_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
-}
-
-_ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
-    STATE_KEY_PRD: (STATE_KEY_INPUT,),
-    STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
-    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE),
 }
 
 
@@ -261,7 +255,7 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
     entry = getattr(model.artifacts, state_key)
     if _artifact_is_absent(entry):
         return DRIFT_FRESH
-    upstream_keys = _ARTIFACT_UPSTREAMS.get(state_key, ())
+    upstream_keys = ARTIFACT_UPSTREAMS.get(state_key, ())
     if not upstream_keys:
         return DRIFT_FRESH
     if _has_intentional_plan_only_upstreams(model, state_key, upstream_keys, entry.upstream_digests):

@@ -37,6 +37,7 @@ from teleclaude.constants import (
     WORKTREE_DIR,
 )
 from teleclaude.core.db import get_session_field_sync
+from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
@@ -95,12 +96,6 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
     STATE_KEY_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     STATE_KEY_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
-}
-_ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
-    STATE_KEY_PRD: (STATE_KEY_INPUT,),
-    STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
-    STATE_KEY_DIAGNOSIS: (STATE_KEY_INPUT,),
-    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE, STATE_KEY_DIAGNOSIS),
 }
 _KIND_PROPOSED_VALUE = "kind_proposed"
 _KIND_APPROVED_VALUE = "kind_approved"
@@ -438,7 +433,7 @@ def _canonical_artifact_name(artifact: str) -> str:
 def _current_upstream_digests(writer: StateWriter, state_key: str) -> dict[str, str]:
     return {
         upstream_key: getattr(writer.state.artifacts, upstream_key).digest
-        for upstream_key in _ARTIFACT_UPSTREAMS.get(state_key, ())
+        for upstream_key in ARTIFACT_UPSTREAMS.get(state_key, ())
     }
 
 

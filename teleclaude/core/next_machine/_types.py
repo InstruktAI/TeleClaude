@@ -15,6 +15,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TypedDict
 
+from teleclaude.constants import (
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_DIAGNOSIS,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+)
+
 # StateScalar and StateValue live in teleclaude.types.state_value so that
 # low-level Pydantic models (e.g. teleclaude.types.todos) can reference them
 # without importing from the next-machine feature package. Re-exported here
@@ -142,6 +150,12 @@ _PREP_ROOT_INPUT_FILES = (
     "tools/worktree-prepare.sh",
 )
 _SINGLE_FLIGHT_GUARD = threading.Lock()
+ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
+    STATE_KEY_PRD: (STATE_KEY_INPUT,),
+    STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
+    STATE_KEY_DIAGNOSIS: (STATE_KEY_INPUT,),
+    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE, STATE_KEY_DIAGNOSIS),
+}
 
 REVIEW_DIFF_NOTE = (
     "Review guard: if `git log --oneline HEAD..main` shows commits, "

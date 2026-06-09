@@ -9,8 +9,17 @@ from typing import cast
 
 import pytest
 
-from teleclaude.constants import STATE_KEY_DIAGNOSIS, STATE_KEY_IMPLEMENTATION_PLAN
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_DIAGNOSIS,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+)
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine import work as work_machine
+from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.kinds import (
     BUG_DIAGNOSE_KINDS,
     FAST_TRACK_PREPARED_KINDS,
@@ -24,9 +33,11 @@ from teleclaude.core.next_machine.lifecycle import (
     is_ready_for_work,
 )
 from teleclaude.core.next_machine.prepare_step_support import prepare_step_prepared
+from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
+from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.next_machine.work_steps import _artifact_contract_note
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
-from teleclaude.types.todos import TodoState
+from teleclaude.types.todos import DriftReviewedStamp, TodoState
 
 pytestmark = pytest.mark.functional
 
@@ -40,6 +51,10 @@ _PARENT_REVIEWER = "sess-parent-reviewer"
 _UNRELATED = "sess-unrelated"
 _PREFIX_COLLISION = "sess-prefix-collision"
 _WORKTREE_SESSION = "sess-worktree"
+_DRIFT_SPEC = "project/spec/feature/workflow/drift-detection"
+_DRIFT_SLUG = "matching-drift-bug"
+_INPUT_DIGEST = "input-v1"
+_DIAGNOSIS_DIGEST = "diagnosis-v1"
 
 
 @dataclass(frozen=True)
@@ -141,6 +156,32 @@ def _bug_model() -> TodoState:
     return TodoState(kind=KIND_BUG, schema_version=4)
 
 
+def _prepared_bug_model() -> TodoState:
+    model = TodoState(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=4)
+    model.plan_review.verdict = "approve"
+    model.artifacts.input.digest = _INPUT_DIGEST
+    model.artifacts.input.async_provenance_complete = True
+    model.artifacts.diagnosis.digest = _DIAGNOSIS_DIGEST
+    model.artifacts.diagnosis.upstream_digests = {STATE_KEY_INPUT: _INPUT_DIGEST}
+    model.artifacts.diagnosis.async_provenance_complete = True
+    model.artifacts.implementation_plan.digest = "plan-v1"
+    model.artifacts.implementation_plan.upstream_digests = {
+        STATE_KEY_PRD: "",
+        STATE_KEY_ARCHITECTURE: "",
+        STATE_KEY_DIAGNOSIS: _DIAGNOSIS_DIGEST,
+    }
+    model.artifacts.implementation_plan.async_provenance_complete = True
+    model.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
+        verdict="cosmetic",
+        upstream_digests_at_review={
+            STATE_KEY_PRD: "",
+            STATE_KEY_ARCHITECTURE: "",
+            STATE_KEY_DIAGNOSIS: _DIAGNOSIS_DIGEST,
+        },
+    )
+    return model
+
+
 def test_bug_kind_routes_through_diagnose_not_fast_track() -> None:
     assert KIND_BUG in BUG_DIAGNOSE_KINDS
     assert KIND_BUG not in FAST_TRACK_PREPARED_KINDS
@@ -193,3 +234,68 @@ async def test_prepared_cleanup_is_unchanged_without_unblocked_children(tmp_path
     _, output = await prepare_step_prepared(cast(Db, db), todos_db, _PARENT, project_root=_PROJECT_ROOT)
 
     assert output == snapshot
+
+
+@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD3")
+async def test_prepared_bug_with_matching_diagnosis_upstream_does_not_redispatch_drift_analyzer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_roadmap(_DRIFT_SLUG)
+    state = _prepared_bug_model().model_dump(exclude_none=True)
+    await todos_db.write_state(_DRIFT_SLUG, state)
+    monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
+    db = _CapturingDb([])
+
+    _, output = await _prepare_dispatch(
+        db=cast(Db, db),
+        todos_db=todos_db,
+        slug=_DRIFT_SLUG,
+        cwd=str(project_root),
+        phase=PreparePhase.PREPARED,
+        state=state,
+    )
+
+    assert output == snapshot
+
+
+@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD6")
+async def test_work_entry_with_matching_diagnosis_upstream_dispatches_build_started(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_roadmap(_DRIFT_SLUG)
+    await todos_db.write_state(_DRIFT_SLUG, _prepared_bug_model().model_dump(exclude_none=True))
+    worktree_cwd = project_root / "trees" / _DRIFT_SLUG
+    worktree_cwd.mkdir(parents=True)
+    dispatch_phases: list[WorkPhase] = []
+
+    async def _ensure_ready(_cwd: str, _slug: str, _phase_slug: str) -> tuple[str, None]:
+        return str(worktree_cwd), None
+
+    async def _dispatch_build_started(**kwargs: object) -> tuple[bool, str]:
+        phase = kwargs["phase"]
+        assert isinstance(phase, WorkPhase)
+        dispatch_phases.append(phase)
+        return False, "BUILD_START_DISPATCH: matching-drift-bug"
+
+    monkeypatch.setattr(work_machine, "get_stash_entries", lambda _cwd: [])
+    monkeypatch.setattr(work_machine, "_ensure_worktree_ready", _ensure_ready)
+    monkeypatch.setattr(work_machine, "_merge_origin_main_into_worktree", lambda _cwd, _slug: "")
+    monkeypatch.setattr(work_machine, "get_head_commit", lambda _cwd: "head-sha")
+    monkeypatch.setattr(work_machine, "_work_dispatch", _dispatch_build_started)
+
+    output = await next_work(cast(Db, _CapturingDb([])), _DRIFT_SLUG, str(project_root))
+
+    assert dispatch_phases == [WorkPhase.BUILD_STARTED]
+    assert output == snapshot
+
+
+async def _test_guidance(_db: Db) -> str:
+    return "agent guidance"

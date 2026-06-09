@@ -384,6 +384,20 @@ Scenario: upstream topology is shared by provenance, stamps, and drift derivatio
   Then all three surfaces evaluate implementation-plan against prd, architecture, and diagnosis
   And all three surfaces evaluate diagnosis against input
 ```
+
+#### UC-WDD6: Work entry accepts a prepared bug when diagnosis upstream evidence matches
+
+```gherkin
+Scenario: work entry accepts a prepared bug when diagnosis upstream evidence matches
+  Given a bug Todo at lifecycle_phase=prepared with an approved implementation-plan
+  And the implementation-plan recorded upstream_digests[diagnosis] = "<diagnosis-digest>"
+  And the current diagnosis artifact digest is "<diagnosis-digest>"
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review matches current upstream digests
+  When the orchestrator calls "telec todo work my-bug"
+  Then work entry does not return WORK_ENTRY_DRIFT
+  And work entry does not report PENDING_DRIFT for implementation-plan
+  And the work machine proceeds to the normal build-start dispatch path
+```
 <!-- /planned:fix-prepare-redispatches-drift-after-prepared -->
 
 ```gherkin
