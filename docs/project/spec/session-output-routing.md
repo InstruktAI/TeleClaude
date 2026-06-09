@@ -71,6 +71,14 @@ Reflection is a UX observability feature, not a direct reply. Core creates only 
 - Discord is the single admin adapter and renders reflected input for observability.
 - Core still attaches source metadata (origin, actor identity) for Discord rendering.
 - Origin continuity comes from normal reply delivery, not reflection echo.
+<!-- planned:discord-reflection-misattributed-to-agent -->
+- Discord reflection rendering is an actor-attributed contract: reflected user input must render with
+  the resolved user display name and avatar when available, never as the agent/bot.
+- If actor attribution cannot be resolved, or Discord webhook delivery cannot complete, the
+  reflection lane fails or defers without posting the user text through the normal bot send path.
+- Turn-boundary and typing-indicator delivery are presence/control mechanics only; they must not
+  change reflection attribution or convert a user reflection into agent output.
+<!-- /planned:discord-reflection-misattributed-to-agent -->
 
 ### Admin output lane contract
 
@@ -152,6 +160,11 @@ Projection must honor origin freshness before crossing a user source entry. If t
 - If an adapter has no provisioned channel for a session, delivery to that adapter is skipped.
 - Telegram customer sessions are unprovisioned by design.
 - Discord reflection webhook rendering is best-effort and falls back to normal bot send when unavailable.
+<!-- planned:discord-reflection-misattributed-to-agent -->
+- Pending `discord-reflection-misattributed-to-agent`, Discord reflection webhook unavailability is
+  not allowed to fall back to normal bot send. The reflection lane must fail, defer, or drop the
+  reflection without rendering the user text as the agent/bot.
+<!-- /planned:discord-reflection-misattributed-to-agent -->
 - Telegram does not render admin reflections.
 - Admin-lane recipients can still render multiple internal placements. That is adapter behavior, not core routing policy.
 - Command acknowledgements and lifecycle chatter are not cross-adapter broadcasts. Targeted origin delivery and Discord admin reflection are the only supported UI routing patterns.

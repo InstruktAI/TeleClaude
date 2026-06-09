@@ -147,10 +147,8 @@ class MessageOperationsMixin:
         *,
         metadata: MessageMetadata | None = None,
     ) -> str:
-        if metadata and metadata.reflection_actor_name:
-            webhook_message_id = await self._send_reflection_via_webhook(destination, text, metadata)
-            if webhook_message_id:
-                return webhook_message_id
+        if self._is_reflection_intended(metadata):
+            return await self._send_reflection_via_webhook(destination, text, metadata)
 
         send_fn = cast_async_callable(
             self._require_async_callable,
@@ -164,26 +162,39 @@ class MessageOperationsMixin:
         logger.debug("[DISCORD SENT] message_id=%s channel=%s", message_id, getattr(destination, "id", "?"))
         return str(message_id)
 
+    @staticmethod
+    def _is_reflection_intended(metadata: MessageMetadata | None) -> bool:
+        if metadata is None:
+            return False
+        return any(
+            (
+                metadata.reflection_origin,
+                metadata.reflection_actor_id,
+                metadata.reflection_actor_name,
+                metadata.reflection_actor_avatar_url,
+            )
+        )
+
     async def _send_reflection_via_webhook(
         self,
         destination: object,
         text: str,
         metadata: MessageMetadata,
-    ) -> str | None:
+    ) -> str:
         actor_name = (metadata.reflection_actor_name or "").strip()
         if not actor_name:
-            return None
+            raise AdapterError("Discord reflection requires actor attribution")
 
         thread = destination if self._is_thread_channel(destination) else None
         webhook_channel = getattr(destination, "parent", None) if thread is not None else destination
 
         channel_id = self._parse_optional_int(getattr(webhook_channel, "id", None))
         if channel_id is None:
-            return None
+            raise AdapterError("Discord reflection destination has no channel id")
 
         webhook = await self._get_or_create_reflection_webhook(webhook_channel, channel_id)
         if webhook is None:
-            return None
+            raise AdapterError("Discord reflection webhook unavailable")
 
         send_fn = cast_async_callable(
             self._require_async_callable,
@@ -223,10 +234,12 @@ class MessageOperationsMixin:
                 )
         except recoverable_errors as exc:
             logger.warning("Discord reflection webhook send failed: %s", exc)
-            return None
+            raise AdapterError("Discord reflection webhook send failed") from exc
 
         message_id = getattr(sent, "id", None)
-        return str(message_id) if message_id is not None else None
+        if message_id is None:
+            raise AdapterError("Discord reflection webhook returned message without id")
+        return str(message_id)
 
     async def _get_or_create_reflection_webhook(self, channel: object, channel_id: int) -> object | None:
         cached = self._reflection_webhook_cache.get(channel_id)

@@ -148,6 +148,8 @@ async def handle_voice(
     # to broadcast and track wrong message_ids, preventing cleanup.
     if cmd.origin:
         await db.update_session(cmd.session_id, last_input_origin=cmd.origin)
+        if cmd.origin_metadata:
+            await db.update_origin_metadata(cmd.session_id, cmd.origin, dict(cmd.origin_metadata))
 
     async def _send_status(
         session_id: str,
@@ -164,6 +166,7 @@ async def handle_voice(
             metadata.reflection_actor_id = cmd.actor_id
             metadata.reflection_actor_name = cmd.actor_name
             metadata.reflection_actor_avatar_url = cmd.actor_avatar_url
+            metadata.reflection_origin = cmd.origin
         return await client.send_message(
             session,
             message,

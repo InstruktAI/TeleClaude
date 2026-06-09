@@ -28,7 +28,8 @@ from teleclaude.constants import (
 from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.stt.backends import BACKENDS, STTBackend
 
 if TYPE_CHECKING:
@@ -175,6 +176,53 @@ def _voice_context_float(context: VoiceEventContext | Mapping[str, object], key:
     return float(str(value))
 
 
+def _voice_context_str(context: VoiceEventContext | Mapping[str, object], key: str) -> str | None:
+    value = _voice_context_value(context, key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _apply_transcription_reflection_metadata(
+    metadata: MessageMetadata,
+    session: Session,
+    context: VoiceEventContext | Mapping[str, object],
+) -> bool:
+    origin = _voice_context_str(context, "origin")
+    actor_name = _voice_context_str(context, "actor_name")
+    actor_id = _voice_context_str(context, "actor_id")
+    actor_avatar_url = _voice_context_str(context, "actor_avatar_url")
+
+    if actor_name:
+        metadata.reflection_actor_id = actor_id
+        metadata.reflection_actor_name = actor_name
+        metadata.reflection_actor_avatar_url = actor_avatar_url
+        metadata.reflection_origin = origin
+        return True
+
+    if not origin:
+        logger.warning(
+            "Skipping voice transcription display for session %s because origin is missing", session.session_id
+        )
+        return False
+
+    try:
+        identity = get_identity_resolver().resolve(origin, session.get_origin_section(origin))
+        resolved_name = identity.display_name
+    except ValueError:
+        logger.warning(
+            "Skipping voice transcription display for session %s because actor identity is unresolved",
+            session.session_id,
+        )
+        return False
+
+    metadata.reflection_actor_id = identity.platform_user_id
+    metadata.reflection_actor_name = resolved_name
+    metadata.reflection_origin = origin
+    return True
+
+
 async def _resolve_voice_notice(
     *,
     session_id: str,
@@ -185,6 +233,15 @@ async def _resolve_voice_notice(
     notice_message_id: str | None,
     delete_message: Callable[[str, str], Awaitable[None]] | None = None,
 ) -> None:
+    if metadata.is_transcription:
+        fallback_message_id = await send_message(session_id, message, metadata)
+        if fallback_message_id is not None and notice_message_id is not None and delete_message is not None:
+            try:
+                await delete_message(session_id, notice_message_id)
+            except Exception as exc:  # pragma: no cover - best-effort cleanup
+                logger.warning("Failed to delete unresolved voice notice for session %s: %s", session_id, exc)
+        return
+
     if notice_message_id is not None and edit_message is not None:
         if len(message) <= VOICE_TRANSCRIPTION_NOTICE_EDIT_MAX_CHARS:
             edited = await edit_message(session_id, notice_message_id, message, metadata)
@@ -365,10 +422,15 @@ async def handle_voice(
         voice_state = VOICE_TRANSCRIPTION_STATE_SUCCEEDED
 
     # Resolve the existing placeholder with the transcribed text.
+    transcription_metadata = MessageMetadata(parse_mode=None, is_transcription=True, cleanup_trigger="next_turn")
+    if not _apply_transcription_reflection_metadata(transcription_metadata, session, context):
+        logger.debug("Transcribed voice input for session %s without UI transcription display", session_id)
+        return text
+
     await _resolve_voice_notice(
         session_id=session_id,
         message=text,
-        metadata=MessageMetadata(parse_mode=None, is_transcription=True, cleanup_trigger="next_turn"),
+        metadata=transcription_metadata,
         send_message=send_message,
         edit_message=edit_message,
         delete_message=delete_message,
