@@ -16,7 +16,6 @@ from teleclaude.types.todo_kind import TODO_KIND_BUG
 
 __all__ = [
     "_handle_bugs",
-    "_handle_bugs_create",
     "_handle_bugs_list",
     "_handle_bugs_report",
     "_resolve_project_by_name",
@@ -46,80 +45,11 @@ def _handle_bugs(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "report":
         _handle_bugs_report(args[1:])
-    elif subcommand == "create":
-        _handle_bugs_create(args[1:])
     elif subcommand == "list":
         _handle_bugs_list(args[1:])
     else:
         print(f"Unknown bugs subcommand: {subcommand}")
         print(_usage("bugs"))
-        raise SystemExit(1)
-
-
-def _handle_bugs_create(args: list[str]) -> None:
-    """Handle telec bugs create <description> [--slug <slug>] [--project <name>]."""
-    if not args:
-        print("Usage: telec bugs create <description> [--slug <slug>] [--project <name>]")
-        raise SystemExit(1)
-
-    description: str | None = None
-    slug: str | None = None
-    project_name: str | None = None
-    project_root = resolve_invocation_cwd()
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--project" and i + 1 < len(args):
-            project_name = args[i + 1]
-            i += 2
-        elif arg == "--slug" and i + 1 < len(args):
-            slug = args[i + 1]
-            i += 2
-        elif arg == "--description" and i + 1 < len(args):
-            description = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print("Usage: telec bugs create <description> [--slug <slug>] [--project <name>]")
-            raise SystemExit(1)
-        else:
-            if description is not None:
-                print("Only one description is allowed.")
-                raise SystemExit(1)
-            description = arg
-            i += 1
-
-    if not description:
-        print("Error: description is required")
-        print("Usage: telec bugs create <description> [--slug <slug>] [--project <name>]")
-        raise SystemExit(1)
-
-    if project_name:
-        project_root = _resolve_project_by_name(project_name)
-
-    if not slug:
-        slug_base = normalize_slug(description)
-        if len(slug_base) > 40:
-            slug_base = slug_base[:40].rstrip("-")
-        slug = f"fix-{slug_base}"
-
-    bug_content = f"# {slug}\n\n**Symptom:** {description}\n"
-
-    request = TodoDumpRequest(slug=slug, content=bug_content, kind=TODO_KIND_BUG, cwd=str(project_root))
-    result = tool_api_request(
-        "POST",
-        "/todos/dump",
-        json_body=request.model_dump(mode="json"),
-        timeout=10.0,
-    )
-    if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Created bug: {slug}")
-    elif isinstance(result, dict) and result.get("detail"):
-        print(f"Error: {result['detail']}")
-        raise SystemExit(1)
-    else:
-        print(f"Error: {result}")
         raise SystemExit(1)
 
 

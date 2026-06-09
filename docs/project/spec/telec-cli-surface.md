@@ -340,8 +340,6 @@ subcommands:
     subcommands:
       report:
         description: 'Scaffold a bug from a description; lifecycle router dispatches /next-prepare (diagnosis → plan → plan-review).'
-      create:
-        description: 'Scaffold a bug from a description; lifecycle router dispatches /next-prepare (diagnosis → plan → plan-review). Accepts positional <description> or --description <text>; slug is auto-generated or overridden with --slug.'
       list:
         description: 'List in-flight bug fixes with status (prefers worktree state when present).'
   auth:

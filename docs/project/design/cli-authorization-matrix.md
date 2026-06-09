@@ -119,7 +119,6 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | Command             | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                          |
 | ------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
 | `telec bugs report` | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers CAN report bugs (explicitly stated). Anyone on the team can report. Customers should use escalate instead. |
-| `telec bugs create` | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Scaffolding bug files is work planning. Workers report, not scaffold. Contributors can scaffold.                   |
 | `telec bugs list`   | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Listing bugs is a read operation. Workers can see bug status. Customers should not see internal bug tracking.      |
 
 ### Content Pipeline
@@ -204,7 +203,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo unfreeze`         | Contributors, newcomers, customers          |
 | `telec todo deliver`          | Contributors, newcomers, customers          |
 | `telec bugs report`           | Customers                                   |
-| `telec bugs create`           | Newcomers, customers                        |
 | `telec bugs list`             | Customers                                   |
 | `telec content dump`          | Newcomers, customers                        |
 | `telec events list`           | Customers                                   |

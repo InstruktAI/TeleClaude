@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **CLI:** `telec bugs create <description>` has been removed. Callers now receive an unknown `bugs`
+  subcommand error with a non-zero exit; use the canonical `telec bugs report <description>` command
+  instead, which also supports `--body`. Affected callers are ad-hoc scripts or external automation
+  that used the retired alias; no in-repo callers remain. Roll back by restoring the removed
+  `CommandDef`, handler, dispatch branch, generated manifest section, and pending doc companions.
 - The interactive enrichment prompt at the end of project init. CI and non-TTY callers no longer have agent sessions spawned as a side effect of plumbing.
 
 ### Renamed (CLI commands and agent artifacts)

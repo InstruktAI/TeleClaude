@@ -748,15 +748,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
-            "create": CommandDef(
-                desc="Scaffold a bug from a description; lifecycle router dispatches /next-prepare",
-                args="<description> [--slug <slug>] [--project <name>]",
-                flags=[
-                    Flag("--slug", desc="Custom slug (default: auto-generated)"),
-                    _FLAG_PROJECT_TRUSTED,
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
-            ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[],

@@ -286,14 +286,18 @@ Print version, channel, and commit
 
 ## `telec sync`
 
-Validate, build indexes, and deploy artifacts
+Validate (always blocks), then build indexes and deploy artifacts
 
-**Usage:** `telec sync [--warn-only] [--validate-only]`
+**Usage:** `telec sync [--skip-deploy]`
 
 **Flags:**
 
-- `--warn-only`: Warn but don't fail
-- `--validate-only`: Validate without building
+- `--skip-deploy`: Validate only; do not build or deploy (read-only gate)
+
+**Notes:**
+
+- Validation always blocks — there is no warn-and-pass mode.
+- --skip-deploy is the read-only gate (pre-commit / CI / lint); it never mutates the host.
 
 ## `telec docs`
 
@@ -328,7 +332,11 @@ List snippet IDs and metadata (phase 1)
 
 Fetch full snippet content by ID (phase 2)
 
-**Usage:** `telec docs get <id> [id...]`
+**Usage:** `telec docs get <id> [id...] [--target <slug>]`
+
+**Flags:**
+
+- `--target`: Include the slug's planned sections in the body (default: strip all)
 
 ## `telec todo`
 
@@ -338,24 +346,28 @@ Manage work items
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> --kind <kind> [--after <deps>] [--silent]`
+**Usage:** `telec todo create <slug> <content> [--kind <feature|change|bug|task>] [--after <deps>] [--silent] [--plan]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
-- `--kind`: Required. Work category and lifecycle lane: feature|refactor|migration|todo (→ prepare lane), bug (→ bug-fix lane), prepped (content is a complete plan; skip prepare), draft (park idea; no lifecycle).
+- `--kind`: Optional. The work-unit's entry point into the lifecycle: feature|change|bug|task.
 - `--silent`: Create silently — suppress pickup notification
+- `--plan`: Content is a complete implementation-plan; skip prepare to build (--kind change only).
 
 **Notes:**
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
 - Emits workflow.todo.created for autonomous pickup unless --silent is set.
+- Omitting --kind creates a kind-less todo classified by /analyze-todo-input; it proposes only and never executes.
+- --plan is valid only with --kind change and treats content as a complete implementation plan.
+- Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
 
 ### `telec todo list`
 
 List todo entries (source of truth for todo status)
 
-**Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]`
+**Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--include-removed] [--removed-only] [--since <when>] [--json]`
 
 **Flags:**
 
@@ -363,16 +375,19 @@ List todo entries (source of truth for todo status)
 - `--icebox-only` (`-o`): Show only icebox items
 - `--include-delivered` (`-d`): Include delivered items
 - `--delivered-only`: Show only delivered items
+- `--include-removed` (`-r`): Include soft-removed items
+- `--removed-only`: Show only soft-removed items
 - `--since`: Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.
-- `--json`: Output as a sectioned JSON object (active/delivered/icebox trees)
+- `--json`: Output as a sectioned JSON object (active/delivered/icebox/removed trees)
 
 **Notes:**
 
-- Output is sectioned into active/delivered/icebox dependency trees.
-- CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
+- Output is sectioned into active/delivered/icebox/removed dependency trees.
+- CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox/removed), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
 - --include-delivered returns the full delivery history; scope it with --since.
 - --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
 - --since alone implies --include-delivered; combine with --delivered-only to exclude active items.
+- --include-removed interleaves soft-removed entries; each removed row renders with its roadmap id and removed_at age.
 
 ### `telec todo design`
 
@@ -490,7 +505,7 @@ Split a todo into child items (container transition)
 **Notes:**
 
 - Scaffolds children and marks the parent as a holder/container. Parent artifacts are preserved as source material for plucking and seeding child todos.
-- Children inherit parent's approved prepare phase: if requirements were approved, children start at plan_drafting; if the plan was approved, children start at prepared (ready for build).
+- Children start fresh at the beginning of prepare with the parent's input artifact cloned into each; narrow each child's input to its own scope after the split.
 
 ### `telec todo artifacts`
 
@@ -506,23 +521,23 @@ List artifacts for a todo
 
 Read a todo artifact
 
-**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 #### `telec todo artifacts write`
 
 Write a todo artifact
 
-**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
+**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
 
 **Notes:**
 
-- Writable names exclude retired kinds (test-specs, spec-review-findings); those remain readable/removable for pre-cutover todos only.
+- Legacy bug artifacts are read-only; write bug todo content to input.
 
 #### `telec todo artifacts diff`
 
 Show a unified diff between two artifact versions
 
-**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
+**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
 
 **Notes:**
 
@@ -533,7 +548,7 @@ Show a unified diff between two artifact versions
 
 Remove a todo artifact and its version history
 
-**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 **Notes:**
 
@@ -542,15 +557,31 @@ Remove a todo artifact and its version history
 
 ### `telec todo show`
 
-Show full state payload for a todo
+Show diagnostic state payload for a todo; artifact bodies are omitted by default
 
-**Usage:** `telec todo show <slug>`
+**Usage:** `telec todo show <slug> [--include-removed] [--include-artifact-content]`
+
+**Flags:**
+
+- `--include-removed`: Also search soft-removed entries
+- `--include-artifact-content`: Include artifact body content under artifact_content in the payload
+
+### `telec todo reactivate`
+
+Restore a soft-removed todo
+
+**Usage:** `telec todo reactivate <slug>`
+
+**Notes:**
+
+- Resolves the slug against soft-removed rows and restores the uniquely matching entry.
+- On success: status reverts to prev_status and outgoing dependencies are replayed.
 
 ### `telec todo stamp`
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--finalize-ready]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-proposed <feature|change|bug|task> <rationale>] [--kind-approved] [--finalize-ready]`
 
 **Flags:**
 
@@ -559,6 +590,8 @@ Stamp a verdict or readiness marker into todo state
 - `--prd-approved`: Mark PRD as approved by the human
 - `--architecture-skipped`: Skip architecture phase with a reason
 - `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
+- `--kind-proposed`: Record analyzer proposal: <feature|change|bug|task> <rationale>
+- `--kind-approved`: Approve the proposed kind and enter that kind's lifecycle entry phase
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
 
 ## `telec bugs`
@@ -567,7 +600,7 @@ Bug reporting and tracking
 
 ### `telec bugs report`
 
-Scaffold a bug from a description; lifecycle router dispatches /next-work
+Scaffold a bug from a description; lifecycle router dispatches /next-prepare
 
 **Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>]`
 
@@ -575,17 +608,6 @@ Scaffold a bug from a description; lifecycle router dispatches /next-work
 
 - `--slug`: Custom slug (default: auto-generated)
 - `--body`: Detailed description body for bug.md
-- `--project`: Project name (from trusted_dirs)
-
-### `telec bugs create`
-
-Scaffold a bug from a description; lifecycle router dispatches /next-work
-
-**Usage:** `telec bugs create <description> [--slug <slug>] [--project <name>]`
-
-**Flags:**
-
-- `--slug`: Custom slug (default: auto-generated)
 - `--project`: Project name (from trusted_dirs)
 
 ### `telec bugs list`
@@ -846,7 +868,6 @@ Run language-aware test suite
 
 **Flags:**
 
-- `--expensive`: Include expensive/slow tests
 - `--all`: Run all tests, skip workspace scoping
 - `--update-snapshots`: Update snapshot files after reading diffs. Use only when test failures show snapshot deltas that match your intended change.
 
