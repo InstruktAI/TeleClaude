@@ -35,6 +35,7 @@ visibility: 'public'
 - Default to immutable data. Keep mutable state in a single owner (**Immutability Preference**).
 - Avoid implicit global state or import-time side effects.
 - A fixed set of related identifiers (states, modes, tab/section names, dispatch keys) is owned by one named, namespaced type and referenced by member — never inlined as a literal at call sites. Inlined copies drift (casing, typos) and make illegal states representable. Bindings: Python → `StrEnum`; TypeScript → `as const` object or string-literal union (never `enum`).
+- **Enforce an invariant at the strongest layer that can express it**, in order: ① make the illegal state unrepresentable in a type (`Enum`/`StrEnum`, required parameter, `NewType`); ② a native type checker / linter rule (pyright, mypy, ruff); ③ a custom lint/guard **only** when ①–② provably cannot express it, justified; ④ never a runtime test for a static property. An invariant a type can express is enforced **by the type** — reaching for a lint, guardrail, regex, or meta-test to police what the type would make unrepresentable is the **lint-as-type-substitute** anti-pattern. It is also a separation-of-concerns violation: domain vocabulary (the values, the canonical module) must live in the type, never embedded in generic tooling.
 
 ### Duplication and Abstraction
 

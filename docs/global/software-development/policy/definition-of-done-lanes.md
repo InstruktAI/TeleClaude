@@ -161,7 +161,12 @@ Apply the policy, not a per-function reflex:
 
 Before crediting any test as meaningful coverage, answer concretely: what behavior or failure path does it pin, at what boundary, and what real bug in **our** code would it catch? If you cannot, it is weak and does not count.
 
-- Reject **meta-tests that statically scan production source** (`ast.parse`, `rglob("*.py")` over `teleclaude/`, regex over file contents) to enforce a structural rule. Static rules belong in either (a) the production code's type/signature surface (make the parameter required so Python rejects the call), (b) `tools/lint/` running in `make lint`, or (c) the type checker (pyright/mypy). A test that runs every CI cycle to enforce a static property is paying per-test cost for what should be a one-shot lint or a Python `TypeError`.
+- Reject **meta-tests that statically scan production source** (`ast.parse`, `rglob("*.py")` over `teleclaude/`, regex over file contents) to enforce a structural rule. A structural rule must be placed at the **strongest layer that can express it**, in this order — never lower when a higher one applies:
+  1. **Make the illegal state unrepresentable** in the type/signature surface — an `Enum`/`StrEnum` for a closed vocabulary, a required parameter, a `NewType` — so the compiler / `pyright` rejects the violation at authoring time.
+  2. **Native type checker / linter** (pyright, mypy, ruff) when a type can't make it unrepresentable but a native rule already covers it.
+  3. **Custom `tools/lint/` guard** in `make lint` — **only** when 1–2 provably cannot express the invariant, and with a one-line justification of why no type/native check suffices.
+  4. **Never** a runtime test for a static property.
+  A test paying per-cycle cost for a static property — or a `tools/lint` guard duplicating what a type would enforce — is the anti-pattern, not the fix.
 - Reject **placeholder or xfail "spec" tests** that document intended-but-not-yet-implemented behavior. The spec-anchored model has no waiting-to-flip tests: an unbound scenario is tracked as coverage backlog by the coverage tool, not as a test sitting in `tests/`. A test exists only to bind a scenario it currently satisfies. Also verify each binding is honest — it drives the real system for its scenario without mocking the thing under test — and that the coverage tool reports no orphan, stale, or duplicate bindings for in-scope specs.
 - Reject **refactor-leftover existence checks** — `assert not (_REPO_ROOT / "old_file.py").exists()` and shape variants. The git history records what was removed; the test adds nothing.
 - Reject **filesystem-inventory snapshots** — `assert _inventory(some_root) == snapshot` where the snapshotted value is a dict/list of file paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to root X," assert emptiness directly: `assert not any(root.rglob("*"))`.
@@ -233,10 +238,14 @@ Common anti-patterns to flag:
 - Invariants enforced only through documentation, not code.
 - Missing validation at construction boundaries.
 - Types with too many responsibilities.
+- **Closed vocabulary not modeled as the mandated type** — a finite set of related string values expressed as a `Literal` + scattered constants (or tuple/frozenset) instead of the single `StrEnum`/union `code-quality-practices` (State and Data) mandates, with literals inlined at call sites. The `Literal` permits the bare literal everywhere, which is precisely why a lint then has to police it.
+- **Invariant policed by a scanner a type could own** — an invariant enforced by an external lint, guardrail, regex, or meta-test when an `Enum`/type/schema could make the illegal state unrepresentable. The scanner is the band-aid; the type is the fix. See the enforcement-placement order in the test-coverage lane.
 
 Severity guidance:
 
 - Types that allow invalid states to be constructed → **Important**.
+- Closed vocabulary as `Literal`+constants instead of `StrEnum` → **Important** (**Critical** when divergent inlined literals have already caused a defect).
+- Invariant enforced by a lint/guard a type could make unrepresentable → **Important**.
 - Exposed mutable internals on shared types → **Important**.
 - Missing construction validation on boundary types → **Important**.
 - Minor encapsulation improvements that do not violate a cited policy → **drop the observation; it is not a finding**.

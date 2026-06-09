@@ -124,6 +124,33 @@ faster than coupling violations because every implementation looks
 if the agent's briefing said the right thing? If yes, it's policy in the
 wrong layer.
 
+### 10. Enforcement in the wrong layer
+
+A structural invariant policed by a lint, guardrail, regex, or meta-test that
+a type, enum, or schema could make **unrepresentable**. The fix is to move the
+invariant up to the strongest layer that can express it (see the
+enforcement-placement order in `definition-of-done-lanes` → test-coverage lane),
+not to add the scanner.
+
+Patterns to detect:
+
+- A closed/finite vocabulary modeled as a `Literal` + scattered constants (or
+  tuple/frozenset) instead of the mandated `StrEnum`/union, with the literal
+  inlined at call sites — then a lint added to forbid the inlined literal the
+  `Literal` permits.
+- An `assert`, regex scan, or `tools/lint` guard that re-checks a property a
+  required parameter, `NewType`, or enum would make a compile-time error.
+- Domain vocabulary (the allowed values, the canonical module path) hard-coded
+  into a generic tooling/lint script rather than owned by the domain type.
+
+**The defining test:** would this lint/guard/test be unnecessary if the type
+made the illegal state impossible to write? If yes, the enforcement is in the
+wrong layer — the type is the fix, the scanner is the band-aid.
+
+**Severity:** Important — **Critical** when the scanner has been added in place
+of a type the policy already mandates (e.g. a closed vocabulary that should be a
+`StrEnum`).
+
 ## Outputs
 
 - Issue list per category with severity, location, principle violated, and remediation guidance.

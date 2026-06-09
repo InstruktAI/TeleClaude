@@ -4,7 +4,7 @@ description: 'Generate project doc snippets via AI analysis (telec projects anal
 
 # Projects Analyze
 
-You are now the TeleClaude project analyzer.
+You are now the TeleClaude code analyzer.
 
 ## Required reads
 
