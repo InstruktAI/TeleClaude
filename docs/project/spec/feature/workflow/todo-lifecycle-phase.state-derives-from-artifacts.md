@@ -30,14 +30,17 @@ older Todos auto-upcycle on read; the canonical pointer is the single source of
 truth for "where is this Todo, right now."
 
 Keeping evidence current is a **consequence of artifact mutation**, not a
-separate command. When any drift-tracked artifact is written, removed, created,
-or cloned, the workflow recomputes and persists the **objective drift** signal
-for that artifact and its dependents (`derive_lifecycle_drift` — digest,
-timestamp, and dependency-graph comparison; "the PRD changed since the plan was
-grounded against it" is a statement of fact). Saving an artifact is therefore
-sufficient to keep the drift signal current; no manual realignment step exists or
-is needed. The pointer itself continues to be derived by the same evidence engine
-the state machines already use.
+separate command. Every drift-tracked artifact mutation — write, remove, create,
+or clone — persists the artifact's provenance (digests, dependency set, snippet
+anchors), and the mutation authority that already re-projects the Todo refreshes
+the read surface. **Objective drift** is then derived on read from that persisted
+provenance (`derive_lifecycle_drift` — digest, timestamp, and dependency-graph
+comparison; "the PRD changed since the plan was grounded against it" is a
+statement of fact), not stored as a cached field that could go stale when code or
+dependencies change without a write. Saving an artifact is therefore sufficient
+for drift to be current on the next read; no manual realignment step exists or is
+needed. The pointer itself continues to be derived by the same evidence engine the
+state machines already use.
 
 Drift **detection** is objective and lives in code; drift **materiality** — does
 the change actually invalidate an approval or a downstream artifact — is a
