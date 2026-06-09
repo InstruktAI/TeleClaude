@@ -108,3 +108,8 @@ And the calling state machine treats the Todo as invalid rather than guessing a 
 - An invalid persisted `lifecycle_phase` is treated as a hard error, not a
   default. The platform refuses to guess a phase for a Todo whose pointer is
   missing or unrecognized.
+
+## See Also
+
+- docs/project/adr/0021-remove-reconcile-and-mark-phase.md — why the manual
+  realignment/override surfaces were removed.
