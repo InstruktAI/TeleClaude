@@ -71,6 +71,17 @@ And the next call computes local HEAD vs remote main; if they match, recovery is
 And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
 ```
 
+<!-- planned:integrator-checkpoint-maintenance-and-review-scope -->
+```
+Given the push to main succeeded and the integrator best-effort sync advanced repo-root main
+When the PUSH_SUCCEEDED step runs, before the per-candidate pre_merge_head is cleared at CANDIDATE_DELIVERED
+Then the state machine records a session-scoped integrator-maintenance marker for the integrator session
+And the marker carries the delivered merge range (pre_merge_head..advanced repo-root HEAD)
+And when several candidates are drained in one call the marker accumulates the union of the delivered ranges
+And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator (see project/spec/feature/integration/agent-stop-checkpoint-blocking)
+```
+<!-- /planned:integrator-checkpoint-maintenance-and-review-scope -->
+
 ```
 Given another integrator session holds the integration/main lease and the TTL has not elapsed
 When the operator runs "telec todo integrate"
