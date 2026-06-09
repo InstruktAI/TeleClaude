@@ -122,10 +122,8 @@ slug does not trigger drift).
 | `input`                |  ✓   | _(none)_              |   _(none)_    |        ✓         |        ✓         |  ✓  |
 | `prd`                  |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
 | `architecture` (index) |  ✓   | `prd`                 |       ✓       |        ✓         |        ✓         |  ✓  |
-| `implementation-plan`  |  ✓   | `architecture`, `prd`<!-- planned:fix-prepare-redispatches-drift-after-prepared -->, `diagnosis`<!-- /planned:fix-prepare-redispatches-drift-after-prepared --> |   _(none)_    |        ✓         |        ✓         |  ✓  |
-<!-- planned:fix-prepare-redispatches-drift-after-prepared -->
+| `implementation-plan`  |  ✓   | `architecture`, `prd`, `diagnosis` |   _(none)_    |        ✓         |        ✓         |  ✓  |
 | `diagnosis`            |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
-<!-- /planned:fix-prepare-redispatches-drift-after-prepared -->
 
 `owned-snippet` applies to artifacts whose authoring phase writes doc
 snippets directly (intake → feature spec; architecture → domain/design
@@ -328,7 +326,6 @@ Scenario: upstream-artifact drift invalidates downstream review
   And the machine routes back to architecture_drafting
 ```
 
-<!-- planned:fix-prepare-redispatches-drift-after-prepared -->
 #### UC-WDD1: Implementation-plan upstream derivation is fresh when diagnosis matches
 
 ```gherkin
@@ -398,7 +395,6 @@ Scenario: work entry accepts a prepared bug when diagnosis upstream evidence mat
   And work entry does not report PENDING_DRIFT for implementation-plan
   And the work machine proceeds to the normal build-start dispatch path
 ```
-<!-- /planned:fix-prepare-redispatches-drift-after-prepared -->
 
 ```gherkin
 Scenario: owned-snippet drift on a target architecture snippet
