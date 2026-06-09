@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-description: 'Split a Todo into child Todos persisted under the parent''s group, each inheriting the parent''s canonical kind and entering at that kind''s lifecycle entry phase; convert the parent entry into a stateless holder with frozen input, and route subsequent prepare/work requests against the holder to a runnable direct child.'
+description: 'Split a Todo into child Todos persisted under the parent''s group, each inheriting the parent''s canonical kind and entering at that kind''s lifecycle entry phase; split stays non-auto-routing and its output instructs the splitting agent to tend each child; the parent becomes a stateless holder with frozen input that re-routes subsequent prepare/work requests to a runnable direct child.'
 ---
 
 # Todo Split — Spec
@@ -17,7 +17,11 @@ description: 'Split a Todo into child Todos persisted under the parent''s group,
 
 ## What it is
 
-`telec todo split <slug> --into <child> [--into <child2> ...]` decomposes one Todo into N child Todos atomically. Each child is added to the todo list with its `group_slug` pointing at the parent and is bootstrapped with a fresh default state whose `kind` is **inherited from the parent**: the child's kind is the parent's canonical kind (`canonical_kind(parent.kind)`), and the child enters at that kind's lifecycle entry phase. Decomposition is not a re-classification event — a `change` parent yields `change` children that draft a plan directly, a `feature` parent yields `feature` children that author a PRD, and so on. From that point on, the parent entry functions as a **holder** — structural grouping only, not an implementation Todo. The holder MUST NOT carry lifecycle state. Its artifact set is stripped to the original `input` artifact only, and that retained input is frozen: it can be read and cloned into children, but not edited or removed through artifact-write/remove paths. Any prepare or work request against the holder slug is re-routed by the slug-resolution layer to a runnable direct child. If the parent's `input` artifact is present at split time, it is cloned to every child as starter material; beyond the inherited kind (and its entry phase), no approvals, verdicts, drift stamps, skip stamps, or non-input artifacts are inherited.
+`telec todo split <slug> --into <child> [--into <child2> ...]` decomposes one Todo into N child Todos atomically. Each child is added to the todo list with its `group_slug` pointing at the parent and is bootstrapped with a fresh default state whose `kind` is **inherited from the parent**: the child's kind is the parent's canonical kind (`canonical_kind(parent.kind)`), and the child enters at that kind's lifecycle entry phase. Decomposition starts from the parent's current classification — it is not an automatic re-classification event. A `change` parent yields `change` children that draft a plan directly, a `feature` parent yields `feature` children that author a PRD, and so on.
+
+Split is **non-auto-routing**: creating children through split emits only the mutation/cache/UI signal (`todo_updated`), never `workflow.todo.created`. The lifecycle router auto-dispatch path keys off `workflow.todo.created`, so split does not start `/analyze-todo-input`, `/next-prepare`, or `/next-work` as a side effect. The splitting agent owns child-state correctness: the split command's output **ends with an explicit instruction** to inspect each child, decide whether the inherited parent kind is still right, and correct any child whose kind should differ using `telec todo update <child> --kind <new_kind>` (e.g. a `change` that legitimately decomposes into a `change` plus a `bug`).
+
+From the split forward, the parent entry functions as a **holder** — structural grouping only, not an implementation Todo. The holder MUST NOT carry lifecycle state. Its artifact set is stripped to the original `input` artifact only, and that retained input is frozen: it can be read and cloned into children, but not edited or removed through artifact-write/remove paths. Any prepare or work request against the holder slug is re-routed by the slug-resolution layer to a runnable direct child. If the parent's `input` artifact is present at split time, it is cloned to every child as starter material; beyond the inherited kind (and its entry phase), no approvals, verdicts, drift stamps, skip stamps, or non-input artifacts are inherited.
 
 ## Canonical fields
 
@@ -49,6 +53,23 @@ When the operator attempts to split it
 Then the request is refused with a clear error naming the unresolvable parent kind
 And no child entries are written
 And the parent is left unchanged
+```
+
+```
+Given an operator splits "parent-slug" into children
+When the split transaction commits
+Then the workflow service emits only its mutation/cache signal for the change
+And it does NOT emit "workflow.todo.created" for any child
+And the lifecycle router does not auto-start "/analyze-todo-input", "/next-prepare", or "/next-work" for the children
+And the children wait for the splitting agent (or a later explicit prepare/work request) to advance them
+```
+
+```
+Given an operator runs "telec todo split parent-slug --into child-a --into child-b"
+When the command completes successfully
+Then it prints the split summary
+And its output ends with an explicit instruction to the splitting agent to inspect each child's kind/state
+And that instruction names "telec todo update <child> --kind <new_kind>" as the way to correct a child whose kind should differ from the inherited parent kind
 ```
 
 ```
@@ -98,6 +119,8 @@ And no child entries are written
 
 - An entry is recognised as a holder **only** when at least one live child entry group-references it. There is no `kind="holder"` enum value, no holder lifecycle phase, no holder lifecycle state, and slug-prefix or `after` relationships are never used to infer parentage.
 - Children inherit the parent's canonical kind and enter at that kind's lifecycle entry phase (`feature` → `prd_drafting`, `change` → `plan_drafting`, `bug` → `diagnose`, `task` → `prepared`); `feature`/`change` children keep the default stored `lifecycle_phase="draft"` and derive their entry phase from the inherited kind, while `bug`/`task` children carry the explicit entry phase. Beyond the inherited kind, no prepare-lane progress, approvals, verdicts, drift stamps, or skip stamps are inherited from the parent — only the `input` artifact is cloned, and only if present at split time.
+- The inherited parent kind is a **starting default, not a final classification.** Decomposition can legitimately change a child's kind (a `change` may split into a `change` plus a `bug`). The splitting agent owns final correctness and re-kinds a child with `telec todo update <child> --kind <new_kind>` after inspecting it; the split command output exists to prompt exactly that tending step.
+- Split is intentionally **non-auto-routing**: it never emits `workflow.todo.created`, so no orchestrator (`/analyze-todo-input`, `/next-prepare`, `/next-work`) auto-starts for split children. This keeps decomposition under the splitting agent's control and is the reason the command output instructs the agent to tend children rather than relying on automatic classification.
 - A parent whose kind cannot be resolved to a canonical kind cannot be split: the split is refused rather than defaulting the children to `feature`. This fail-closed guard exists because kind inheritance is the contract; silently substituting a default would re-introduce the mis-classification it prevents.
 - The split transaction is all-or-nothing: a single conflict on any child slug aborts the whole batch, leaving the parent as it was before the transaction.
 - The retained holder input is immutable after the entry becomes a holder. Later edits to the holder's input do not exist as a valid operation; child seeding happens exactly once, at split time.
