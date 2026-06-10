@@ -26,6 +26,7 @@ __all__ = [
     "_extract_turn_file_signals",
     "_file_matches_category",
     "_get_uncommitted_files",
+    "_git_diff_names",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
     "_is_no_action_only",
@@ -441,6 +442,32 @@ def _file_matches_category(filepath: str, category: FileCategory) -> bool:
         return False
     excluded = any(fnmatch(filepath, pat) for pat in category.exclude_patterns)
     return not excluded
+
+
+def _git_diff_names(project_path: str, range_expr: str) -> list[str]:
+    """Return file paths changed in the given git range.
+
+    Raises on failure so callers do not mistake an unreadable merge delta for
+    "no changed files" and suppress required maintenance.
+    """
+    try:
+        repo = Repo(project_path, search_parent_directories=True)
+        output = repo.git.diff("--name-only", range_expr)
+        return [line for line in output.splitlines() if line]
+    except GitCommandError as exc:
+        logger.warning(
+            "git diff --name-only failed for maintenance range %r: %s",
+            range_expr,
+            exc.stderr or str(exc),
+        )
+        raise
+    except Exception as exc:
+        logger.warning(
+            "Unexpected error computing maintenance delta for range %r: %s",
+            range_expr,
+            exc,
+        )
+        raise
 
 
 def _is_docs_only(git_files: list[str]) -> bool:

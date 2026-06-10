@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-description: 'Heuristic checkpoint engine that may block an agent_stop hook with an adapter-formatted instruction nudging the agent to commit, run tests, fix lint, or address uncommitted work.'
+description: 'Heuristic checkpoint engine that may block an agent_stop hook with an adapter-formatted instruction nudging the agent to commit, run tests, fix lint, run telec sync, or surface post-merge maintenance to the integrator.'
 ---
 
 # Agent Stop Checkpoint Blocking — Spec
@@ -21,18 +21,21 @@ A deterministic, zero-LLM heuristic engine invoked from the hook receiver
 on agent-stop events. It reads the current turn's transcript, the working
 tree's version-control state scoped to the turn window, and a session's
 project context, then classifies changed files into categories (code,
-tests, docs, configs, infra) and produces a checkpoint result listing
-required actions. If any actions are required, the receiver emits an
-adapter-formatted block decision that causes the agent CLI to re-prompt
-itself with the checkpoint instruction.
+tests, docs, configs, infra, sync-validation) and produces a checkpoint
+result listing required actions. If any actions are required, the receiver
+emits an adapter-formatted block decision that causes the agent CLI to
+re-prompt itself with the checkpoint instruction.
 
 The engine is gated by session-scoped flag markers: a persistent **clear
 flag** disables checkpoints for the session entirely; turn scoping
 prevents ordinary file-change checkpoints from re-firing after a
-checkpoint has been delivered; and a fixed-name **authored main commit
-marker** is recorded when this session commits on `main` through the
-sealed `telec code commit` path, then consumed when the post-commit
-review action is surfaced.
+checkpoint has been delivered; a fixed-name **authored main commit
+marker** is recorded when this session commits **code** on `main` through
+the sealed `telec code commit` path, then consumed when the post-commit
+review action is surfaced; and an **integrator-maintenance marker**,
+carrying the delivered merge range, is recorded by the integration state
+machine when it advances repo-root `main`, then consumed when the
+integrator's post-merge maintenance checkpoint is surfaced.
 
 ## Canonical fields
 
@@ -81,6 +84,7 @@ And the receiver proceeds to enqueue the agent-stop event
 
 ```gherkin
 Given the heuristic engine returns an empty checkpoint result (no required actions)
+And no integrator-maintenance marker is present
 When the checkpoint pre-emit step runs
 Then a debug log records "checkpoint skipped: no turn-local changes"
 And no decision is produced
@@ -97,11 +101,12 @@ Then the per-turn recheck flag is consumed
 And the next agent-stop in the new turn may fire a fresh checkpoint
 ```
 
-#### UC-CP5A: Main-branch post-commit review action follows session authorship
+#### UC-CP5A: Main-branch post-commit review action follows code authorship
 
 ```gherkin
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path
+And the committed pathspec included code (not a doc-only commit)
 And the session-scoped authored-main-commit marker is present
 When the heuristic engine evaluates the turn window
 Then the result includes the post-commit review-gate surfacing action
@@ -109,6 +114,14 @@ And that action instructs the agent to set a non-blocking 5-minute heartbeat whe
 And if that heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review
 And waits for REVIEW COMPLETE before reporting completion
 And the authored-main-commit marker is consumed
+
+Given the current branch is main
+And this session authored a main commit through the sealed `telec code commit` path
+And the committed pathspec contained only documentation (docs/**, *.md, *.txt, *.rst) with no code
+When the commit gate runs
+Then the authored-main-commit marker is NOT armed
+And the next agent-stop produces no post-commit review-gate surfacing action for that commit
+(Under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.)
 
 Given the current branch is main
 And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session
@@ -125,7 +138,7 @@ When the heuristic engine evaluates the turn window
 Then ordinary checkpoint classification still runs for those files
 And the post-commit review-gate surfacing action is emitted once
 And the authored-main-commit marker is consumed
-And no system role, including integrator, is exempt from this authorship rule
+And no system role, including integrator, is exempt from this code-authorship rule
 ```
 
 #### UC-CP6: Per-adapter checkpoint response payloads
@@ -181,16 +194,58 @@ And the heuristic engine runs branch detection against the worktree, not the rep
 #### UC-CP9: Uncommitted no-action changes still flag a commit
 
 ```gherkin
-Given the only turn-local changes are no-action files (docs/**, *.md, *.txt, *.rst) and none are categorized as code
+Given the only turn-local changes are bare no-action files (*.md, *.txt, *.rst outside docs/**) and none are categorized as code
 And those changes have not been committed this turn
 When the heuristic engine evaluates the turn window
 Then a checkpoint is produced (not skipped)
 And it includes the `telec code commit` instruction so the uncommitted change is not silently dropped
 
-Given the only turn-local changes are no-action files
+Given the only turn-local changes are bare no-action files
 And they were already committed this turn (commit evidence follows the last mutation)
 When the heuristic engine evaluates the turn window
 Then no checkpoint is produced
+```
+
+#### UC-CP10: telec sync validation category for agents/commands/docs
+
+```gherkin
+Given the turn-local changes touch agents/** or agents/commands/** or docs/**
+And no `telec sync` evidence appears in the checkpoint-cycle tool call timeline
+When the heuristic engine evaluates the turn window
+Then the result includes a required `telec sync` validation action
+(The docs watcher deploys with `telec sync --skip-validation`, so an explicit
+`telec sync` is the only validation pass for these paths.)
+
+Given the turn-local changes touch agents/** or agents/commands/** or docs/**
+And `telec sync` evidence appears in the checkpoint-cycle tool call timeline
+When the heuristic engine evaluates the turn window
+Then the `telec sync` validation action is suppressed
+
+Given the turn-local changes touch agents/** (agent artifacts) and also require telec sync
+When the heuristic engine evaluates the turn window
+Then both the agent-artifacts restart-self action and the telec-sync validation action are surfaced, each once, in category precedence order
+```
+
+#### UC-CP11: Integrator post-merge maintenance force-fire
+
+```gherkin
+Given a session whose role is integrator
+And the integration state machine advanced repo-root main this turn and recorded the integrator-maintenance marker carrying the delivered merge range
+When the heuristic engine evaluates the turn window
+Then the checkpoint force-fires even though no turn-local Edit/Write changes exist
+And effective files are sourced from the merge delta over the recorded range
+And only the main-only maintenance actions implied by that delta are surfaced (make install / uv sync / make restart / telec sync)
+And no post-commit review action, no commit reminder, and no test or log-check actions are surfaced
+And the integrator-maintenance marker is consumed
+
+Given a session whose role is NOT integrator
+And repo-root main advanced this turn for any reason
+And no integrator-maintenance marker is present for this session
+When the heuristic engine evaluates the turn window
+Then no maintenance checkpoint is force-fired on account of the moved main HEAD
+(Repo-root main is a shared working copy; raw HEAD movement is not
+self-attributable, so only the lease-guarded integrator singleton — the recorded
+marker's owner — receives post-merge maintenance.)
 ```
 
 ### Cross-context references
@@ -201,8 +256,13 @@ Then no checkpoint is produced
   composes with the receiver.
 - Reads session row state owned by `agent_runtime`: last user message
   timestamp, last checkpoint timestamp, native log file, working
-  subdirectory, project path, turn anchor SHA, working slug, and
-  native session id.
+  subdirectory, project path, turn anchor SHA, working slug,
+  native session id, and `system_role` (e.g. `"integrator"`) — the role
+  is passed to `get_checkpoint_content` and stored in `CheckpointContext`
+  to gate the integrator-maintenance force-fire path.
+- Consumes the integrator-maintenance marker written by the integration
+  state machine (`project/spec/feature/workflow/integration-state-machine`)
+  at delivery, before the per-candidate `pre_merge_head` is cleared.
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
 
@@ -215,10 +275,17 @@ Then no checkpoint is produced
   the user/operator's responsibility to delete it to re-enable
   checkpoints.
 - The main-branch post-commit review gate is driven by a session-scoped
-  authored-main-commit latch recorded by `telec code commit` and consumed
-  when the review action surfaces. The latch is not SHA-keyed, so rebases
-  and peer HEAD movement do not re-arm it; raw `git commit` does not mark
-  authorship and remains an accepted out-of-scope gap.
+  authored-main-commit latch recorded by `telec code commit` only for
+  commits whose pathspec includes code, then consumed when the review
+  action surfaces. The latch is not SHA-keyed, so rebases and peer HEAD
+  movement do not re-arm it; doc-only commits do not arm it; raw
+  `git commit` does not mark authorship.
+- The integrator's raw-git merge does not flow through `telec code commit`
+  and so does not arm the authorship latch; instead the integration state
+  machine records the integrator-maintenance marker carrying the delivered
+  merge range, which the engine consumes to force-fire post-merge
+  maintenance for the integrator session. This closes the former gap where
+  integrator merges surfaced no maintenance.
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects
@@ -228,7 +295,8 @@ Then no checkpoint is produced
   worktree subdirectory so branch detection runs against the working
   tree, not the repo root. Worktree sessions on a non-main branch
   behave correctly; sessions on main get the main-only category
-  instructions (setup, deps, restart) suppressed.
+  instructions (setup, deps, restart) suppressed unless they are the
+  integrator receiving post-merge maintenance.
 - Unknown agent names fall back to the default agent — a pragmatic
   guard against unrecognized agent values.
 - All three v1 adapters support hook checkpoints. Claude and Codex

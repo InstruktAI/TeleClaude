@@ -19,6 +19,7 @@ logger = get_logger("teleclaude.hooks.checkpoint_flags")
 CHECKPOINT_CLEAR_FLAG = "teleclaude_checkpoint_clear"
 CHECKPOINT_RECHECK_FLAG = "teleclaude_checkpoint_recheck"
 CHECKPOINT_AUTHORED_MAIN_COMMIT_FLAG = "teleclaude_checkpoint_authored_main_commit"
+CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG = "teleclaude_checkpoint_integrator_maintenance"
 
 
 def session_tmp_base_dir() -> Path:
@@ -94,6 +95,40 @@ def consume_checkpoint_flag(session_id: str, flag_name: str) -> bool:
             error=str(exc),
         )
     return True
+
+
+def record_integrator_maintenance_marker(session_id: str, merge_range: str) -> None:
+    """Append a delivered merge range to the integrator-maintenance marker.
+
+    Accumulates ranges across candidates drained in one integrator run.
+    Raises OSError on write failure so callers can surface it as a warning —
+    a silent failure here means post-merge maintenance is never prompted.
+    """
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG)
+    flag_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = flag_path.read_text(encoding="utf-8") if flag_path.exists() else ""
+    lines = [line for line in existing.splitlines() if line]
+    lines.append(merge_range)
+    flag_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def read_integrator_maintenance_marker(session_id: str) -> str | None:
+    """Return the integrator-maintenance marker content, or None if absent."""
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG)
+    if not flag_path.exists():
+        return None
+    try:
+        return flag_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def consume_integrator_maintenance_marker(session_id: str) -> str | None:
+    """Read and delete the integrator-maintenance marker; return its content or None."""
+    content = read_integrator_maintenance_marker(session_id)
+    if content is not None:
+        consume_checkpoint_flag(session_id, CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG)
+    return content
 
 
 def is_checkpoint_disabled(session_id: str) -> bool:

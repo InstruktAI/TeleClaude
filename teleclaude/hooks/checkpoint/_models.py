@@ -21,6 +21,7 @@ class CheckpointContext:
     agent_name: AgentName
     project_path: str = ""
     working_slug: str | None = None
+    system_role: str | None = None
 
 
 @dataclass

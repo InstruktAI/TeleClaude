@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -467,7 +468,16 @@ def _commit_under_lock(
         print(stdout)
     if stderr:
         print(stderr, file=sys.stderr)
-    if _current_branch(project_root) == "main":
+    # Use actual committed file paths from git rather than the requested pathspec
+    # strings, which may contain directory names or unexpanded globs that would
+    # falsely match or miss doc patterns.
+    _DOC_PATTERNS = ["docs/**", "*.md", "*.txt", "*.rst"]
+    try:
+        committed_files = [p for p in repo.git.show("--name-only", "--format=", "HEAD").splitlines() if p]
+    except GitCommandError:
+        committed_files = list(pathspec)
+    committed_includes_code = any(not any(fnmatch(p, pat) for pat in _DOC_PATTERNS) for p in committed_files)
+    if _current_branch(project_root) == "main" and committed_includes_code:
         try:
             session_id = get_session_id()
             if session_id:

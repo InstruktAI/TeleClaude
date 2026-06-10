@@ -71,7 +71,6 @@ And the next call computes local HEAD vs remote main; if they match, recovery is
 And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
 ```
 
-<!-- planned:integrator-checkpoint-maintenance-and-review-scope -->
 #### UC-WISM1: Integrator-maintenance marker emission at delivery
 
 ```gherkin
@@ -82,7 +81,6 @@ And the marker carries the delivered merge range (pre_merge_head..advanced repo-
 And when several candidates are drained in one call the marker accumulates the union of the delivered ranges
 And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
 ```
-<!-- /planned:integrator-checkpoint-maintenance-and-review-scope -->
 
 ```
 Given another integrator session holds the integration/main lease and the TTL has not elapsed

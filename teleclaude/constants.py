@@ -320,13 +320,15 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="telec setup",
         include_patterns=[
+            "Makefile",
+            "teleclaude/install/**",
             "teleclaude/project_setup/**",
             "templates/**",
             ".pre-commit-config.yaml",
             ".gitattributes",
             ".husky/pre-commit",
         ],
-        instruction="Run `make install` (setup changed: templates, hook installers, or git filters)",
+        instruction="Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)",
         evidence_substrings=["make install", "telec projects init"],
         main_only=True,
         precedence=10,
@@ -349,7 +351,6 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
             "teleclaude/quality/**",
             "teleclaude/session_scoping/**",
             "teleclaude/project_setup/**",
-            "teleclaude/install/**",
             "teleclaude/codegen/**",
             "teleclaude/resource_validation/**",
             "teleclaude/entrypoints/**",
@@ -392,6 +393,14 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         precedence=50,
     ),
     FileCategory(
+        name="telec sync",
+        include_patterns=["agents/**", "agents/commands/**", "docs/**"],
+        instruction="Run `telec sync`",
+        evidence_substrings=["telec sync"],
+        main_only=True,
+        precedence=55,
+    ),
+    FileCategory(
         name="hook runtime",
         include_patterns=["teleclaude/hooks/**"],
         instruction="",  # Auto-applies on next hook invocation
@@ -407,9 +416,10 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     ),
 ]
 
-# Patterns for docs/non-code files (capture-only, no action required)
+# Patterns for bare non-code files (capture-only, no action required).
+# docs/** is intentionally excluded here — those files now match the
+# "telec sync" FileCategory so agents are nudged to validate them.
 CHECKPOINT_NO_ACTION_PATTERNS: list[str] = [
-    "docs/**",
     "*.md",
     "*.txt",
     "*.rst",

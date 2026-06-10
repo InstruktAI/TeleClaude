@@ -33,6 +33,8 @@ from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
+from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
+from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
@@ -809,6 +811,30 @@ def _step_push_succeeded(
                 logger.warning(msg)
                 warnings.append(msg)
     checkpoint.warnings = warnings
+
+    # Record the integrator-maintenance marker before CANDIDATE_DELIVERED clears
+    # pre_merge_head. Range pre_merge_head..repo-root-HEAD captures every file
+    # delivered this candidate; accumulated across candidates drained in one run.
+    session_id = get_session_id()
+    if session_id and checkpoint.pre_merge_head:
+        current_head = _get_head_sha(cwd)
+        if current_head:
+            merge_range = f"{checkpoint.pre_merge_head}..{current_head}"
+            try:
+                record_integrator_maintenance_marker(session_id, merge_range)
+                logger.info(
+                    "Integrator maintenance marker recorded: session=%s range=%s",
+                    session_id,
+                    merge_range,
+                )
+            except OSError:
+                msg = (
+                    f"Failed to record integrator maintenance marker for session={session_id} "
+                    f"range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
+                )
+                logger.warning(msg, exc_info=True)
+                warnings.append(msg)
+                checkpoint.warnings = warnings
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)

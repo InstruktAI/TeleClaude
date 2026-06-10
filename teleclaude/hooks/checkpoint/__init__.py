@@ -46,6 +46,7 @@ from teleclaude.hooks.checkpoint._git import (
     _extract_shell_touched_paths,
     _extract_turn_file_signals,
     _file_matches_category,
+    _git_diff_names,
     _is_checkpoint_project_supported,
     _is_docs_only,
     _is_no_action_only,
@@ -57,7 +58,12 @@ from teleclaude.hooks.checkpoint._git import (
     _transcript_observability,
 )
 from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult, TranscriptObservability
-from teleclaude.hooks.checkpoint_flags import consume_authored_main_commit_flag, has_authored_main_commit_flag
+from teleclaude.hooks.checkpoint_flags import (
+    consume_authored_main_commit_flag,
+    consume_integrator_maintenance_marker,
+    has_authored_main_commit_flag,
+    read_integrator_maintenance_marker,
+)
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
@@ -228,6 +234,18 @@ def run_heuristics(
 # Message composition (R9)
 # ---------------------------------------------------------------------------
 
+_RESPONSE_POLICY = (
+    "Response policy: complete ALL required actions first. "
+    "Do not compose the debrief until every action is done. "
+    "Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. "
+    "Do not mention checkpoint chores."
+)
+_ESCAPE_HATCH = (
+    "Escape hatch (last resort only, and only when there is no actionable information left): "
+    'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. '
+    "Re-enable by removing that file."
+)
+
 
 def build_checkpoint_message(
     git_files: list[str],
@@ -262,33 +280,16 @@ def _post_commit_review_instruction() -> str:
     )
 
 
-def _docs_check_instruction() -> str:
-    """Instruction that documentation updates must happen before commit."""
-    return "Docs check: if relevant, update existing docs or add a new doc"
-
-
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
     """Compose checkpoint text from precomputed heuristic output."""
-    response_policy = (
-        "Response policy: complete ALL required actions first. "
-        "Do not compose the debrief until every action is done. "
-        "Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. "
-        "Do not mention checkpoint chores."
-    )
-    escape_hatch = (
-        "Escape hatch (last resort only, and only when there is no actionable information left): "
-        'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. '
-        "Re-enable by removing that file."
-    )
     commit_line = _commit_instruction(result.on_main)
     commit_lines = [commit_line] if result.commit_action_required else []
 
-    # Special case: docs only
+    # Special case: docs only (bare *.md/txt/rst with no category and no pending actions)
     if (not git_files or _is_docs_only(git_files)) and not result.required_actions and not result.observations:
         body = " ".join(commit_lines)
         return (
-            f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\n"
-            f"{body}\n\n{response_policy}\n\n{escape_hatch}"
+            f"{CHECKPOINT_PREFIX}No code changes detected this turn.\n{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}"
         )
 
     # Special case: all clear
@@ -296,11 +297,10 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         body = " ".join(
             [
                 "All expected validations were observed.",
-                f"{_docs_check_instruction()}.",
                 *commit_lines,
             ]
         )
-        return f"{CHECKPOINT_PREFIX}{body}\n\n{response_policy}\n\n{escape_hatch}"
+        return f"{CHECKPOINT_PREFIX}{body}\n\n{_RESPONSE_POLICY}\n\n{_ESCAPE_HATCH}"
 
     lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
 
@@ -309,13 +309,12 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         lines.append("")
         lines.append(f"Changed: {', '.join(result.categories)}")
 
-    # Required actions (numbered). The docs-check and commit instruction belong to the
-    # action list whenever any action applies — including a pending commit that has no
-    # other required action (e.g. an uncommitted docs-only turn). This guarantees an
-    # uncommitted change is never silently dropped on a branch that lacks code actions.
+    # Required actions (numbered). The commit instruction belongs to the action list
+    # whenever any action applies — including a pending commit that has no other required
+    # action (e.g. an uncommitted no-action turn). This guarantees an uncommitted change
+    # is never silently dropped on a branch that lacks code actions.
     actions = list(result.required_actions)
     if result.required_actions or result.commit_action_required:
-        actions.append(_docs_check_instruction())
         if result.commit_action_required:
             actions.append(commit_line)
         actions.append("All steps done — only then proceed")
@@ -339,10 +338,81 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     else:
         lines.append("Review and resolve the observations before responding to the user.")
     lines.append("")
-    lines.append(response_policy)
+    lines.append(_RESPONSE_POLICY)
     lines.append("")
-    lines.append(escape_hatch)
+    lines.append(_ESCAPE_HATCH)
 
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Integrator maintenance path
+# ---------------------------------------------------------------------------
+
+
+def _build_integrator_maintenance_checkpoint(
+    merge_ranges: list[str],
+    project_path: str,
+    timeline: TurnTimeline,
+) -> str | None:
+    """Build a maintenance checkpoint message from merge-delta files.
+
+    Surfaces only main_only maintenance category instructions, with evidence
+    suppression. No review, commit reminder, test, or log-check actions.
+    """
+    all_files: list[str] = []
+    for merge_range in merge_ranges:
+        all_files.extend(_git_diff_names(project_path, merge_range))
+
+    if not all_files:
+        return None
+
+    categories = _categorize_files(all_files)
+    # Integrator maintenance surfaces only main_only categories (setup, deps,
+    # daemon restart, telec sync). Non-main_only categories like agent-artifacts
+    # (restart-self) are not the integrator's maintenance responsibility and must
+    # not appear here regardless of what files were in the merge delta.
+    maintenance_categories = [c for c in categories if c.main_only]
+    if not maintenance_categories:
+        return None
+
+    actions: list[str] = []
+    for category in sorted(maintenance_categories, key=lambda c: c.precedence):
+        if not category.instruction:
+            continue
+        evidence_seen = False
+        if category.evidence_substrings:
+            evidence_seen = _has_evidence(timeline, category.evidence_substrings)
+        if category.evidence_substrings and evidence_seen:
+            if "make restart" in category.instruction and not _has_status_evidence(timeline):
+                actions.append("Run `make status` to verify daemon health")
+            continue
+        actions.append(category.instruction)
+
+    if not actions:
+        return None
+
+    category_names = [c.name for c in maintenance_categories]
+    lines: list[str] = [
+        f"{CHECKPOINT_PREFIX}Integrator post-merge maintenance",
+        "",
+        f"Changed (merge delta): {', '.join(category_names)}",
+        "",
+        "Required actions (maintenance after delivery — complete before next integration):",
+    ]
+    for i, action in enumerate(actions, 1):
+        lines.append(f"{i}. {action}")
+    lines.append(f"{len(actions) + 1}. All steps done — only then proceed")
+    lines.extend(
+        [
+            "",
+            "Execute every required action above before responding to the user.",
+            "",
+            _RESPONSE_POLICY,
+            "",
+            _ESCAPE_HATCH,
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -360,6 +430,7 @@ def get_checkpoint_content(
     working_slug: str | None = None,
     elapsed_since_turn_start_s: float | None = None,
     turn_anchor_sha: str | None = None,
+    system_role: str | None = None,
 ) -> str | None:
     """Build context-aware checkpoint content for both hook and codex routes.
 
@@ -395,6 +466,27 @@ def get_checkpoint_content(
             native_session_id=native_session_id,
             scope="checkpoint",
         )
+
+        # Integrator maintenance force-fire: when role=integrator and the maintenance
+        # marker is present, source effective_files from the merge delta and surface
+        # only main_only maintenance category instructions. Suppress review/commit/test/log.
+        if system_role == "integrator":
+            marker_content = read_integrator_maintenance_marker(session_id)
+            if marker_content:
+                merge_ranges = [r for r in marker_content.strip().splitlines() if r]
+                maintenance_message = _build_integrator_maintenance_checkpoint(merge_ranges, project_path, timeline)
+                if maintenance_message:
+                    consume_integrator_maintenance_marker(session_id)
+                    logger.info(
+                        "Checkpoint payload computed (integrator maintenance force-fire)",
+                        extra={
+                            **base_extra,
+                            "mode": "integrator_maintenance",
+                            "merge_ranges": len(merge_ranges),
+                            "message_len": len(maintenance_message),
+                        },
+                    )
+                    return maintenance_message
 
         scoped_paths = resolve_scoped_paths(
             session_id=session_id,
@@ -468,6 +560,7 @@ def get_checkpoint_content(
             project_path=project_path,
             working_slug=working_slug,
             agent_name=agent_name,
+            system_role=system_role,
         )
         log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
 

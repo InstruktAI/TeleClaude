@@ -16,7 +16,7 @@ All checkpoint payload variants use the canonical prefix `"[TeleClaude Checkpoin
 
 Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 
-1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and action instructions (e.g., daemon code changed → "Run `make restart`").
+1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and action instructions (e.g., daemon code changed → "Run `make restart`"). For the integrator session a third source applies: the delivered merge delta, sourced from the integrator-maintenance marker, supplies the changed files when no turn-local edits exist.
 2. **Transcript-based** — Tool call timeline from the current checkpoint cycle provides file attribution, suppression evidence (action already taken), error state detection, and edit hygiene observations.
 
 One delivery path exists:
@@ -34,8 +34,9 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 - `tool_use` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
 - Agent restart via API — Triggers unconditional checkpoint injection after a delay.
 - `git diff --name-only HEAD` — Uncommitted files relative to HEAD, categorized into action instructions.
+- Integrator-maintenance marker — session-scoped marker carrying the delivered merge range; for the integrator session it sources the changed files when there are no turn-local edits.
 - `TurnTimeline` — Ordered tool calls from the current checkpoint cycle, extracted from the agent transcript via `extract_effective_tool_calls(..., scope="checkpoint")`.
-- `CheckpointContext` — Session context: project path, working slug, agent name.
+- `CheckpointContext` — Session context: project path, working slug, agent name, and `system_role` (e.g. `"integrator"`) threaded from the session row by the receiver.
 
 **Outputs:**
 
@@ -66,7 +67,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini/Codex, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
 
-11. **Suppressibility**: Every heuristic checks for positive evidence in the checkpoint-cycle tool call timeline. If the expected action was already performed in that same cycle (e.g., `make restart` found in Bash commands), the instruction is suppressed. `telec code commit` output that reaches the main-branch classification gate is evidence that the commit-options step was performed, even though no approved commit occurred. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
+11. **Suppressibility**: Every heuristic checks for positive evidence in the checkpoint-cycle tool call timeline. If the expected action was already performed in that same cycle (e.g., `make restart` found in Bash commands, or `telec sync` for sync-validation), the instruction is suppressed. `telec code commit` output that reaches the main-branch classification gate is evidence that the commit-options step was performed, even though no approved commit occurred. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
 
 12. **Two-layer error detection**: Layer 1 (structural gate) only fires for tool results with `is_error: true`. Layer 2 (content enrichment) pattern-matches the result snippet to produce targeted feedback. Successful commands with error-like output (e.g., log viewers showing tracebacks) never trigger observations.
 
@@ -76,9 +77,13 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 15. **Dynamic log-check window**: The required `instrukt-ai-logs teleclaude --since <window>` action is derived from elapsed time since the turn start (`max(last_message_sent_at, last_checkpoint_at)`), rounded up to minutes with a minimum of `2m`.
 
-16. **Commit-options checkpoint policy**: Checkpoints may require running `telec code commit` to surface the commit classification/options flow, but they must not force an approved commit at `agent_stop`. Documentation checks are required before the commit-options step so each commit remains atomic. Commit decisions belong to task-completion flow and human/review gates.
+16. **Commit-options checkpoint policy**: Checkpoints may require running `telec code commit` to surface the commit classification/options flow, but they must not force an approved commit at `agent_stop`. Commit decisions belong to task-completion flow and human/review gates.
 
 17. **Silent housekeeping + short debrief policy**: Checkpoint payloads instruct agents to execute checkpoint-required housekeeping silently, then provide a short user-relevant debrief focused on task outcome, blocker, or decision request. Checkpoint chore details are omitted from user-facing messages.
+
+18. **Code-scoped post-commit review gate**: The session-scoped authored-main-commit latch is armed by `telec code commit` only when the committed pathspec includes code. Doc-only main commits commit but do not arm the review gate — under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.
+
+19. **Integrator post-merge maintenance**: When the integration state machine advances repo-root `main`, it records a session-scoped integrator-maintenance marker carrying the delivered merge range. For the integrator session only, the engine force-fires on that marker, sources the changed files from the merge delta, and surfaces only the main-only maintenance actions implied by that delta (make install / uv sync / make restart / telec sync) — no review, commit, test, or log actions. Role-gated because repo-root `main` is a shared working copy whose raw HEAD movement is not self-attributable; only the lease-guarded integrator singleton, the marker's owner, receives it.
 
 ## Primary flows
 
@@ -203,6 +208,7 @@ sequenceDiagram
 | Daemon restart during active turn                             | Timestamps persist in DB; next `agent_stop` evaluates correctly | No action needed                                    |
 | DB field missing (migration not run)                          | `AttributeError` on session access                              | Run migration 004; daemon auto-runs on startup      |
 | Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                   | TTS dedup skips speaking; DB still updates          |
+| Slug alignment off                                            | Slug mismatch observation surfaced                              | Agent re-aligns working slug                        |
 | Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                             | Correct behavior                                    |
 | Codex checkpoint loop                                         | Hook re-entry limiter detects repeated blocked stop             | Correct behavior                                    |
 | Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                              | First real user message sets `last_message_sent_at` |

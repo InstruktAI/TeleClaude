@@ -277,6 +277,7 @@ def _maybe_checkpoint_output(
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
         turn_anchor_sha=getattr(row, "turn_anchor_sha", None),
+        system_role=getattr(row, "system_role", None),
     )
     if not checkpoint_reason:
         logger.debug(

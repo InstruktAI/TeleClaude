@@ -1,13 +1,36 @@
 # serializer version: 1
-# name: test_main_branch_review_gate_follows_authored_commit_latch
+# name: test_agent_command_change_surfaces_both_restart_and_telec_sync
   dict({
-    'authored_payload': '''
-      [TeleClaude Checkpoint] - Context-aware checkpoint
+    'agent_cmd_result': list([
+      'Reload artifacts: `telec sessions restart self`',
+      'Run `telec sync`',
+      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      'Run targeted tests for only YOUR changed behavior',
+    ]),
+  })
+# ---
+# name: test_docs_dir_change_surfaces_telec_sync
+  dict({
+    'docs_sync_result': list([
+      'Run `telec sync`',
+      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      'Run targeted tests for only YOUR changed behavior',
+    ]),
+  })
+# ---
+# name: test_integrator_maintenance_force_fires_on_merge_delta
+  dict({
+    'maintenance_payload': '''
+      [TeleClaude Checkpoint] - Integrator post-merge maintenance
       
-      Required actions (BLOCKING — do not resume user-facing work until all complete):
-      1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
-      2. Docs check: if relevant, update existing docs or add a new doc
-      3. All steps done — only then proceed
+      Changed (merge delta): telec setup, dependencies, daemon code, telec sync
+      
+      Required actions (maintenance after delivery — complete before next integration):
+      1. Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)
+      2. Install updated dependencies: `uv sync`
+      3. Run `make restart`
+      4. Run `telec sync`
+      5. All steps done — only then proceed
       
       Execute every required action above before responding to the user.
       
@@ -15,5 +38,49 @@
       
       Escape hatch (last resort only, and only when there is no actionable information left): run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. Re-enable by removing that file.
     ''',
+  })
+# ---
+# name: test_main_branch_review_gate_follows_authored_commit_latch
+  dict({
+    'authored_payload': '''
+      [TeleClaude Checkpoint] - Context-aware checkpoint
+      
+      Required actions (BLOCKING — do not resume user-facing work until all complete):
+      1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
+      2. All steps done — only then proceed
+      
+      Execute every required action above before responding to the user.
+      
+      Response policy: complete ALL required actions first. Do not compose the debrief until every action is done. Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. Do not mention checkpoint chores.
+      
+      Escape hatch (last resort only, and only when there is no actionable information left): run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. Re-enable by removing that file.
+    ''',
+  })
+# ---
+# name: test_make_install_surfaces_for_install_dir_change
+  dict({
+    'install_dir_result': list([
+      'Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)',
+      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      'Run targeted tests for only YOUR changed behavior',
+    ]),
+  })
+# ---
+# name: test_make_install_surfaces_for_makefile_change
+  dict({
+    'makefile_result': list([
+      'Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)',
+      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      'Run targeted tests for only YOUR changed behavior',
+    ]),
+  })
+# ---
+# name: test_pyproject_toml_routes_to_uv_sync_not_make_install
+  dict({
+    'pyproject_result': list([
+      'Install updated dependencies: `uv sync`',
+      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      'Run targeted tests for only YOUR changed behavior',
+    ]),
   })
 # ---
