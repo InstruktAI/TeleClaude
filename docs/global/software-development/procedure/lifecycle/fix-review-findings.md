@@ -1,9 +1,5 @@
 ---
 description: 'Address review findings for any review phase: prepared artifacts, plan, or build. Single procedure parameterized by the findings artifact name.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/fix-review-findings'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,9 +1,5 @@
 ---
 description: 'Canonical routing contract for session messages across origin UX and admin lanes.'
-domain: 'software-development'
-id: 'project/spec/session-output-routing'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

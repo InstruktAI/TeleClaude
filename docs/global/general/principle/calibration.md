@@ -1,9 +1,5 @@
 ---
 description: 'Match the communication register to the human''s depth in the topic at hand. Attunement modulates in real time; calibration provides the anchor.'
-domain: 'general'
-id: 'general/principle/calibration'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

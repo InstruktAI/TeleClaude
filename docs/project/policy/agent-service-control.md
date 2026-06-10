@@ -1,8 +1,5 @@
 ---
 description: 'Defines which service/daemon commands agents may run, which are conditional, and which are prohibited in this repo.'
-id: 'project/policy/agent-service-control'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

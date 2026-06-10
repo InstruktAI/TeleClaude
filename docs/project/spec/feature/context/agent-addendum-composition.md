@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/agent-addendum-composition'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Per-agent <AGENT>.addendum.md files are token-substituted and appended to each agent''s deployed AGENTS output under a literal \n---\n\n separator. No @-ref expansion; no AGENTS.addendum.md.'
+visibility: 'public'
 ---
 
 # Agent Addendum Composition — Spec

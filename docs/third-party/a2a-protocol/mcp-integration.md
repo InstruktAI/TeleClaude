@@ -1,8 +1,5 @@
 ---
 description: A2A and MCP Integration
-id: third-party/a2a-protocol/mcp-integration
-scope: project
-type: third-party
 ---
 
 # A2A and MCP Integration

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/observation-timeline'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Retrieve a chronological window of observations around an anchor observation.'
+visibility: 'public'
 ---
 
 # Observation Timeline — Spec

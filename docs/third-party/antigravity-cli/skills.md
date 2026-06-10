@@ -1,8 +1,5 @@
 ---
 description: Antigravity CLI (agy) Skills Spec
-id: third-party/antigravity-cli/skills
-scope: project
-type: third-party
 ---
 
 # Antigravity CLI (agy) Skills Spec

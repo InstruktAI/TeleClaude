@@ -1,9 +1,5 @@
 ---
 description: 'Daily agent job that scans daemon logs for errors, fixes inline or dispatches to bug pipeline.'
-domain: 'software-development'
-id: 'project/spec/jobs/log-bug-hunter'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

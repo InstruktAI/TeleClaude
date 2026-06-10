@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/session-access-visibility'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Authorize web-frontend session-scoped operations against the session owner, the session''s shared/private visibility, and the caller''s role.'
+visibility: 'public'
 ---
 
 # Session Access & Visibility — Spec

@@ -1,9 +1,6 @@
 ---
-id: 'software-development/policy/python/testing'
-type: 'policy'
-scope: 'domain'
-visibility: 'public'
 description: 'Python-specific testing idioms layered over the generic testing policy: pytest runner, file/marker conventions, snapshots, and the no-unit-test enforcement.'
+visibility: 'public'
 ---
 
 # Python Testing — Policy

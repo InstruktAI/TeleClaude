@@ -1,9 +1,6 @@
 ---
 activation_trigger: 'Use when user needs YouTube video search, channel research, or transcripts'
 description: 'Access YouTube channels, personal watch history, subscriptions, and video transcripts for research and information gathering using the youtube_helper script.'
-id: 'general/procedure/youtube-research'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

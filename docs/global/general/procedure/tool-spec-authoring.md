@@ -1,8 +1,5 @@
 ---
 description: 'Author lean tool specs under spec/tools while preserving schema compliance and progressive disclosure.'
-id: 'general/procedure/tool-spec-authoring'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

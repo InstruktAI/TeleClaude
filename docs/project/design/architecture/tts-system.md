@@ -1,8 +1,5 @@
 ---
 description: 'Text-to-speech system with multi-backend fallback, per-session voice assignment, queued playback, and chiptunes audio focus coordination.'
-id: 'project/design/architecture/tts-system'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

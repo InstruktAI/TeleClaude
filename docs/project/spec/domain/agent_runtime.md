@@ -1,14 +1,10 @@
 ---
-id: project/spec/domain/agent_runtime
-type: spec
-domain: software-development
-scope: project
-visibility: public
 delivered_by:
-  - v2-agent-runtime
+- v2-agent-runtime
 description: Agent Runtime bounded context — live agent sessions, tmux orchestration,
   agent CLI supervision, three-lane signal architecture. The heart of v2 — the genuine
   daemon-shaped part of the platform.
+visibility: public
 ---
 
 # Agent Runtime Domain Spec — Spec

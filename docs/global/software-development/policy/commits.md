@@ -1,8 +1,5 @@
 ---
 description: 'Commitizen format, attribution, when to commit. Atomic commits, hooks verify quality.'
-id: 'software-development/policy/commits'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

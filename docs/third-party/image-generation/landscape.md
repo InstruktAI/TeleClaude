@@ -1,8 +1,5 @@
 ---
 description: Image Generation API Landscape
-id: third-party/image-generation/landscape
-scope: project
-type: third-party
 ---
 
 # Image Generation API Landscape

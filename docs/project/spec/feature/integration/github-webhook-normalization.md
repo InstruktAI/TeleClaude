@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/github-webhook-normalization'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'GitHub webhook payload normalizer producing canonical github.<event> hook events with repo, sender, action, ref properties, plus ping-handshake metadata.'
+visibility: 'public'
 ---
 
 # GitHub Webhook Normalization — Spec

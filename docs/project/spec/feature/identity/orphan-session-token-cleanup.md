@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/orphan-session-token-cleanup'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Periodic maintenance sweep that deletes session-token ledger entries whose owning session is closed or no longer present.'
+visibility: 'public'
 ---
 
 # Orphan Session Token Cleanup — Spec

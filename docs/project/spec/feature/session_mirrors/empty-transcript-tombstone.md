@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/empty-transcript-tombstone'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Tombstone records that capture empty or fully-stripped transcripts so the reconciliation worker can skip them on subsequent passes without re-extracting. Tombstones are keyed by source_identity and cleared whenever a transcript produces conversation text.'
+visibility: 'public'
 ---
 
 # Empty Transcript Tombstone — Spec

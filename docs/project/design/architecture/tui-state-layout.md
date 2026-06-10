@@ -1,8 +1,5 @@
 ---
 description: 'State-driven layout model for the Telec TUI sessions and preparation views.'
-id: 'project/design/architecture/tui-state-layout'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

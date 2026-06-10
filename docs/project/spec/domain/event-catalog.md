@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/domain/event-catalog'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Every domain event the platform emits — producer context, named consumers, payload field set in domain terms. The contract that defines cross-context coordination.'
+visibility: 'public'
 ---
 
 # Domain Event Catalog — Spec

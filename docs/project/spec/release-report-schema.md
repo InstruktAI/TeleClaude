@@ -1,8 +1,5 @@
 ---
 description: 'Standardized JSON schema for AI release inspector reports.'
-id: 'project/spec/release-report-schema'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

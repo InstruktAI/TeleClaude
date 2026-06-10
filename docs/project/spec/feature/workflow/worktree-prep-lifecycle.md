@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/worktree-prep-lifecycle'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Per-slug git worktree branched from origin/main with a digest-tracked prep marker that decides when to re-install dependencies; cleanup archives binaries and removes worktree+branch at delivery.'
+visibility: 'public'
 ---
 
 # Worktree Prep Lifecycle — Spec

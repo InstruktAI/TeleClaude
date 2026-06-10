@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/session-summary-generation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Best-effort one-paragraph LLM summary computed at mirror creation. Truncates the conversation, calls the shared summarizer, and stores the result on the mirror record. Failures are swallowed so the mirror still lands.'
+visibility: 'public'
 ---
 
 # Session Summary Generation — Spec

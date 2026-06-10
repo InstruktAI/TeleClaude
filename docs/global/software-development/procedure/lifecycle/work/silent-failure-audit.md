@@ -1,9 +1,5 @@
 ---
 description: 'Audit error handling paths to identify silent failures, inadequate logging, and inappropriate fallback behavior.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/work/silent-failure-audit'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

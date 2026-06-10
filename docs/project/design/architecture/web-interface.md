@@ -1,8 +1,5 @@
 ---
 description: 'High-level architecture of the TeleClaude Next.js web interface.'
-id: 'project/design/architecture/web-interface'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

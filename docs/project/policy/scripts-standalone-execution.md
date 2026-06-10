@@ -1,8 +1,5 @@
 ---
 description: 'Execution contract for scripts/: portable invocation, uv metadata, and robust preflight validation.'
-id: 'project/policy/scripts-standalone-execution'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

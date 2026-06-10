@@ -1,8 +1,5 @@
 ---
 description: 'Standard commands for managing the TeleClaude daemon service.'
-id: 'project/procedure/service-management'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,8 +1,5 @@
 ---
 description: 'High-speed iteration workflow using rsync instead of git push/pull.'
-id: 'project/procedure/rsync-development'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/session-subscriptions'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Listener-based subscription/notification fan-out — sessions (and external subscribers) register interest in a target session''s lifecycle events (stop, input-request) and receive notifications via host-pane injection. Excludes the bidirectional direct-conversation-link mechanism.'
+visibility: 'public'
 ---
 
 # Session Subscriptions — Spec

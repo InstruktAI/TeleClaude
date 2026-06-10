@@ -1,8 +1,5 @@
 ---
 description: 'TypeScript strict typing, discriminated unions, type guards, property checks. No any, no enum, no default exports.'
-id: 'software-development/policy/typescript/core'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

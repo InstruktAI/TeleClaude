@@ -1,8 +1,5 @@
 ---
 description: 'Gate and create skills. A skill is warranted only when it carries scripts — deterministic tooling a model cannot generate on demand.'
-id: 'general/procedure/skill-authoring'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/observation-delete'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Delete a memory observation by id, with a not-found signal when nothing matched.'
+visibility: 'public'
 ---
 
 # Observation Delete — Spec

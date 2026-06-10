@@ -1,9 +1,5 @@
 ---
 description: 'Emulate the Product Owner role to enable autonomous intake when no human is in the loop. The emulator answers the BA''s elicitation questions from the user''s stance plus a fixed set of standing wishes for platform quality. Does not write artifacts, does not approve, does not stamp.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/emulate-product-owner'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

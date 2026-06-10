@@ -1,9 +1,5 @@
 ---
 description: 'Reusable paired-analysis shape for two peer agents: segment, work in parallel, converge, and emit a single report.'
-domain: 'general'
-id: 'general/design/peer-discussion'
-scope: 'global'
-type: 'design'
 visibility: 'public'
 ---
 

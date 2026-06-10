@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/session-end-mirror-fanout'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Event-driven mirror creation/refresh. The agent-stop and session-closed lifecycle signals dispatch through a processor registry that calls the mirror extractor for the affected session. Processors run concurrently and failures are isolated.'
+visibility: 'public'
 ---
 
 # Session-End Mirror Fanout — Spec

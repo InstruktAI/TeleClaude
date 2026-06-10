@@ -1,8 +1,5 @@
 ---
 description: 'Automatic cleanup of UiAdapter message clutter for a clean UI.'
-id: 'project/policy/ux-message-cleanup'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

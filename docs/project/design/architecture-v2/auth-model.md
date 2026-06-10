@@ -1,8 +1,5 @@
 ---
 description: 'v2 auth model: identity crate as resolution authority, principal types, per-service authorization, browser cross-language boundary.'
-id: 'project/design/architecture-v2/auth-model'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

@@ -1,8 +1,5 @@
 ---
 description: 'Telegram UI adapter that maps topics to sessions and enforces UX cleanup rules.'
-id: 'project/design/architecture/telegram-adapter'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

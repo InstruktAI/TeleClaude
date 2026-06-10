@@ -1,9 +1,6 @@
 ---
-id: 'general/principle/grounding'
-type: 'principle'
-scope: 'global'
-visibility: 'public'
 description: 'Re-ground in sources of truth before reasoning. Memory is incomplete; conclusions require evidence.'
+visibility: 'public'
 ---
 
 # Grounding — Principle

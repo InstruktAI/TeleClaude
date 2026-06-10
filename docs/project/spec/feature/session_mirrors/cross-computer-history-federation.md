@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/cross-computer-history-federation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Fan-out of `telec history search` and `telec history show` to one or more remote computers via computer-name resolution against the local session_mirrors service. Local mirrors are NOT searched when --computer is used.'
+visibility: 'public'
 ---
 
 # Cross-Computer History Federation — Spec

@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0021-remove-reconcile-and-mark-phase'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '21'
-date: '2026-06-09'
 adr_status: 'accepted'
+date: '2026-06-09'
 description: 'Removed the telec todo reconcile and mark-phase commands and the mechanical-invalidation subsystem; lifecycle_phase derives from evidence on dispatch, and drift materiality stays an intelligence judgment.'
+number: '21'
+visibility: 'public'
 ---
 
 # ADR-0021: Remove reconcile and mark-phase — ADR

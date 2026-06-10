@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/agent-runtime-deployment'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Two-phase deployment of transpiled artifacts to per-agent home dirs, with Codex commands routed to a shared TeleClaude dir and docs atomically symlinked.'
+visibility: 'public'
 ---
 
 # Agent Runtime Deployment — Spec

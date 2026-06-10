@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/session-input-delivery'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Delivers operator and orchestrator input (text messages and keystrokes) into running agent sessions via the agent_runtime service''s host-pane paste-buffer pipeline.'
+visibility: 'public'
 ---
 
 # Session Input Delivery — Spec

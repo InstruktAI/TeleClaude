@@ -1,8 +1,5 @@
 ---
 description: 'Three-scope Redis event bus for v2 (Local mandatory + Cluster/Public optional). Explicit per-emit scoping, subscriber-side merge across configured scopes. In-coroutine sync uses Tokio channels — not events.'
-id: 'project/design/architecture-v2/event-bus-transports'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

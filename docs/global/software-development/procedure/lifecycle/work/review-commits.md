@@ -1,10 +1,6 @@
 ---
 description: 'Review discrete commits already on main by SHA, without a worktree or the todo lifecycle.'
-domain: 'software-development'
 needs_domain_baseline: 'True'
-id: 'software-development/procedure/lifecycle/work/review-commits'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,8 +1,5 @@
 ---
 description: 'Test-focused role. Improve test quality, fix failures, enforce testing standards and coverage.'
-id: 'software-development/concept/tester'
-scope: 'domain'
-type: 'concept'
 visibility: 'public'
 ---
 

@@ -1,8 +1,6 @@
 ---
-id: third-party/playwright/install
-type: third-party
-scope: project
-description: Install @playwright/test via pnpm, install Chromium with system deps, and wire the test:e2e script.
+description: Install @playwright/test via pnpm, install Chromium with system deps,
+  and wire the test:e2e script.
 ---
 
 # Playwright — Install (pnpm + Next.js)

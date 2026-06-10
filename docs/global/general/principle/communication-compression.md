@@ -1,9 +1,5 @@
 ---
 description: 'Transparency is the default; compression is a deliberate opt-in the human authorizes for a specific exchange.'
-domain: 'general'
-id: 'general/principle/communication-compression'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

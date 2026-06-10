@@ -1,8 +1,5 @@
 ---
 description: 'Prepare phase overview. PRD intake, optional architecture (doc-snippet edits + thin index artifact), implementation planning, PRD-only human approval, and downstream reviewer gates.'
-id: 'software-development/procedure/lifecycle/prepare'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

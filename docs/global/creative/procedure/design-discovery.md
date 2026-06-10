@@ -1,9 +1,5 @@
 ---
 description: 'Translate human visual thinking into a grounded design spec through structured dialogue and reference analysis.'
-domain: 'creative'
-id: 'creative/procedure/design-discovery'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

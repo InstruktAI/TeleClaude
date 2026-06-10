@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0009-skill-pattern-detection-deferred'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '9'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Skill pattern detection is deferred. Skills, when they come, will be per-human curation of external libraries (not memory-promotion). The future shape is captured in a design doc; no implementation in v2.'
+number: '9'
+visibility: 'public'
 ---
 
 # ADR-0009: Skill Pattern Detection Deferred — ADR

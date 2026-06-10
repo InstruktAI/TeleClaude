@@ -1,10 +1,6 @@
 ---
-id: 'software-development/principle/documentation-first-development'
-type: 'principle'
-domain: 'software-development'
-scope: 'global'
-visibility: 'public'
 description: 'Documentation leads, implementation catches up. Snippets declare pending deliveries via delivered_by: so the gap stays honest and the design stays shareable.'
+visibility: 'public'
 ---
 
 # Documentation-First Development — Principle

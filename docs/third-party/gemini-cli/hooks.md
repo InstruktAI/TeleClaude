@@ -1,8 +1,5 @@
 ---
 description: Gemini and Antigravity CLI Hooks
-id: third-party/gemini-cli/hooks
-scope: project
-type: third-party
 ---
 
 # Gemini and Antigravity CLI Hooks

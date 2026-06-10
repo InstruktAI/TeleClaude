@@ -1,20 +1,15 @@
 ---
 description: 'The review lanes — the review-time enforcement of the Definition of Done. Defined once here; referenced by the build reviewer, the commit reviewer, and anticipated by the planner.'
-domain: 'software-development'
-id: 'software-development/policy/definition-of-done-lanes'
-scope: 'domain'
-type: 'concept'
 visibility: 'public'
 ---
-
-# Review Lanes — Concept
+# Review Lanes — Policy
 
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
 
-## What
+## Rules
 
 The review lanes are the focus areas a code review runs. Each lane is the
 **review-time enforcement of a Definition of Done gate** (or, for the scope lane,
@@ -379,7 +374,7 @@ When `kind == "bug"`, the `input` artifact is the bug report and the intent sour
 
 Missing reproduction test for a bug fix is a **Critical** finding. All other review lanes still apply.
 
-## Why
+## Rationale
 
 The lanes were embedded in the build-review procedure and re-described in the
 plan reviewer, so two reviewers shared one copy and a third forked it — the lane
@@ -391,3 +386,16 @@ Anchoring them under the Definition of Done makes the coupling explicit: each la
 is the review-time enforcement of a DoD gate (or the requirement contract for
 scope). A new DoD gate should grow a lane; a lane should name the gate it answers
 to. The per-lane **Authority** line is that binding, kept honest in one place.
+
+## Scope
+
+Applies to build reviews, commit reviews, and prepare-plan review anticipation.
+
+## Enforcement
+
+Reviewers use this catalog as the lane inventory. Procedure snippets own execution
+mechanics, verdict arithmetic, and report shape.
+
+## Exceptions
+
+None.

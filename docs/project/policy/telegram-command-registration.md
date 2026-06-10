@@ -1,8 +1,5 @@
 ---
 description: 'Rules for registering Telegram commands and keeping the command list consistent.'
-id: 'project/policy/telegram-command-registration'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

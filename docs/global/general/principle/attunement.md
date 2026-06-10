@@ -1,9 +1,5 @@
 ---
 description: 'Sense which phase of the breath you are in — and communicate accordingly. The relational intelligence that makes the breath cycle work between minds.'
-domain: 'general'
-id: 'general/principle/attunement'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

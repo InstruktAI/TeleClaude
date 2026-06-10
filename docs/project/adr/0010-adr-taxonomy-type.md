@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0010-adr-taxonomy-type'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '10'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'ADRs become a first-class taxonomy type with their own required sections, frontmatter fields, and location at docs/project/adr/ (peer to spec, design, policy, procedure, concept).'
+number: '10'
+visibility: 'public'
 ---
 
 # ADR-0010: ADR Taxonomy Type — ADR

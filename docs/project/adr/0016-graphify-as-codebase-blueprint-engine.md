@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0016-graphify-as-codebase-blueprint-engine'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '16'
-date: '2026-06-06'
 adr_status: 'accepted'
+date: '2026-06-06'
 description: 'Adopt the Graphify CLI (graphifyy, MIT) as-is as the codebase blueprint engine, lazy-generated under .teleclaude/blueprint, consumed via the CLI. No wrapper, no telec verb mapping, no MCP. The integration seam is the graph.json data contract plus the CLI method, not the vendor identity, so the engine is replaceable at low cost.'
+number: '16'
+visibility: 'public'
 ---
 
 # ADR-0016: Adopt Graphify CLI as the Codebase Blueprint Engine — ADR

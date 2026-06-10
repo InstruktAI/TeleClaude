@@ -1,8 +1,5 @@
 ---
 description: 'Send Telegram alerts when the daemon is down using standalone scripts.'
-id: 'project/procedure/out-of-band-telegram-alerts'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

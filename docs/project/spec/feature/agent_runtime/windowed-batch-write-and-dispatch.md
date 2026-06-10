@@ -1,11 +1,9 @@
 ---
-id: project/spec/feature/agent_runtime/windowed-batch-write-and-dispatch
-type: spec
-domain: software-development
-scope: project
+delivered_by:
+- v2-agent-runtime
+description: Windowed batched write + change-notification dispatch for agent CLI hook
+  events. Producer-side write coalescing with zero added latency on the publish path.
 visibility: public
-delivered_by: [v2-agent-runtime]
-description: Windowed batched write + change-notification dispatch for agent CLI hook events. Producer-side write coalescing with zero added latency on the publish path.
 ---
 
 # Windowed Batch Write and Dispatch — Spec

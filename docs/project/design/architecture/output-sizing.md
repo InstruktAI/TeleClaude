@@ -1,8 +1,5 @@
 ---
 description: 'Two-layer output sizing pipeline: content selection in ui_adapter and platform enforcement in message_ops.'
-id: 'project/design/architecture/output-sizing'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

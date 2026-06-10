@@ -1,9 +1,6 @@
 ---
 activation_trigger: 'Use when you encounter a bug, test failure, or unexpected behavior'
 description: 'Systematic debugging methodology: reproduce, bisect, isolate, fix, harden. Evidence before fixes, root cause before symptoms.'
-id: 'software-development/procedure/debugging'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,9 +1,5 @@
 ---
 description: 'Architecture derivation phase. Ground the approved PRD in code reality, author the design directly into the affected domain-spec / architecture-v2 design-doc snippets, and write a thin reviewer-approved architecture index artifact for downstream plan derivation.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/architecture'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

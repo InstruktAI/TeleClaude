@@ -1,8 +1,5 @@
 ---
 description: 'Invite a new member by email with deep links to their personal AI assistant on Telegram, Discord, or WhatsApp.'
-id: 'project/procedure/member-onboarding'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

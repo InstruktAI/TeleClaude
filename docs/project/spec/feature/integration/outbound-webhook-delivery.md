@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/outbound-webhook-delivery'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Background worker that drains the webhook outbox and delivers HMAC-signed requests to subscriber endpoints with exponential backoff, transient/permanent failure classification, and dead-letter at max attempts.'
+visibility: 'public'
 ---
 
 # Outbound Webhook Delivery — Spec

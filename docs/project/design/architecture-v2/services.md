@@ -1,9 +1,5 @@
 ---
 description: 'The eight services that compose v2 TeleClaude. Each is a Rust crate with a Postgres schema; binaries embed the crates they need.'
-id: 'project/design/architecture-v2/services'
-scope: 'project'
-domain: 'software-development'
-type: 'design'
 visibility: 'public'
 ---
 

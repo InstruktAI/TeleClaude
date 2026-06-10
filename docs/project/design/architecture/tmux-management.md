@@ -1,8 +1,5 @@
 ---
 description: 'Tmux session orchestration, input injection, and per-session temp directories.'
-id: 'project/design/architecture/tmux-management'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0018-typed-in-messages-are-first-class-turns'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-description: 'Typed-in input, whether human or inter-actor, defines a real session turn; only hook side-channel artifacts are excluded from turn boundaries and notification dedup resets.'
-date: '2026-06-08'
 adr_status: 'accepted'
+date: '2026-06-08'
+description: 'Typed-in input, whether human or inter-actor, defines a real session turn; only hook side-channel artifacts are excluded from turn boundaries and notification dedup resets.'
 number: '18'
+visibility: 'public'
 ---
 
 # Typed-In Messages Are First-Class Turns — ADR

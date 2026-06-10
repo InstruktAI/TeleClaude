@@ -1,9 +1,5 @@
 ---
 description: 'Plan review phase. Validate implementation-plan against PRD, optional architecture, feature-spec scenarios, policies, DoD gates, and review lane expectations.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/review-plan'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

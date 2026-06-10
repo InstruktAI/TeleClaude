@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/mirror-identity-enrichment'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Identity fields on the mirror (human_email, visibility, project, origin channel, platform user/channel ids) are sourced from the upstream session record at extraction time. Adapter metadata for telegram / discord / whatsapp is unpacked into the mirror''s metadata blob.'
+visibility: 'public'
 ---
 
 # Mirror Identity Enrichment — Spec

@@ -1,11 +1,12 @@
 ---
-id: project/spec/domain/memory
-type: spec
-domain: software-development
-scope: project
+delivered_by:
+- v2-memory
+- v2-memory-cutover
+description: Memory bounded context — durable observations the platform accumulates
+  about humans and projects. Triple-shaped, event-store-semantic, dedup-disciplined;
+  the substrate of cross-session continuity. Scraper-only writes; pattern-matcher
+  jobs read.
 visibility: public
-delivered_by: [v2-memory, v2-memory-cutover]
-description: Memory bounded context — durable observations the platform accumulates about humans and projects. Triple-shaped, event-store-semantic, dedup-disciplined; the substrate of cross-session continuity. Scraper-only writes; pattern-matcher jobs read.
 ---
 
 # Memory Domain Spec — Spec

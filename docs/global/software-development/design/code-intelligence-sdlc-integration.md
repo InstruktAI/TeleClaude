@@ -1,9 +1,5 @@
 ---
 description: 'How code intelligence feeds SDLC stages as structural input for planning, execution, review, and concurrent integration.'
-domain: 'software-development'
-id: 'software-development/design/code-intelligence-sdlc-integration'
-scope: 'global'
-type: 'design'
 visibility: 'public'
 ---
 

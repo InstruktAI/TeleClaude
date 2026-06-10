@@ -1,8 +1,5 @@
 ---
 description: 'Defines bin/ as bootstrap-only and clarifies where runtime and internal tooling belongs.'
-id: 'project/policy/bin-bootstrap-boundary'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

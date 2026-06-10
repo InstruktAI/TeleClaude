@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/baseline-snippet-manifests'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Curated baseline.md files of @-refs that anchor the always-loaded snippet set per scope.'
+visibility: 'public'
 ---
 
 # Baseline Snippet Manifests — Spec
@@ -74,11 +70,9 @@ And its Required reads dependencies are NOT auto-pulled into the baseline set
   string. Snippets placed in baseline folders with unrecognized names get no
   inferred type and may be skipped at index build for failing frontmatter
   checks.
-<!-- planned:index-leading-snippet-metadata -->
 - The caveat above no longer holds. `type` and `scope` are now derived for ALL
   snippets from the path (not only baseline-folder snippets): `scope` from the
   source tree (`docs/global/**`→global, `docs/project/**`→project) and `type`
   from the H1 suffix. A path that does not resolve to a derivable
   classification no longer gets silently skipped — it FAILS the index build
   loudly with an error naming the offending file.
-<!-- /planned:index-leading-snippet-metadata -->

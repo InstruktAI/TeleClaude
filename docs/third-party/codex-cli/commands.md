@@ -1,8 +1,5 @@
 ---
 description: Codex CLI Commands
-id: third-party/codex-cli/commands
-scope: project
-type: third-party
 ---
 
 # Codex CLI Commands

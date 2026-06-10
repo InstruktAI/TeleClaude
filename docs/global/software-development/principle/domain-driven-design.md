@@ -1,10 +1,6 @@
 ---
-id: 'software-development/principle/domain-driven-design'
-type: 'principle'
-domain: 'software-development'
-scope: 'global'
-visibility: 'public'
 description: 'Organize systems around bounded contexts, aggregates, ubiquitous language, and domain events. The domain — not the technology — drives structure.'
+visibility: 'public'
 ---
 
 # Domain-Driven Design — Principle

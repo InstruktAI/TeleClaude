@@ -1,8 +1,5 @@
 ---
 description: 'Design of the experiment and feature-flag system for safe feature toggling.'
-id: 'project/design/architecture/feature-flags'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

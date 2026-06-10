@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/direct-conversation-links'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Bidirectional message routing between two (or more) agent sessions via the `--direct` ignition flow. A conversation link is established once, peer turn-complete outputs are then cross-shared automatically, and `--close-link` severs the link for every member.'
+visibility: 'public'
 ---
 
 # Direct Conversation Links — Spec

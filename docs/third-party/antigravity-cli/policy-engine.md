@@ -1,8 +1,6 @@
 ---
-id: third-party/antigravity-cli/policy-engine
-type: third-party
-scope: project
-description: Antigravity CLI (agy) Policy Engine — the supported replacement for the deprecated --allowed-tools flag and tools.allowed setting.
+description: Antigravity CLI (agy) Policy Engine — the supported replacement for the
+  deprecated --allowed-tools flag and tools.allowed setting.
 ---
 
 # Antigravity CLI (agy) Policy Engine — Spec

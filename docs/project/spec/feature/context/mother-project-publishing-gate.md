@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/mother-project-publishing-gate'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Only the Mother project may publish global agent items from agents/; non-mother projects must use .agents/.'
+visibility: 'public'
 ---
 
 # Mother Project Publishing Gate — Spec

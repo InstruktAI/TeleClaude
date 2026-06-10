@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/agents-inventory-requirement'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The machine config `agents` section must declare a default agent that is known and enabled; agent keys must be in the known set; at least one agent must be enabled; runtime-only fields are rejected.'
+visibility: 'public'
 ---
 
 # Agents Inventory Requirement — Spec

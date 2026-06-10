@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0011-grouped-snippets-folder-convention'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '11'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Related snippets that share a topic live in a folder named for the topic, with overview.md as the shared entry and sibling files for variants. The flat-prefix-sibling pattern (foo-overview.md / foo-human.md / foo-project.md) is rejected.'
+number: '11'
+visibility: 'public'
 ---
 
 # ADR-0011: Grouped Snippets Use overview.md Folder Convention — ADR

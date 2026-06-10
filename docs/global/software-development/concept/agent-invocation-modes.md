@@ -1,9 +1,5 @@
 ---
 description: 'Standardized invocation patterns for AI agent CLIs, separating structured extraction from autonomous execution.'
-domain: 'software-development'
-id: 'software-development/concept/agent-invocation-modes'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/hooks-frontmatter-per-agent-transform'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Artifact "hooks" frontmatter is preserved for Claude output and stripped for Codex/Gemini output during transpilation. Distinct from live agent CLI hook installation.'
+visibility: 'public'
 ---
 
 # Hooks Frontmatter Per-Agent Transform — Spec

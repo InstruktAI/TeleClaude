@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/doc-snippet-three-phase-retrieval'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Three-phase doc retrieval: telec docs index lists IDs (phase 1), telec docs get returns content (phase 2), and Required-reads dependencies are surfaced for an explicit follow-up fetch (phase 3).'
+visibility: 'public'
 ---
 
 # Doc Snippet Three-Phase Retrieval — Spec

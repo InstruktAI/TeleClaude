@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/output-polling-and-delivery'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'agent_runtime-internal per-session polling + transcript projection that detects new agent output, dedups via digest, and delivers via adapters.'
+visibility: 'public'
 ---
 
 # Output Polling and Delivery — Spec

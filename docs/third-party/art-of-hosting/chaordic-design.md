@@ -1,8 +1,5 @@
 ---
 description: Art of Hosting — Chaordic Design
-id: third-party/art-of-hosting/chaordic-design
-scope: project
-type: third-party
 ---
 
 # Art of Hosting — Chaordic Design

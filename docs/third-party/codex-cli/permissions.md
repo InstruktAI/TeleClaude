@@ -1,8 +1,5 @@
 ---
 description: Codex CLI Permissions — Spec
-id: third-party/codex-cli/permissions
-scope: project
-type: third-party
 ---
 
 # Codex CLI Permissions — Spec
@@ -36,7 +33,7 @@ sandbox = true
 require_approval = false
 allow_network = false
 restrict_to_cwd = true
-allowed_paths = ["/Users/username/.teleclaude/docs"]
+allowed_paths = ["<HOME>/.teleclaude/docs"]
 ```
 
 ## CLI Flags

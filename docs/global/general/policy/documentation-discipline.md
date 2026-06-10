@@ -1,9 +1,6 @@
 ---
-id: 'general/policy/documentation-discipline'
-type: 'policy'
-scope: 'global'
-visibility: 'public'
 description: 'The enforceable rules of doc-driven development: doc-only work is never a todo, functionality work authors its snippets first, and every behavioral delta is reflected in the doc layer.'
+visibility: 'public'
 ---
 
 # Documentation Discipline — Policy

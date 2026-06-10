@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/snippet-frontmatter-validation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Schema, path, ref, and section-shape validation enforced on every taxonomy source snippet during telec sync.'
+visibility: 'public'
 ---
 
 # Snippet Frontmatter Validation — Spec
@@ -18,8 +14,12 @@ description: 'Schema, path, ref, and section-shape validation enforced on every 
 Snippet frontmatter validation is the context gate that runs on every taxonomy
 source file during `telec sync` and pre-commit markdown validation. It enforces
 the schema of Context snippets so the Index, selection policy, and CRUD
-surface never observe broken frontmatter, broken Required reads, wrong IDs,
-or wrong taxonomy sections.
+surface never observe broken frontmatter, broken Required reads, leaked inline
+refs, or wrong taxonomy sections. Validation enforces presence of the authored
+`description`, correct Required-reads placement, inline-ref scoping, and
+per-type section shape — where the type is derived from the path, not from
+frontmatter. `id`/`type`/`scope` are path-derived and are no longer authored or
+validated, so there is no id-to-path check.
 
 Validation is shape-only for lifecycle metadata. `delivered_by`, when
 present, must be a non-empty list of slug strings; absence means the snippet
@@ -37,14 +37,6 @@ Scenario: Missing required frontmatter field
   When telec sync validates the file
   Then a missing-frontmatter-field finding is reported for "description"
   And the sync exits with a non-zero status
-```
-
-```
-Scenario: ID does not match path
-  Given a snippet at docs/project/spec/feature/context/foo.md
-  And frontmatter id "project/spec/feature/context/bar"
-  When the id-format and path-derived-id checks run
-  Then the path-derived ID mismatch is reported
 ```
 
 ```
@@ -80,7 +72,7 @@ Scenario: Inline @ ref leaks outside Required reads
 
 ```
 Scenario: Per-type required sections missing
-  Given a snippet of type "spec" without a "## Canonical fields" H2
+  Given a snippet whose path-derived type is "spec" without a "## Canonical fields" H2
   When section-shape validation runs
   Then a missing-section error is reported listing the required H2
 ```
@@ -98,3 +90,5 @@ Scenario: Per-type required sections missing
   ignored.
 - `activation_trigger` is allowed only on procedure snippets and is rejected
   on any other taxonomy type.
+- `id`/`type`/`scope` are no longer authored or validated — they are derived
+  from the Source's path, so no id-to-path mismatch check exists.

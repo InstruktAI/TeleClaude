@@ -25,7 +25,7 @@
   ---
   id: project/spec/feature/context/target-lens
   type: spec
-  domain: software-development
+  domain: project
   scope: project
   description: Target lens snippet.
   ---
@@ -43,7 +43,7 @@
   ---
   id: project/spec/feature/context/target-lens
   type: spec
-  domain: software-development
+  domain: project
   scope: project
   description: Target lens snippet.
   ---
@@ -62,7 +62,7 @@
       ---
       id: project/spec/feature/context/target-lens
       type: spec
-      domain: software-development
+      domain: project
       scope: project
       description: Target lens snippet.
       ---
@@ -78,7 +78,7 @@
       ---
       id: project/spec/feature/context/target-lens
       type: spec
-      domain: software-development
+      domain: project
       scope: project
       description: Target lens snippet.
       ---
@@ -101,7 +101,7 @@
   ---
   id: project/spec/feature/context/target-lens
   type: spec
-  domain: software-development
+  domain: project
   scope: project
   description: Target lens snippet.
   ---

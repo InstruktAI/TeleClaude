@@ -1,8 +1,5 @@
 ---
 description: 'Governance rules for agent artifact sources, transforms, and ownership.'
-id: 'project/policy/agent-artifact-governance'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

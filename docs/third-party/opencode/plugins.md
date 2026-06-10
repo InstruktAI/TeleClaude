@@ -1,8 +1,5 @@
 ---
 description: OpenCode plugin and event system (the only hook surface)
-id: third-party/opencode/plugins
-scope: project
-type: third-party
 ---
 
 # OpenCode Plugins & Events

@@ -1,8 +1,5 @@
 ---
 description: 'Recommended flow for delegating work using TeleClaude CLI/API commands.'
-id: 'project/procedure/ai-to-ai-operations'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

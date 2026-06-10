@@ -1,8 +1,5 @@
 ---
 description: Antigravity CLI (agy) Hooks and Event Lifecycle
-id: third-party/antigravity-cli/hooks
-scope: project
-type: third-party
 ---
 
 # Antigravity CLI (agy) Hooks and Event Lifecycle

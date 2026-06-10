@@ -1,9 +1,5 @@
 ---
 description: 'Creative lifecycle overview. Optional pre-stage: design spec, art generation, visual artifacts — feeding into the software development lifecycle.'
-domain: 'creative'
-id: 'creative/procedure/lifecycle/overview'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

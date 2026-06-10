@@ -1,8 +1,5 @@
 ---
 description: 'Command surface contract for TeleClaude client interfaces.'
-id: 'project/spec/command-surface'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

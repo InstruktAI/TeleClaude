@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/whatsapp-env-var-override'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'WhatsApp credential fields are resolved with environment variables taking precedence over YAML values, and the adapter auto-enables when both `phone_number_id` and `access_token` resolve to truthy values.'
+visibility: 'public'
 ---
 
 # WhatsApp Env Var Override — Spec

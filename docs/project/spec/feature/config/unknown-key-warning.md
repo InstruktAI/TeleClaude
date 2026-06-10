@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/unknown-key-warning'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Unknown keys in user-facing `teleclaude.yml` overlays are accepted and surfaced as warnings via a recursive walk; the machine `config.yml` applies hard rejection only to the `agents` block.'
+visibility: 'public'
 ---
 
 # Unknown Key Warning — Spec

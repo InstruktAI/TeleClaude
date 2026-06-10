@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/deployment-version-fanout'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Cross-host fan-out of deployment version_available events to every integration service in the cluster, with self-skip on origin to avoid double-execution.'
+visibility: 'public'
 ---
 
 # Deployment Version Fanout — Spec

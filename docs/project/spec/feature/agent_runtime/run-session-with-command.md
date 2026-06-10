@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/run-session-with-command'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Start a new agent session preloaded with a slash command as its first agent message (`telec sessions run`).'
+visibility: 'public'
 ---
 
 # Run Session With Command — Spec

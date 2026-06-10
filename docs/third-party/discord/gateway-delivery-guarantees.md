@@ -1,8 +1,5 @@
 ---
 description: Discord Gateway — Delivery Guarantees and Recovery
-id: third-party/discord/gateway-delivery-guarantees
-scope: project
-type: third-party
 ---
 
 # Discord Gateway — Delivery Guarantees and Recovery

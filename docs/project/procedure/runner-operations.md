@@ -1,8 +1,5 @@
 ---
 description: 'Self-hosted GitHub Actions runner lifecycle, diagnostics, and recovery.'
-id: 'project/procedure/runner-operations'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0015-kind-as-lifecycle-entry-point'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-description: 'A kind names the lifecycle entry point: the SDLC kinds (feature/change/bug), the non-SDLC `task` kind, and an optional kind at intake (kind-less dumps are classified and auto-assigned by /analyze-todo-input).'
-date: '2026-06-06'
 adr_status: 'superseded'
+date: '2026-06-06'
+description: 'A kind names the lifecycle entry point: the SDLC kinds (feature/change/bug), the non-SDLC `task` kind, and an optional kind at intake (kind-less dumps are classified and auto-assigned by /analyze-todo-input).'
 number: '15'
+visibility: 'public'
 ---
 
 # Kind as Lifecycle Entry Point — ADR

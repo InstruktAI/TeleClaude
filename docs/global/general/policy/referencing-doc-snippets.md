@@ -1,8 +1,5 @@
 ---
 description: 'Policy for referencing documentation snippets in AI agent prompts.'
-id: 'general/policy/referencing-doc-snippets'
-scope: 'global'
-type: 'policy'
 visibility: 'public'
 ---
 
@@ -12,7 +9,7 @@ visibility: 'public'
 
 - Use inline `@` references for all **required reads**.
 - Global doc references must use the absolute-home form
-  `@<HOME>/.teleclaude/docs/...` (e.g. `@/Users/alice/.teleclaude/docs/...`).
+  `@<HOME>/.teleclaude/docs/...` (e.g. `@<HOME>/.teleclaude/docs/...`).
   This matches the enforced validator behavior at
   `teleclaude/resource_validation/_snippet.py:124` which expands
   `Path.home()` at validation time; the unexpanded `@~/...` literal

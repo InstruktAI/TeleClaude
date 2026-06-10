@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/role-scoped-history-access'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Role-based filtering of mirror search, listing, and detail lookup. Admins see all mirrors; members see their own and shared ones; everyone else sees only their own. Applied at the store boundary before rows reach the renderer.'
+visibility: 'public'
 ---
 
 # Role-Scoped History Access — Spec

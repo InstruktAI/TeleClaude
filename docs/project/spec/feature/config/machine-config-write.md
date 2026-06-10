@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/machine-config-write'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The machine-config writer mutates `config.yml` atomically — dump to a sibling temp file, durably flush, atomically replace, cleanup on failure — mirroring the project-config writer but targeting the machine config aggregate.'
+visibility: 'public'
 ---
 
 # Machine Config Write — Spec

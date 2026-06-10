@@ -1,9 +1,5 @@
 ---
 description: 'Fix phase for prepare. Address review findings inside the active procedure and re-dispatch the reviewer via the state machine.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/fix-review'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

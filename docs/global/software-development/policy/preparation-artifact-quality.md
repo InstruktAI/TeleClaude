@@ -1,8 +1,5 @@
 ---
 description: 'Quality rules for preparation artifacts (PRD, architecture, and plans). Shared by creators and reviewers.'
-id: 'software-development/policy/preparation-artifact-quality'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

@@ -1,8 +1,5 @@
 ---
 description: Gemini and Antigravity CLI Skills
-id: third-party/gemini-cli/skills
-scope: project
-type: third-party
 ---
 
 # Gemini and Antigravity CLI Skills

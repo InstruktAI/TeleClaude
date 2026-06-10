@@ -1,8 +1,5 @@
 ---
 description: 'Canonical prompt for AI release inspectors.'
-id: 'project/spec/release-inspector-prompt'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

@@ -1,10 +1,6 @@
 ---
-id: 'general/policy/adr-discipline'
-type: 'policy'
-domain: 'general'
-scope: 'global'
-visibility: 'public'
 description: 'When agents commit a non-trivial decision into documentation, the reasoning must land in an ADR — not in the spec, procedure, or principle itself. Keeps primary artifacts clean and current; gives future agents a discoverable, auditable record of why things are the way they are.'
+visibility: 'public'
 ---
 
 # ADR Discipline — Policy

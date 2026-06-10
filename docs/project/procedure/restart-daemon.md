@@ -1,8 +1,5 @@
 ---
 description: 'Controlled daemon restart with verification and log checks.'
-id: 'project/procedure/restart-daemon'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

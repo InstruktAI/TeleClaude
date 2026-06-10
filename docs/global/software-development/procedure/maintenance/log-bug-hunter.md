@@ -1,9 +1,5 @@
 ---
 description: 'Proactive log scanning procedure that discovers errors, fixes inline or dispatches to the bug pipeline, and writes run reports.'
-domain: 'software-development'
-id: 'software-development/procedure/maintenance/log-bug-hunter'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

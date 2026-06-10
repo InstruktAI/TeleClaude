@@ -1,9 +1,6 @@
 ---
-id: 'software-development/policy/typescript/testing'
-type: 'policy'
-scope: 'domain'
-visibility: 'public'
 description: 'TypeScript-specific testing idioms layered over the generic testing policy: vitest runner via package.json, file/binding conventions, snapshots, and the no-unit-test stance.'
+visibility: 'public'
 ---
 
 # TypeScript Testing — Policy

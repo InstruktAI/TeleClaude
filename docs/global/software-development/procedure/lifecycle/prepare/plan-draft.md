@@ -1,9 +1,5 @@
 ---
 description: 'Plan drafting phase for next-prepare. Produces implementation plans from human-approved PRD and the optional reviewer-approved architecture (thin index artifact plus the doc snippets it points at).'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/plan-draft'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

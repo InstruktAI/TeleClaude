@@ -1,8 +1,5 @@
 ---
 description: 'Normalized agent artifact primitives and how they map to supported agent CLIs.'
-id: 'general/concept/normalized-agent-artifacts'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

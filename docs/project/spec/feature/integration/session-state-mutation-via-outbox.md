@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/session-state-mutation-via-outbox'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Hook outbox events that mutate session-record state directly — checkpoint timestamps, native session/transcript binding, transcript history chain — without producing in-process event-bus events.'
+visibility: 'public'
 ---
 
 # Session State Mutation via Outbox — Spec

@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0004-two-memory-categories'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '4'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Memory observations are classified into exactly two categories — human (about a person) and project (about a project). A third "general" category was considered and deferred for lack of a concrete use case.'
+number: '4'
+visibility: 'public'
 ---
 
 # ADR-0004: Two Memory Categories — ADR

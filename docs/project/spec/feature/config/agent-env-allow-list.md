@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/agent-env-allow-list'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Global and project-level authorization surfaces for environment variables that may enter agent sessions.'
+visibility: 'public'
 ---
 
 # Agent Env Allow List — Spec

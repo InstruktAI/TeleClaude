@@ -1,8 +1,5 @@
 ---
 description: 'Data modeling, validation, and resource representation rules.'
-id: 'project/policy/data-modeling'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

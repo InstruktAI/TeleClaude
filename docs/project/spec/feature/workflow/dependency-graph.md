@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/dependency-graph'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Directed acyclic graph of `after` edges between todo entries; cycle detection at the workflow boundary refuses bad mutations before persistence; unmet dependencies block dispatch during prepare/work slug resolution.'
+visibility: 'public'
 ---
 
 # Dependency Graph — Spec

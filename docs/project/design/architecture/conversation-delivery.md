@@ -1,8 +1,5 @@
 ---
 description: 'Restart-safe peer conversation replay built from transcript truth and directional delivery cursors.'
-id: 'project/design/architecture/conversation-delivery'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

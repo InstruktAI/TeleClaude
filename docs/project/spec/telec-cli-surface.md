@@ -1,8 +1,5 @@
 ---
 description: 'Authoritative surface for the telec command-line tool.'
-id: 'project/spec/telec-cli-surface'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

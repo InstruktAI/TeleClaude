@@ -1,8 +1,5 @@
 ---
 description: 'Rules for when to use feature flags and when to avoid them.'
-id: 'project/policy/feature-flag-usage'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

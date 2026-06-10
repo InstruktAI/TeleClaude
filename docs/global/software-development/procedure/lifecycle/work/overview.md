@@ -1,9 +1,5 @@
 ---
 description: 'Work stage overview. Build, review, fix, finalize cycle driven by the work state machine.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/work/overview'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

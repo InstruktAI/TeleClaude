@@ -1,8 +1,5 @@
 ---
 description: Gemini and Antigravity CLI Commands
-id: third-party/gemini-cli/commands
-scope: project
-type: third-party
 ---
 
 # Gemini and Antigravity CLI Commands

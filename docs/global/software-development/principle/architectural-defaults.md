@@ -1,9 +1,5 @@
 ---
 description: 'Architectural defaults every project on this platform should align with: event-driven services, domain-driven boundaries, CLI-first agency, purposeful state, decoupled composition.'
-domain: 'software-development'
-id: 'software-development/principle/architectural-defaults'
-scope: 'domain'
-type: 'principle'
 visibility: 'public'
 ---
 

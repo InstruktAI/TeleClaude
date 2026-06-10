@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/domain/glossary'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Cross-context ubiquitous-language register. Disambiguates terms that appear in multiple bounded contexts so each meaning is explicit and translation rules at boundaries are clear.'
+visibility: 'public'
 ---
 
 # Domain Glossary — Spec

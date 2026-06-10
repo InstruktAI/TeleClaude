@@ -1,8 +1,6 @@
 ---
-id: third-party/gemini-cli/policy-engine
-type: third-party
-scope: project
-description: Gemini CLI Policy Engine — the supported replacement for the deprecated --allowed-tools flag and tools.allowed setting.
+description: Gemini CLI Policy Engine — the supported replacement for the deprecated
+  --allowed-tools flag and tools.allowed setting.
 ---
 
 # Gemini CLI Policy Engine — Spec

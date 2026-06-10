@@ -1,8 +1,5 @@
 ---
 description: 'Judgment of free-text content belongs to intelligence, not to code that grades it. The impulse to build a validator is the warning sign.'
-id: 'general/principle/intelligence-boundaries'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

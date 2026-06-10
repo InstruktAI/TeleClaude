@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0014-tier-triggered-pane-layout'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '14'
-date: '2026-06-03'
 adr_status: 'accepted'
+date: '2026-06-03'
 description: 'The Sessions-view pane renderer swaps same-tier cells in place and minimally reflows on tier change, replacing the destroy-and-rebuild + select-layout even-horizontal approach; one canonical state owner enforces invariant I1.'
+number: '14'
+visibility: 'public'
 ---
 
 # ADR-0014: Tier-Triggered In-Place Pane Layout — ADR

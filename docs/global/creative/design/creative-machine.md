@@ -1,9 +1,5 @@
 ---
 description: 'State machine architecture for the creative lifecycle: input capture, design spec, art generation, and visual artifact approval.'
-domain: 'creative'
-id: 'creative/design/creative-machine'
-scope: 'global'
-type: 'design'
 visibility: 'public'
 ---
 

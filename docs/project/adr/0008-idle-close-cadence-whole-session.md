@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0008-idle-close-cadence-whole-session'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '8'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Memory extraction runs over the whole session delta on two triggers — idle ≥30 minutes or session close. Per-turn windowing (e.g., Hermes-style every-N-turns) is not used for memory.'
+number: '8'
+visibility: 'public'
 ---
 
 # ADR-0008: Idle/Close Cadence, Whole-Session Ingestion — ADR

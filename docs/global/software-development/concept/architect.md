@@ -1,8 +1,5 @@
 ---
 description: 'Strategic role. Requirements, architecture, use cases. Break down work, create implementation plans, ensure readiness.'
-id: 'software-development/concept/architect'
-scope: 'domain'
-type: 'concept'
 visibility: 'public'
 ---
 

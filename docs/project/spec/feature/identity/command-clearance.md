@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/command-clearance'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Gate every protected operation on the CLI verb''s role allowlist via the command-clearance capability.'
+visibility: 'public'
 ---
 
 # Command Clearance — Spec

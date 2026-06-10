@@ -1,8 +1,5 @@
 ---
 description: 'Periodic self-awareness timer that keeps agents aligned during sustained work.'
-id: 'general/policy/heartbeat'
-scope: 'global'
-type: 'policy'
 visibility: 'public'
 ---
 

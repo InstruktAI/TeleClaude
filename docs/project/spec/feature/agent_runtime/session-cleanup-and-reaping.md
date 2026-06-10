@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/session-cleanup-and-reaping'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'agent_runtime — terminate a session, free its host-pane + workspace + tmpdir resources, sweep orphans, and replay close-requested events for sessions whose channel cleanup never completed.'
+visibility: 'public'
 ---
 
 # Session Cleanup and Reaping — Spec

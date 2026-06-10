@@ -1,9 +1,5 @@
 ---
 description: 'Complete telec projects init pipeline — project git plumbing, artifact sync, event domain seeding, project registration, release channel.'
-domain: 'general'
-id: 'general/procedure/project-initialization'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

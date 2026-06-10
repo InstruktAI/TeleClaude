@@ -1,8 +1,4 @@
 ---
-id: 'software-development/design/project-toolchain'
-type: 'design'
-domain: 'software-development'
-scope: 'global'
 description: 'TeleClaude offers shared telec code functionality that runs each project''s own language-agnostic Makefile; the project owns its toolchain, telec orchestrates and scopes.'
 visibility: 'public'
 ---

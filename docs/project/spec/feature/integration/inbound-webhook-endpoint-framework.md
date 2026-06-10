@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/inbound-webhook-endpoint-framework'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Dynamic route registration for external inbound webhooks — provider-specific path + verification config + normalizer key, mounted at runtime from teleclaude.yml.'
+visibility: 'public'
 ---
 
 # Inbound Webhook Endpoint Framework — Spec

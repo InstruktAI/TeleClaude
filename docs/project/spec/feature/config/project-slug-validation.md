@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/project-slug-validation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The project-config `project_slug` field normalizes empty values to absent and enforces kebab-case slug format when set.'
+visibility: 'public'
 ---
 
 # Project Slug Validation — Spec

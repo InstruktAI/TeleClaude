@@ -1,8 +1,5 @@
 ---
 description: 'Command contract highlights for session creation, messaging, agent control, and subscription management.'
-id: 'project/spec/command-contracts'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

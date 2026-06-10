@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/whatsapp-inbound-conversation-routing'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'End-to-end inbound WhatsApp pipeline — normalize the Cloud API webhook payload, route via a built-in contract, resolve or create a session per phone number, and dispatch a typed command for text or media.'
+visibility: 'public'
 ---
 
 # WhatsApp Inbound Conversation Routing — Spec

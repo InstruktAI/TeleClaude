@@ -1,8 +1,5 @@
 ---
 description: 'Redis Streams transport for cross-computer request/response and peer discovery.'
-id: 'project/design/architecture/redis-transport'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/layered-overlay-resolution'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Layered configuration resolution composing global, project, and per-person YAML sources into a workspace-scoped app config aggregate.'
+visibility: 'public'
 ---
 
 # Layered Overlay Resolution — Spec

@@ -1,9 +1,6 @@
 ---
-id: 'software-development/policy/testing'
-type: 'policy'
-scope: 'domain'
-visibility: 'public'
 description: 'Testing doctrine: tests bind human-authored feature-spec scenarios; functional + smoke as the levels; coverage measured against the scenario inventory; spec-mirrored test files; spec-driven RED-GREEN delivery with drift detection. Language specifics live in the per-language testing policy.'
+visibility: 'public'
 ---
 
 # Testing — Policy

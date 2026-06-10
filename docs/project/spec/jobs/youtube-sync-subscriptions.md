@@ -1,8 +1,5 @@
 ---
 description: 'YouTube subscription tagger: scheduled script job that classifies untagged channels.'
-id: 'project/spec/jobs/youtube-sync-subscriptions'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

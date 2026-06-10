@@ -1,8 +1,5 @@
 ---
 description: 'Complete lifecycle of a terminal session from creation to cleanup.'
-id: 'project/design/architecture/session-lifecycle'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

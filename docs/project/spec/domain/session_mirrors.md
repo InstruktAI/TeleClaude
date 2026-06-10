@@ -1,11 +1,11 @@
 ---
-id: project/spec/domain/session_mirrors
-type: spec
-domain: software-development
-scope: project
+delivered_by:
+- v2-session-mirrors
+- v2-session-mirrors-cutover
+description: Session Mirrors bounded context — eternal text extracts of agent sessions
+  for historical search. One mirror per session, independent of session lifetime,
+  text-only.
 visibility: public
-delivered_by: [v2-session-mirrors, v2-session-mirrors-cutover]
-description: Session Mirrors bounded context — eternal text extracts of agent sessions for historical search. One mirror per session, independent of session lifetime, text-only.
 ---
 
 # Session Mirrors Domain Spec — Spec

@@ -1,8 +1,5 @@
 ---
 description: 'Rust language usage rules: typing, error handling, ownership, async, traits, module structure, idioms, anti-patterns.'
-id: 'software-development/policy/rust/core'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

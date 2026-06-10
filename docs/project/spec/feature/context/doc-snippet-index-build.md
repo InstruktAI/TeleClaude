@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/doc-snippet-index-build'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
+description: 'Sync derives snippet metadata from paths, writes per-scope index.yaml catalogs, normalizes titles, and rejects cross-project ID collisions.'
 visibility: 'public'
-description: 'Sync builds the per-scope snippet index.yaml catalog from frontmatter, normalizes titles, and rejects cross-project ID collisions.'
 ---
 
 # Doc Snippet Index Build — Spec
@@ -16,13 +12,15 @@ description: 'Sync builds the per-scope snippet index.yaml catalog from frontmat
 ## What it is
 
 The Index is the authoritative pre-computed catalog of every Source snippet in
-a scope. Sync walks the working tree, extracts frontmatter from each Source,
-normalizes its presentation (titles, paths), and writes per-scope
-`index.yaml` files — one for the project, one for global baseline, one for
-third-party. Consumers (the Selection policy, the CLI verbs, peer agents)
-read the Index instead of re-walking the tree, so discovery is fast and
-deterministic. Cross-project ID collisions are detected at build time so two
-projects cannot silently claim the same snippet identity.
+a scope. Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
+each Source's path, normalizes its presentation (titles, paths), and writes
+per-scope `index.yaml` files — one for the project, one for global baseline, one
+for third-party. The derived metadata makes `index.yaml` the single source of
+truth: Sources no longer author `id`/`type`/`scope`/`domain` in frontmatter.
+Consumers (the Selection policy, the CLI verbs, peer agents) read the Index
+instead of re-walking the tree, so discovery is fast and deterministic.
+Cross-project ID collisions are detected at build time so two projects cannot
+silently claim the same snippet identity.
 
 ## Canonical fields
 
@@ -37,16 +35,30 @@ And docs/third-party/index.yaml is written when third-party sources exist
 ```
 
 ```
-Given a snippet file with malformed frontmatter (missing id or description)
+Given a valid Source under docs/
+When the index-build phase writes its entry
+Then the entry carries id, type, scope, and domain derived from the Source's path
+And a procedure Source's entry additionally carries its activation_trigger
+```
+
+```
+Given a Source whose path cannot derive id/type/scope (placement outside any known taxonomy root)
 When the index-build phase runs
-Then the snippet is silently skipped and excluded from the Index
-And no error is raised for that single snippet
+Then a hard build error is raised naming the path and the reason it is non-derivable
+And the sync build fails
+```
+
+```
+Given a snippet file missing the authored description frontmatter
+When validation runs ahead of the index build
+Then a missing-description finding is reported for that file
+And the sync exits with a non-zero status
 ```
 
 ```
 Given a Source whose H1 heading lacks the type suffix (e.g. "— Policy")
 When the index entry is rendered
-Then the title-normalization step appends the type suffix derived from frontmatter type
+Then the title-normalization step appends the type suffix derived from the path-derived type
 And the rewrite is idempotent on subsequent builds
 ```
 
@@ -84,10 +96,9 @@ Then delivered_by is copied into the index entry verbatim
 
 ## Known caveats
 
-- Malformed frontmatter is silent. A snippet missing `id`, `description`,
-  `type`, or `scope` is skipped without error, so it disappears from the Index
-  with no diagnostic. Operators discover the gap only when downstream lookups
-  fail to find the ID.
+- Non-derivable paths fail loudly. A Source whose path cannot yield
+  `id`/`type`/`scope` raises a hard build error naming the path and reason, so
+  the sync build stops rather than silently dropping the snippet from the Index.
 - Baseline title normalization only fires for folder names listed in the
   known type-suffix set. Snippets in unrecognized baseline folders get no
   title rewrite, producing inconsistent presentation.

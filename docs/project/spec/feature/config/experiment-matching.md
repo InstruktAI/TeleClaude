@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/experiment-matching'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The experiment resolver matches a named experiment with strict agent constraints, optimistic adapter constraints, and OR semantics across duplicate-named entries.'
+visibility: 'public'
 ---
 
 # Experiment Matching — Spec

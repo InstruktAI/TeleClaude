@@ -1,8 +1,5 @@
 ---
 description: 'Architecture of the automated webhook-driven deployment pipeline.'
-id: 'project/design/architecture/deployment-pipeline'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

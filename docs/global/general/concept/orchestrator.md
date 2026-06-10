@@ -1,8 +1,5 @@
 ---
 description: 'Supervisory role. Dispatch workers, monitor progress, drive state machine. Follow next-work output verbatim.'
-id: 'general/concept/orchestrator'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

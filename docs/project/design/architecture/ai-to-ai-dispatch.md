@@ -1,8 +1,5 @@
 ---
 description: 'End-to-end dispatch flow when one AI session spawns and supervises another: creation, listener registration, execution, and stop-time notification.'
-id: 'project/design/architecture/ai-to-ai-dispatch'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

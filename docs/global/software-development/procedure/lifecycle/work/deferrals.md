@@ -1,9 +1,5 @@
 ---
 description: 'Process deferrals, create new todos, and mark deferrals as processed.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/work/deferrals'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

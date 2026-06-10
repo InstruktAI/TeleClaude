@@ -1,13 +1,9 @@
 ---
-id: project/spec/domain/workflow
-type: spec
-domain: software-development
-scope: project
-visibility: public
 delivered_by:
 - v2-workflow-cutover
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
+visibility: public
 ---
 
 # Workflow Domain Spec — Spec

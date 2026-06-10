@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/mirror-detail-retrieval'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Fetch one session mirror by exact or prefix session identifier and render its conversation text. Used by `telec history show` and by the session_mirrors service''s detail capability.'
+visibility: 'public'
 ---
 
 # Mirror Detail Retrieval — Spec

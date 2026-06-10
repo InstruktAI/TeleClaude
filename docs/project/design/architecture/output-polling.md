@@ -1,8 +1,5 @@
 ---
 description: 'Mechanism for real-time terminal output capture and streaming.'
-id: 'project/design/architecture/output-polling'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

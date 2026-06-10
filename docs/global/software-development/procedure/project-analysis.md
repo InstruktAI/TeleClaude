@@ -1,8 +1,5 @@
 ---
 description: 'AI-driven project analysis procedure invoked by /projects-analyze (telec projects analyze / onboard). Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
-id: 'software-development/procedure/project-analysis'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

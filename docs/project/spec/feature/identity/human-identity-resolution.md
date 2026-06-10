@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/human-identity-resolution'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Resolve a configured person from any inbound human signal — email, Telegram user id, Discord user id, WhatsApp phone number — into a canonical IdentityContext for downstream identity and routing.'
+visibility: 'public'
 ---
 
 # Human Identity Resolution — Spec

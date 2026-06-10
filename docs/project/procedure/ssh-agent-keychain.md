@@ -1,8 +1,5 @@
 ---
 description: 'Procedure for configuring persistent SSH agent access for the daemon.'
-id: 'project/procedure/ssh-agent-keychain'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

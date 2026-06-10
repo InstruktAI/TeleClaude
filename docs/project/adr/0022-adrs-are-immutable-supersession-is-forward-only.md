@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0022-adrs-are-immutable-supersession-is-forward-only'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '22'
-date: '2026-06-09'
 adr_status: 'accepted'
+date: '2026-06-09'
 description: 'ADRs are immutable historical records; a superseding ADR cites the prior one via a forward supersedes pointer and never mutates it (no adr_status edit on the prior).'
+number: '22'
+visibility: 'public'
 ---
 
 # ADR-0022: ADRs are immutable; supersession is forward-only — ADR

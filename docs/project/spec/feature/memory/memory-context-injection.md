@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/memory-context-injection'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Render the most recent observations for a project as a Markdown block injected into agent context at session start.'
+visibility: 'public'
 ---
 
 # Memory Context Injection — Spec

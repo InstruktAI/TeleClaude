@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/historical-mirror-listing'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'List recent session mirrors with optional identity, project, and role filters. Used by `telec history list` to surface stored conversations in recency order with a summary column.'
+visibility: 'public'
 ---
 
 # Historical Mirror Listing — Spec

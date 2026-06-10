@@ -1,8 +1,5 @@
 ---
 description: 'Concrete directory and file structure for v2 Rust workspace, per-crate conventions, naming rules, install symlinks.'
-id: 'project/design/architecture-v2/file-layout'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

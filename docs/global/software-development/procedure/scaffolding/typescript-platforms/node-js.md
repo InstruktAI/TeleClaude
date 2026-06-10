@@ -1,8 +1,5 @@
 ---
 description: 'Node.js/CLI TypeScript project scaffolding policy.'
-id: 'software-development/procedure/scaffolding/typescript-platforms/node-js'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

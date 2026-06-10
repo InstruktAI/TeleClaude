@@ -1,8 +1,5 @@
 ---
 description: 'Vite + React TypeScript project scaffolding policy.'
-id: 'software-development/procedure/scaffolding/typescript-platforms/vite'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

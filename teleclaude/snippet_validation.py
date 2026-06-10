@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 import yaml
@@ -14,6 +15,25 @@ from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 _DOMAINS = frozenset(DOMAIN_SCOPES)
+
+
+class SnippetTaxonomy(StrEnum):
+    """Closed taxonomy values for documentation snippets."""
+
+    PRINCIPLE = "principle"
+    CONCEPT = "concept"
+    POLICY = "policy"
+    PROCEDURE = "procedure"
+    DESIGN = "design"
+    SPEC = "spec"
+    ADR = "adr"
+
+
+class SnippetScope(StrEnum):
+    """Closed scope values materialized in the snippet index."""
+
+    GLOBAL = "global"
+    PROJECT = "project"
 
 
 @dataclass(frozen=True)
@@ -29,6 +49,16 @@ class SnippetIdParts:
         if self.rest:
             return f"{self.scope}/{self.taxonomy}/{self.rest}"
         return f"{self.scope}/{self.taxonomy}"
+
+
+@dataclass(frozen=True)
+class SnippetClassification:
+    """Path-derived snippet classification materialized by the index."""
+
+    id: str
+    type: SnippetTaxonomy
+    scope: SnippetScope
+    domain: str
 
 
 def load_domains(_project_root: Path) -> set[str]:
@@ -138,6 +168,85 @@ def expected_snippet_id_for_path(
     if parts[1] == "project":
         return _expected_from_project(parts, path)
 
+    return None, "invalid_docs_root"
+
+
+def derive_snippet_classification(
+    path: Path,
+    *,
+    project_root: Path,
+    domains: Iterable[str],
+) -> tuple[SnippetClassification | None, str | None]:
+    """Derive snippet classification from its filesystem path."""
+    id_path = companion_parent(path) or path
+    snippet_id, id_error = expected_snippet_id_for_path(id_path, project_root=project_root, domains=domains)
+    if id_error:
+        return None, id_error
+    if not snippet_id:
+        return None, "not_a_snippet"
+
+    taxonomy, taxonomy_error = _taxonomy_from_path(id_path, project_root=project_root)
+    if taxonomy_error:
+        return None, taxonomy_error
+    if taxonomy is None:
+        return None, "missing_taxonomy"
+
+    scope, scope_error = _index_scope_from_path(id_path, project_root=project_root)
+    if scope_error:
+        return None, scope_error
+    if scope is None:
+        return None, "missing_scope"
+
+    return (
+        SnippetClassification(
+            id=snippet_id,
+            type=taxonomy,
+            scope=scope,
+            domain=snippet_id.split("/", 1)[0],
+        ),
+        None,
+    )
+
+
+def _taxonomy_from_path(
+    path: Path,
+    *,
+    project_root: Path,
+) -> tuple[SnippetTaxonomy | None, str | None]:
+    try:
+        rel = path.resolve().relative_to(project_root.resolve())
+    except (ValueError, OSError):
+        return None, "not_under_project_root"
+    parts = rel.parts
+    raw_taxonomy: str | None = None
+    if len(parts) >= 4 and parts[0] == "docs" and parts[1] == "global":
+        raw_taxonomy = parts[3]
+    elif len(parts) >= 3 and parts[0] == "docs" and parts[1] == "project":
+        raw_taxonomy = parts[2]
+    if raw_taxonomy is None:
+        return None, "missing_taxonomy"
+    try:
+        return SnippetTaxonomy(raw_taxonomy), None
+    except ValueError:
+        return None, "invalid_taxonomy"
+
+
+def _index_scope_from_path(
+    path: Path,
+    *,
+    project_root: Path,
+) -> tuple[SnippetScope | None, str | None]:
+    try:
+        rel = path.resolve().relative_to(project_root.resolve())
+    except (ValueError, OSError):
+        return None, "not_under_project_root"
+    parts = rel.parts
+    if len(parts) < 2 or parts[0] != "docs":
+        return None, "not_under_docs_root"
+    if parts[1] == "global":
+        return SnippetScope.GLOBAL, None
+    if parts[1] == "project":
+        return SnippetScope.PROJECT, None
     return None, "invalid_docs_root"
 
 

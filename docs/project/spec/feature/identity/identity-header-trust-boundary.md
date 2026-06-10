@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/identity-header-trust-boundary'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Reject web-user identity signals at the identity context''s transport boundary unless the call originates from a trusted loopback host.'
+visibility: 'public'
 ---
 
 # Identity Header Trust Boundary — Spec

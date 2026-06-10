@@ -1,8 +1,5 @@
 ---
 description: 'Definition of Ready gates for work items before they enter implementation. Establishes required inputs, scope clarity, and verification readiness.'
-id: 'software-development/policy/definition-of-ready'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

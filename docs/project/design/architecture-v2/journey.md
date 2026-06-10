@@ -1,8 +1,5 @@
 ---
 description: 'Why TeleClaude needs an architecture v2 and what has drifted in the current system.'
-id: 'project/design/architecture-v2/journey'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

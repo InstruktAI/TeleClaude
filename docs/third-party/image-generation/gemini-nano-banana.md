@@ -1,8 +1,5 @@
 ---
 description: Gemini Image Generation (Nano Banana) — API Reference
-id: third-party/image-generation/gemini-nano-banana
-scope: project
-type: third-party
 ---
 
 # Gemini Image Generation (Nano Banana) — API Reference

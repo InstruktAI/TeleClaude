@@ -1,8 +1,5 @@
 ---
 description: Codex CLI Configuration and Compaction
-id: third-party/codex-cli/configuration
-scope: project
-type: third-party
 ---
 
 # Codex CLI Configuration and Compaction

@@ -1,8 +1,5 @@
 ---
 description: 'Minimal schema used for agent artifacts (commands and skills).'
-id: 'general/spec/agent-artifacts'
-scope: 'global'
-type: 'spec'
 visibility: 'public'
 ---
 

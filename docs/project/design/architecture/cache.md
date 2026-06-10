@@ -1,8 +1,5 @@
 ---
 description: 'DaemonCache snapshot layer for computers, projects, todos, sessions, and agent availability.'
-id: 'project/design/architecture/cache'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

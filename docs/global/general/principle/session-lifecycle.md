@@ -1,8 +1,5 @@
 ---
 description: 'Sessions are ephemeral expressions; artifacts carry continuity. Callers clean up children, then themselves. Signal sessions persist only when human attention is required.'
-id: 'general/principle/session-lifecycle'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

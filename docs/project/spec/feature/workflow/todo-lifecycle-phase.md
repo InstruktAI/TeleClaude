@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/todo-lifecycle-phase'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Canonical lifecycle_phase pointer naming where a Todo stands in its journey, derived from artifact evidence by the workflow engine. No operator override or manual realignment surfaces.'
+visibility: 'public'
 ---
 
 # Todo Lifecycle Phase — Spec

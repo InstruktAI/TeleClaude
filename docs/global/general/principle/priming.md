@@ -1,8 +1,5 @@
 ---
 description: 'Prime agents with the minimal, role-specific context required to act.'
-id: 'general/principle/priming'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

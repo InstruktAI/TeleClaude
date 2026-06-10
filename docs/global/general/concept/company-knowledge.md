@@ -1,9 +1,5 @@
 ---
 description: 'Company knowledge layer — organizational policies, procedures, and domain context available to all projects belonging to a company.'
-domain: 'general'
-id: 'general/concept/company-knowledge'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

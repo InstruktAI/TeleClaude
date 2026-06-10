@@ -1,9 +1,5 @@
 ---
 description: 'Generate images using the Nano Banana helper script. Text-to-image, image editing, and multi-turn iteration via Gemini.'
-domain: 'creative'
-id: 'creative/procedure/image-generation/nano-banana'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

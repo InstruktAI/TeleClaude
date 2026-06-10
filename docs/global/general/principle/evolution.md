@@ -1,8 +1,5 @@
 ---
 description: 'The partnership matures by consolidating lessons into the platform itself; evolution is visible in artifact diffs, not in announcements.'
-id: 'general/principle/evolution'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

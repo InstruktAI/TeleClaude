@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/subscription-routing'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Subscriptions are a `type`-discriminated union of job-triggered and YouTube subscriptions, each carrying a notification preference that selects the delivery channel (telegram by default).'
+visibility: 'public'
 ---
 
 # Subscription Routing — Spec

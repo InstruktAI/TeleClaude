@@ -1,9 +1,5 @@
 ---
 description: 'Assess a project''s tool configuration against blessed templates and report coverage gaps.'
-domain: 'software-development'
-id: 'software-development/procedure/code-config-assessment'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

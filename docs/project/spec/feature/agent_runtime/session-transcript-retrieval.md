@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/session-transcript-retrieval'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'On-demand read of a session''s native agent transcript, with chain-aware projection, since/tools/thinking filtering, and a pane-tail fallback.'
+visibility: 'public'
 ---
 
 # Session Transcript Retrieval — Spec

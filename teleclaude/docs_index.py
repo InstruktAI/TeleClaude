@@ -28,7 +28,12 @@ from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
-from teleclaude.snippet_validation import companion_slug, is_companion, load_domains
+from teleclaude.snippet_validation import (
+    companion_slug,
+    derive_snippet_classification,
+    is_companion,
+    load_domains,
+)
 
 __all__ = ["load_domains"]
 
@@ -111,11 +116,14 @@ class SnippetEntry(TypedDict):
     description: str
     type: str
     scope: str
+    domain: str
+    activation_trigger: str | None
     path: str
     source_project: NotRequired[str]
     visibility: NotRequired[str]
     delivered_by: NotRequired[list[str]]
     superseded_by: NotRequired[list[str]]
+    needs_domain_baseline: NotRequired[bool]
 
 
 class IndexPayload(TypedDict):
@@ -148,16 +156,32 @@ def _copy_delivered_by_metadata(entry: SnippetEntry, metadata: Mapping[str, obje
         entry["delivered_by"] = list(raw_delivered_by)
 
 
+def _copy_needs_domain_baseline_metadata(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
+    raw_value = metadata.get("needs_domain_baseline")
+    if isinstance(raw_value, bool):
+        entry["needs_domain_baseline"] = raw_value
+    elif isinstance(raw_value, str) and raw_value.strip().lower() in {"true", "false"}:
+        entry["needs_domain_baseline"] = raw_value.strip().lower() == "true"
+
+
 # ---------------------------------------------------------------------------
 # Title normalization
 # ---------------------------------------------------------------------------
 
 
-def _normalize_title(file_path: Path, content: str, declared_type: str | None) -> str:
+def _normalize_title(
+    file_path: Path,
+    content: str,
+    declared_type: str | None,
+    *,
+    project_root: Path,
+    domains: set[str],
+) -> str:
     """Ensure H1 title has the correct type suffix (e.g. '— Policy')."""
     suffix = TYPE_SUFFIX.get((declared_type or "").lower())
     if not suffix:
-        inferred = _infer_type_from_path(file_path)
+        classification, _ = derive_snippet_classification(file_path, project_root=project_root, domains=domains)
+        inferred = classification.type.value if classification else _infer_type_from_path(file_path)
         suffix = TYPE_SUFFIX.get(inferred) if inferred else None
     if not suffix:
         return content
@@ -185,7 +209,7 @@ def _infer_type_from_path(file_path: Path) -> str | None:
     return folder if folder in TYPE_SUFFIX else None
 
 
-def normalize_titles(snippets_root: Path) -> None:
+def normalize_titles(snippets_root: Path, *, project_root: Path, domains: set[str]) -> None:
     """Normalize H1 titles in all snippets to include the type suffix."""
     for path in sorted(snippets_root.rglob("*.md")):
         if path.name in ("index.yaml", "index.md"):
@@ -209,7 +233,7 @@ def normalize_titles(snippets_root: Path) -> None:
                 body = normalized_text
         else:
             body = normalized_text
-        updated = _normalize_title(path, body, declared_type)
+        updated = _normalize_title(path, body, declared_type, project_root=project_root, domains=domains)
         final_content = normalized_text
         if updated != body:
             if normalized_text.lstrip().startswith("---"):
@@ -522,6 +546,44 @@ def _attach_superseding_slugs(entry: SnippetEntry, file_path: Path) -> None:
         entry["superseded_by"] = slugs
 
 
+def _build_snippet_entry(
+    file_path: Path,
+    metadata: Mapping[str, object],
+    *,
+    project_root: Path,
+    domains: set[str],
+) -> SnippetEntry | None:
+    description = metadata.get("description")
+    if not isinstance(description, str):
+        return None
+    classification, reason = derive_snippet_classification(file_path, project_root=project_root, domains=domains)
+    if classification is None:
+        raise ValueError(f"Cannot derive snippet classification for {file_path}: {reason or 'unknown'}")
+    try:
+        relative_path = str(file_path.relative_to(project_root))
+    except ValueError:
+        relative_path = str(file_path)
+    activation_trigger = metadata.get("activation_trigger")
+    entry: SnippetEntry = {
+        "id": classification.id,
+        "description": description,
+        "type": classification.type.value,
+        "scope": classification.scope.value,
+        "domain": classification.domain,
+        "activation_trigger": activation_trigger if isinstance(activation_trigger, str) else None,
+        "path": relative_path,
+    }
+    raw_visibility = metadata.get("visibility")
+    if isinstance(raw_visibility, str) and raw_visibility in SNIPPET_VISIBILITY_VALUES:
+        entry["visibility"] = raw_visibility
+    else:
+        entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
+    _copy_delivered_by_metadata(entry, metadata)
+    _copy_needs_domain_baseline_metadata(entry, metadata)
+    _attach_superseding_slugs(entry, file_path)
+    return entry
+
+
 def _eligible_snippet_files(snippets_root: Path, *, include_baseline: bool) -> list[Path]:
     """Sorted snippet files for indexing, excluding companions.
 
@@ -535,8 +597,9 @@ def _eligible_snippet_files(snippets_root: Path, *, include_baseline: bool) -> l
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
     """Build the index.yaml payload for a snippet root. Modifies files as side effects
     (normalizes titles, removes stale indexes)."""
+    domains = load_domains(project_root)
     remove_non_baseline_indexes(snippets_root)
-    normalize_titles(snippets_root)
+    normalize_titles(snippets_root, project_root=project_root, domains=domains)
 
     if not snippets_root.exists():
         return {"project_root": str(project_root), "snippets_root": str(snippets_root), "snippets": []}
@@ -584,6 +647,8 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
                     "description": description,
                     "type": snippet_type,
                     "scope": "global",
+                    "domain": "baseline",
+                    "activation_trigger": None,
                     "path": relative_path,
                     "visibility": SNIPPET_VISIBILITY_INTERNAL,
                 }
@@ -595,36 +660,9 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
         snippet_cache.append((file_path, metadata))
 
     for file_path, metadata in snippet_cache:
-        snippet_id_val = metadata.get("id")
-        description = metadata.get("description")  # type: ignore[assignment]
-        snippet_type = metadata.get("type")  # type: ignore[assignment]
-        snippet_scope = metadata.get("scope")
-        if (
-            not isinstance(snippet_id_val, str)
-            or not isinstance(description, str)
-            or not isinstance(snippet_type, str)
-            or not isinstance(snippet_scope, str)
-        ):
-            continue
-        try:
-            relative_path = str(file_path.relative_to(project_root))
-        except ValueError:
-            relative_path = str(file_path)
-        entry: SnippetEntry = {
-            "id": snippet_id_val,
-            "description": description,
-            "type": snippet_type,
-            "scope": snippet_scope,
-            "path": relative_path,
-        }
-        raw_visibility = metadata.get("visibility")
-        if isinstance(raw_visibility, str) and raw_visibility in SNIPPET_VISIBILITY_VALUES:
-            entry["visibility"] = raw_visibility
-        else:
-            entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
-        _copy_delivered_by_metadata(entry, metadata)
-        _attach_superseding_slugs(entry, file_path)
-        snippets.append(entry)
+        entry = _build_snippet_entry(file_path, metadata, project_root=project_root, domains=domains)
+        if entry is not None:
+            snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])
     check_global_collisions(snippets, project_root, snippets_root)

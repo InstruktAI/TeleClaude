@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0009-workflow-domain-has-no-roadmap'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '9'
-date: '2026-05-23'
 adr_status: 'accepted'
+date: '2026-05-23'
 description: 'The workflow domain has no "roadmap" concept. A todo is the single entity, ordered and dependency-gated; the v2 workflow crate''s separate RoadmapEntry is to be folded into Todo. v1''s legacy roadmap table/module names stay until cutover.'
+number: '9'
+visibility: 'public'
 ---
 
 # ADR-0009: Workflow Domain Has No Roadmap Concept — ADR

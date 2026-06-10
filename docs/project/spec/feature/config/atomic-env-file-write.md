@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/atomic-env-file-write'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The env-file writer mutates `.env` atomically — dump line-edited content to a sibling temp file, durably flush, atomically replace, cleanup on failure — so per-section wizard writes satisfy the setup-wizard idempotency contract.'
+visibility: 'public'
 ---
 
 # Atomic Env File Write — Spec

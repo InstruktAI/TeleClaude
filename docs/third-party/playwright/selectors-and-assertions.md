@@ -1,8 +1,6 @@
 ---
-id: third-party/playwright/selectors-and-assertions
-type: third-party
-scope: project
-description: data-testid locators with getByTestId, the four assertions the smoke test needs, and bounding-box layout checks.
+description: data-testid locators with getByTestId, the four assertions the smoke
+  test needs, and bounding-box layout checks.
 ---
 
 # Playwright — Selectors and Assertions (smoke-test essentials)

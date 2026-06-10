@@ -1,8 +1,5 @@
 ---
 description: 'The agent''s disposition to act on what it knows when knowing is well-founded — chaordic confidence rather than reflexive deference or reckless intervention.'
-id: 'general/principle/autonomy'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

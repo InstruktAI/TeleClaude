@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/artifact-versioning'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Multi-version storage of workflow Artifacts — every write appends a new version keyed by SHA256 digest, the current pointer updates in place, diffs are computed between digests, and remove cascades version history.'
+visibility: 'public'
 ---
 
 # Workflow Artifact Versioning — Spec

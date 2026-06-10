@@ -1,8 +1,5 @@
 ---
 description: 'v2 logging/observability model: crates/observability wraps tracing, output matches the instrukt_ai_logging Python standard.'
-id: 'project/design/architecture-v2/observability-model'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

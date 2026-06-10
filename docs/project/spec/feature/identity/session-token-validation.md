@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/session-token-validation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Validate an inbound session-token signal at the identity context''s boundary, returning a CallerIdentity carrying the bound principal and role.'
+visibility: 'public'
 ---
 
 # Session Token Validation — Spec

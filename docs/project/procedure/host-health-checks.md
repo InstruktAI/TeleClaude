@@ -1,8 +1,5 @@
 ---
 description: 'Diagnostic checks for macOS host health on TeleClaude computers.'
-id: 'project/procedure/host-health-checks'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/doc-selection-policy'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Pure-function curation of doc snippets by role visibility, taxonomy areas/domains, scope, baseline manifest anchoring, and target-slug filter.'
+visibility: 'public'
 ---
 
 # Doc Selection Policy — Spec

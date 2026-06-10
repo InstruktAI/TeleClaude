@@ -1,8 +1,5 @@
 ---
 description: 'Prefer parallelizing independent work with clear briefs and reconciliation to reduce latency without sacrificing accuracy.'
-id: 'general/principle/parallel-work'
-scope: 'domain'
-type: 'principle'
 visibility: 'public'
 ---
 

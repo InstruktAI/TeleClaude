@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/todo-removal'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Soft-remove a Todo from default workflow views while retaining its entry, lifecycle state, artifacts, and artifact version history for a grace window; release working resources immediately, allow identity-addressed reactivation before purge, and hard-purge expired tombstones via routine maintenance.'
+visibility: 'public'
 ---
 
 # Todo Removal — Spec

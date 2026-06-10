@@ -1,8 +1,5 @@
 ---
 description: 'Evaluative role. Assess code against the PRD, prepared artifacts, and standards, parallel review lanes, structured findings, binary verdict.'
-id: 'software-development/concept/reviewer'
-scope: 'domain'
-type: 'concept'
 visibility: 'public'
 ---
 

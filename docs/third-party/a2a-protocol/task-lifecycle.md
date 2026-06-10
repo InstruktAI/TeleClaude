@@ -1,8 +1,5 @@
 ---
 description: A2A Task Lifecycle
-id: third-party/a2a-protocol/task-lifecycle
-scope: project
-type: third-party
 ---
 
 # A2A Task Lifecycle

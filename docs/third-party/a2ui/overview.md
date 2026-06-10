@@ -1,8 +1,5 @@
 ---
 description: A2UI Protocol Overview
-id: third-party/a2ui/overview
-scope: project
-type: third-party
 ---
 
 # A2UI Protocol Overview

@@ -1,8 +1,5 @@
 ---
 description: 'What earns a documentation snippet its place: the value test, anti-patterns that destroy signal, value-creating shapes, and a worked anti-example.'
-id: 'general/policy/snippet-value-contract'
-scope: 'global'
-type: 'policy'
 visibility: 'public'
 ---
 

@@ -1,9 +1,5 @@
 ---
 description: 'Hunt for code that violates documented design principles. Surface structural issues that a surface review would miss.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/work/principle-violation-hunt'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

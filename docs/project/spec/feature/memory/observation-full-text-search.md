@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/observation-full-text-search'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Full-text search across memory observations with a structured-index primary path and a substring fallback when the index cannot answer.'
+visibility: 'public'
 ---
 
 # Observation Full-Text Search — Spec

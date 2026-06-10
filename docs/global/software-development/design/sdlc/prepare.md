@@ -1,9 +1,5 @@
 ---
 description: 'Prepare phase design: one driving session loads phase-scoped procedures in sequence, produces the prepare artifacts (PRD, architecture doc-snippet edits + thin index, implementation plan), and submits each derived artifact to a cross-model reviewer. PRD is the only human approval gate.'
-domain: 'software-development'
-id: 'software-development/design/sdlc/prepare'
-scope: 'global'
-type: 'design'
 visibility: 'public'
 ---
 

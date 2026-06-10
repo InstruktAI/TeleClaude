@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/sealed-commit'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Sealed commit interface for agent sessions inside the host pane. The git wrapper blocks raw `git add` / `git commit` and redirects to `telec code commit`, which constructs a pathspec-scoped commit from the resolved workspace scope plus declared `--include` paths. New untracked files, unmerged-index files, and partial-staged tracked files are explicitly accepted by `telec code add`. Cross-session work cannot leak into a commit by construction.'
+visibility: 'public'
 ---
 
 # Sealed Commit — Spec

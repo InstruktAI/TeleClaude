@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0017-review-lanes-as-dod-anchored-shared-group'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-description: 'Review lanes are extracted into one DoD-anchored shared catalog that the build reviewer, commit reviewer, and planner all reference, instead of being embedded in the build-review procedure and re-described in the plan reviewer.'
-date: '2026-06-07'
 adr_status: 'accepted'
+date: '2026-06-07'
+description: 'Review lanes are extracted into one DoD-anchored shared catalog that the build reviewer, commit reviewer, and planner all reference, instead of being embedded in the build-review procedure and re-described in the plan reviewer.'
 number: '17'
+visibility: 'public'
 ---
 
 # Review Lanes as a DoD-Anchored Shared Group — ADR

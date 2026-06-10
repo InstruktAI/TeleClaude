@@ -1,8 +1,5 @@
 ---
 description: 'Output and footer message separation in UI adapters, with delivery chain and lifecycle.'
-id: 'project/design/architecture/output-delivery'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

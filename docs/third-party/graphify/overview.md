@@ -1,8 +1,7 @@
 ---
-description: Graphify (graphifyy) — tree-sitter AST knowledge graph of a codebase for AI agent context; CLI/MCP query surface and per-change blast-radius (affected) primitive.
-id: third-party/graphify/overview
-scope: project
-type: third-party
+description: Graphify (graphifyy) — tree-sitter AST knowledge graph of a codebase
+  for AI agent context; CLI/MCP query surface and per-change blast-radius (affected)
+  primitive.
 ---
 
 # Graphify — Overview

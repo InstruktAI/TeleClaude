@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/work-state-machine'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Phase B state machine driving a prepared Todo through build → review → fix → terminal finalize_ready inside a per-slug worktree, with a single-flight lock per (project_root, slug) and caller-session ownership for finalize.'
+visibility: 'public'
 ---
 
 # Work State Machine — Spec

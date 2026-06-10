@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0007-provenance-via-mirror-id'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '7'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Memory observations carry source_mirror_id as their provenance handle. Mirrors are eternal, so the pointer never rots; TeleClaude session_ids are ephemeral and native CLI session UUIDs are CLI-controlled.'
+number: '7'
+visibility: 'public'
 ---
 
 # ADR-0007: Provenance via mirror_id — ADR

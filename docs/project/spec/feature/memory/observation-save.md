@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/observation-save'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Save a memory observation — auto-titled, default-project-scoped, identity-tagged, and slotted into a per-project manual session.'
+visibility: 'public'
 ---
 
 # Observation Save — Spec

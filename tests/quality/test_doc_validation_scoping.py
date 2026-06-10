@@ -63,6 +63,51 @@ Intentionally malformed to verify scoping skips foreign docs.
 """
 
 
+_STRIPPED_CONCEPT_SNIPPET = """\
+---
+description: Test fixture for stripped classifier validation.
+---
+
+# Stripped Classifier Validation — Concept
+
+## What
+
+This is a test fixture.
+
+## Why
+
+Used in functional tests for stripped frontmatter validation.
+"""
+
+_STRIPPED_POLICY_WITH_CONCEPT_SECTIONS = """\
+---
+description: Wrong section fixture.
+---
+
+# Wrong Section Fixture — Policy
+
+## What
+
+This section belongs to a concept, not a policy.
+
+## Why
+
+This section belongs to a concept, not a policy.
+"""
+
+_THIRD_PARTY_WITHOUT_CLASSIFIERS = """\
+---
+description: Vendor docs.
+---
+
+# Vendor Docs
+
+## Sources
+
+- https://example.com/docs
+"""
+
+
 def _setup_docs(base: Path) -> tuple[Path, Path]:
     """Return (good_path, malformed_path) under a minimal project docs root."""
     concept_dir = base / "docs" / "project" / "concept"
@@ -72,6 +117,17 @@ def _setup_docs(base: Path) -> tuple[Path, Path]:
     good.write_text(_GOOD_SNIPPET, encoding="utf-8")
     bad.write_text(_MALFORMED_SNIPPET, encoding="utf-8")
     return good, bad
+
+
+def _normalized_findings(base: Path) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for finding in get_errors():
+        item = dict(finding)
+        raw_path = item.get("path")
+        if raw_path:
+            item["path"] = str(Path(raw_path).relative_to(base))
+        normalized.append(item)
+    return normalized
 
 
 class TestValidateAllSnippetsScoping:
@@ -88,6 +144,85 @@ class TestValidateAllSnippetsScoping:
         findings = get_errors()
         paths_with_errors = {f["path"] for f in findings}
         assert str(malformed) in paths_with_errors
+
+    def test_stripped_classifier_frontmatter_validates_cleanly(self, tmp_path: Path) -> None:
+        snippet = tmp_path / "docs" / "project" / "concept" / "stripped-classifier-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(_STRIPPED_CONCEPT_SNIPPET, encoding="utf-8")
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        assert not get_errors()
+
+    def test_section_validation_uses_path_derived_type(self, tmp_path: Path, snapshot: object) -> None:
+        snippet = tmp_path / "docs" / "project" / "policy" / "wrong-section-fixture.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(_STRIPPED_POLICY_WITH_CONCEPT_SECTIONS, encoding="utf-8")
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        assert _normalized_findings(tmp_path) == snapshot
+
+    def test_third_party_without_classifier_frontmatter_validates_cleanly(self, tmp_path: Path) -> None:
+        snippet = tmp_path / "docs" / "third-party" / "vendor.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(_THIRD_PARTY_WITHOUT_CLASSIFIERS, encoding="utf-8")
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        assert not get_errors()
+
+    def test_baseline_dedup_uses_path_derived_ids(self, tmp_path: Path, snapshot: object) -> None:
+        baseline = tmp_path / "docs" / "global" / "software-development" / "baseline.md"
+        baseline.parent.mkdir(parents=True)
+        baseline.write_text("@docs/global/software-development/concept/baseline-entry.md\n", encoding="utf-8")
+        baseline_entry = tmp_path / "docs" / "global" / "software-development" / "concept" / "baseline-entry.md"
+        baseline_entry.parent.mkdir(parents=True)
+        baseline_entry.write_text(_STRIPPED_CONCEPT_SNIPPET, encoding="utf-8")
+        procedure = tmp_path / "docs" / "global" / "software-development" / "procedure" / "runner.md"
+        procedure.parent.mkdir(parents=True)
+        procedure.write_text(
+            """---
+description: Runner.
+needs_domain_baseline: true
+---
+
+# Runner — Procedure
+
+## Required reads
+
+- @docs/global/software-development/concept/baseline-entry.md
+
+## Goal
+
+Run.
+
+## Preconditions
+
+Ready.
+
+## Steps
+
+Run.
+
+## Outputs
+
+Done.
+
+## Recovery
+
+Retry.
+""",
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path)
+
+        assert _normalized_findings(tmp_path) == snapshot
 
 
 class TestLintPipelineDocValidationScoping:

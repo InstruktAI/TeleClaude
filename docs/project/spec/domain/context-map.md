@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/domain/context-map'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Relationships between the eight bounded contexts — partnership, customer-supplier, ACL, conformist. The system''s social graph at the domain level.'
+visibility: 'public'
 ---
 
 # Domain Context Map — Spec

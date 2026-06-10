@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/observation-recent-list'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'List the most recent observations — implemented as an empty-query search that resolves through the substring fallback.'
+visibility: 'public'
 ---
 
 # Observation Recent List — Spec

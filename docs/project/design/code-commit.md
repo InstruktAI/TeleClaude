@@ -1,9 +1,5 @@
 ---
 description: 'Design of telec code commit — the canonical agent commit command with workspace-scope staging and pathspec-scoped commits.'
-domain: 'software-development'
-id: 'project/design/code-commit'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

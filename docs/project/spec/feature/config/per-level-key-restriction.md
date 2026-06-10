@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/per-level-key-restriction'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Each user-facing config level rejects keys that belong to another level, preventing silent misplacement across project, global, person, and machine config.'
+visibility: 'public'
 ---
 
 # Per-Level Key Restriction — Spec

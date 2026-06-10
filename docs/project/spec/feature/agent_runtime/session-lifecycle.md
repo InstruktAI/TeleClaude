@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/session-lifecycle'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'agent_runtime — start, list, and end agent sessions. The creation, enumeration, and explicit-termination surface that operators and other agents use.'
+visibility: 'public'
 ---
 
 # Session Lifecycle — Spec

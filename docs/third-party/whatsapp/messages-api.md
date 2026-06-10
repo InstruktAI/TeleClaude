@@ -1,8 +1,5 @@
 ---
 description: WhatsApp Messages API
-id: third-party/whatsapp/messages-api
-scope: project
-type: third-party
 ---
 
 # WhatsApp Messages API

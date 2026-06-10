@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/caller-verification'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Resolve every authenticated inbound call into a `CallerIdentity` via the identity context''s single caller-verification capability.'
+visibility: 'public'
 ---
 
 # Caller Verification — Spec

@@ -1,8 +1,5 @@
 ---
 description: 'Plain-language contract for how TeleClaude maps raw hook events and decides what gets processed.'
-id: 'project/spec/hook-normalized-events'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

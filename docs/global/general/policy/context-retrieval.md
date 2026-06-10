@@ -1,9 +1,6 @@
 ---
-id: 'general/policy/context-retrieval'
-type: 'policy'
-scope: 'global'
-visibility: 'public'
 description: 'Guidelines for AI agents to retrieve relevant documentation snippets on demand.'
+visibility: 'public'
 ---
 
 # Context Retrieval Policy — Policy

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/atomic-project-config-write'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The project-config writer mutates the project `teleclaude.yml` atomically — dump to a sibling temp file, durably flush, atomically replace, cleanup on failure — using a minimal serialization that omits default-valued fields.'
+visibility: 'public'
 ---
 
 # Atomic Project Config Write — Spec

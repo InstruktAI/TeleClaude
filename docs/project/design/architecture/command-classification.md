@@ -1,8 +1,5 @@
 ---
 description: 'Response-mode classification for API commands: immediate, fire-and-forget, and receipt-backed async.'
-id: 'project/design/architecture/command-classification'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

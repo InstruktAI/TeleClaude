@@ -1,8 +1,5 @@
 ---
 description: WhatsApp Rate Limits & Error Codes
-id: third-party/whatsapp/rate-limits-errors
-scope: project
-type: third-party
 ---
 
 # WhatsApp Rate Limits & Error Codes

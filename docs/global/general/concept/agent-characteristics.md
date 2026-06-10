@@ -1,8 +1,5 @@
 ---
 description: 'Cognitive profiles and collaboration selection heuristics for AI agents.'
-id: 'general/concept/agent-characteristics'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

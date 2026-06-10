@@ -1,8 +1,5 @@
 ---
 description: 'The role of the master bot in a multi-computer Telegram supergroup.'
-id: 'project/concept/master-bot'
-scope: 'project'
-type: 'concept'
 visibility: 'public'
 ---
 

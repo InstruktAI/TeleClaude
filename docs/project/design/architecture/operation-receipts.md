@@ -1,8 +1,5 @@
 ---
 description: 'Receipt-first contract for durable async operations: immediate operation_id, background execution, polling, and completion event.'
-id: 'project/design/architecture/operation-receipts'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

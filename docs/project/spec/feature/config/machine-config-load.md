@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/machine-config-load'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Machine config load — reads `config.yml` (with env-var expansion and optional `experiments.yml` side-file), deep-merges over built-in defaults, and builds the typed runtime config aggregate at process start.'
+visibility: 'public'
 ---
 
 # Machine Config Load — Spec

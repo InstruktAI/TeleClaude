@@ -1,9 +1,5 @@
 ---
 description: 'Produce self-contained HTML+CSS visual artifacts from approved art and a confirmed design spec.'
-domain: 'creative'
-id: 'creative/procedure/visual-drafting'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

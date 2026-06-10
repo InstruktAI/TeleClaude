@@ -1,11 +1,7 @@
 ---
-id: 'general/procedure/adr-authoring'
-type: 'procedure'
-domain: 'general'
-scope: 'global'
-visibility: 'public'
 activation_trigger: 'Use when capturing an architectural or design decision as an ADR'
 description: 'Author an Architectural Decision Record (ADR) capturing what was chosen, why, and what follows. Used by every agent that makes a non-trivial decision while authoring doc snippets, agent artifacts, or architecture changes.'
+visibility: 'public'
 ---
 
 # ADR Authoring — Procedure

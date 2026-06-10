@@ -1,8 +1,5 @@
 ---
 description: Gemini and Antigravity CLI Permissions — Spec
-id: third-party/gemini-cli/permissions
-scope: project
-type: third-party
 ---
 
 # Gemini and Antigravity CLI Permissions — Spec

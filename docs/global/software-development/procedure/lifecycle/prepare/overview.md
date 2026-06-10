@@ -1,9 +1,5 @@
 ---
 description: 'Prepare stage overview. Lifecycle scaffolding for the one session that drives the derivation chain (PRD → Architecture → Plan) with PRD-only human approval, reviewer-gated derivation artifacts, and standin mode for autonomous intake.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/overview'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

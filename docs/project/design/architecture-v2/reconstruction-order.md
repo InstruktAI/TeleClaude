@@ -1,8 +1,5 @@
 ---
 description: 'Migration order for v2: MVP first (workflow + CLI), then per-service alpha with narrow freezes. Parallel to v1, in same repo.'
-id: 'project/design/architecture-v2/reconstruction-order'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

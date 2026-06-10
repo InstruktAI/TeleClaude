@@ -16,6 +16,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
+from teleclaude.snippet_validation import derive_snippet_classification, load_domains
 
 logger = get_logger(__name__)
 
@@ -24,9 +25,12 @@ RefreshResult = Literal["created", "updated", "unchanged"]
 
 
 class SnippetMetadata(TypedDict, total=False):
-    """Metadata for a generated snippet. All fields are optional; type and scope default to
-    taxonomy name and 'project' respectively when omitted. Visibility defaults to 'internal'
-    — the analyzer must opt a snippet into 'public' deliberately."""
+    """Metadata for a generated snippet.
+
+    Visibility defaults to 'internal'; the analyzer must opt a snippet into
+    'public' deliberately. Legacy callers may still pass type/scope, but these
+    path-derived fields are not emitted.
+    """
 
     type: str
     scope: str
@@ -162,6 +166,7 @@ def read_existing_snippets(project_root: Path) -> dict[str, Path]:
         return {}
 
     result: dict[str, Path] = {}
+    domains = load_domains(project_root)
     for md_file in sorted(docs_project.rglob("*.md")):
         if md_file.name in ("index.md", "baseline.md"):
             continue
@@ -172,9 +177,9 @@ def read_existing_snippets(project_root: Path) -> dict[str, Path]:
             continue
         meta = post.metadata or {}
         if meta.get(GENERATED_BY_KEY) == GENERATED_BY_VALUE:
-            sid = meta.get("id")
-            if isinstance(sid, str):
-                result[sid] = md_file
+            classification, _ = derive_snippet_classification(md_file, project_root=project_root, domains=domains)
+            if classification is not None:
+                result[classification.id] = md_file
     return result
 
 
@@ -250,9 +255,6 @@ def refresh_snippet(
 def _render_snippet(snippet_id: str, content: str, metadata: SnippetMetadata) -> str:
     """Render a snippet to its full text (frontmatter + body) without writing to disk."""
     fm = {
-        "id": snippet_id,
-        "type": metadata.get("type", snippet_id.split("/")[1]),
-        "scope": metadata.get("scope", "project"),
         "description": metadata.get("description", ""),
         "status": "actual",
         "visibility": metadata.get("visibility", SNIPPET_VISIBILITY_INTERNAL),

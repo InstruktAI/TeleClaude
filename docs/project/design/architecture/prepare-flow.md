@@ -1,8 +1,5 @@
 ---
 description: 'Prepare phase flow for v2. PRD → Architecture → Plan → Prepared, with PRD-only human approval, reviewer-gated derivation artifacts, size-based architecture skipping, standin-mode support, and lean drift analysis.'
-id: 'project/design/architecture/prepare-flow'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

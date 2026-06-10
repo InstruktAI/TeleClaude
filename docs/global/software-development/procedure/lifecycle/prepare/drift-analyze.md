@@ -1,9 +1,5 @@
 ---
 description: 'Drift analysis phase. Classify each pending prepare-artifact drift across the six drift classes (code, upstream-artifact, owned-snippet, upstream-snippet, dependency-graph, age) as cosmetic or substantive and stamp the verdict so the lifecycle can continue or re-derive the affected layer.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/drift-analyze'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

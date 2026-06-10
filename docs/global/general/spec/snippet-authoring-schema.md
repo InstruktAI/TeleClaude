@@ -1,8 +1,5 @@
 ---
 description: 'Schema and section requirements for documentation snippets belonging to a taxonomy.'
-id: 'general/spec/snippet-authoring-schema'
-scope: 'global'
-type: 'spec'
 visibility: 'public'
 ---
 
@@ -14,15 +11,18 @@ Defines the required structure, section headings, and directory layout for docum
 
 ## Canonical fields
 
-Frontmatter (required for all snippets):
+Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path and the H1 type-suffix** by the index build (`docs/index.yaml`) and materialized there — it is **never authored in frontmatter**. The index is the single source of truth for these four fields:
 
-- `id` — unique snippet identifier.
-- `type` — taxonomy type (see table below).
-- `domain` — knowledge domain (e.g., `software-development`, `general`). Derived from the directory path.
-- `scope` — `global`, `domain`, or `project`.
-- `description` — short summary of the snippet's purpose.
+- `id` — unique snippet identifier. **Derived** from the snippet's path below the docs root.
+- `type` — taxonomy type (see table below). **Derived** from the directory path and confirmed by the H1 type-suffix.
+- `domain` — knowledge domain (`general`, `<domain>` such as `software-development`, or `project`). **Derived** as the first path segment of the id.
+- `scope` — `global` or `project`. **Derived** from the path (`docs/global/**` → `global`, `docs/project/**` → `project`).
 
-Frontmatter (optional):
+Frontmatter (required, authored):
+
+- `description` — short summary of the snippet's purpose. This is the **only** required authored field.
+
+Frontmatter (optional, authored):
 
 - `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
@@ -32,7 +32,9 @@ Frontmatter (optional):
 - `number` — `adr` snippets ONLY (required). Integer matching the filename prefix (e.g., `0007` for `0007-provenance-via-mirror-id.md`).
 - `supersedes` — `adr` snippets ONLY (optional). List of ADR IDs this decision replaces. Forward-only: citing an ADR here records the supersession; the cited ADR is never modified.
 
-Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They still require `id`, `type`, `scope`, and `description`, but use `type: third-party`, `scope: project` or `scope: global`, and IDs derived from their path below the third-party root.
+Classification (`id`/`type`/`scope`/`domain`) is read from the file path and the H1 type-suffix by the index build, never authored in frontmatter.
+
+Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They author only `description`; their `id` and `scope` are derived from their path below the third-party root, and they no longer carry `type`.
 
 Document structure:
 
@@ -72,8 +74,8 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/project/{taxonomy}/` — project-scoped documentation.
 - `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
-- `<stem>.<slug>.md` (sibling to any `<stem>.md`) — a **companion**: the complete next version of `<stem>.md`, where `<slug>` is the delivering todo. A full snippet sharing the parent's `id` (the validator detects it by the sibling filename and exempts the id↔path / id-collision checks). The link lives entirely in the filename — the parent carries **no** pending marker, and the index never lists the companion. Pending-only and invisible to default readers: on delivery the companion **replaces** the parent file and is deleted. A v1→v2 migration is just another slug. See `software-development/principle/documentation-first-development` §10.
-- `docs/project/adr/{NNNN}-{kebab-case-title}.md` — `type: adr`. Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date`, `adr_status`, and `number` are required additional frontmatter fields. Optional: `supersedes` (list of ADR IDs this one replaces). ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`.
+- `<stem>.<slug>.md` (sibling to any `<stem>.md`) — a **companion**: the complete next version of `<stem>.md`, where `<slug>` is the delivering todo. A full snippet that shares the parent's derived `id` (the validator detects it by the sibling filename and exempts the id↔path / id-collision checks). The link lives entirely in the filename — the parent carries **no** pending marker, and the index never lists the companion. Pending-only and invisible to default readers: on delivery the companion **replaces** the parent file and is deleted. A v1→v2 migration is just another slug. See `software-development/principle/documentation-first-development` §10.
+- `docs/project/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date`, `adr_status`, and `number` are required additional frontmatter fields. Optional: `supersedes` (list of ADR IDs this one replaces). ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`.
 - `docs/project/baseline.md` — project baseline manifest (curated required reads).
 
 Global snippets are distributed to `~/.teleclaude/docs/` and available to all projects. Project snippets stay local to their repository.
@@ -92,9 +94,7 @@ Apply this convention whenever a group of related snippets would otherwise produ
 ## Allowed values
 
 - `type`: principle, concept, policy, procedure, design, spec, spec-diff, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
-- Third-party `type`: third-party.
-- `scope`: global, domain, project.
-- Third-party `scope`: global, project.
+- `scope`: global, project.
 - `visibility`: public, internal. Default: `internal`.
 
 ## Known caveats

@@ -1,9 +1,5 @@
 ---
 description: 'Vocabulary and protocol for agent-to-agent exchanges when compression is enabled. Compression itself is opt-in per `communication-compression`.'
-domain: 'general'
-id: 'general/spec/agent-shorthand'
-scope: 'global'
-type: 'spec'
 visibility: 'public'
 ---
 

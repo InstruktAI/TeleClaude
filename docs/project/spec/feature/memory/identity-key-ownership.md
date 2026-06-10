@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/identity-key-ownership'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Per-observation identity ownership — an opaque identity scope tagged at save time and honored at query time with inclusion-of-unscoped semantics.'
+visibility: 'public'
 ---
 
 # Identity Key Ownership — Spec

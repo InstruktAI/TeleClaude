@@ -1,8 +1,5 @@
 ---
 description: 'Named design principles for structural decisions. SRP, DIP, DRY, KISS, YAGNI, coupling, cohesion, composition, encapsulation, Demeter, fail fast, immutability.'
-id: 'software-development/principle/design-fundamentals'
-scope: 'domain'
-type: 'principle'
 visibility: 'public'
 ---
 

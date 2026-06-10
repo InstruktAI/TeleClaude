@@ -1,8 +1,5 @@
 ---
 description: 'Rust testing patterns: DI via constructor injection, test colocation, sqlx::test for DB, builders for test data, hand-written doubles by default.'
-id: 'software-development/policy/rust/testing'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

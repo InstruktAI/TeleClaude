@@ -1,8 +1,5 @@
 ---
 description: A2A Agent Card
-id: third-party/a2a-protocol/agent-card
-scope: project
-type: third-party
 ---
 
 # A2A Agent Card

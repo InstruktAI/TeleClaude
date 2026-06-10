@@ -1,8 +1,5 @@
 ---
 description: 'Persistent memory subsystem for storing, searching, and injecting relationship-centric observations into agent sessions.'
-id: 'project/design/architecture/memory-system'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

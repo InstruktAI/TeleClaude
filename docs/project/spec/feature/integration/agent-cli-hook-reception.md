@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/agent-cli-hook-reception'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Subprocess receiver invoked by agent CLIs (Claude, Codex, Gemini) that parses a hook payload, resolves a TeleClaude session, and enqueues the event for integration-side processing.'
+visibility: 'public'
 ---
 
 # Agent CLI Hook Reception — Spec

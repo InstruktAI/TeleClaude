@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0002-memory-uses-triples'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '2'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Memory observations are stored as (subject, predicate, object) triples rather than as flat title+narrative+type records.'
+number: '2'
+visibility: 'public'
 ---
 
 # ADR-0002: Memory Uses Triples — ADR

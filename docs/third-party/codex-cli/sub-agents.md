@@ -1,8 +1,5 @@
 ---
 description: Codex CLI Sub-Agents
-id: third-party/codex-cli/sub-agents
-scope: project
-type: third-party
 ---
 
 # Codex CLI Sub-Agents

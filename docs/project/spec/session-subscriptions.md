@@ -1,8 +1,5 @@
 ---
 description: 'Contract for the two-axis subscription model between caller and target sessions: passive listener and active direct link.'
-id: 'project/spec/session-subscriptions'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

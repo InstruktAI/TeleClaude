@@ -1,9 +1,5 @@
 ---
 description: 'Image generation capability — text-to-image, editing, and iteration. Backend-agnostic with pluggable implementations.'
-domain: 'creative'
-id: 'creative/concept/image-generation'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

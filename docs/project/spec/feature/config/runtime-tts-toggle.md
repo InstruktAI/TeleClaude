@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/runtime-tts-toggle'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The runtime-settings layer holds mutable operator toggles (currently only `tts.enabled`) separate from YAML config; patches mutate in-memory state and the TTS manager synchronously, then flush to a JSON state file on a debounced background task.'
+visibility: 'public'
 ---
 
 # Runtime TTS Toggle — Spec

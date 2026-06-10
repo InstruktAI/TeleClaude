@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/integration-state-machine'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Singleton, lease-serialized, durable-checkpoint state machine that squash-merges finalize-ready todos into origin/main from an isolated integration worktree.'
+visibility: 'public'
 ---
 
 # Integration State Machine — Spec

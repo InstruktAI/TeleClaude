@@ -1,8 +1,5 @@
 ---
 description: 'Load-bearing rule for v2: services are crates consumed as SDK. Transports exist only at well-defined boundaries.'
-id: 'project/design/architecture-v2/transport-rules'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

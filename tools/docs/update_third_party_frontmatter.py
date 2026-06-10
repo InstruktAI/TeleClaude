@@ -10,7 +10,6 @@ from pathlib import Path
 
 import frontmatter
 
-THIRD_PARTY_TYPE = "third-party"
 SKIPPED_FILENAMES = frozenset({"index.md"})
 
 
@@ -30,25 +29,16 @@ def _description_from_body(body: str, fallback: str) -> str:
     return fallback.replace("-", " ").replace("_", " ").title()
 
 
-def _snippet_id_for_path(third_party_root: Path, path: Path) -> str:
-    rel = path.relative_to(third_party_root).with_suffix("").as_posix()
-    return f"{THIRD_PARTY_TYPE}/{rel}"
-
-
 def _ordered_metadata(
     original: Mapping[str, object],
     *,
-    snippet_id: str,
-    scope: str,
     description: str,
 ) -> Mapping[str, object]:
     required = {
-        "id": snippet_id,
-        "type": THIRD_PARTY_TYPE,
-        "scope": scope,
         "description": description,
     }
-    extras = {key: value for key, value in original.items() if key not in required}
+    derived_keys = {"id", "type", "scope", "domain"}
+    extras = {key: value for key, value in original.items() if key not in derived_keys and key not in required}
     return {**required, **extras}
 
 
@@ -60,6 +50,8 @@ def _render(content: str, metadata: Mapping[str, object]) -> str:
 
 def update_file(third_party_root: Path, path: Path, *, scope: str, dry_run: bool = False) -> UpdateResult:
     """Update one third-party markdown file in place unless ``dry_run`` is set."""
+    path.relative_to(third_party_root)
+    _ = scope
     raw = path.read_text(encoding="utf-8")
     post = frontmatter.loads(raw)
     metadata = dict(post.metadata or {})
@@ -71,8 +63,6 @@ def update_file(third_party_root: Path, path: Path, *, scope: str, dry_run: bool
         post.content,
         _ordered_metadata(
             metadata,
-            snippet_id=_snippet_id_for_path(third_party_root, path),
-            scope=scope,
             description=description.strip(),
         ),
     )
@@ -110,7 +100,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--scope",
         choices=("project", "global"),
         default="project",
-        help="Frontmatter scope value to write.",
+        help="Deprecated compatibility flag; scope is now path-derived and not written.",
     )
     parser.add_argument(
         "--check",

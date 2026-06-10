@@ -1,16 +1,12 @@
 ---
-id: project/spec/domain/integration
-type: spec
-domain: software-development
-scope: project
-visibility: public
 delivered_by:
-  - v2-integration
-  - v2-integration-cutover
+- v2-integration
+- v2-integration-cutover
 description: Integration bounded context — true external boundaries. Inbound HTTP
   webhooks from third-party providers (Telegram, Discord, WhatsApp, GitHub) and outbound
   delivery to those same providers. Agent CLI hook reception lives in agent_runtime,
   not here.
+visibility: public
 ---
 
 # Integration Domain Spec — Spec

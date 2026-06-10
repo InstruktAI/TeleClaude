@@ -1,8 +1,5 @@
 ---
 description: 'Concrete shape of the v2 MVP: workflow service + Rust CLI + Postgres + observability + identity stub + Redis bridge to v1. The first cutover proves the v2 pattern.'
-id: 'project/design/architecture-v2/mvp-shape'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

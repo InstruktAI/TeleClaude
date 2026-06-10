@@ -1,8 +1,5 @@
 ---
 description: 'Standard guardrails for agent-type jobs: structured output, fix-forward, clean shutdown, auditability.'
-id: 'general/procedure/agent-job-hygiene'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

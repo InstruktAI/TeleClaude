@@ -1,8 +1,5 @@
 ---
 description: 'The layered memory architecture that gives AI agents continuity, context, and the capacity to learn across sessions.'
-id: 'general/concept/memory-tiers'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

@@ -1,8 +1,5 @@
 ---
 description: 'Five named failure patterns to recognize and refuse: comment over-trust, surface validation, bug denial, speed bias, pattern projection.'
-id: 'general/concept/failure-modes'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

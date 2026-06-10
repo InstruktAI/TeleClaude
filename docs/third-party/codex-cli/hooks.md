@@ -1,8 +1,5 @@
 ---
 description: Codex Hooks
-id: third-party/codex-cli/hooks
-scope: project
-type: third-party
 ---
 
 # Codex Hooks

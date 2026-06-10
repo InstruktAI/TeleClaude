@@ -1,8 +1,5 @@
 ---
 description: 'Practical identity rules for assigning hooks to the correct TeleClaude session.'
-id: 'project/spec/session-identity-truth'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

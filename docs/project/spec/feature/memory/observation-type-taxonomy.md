@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/observation-type-taxonomy'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The seven-value observation-type taxonomy used as the progressive-disclosure axis at save and query.'
+visibility: 'public'
 ---
 
 # Observation Type Taxonomy — Spec

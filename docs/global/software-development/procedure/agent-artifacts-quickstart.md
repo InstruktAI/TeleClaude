@@ -1,8 +1,5 @@
 ---
 description: 'Quickstart for authoring and distributing agent artifacts.'
-id: 'software-development/procedure/agent-artifacts-quickstart'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

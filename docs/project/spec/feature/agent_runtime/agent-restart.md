@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/agent-restart'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Restart the agent process inside a live TeleClaude session by terminating the running agent and relaunching it with resume-from-transcript so the session row, hosting pane, and native transcript chain survive.'
+visibility: 'public'
 ---
 
 # Agent Restart — Spec

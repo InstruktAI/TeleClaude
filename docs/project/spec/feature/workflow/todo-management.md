@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/todo-management'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Per-project ordered todo list managed through todo-scoped commands; sectioned list output, derived active ordering, soft removal, and delivery transitions.'
+visibility: 'public'
 ---
 
 # Todo Management — Spec

@@ -1,8 +1,5 @@
 ---
 description: 'Python project tool invocation policy for uv-managed repositories. Standardizes pytest, mypy, pyright, hooks, and TeleClaude quality commands.'
-id: 'software-development/policy/python/tooling'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

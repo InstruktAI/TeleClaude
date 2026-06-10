@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/agent-artifact-validation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Schema, section, and Required-reads-order validation for agents, commands, and skills source artifacts.'
+visibility: 'public'
 ---
 
 # Agent Artifact Validation — Spec

@@ -1,8 +1,5 @@
 ---
 description: 'Scheduled job runner: architecture, job contract, and configuration surface.'
-id: 'project/design/architecture/jobs-runner'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

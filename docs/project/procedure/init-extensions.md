@@ -1,9 +1,5 @@
 ---
 description: 'TeleClaude-specific init extensions — help desk bootstrap and machine-global macOS install steps.'
-domain: 'software-development'
-id: 'project/procedure/init-extensions'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

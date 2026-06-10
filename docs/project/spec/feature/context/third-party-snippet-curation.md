@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/third-party-snippet-curation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Curation and indexing of vendor and external reference docs under docs/third-party/ with a separate minimal schema and a parallel Index.'
+visibility: 'public'
 ---
 
 # Third-Party Snippet Curation — Spec
@@ -22,10 +18,13 @@ minimal schema and a dedicated parallel Index, so external Sources sit
 alongside taxonomy snippets without polluting the taxonomy frontmatter or
 the taxonomy Selection policy.
 
-A third-party snippet is a Markdown file whose Kind is `third-party`. It does
-not carry the taxonomy fields (`type` enum, `domain`, `visibility`, `status`,
-`delivered_by`). It is keyed by its path-derived ID and a `## Sources` section
-that names the Context7 entry, URL, or Markdown link it was distilled from.
+A third-party snippet is a Markdown file placed under `docs/third-party/`. It
+does not carry the taxonomy fields (`type` enum, `domain`, `visibility`,
+`status`, `delivered_by`), and it no longer authors `id`, `type`, or `scope`
+in frontmatter. It is keyed by its path-derived ID, carries an authored
+`description`, and a `## Sources` section that names the Context7 entry, URL,
+or Markdown link it was distilled from. Its `id` and `scope` are derived from
+the path.
 
 ## Canonical fields
 
@@ -34,19 +33,12 @@ that names the Context7 entry, URL, or Markdown link it was distilled from.
 ```
 Scenario: Author a third-party snippet under the project tree
   Given a Markdown file at docs/third-party/vendors/acme/widgets.md
-  And frontmatter id "third-party/vendors/acme/widgets", type "third-party", scope "project", description "Acme widgets reference"
+  And frontmatter with description "Acme widgets reference" only
   And a "## Sources" section listing a Context7 ID and an https URL
   When telec sync runs validation
   Then the file passes third-party validation
+  And its id and scope are derived from the path
   And it is written into the third-party index as an entry with id, description, scope, and path
-```
-
-```
-Scenario: ID does not match the path
-  Given a file at docs/third-party/vendors/acme/widgets.md
-  And frontmatter id "third-party/vendors/other/widgets"
-  When third-party validation runs
-  Then a third-party-id-path-mismatch error is raised against the file
 ```
 
 ```
@@ -67,12 +59,11 @@ Scenario: Phase 2 auto-loads third-party indexes on prefix match
 ```
 
 ```
-Scenario: Description falls back when frontmatter description is empty
+Scenario: Description is required
   Given a third-party Markdown file with no description in frontmatter
-  And a first-line H1 "# Acme Widgets Reference"
-  When the third-party index is written
-  Then the index entry description is "Acme Widgets Reference"
-  And if the H1 is also missing the description falls back to the filename stem
+  When telec sync validates the file
+  Then a missing-frontmatter-field finding is reported for "description"
+  And the sync exits with a non-zero status
 ```
 
 ### Cross-context references
@@ -85,9 +76,9 @@ None direct. Third-party curation is internal to the Context bounded context.
   plain URLs and Context7 IDs (`/{scope}/{slug}/...`) are checked as-is.
 - Index files (`index.md`, `index.yaml`) under `docs/third-party/` are silently
   skipped by id/source validation so generated artifacts do not self-fail.
-- Third-party `scope` is frontmatter-only — the directory placement (project
-  tree vs `~/.teleclaude/docs/third-party/`) is NOT cross-checked against the
-  declared scope.
+- Third-party `scope` is path-derived from the directory placement (project
+  tree vs `~/.teleclaude/docs/third-party/`); it is no longer authored in
+  frontmatter.
 - The `.md` version of the third-party index generator is parallel to the
   `.yaml` flow and is a shedding candidate for v2.
 - Required reads dependency resolution is never applied to third-party entries

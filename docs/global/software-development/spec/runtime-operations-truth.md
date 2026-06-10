@@ -1,9 +1,5 @@
 ---
 description: 'Canonical format and content requirements for documenting live runtime operations and their failure impact.'
-domain: 'software-development'
-id: 'software-development/spec/runtime-operations-truth'
-scope: 'domain'
-type: 'spec'
 visibility: 'public'
 ---
 

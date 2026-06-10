@@ -1,8 +1,5 @@
 ---
 description: 'Safety rules for git operations and handling uncommitted work.'
-id: 'software-development/policy/version-control-safety'
-scope: 'domain'
-type: 'policy'
 visibility: 'public'
 ---
 

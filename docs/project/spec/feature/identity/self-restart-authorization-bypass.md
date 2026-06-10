@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/self-restart-authorization-bypass'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Allow any authenticated session to restart itself via the agent-restart action, bypassing the normal `telec sessions restart` clearance.'
+visibility: 'public'
 ---
 
 # Self-Restart Authorization Bypass — Spec

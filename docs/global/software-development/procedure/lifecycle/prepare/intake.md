@@ -1,9 +1,5 @@
 ---
 description: 'Intake procedure for the prepare phase. The BA interviews a stakeholder (real human or AI standin) to fill a PRD via BMAD-aligned template + elicitation toolkit. Output: a human-approved PRD ready to inform downstream derivation.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/prepare/intake'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

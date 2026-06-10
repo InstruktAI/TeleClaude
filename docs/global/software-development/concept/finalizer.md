@@ -1,8 +1,5 @@
 ---
 description: 'Post-review prepare role. Merge origin/main into the worktree branch, push it, and report FINALIZE_READY.'
-id: 'software-development/concept/finalizer'
-scope: 'domain'
-type: 'concept'
 visibility: 'public'
 ---
 

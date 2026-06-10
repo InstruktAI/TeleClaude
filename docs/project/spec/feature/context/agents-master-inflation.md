@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/agents-master-inflation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'AGENTS.global.md (mother-project) and per-project AGENTS.master.md are inflated into deployed AGENTS files by recursively expanding @-refs.'
+visibility: 'public'
 ---
 
 # AGENTS.master Inflation — Spec

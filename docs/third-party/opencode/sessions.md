@@ -1,8 +1,5 @@
 ---
 description: OpenCode session and message storage (SQLite)
-id: third-party/opencode/sessions
-scope: project
-type: third-party
 ---
 
 # OpenCode Session Storage

@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/hook-outbox-dispatcher'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Integration-service worker that drains the hook outbox, classifies events critical vs bursty, enforces per-session backpressure with watermark hysteresis, and dispatches into the in-process event bus.'
+visibility: 'public'
 ---
 
 # Hook Outbox Dispatcher — Spec

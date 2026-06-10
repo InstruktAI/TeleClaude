@@ -1,8 +1,5 @@
 ---
 description: 'Modular documentation system for selective context delivery to AI agents.'
-id: 'general/concept/documentation-snippets'
-scope: 'global'
-type: 'concept'
 visibility: 'public'
 ---
 

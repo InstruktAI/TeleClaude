@@ -1,11 +1,10 @@
 ---
-id: project/spec/feature/memory/extraction-project
-type: spec
-domain: software-development
-scope: project
+delivered_by:
+- v2-memory
+description: Project memory extraction — the memory-miner agent that reads a session
+  mirror, classifies observations about a project as triples in the project-category
+  vocabulary, and saves them through the scraper-only write path.
 visibility: public
-delivered_by: [v2-memory]
-description: Project memory extraction — the memory-miner agent that reads a session mirror, classifies observations about a project as triples in the project-category vocabulary, and saves them through the scraper-only write path.
 ---
 
 # Project Memory Extraction — Spec

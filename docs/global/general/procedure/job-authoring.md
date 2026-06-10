@@ -1,8 +1,5 @@
 ---
 description: 'How to create a new agent or script job: artifacts, placement, validation.'
-id: 'general/procedure/job-authoring'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

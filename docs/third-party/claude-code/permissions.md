@@ -1,8 +1,5 @@
 ---
 description: Claude Code Permissions — Spec
-id: third-party/claude-code/permissions
-scope: project
-type: third-party
 ---
 
 # Claude Code Permissions — Spec
@@ -43,7 +40,7 @@ This configuration blocks access to parent directories and sensitive system path
       "Bash(ls ..*)",
       "Read(/etc/**)",
       "Read(/usr/**)",
-      "Read(/Users/**)",
+      "Read(<HOME>/**)",
       "Read(/var/**)"
     ],
     "allow": ["Read(*)", "Read(**/*)", "Edit(*)", "Edit(**/*)", "Bash(*)"]
@@ -58,12 +55,12 @@ To allow a worker to access specific external directories (e.g., global document
 ```json
 {
   "permissions": {
-    "allow": ["Read(/Users/username/.teleclaude/docs/**)"]
+    "allow": ["Read(<HOME>/.teleclaude/docs/**)"]
   }
 }
 ```
 
-**Note:** If a `deny` rule overlaps with an `allow` rule (e.g., `Read(/Users/**)` vs `Read(/Users/username/.teleclaude/docs/**)`), the **deny rule wins**. You must refine the deny rules to exclude the allowed paths (e.g., deny specific siblings of the home dir instead of the root).
+**Note:** If a `deny` rule overlaps with an `allow` rule (e.g., `Read(<HOME>/**)` vs `Read(<HOME>/.teleclaude/docs/**)`), the **deny rule wins**. You must refine the deny rules to exclude the allowed paths (e.g., deny specific siblings of the home dir instead of the root).
 
 ## CLI Flags
 
@@ -84,10 +81,10 @@ claude
 To explicitly mount a directory for a session (making it visible and readable), use `--add-dir`.
 
 ```bash
-claude --add-dir /Users/username/.teleclaude/docs
+claude --add-dir <HOME>/.teleclaude/docs
 ```
 
-This flag does **not** override `deny` rules. If you deny `Read(/Users/**)`, `--add-dir` will not make the path readable. You must align the JSON config with the mount points.
+This flag does **not** override `deny` rules. If you deny `Read(<HOME>/**)`, `--add-dir` will not make the path readable. You must align the JSON config with the mount points.
 
 ## Example: Secure Worker Invocation
 

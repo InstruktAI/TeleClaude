@@ -1,9 +1,5 @@
 ---
 description: 'Canonical schema contract for code intelligence: structural entities, relationships, provenance, confidence, and role-specific result views.'
-domain: 'software-development'
-id: 'software-development/spec/code-intelligence-schema'
-scope: 'global'
-type: 'spec'
 visibility: 'public'
 ---
 

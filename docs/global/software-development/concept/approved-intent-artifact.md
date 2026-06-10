@@ -1,10 +1,6 @@
 ---
-id: 'software-development/concept/approved-intent-artifact'
-type: 'concept'
-domain: 'software-development'
-scope: 'domain'
-visibility: 'public'
 description: 'The artifact carrying a todo''s human-approved intent, resolved by kind — prd for feature, input for change/bug.'
+visibility: 'public'
 ---
 
 # Approved Intent Artifact — Concept

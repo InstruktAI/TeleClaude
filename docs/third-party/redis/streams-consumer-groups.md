@@ -1,8 +1,6 @@
 ---
-id: third-party/redis/streams-consumer-groups
-type: third-party
-scope: project
-description: Redis Streams consumer-group semantics used for durable delivery and logical subscriber fan-out.
+description: Redis Streams consumer-group semantics used for durable delivery and
+  logical subscriber fan-out.
 ---
 
 # Redis Streams Consumer Groups

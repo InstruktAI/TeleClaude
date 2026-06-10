@@ -1,8 +1,5 @@
 ---
 description: 'Authoritative surface for system-wide identity, authentication, and person management.'
-id: 'project/spec/identity-and-auth'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

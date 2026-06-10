@@ -1,8 +1,5 @@
 ---
 description: OpenCode configuration schema, file locations, and headless server API
-id: third-party/opencode/configuration
-scope: project
-type: third-party
 ---
 
 # OpenCode Configuration

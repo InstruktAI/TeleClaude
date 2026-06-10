@@ -1,9 +1,5 @@
 ---
 description: 'Top-level software development lifecycle design: shared artifact authority, role lenses, rigor model, and phase boundaries.'
-domain: 'software-development'
-id: 'software-development/design/sdlc/overview'
-scope: 'global'
-type: 'design'
 visibility: 'public'
 ---
 

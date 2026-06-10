@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0003-memory-event-store-semantics'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '3'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Memory writes are append-only — multiple rows with the same (subject, predicate, object) are allowed. Dedup is a read-time concern for downstream consumers, not a write-time check.'
+number: '3'
+visibility: 'public'
 ---
 
 # ADR-0003: Memory Event-Store Semantics — ADR

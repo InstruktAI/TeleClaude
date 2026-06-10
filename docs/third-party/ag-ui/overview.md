@@ -1,8 +1,5 @@
 ---
 description: AG-UI Protocol Overview
-id: third-party/ag-ui/overview
-scope: project
-type: third-party
 ---
 
 # AG-UI Protocol Overview

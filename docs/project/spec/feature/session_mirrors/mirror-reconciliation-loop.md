@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/mirror-reconciliation-loop'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Periodic background worker that discovers known agent transcripts and refreshes any mirror whose stored mtime is older than the file''s mtime. Logs reconciliation counters and store-WAL size deltas per pass.'
+visibility: 'public'
 ---
 
 # Mirror Reconciliation Loop — Spec

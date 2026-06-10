@@ -34,7 +34,7 @@ from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
 
-SCOPE_ORDER = {"global": 0, "domain": 0, "project": 1}
+SCOPE_ORDER = {"global": 0, "project": 1}
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,7 @@ class SnippetMeta:
     description: str
     snippet_type: str
     scope: str
+    domain: str
     path: Path
     source_project: str = ""
     project_root: Path | None = None
@@ -137,19 +138,6 @@ def _write_test_output(
         return
 
 
-def _domain_for_snippet(snippet: SnippetMeta, *, project_domains: dict[str, Path]) -> str:
-    snippet_id = snippet.snippet_id
-    for domain, root in project_domains.items():
-        if root in snippet.path.parents or root == snippet.path.parent:
-            return domain
-    if snippet.source_project:
-        prefix = f"{snippet.source_project.lower()}/"
-        if snippet_id.lower().startswith(prefix):
-            remainder = snippet_id[len(prefix) :]
-            return remainder.split("/", 1)[0] if remainder else snippet.source_project.lower()
-    return snippet_id.split("/", 1)[0] if "/" in snippet_id else snippet_id
-
-
 def _resolve_domain_paths(domains: dict[str, str], project_root: Path) -> dict[str, Path]:
     """Convert domain string paths to resolved absolute Paths."""
     if not domains:
@@ -179,12 +167,6 @@ def _load_project_domains(project_root: Path) -> dict[str, Path]:
         raise
 
     return _resolve_domain_paths(domains, project_root)
-
-
-def _output_scope(snippet: SnippetMeta, *, global_snippets_root: Path) -> str:
-    if global_snippets_root in snippet.path.parents:
-        return "global"
-    return "project"
 
 
 def _load_manifest_by_name() -> dict[str, tuple[Path, Path, str]]:
@@ -255,12 +237,14 @@ def _load_index(
             description = item.get("description")
             snippet_type = item.get("type")
             scope = item.get("scope")
+            domain = item.get("domain")
             raw_path = item.get("path")
             if (
                 not isinstance(snippet_id, str)
                 or not isinstance(description, str)
                 or not isinstance(snippet_type, str)
                 or not isinstance(scope, str)
+                or not isinstance(domain, str)
                 or not isinstance(raw_path, str)
             ):
                 continue
@@ -288,6 +272,7 @@ def _load_index(
                     description=description,
                     snippet_type=snippet_type,
                     scope=scope,
+                    domain=domain,
                     path=path,
                     source_project=raw_source_project if isinstance(raw_source_project, str) else "",
                     project_root=root_path,
@@ -310,6 +295,7 @@ def _load_index(
                 description=snippet.description,
                 snippet_type=snippet.snippet_type,
                 scope=snippet.scope,
+                domain=snippet.domain,
                 path=snippet.path,
                 source_project=source_project or snippet.source_project,
                 project_root=project_root or snippet.project_root,
@@ -425,8 +411,6 @@ def _load_third_party_index(index_path: Path) -> list[ThirdPartyMeta]:
 def _resolve_requires(
     selected_ids: Iterable[str],
     snippets: list[SnippetMeta],
-    *,
-    global_snippets_root: Path,
 ) -> list[SnippetMeta]:
     snippets_by_id = {s.snippet_id: s for s in snippets}
     snippets_by_path = {str(s.path): s for s in snippets}
@@ -466,9 +450,7 @@ def _resolve_requires(
             if req_snippet:
                 stack.append(req_snippet)
 
-    resolved.sort(
-        key=lambda s: (_scope_rank(_output_scope(s, global_snippets_root=global_snippets_root)), s.snippet_id)
-    )
+    resolved.sort(key=lambda s: (_scope_rank(s.scope), s.snippet_id))
     return resolved
 
 
@@ -644,7 +626,6 @@ def _build_phase1_output(
     third_party_entries: list[ThirdPartyMeta],
     *,
     areas: list[str],
-    global_snippets_root: Path,
     test_agent: str | None,
     test_mode: str | None,
     test_request: str | None,
@@ -658,7 +639,7 @@ def _build_phase1_output(
     ]
     ordered = sorted(
         snippets_for_selection,
-        key=lambda s: (_scope_rank(_output_scope(s, global_snippets_root=global_snippets_root)), s.snippet_id),
+        key=lambda s: (_scope_rank(s.scope), s.snippet_id),
     )
     _write_test_output(
         phase="phase1",
@@ -873,7 +854,6 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
             snippets_for_selection,
             third_party_entries,
             areas=areas,
-            global_snippets_root=global_snippets_root,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,
@@ -894,7 +874,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     if unknown_ids:
         return f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}"
 
-    resolved = _resolve_requires(taxonomy_ids, snippets, global_snippets_root=global_snippets_root)
+    resolved = _resolve_requires(taxonomy_ids, snippets)
     _write_test_output(
         phase="phase2",
         areas=areas,
@@ -934,16 +914,14 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         )
         if body is None:
             continue
-        domain = _domain_for_snippet(snippet, project_domains=project_domain_roots)
-        scope = _output_scope(snippet, global_snippets_root=global_snippets_root)
         parts.append(
             "\n".join(
                 [
                     "---",
                     f"id: {snippet.snippet_id}",
                     f"type: {snippet.snippet_type}",
-                    f"domain: {domain}",
-                    f"scope: {scope}",
+                    f"domain: {snippet.domain}",
+                    f"scope: {snippet.scope}",
                     f"description: {snippet.description}",
                     "---",
                 ]

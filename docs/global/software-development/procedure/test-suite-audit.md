@@ -1,9 +1,5 @@
 ---
 description: 'Re-run the reviewer test-quality lane against existing tests and write a durable audit report.'
-domain: 'software-development'
-id: 'software-development/procedure/test-suite-audit'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

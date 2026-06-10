@@ -1,8 +1,5 @@
 ---
 description: 'Persistent listener registry that notifies callers when target sessions stop or need input, with link-aware suppression.'
-id: 'project/design/architecture/session-listeners'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

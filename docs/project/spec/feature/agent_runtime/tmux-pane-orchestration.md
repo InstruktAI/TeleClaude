@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/tmux-pane-orchestration'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Host-pane orchestration primitives that agent_runtime uses to host agent CLI processes — session creation, pane snapshot capture, key injection, signaling, kill, and liveness probing.'
+visibility: 'public'
 ---
 
 # Tmux Pane Orchestration — Spec

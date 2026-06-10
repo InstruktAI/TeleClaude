@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/sync-pipeline-orchestration'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'telec sync validates source (always blocking), records best-effort provenance, builds indexes, and distributes artifacts; --skip-deploy is the read-only gate, --skip-validation is the watcher-only live-reload bypass.'
+visibility: 'public'
 ---
 
 # Sync Pipeline Orchestration — Spec

@@ -1,8 +1,5 @@
 ---
 description: 'Target architecture for v2: Rust services-as-crates, Postgres-only storage, in-place greenfield rebuild alongside v1 in the same repo.'
-id: 'project/design/architecture-v2/overview'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

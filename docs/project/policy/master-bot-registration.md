@@ -1,8 +1,5 @@
 ---
 description: 'Policy for Telegram command registration in multi-computer setups.'
-id: 'project/policy/master-bot-registration'
-scope: 'project'
-type: 'policy'
 visibility: 'public'
 ---
 

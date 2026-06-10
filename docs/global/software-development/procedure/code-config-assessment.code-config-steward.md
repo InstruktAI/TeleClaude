@@ -1,9 +1,5 @@
 ---
 description: 'Steward a project''s tool configuration toward blessed defaults — apply where missing or weaker, ask only on conflict.'
-domain: 'software-development'
-id: 'software-development/procedure/code-config-assessment'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

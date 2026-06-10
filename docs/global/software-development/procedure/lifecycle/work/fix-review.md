@@ -1,9 +1,5 @@
 ---
 description: 'Fix phase. Address review findings with minimal changes and re-verify.'
-domain: 'software-development'
-id: 'software-development/procedure/lifecycle/work/fix-review'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

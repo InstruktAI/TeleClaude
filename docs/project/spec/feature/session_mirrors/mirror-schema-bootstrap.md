@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/mirror-schema-bootstrap'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Idempotent bootstrap for the mirror store''s schema — mirrors, tombstones, the full-text index, and the index-sync triggers — plus per-process compatibility migrations that keep older databases readable by newer code.'
+visibility: 'public'
 ---
 
 # Mirror Schema Bootstrap — Spec

@@ -1,8 +1,5 @@
 ---
 description: 'Operational runbooks for TeleClaude incidents and infrastructure failures.'
-id: 'project/procedure/troubleshooting'
-scope: 'project'
-type: 'procedure'
 visibility: 'public'
 ---
 

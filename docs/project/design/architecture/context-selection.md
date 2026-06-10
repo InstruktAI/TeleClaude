@@ -1,8 +1,5 @@
 ---
 description: 'Context selection pipeline that picks relevant docs for the two-phase context retrieval flow.'
-id: 'project/design/architecture/context-selection'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

@@ -1,8 +1,6 @@
 ---
-id: third-party/playwright/config
-type: third-party
-scope: project
-description: Minimal playwright.config.ts for a Next.js dev server with auto-start webServer and a single chromium project.
+description: Minimal playwright.config.ts for a Next.js dev server with auto-start
+  webServer and a single chromium project.
 ---
 
 # Playwright — Config (Next.js dev server)

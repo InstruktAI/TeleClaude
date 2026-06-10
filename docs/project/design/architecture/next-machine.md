@@ -1,9 +1,5 @@
 ---
 description: 'Stateless state machine for orchestrating multi-phase project workflows.'
-domain: 'software-development'
-id: 'project/design/architecture/next-machine'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

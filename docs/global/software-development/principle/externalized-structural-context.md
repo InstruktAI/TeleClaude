@@ -1,9 +1,5 @@
 ---
 description: 'Make structural software context explicit so humans and AI reason from shared truth instead of implicit assumptions.'
-domain: 'software-development'
-id: 'software-development/principle/externalized-structural-context'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

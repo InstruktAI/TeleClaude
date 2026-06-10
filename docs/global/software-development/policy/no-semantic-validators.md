@@ -1,9 +1,5 @@
 ---
 description: 'Refuse code that grades, classifies, scores, or auto-edits agent free-text output. Mechanical lookups and schema parsing are allowed.'
-id: 'software-development/policy/no-semantic-validators'
-scope: 'domain'
-domain: 'software-development'
-type: 'policy'
 visibility: 'public'
 ---
 

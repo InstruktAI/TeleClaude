@@ -1,8 +1,5 @@
 ---
 description: 'Preserve intent, boundaries, and durable reasoning in documentation.'
-id: 'general/principle/intent-first-documentation'
-scope: 'global'
-type: 'principle'
 visibility: 'public'
 ---
 

@@ -1,13 +1,10 @@
 ---
-description: 'Bug diagnosis phase. Reproduce, trace the root cause to code, and prescribe the fix and verification approach as a diagnosis artifact before any code change.'
-domain: 'software-development'
-needs_domain_baseline: 'True'
-id: 'software-development/procedure/lifecycle/prepare/diagnose'
-scope: 'domain'
-type: 'procedure'
-visibility: 'public'
 activation_trigger: 'A bug todo is at the DIAGNOSE prepare phase and needs its root cause verified before planning the fix.'
+description: 'Bug diagnosis phase. Reproduce, trace the root cause to code, and prescribe the fix and verification approach as a diagnosis artifact before any code change.'
+needs_domain_baseline: 'True'
+visibility: 'public'
 ---
+
 # Bug Diagnose — Procedure
 
 ## Required reads

@@ -1,8 +1,5 @@
 ---
 description: 'Automation that rebuilds and deploys agent artifacts when sources change.'
-id: 'project/spec/agent-artifact-automation'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

@@ -1,8 +1,5 @@
 ---
 description: A2A Python SDK
-id: third-party/a2a-protocol/python-sdk
-scope: project
-type: third-party
 ---
 
 # A2A Python SDK

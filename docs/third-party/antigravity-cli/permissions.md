@@ -1,8 +1,5 @@
 ---
 description: Antigravity CLI (agy) Permissions and Sandboxing Spec
-id: third-party/antigravity-cli/permissions
-scope: project
-type: third-party
 ---
 
 # Antigravity CLI (agy) Permissions and Sandboxing Spec

@@ -1,9 +1,6 @@
 ---
 activation_trigger: 'Use when researching a library or framework not yet in consolidated docs'
 description: 'Research and index official documentation for project dependencies as reusable internal snippets stored under ~/.teleclaude/docs/third-party/ or docs/third-party/.'
-id: 'software-development/procedure/research/tech-stack-documentation'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

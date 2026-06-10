@@ -1,8 +1,5 @@
 ---
 description: Antigravity CLI (agy) Commands and Flags
-id: third-party/antigravity-cli/commands
-scope: project
-type: third-party
 ---
 
 # Antigravity CLI (agy) Commands and Flags

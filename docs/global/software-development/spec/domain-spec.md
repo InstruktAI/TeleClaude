@@ -1,10 +1,6 @@
 ---
-id: 'software-development/spec/domain-spec'
-type: 'spec'
-domain: 'software-development'
-scope: 'global'
-visibility: 'public'
 description: 'Template every bounded context''s canonical domain spec must follow — ubiquitous language, aggregates, events, use cases, context map position.'
+visibility: 'public'
 ---
 
 # Domain Spec — Spec

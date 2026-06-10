@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/identity/session-identity-file'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Per-session identity file in the session''s TMPDIR carrying session_id, session_token, system_role, and human_role; written atomically by the identity context, read by CLI subprocesses to populate identity signals.'
+visibility: 'public'
 ---
 
 # Session Identity File — Spec

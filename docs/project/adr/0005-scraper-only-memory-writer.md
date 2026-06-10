@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0005-scraper-only-memory-writer'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '5'
-date: '2026-05-21'
 adr_status: 'accepted'
+date: '2026-05-21'
 description: 'Memory is writable exclusively by the dedicated memory extraction agents (the scrapers). All other agents are prohibited from calling telec memories save.'
+number: '5'
+visibility: 'public'
 ---
 
 # ADR-0005: Scraper-Only Memory Writer — ADR

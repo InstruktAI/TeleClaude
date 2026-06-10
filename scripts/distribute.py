@@ -42,7 +42,7 @@ from teleclaude.docs_index import write_third_party_index_yaml
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
-from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
+from teleclaude.snippet_validation import derive_snippet_classification, load_domains
 
 Transform = Callable[[Post], str]
 
@@ -180,6 +180,19 @@ ArtifactFrontmatter = TypedDict(
     },
     total=False,
 )
+
+
+class SnippetIndexEntry(TypedDict, total=False):
+    """Snippet entry loaded from docs index.yaml."""
+
+    id: str
+    description: str
+    type: str
+    scope: str
+    domain: str
+    activation_trigger: str | None
+    needs_domain_baseline: bool
+    path: str
 
 
 class AgentConfig(TypedDict):
@@ -401,6 +414,43 @@ def _is_truthy_flag(value: object) -> bool:
     return value is True or (isinstance(value, str) and value.strip().lower() == "true")
 
 
+def _load_snippet_index_entries(project_root: Path) -> dict[str, SnippetIndexEntry]:
+    entries: dict[str, SnippetIndexEntry] = {}
+    for index_path in (
+        project_root / "docs" / "global" / "index.yaml",
+        project_root / "docs" / "project" / "index.yaml",
+    ):
+        if not index_path.exists():
+            continue
+        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            continue
+        snippets = payload.get("snippets")
+        if not isinstance(snippets, list):
+            continue
+        for item in snippets:
+            if not isinstance(item, dict):
+                continue
+            snippet_id = item.get("id")
+            if isinstance(snippet_id, str):
+                entries[snippet_id] = cast(SnippetIndexEntry, dict(item))
+    return entries
+
+
+def _index_entry_for_path(
+    path: Path,
+    *,
+    project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry],
+) -> SnippetIndexEntry | None:
+    classification, _ = derive_snippet_classification(
+        path, project_root=project_root, domains=load_domains(project_root)
+    )
+    if classification is None:
+        return None
+    return entries_by_id.get(classification.id)
+
+
 def _needs_domain_baseline_domain(content: str, *, project_root: Path, current_path: Path) -> str | None:
     """Domain to stamp on a command whose role procedure requests baseline injection.
 
@@ -409,16 +459,16 @@ def _needs_domain_baseline_domain(content: str, *, project_root: Path, current_p
     its ``domain`` so the deployed command frontmatter carries it. Dispatch reads
     that frontmatter at SessionStart (frontmatter survives inlining; refs do not).
     """
+    entries_by_id = _load_snippet_index_entries(project_root)
     for match in INLINE_REF_RE.finditer(content):
         resolved = resolve_ref_path(match.group(1), root_path=project_root, current_path=current_path)
         if not resolved or not resolved.exists():
             continue
-        try:
-            metadata = frontmatter.loads(resolved.read_text(encoding="utf-8")).metadata
-        except Exception:  # pylint: disable=broad-exception-caught
+        entry = _index_entry_for_path(resolved, project_root=project_root, entries_by_id=entries_by_id)
+        if entry is None:
             continue
-        if _is_truthy_flag(metadata.get("needs_domain_baseline")):
-            domain = metadata.get("domain")
+        if _is_truthy_flag(entry.get("needs_domain_baseline")):
+            domain = entry.get("domain")
             if isinstance(domain, str) and domain:
                 return domain
     return None
@@ -500,6 +550,7 @@ def _collect_progressive_index_entries(
     content = ref_file.read_text(encoding="utf-8")
     baseline_entries: list[str] = []
     activatable_entries: list[tuple[str, str]] = []
+    entries_by_id = _load_snippet_index_entries(project_root)
 
     for match in INLINE_REF_RE.finditer(content):
         ref = match.group(1)
@@ -510,12 +561,16 @@ def _collect_progressive_index_entries(
                 continue
             raise ValueError(f"Progressive index ref not found: {ref}")
 
-        raw = resolved.read_text(encoding="utf-8")
-        post = frontmatter.loads(raw)
-        snippet_id = post.metadata.get("id")
-        description = post.metadata.get("description")
-        snippet_type = post.metadata.get("type")
-        activation_trigger = post.metadata.get("activation_trigger")
+        entry = _index_entry_for_path(resolved, project_root=project_root, entries_by_id=entries_by_id)
+        if entry is None:
+            if warn_only:
+                print(f"WARNING: Progressive index ref missing from index: {ref}")
+                continue
+            raise ValueError(f"Progressive index ref missing from index: {ref}")
+        snippet_id = entry.get("id")
+        description = entry.get("description")
+        snippet_type = entry.get("type")
+        activation_trigger = entry.get("activation_trigger")
 
         if (
             snippet_type == "procedure"
@@ -535,27 +590,19 @@ def _collect_progressive_index_entries(
 
 
 def _render_activatable_procedures(*, project_root: Path, warn_only: bool = False) -> str:
+    _ = warn_only
     activatable_by_id: dict[str, str] = {}
-    for snippets_root in iter_snippet_roots(project_root):
-        for snippet_path in sorted(snippet_files(snippets_root, include_baseline=False)):
-            raw = snippet_path.read_text(encoding="utf-8")
-            try:
-                post = frontmatter.loads(raw)
-            except Exception:
-                if warn_only:
-                    print(f"WARNING: failed to parse frontmatter: {snippet_path}")
-                    continue
-                raise
-            snippet_id = post.metadata.get("id")
-            snippet_type = post.metadata.get("type")
-            activation_trigger = post.metadata.get("activation_trigger")
-            if (
-                snippet_type == "procedure"
-                and isinstance(snippet_id, str)
-                and isinstance(activation_trigger, str)
-                and activation_trigger.strip()
-            ):
-                activatable_by_id[snippet_id] = activation_trigger.strip()
+    for entry in _load_snippet_index_entries(project_root).values():
+        snippet_id = entry.get("id")
+        snippet_type = entry.get("type")
+        activation_trigger = entry.get("activation_trigger")
+        if (
+            snippet_type == "procedure"
+            and isinstance(snippet_id, str)
+            and isinstance(activation_trigger, str)
+            and activation_trigger.strip()
+        ):
+            activatable_by_id[snippet_id] = activation_trigger.strip()
     activatable_entries = sorted(activatable_by_id.items(), key=lambda item: item[0])
     if not activatable_entries:
         return ""

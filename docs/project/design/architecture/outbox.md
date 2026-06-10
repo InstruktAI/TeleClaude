@@ -1,8 +1,5 @@
 ---
 description: 'Durable outbox table for agent hook events.'
-id: 'project/design/architecture/outbox'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

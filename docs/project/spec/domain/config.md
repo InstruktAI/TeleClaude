@@ -1,14 +1,10 @@
 ---
-id: project/spec/domain/config
-type: spec
-domain: software-development
-scope: project
-visibility: public
 delivered_by:
-  - v2-config-cutover
+- v2-config-cutover
 description: Config bounded context — effective configuration resolved from layered
   YAML overlays. Owns the model, validation, and overlay computation. Consumed by
   every service.
+visibility: public
 ---
 
 # Config Domain Spec — Spec

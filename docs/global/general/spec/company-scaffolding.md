@@ -1,9 +1,5 @@
 ---
 description: 'Schema contract for company onboarding output: discovery-to-taxonomy mapping, snippet ID conventions, file placement, inbox processing, and merge rules for re-onboarding.'
-domain: 'general'
-id: 'general/spec/company-scaffolding'
-scope: 'global'
-type: 'spec'
 visibility: 'public'
 ---
 

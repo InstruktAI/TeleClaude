@@ -1,12 +1,12 @@
 ---
-id: general/procedure/memory-extraction/project
-type: procedure
-domain: general
-scope: global
+activation_trigger: Use when invoked as the project-category memory miner via /extract-memory-project
+  against a session mirror
+delivered_by:
+- v2-memory
+description: Thin wrapper around the general memory-extraction procedure for the project-category
+  memory miner. Binds the agent to the project vocabulary, cross-project routing rules,
+  and out-of-scope boundary defined in the project extraction feature spec.
 visibility: public
-delivered_by: [v2-memory]
-activation_trigger: 'Use when invoked as the project-category memory miner via /extract-memory-project against a session mirror'
-description: Thin wrapper around the general memory-extraction procedure for the project-category memory miner. Binds the agent to the project vocabulary, cross-project routing rules, and out-of-scope boundary defined in the project extraction feature spec.
 ---
 
 # Memory Extraction — Project — Procedure

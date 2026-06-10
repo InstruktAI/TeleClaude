@@ -1,11 +1,10 @@
 ---
-id: project/spec/feature/memory/extraction-human
-type: spec
-domain: software-development
-scope: project
+delivered_by:
+- v2-memory
+description: Human memory extraction — the memory-miner agent that reads a session
+  mirror, classifies observations about the human as triples in the human-category
+  vocabulary, and saves them through the scraper-only write path.
 visibility: public
-delivered_by: [v2-memory]
-description: Human memory extraction — the memory-miner agent that reads a session mirror, classifies observations about the human as triples in the human-category vocabulary, and saves them through the scraper-only write path.
 ---
 
 # Human Memory Extraction — Spec

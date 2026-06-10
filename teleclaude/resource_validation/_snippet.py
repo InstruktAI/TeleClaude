@@ -11,7 +11,6 @@ import frontmatter
 
 from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
-    TYPE_SUFFIX,
     RoadmapStatus,
 )
 from teleclaude.core.todos_db import todos_db_path
@@ -36,11 +35,11 @@ from teleclaude.resource_validation._models import (
 )
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots
 from teleclaude.snippet_validation import (
-    expected_snippet_id_for_path,
+    SnippetClassification,
+    derive_snippet_classification,
     is_companion,
     load_domains,
     validate_inline_ref_format,
-    validate_snippet_id_format,
 )
 
 _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
@@ -202,23 +201,8 @@ def _normalize_section_title(title: str) -> str:
     return re.sub(r"\s+", " ", cleaned)
 
 
-def _infer_type_from_path(file_path: Path) -> str | None:
-    parts = list(file_path.parts)
-    try:
-        baseline_idx = parts.index("baseline")
-    except ValueError:
-        return None
-    if baseline_idx + 1 >= len(parts):
-        return None
-    folder = parts[baseline_idx + 1]
-    return folder if folder in TYPE_SUFFIX else None
-
-
-def _snippet_type_for_validation(path: Path, meta: Mapping[str, object]) -> str | None:
-    raw_type = meta.get("type")
-    if isinstance(raw_type, str):
-        return raw_type
-    return _infer_type_from_path(path)
+def _snippet_type_for_validation(classification: SnippetClassification | None) -> str | None:
+    return classification.type.value if classification is not None else None
 
 
 def _validate_visibility(path: Path, meta: Mapping[str, object]) -> None:
@@ -365,42 +349,19 @@ def validate_snippet(
         body = content
     lines = body.splitlines()
 
-    # A companion `<stem>.<slug>.md` is the full next version of `<stem>.md` and
-    # deliberately shares the parent's id; validate it as a full snippet but exempt
-    # the id↔path checks. See documentation-first-development section 10.
-    companion = is_companion(path)
-    expected_id, path_error = expected_snippet_id_for_path(path, project_root=project_root, domains=domains)
-    if path_error and not companion:
+    classification, path_error = derive_snippet_classification(path, project_root=project_root, domains=domains)
+    if path_error and not is_companion(path):
         _error("snippet_invalid_path", path=str(path), reason=path_error)
 
-    parsed_id = None
-    snippet_id = meta.get("id")
-    if isinstance(snippet_id, str):
-        parsed_id, id_error = validate_snippet_id_format(snippet_id, domains=domains)
-        if id_error:
-            _error(
-                "snippet_invalid_id_format",
-                path=str(path),
-                reason=id_error,
-                snippet_id=snippet_id,
-            )
-    if expected_id and parsed_id and parsed_id.value() != expected_id and not companion:
-        _error(
-            "snippet_id_path_mismatch",
-            path=str(path),
-            expected_id=expected_id,
-            snippet_id=parsed_id.value(),
-        )
-
     _validate_visibility(path, meta)
-    snippet_type = _snippet_type_for_validation(path, meta)
+    snippet_type = _snippet_type_for_validation(classification)
     _validate_activation_trigger(path, meta, snippet_type=snippet_type)
     _validate_delivered_by(path, meta)
     if roadmap_status_map is not None:
         _validate_delivered_by_roadmap(path, meta, roadmap_status_map)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
-    _validate_snippet_sections(path, lines, meta, domains=domains)
+    _validate_snippet_sections(path, lines, meta, classification=classification)
 
 
 def _validate_baseline_index(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
@@ -592,12 +553,12 @@ def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, 
         _error(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
 
-def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-branches,unused-argument
+def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-branches
     path: Path,
     lines: list[str],
     meta: Mapping[str, object],
     *,
-    domains: set[str],
+    classification: SnippetClassification | None,
 ) -> None:
     h2_titles: list[str] = []
     in_code_block = False
@@ -617,10 +578,7 @@ def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-bran
             _error("snippet_see_also_not_last", path=str(path))
 
     if "baseline" not in path.parts:
-        has_frontmatter = any(True for _ in [meta] if meta)
-        if not has_frontmatter or not any(isinstance(meta.get(f), str) for f in ("id",)):
-            pass  # handled elsewhere
-        for field in ("id", "type", "scope", "description"):
+        for field in ("description",):
             if not isinstance(meta.get(field), str) or not meta.get(field):
                 _error("snippet_missing_frontmatter_field", path=str(path), field=field)
 
@@ -629,9 +587,7 @@ def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-bran
         if not isinstance(visibility_val, str) or visibility_val not in SNIPPET_VISIBILITY_VALUES:
             _error("snippet_invalid_visibility_value", path=str(path), value=str(visibility_val))
 
-    snippet_type = meta.get("type") if isinstance(meta.get("type"), str) else None
-    if not snippet_type:
-        snippet_type = _infer_type_from_path(path)
+    snippet_type = _snippet_type_for_validation(classification)
     if snippet_type:
         type_key = str(snippet_type).lower()
         section_rules = _SCHEMA["sections"].get(type_key, {})  # type: ignore[var-annotated]
@@ -658,17 +614,6 @@ def _is_third_party_doc(path: Path, project_root: Path) -> bool:
     except (OSError, ValueError):
         return False
     return len(rel.parts) >= 3 and rel.parts[0] == "docs" and rel.parts[1] == _THIRD_PARTY_TYPE
-
-
-def _expected_third_party_id(path: Path, project_root: Path) -> str | None:
-    if path.name in _THIRD_PARTY_INDEX_NAMES:
-        return None
-    try:
-        rel = path.resolve().relative_to((project_root / "docs" / _THIRD_PARTY_TYPE).resolve())
-    except (OSError, ValueError):
-        return None
-    rel_no_suffix = rel.with_suffix("")
-    return f"{_THIRD_PARTY_TYPE}/{rel_no_suffix.as_posix()}"
 
 
 def _extract_sources_section(lines: list[str]) -> list[str]:
@@ -702,22 +647,9 @@ def _extract_markdown_link_url(value: str) -> str | None:
 
 
 def _validate_third_party_frontmatter(path: Path, meta: Mapping[str, object], project_root: Path) -> None:
-    for field in ("id", "type", "scope", "description"):
+    for field in ("description",):
         if not isinstance(meta.get(field), str) or not meta.get(field):
             _error("snippet_missing_frontmatter_field", path=str(path), field=field)
-
-    expected_id = _expected_third_party_id(path, project_root)
-    raw_id = meta.get("id")
-    if expected_id and isinstance(raw_id, str) and raw_id != expected_id:
-        _error("third_party_id_path_mismatch", path=str(path), expected_id=expected_id, snippet_id=raw_id)
-
-    raw_type = meta.get("type")
-    if isinstance(raw_type, str) and raw_type != _THIRD_PARTY_TYPE:
-        _error("third_party_invalid_type", path=str(path), value=raw_type)
-
-    raw_scope = meta.get("scope")
-    if isinstance(raw_scope, str) and raw_scope not in {"project", "global"}:
-        _error("third_party_invalid_scope", path=str(path), value=raw_scope)
 
 
 def _validate_third_party_sources(path: Path, lines: list[str]) -> None:
@@ -795,13 +727,14 @@ def _domain_baseline_ids(domain: str, project_root: Path) -> set[str]:
     baseline = project_root / "docs" / "global" / domain / "baseline.md"
     if not baseline.exists():
         return set()
+    domains = load_domains(project_root)
     ids: set[str] = set()
     for ref in _BASELINE_REF_RE.findall(baseline.read_text(encoding="utf-8")):
         resolved = resolve_ref_path(ref, root_path=project_root, current_path=baseline)
         if resolved and resolved.exists():
-            snippet_id = frontmatter.loads(resolved.read_text(encoding="utf-8")).metadata.get("id")
-            if isinstance(snippet_id, str) and snippet_id:
-                ids.add(snippet_id)
+            classification, _ = derive_snippet_classification(resolved, project_root=project_root, domains=domains)
+            if classification is not None:
+                ids.add(classification.id)
     return ids
 
 
@@ -811,17 +744,15 @@ def _iter_reachable_refs(start: Path, project_root: Path, seen: set[Path]) -> It
         text = start.read_text(encoding="utf-8")
     except OSError:
         return
+    domains = load_domains(project_root)
     for ref in _BASELINE_REF_RE.findall(text):
         resolved = resolve_ref_path(ref, root_path=project_root, current_path=start)
         if not resolved or not resolved.exists() or resolved in seen:
             continue
         seen.add(resolved)
-        try:
-            snippet_id = frontmatter.loads(resolved.read_text(encoding="utf-8")).metadata.get("id")
-        except OSError:
-            continue
-        if isinstance(snippet_id, str) and snippet_id:
-            yield snippet_id, start
+        classification, _ = derive_snippet_classification(resolved, project_root=project_root, domains=domains)
+        if classification is not None:
+            yield classification.id, start
         yield from _iter_reachable_refs(resolved, project_root, seen)
 
 
@@ -834,6 +765,7 @@ def _validate_baseline_dedup(project_root: Path) -> None:
     is delivered twice. The fix is to drop the redundant required read, not to rely
     on silent build-time deduplication.
     """
+    domains = load_domains(project_root)
     for snippets_root in _iter_snippet_roots(project_root):
         for path in sorted(snippets_root.rglob("*.md")):
             if path.name == "index.yaml" or is_excluded_snippet_path(path, snippets_root):
@@ -845,9 +777,10 @@ def _validate_baseline_dedup(project_root: Path) -> None:
             flag = meta.get("needs_domain_baseline")
             if not (flag is True or (isinstance(flag, str) and flag.strip().lower() == "true")):
                 continue
-            domain = meta.get("domain")
-            if not isinstance(domain, str) or not domain:
+            classification, _ = derive_snippet_classification(path, project_root=project_root, domains=domains)
+            if classification is None:
                 continue
+            domain = classification.domain
             baseline_ids = _domain_baseline_ids(domain, project_root)
             for snippet_id, container in _iter_reachable_refs(path, project_root, set()):
                 if snippet_id in baseline_ids:

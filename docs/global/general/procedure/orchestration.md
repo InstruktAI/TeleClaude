@@ -1,8 +1,5 @@
 ---
 description: 'Orchestration loop for the next-work state machine and worker session handling.'
-id: 'general/procedure/orchestration'
-scope: 'global'
-type: 'procedure'
 visibility: 'public'
 ---
 

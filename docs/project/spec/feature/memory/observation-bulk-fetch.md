@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/memory/observation-bulk-fetch'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Bulk-fetch observations by id list — a single-call convenience over per-id fetch, ordered newest-first.'
+visibility: 'public'
 ---
 
 # Observation Bulk Fetch — Spec

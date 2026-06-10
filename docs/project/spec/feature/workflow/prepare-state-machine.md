@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/prepare-state-machine'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Phase A state machine driving a Todo from draft input through PRD → architecture → plan to prepared, returning the next orchestrator instruction on each call.'
+visibility: 'public'
 ---
 
 # Prepare State Machine — Spec

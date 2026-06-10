@@ -1,8 +1,5 @@
 ---
 description: 'Deferred work — the authoritative v1→v2 workflow cutover that v2-mvp-bootstrap explicitly does not perform. Notes the prerequisites and the shape of the eventual cutover todo.'
-id: 'project/design/architecture-v2/future-cutover'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

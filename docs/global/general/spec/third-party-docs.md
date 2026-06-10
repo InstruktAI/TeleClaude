@@ -1,8 +1,5 @@
 ---
 description: 'Conventions for third-party documentation storage and references.'
-id: 'general/spec/third-party-docs'
-scope: 'global'
-type: 'spec'
 visibility: 'public'
 ---
 

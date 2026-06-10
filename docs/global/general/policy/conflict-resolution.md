@@ -1,9 +1,6 @@
 ---
-id: 'general/policy/conflict-resolution'
-type: 'policy'
-scope: 'global'
-visibility: 'public'
 description: 'Guidelines for resolving conflicts between documentation, instructions, and code.'
+visibility: 'public'
 ---
 
 # Conflict Resolution Rules — Policy

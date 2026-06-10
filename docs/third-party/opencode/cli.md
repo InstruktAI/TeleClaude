@@ -1,8 +1,6 @@
 ---
-description: OpenCode CLI — non-interactive invocation, session resume, and headless server
-id: third-party/opencode/cli
-scope: project
-type: third-party
+description: OpenCode CLI — non-interactive invocation, session resume, and headless
+  server
 ---
 
 # OpenCode CLI

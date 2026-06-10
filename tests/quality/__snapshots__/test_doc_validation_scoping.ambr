@@ -1,0 +1,62 @@
+# serializer version: 1
+# name: TestValidateAllSnippetsScoping.test_baseline_dedup_uses_path_derived_ids
+  list([
+    dict({
+      'code': 'snippet_inline_ref_format_invalid',
+      'path': 'docs/global/software-development/baseline.md',
+      'reason': 'invalid_project_scope',
+      'ref': '@docs/global/software-development/concept/baseline-entry.md',
+    }),
+    dict({
+      'code': 'snippet_inline_ref_format_invalid',
+      'path': 'docs/global/software-development/procedure/runner.md',
+      'reason': 'invalid_project_scope',
+      'ref': '@docs/global/software-development/concept/baseline-entry.md',
+    }),
+    dict({
+      'code': 'baseline_dedup_violation',
+      'domain': 'software-development',
+      'path': 'docs/global/software-development/procedure/runner.md',
+      'snippet_id': 'software-development/concept/baseline-entry',
+    }),
+  ])
+# ---
+# name: TestValidateAllSnippetsScoping.test_section_validation_uses_path_derived_type
+  list([
+    dict({
+      'code': 'snippet_missing_required_section',
+      'path': 'docs/project/policy/wrong-section-fixture.md',
+      'section': 'rules',
+    }),
+    dict({
+      'code': 'snippet_missing_required_section',
+      'path': 'docs/project/policy/wrong-section-fixture.md',
+      'section': 'rationale',
+    }),
+    dict({
+      'code': 'snippet_missing_required_section',
+      'path': 'docs/project/policy/wrong-section-fixture.md',
+      'section': 'scope',
+    }),
+    dict({
+      'code': 'snippet_missing_required_section',
+      'path': 'docs/project/policy/wrong-section-fixture.md',
+      'section': 'enforcement',
+    }),
+    dict({
+      'code': 'snippet_missing_required_section',
+      'path': 'docs/project/policy/wrong-section-fixture.md',
+      'section': 'exceptions',
+    }),
+    dict({
+      'code': 'snippet_unknown_section',
+      'path': 'docs/project/policy/wrong-section-fixture.md',
+      'section': 'what',
+    }),
+    dict({
+      'code': 'snippet_unknown_section',
+      'path': 'docs/project/policy/wrong-section-fixture.md',
+      'section': 'why',
+    }),
+  ])
+# ---

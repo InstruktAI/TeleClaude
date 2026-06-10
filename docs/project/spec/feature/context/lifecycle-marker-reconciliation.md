@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/context/lifecycle-marker-reconciliation'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Integration-time clearing of delivered_by slugs from pending snippets when a delivery slug reaches delivered todo status.'
+visibility: 'public'
 ---
 
 # Lifecycle Marker Reconciliation — Spec

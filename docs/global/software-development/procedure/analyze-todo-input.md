@@ -1,11 +1,7 @@
 ---
-id: 'software-development/procedure/analyze-todo-input'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
-visibility: 'public'
 activation_trigger: 'Use when a kind-less todo needs its raw human intent interpreted and classified into a kind'
 description: 'Interpret a kind-less todo''s raw input, assign it a kind, and route it to that kind''s lifecycle entry phase through a single autonomous stamp.'
+visibility: 'public'
 ---
 
 # Analyze Todo Input — Procedure

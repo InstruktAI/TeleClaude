@@ -1,9 +1,5 @@
 ---
 description: 'Phase B state machine: build, review, fix, and finalize routing for implementation work. Terminal phase is finalize_ready; the integration event is emitted by the TodosDb write-state chokepoint on any lifecycle-phase write, not from within the work-step.'
-domain: 'software-development'
-id: 'project/design/architecture/work-state-machine'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

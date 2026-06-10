@@ -1,8 +1,5 @@
 ---
 description: 'Authoritative vocabulary for TeleClaude internal and external events.'
-id: 'project/spec/event-vocabulary'
-scope: 'project'
-type: 'spec'
 visibility: 'public'
 ---
 

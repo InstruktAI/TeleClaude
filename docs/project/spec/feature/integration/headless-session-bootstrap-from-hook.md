@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/integration/headless-session-bootstrap-from-hook'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'When an agent_session_start hook arrives for a session the integration service has never seen, the dispatcher creates a headless session record inline from the hook payload before continuing normal event dispatch.'
+visibility: 'public'
 ---
 
 # Headless Session Bootstrap from Hook — Spec

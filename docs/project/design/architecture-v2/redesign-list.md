@@ -1,8 +1,5 @@
 ---
 description: 'Anti-patterns from v1 that v2 must NOT port. Living document — each entry is something to fix during the rewrite, not carry forward.'
-id: 'project/design/architecture-v2/redesign-list'
-scope: 'project'
-type: 'design'
 visibility: 'public'
 ---
 

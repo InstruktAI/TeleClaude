@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/person-identity-schema'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Per-person identity schema declaring name, validated email, optional username, role enum, nested expertise map, and deprecated single-level proficiency field.'
+visibility: 'public'
 ---
 
 # Person Identity Schema — Spec

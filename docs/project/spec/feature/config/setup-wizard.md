@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/config/setup-wizard'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Interactive, idempotent guided walkthrough that is the single TeleClaude-owned surface for completing machine-wide setup — covers every persisted configuration value, resumes from partial state, and shows at-a-glance status before and after each pass.'
+visibility: 'public'
 ---
 
 # Setup Wizard — Spec

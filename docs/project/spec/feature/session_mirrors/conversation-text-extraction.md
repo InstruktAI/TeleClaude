@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/conversation-text-extraction'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Normalization rules that turn a structured agent transcript into the mirror''s flat conversation_text — user and assistant text only, system-reminders stripped, title derived from the first user message, timestamps anchored on the first and last surviving messages.'
+visibility: 'public'
 ---
 
 # Conversation Text Extraction — Spec

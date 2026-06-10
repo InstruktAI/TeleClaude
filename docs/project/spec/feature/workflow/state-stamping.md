@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/workflow/state-stamping'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'The `telec todo stamp` command and the validated state-write boundary it goes through — kind assignment, approvals, review verdicts, skip stamps, drift-reviewed acknowledgments, build-complete and finalize-ready handoffs.'
+visibility: 'public'
 ---
 
 # State Stamping — Spec

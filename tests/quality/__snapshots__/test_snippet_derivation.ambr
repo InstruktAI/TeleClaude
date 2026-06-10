@@ -1,0 +1,31 @@
+# serializer version: 1
+# name: test_companion_derives_parent_classification
+  dict({
+    'domain': 'general',
+    'id': 'general/procedure/authoring',
+  })
+# ---
+# name: test_derives_domain_global_classification
+  dict({
+    'domain': 'software-development',
+    'id': 'software-development/policy/testing',
+  })
+# ---
+# name: test_derives_general_global_classification
+  dict({
+    'domain': 'general',
+    'id': 'general/concept/example',
+  })
+# ---
+# name: test_derives_project_classification
+  dict({
+    'domain': 'project',
+    'id': 'project/spec/feature/context/index-build',
+  })
+# ---
+# name: test_non_derivable_path_returns_reason
+  dict({
+    'classification': None,
+    'reason': 'not_under_docs_root',
+  })
+# ---

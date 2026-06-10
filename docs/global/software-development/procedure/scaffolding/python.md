@@ -1,8 +1,5 @@
 ---
 description: 'Scaffold a Python repo with standard tooling, Makefile targets, and uv-managed dependencies.'
-id: 'software-development/procedure/scaffolding/python'
-scope: 'domain'
-type: 'procedure'
 visibility: 'public'
 ---
 

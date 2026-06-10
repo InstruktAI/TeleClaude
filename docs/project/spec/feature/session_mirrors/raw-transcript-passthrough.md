@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/session_mirrors/raw-transcript-passthrough'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Direct passthrough to the original agent transcript file when callers want raw transcript bytes rather than the mirror''s normalized conversation text. Exposed via `telec history show --raw` and via the session_mirrors service''s raw-transcript capability.'
+visibility: 'public'
 ---
 
 # Raw Transcript Passthrough — Spec

@@ -1,15 +1,11 @@
 ---
-id: 'project/adr/0023-index-as-single-source-of-truth-for-snippet-metadata'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '23'
+adr_status: accepted
 date: '2026-06-10'
-adr_status: 'accepted'
-delivered_by:
-  - index-leading-snippet-metadata
-description: 'The per-project index derives id/type/scope/domain from the snippet path and is the single source of truth; frontmatter stops authoring these fields and consumers read only the index.'
+description: The per-project index derives id/type/scope/domain from the snippet path
+  and is the single source of truth; frontmatter stops authoring these fields and
+  consumers read only the index.
+number: '23'
+visibility: public
 ---
 
 # Index As Single Source Of Truth For Snippet Metadata — ADR

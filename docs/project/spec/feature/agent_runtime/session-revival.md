@@ -1,10 +1,6 @@
 ---
-id: 'project/spec/feature/agent_runtime/session-revival'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
 description: 'Revive an ended or unbound agent session by binding the prior native transcript chain to a fresh agent process so context resumes intact.'
+visibility: 'public'
 ---
 
 # Session Revival — Spec

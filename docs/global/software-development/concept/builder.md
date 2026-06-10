@@ -1,8 +1,5 @@
 ---
 description: 'Tactical implementation. Follow prepared artifacts, write code matching the PRD, pragmatic autonomy, satisfy feature-spec acceptance scenarios.'
-id: 'software-development/concept/builder'
-scope: 'domain'
-type: 'concept'
 visibility: 'public'
 ---
 

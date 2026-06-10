@@ -1,8 +1,5 @@
 ---
 description: 'Schema contract for /projects-analyze enrichment output: discovery-to-taxonomy mapping, snippet ID conventions, file placement, frontmatter template, and merge rules for re-analysis.'
-id: 'software-development/spec/init-scaffolding'
-scope: 'domain'
-type: 'spec'
 visibility: 'public'
 ---
 

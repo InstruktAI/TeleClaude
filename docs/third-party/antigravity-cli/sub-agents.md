@@ -1,8 +1,5 @@
 ---
 description: Antigravity CLI (agy) Sub-Agents Spec
-id: third-party/antigravity-cli/sub-agents
-scope: project
-type: third-party
 ---
 
 # Antigravity CLI (agy) Sub-Agents Spec
