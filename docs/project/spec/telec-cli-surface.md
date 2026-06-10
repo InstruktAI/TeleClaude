@@ -154,7 +154,7 @@ subcommands:
         flags:
           --project-root: 'Project root (default: cwd).'
       split:
-        description: 'Split a todo into child items. The parent roadmap row becomes a stateless holder derived from child group_slug rows: no todo_state row, no lifecycle phase, no non-input artifacts. The original parent input artifact is retained as frozen source material and cloned to each child at split time; it cannot be edited or removed afterward. Children bootstrap with fresh default_state() at lifecycle_phase=draft.'
+        description: 'Split a todo into child items. The parent roadmap row becomes a stateless holder derived from child group_slug rows: no todo_state row, no lifecycle phase, no non-input artifacts. The original parent input artifact is retained as frozen source material and cloned to each child at split time; it cannot be edited or removed afterward. Children inherit the parent canonical kind, split stays non-auto-routing, and the command output instructs the agent to tend each child kind.'
         args:
           - slug: 'string'
         flags:

@@ -812,7 +812,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`todo-management`](../feature/workflow/todo-management.md) — Per-project ordered todo-list access through todo-scoped commands; derived section ordering; delivery transition.
 - [`todo-icebox`](../feature/workflow/todo-icebox.md) — Frozen-but-recoverable state for Todo entries; iceboxed entries do not participate in dependency resolution.
 - [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` skips prepare; bug-kind helpers route to `/next-work`.
-- [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
+- [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; children inherit the parent's canonical kind, split stays non-auto-routing, and the command output instructs the agent to tend child kinds. The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
 - [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
 
 ### Context map position

@@ -41,13 +41,14 @@ from teleclaude.constants import (
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
 )
-from teleclaude.core.next_machine._types import default_state
+from teleclaude.core.next_machine._types import StateValue, default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
     migrate_todo_kind,
 )
+from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
@@ -61,7 +62,7 @@ from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES, LifecyclePhase
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_TASK
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_CHANGE, TODO_KIND_TASK
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -81,6 +82,22 @@ _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_TASK_PLAN,
 }
+
+
+def _initial_todo_state_for_kind(kind: str | None) -> dict[str, StateValue]:
+    """Return the initial persisted state for a newly created todo kind."""
+    state = default_state()
+    if kind is None:
+        state["kind"] = None
+        state.pop("lifecycle_phase", None)
+        return state
+
+    canonical = canonical_kind(kind)
+    state["kind"] = canonical
+    entry_phase = KIND_ENTRY_PHASE[canonical]
+    if entry_phase in (LifecyclePhase.DIAGNOSE, LifecyclePhase.PREPARED):
+        state["lifecycle_phase"] = entry_phase.value
+    return state
 
 
 # ── Response models ─────────────────────────────────────────────────────────
@@ -589,16 +606,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 detail="--plan supplies a complete implementation-plan and is only valid with --kind change",
             )
 
-        state = default_state()
-        if request.kind is None:
-            state["kind"] = None
-            state.pop("lifecycle_phase", None)
-        else:
-            state["kind"] = request.kind
-            if request.kind == TODO_KIND_TASK:
-                state["lifecycle_phase"] = LifecyclePhase.PREPARED.value
-            elif request.kind == TODO_KIND_BUG:
-                state["lifecycle_phase"] = LifecyclePhase.DIAGNOSE.value
+        state = _initial_todo_state_for_kind(request.kind)
         force_silent = request.kind == TODO_KIND_TASK
         pickup_requested = not (request.silent or force_silent)
 
@@ -698,7 +706,18 @@ async def todo_split(
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
 
+    parent_state = await todos_db.read_state(slug)
+    raw_parent_kind = parent_state.get("kind") if parent_state is not None else None
+    try:
+        parent_kind = canonical_kind(raw_parent_kind if isinstance(raw_parent_kind, str) else None)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Parent todo '{slug}' has unresolvable kind: {raw_parent_kind!r}",
+        ) from exc
+
     parent_input = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
+    child_state = _initial_todo_state_for_kind(parent_kind)
 
     async with todos_db._session() as session:  # pylint: disable=protected-access
         async with session.begin():
@@ -708,7 +727,7 @@ async def todo_split(
                 if await todos_db.slug_conflicts_non_removed(child_slug, session=session):
                     raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
                 await todos_db.add_to_roadmap(child_slug, group_slug=slug, session=session)
-                await todos_db.write_state(child_slug, default_state(), session=session)
+                await todos_db.write_state(child_slug, child_state, session=session)
                 if parent_input:
                     await todos_db.write_artifact(
                         child_slug,

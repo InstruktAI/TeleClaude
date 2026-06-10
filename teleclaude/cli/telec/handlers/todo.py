@@ -375,6 +375,12 @@ def _handle_todo_split(args: list[str]) -> None:
 
     if isinstance(result, dict) and result.get("status") == "ok":
         print(f"Split '{slug}' into {len(children)} children: {', '.join(children)}")
+        print(
+            "Inspect each child and confirm the inherited parent kind is still correct: "
+            f"{', '.join(children)}. "
+            "Correct any child whose kind should differ with "
+            "telec todo update <child> --kind <new_kind>."
+        )
     elif isinstance(result, dict) and result.get("detail"):
         print(f"Error: {result['detail']}")
         raise SystemExit(1)
