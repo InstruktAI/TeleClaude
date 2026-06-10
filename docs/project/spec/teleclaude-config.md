@@ -26,7 +26,7 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 | --------------------- | -------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                                                               |
 | **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
-| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                                                    |
+| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`, `settings`                                                                        |
 
 **The project config is a regular file committed to the repository.** It is never a
 symlink. Replacing it with a symlink to the global config breaks validation because
@@ -106,11 +106,26 @@ creds:
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
 invite_token: string
+settings:
+  output_visibility:
+    notifications: null | off | mobile | web | both
+    system_messages: null | off | mobile | web | both
+    tool_calls: null | off | mobile | web | both
 ```
 
 `creds.discord.nick` is optional. When present, it is the Discord-facing display name for
 reflected human input; canonical identity, authorization, and personal workspace resolution still
 use `people[].name`.
+
+<!-- planned:dynamic-config-tui -->
+Typed config keys are part of the interactive config surface. The config wizard
+must render machine config, global overlay, project overlay, per-person overlay,
+and env-backed values from their canonical schemas or registries, with view
+metadata only deciding grouping and presentation. `creds`, tokens, secrets, and
+settings are not excluded from the TUI because they are nested or sensitive; any
+masking or reveal-on-edit behavior is a rendering detail layered on top of the
+same editable schema surface.
+<!-- /planned:dynamic-config-tui -->
 
 ### Environment variables
 

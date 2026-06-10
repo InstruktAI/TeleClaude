@@ -241,6 +241,33 @@ And the wizard reminds the human that existing agent sessions must be restarted
   before newly authorized values are visible to those agents
 ```
 
+<!-- planned:dynamic-config-tui -->
+#### UC-WIZ-12: Config forms are schema-driven
+
+```
+Given the human opens `telec config wizard`
+When any config section renders
+Then fields are derived from the canonical config schema or env-var registry for that section
+And TUI-local shadow models do not define the field contract
+And the field's owning source determines the writer used on save
+And sensitive-looking paths remain reachable unless explicitly excluded by documented view metadata
+```
+
+#### UC-WIZ-13: Per-person overlay config is reachable from People
+
+```
+Given the human opens `telec config wizard`
+And a person exists in the global people list
+When the human expands that person in the People view
+Then the view shows both global identity fields and per-person overlay fields
+And the per-person overlay fields are rendered from the PersonConfig schema
+And creds, subscriptions, interests, invite_token, and settings are reachable when present
+And settings.output_visibility values can be set without editing YAML by hand
+And PersonEntry edits write the global config
+And PersonConfig edits write that person's per-person overlay file
+```
+<!-- /planned:dynamic-config-tui -->
+
 ### Persistence surfaces and writers
 
 The wizard writes through five distinct persistence surfaces. The
@@ -250,7 +277,7 @@ lands in one of the five surfaces below.
 | Wizard scope                                          | Persistence file                             | Typed surface                            | Writer                                                                |
 | ----------------------------------------------------- | -------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
 | People, subscriptions, interests, event domains       | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema                    | global-config writer (config bounded context)                         |
-| Per-person creds, subscriptions, interests            | `~/.teleclaude/people/<name>/teleclaude.yml` | per-person overlay schema                | per-person-config writer (config bounded context)                     |
+| Per-person creds, subscriptions, interests, settings  | `~/.teleclaude/people/<name>/teleclaude.yml` | per-person overlay schema                | per-person-config writer (config bounded context)                     |
 | Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)    | project overlay schema                   | project-config writer (atomic — per `atomic-project-config-write.md`) |
 | Agent environment allow list                          | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema (`env_allow_list`) | global-config writer (config bounded context)                         |
 | Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                  | env-var registry (untyped)               | env-file writer (atomic — per `atomic-env-file-write.md`)             |
