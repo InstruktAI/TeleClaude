@@ -13,11 +13,7 @@ from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import format_relative_time
-from teleclaude.core.next_machine.lifecycle import (
-    LifecyclePhase,
-    coerce_lifecycle_phase,
-    is_settled_ok_phase,
-)
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, is_settled_ok_phase
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
@@ -42,13 +38,13 @@ _TODO_STATUS_REMOVED = "trashed"
 
 _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.DRAFT: "intake",
-    LifecyclePhase.PRD_DRAFTING: "prd drafting",
-    LifecyclePhase.PRD_HUMAN_APPROVAL: "prd approval",
-    LifecyclePhase.ARCHITECTURE_DRAFTING: "arch drafting",
-    LifecyclePhase.ARCHITECTURE_REVIEW: "arch review",
+    LifecyclePhase.PRD_DRAFTING: "prd draft",
+    LifecyclePhase.PRD_HUMAN_APPROVAL: "prd apprvl",
+    LifecyclePhase.ARCHITECTURE_DRAFTING: "arch draft",
+    LifecyclePhase.ARCHITECTURE_REVIEW: "arch revw",
     LifecyclePhase.DIAGNOSE: "diagnose",
-    LifecyclePhase.PLAN_DRAFTING: "plan drafting",
-    LifecyclePhase.PLAN_REVIEW: "plan review",
+    LifecyclePhase.PLAN_DRAFTING: "plan draft",
+    LifecyclePhase.PLAN_REVIEW: "plan revw",
     LifecyclePhase.PREPARED: "prepared",
     LifecyclePhase.BLOCKED: "blocked",
 }
@@ -61,7 +57,7 @@ _KIND_DISPLAY: dict[str, str] = {
 }
 
 _REVIEW_STATUS_DISPLAY: dict[str, str] = {
-    "changes_requested": "disapproved",
+    "changes_requested": "disapp",
 }
 
 
