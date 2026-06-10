@@ -61,3 +61,17 @@ root Cargo metadata changes, and `--all` use workspace scope.
 Rust gates are owned by the existing pre-commit cargo hooks. The current Rust
 test hook is library-only (`cargo test --workspace --lib --quiet`) unless a
 future task changes the hook.
+
+<!-- planned:telec-code-delegates-to-make -->
+`telec code lint|test|format|install` are thin scoping shims: each resolves
+workspace scope and delegates to the project's own `make` target. `telec code
+lint` runs `make lint FILES=<scoped>` (a full `make lint` with no `FILES` on
+`--all`, CI, or a no-session shared branch); `telec code test` runs `make test`
+(unscoped); `telec code format` runs `make format`; `telec code install` runs
+`make install`. The project's `Makefile` owns the toolchain — native tools plus
+any repo-local policy scripts — and runs with zero TeleClaude dependency;
+`telec code` embeds no tool of its own and only forwards the resolved file scope
+as `FILES`. There is no `--step` flag and no guardrails subcommand: guardrails
+run as a repo-local lint step behind `make lint`, never as a `telec` command.
+<!-- /planned:telec-code-delegates-to-make -->
+
