@@ -27,7 +27,7 @@ from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.next_machine.lifecycle import is_ready_for_work
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE, TodoDumpKind
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_FEATURE, TodoDumpKind
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
@@ -302,7 +302,7 @@ class PreparationViewActionsMixin:
             return path
         return os.getcwd()
 
-    def _create_item(self, slug: str, *, kind: str) -> None:
+    def _create_item(self, slug: str, *, kind: str | None) -> None:
         """Create a todo or bug via the daemon API after content modal confirmation."""
         project_root = self._current_project_path()
 
@@ -365,7 +365,7 @@ class PreparationViewActionsMixin:
 
         def _on_result(slug: str | None) -> None:
             if slug:
-                self._create_item(slug, kind=TODO_KIND_CHANGE)
+                self._create_item(slug, kind=None)
 
         self.app.push_screen(  # type: ignore[attr-defined]
             CreateSlugModal(title="New Todo"),
