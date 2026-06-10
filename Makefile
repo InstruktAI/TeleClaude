@@ -74,6 +74,7 @@ lint:
 
 check-no-unit-tests:
 	@uv run python tools/lint/forbid_unit_tests.py
+	@uv run python tools/lint/forbid_ts_unit_tests.py
 
 test-e2e:
 	@echo "Running integration/e2e tests..."

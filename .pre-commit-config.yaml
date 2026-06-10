@@ -58,6 +58,12 @@ repos:
     language: system
     files: ^tests/.*\.py$
     pass_filenames: false
+  - id: forbid-ts-unit-tests
+    name: Forbid TypeScript unit tests (tools/lint/forbid_ts_unit_tests.py)
+    entry: uv run python tools/lint/forbid_ts_unit_tests.py
+    language: system
+    files: \.test\.tsx?$
+    pass_filenames: false
 - repo: local
   hooks:
   - id: check-cli-help
