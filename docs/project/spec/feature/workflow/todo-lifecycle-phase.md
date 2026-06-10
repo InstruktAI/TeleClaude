@@ -78,6 +78,26 @@ Then it raises an error naming the slug context and the offending raw value
 And the calling state machine treats the Todo as invalid rather than guessing a phase
 ```
 
+<!-- planned:revive-todo-update-command -->
+#### UC-TLP1: Kind update re-routes lifecycle_phase before build
+
+```gherkin
+Given an active Todo whose build has not started
+When the operator runs "telec todo update my-todo --kind bug --force"
+Then the workflow service validates the target kind
+And resolves the target entry point through KIND_ENTRY_PHASE
+And persists lifecycle_phase to that target entry phase through the validated state-write boundary
+And any invalid old-kind artifacts are warned about or handled according to the force artifact-migration contract
+```
+
+```gherkin
+Given an active Todo whose build has started
+When the operator runs "telec todo update my-todo --kind task"
+Then the workflow service refuses before changing lifecycle_phase or kind
+And the current lifecycle_phase remains unchanged
+```
+<!-- /planned:revive-todo-update-command -->
+
 ### Cross-context references
 
 - `agent_runtime` — worker dispatch decisions read the canonical phase to decide

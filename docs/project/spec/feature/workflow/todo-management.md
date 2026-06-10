@@ -118,6 +118,39 @@ And its state, artifacts, and artifact versions remain available to the identity
 And the todo disappears from every default read path
 ```
 
+<!-- planned:revive-todo-update-command -->
+#### UC-WM5: Unified todo update facade
+
+```
+Given an active todo whose build has not started
+When the operator runs "telec todo update my-todo --slug new-slug"
+Then the slug leg delegates to the workflow rename engine and applies the
+same atomic slug cascade as the rename contract
+```
+
+```
+Given an active todo
+When the operator runs "telec todo update my-todo --after parent-a --after parent-b"
+Then the dependency leg validates every parent slug, rejects cycles, and
+replaces the todo's dependency set with the supplied parents
+```
+
+```
+Given an active todo whose build has not started
+When the operator runs "telec todo update my-todo --kind bug"
+Then the kind leg handles any orphaned kind-specific artifacts explicitly
+And lifecycle_phase is re-routed to the target kind's entry phase
+```
+
+```
+Given an active todo whose build has started
+When the operator runs "telec todo update my-todo --slug new-slug"
+Or the operator runs "telec todo update my-todo --kind task"
+Then the workflow service refuses the mutation before changing state
+But dependency-only updates through --after remain allowed
+```
+<!-- /planned:revive-todo-update-command -->
+
 ### Cross-context references
 
 - `integration` — delivered-slug cleanup retires the delivered slug's worktree/branch/workspace after delivery bookkeeping.

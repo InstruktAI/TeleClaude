@@ -14,6 +14,19 @@ The `telec` command-line tool is the primary interface for human operators. This
 
 ## Canonical fields
 
+<!-- planned:revive-todo-update-command -->
+### Planned `telec todo update` surface
+
+Pending `revive-todo-update-command`, `telec todo update <slug> [--slug <new>]
+[--after <dep>]... [--kind <kind>] [--force]` is the single public facade for
+mutable todo identity/classification fields. `--slug` delegates to the existing
+atomic rename engine, `--after` replaces the dependency set after existence and
+cycle validation, and `--kind` re-routes lifecycle through the target kind's
+entry phase while handling orphaned kind-specific artifacts. The public
+`telec todo rename` and `telec todo set-deps` verbs are retired from the todo
+surface.
+<!-- /planned:revive-todo-update-command -->
+
 ### Machine-Readable Surface
 
 ```yaml
