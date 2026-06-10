@@ -1,4 +1,59 @@
 # serializer version: 1
 # name: test_kindless_todo_row_renders_unknown_kind_and_classify_phase
-  '  ├─■ classify-me··K:unknown··P:classify···'
+  '  ├─■ classify-me··unknown··P:classify···'
+# ---
+# name: test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode
+  list([
+    tuple(
+      'feature',
+      'dark',
+      'color(109)',
+    ),
+    tuple(
+      'feature',
+      'light',
+      'color(66)',
+    ),
+    tuple(
+      'change',
+      'dark',
+      'color(141)',
+    ),
+    tuple(
+      'change',
+      'light',
+      'color(97)',
+    ),
+    tuple(
+      'bug',
+      'dark',
+      'color(160)',
+    ),
+    tuple(
+      'bug',
+      'light',
+      'color(124)',
+    ),
+    tuple(
+      'task',
+      'dark',
+      'color(255)',
+    ),
+    tuple(
+      'task',
+      'light',
+      'color(232)',
+    ),
+  ])
+# ---
+# name: test_todo_row_renders_compact_kind_labels
+  list([
+    '  ├─■ my-feature··feat···',
+    '  ├─■ my-change···chng···',
+    '  ├─■ my-bug······bug····',
+    '  ├─■ my-task·····task···',
+  ])
+# ---
+# name: test_todo_row_renders_disapproved_review_status
+  '  ├─■ fix-review··chng··B:complete··R:disapproved···'
 # ---

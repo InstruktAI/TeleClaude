@@ -24,7 +24,7 @@ _DIM = Style(dim=True)
 
 _PHASE_PREFIX_LIFECYCLE = "P"
 _PHASE_PREFIX_INTEGRATION = "I"
-_PHASE_PREFIX_KIND = "K"
+_PHASE_PREFIX_KIND = ""
 
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
@@ -52,6 +52,37 @@ _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.PREPARED: "prepared",
     LifecyclePhase.BLOCKED: "blocked",
 }
+
+_KIND_DISPLAY: dict[str, str] = {
+    "feature": "feat",
+    "change": "chng",
+    "bug": "bug",
+    "task": "task",
+}
+
+_REVIEW_STATUS_DISPLAY: dict[str, str] = {
+    "changes_requested": "disapproved",
+}
+
+
+def _display_kind(kind: str | None) -> str:
+    if kind is None:
+        return "unknown"
+    return _KIND_DISPLAY.get(kind, kind)
+
+
+def _display_review_status(status: str) -> str:
+    return _REVIEW_STATUS_DISPLAY.get(status, status)
+
+
+def _col_plain_text(label: str, value: str) -> str:
+    """Return the plain text that _build_col would produce for this label/value pair."""
+    if not value:
+        return ""
+    if label:
+        return f"{label}:{value}"
+    return value
+
 
 # Work-lane lifecycle_phase → (build_status, review_status) for the B/R columns.
 # This is the renderer's final-stage projection from canonical phase to the
@@ -188,9 +219,24 @@ def _gold_color() -> str:
     return _GOLD_DARK if is_dark_mode() else _GOLD_LIGHT
 
 
-def _kind_color() -> str:
-    """Return the theme-aware color for the K:<kind> tag."""
-    return "color(109)" if is_dark_mode() else "color(66)"
+_KIND_COLORS_DARK: dict[str, str] = {
+    "feature": "color(109)",
+    "change": "color(141)",
+    "bug": "color(160)",
+    "task": "color(255)",
+}
+_KIND_COLORS_LIGHT: dict[str, str] = {
+    "feature": "color(66)",
+    "change": "color(97)",
+    "bug": "color(124)",
+    "task": "color(232)",
+}
+
+
+def _kind_color(kind: str | None) -> str:
+    """Return the theme-aware color for the kind label."""
+    colors = _KIND_COLORS_DARK if is_dark_mode() else _KIND_COLORS_LIGHT
+    return colors.get(kind or "", colors["feature"])
 
 
 def _icebox_color() -> str:
@@ -260,8 +306,7 @@ class TodoRow(TelecMixin, Widget):
         """
         maxes: dict[str, int] = {"K": 0, "P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
         for t in todos:
-            kind_label = t.kind if t.kind else "unknown"
-            maxes["K"] = max(maxes["K"], len(f"{_PHASE_PREFIX_KIND}:{kind_label}"))
+            maxes["K"] = max(maxes["K"], len(_col_plain_text(_PHASE_PREFIX_KIND, _display_kind(t.kind))))
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
@@ -281,7 +326,7 @@ class TodoRow(TelecMixin, Widget):
                 maxes["B"] = max(maxes["B"], len(f"B:{bs}"))
             rs = _phase_review_status(t.lifecycle_phase)
             if rs and rs != _TODO_STATUS_PENDING:
-                maxes["R"] = max(maxes["R"], len(f"R:{rs}"))
+                maxes["R"] = max(maxes["R"], len(_col_plain_text("R", _display_review_status(rs))))
             if t.deferrals_status:
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
@@ -312,9 +357,11 @@ class TodoRow(TelecMixin, Widget):
     def _build_col(self, label: str, value: str, width: int, value_style: Style) -> Text:
         """Render a fixed-width column. Empty value -> blank padding for alignment."""
         col = Text()
-        if value:
-            if label:
-                col.append(f"{label}:", style=Style())
+        plain = _col_plain_text(label, value)
+        if plain:
+            prefix_len = len(plain) - len(value)
+            if prefix_len:
+                col.append(plain[:prefix_len], style=Style())
             col.append(value, style=value_style)
         return _pad(col, width)
 
@@ -332,10 +379,13 @@ class TodoRow(TelecMixin, Widget):
 
         w = self._col_widths
         result = Text()
-        # K:<kind> is orthogonal to phase and renders first on every non-holder row.
+        # Kind column renders first on every non-holder row (no colon prefix).
         result.append_text(
             self._build_col(
-                _PHASE_PREFIX_KIND, self.todo.kind or "unknown", w.get("K", 0), Style(color=_kind_color(), bold=True)
+                _PHASE_PREFIX_KIND,
+                _display_kind(self.todo.kind),
+                w.get("K", 0),
+                Style(color=_kind_color(self.todo.kind), bold=True),
             )
         )
 
@@ -393,7 +443,7 @@ class TodoRow(TelecMixin, Widget):
                 )
             )
 
-            r_val = rs if rs and rs != _TODO_STATUS_PENDING else ""
+            r_val = _display_review_status(rs) if rs and rs != _TODO_STATUS_PENDING else ""
             result.append_text(
                 self._build_col(
                     "R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold, bold=True)
