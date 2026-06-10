@@ -16,7 +16,7 @@ _NEXT_PREPARE_EMPTY_CALL_RE: Pattern[str] = re.compile(r"telec todo prepare\(\s*
 _MAPPED_TOOL_NAMES: dict[str, str] = {
     "next_work": "telec todo work",
     "next_prepare": "telec todo prepare",
-    "set_dependencies": "telec todo set-deps",
+    "set_dependencies": "telec todo update",
     "run_agent_command": "telec sessions run",
     "get_session_data": "telec sessions tail",
     "send_message": "telec sessions send",

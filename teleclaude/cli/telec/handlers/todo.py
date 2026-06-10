@@ -7,7 +7,7 @@ import json as _json
 import sys
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
@@ -18,7 +18,6 @@ from teleclaude.cli.tool_commands import (
     handle_todo_design,
     handle_todo_integrate,
     handle_todo_prepare,
-    handle_todo_set_deps,
     handle_todo_work,
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
@@ -38,6 +37,17 @@ from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDump
 if TYPE_CHECKING:
     pass
 
+
+class _TodoUpdateBody(TypedDict):
+    slug: str
+    cwd: str
+    client_request_id: str
+    new_slug: NotRequired[str]
+    after: NotRequired[list[str]]
+    kind: NotRequired[str]
+    force: NotRequired[bool]
+
+
 __all__ = [
     "_handle_todo",
     "_handle_todo_artifacts",
@@ -47,11 +57,11 @@ __all__ = [
     "_handle_todo_freeze",
     "_handle_todo_list",
     "_handle_todo_remove",
-    "_handle_todo_rename",
     "_handle_todo_show",
     "_handle_todo_split",
     "_handle_todo_stamp",
     "_handle_todo_unfreeze",
+    "_handle_todo_update",
 ]
 
 
@@ -74,12 +84,11 @@ def _handle_todo(args: list[str]) -> None:
         "prepare": handle_todo_prepare,
         "reactivate": _handle_todo_reactivate,
         "remove": _handle_todo_remove,
-        "rename": _handle_todo_rename,
-        "set-deps": handle_todo_set_deps,
         "show": _handle_todo_show,
         "split": _handle_todo_split,
         "stamp": _handle_todo_stamp,
         "unfreeze": _handle_todo_unfreeze,
+        "update": _handle_todo_update,
         "work": handle_todo_work,
     }
     handler = handlers.get(subcommand)
@@ -460,23 +469,77 @@ def _render_remove_refusal(status: dict[object, object], slug: str) -> bool:
     return True
 
 
-def _handle_todo_rename(args: list[str]) -> None:
-    """Handle telec todo rename <old-slug> <new-slug>."""
-    if len(args) != 2 or any(arg.startswith("-") for arg in args):
-        print(_usage("todo", "rename"))
+def _handle_todo_update(args: list[str]) -> None:
+    """Handle telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <kind>] [--force]."""
+    if "--help" in args or "-h" in args:
+        print(_usage("todo", "update"))
+        return
+
+    slug: str | None = None
+    new_slug: str | None = None
+    after: list[str] = []
+    kind: str | None = None
+    force = False
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--slug" and i + 1 < len(args):
+            new_slug = args[i + 1]
+            i += 2
+        elif arg == "--after" and i + 1 < len(args):
+            after.append(args[i + 1])
+            i += 2
+        elif arg == "--kind" and i + 1 < len(args):
+            kind = args[i + 1]
+            i += 2
+        elif arg == "--force":
+            force = True
+            i += 1
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "update"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if slug is None:
+        print("Missing required slug.")
+        print(_usage("todo", "update"))
         raise SystemExit(1)
 
-    old_slug, new_slug = args
-    body = {
-        "old_slug": old_slug,
-        "new_slug": new_slug,
+    _validate_slugs(slug, new_slug, *after)
+    if kind is not None and kind not in ALL_DUMP_KINDS:
+        print(f"unknown todo kind: {kind!r}")
+        print(f"Valid kinds: {TODO_KIND_USAGE}")
+        raise SystemExit(1)
+
+    body: _TodoUpdateBody = {
+        "slug": slug,
         "cwd": str(resolve_invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
-    receipt: object = tool_api_call("POST", "/todos/rename", json_body=body)
+    if new_slug is not None:
+        body["new_slug"] = new_slug
+    if "--after" in args:
+        body["after"] = after
+    if kind is not None:
+        body["kind"] = kind
+    if force:
+        body["force"] = True
+
+    receipt: object = tool_api_call("POST", "/todos/update", json_body=body)
     if not isinstance(receipt, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         print_json(receipt)
         raise SystemExit(1)
+
+    if "operation_id" not in receipt:
+        print_json(receipt)
+        return
 
     status: object = poll_operation(receipt, estimated_timeout_ms=30_000)
     if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]

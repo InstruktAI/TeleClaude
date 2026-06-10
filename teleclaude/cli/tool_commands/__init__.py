@@ -42,7 +42,6 @@ handle_todo_create = _todo.handle_todo_create
 handle_todo_design = _todo.handle_todo_design
 handle_todo_integrate = _todo.handle_todo_integrate
 handle_todo_prepare = _todo.handle_todo_prepare
-handle_todo_set_deps = _todo.handle_todo_set_deps
 handle_todo_work = _todo.handle_todo_work
 
 __all__ = [
@@ -73,6 +72,5 @@ __all__ = [
     "handle_todo_design",
     "handle_todo_integrate",
     "handle_todo_prepare",
-    "handle_todo_set_deps",
     "handle_todo_work",
 ]

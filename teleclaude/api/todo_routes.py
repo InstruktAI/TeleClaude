@@ -24,8 +24,7 @@ from teleclaude.api.auth import (
     clearance_todos_prepare,
     clearance_todos_reactivate,
     clearance_todos_remove,
-    clearance_todos_rename,
-    clearance_todos_set_deps,
+    clearance_todos_update,
     clearance_todos_work,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
@@ -44,9 +43,14 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
+from teleclaude.core.next_machine.kind_migration import (
+    KindMigrationRequiresForce,
+    KindMigrationResult,
+    migrate_todo_kind,
+)
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import apply_prepared_state
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import get_todos_db
@@ -56,8 +60,8 @@ from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
-from teleclaude.types.lifecycle import LifecyclePhase
-from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_TASK
+from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES, LifecyclePhase
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_TASK
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -126,6 +130,19 @@ class _SplitResponse(BaseModel):
     status: str
     slug: str
     children: str
+
+
+class _TodoUpdateResponse(BaseModel):
+    """Response from synchronous todo update legs."""
+
+    model_config = ConfigDict(frozen=True)
+    status: str
+    slug: str
+    kind: str | None = None
+    lifecycle_phase: str | None = None
+    after: list[str] | None = None
+    warnings: list[str]
+    folded_artifact: str | None = None
 
 
 def _default_cwd() -> str:
@@ -225,75 +242,125 @@ async def todo_integrate(  # pyright: ignore
     )
 
 
-@router.post("/rename", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
-async def todo_rename(  # pyright: ignore
-    old_slug: Annotated[str, Body()],
-    new_slug: Annotated[str, Body()],
+@router.post("/update", response_model=None)
+async def todo_update(  # pyright: ignore
+    slug: Annotated[str, Body()],
+    new_slug: Annotated[str | None, Body()] = None,
+    after: Annotated[list[str] | None, Body()] = None,
+    kind: Annotated[str | None, Body()] = None,
+    force: Annotated[bool, Body()] = False,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_rename),
-) -> SerializedOperation:
-    """Rename a todo through a durable operation."""
+    identity: CallerIdentity = Depends(clearance_todos_update),
+) -> SerializedOperation | _TodoUpdateResponse:
+    """Update a todo slug, dependencies, or kind through one mutation facade."""
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    operations = get_operations_service()
-    return await operations.submit_todo_rename(
-        old_slug=old_slug,
-        new_slug=new_slug,
-        cwd=cwd,
-        caller_session_id=identity.session_id,
-        client_request_id=client_request_id,
-    )
+    if new_slug is None and after is None and kind is None:
+        raise HTTPException(status_code=400, detail="at least one of new_slug, after, or kind is required")
 
+    _validate_slug_for_update(slug, field_name="slug")
+    if new_slug is not None:
+        _validate_slug_for_update(new_slug, field_name="new_slug")
+    if kind is not None and kind not in ALL_DUMP_KINDS:
+        raise HTTPException(status_code=400, detail=f"unknown todo kind: {kind!r}")
 
-@router.post("/set-deps")
-async def todo_set_deps(  # pyright: ignore
-    slug: Annotated[str, Body()],
-    after: Annotated[list[str], Body()],
-    cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_set_deps),
-) -> dict[str, str]:
-    """Set dependencies for a work item in the todo list.
+    requested_after = after
+    if requested_after is not None:
+        for dep in requested_after:
+            _validate_slug_for_update(dep, field_name="dependency")
+        if slug in requested_after:
+            raise HTTPException(status_code=400, detail=f"slug '{slug}' cannot depend on itself")
 
-    Replaces all existing dependencies for the slug with the given list.
-    Pass after=[] to clear all dependencies. Validates slugs and checks for
-    circular dependencies. Requires clearance to modify todo dependencies.
-    """
-    if not cwd:
-        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-
-    if not _SLUG_RE.match(slug):
-        raise HTTPException(
-            status_code=400,
-            detail=f"invalid slug '{slug}': must be lowercase alphanumeric with hyphens only",
-        )
-    for dep in after:
-        if not _SLUG_RE.match(dep):
-            raise HTTPException(
-                status_code=400,
-                detail=f"invalid dependency '{dep}': must be lowercase alphanumeric with hyphens only",
-            )
-    if slug in after:
-        raise HTTPException(status_code=400, detail=f"slug '{slug}' cannot depend on itself")
-
+    warnings: list[str] = []
+    migration_result: KindMigrationResult | None = None
     todos_db = await _get_todos_db_from_cwd(cwd)
 
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
-    for dep in after:
-        if not await todos_db.slug_in_roadmap(dep):
-            raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in todo list")
 
-    deps = await todos_db.load_deps()
-    cycle = detect_circular_dependency(deps, slug, after)
-    if cycle:
-        cycle_str = " -> ".join(cycle)
-        raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
+    if (new_slug is not None or kind is not None) and await _todo_build_started(todos_db, slug):
+        raise HTTPException(
+            status_code=409, detail=f"slug and kind updates are refused after build starts for '{slug}'"
+        )
 
-    await todos_db.set_deps(slug, after=after)
+    if kind is not None:
+        try:
+            migration_result = await migrate_todo_kind(todos_db, slug, target_kind=kind, force=force)
+        except KindMigrationRequiresForce as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except StateMutationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        warnings.extend(migration_result["warnings"])
 
-    msg = f"dependencies set for '{slug}': {', '.join(after)}" if after else f"dependencies cleared for '{slug}'"
-    return {"result": f"OK: {msg}"}
+    if requested_after is not None:
+        for dep in requested_after:
+            if not await todos_db.slug_in_roadmap(dep):
+                raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in todo list")
+
+        deps = await todos_db.load_deps()
+        cycle = detect_circular_dependency(deps, slug, requested_after)
+        if cycle:
+            cycle_str = " -> ".join(cycle)
+            raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
+
+        await todos_db.set_deps(slug, after=requested_after)
+
+    if new_slug is not None:
+        operations = get_operations_service()
+        logger.info(
+            "todo update route delegating rename",
+            slug=slug,
+            new_slug=new_slug,
+            kind=migration_result["kind"] if migration_result else None,
+            after=requested_after,
+            cwd=cwd,
+        )
+        return await operations.submit_todo_rename(
+            old_slug=slug,
+            new_slug=new_slug,
+            cwd=cwd,
+            caller_session_id=identity.session_id,
+            client_request_id=client_request_id,
+        )
+
+    logger.info(
+        "todo update route completed",
+        slug=slug,
+        kind=migration_result["kind"] if migration_result else None,
+        lifecycle_phase=migration_result["lifecycle_phase"] if migration_result else None,
+        orphaned_artifacts=migration_result["orphaned_artifacts"] if migration_result else None,
+        after=requested_after,
+        cwd=cwd,
+    )
+    return _TodoUpdateResponse(
+        status="ok",
+        slug=slug,
+        kind=migration_result["kind"] if migration_result else None,
+        lifecycle_phase=migration_result["lifecycle_phase"] if migration_result else None,
+        after=requested_after,
+        warnings=warnings,
+        folded_artifact=migration_result.get("folded_artifact") if migration_result else None,
+    )
+
+
+def _validate_slug_for_update(slug: str, *, field_name: str) -> None:
+    if not _SLUG_RE.match(slug):
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid {field_name} '{slug}': must be lowercase alphanumeric with hyphens only",
+        )
+
+
+async def _todo_build_started(todos_db: TodosDb, slug: str) -> bool:
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    writer = StateWriter(raw_state)
+    phase = writer.state.lifecycle_phase
+    if writer.state.build_start_base_sha:
+        return True
+    return phase in {work_phase.value for work_phase in WORK_LIFECYCLE_PHASES}
 
 
 # ---------------------------------------------------------------------------

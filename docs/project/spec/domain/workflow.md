@@ -36,12 +36,10 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 **Slug**
 : A kebab-case name for a todo, stable across that todo's lifetime except via the atomic `telec todo rename` operation — the only sanctioned slug mutation (see the Todo-aggregate invariant and UC-WFL-13). It is the **active alias**, not the durable row identity: a roadmap entry has its own durable row identity (v1: `roadmap.id`), and `slug` is unique only among **live** entries (`active`/`icebox` and their derived `pending`/`in_progress` display states). Retained non-live rows — `delivered` (history) and `removed` (within the retention window) — may share a slug with a fresh live entry. Resolving a slug to "the todo" therefore means "the live entry for this slug"; history/removed rows are addressed by durable row identity.
 
-<!-- planned:revive-todo-update-command -->
 Pending `revive-todo-update-command`, the public slug mutation surface is
 `telec todo update <slug> --slug <new>` rather than `telec todo rename`. The
 underlying atomic rename engine and `workflow.todo.renamed` event remain the
 single owner of the slug cascade.
-<!-- /planned:revive-todo-update-command -->
 
 **Removal tombstone**
 : Durable, row-id-keyed metadata captured on the roadmap row at soft-remove time, alongside `removed_at`. It holds `prev_status` — the status the entry held immediately before removal (`active` or `icebox`) — and `removed_deps` — a snapshot of the entry's own outgoing `after` edges as they were at removal. Both exist only so reactivation can restore the entry's own footprint exactly. The snapshot is necessary because `roadmap_deps` is slug-keyed with no row identity: the live outgoing edges MUST be scrubbed at soft-remove (or a same-slug recreate would inherit/collide with them), so they can only survive for reactivation by being parked here. Legacy rows removed before this metadata existed have neither; reactivation falls back to `prev_status=icebox` and no outgoing-edge restore.
@@ -49,12 +47,10 @@ single owner of the slug cascade.
 **Kind**
 : Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
 
-<!-- planned:revive-todo-update-command -->
 Pending `revive-todo-update-command`, kind is mutable only before build starts
 through `telec todo update <slug> --kind <kind>`. The mutation re-routes
 `lifecycle_phase` through `KIND_ENTRY_PHASE[target]`; once build has started,
 kind mutation is refused.
-<!-- /planned:revive-todo-update-command -->
 
 **Stage** (per glossary)
 : Top-level lifecycle band: `draft`, `prepare`, `work`, `integrate`, `delivered`. Each stage is a coherent body of work with its own state machine inside.
@@ -112,13 +108,11 @@ kind mutation is refused.
   - Stage progression is strictly forward: `draft → prepare → work → integrate → delivered`. No backwards transitions; recovery from failure happens within the current stage's machine.
   - An artifact's version history is append-only; old versions are referenced by digest.
   - A todo's `kind` is fixed once assigned. It may be unset at creation (a kind-less dump with `kind=None` and no `lifecycle_phase`, awaiting `/analyze-todo-input`); analyze classifies the dump and assigns the kind autonomously through the `--kind-assign` stamp boundary exactly once — no proposal, no human approval gate. After assignment, changing kind requires deletion + recreation.
-  <!-- planned:revive-todo-update-command -->
   - Pending `revive-todo-update-command`, a todo's `kind` may be changed only
     before build starts by `telec todo update <slug> --kind <kind>`. The update
     validates the target kind, handles invalid old-kind artifacts explicitly,
     and writes `lifecycle_phase = KIND_ENTRY_PHASE[target]`. The mutation is
     refused after build starts.
-  <!-- /planned:revive-todo-update-command -->
   - An SDLC todo cannot reach `delivered` stage without a non-empty `delivery_commit` and a successful integrate-state-machine terminal state. A `task` todo is non-SDLC; its durable evidence is the groomed `task-plan` and any recorded results.
   - Dependency cycles are forbidden — the dependency graph MUST be a DAG.
   - A todo's slug is immutable across its lifetime EXCEPT via the atomic
@@ -140,12 +134,10 @@ kind mutation is refused.
     and refused if any non-removed entry already holds the new slug (only
     soft-`removed` retained slugs are collision-free rename targets,
     consistent with the slug-reuse rule).
-  <!-- planned:revive-todo-update-command -->
   - Pending `revive-todo-update-command`, the sanctioned public slug mutation
     is `telec todo update <slug> --slug <new>`. The operation delegates to the
     existing atomic rename engine and keeps the same all-or-nothing cascade and
     `workflow.todo.renamed` event. Slug mutation is refused after build starts.
-  <!-- /planned:revive-todo-update-command -->
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
@@ -616,7 +608,6 @@ And if any leg fails, every completed leg is reversed (LIFO) and the system
   is left exactly as before
 ```
 
-<!-- planned:revive-todo-update-command -->
 #### UC-WFL-13b: Update a todo slug through the unified mutation facade
 
 ```
@@ -630,7 +621,6 @@ And on commit emits workflow.todo.renamed with old_slug and new_slug
 And retained delivered/removed history rows keep their original slug
 But if build has already started, the update is refused before any slug surface changes
 ```
-<!-- /planned:revive-todo-update-command -->
 
 #### UC-WFL-14: Reveal removed entries through the recovery surface
 

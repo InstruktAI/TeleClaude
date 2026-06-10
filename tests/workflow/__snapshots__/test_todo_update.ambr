@@ -1,0 +1,22 @@
+# serializer version: 1
+# name: test_todo_update_after_replaces_dependencies_and_validates_cycles
+  'circular dependency detected: feature-a -> feature-a -> feature-b -> feature-a'
+# ---
+# name: test_todo_update_kind_folds_seeded_plan_for_task
+  '''
+  original input
+  
+  ## Folded implementation plan
+  
+  seeded plan body
+  
+  '''
+# ---
+# name: test_todo_update_kind_warns_then_forces_orphan_removal[force_warnings]
+  list([
+    'permanently removed orphaned artifacts: prd, architecture',
+  ])
+# ---
+# name: test_todo_update_kind_warns_then_forces_orphan_removal[orphan_warning]
+  'kind migration feature -> bug orphans prd, architecture; re-run with --force to permanently remove them.'
+# ---

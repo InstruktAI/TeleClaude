@@ -118,7 +118,6 @@ And its state, artifacts, and artifact versions remain available to the identity
 And the todo disappears from every default read path
 ```
 
-<!-- planned:revive-todo-update-command -->
 #### UC-WM5: Unified todo update facade
 
 ```
@@ -149,7 +148,6 @@ Or the operator runs "telec todo update my-todo --kind task"
 Then the workflow service refuses the mutation before changing state
 But dependency-only updates through --after remain allowed
 ```
-<!-- /planned:revive-todo-update-command -->
 
 ### Cross-context references
 

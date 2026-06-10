@@ -78,7 +78,6 @@ Then it raises an error naming the slug context and the offending raw value
 And the calling state machine treats the Todo as invalid rather than guessing a phase
 ```
 
-<!-- planned:revive-todo-update-command -->
 #### UC-TLP1: Kind update re-routes lifecycle_phase before build
 
 ```gherkin
@@ -96,7 +95,6 @@ When the operator runs "telec todo update my-todo --kind task"
 Then the workflow service refuses before changing lifecycle_phase or kind
 And the current lifecycle_phase remains unchanged
 ```
-<!-- /planned:revive-todo-update-command -->
 
 ### Cross-context references
 

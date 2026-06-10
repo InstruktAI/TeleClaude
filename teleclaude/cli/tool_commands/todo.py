@@ -22,7 +22,6 @@ __all__ = [
     "handle_todo_design",
     "handle_todo_integrate",
     "handle_todo_prepare",
-    "handle_todo_set_deps",
     "handle_todo_work",
 ]
 
@@ -278,52 +277,4 @@ def handle_operations_get(args: list[str]) -> None:
         raise SystemExit(1)
 
     data = tool_api_call("GET", f"/operations/{operation_id}")
-    print_json(data)
-
-
-def handle_todo_set_deps(args: list[str]) -> None:
-    """Set dependencies for a work item in the todo list.
-
-    Usage: telec todo set-deps <slug> --after <dep1> [<dep2> ...]
-                               OR
-           telec todo set-deps <slug>   (clears all dependencies)
-
-    Replaces all existing dependencies for the slug with the given list.
-    Pass no --after flags to clear all dependencies. Validates all slugs
-    against the todo list and detects circular dependencies.
-
-    Options:
-      <slug>           Work item slug
-      --after <slug>   Dependency slug (can be repeated for multiple deps)
-
-    Examples:
-      telec todo set-deps my-feature --after auth-setup
-      telec todo set-deps my-feature --after dep1 --after dep2
-      telec todo set-deps my-feature   (clears deps)
-    """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_set_deps.__doc__ or "")
-        return
-
-    slug: str | None = None
-    after: list[str] = []
-    cwd: str = str(resolve_invocation_cwd())
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--after" and i + 1 < len(args):
-            after.append(args[i + 1])
-            i += 2
-        elif not args[i].startswith("-"):
-            slug = args[i]
-            i += 1
-        else:
-            i += 1
-
-    if not slug:
-        print("Error: slug is required", file=sys.stderr)
-        raise SystemExit(1)
-
-    body: dict[str, object] = {"slug": slug, "after": after, "cwd": cwd}  # guard: loose-dict - JSON request body
-    data = tool_api_call("POST", "/todos/set-deps", json_body=body)
     print_json(data)

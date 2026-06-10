@@ -26,13 +26,11 @@ The graph has two responsibilities:
 
 Mutations land via `telec todo set-deps`, which converges on the workflow service's set-deps capability after passing validation.
 
-<!-- planned:revive-todo-update-command -->
 Pending `revive-todo-update-command`, dependency mutations land through
 `telec todo update <slug> --after <dep>...`. The public `set-deps` verb is
 retired, but the workflow service still uses the same set-deps capability after
 existence validation and cycle detection. Supplying no `--after` keeps the
 full-replacement clear behavior.
-<!-- /planned:revive-todo-update-command -->
 
 
 ### Phase-specific gates (two gates, both directions)
@@ -64,7 +62,6 @@ And cycle detection runs over the current graph plus the proposed edges
 And the deps are persisted, replacing any prior edges for "feature-a"
 ```
 
-<!-- planned:revive-todo-update-command -->
 ```
 Given an empty dependency graph
 When the operator runs "telec todo update feature-a --after feature-b --after feature-c"
@@ -72,7 +69,6 @@ Then both "feature-b" and "feature-c" are validated as existing todo slugs
 And cycle detection runs over the current graph plus the proposed edges
 And the deps are persisted, replacing any prior edges for "feature-a"
 ```
-<!-- /planned:revive-todo-update-command -->
 
 ```
 Given a graph where "alpha" depends on "beta" and "beta" depends on "gamma"
@@ -120,7 +116,6 @@ Then all existing edges for that slug are removed
 And the workflow service reports "dependencies cleared for 'alpha'"
 ```
 
-<!-- planned:revive-todo-update-command -->
 ```
 Given the operator runs "telec todo update alpha" with no --after flag and no
 other mutation flag
@@ -128,7 +123,6 @@ When the workflow service writes the dependency leg
 Then all existing edges for that slug are removed
 And the workflow service reports that dependencies were cleared for "alpha"
 ```
-<!-- /planned:revive-todo-update-command -->
 
 
 ### Use cases
@@ -172,12 +166,10 @@ And "child" waits until "parent" reaches PREPARED, which triggers auto-continue 
 - The graph is per-project: one todo list, one dependency graph, one project root. There is no cross-project dependency.
 - Dependency satisfaction is lane-specific. `delivered` clears the work gate; `PREPARED` clears the prepare gate. `icebox`, `pending`, and lifecycle phases before `PREPARED` leave the prepare gate closed. Removing a dep edge is the only way to unblock a candidate whose dep is iceboxed.
 - `set-deps` is a full replacement: passing no `--after` clears all edges for the slug; there is no incremental add/remove surface. To merge edges, the caller must read the current edges first and submit the union.
-<!-- planned:revive-todo-update-command -->
 - Pending `revive-todo-update-command`, `telec todo update --after` carries the
   same full-replacement semantics. There is still no incremental add/remove
   dependency surface; callers that want to merge edges must read the current set
   and submit the union.
-<!-- /planned:revive-todo-update-command -->
 - At slug retirement, the workflow context scrubs the deleted slug out of other entries' `depends_on` lists — without that, removing a slug could leave dangling deps that block its dependents forever.
 
 

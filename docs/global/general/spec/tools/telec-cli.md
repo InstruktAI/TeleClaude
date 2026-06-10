@@ -16,14 +16,12 @@ AI-safe `telec` commands for project work. Run `telec <subcommand> --help` for d
 
 ## Canonical fields
 
-<!-- planned:revive-todo-update-command -->
 Pending `revive-todo-update-command`, the todo mutation surface includes
 `telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <kind>]
 [--force]` and no longer includes public `telec todo rename` or
 `telec todo set-deps` verbs. The command table below is generated from the CLI
 surface and will reflect this when the delivering code updates
 `teleclaude/cli/telec/surface.py` and `telec sync` runs.
-<!-- /planned:revive-todo-update-command -->
 
 There are many of course, but this section is now intended to reveal the full surface of baseline commands that we want you to know out of the box.
 

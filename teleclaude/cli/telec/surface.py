@@ -548,10 +548,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
-            "rename": CommandDef(
-                desc="Rename a todo slug",
-                args="<old-slug> <new-slug>",
-                flags=[_H],
+            "update": CommandDef(
+                desc="Update a todo slug, dependencies, or kind",
+                args=f"<slug> [--slug <new>] [--after <dep>]... [--kind <{TODO_KIND_USAGE}>] [--force]",
+                flags=[
+                    _H,
+                    Flag("--slug", desc="New todo slug; delegates to the durable rename engine"),
+                    Flag("--after", desc="Dependency slug (repeatable); replaces all existing dependencies"),
+                    Flag("--kind", desc=f"New todo kind: {TODO_KIND_USAGE}"),
+                    Flag("--force", desc="Allow permanent orphan-artifact handling for kind migrations"),
+                ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "prepare": CommandDef(
@@ -575,15 +581,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="[<slug>]",
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
-            ),
-            "set-deps": CommandDef(
-                desc="Set dependencies for a work item in the todo list",
-                args="<slug> [--after <slugs>]",
-                flags=[
-                    _H,
-                    Flag("--after", desc="Dependency slug (repeatable)"),
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "split": CommandDef(
                 desc="Split a todo into child items (container transition)",
