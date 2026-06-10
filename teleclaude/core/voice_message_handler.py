@@ -30,6 +30,7 @@ from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.origins import InputOrigin
 from teleclaude.stt.backends import BACKENDS, STTBackend
 
 if TYPE_CHECKING:
@@ -194,18 +195,21 @@ def _apply_transcription_reflection_metadata(
     actor_id = _voice_context_str(context, "actor_id")
     actor_avatar_url = _voice_context_str(context, "actor_avatar_url")
 
+    if not origin:
+        logger.warning(
+            "Skipping voice transcription display for session %s because origin is missing", session.session_id
+        )
+        return False
+
+    if origin != InputOrigin.DISCORD.value:
+        return True
+
     if actor_name:
         metadata.reflection_actor_id = actor_id
         metadata.reflection_actor_name = actor_name
         metadata.reflection_actor_avatar_url = actor_avatar_url
         metadata.reflection_origin = origin
         return True
-
-    if not origin:
-        logger.warning(
-            "Skipping voice transcription display for session %s because origin is missing", session.session_id
-        )
-        return False
 
     try:
         identity = get_identity_resolver().resolve(origin, session.get_origin_section(origin))

@@ -273,6 +273,14 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
         InputOrigin.DISCORD.value,
         {"user_id": "discord-user-2"},
     )
+    await db.create_session(
+        computer_name="local",
+        tmux_session_name="voice-session",
+        last_input_origin=InputOrigin.DISCORD.value,
+        title="unresolved voice session",
+        session_id="session-voice-unresolved",
+        emit_session_started=False,
+    )
 
     sent_messages: list[tuple[str, MessageMetadata]] = []
     edited_messages: list[tuple[str, MessageMetadata]] = []
@@ -294,7 +302,7 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
     async def delete_message(_session_id: str, message_id: str) -> None:
         deleted_messages.append(message_id)
 
-    transcriptions = iter(["resolved transcription", "anonymous transcription"])
+    transcriptions = iter(["resolved transcription", "anonymous transcription", "unresolved transcription"])
 
     async def transcribe_voice_with_retry(
         audio_file_path: str,
@@ -318,6 +326,8 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
     actor_audio.write_bytes(b"audio")
     anonymous_audio = tmp_path / "anonymous.ogg"
     anonymous_audio.write_bytes(b"audio")
+    unresolved_audio = tmp_path / "unresolved.ogg"
+    unresolved_audio.write_bytes(b"audio")
 
     try:
         await voice_message_handler.handle_voice(
@@ -349,6 +359,22 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
             edit_message=edit_message,
             delete_message=delete_message,
         )
+        await voice_message_handler.handle_voice(
+            session_id="session-voice-unresolved",
+            audio_path=str(unresolved_audio),
+            context=VoiceEventContext(
+                session_id="session-voice-unresolved",
+                file_path=str(unresolved_audio),
+                origin=InputOrigin.DISCORD.value,
+                notice_message_id="notice-unresolved",
+            ),
+            send_message=send_message,
+            edit_message=edit_message,
+            delete_message=delete_message,
+        )
+
+        assert len(sent_messages) == 2
+        assert len(edited_messages) == 3
 
         route_webhook = _DiscordWebhook()
         route_channel = _DiscordChannel(route_webhook)
@@ -370,8 +396,6 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
         ]
     finally:
         await db.close()
-
-    assert all(message not in {"resolved transcription", "anonymous transcription"} for message, _ in edited_messages)
 
     assert {
         "sent_messages": [
