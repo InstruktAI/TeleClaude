@@ -115,7 +115,7 @@ class MessageOperationsMixin:
     ) -> str:
         """Send Discord text, optionally chunking oversized multi-part payloads."""
         # Reflection suppression: drop own-user reflections silently.
-        if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY:
+        if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY and not metadata.is_transcription:
             logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id)
             return "0"
 

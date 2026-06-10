@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TypedDict, cast
 
 import pytest
 
+import teleclaude.core.adapter_client._output as output_mod
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord.message_ops import MessageOperationsMixin
+from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core import voice_message_handler
+from teleclaude.core.adapter_client import AdapterRuntime
 from teleclaude.core.db import Db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
 from teleclaude.core.origins import InputOrigin
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
@@ -106,6 +109,78 @@ class _DiscordMessageBoundary(MessageOperationsMixin):
         return int(str(value))
 
 
+class _DiscordUiBoundary(_DiscordMessageBoundary, UiAdapter):
+    def __init__(self, destination: _DiscordChannel) -> None:
+        UiAdapter.__init__(self, client=SimpleNamespace())
+        _DiscordMessageBoundary.__init__(self, destination)
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
+        del session, title, metadata
+        return "channel"
+
+    async def update_channel_title(self, session: Session) -> bool:
+        del session
+        return True
+
+    async def close_channel(self, session: Session) -> bool:
+        del session
+        return True
+
+    async def reopen_channel(self, session: Session) -> bool:
+        del session
+        return True
+
+    async def delete_channel(self, session: Session) -> bool:
+        del session
+        return True
+
+    async def edit_message(
+        self,
+        session: Session,
+        message_id: str,
+        text: str,
+        *,
+        metadata: MessageMetadata | None = None,
+    ) -> bool:
+        del session, message_id, text, metadata
+        return True
+
+    async def delete_message(self, session: Session, message_id: str) -> bool:
+        del session, message_id
+        return True
+
+    async def send_file(
+        self,
+        session: Session,
+        file_path: str,
+        *,
+        caption: str | None = None,
+        metadata: MessageMetadata | None = None,
+    ) -> str:
+        del session, file_path, caption, metadata
+        return "file"
+
+    async def discover_peers(self) -> list[PeerInfo]:
+        return []
+
+    async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
+        del session, timeout
+        if False:
+            yield ""
+
+    def get_max_message_length(self) -> int:
+        return self.max_message_size
+
+    def get_ai_session_poll_interval(self) -> float:
+        return 1.0
+
+
 def _session() -> Session:
     return Session(
         session_id="session-output-delivery",
@@ -150,18 +225,17 @@ async def test_discord_reflection_webhook_failure_never_posts_user_text_as_the_b
         await adapter.send_message(_session(), "hello from user", metadata=_reflection_metadata())
 
     assert channel.bot_sends == []
+    normal_channel = _DiscordChannel()
+    normal_adapter = _DiscordMessageBoundary(normal_channel)
 
+    message_id = await normal_adapter.send_message(
+        _session(),
+        "hello from agent",
+        metadata=MessageMetadata(parse_mode=None),
+    )
 
-async def test_discord_non_reflection_output_still_uses_normal_send(snapshot: object) -> None:
-    channel = _DiscordChannel()
-    adapter = _DiscordMessageBoundary(channel)
-
-    message_id = await adapter.send_message(_session(), "hello from agent", metadata=MessageMetadata(parse_mode=None))
-
-    assert {
-        "message_id": message_id,
-        "bot_sends": channel.bot_sends,
-    } == snapshot
+    assert message_id
+    assert len(normal_channel.bot_sends) == 1
 
 
 class _VoiceIdentityResolver:
@@ -230,6 +304,7 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
         return next(transcriptions), None
 
     monkeypatch.setattr(voice_message_handler, "db", db)
+    monkeypatch.setattr(output_mod, "db", db)
     monkeypatch.setattr(voice_message_handler.tmux_bridge, "is_process_running", _async_true)
     monkeypatch.setattr(voice_message_handler, "transcribe_voice_with_retry", transcribe_voice_with_retry)
     monkeypatch.setattr(
@@ -274,10 +349,30 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
             edit_message=edit_message,
             delete_message=delete_message,
         )
+
+        route_webhook = _DiscordWebhook()
+        route_channel = _DiscordChannel(route_webhook)
+        runtime = AdapterRuntime()
+        runtime.register_adapter(InputOrigin.DISCORD.value, _DiscordUiBoundary(route_channel))
+
+        async def ensure_ui_channels(
+            session: Session,
+            include_adapters: set[str] | None = None,
+        ) -> Session:
+            del include_adapters
+            return session
+
+        monkeypatch.setattr(runtime, "ensure_ui_channels", ensure_ui_channels)
+        session = await db.get_session("session-voice")
+        assert session is not None
+        route_message_ids = [
+            await runtime.send_message(session, message, metadata=metadata) for message, metadata in sent_messages
+        ]
     finally:
         await db.close()
 
     assert all(message not in {"resolved transcription", "anonymous transcription"} for message, _ in edited_messages)
+
     assert {
         "sent_messages": [
             {
@@ -288,6 +383,9 @@ async def test_discord_user_transcription_displays_use_user_attribution_or_do_no
             }
             for message, metadata in sent_messages
         ],
+        "routed_message_ids": route_message_ids,
+        "route_bot_send_count": len(route_channel.bot_sends),
+        "route_webhook_sends": route_webhook.sends,
         "deleted_messages": deleted_messages,
     } == snapshot
 

@@ -144,7 +144,6 @@ And signals that output projection may proceed when the user-reflection step is 
 And signals that output projection should defer when the origin is not yet fresh
 ```
 
-<!-- planned:discord-reflection-misattributed-to-agent -->
 #### UC-OPD4: Discord admin reflection preserves user attribution for text input
 
 ```
@@ -175,7 +174,6 @@ When the transcription display is delivered back to Discord
 Then Discord renders the transcribed user text with the user's display identity when it can be resolved
 And if the user's display identity cannot be resolved, Discord does not render the transcribed user text as the agent or bot
 ```
-<!-- /planned:discord-reflection-misattributed-to-agent -->
 
 <!-- planned:suppress-command-body-in-projection -->
 #### UC-OPD1: Command-body expansion with ADDITIONAL CONTEXT projects as title plus that section, never the body

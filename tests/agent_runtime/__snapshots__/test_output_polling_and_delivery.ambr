@@ -13,19 +13,29 @@
     ]),
   })
 # ---
-# name: test_discord_non_reflection_output_still_uses_normal_send
-  dict({
-    'bot_sends': list([
-      'hello from agent',
-    ]),
-    'message_id': 'bot-1',
-  })
-# ---
 # name: test_discord_user_transcription_displays_use_user_attribution_or_do_not_render
   dict({
     'deleted_messages': list([
       'notice-actor',
       'notice-anonymous',
+    ]),
+    'route_bot_send_count': 0,
+    'route_webhook_sends': list([
+      dict({
+        'avatar_url': 'https://example.test/avatar.png',
+        'content': 'resolved transcription',
+        'username': 'Morriz',
+        'wait': True,
+      }),
+      dict({
+        'content': 'anonymous transcription',
+        'username': 'Morriz',
+        'wait': True,
+      }),
+    ]),
+    'routed_message_ids': list([
+      'webhook-1',
+      'webhook-2',
     ]),
     'sent_messages': list([
       dict({
