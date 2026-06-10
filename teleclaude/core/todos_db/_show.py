@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
@@ -87,7 +87,8 @@ _PREPARE_VALUES: frozenset[str] = frozenset(
 )
 
 _EVENTS_INLINE_LIMIT = 20
-_HOLDER_PHASE = "holder"
+_HOLDER_PHASE: Literal["holder"] = "holder"
+TodoShowStage = Literal["delivered", "draft", "prepare", "work"]
 
 
 # ── Typed payload shapes ────────────────────────────────────────────────────
@@ -111,12 +112,12 @@ class BlockerEntry(TypedDict, total=False):
     blocked_by: list[BlockerEntry]
 
 
-class ShowPayload(TypedDict, total=False):
-    """Full show payload for ``telec todo show``."""
+class TodoShowPayload(TypedDict, total=False):
+    """Lifecycle-bearing todo payload for ``telec todo show``."""
 
     slug: str
     description: str
-    stage: str
+    stage: TodoShowStage
     blocked_by: list[BlockerEntry]
     previous: str
     current: CurrentBlock
@@ -133,6 +134,24 @@ class ShowPayload(TypedDict, total=False):
     next_commands: dict[str, str]
     artifacts: list[str]
     artifact_content: dict[str, str]
+
+
+class HolderShowPayload(TypedDict):
+    """Structural holder payload for ``telec todo show``.
+
+    Holders are grouping entries, not lifecycle-bearing todos. This shape
+    deliberately has no ``current`` or lifecycle state blocks.
+    """
+
+    slug: str
+    stage: Literal["holder"]
+    roadmap: dict[str, StateValue]
+    artifacts: list[str]
+    description: NotRequired[str]
+    artifact_content: NotRequired[dict[str, str]]
+
+
+ShowPayload = TodoShowPayload | HolderShowPayload
 
 
 # ── Derivation helpers ──────────────────────────────────────────────────────
@@ -165,7 +184,7 @@ async def _derive_phase_value(
     ).value
 
 
-def _derive_stage(current_value: str, *, delivered: bool) -> str:
+def _derive_stage(current_value: str, *, delivered: bool) -> TodoShowStage:
     """Classify current value into stage bucket (delivered/prepare/work)."""
     if delivered:
         return "delivered"
@@ -468,22 +487,21 @@ async def _assemble_holder_payload(
     roadmap_row: TodoRoadmap,
     holder_children: list[str],
     include_artifact_content: bool,
-) -> ShowPayload:
+) -> HolderShowPayload:
     """Assemble a structural payload for a holder that intentionally has no state."""
     deps = await todos_db.load_deps()
-    payload = ShowPayload(
+    roadmap_block = _derive_roadmap_block(roadmap_row, deps, slug)
+    roadmap_block["children"] = cast(StateValue, holder_children)
+    artifact_rows = await todos_db.artifact_metadata(slug)
+    artifact_names = [row["name"] for row in artifact_rows]
+    payload = HolderShowPayload(
         slug=slug,
         stage=_HOLDER_PHASE,
-        current=CurrentBlock(phase=_HOLDER_PHASE, state="aggregate"),
+        roadmap=roadmap_block,
+        artifacts=list(artifact_names),
     )
     if roadmap_row.description:
         payload["description"] = roadmap_row.description
-    roadmap_block = _derive_roadmap_block(roadmap_row, deps, slug)
-    roadmap_block["children"] = cast(StateValue, holder_children)
-    payload["roadmap"] = roadmap_block
-    artifact_rows = await todos_db.artifact_metadata(slug)
-    artifact_names = [row["name"] for row in artifact_rows]
-    payload["artifacts"] = list(artifact_names)
     if include_artifact_content:
         artifact_content: dict[str, str] = {}
         for name in artifact_names:
@@ -540,7 +558,7 @@ async def assemble_show_payload(
             description = entry.get("description")
             break
 
-    payload = ShowPayload(slug=slug, stage=_derive_stage(current_value, delivered=is_delivered))
+    payload = TodoShowPayload(slug=slug, stage=_derive_stage(current_value, delivered=is_delivered))
 
     if description:
         payload["description"] = description

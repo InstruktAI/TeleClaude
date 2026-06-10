@@ -78,10 +78,10 @@ And its visible status derives from its leaf children
 Given an active roadmap row has no todo_state row
 And at least one live child references that row through group_slug
 And the holder has an input artifact
-When the workflow assembles the todo show payload for the holder
-Then the service returns a structural holder payload instead of not-found
-And the payload includes roadmap facts, direct group children, and holder artifacts
-And lifecycle state blocks are not fabricated for the holder
+When the workflow assembles the show payload for that entry
+Then the service returns a structural holder projection instead of not-found
+And the projection includes only holder structure: slug, holder stage, roadmap facts with direct group children, retained holder artifacts, and optional artifact content
+And the projection omits Todo lifecycle fields: current, state, approvals, reviews, drift, work, audit, events, next_commands, previous, and next
 ```
 
 #### UC-WM1: Show reads the caller's project

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import TypeGuard
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +15,7 @@ from teleclaude.constants import RoadmapStatus
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
-from teleclaude.core.todos_db._show import assemble_show_payload
+from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
 
 pytestmark = pytest.mark.functional
 
@@ -24,12 +25,45 @@ _DEPENDENT_CHILD = "dependent-child"
 _STRUCTURAL_HOLDER = "structural-holder"
 _STRUCTURAL_CHILD = "structural-child"
 _HOLDER_INPUT = "# Holder input"
+_SLUG_KEY = "slug"
+_STAGE_KEY = "stage"
 _HOLDER_STAGE = "holder"
-_AGGREGATE_STATE = "aggregate"
+_ROADMAP_KEY = "roadmap"
 _INPUT_ARTIFACT = "input"
-_PHASE_KEY = "phase"
+_ARTIFACTS_KEY = "artifacts"
+_ARTIFACT_CONTENT_KEY = "artifact_content"
+_CURRENT_KEY = "current"
 _STATE_KEY = "state"
 _CHILDREN_KEY = "children"
+_HOLDER_STRUCTURAL_KEYS = frozenset(
+    {
+        _SLUG_KEY,
+        _STAGE_KEY,
+        _ROADMAP_KEY,
+        _ARTIFACTS_KEY,
+        _ARTIFACT_CONTENT_KEY,
+    }
+)
+_TODO_LIFECYCLE_PAYLOAD_KEYS = frozenset(
+    {
+        _CURRENT_KEY,
+        _STATE_KEY,
+        "approvals",
+        "reviews",
+        "drift",
+        "work",
+        "audit",
+        "events",
+        "next_commands",
+        "previous",
+        "next",
+        "blocked_by",
+    }
+)
+
+
+def _is_todo_show_payload(payload: ShowPayload) -> TypeGuard[TodoShowPayload]:
+    return payload.get(_STAGE_KEY) != _HOLDER_STAGE
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +139,7 @@ async def test_show_payload_classifies_kindless_todo_without_lifecycle_phase(tmp
     payload = await assemble_show_payload(todos_db, "classify-me")
 
     assert payload is not None
+    assert _is_todo_show_payload(payload)
     assert {
         "stage": payload["stage"],
         "current": payload["current"],
@@ -131,6 +166,7 @@ async def test_show_payload_buckets_diagnose_as_prepare(tmp_path: Path, snapshot
     payload = await assemble_show_payload(todos_db, "diagnose-me")
 
     assert payload is not None
+    assert _is_todo_show_payload(payload)
     assert {"stage": payload["stage"], "current": payload["current"]} == snapshot
 
 
@@ -228,9 +264,10 @@ async def test_show_payload_resolves_stateless_group_holder(tmp_path: Path) -> N
     payload = await assemble_show_payload(todos_db, _STRUCTURAL_HOLDER, include_artifact_content=True)
 
     assert payload is not None
+    assert set(payload) == _HOLDER_STRUCTURAL_KEYS
+    assert _TODO_LIFECYCLE_PAYLOAD_KEYS.isdisjoint(payload)
+    assert payload["slug"] == _STRUCTURAL_HOLDER
     assert payload["stage"] == _HOLDER_STAGE
-    assert payload["current"] == {_PHASE_KEY: _HOLDER_STAGE, _STATE_KEY: _AGGREGATE_STATE}
     assert payload["roadmap"][_CHILDREN_KEY] == [_STRUCTURAL_CHILD]
     assert payload["artifacts"] == [_INPUT_ARTIFACT]
     assert payload["artifact_content"] == {_INPUT_ARTIFACT: _HOLDER_INPUT}
-    assert _STATE_KEY not in payload
