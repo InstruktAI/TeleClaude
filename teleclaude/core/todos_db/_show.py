@@ -501,16 +501,17 @@ async def assemble_show_payload(
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
     roadmap_row = await _find_roadmap_row(todos_db, slug)
-    holder_children = await _holder_children(todos_db, slug)
     state = await todos_db.read_state(slug)
-    if state is None and roadmap_row is not None and holder_children:
-        return await _assemble_holder_payload(
-            todos_db,
-            slug,
-            roadmap_row=roadmap_row,
-            holder_children=holder_children,
-            include_artifact_content=include_artifact_content,
-        )
+    if state is None and roadmap_row is not None:
+        holder_children = await _holder_children(todos_db, slug)
+        if holder_children:
+            return await _assemble_holder_payload(
+                todos_db,
+                slug,
+                roadmap_row=roadmap_row,
+                holder_children=holder_children,
+                include_artifact_content=include_artifact_content,
+            )
 
     state, is_delivered, is_removed = await _resolve_show_state(
         todos_db,
