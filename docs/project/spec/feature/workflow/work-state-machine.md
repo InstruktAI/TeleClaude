@@ -27,6 +27,8 @@ Before the `prepared → build_started` handoff and BEFORE worktree preparation,
 
 ### Use cases
 
+#### UC-WSM0: Prepared entry starts build work
+
 ```
 Given a Todo at lifecycle_phase=prepared with no worktree
 When the orchestrator calls "telec todo work my-feature"
@@ -87,13 +89,6 @@ Then the machine advances to lifecycle_phase=finalize_ready through the state-wr
 And the phase-transition chokepoint emits the workflow.todo.phase_advanced event (with phase=finalize_ready in payload)
 And worker-session cleanup happens inside the finalize_ready step
 And on any triple-ref mismatch (uncommitted, branch≠HEAD, remote≠local, stamped sha≠HEAD) refuses to advance and instructs the operator to re-stamp
-```
-
-```
-Given an operator uses reconcile or mark-phase to land lifecycle_phase=finalize_ready through an owned workflow write
-When the state write commits
-Then the same phase-transition chokepoint emits workflow.todo.phase_advanced (with phase=finalize_ready in payload)
-And the IntegrationTriggerCartridge treats it the same as the normal work-machine path
 ```
 
 ```

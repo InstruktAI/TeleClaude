@@ -67,7 +67,7 @@ scope catch from MVP.
   artifact versioning, lifecycle state machine, and event emission.
 - `telec-cli` binary mirroring v1's `telec todo` CRUD
   against the v2 schema. Orchestrator-level subcommands (`design`,
-  `prepare`, `work`, `integrate`, `mark-phase`, `reconcile`, `dump`,
+  `prepare`, `work`, `integrate`, `dump`,
   `split`, `stamp`) exit with code 2 so a future shim can route them to v1.
 - `migrate-workflow-v1` subcommand that copies v1 SQLite todos into the
   v2 Postgres schema. Tool only — the cutover PR does NOT invoke it

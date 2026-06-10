@@ -66,7 +66,7 @@ stateDiagram-v2
 - Explicit tool calls to execute (start_session, run_agent_command) with placeholders for agent/mode
 - Human-in-the-loop guidance for preparation phase
 - Agent selection guidance block derived from machine config and runtime availability
-- One authoritative `lifecycle_phase` stored in todos.db; `telec todo stamp`, `telec todo mark-phase`, explicit `telec todo reconcile`, and the machine-owned `prepared -> build_started` work entry handoff are the only write paths that may change it
+- One authoritative `lifecycle_phase` stored in todos.db; `telec todo stamp`, the evidence-driven derivation on `telec todo prepare`/`work` dispatch, and the machine-owned `prepared -> build_started` work entry handoff are the only write paths that may change it
 - Dependency resolution via set_dependencies tool
 
 ## Invariants

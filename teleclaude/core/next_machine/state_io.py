@@ -9,7 +9,6 @@ core.py (circular-import guard).
 from __future__ import annotations
 
 import hashlib as _hl
-import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -50,15 +49,6 @@ from teleclaude.core.next_machine.git_ops import (
     run_git_command,
 )
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG, KIND_FEATURE
-from teleclaude.core.next_machine.lifecycle import (
-    PREPARE_LIFECYCLE_PHASES,
-    LifecyclePhase,
-    LifecycleStage,
-    infer_lifecycle_stage,
-    normalize_mark_phase,
-    reconcile_lifecycle_phase,
-    require_lifecycle_phase,
-)
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance_sync_subset
 from teleclaude.core.next_machine.state_mutation import (
@@ -67,7 +57,7 @@ from teleclaude.core.next_machine.state_mutation import (
 )
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.todos import BreakdownState, FinalizeModel, TodoState
+from teleclaude.types.todos import BreakdownState, FinalizeModel
 
 logger = get_logger(__name__)
 
@@ -129,7 +119,7 @@ def _sync_artifact_provenance_subset_from_db(
     # upstream-snippet and dependency-graph drift fail-safe to `pending`. When full
     # async provenance was already established for this exact digest (the dump route
     # syncs it before the prepared fast-track runs), preserve it as-is.
-    state_key = next((key for key, name in _RECONCILE_ARTIFACT_NAMES.items() if name == artifact_name), None)
+    state_key = next((key for key, name in _ARTIFACT_STATE_KEYS.items() if name == artifact_name), None)
     if state_key is not None:
         entry = getattr(writer.state.artifacts, state_key)
         if entry.async_provenance_complete and entry.digest == digest:
@@ -163,7 +153,7 @@ _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 _BUILD_VERDICT_PHASE = "build_review"
 _BUILD_VERDICT_VALUES = ("approve", "changes_requested")
 
-_RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
+_ARTIFACT_STATE_KEYS: dict[str, str] = {
     STATE_KEY_INPUT: ARTIFACT_INPUT,
     STATE_KEY_PRD: ARTIFACT_PRD,
     STATE_KEY_REQUIREMENTS: ARTIFACT_REQUIREMENTS,
@@ -200,161 +190,6 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
     """Write state to todos.db."""
     db = get_todos_db_sync(cwd)
     db.write_state_sync(slug, state)
-
-
-def _read_artifact_presence(cwd: str, slug: str) -> dict[str, bool]:
-    """Return current DB artifact presence for lifecycle validation/reconciliation."""
-    db = get_todos_db_sync(cwd)
-    conn = db._sync_conn()
-    try:
-        rows = conn.execute(
-            "SELECT name FROM todo_artifacts WHERE slug = ?",  # guard: raw-sql
-            (slug,),
-        ).fetchall()
-    except sqlite3.Error:
-        logger.warning("Failed to read artifact presence for lifecycle reconciliation", slug=slug, cwd=cwd)
-        raise
-    finally:
-        conn.close()
-
-    names = {str(row[0]) for row in rows}
-    return {state_key: artifact_name in names for state_key, artifact_name in _RECONCILE_ARTIFACT_NAMES.items()}
-
-
-def _sync_reconcile_artifacts(cwd: str, slug: str, writer: StateWriter) -> None:
-    """Align state-model provenance with blob reality through the sync boundary."""
-    db = get_todos_db_sync(cwd)
-    for state_key, artifact_name in _RECONCILE_ARTIFACT_NAMES.items():
-        _ = state_key
-        _sync_artifact_provenance_subset_from_db(cwd, slug, artifact_name, writer, db=db)
-
-
-def validate_mark_phase_preconditions(
-    state: dict[str, StateValue],
-    phase: str,
-    worktree_cwd: str | None,
-    artifact_presence: dict[str, bool] | None = None,
-) -> str | None:
-    """Return an error string when the target lifecycle phase cannot become current."""
-    try:
-        target = LifecyclePhase(phase)
-    except ValueError:
-        return f"Unknown lifecycle phase: {phase}"
-
-    model = TodoState.model_validate(state)
-    return _validate_mark_phase_target(
-        model,
-        target,
-        worktree_cwd=worktree_cwd,
-        artifact_presence=artifact_presence,
-    )
-
-
-def _validate_prepare_mark_phase(
-    model: TodoState,
-    target: LifecyclePhase,
-    *,
-    artifact_presence: dict[str, bool] | None,
-) -> str | None:
-    _ = model, target, artifact_presence
-    return None
-
-
-def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
-    _ = model, target, worktree_cwd
-    return None
-
-
-def _validate_mark_phase_target(
-    model: TodoState,
-    target: LifecyclePhase,
-    *,
-    worktree_cwd: str | None,
-    artifact_presence: dict[str, bool] | None,
-) -> str | None:
-    if target in PREPARE_LIFECYCLE_PHASES:
-        return _validate_prepare_mark_phase(
-            model,
-            target,
-            artifact_presence=artifact_presence,
-        )
-    return _validate_work_mark_phase(model, target, worktree_cwd=worktree_cwd)
-
-
-def validate_work_phase_preconditions(
-    state: dict[str, StateValue],
-    phase: str,
-    worktree_cwd: str | None,
-) -> str | None:
-    """Compatibility wrapper for older callers/tests."""
-    return validate_mark_phase_preconditions(state, phase, worktree_cwd)
-
-
-def mark_phase_state(cwd: str, slug: str, phase: str) -> dict[str, StateValue]:
-    """Validate and persist an authoritative lifecycle phase override."""
-    raw_state = dict(read_phase_state(cwd, slug))
-    prior_phase = str(raw_state.get("lifecycle_phase", ""))
-    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
-    wt = worktree_cwd if Path(worktree_cwd).exists() else None
-    artifact_presence = _read_artifact_presence(cwd, slug)
-    error = validate_mark_phase_preconditions(raw_state, phase, wt, artifact_presence)
-    if error:
-        raise ValueError(error)
-    writer = StateWriter(raw_state)
-    _sync_reconcile_artifacts(cwd, slug, writer)
-    normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
-    payload = writer.to_dict()
-    write_phase_state(cwd, slug, payload)
-    logger.info(
-        "todo phase override persisted",
-        slug=slug,
-        prior_phase=prior_phase,
-        target_phase=phase,
-        resulting_phase=str(payload.get("lifecycle_phase", "")),
-        cwd=cwd,
-    )
-    return payload
-
-
-def reconcile_phase_state(cwd: str, slug: str, stage: str | None = None) -> dict[str, StateValue]:
-    """Explicitly realign the machine pointer to the best phase within one stage."""
-    raw_state = dict(read_phase_state(cwd, slug))
-    writer = StateWriter(raw_state)
-    current = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"reconcile_phase_state({slug})")
-
-    if stage is None:
-        stage_value = infer_lifecycle_stage(current)
-    else:
-        try:
-            stage_value = LifecycleStage(stage)
-        except ValueError as exc:
-            raise ValueError(f"Unknown stage: {stage}") from exc
-
-    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
-    wt = worktree_cwd if Path(worktree_cwd).exists() else None
-    artifact_presence = _read_artifact_presence(cwd, slug)
-    _sync_reconcile_artifacts(cwd, slug, writer)
-    target = reconcile_lifecycle_phase(
-        writer.state,
-        stage_value,
-        worktree_cwd=wt,
-        artifact_presence=artifact_presence,
-    )
-    if target is None:
-        raise ValueError(f"No valid {stage_value.value} phase matches the current todo state")
-
-    writer.state.lifecycle_phase = target.value
-    payload = writer.to_dict()
-    write_phase_state(cwd, slug, payload)
-    logger.info(
-        "todo phase reconciled",
-        slug=slug,
-        requested_stage=stage_value.value,
-        prior_phase=current.value,
-        resulting_phase=target.value,
-        cwd=cwd,
-    )
-    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -798,17 +633,13 @@ __all__ = [
     "apply_prepared_state",
     "has_pending_deferrals",
     "is_bug_todo",
-    "mark_phase_state",
     "read_breakdown_state",
     "read_phase_state",
     "read_text_sync",
-    "reconcile_phase_state",
     "stamp_artifact",
     "stamp_finalize_ready",
     "stamp_verdict",
     "sync_artifact_digest",
-    "validate_mark_phase_preconditions",
-    "validate_work_phase_preconditions",
     "write_breakdown_state",
     "write_phase_state",
     "write_text_sync",

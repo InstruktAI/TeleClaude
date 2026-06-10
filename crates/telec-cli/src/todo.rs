@@ -52,11 +52,6 @@ pub enum TodoCommand {
     Work(DeferredSlugArgs),
     /// Run the Phase C (integrate) state machine (deferred to v1).
     Integrate(DeferredSlugArgs),
-    /// Operator override: write the authoritative `lifecycle_phase`
-    /// (deferred to v1).
-    MarkPhase(DeferredSlugArgs),
-    /// Re-evaluate evidence and align `lifecycle_phase` (deferred to v1).
-    Reconcile(DeferredSlugArgs),
     /// Set dependencies for a work item in the todo list.
     SetDeps(SetDepsArgs),
     /// Fire-and-forget brain dump (deferred to v1).
@@ -215,8 +210,6 @@ pub async fn dispatch(
         TodoCommand::Prepare(_) => deferred("prepare"),
         TodoCommand::Work(_) => deferred("work"),
         TodoCommand::Integrate(_) => deferred("integrate"),
-        TodoCommand::MarkPhase(_) => deferred("mark-phase"),
-        TodoCommand::Reconcile(_) => deferred("reconcile"),
         TodoCommand::Dump(_) => deferred("dump"),
         TodoCommand::Split(_) => deferred("split"),
         TodoCommand::Stamp(_) => deferred("stamp"),

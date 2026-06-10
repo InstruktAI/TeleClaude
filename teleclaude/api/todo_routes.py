@@ -2,13 +2,11 @@
 
 Exposes the next-machine state machine functions (prepare, work) and todo
 mutation operations as REST endpoints with dual-factor caller identity
-enforcement. Local todo stamping and operator phase overrides are CLI-local
-mutations, not API routes.
+enforcement. Local todo stamping remains a CLI-local mutation.
 """
 
 from __future__ import annotations
 
-import asyncio
 import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated
@@ -25,7 +23,6 @@ from teleclaude.api.auth import (
     clearance_todos_integrate,
     clearance_todos_prepare,
     clearance_todos_reactivate,
-    clearance_todos_reconcile,
     clearance_todos_remove,
     clearance_todos_rename,
     clearance_todos_set_deps,
@@ -48,7 +45,7 @@ from teleclaude.constants import (
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
-from teleclaude.core.next_machine.state_io import apply_prepared_state, reconcile_phase_state
+from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
@@ -91,14 +88,6 @@ class _SlugStatusResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
     status: str
     slug: str
-
-
-class _ReconcileResponse(BaseModel):
-    """Response from a reconcile call — the new lifecycle phase value."""
-
-    model_config = ConfigDict(frozen=True)
-    slug: str
-    lifecycle_phase: str
 
 
 class _ArtifactReadResponse(BaseModel):
@@ -717,27 +706,6 @@ async def todo_unfreeze(
     if not await todos_db.unfreeze(slug):
         raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in icebox")
     return _SlugStatusResponse(status="ok", slug=slug)
-
-
-@router.post("/reconcile/{slug}")
-async def todo_reconcile(
-    slug: str,
-    cwd: Annotated[str | None, Body(embed=True)] = None,
-    stage: Annotated[str | None, Body(embed=True)] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_reconcile),
-) -> _ReconcileResponse:
-    """Re-align lifecycle_phase to the best match for the current state.
-
-    Mutation goes through the daemon-resident TodosDb instance so the mutation
-    hook fires and the projection cache is invalidated. The TUI's direct
-    in-process call bypassed this and left the daemon serving stale rows.
-    """
-    effective_cwd = cwd or _default_cwd()
-    try:
-        payload = await asyncio.to_thread(reconcile_phase_state, effective_cwd, slug, stage)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _ReconcileResponse(slug=slug, lifecycle_phase=str(payload.get("lifecycle_phase", "")))
 
 
 @router.get("/{slug}/show", response_model=None)

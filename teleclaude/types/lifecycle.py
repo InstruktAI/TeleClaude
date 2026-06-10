@@ -49,13 +49,6 @@ class LifecyclePhase(str, Enum):
     FINALIZE_READY = "finalize_ready"
 
 
-class LifecycleStage(str, Enum):
-    """Stage bucket used for explicit lifecycle reconciliation."""
-
-    PREPARE = "prepare"
-    WORK = "work"
-
-
 LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = list(LifecyclePhase)
 
 PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
@@ -92,5 +85,4 @@ __all__ = [
     "PREPARE_LIFECYCLE_PHASES",
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
-    "LifecycleStage",
 ]

@@ -429,16 +429,6 @@ class TodosDbBase:
         """
         self._on_mutation(event_hint, event_data)
 
-    def notify_phase_transition(
-        self,
-        slug: str,
-        prior_lifecycle_phase: str,
-        new_lifecycle_phase: str,
-        state_payload: Mapping[str, object],
-    ) -> None:
-        """Signal that a committed state write changed lifecycle phase."""
-        self._on_phase_transition(slug, prior_lifecycle_phase, new_lifecycle_phase, state_payload)
-
     async def initialize(self) -> None:
         """Bootstrap schema and initialize async + sync runtime access."""
         _bootstrap_todos_db(self.db_path)

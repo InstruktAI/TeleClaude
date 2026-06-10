@@ -70,7 +70,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("b", "new_bug", "Bug"),
         Binding("p", "prepare", "Prep"),
         Binding("s", "start_work", "Strt"),
-        Binding("r", "reconcile", "Rcncl"),
         Binding("R", "remove_artifact", "Remv"),
         Binding("U", "reactivate_selected", "Unr"),
         Binding("f", "freeze", "Frz"),

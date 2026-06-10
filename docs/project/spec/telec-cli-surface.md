@@ -137,25 +137,6 @@ subcommands:
           --json: 'Emit a sectioned JSON object keyed by section name.'
         notes:
           - 'The --include-removed / --removed-only reveal is strictly opt-in; the default and every other read surface continue to hide soft-removed entries (workflow domain spec, "Removed entries are invisible to every default read path" invariant).'
-      mark-phase:
-        description: 'Operator override for the authoritative lifecycle phase field.'
-        args:
-          - slug: 'string'
-        flags:
-          --phase: 'Phase value matching a canonical lifecycle phase enum member.'
-        notes:
-          - 'Validates only the target phase prerequisites, then sets the lifecycle pointer to that phase.'
-          - 'Preserves artifacts, but clears downstream authoritative stamps so old approvals do not reactivate future phases.'
-      reconcile:
-        description: 'Re-evaluate current todo evidence and align lifecycle_phase within one stage.'
-        args:
-          - slug: 'string'
-        flags:
-          --stage: 'Optional stage override: prepare or work.'
-        notes:
-          - 'Infers stage from the current lifecycle phase when --stage is omitted.'
-          - 'Prepare reconciliation ignores work evidence; work reconciliation ignores prepare evidence.'
-          - 'Does not dispatch work. Run telec todo prepare or telec todo work afterward.'
       validate:
         args:
           - slug: 'string (optional)'
@@ -281,7 +262,7 @@ subcommands:
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
               --input-file: 'Read content from path instead of positional argument.'
           update:
-            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); implementation-plan content is selected explicitly with `--artifact implementation-plan` plus the appropriate kind. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through canonical artifact-kind validation; unknown kinds are refused before mutation. On success emits workflow.todo.updated with a change_summary listing the mutated fields. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
+            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); implementation-plan content is selected explicitly with `--artifact implementation-plan` plus the appropriate kind. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through canonical artifact-kind validation; unknown kinds are refused before mutation. On success emits workflow.todo.updated with a change_summary listing the mutated fields. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
             args:
               - slug: 'string'
               - content: 'string (optional)'

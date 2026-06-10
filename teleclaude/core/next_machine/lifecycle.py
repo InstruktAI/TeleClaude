@@ -12,10 +12,8 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
 from teleclaude.constants import (
-    ARTIFACT_ARCHITECTURE,
     ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
-    ARTIFACT_PRD,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
@@ -53,7 +51,6 @@ from teleclaude.types.lifecycle import (
     PREPARE_LIFECYCLE_PHASES,
     WORK_LIFECYCLE_PHASES,
     LifecyclePhase,
-    LifecycleStage,
 )
 from teleclaude.types.todos import ApprovalStamp, ReviewVerdictState, TodoState
 
@@ -63,14 +60,11 @@ __all__ = [
     "READY_BAND_PHASES",
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
-    "LifecycleStage",
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
     "coerce_lifecycle_phase",
     "collapse_drift",
     "derive_lifecycle_drift",
-    "infer_lifecycle_stage",
-    "invalidate_downstream_on_refine",
     "is_in_prepare_lane",
     "is_prepare_lifecycle_phase",
     "is_ready_band_eligible",
@@ -78,10 +72,8 @@ __all__ = [
     "is_settled_ok_phase",
     "is_work_lifecycle_phase",
     "lifecycle_phase_index",
-    "normalize_mark_phase",
     "phase_is_complete",
     "prepare_blockers",
-    "reconcile_lifecycle_phase",
     "require_lifecycle_phase",
 ]
 
@@ -171,13 +163,6 @@ def is_prepare_lifecycle_phase(phase: LifecyclePhase) -> bool:
 def is_work_lifecycle_phase(phase: LifecyclePhase) -> bool:
     """Return True when the phase belongs to the work lane."""
     return phase in WORK_LIFECYCLE_PHASES
-
-
-def infer_lifecycle_stage(phase: LifecyclePhase) -> LifecycleStage:
-    """Return the stage bucket implied by the canonical lifecycle pointer."""
-    if is_prepare_lifecycle_phase(phase):
-        return LifecycleStage.PREPARE
-    return LifecycleStage.WORK
 
 
 def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple[bool, str]:
@@ -331,12 +316,6 @@ def _review_approved(review: ReviewVerdictState) -> bool:
     return review.verdict in ("approve", "skipped")
 
 
-def _clear_prepare_review(review: ReviewVerdictState) -> None:
-    review.verdict = ""
-    review.reviewed_at = ""
-    review.approved_digest = ""
-
-
 def _clear_build_review(model: TodoState) -> None:
     model.build_review.verdict = ""
     model.build_review.reviewed_at = ""
@@ -346,22 +325,6 @@ def _clear_build_review(model: TodoState) -> None:
 def _reset_finalize(model: TodoState) -> None:
     model.finalize.status = "pending"
     model.finalize.ready_at = ""
-
-
-def _reset_dor(model: TodoState) -> None:
-    if model.dor is None:
-        return
-    model.dor.last_assessed_at = None
-    model.dor.score = 0
-    model.dor.status = "needs_work"
-
-
-def _clear_work_entry_state(model: TodoState) -> None:
-    _clear_build_review(model)
-    _reset_finalize(model)
-    model.build_start_base_sha = ""
-    model.build_completed_at = ""
-    model.build_gate_claim_at = ""
 
 
 async def derive_lifecycle_drift(
@@ -569,33 +532,6 @@ def adopt_prepare_handoff_phase(
     return _feature_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
 
 
-def reconcile_lifecycle_phase(
-    model: TodoState,
-    stage: LifecycleStage,
-    *,
-    worktree_cwd: str | None = None,
-    artifact_presence: _ArtifactPresence | None = None,
-) -> LifecyclePhase | None:
-    """Return the best-matching phase for an explicit stage-scoped reconciliation."""
-    _ = worktree_cwd
-    if stage == LifecycleStage.PREPARE:
-        return adopt_prepare_handoff_phase(model, artifact_presence=artifact_presence, repo_root=worktree_cwd)
-
-    if model.finalize.status == "ready":
-        return LifecyclePhase.FINALIZE_READY
-    if model.build_review.verdict == "approve":
-        return LifecyclePhase.REVIEW_APPROVED
-    if model.build_review.verdict == "changes_requested":
-        return LifecyclePhase.REVIEW_CHANGES_REQUESTED
-    if model.build_completed_at:
-        return LifecyclePhase.BUILD_COMPLETE
-    if model.lifecycle_phase == LifecyclePhase.BUILD_STARTED.value:
-        return LifecyclePhase.BUILD_STARTED
-    if model.lifecycle_phase == LifecyclePhase.PREPARED.value:
-        return LifecyclePhase.BUILD_STARTED
-    return None
-
-
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:
     model.lifecycle_phase = target.value
     return target
@@ -690,69 +626,3 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.FINALIZE_READY:
         return False
     return False
-
-
-def invalidate_downstream_on_refine(model: TodoState, refined_artifact: str) -> None:
-    """Clear downstream approvals and review verdicts after an artifact rewrite."""
-    approvals = model.approvals
-    if refined_artifact == ARTIFACT_PRD:
-        approvals.prd_approved = ApprovalStamp()
-        approvals.architecture_approved = ApprovalStamp()
-        approvals.plan_approved = ApprovalStamp()
-        approvals.architecture_skipped = None
-        _clear_prepare_review(model.architecture_review)
-        _clear_prepare_review(model.plan_review)
-        for key in (ARTIFACT_PRD, ARTIFACT_ARCHITECTURE, ARTIFACT_IMPLEMENTATION_PLAN):
-            approvals.drift_reviewed.pop(key, None)
-    elif refined_artifact == ARTIFACT_ARCHITECTURE:
-        approvals.architecture_approved = ApprovalStamp()
-        approvals.plan_approved = ApprovalStamp()
-        _clear_prepare_review(model.architecture_review)
-        _clear_prepare_review(model.plan_review)
-        for key in (ARTIFACT_ARCHITECTURE, ARTIFACT_IMPLEMENTATION_PLAN):
-            approvals.drift_reviewed.pop(key, None)
-    elif refined_artifact == ARTIFACT_DIAGNOSIS:
-        approvals.plan_approved = ApprovalStamp()
-        _clear_prepare_review(model.plan_review)
-        for key in (ARTIFACT_DIAGNOSIS, ARTIFACT_IMPLEMENTATION_PLAN):
-            approvals.drift_reviewed.pop(key, None)
-    elif refined_artifact == ARTIFACT_IMPLEMENTATION_PLAN:
-        approvals.plan_approved = ApprovalStamp()
-        _clear_prepare_review(model.plan_review)
-        approvals.drift_reviewed.pop(ARTIFACT_IMPLEMENTATION_PLAN, None)
-
-
-def _clear_prepare_target(model: TodoState, target: LifecyclePhase) -> None:
-    _reset_dor(model)
-    _clear_work_entry_state(model)
-    if target == LifecyclePhase.DRAFT:
-        model.approvals = type(model.approvals)()
-        _clear_prepare_review(model.architecture_review)
-        _clear_prepare_review(model.plan_review)
-    elif target == LifecyclePhase.PRD_DRAFTING:
-        invalidate_downstream_on_refine(model, ARTIFACT_PRD)
-    elif target in (LifecyclePhase.ARCHITECTURE_DRAFTING, LifecyclePhase.ARCHITECTURE_REVIEW):
-        invalidate_downstream_on_refine(model, ARTIFACT_ARCHITECTURE)
-    elif target == LifecyclePhase.DIAGNOSE:
-        invalidate_downstream_on_refine(model, ARTIFACT_DIAGNOSIS)
-    elif target in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW):
-        invalidate_downstream_on_refine(model, ARTIFACT_IMPLEMENTATION_PLAN)
-
-
-def normalize_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None = None) -> None:
-    """Clear current/downstream authority and persist ``target`` as the pointer."""
-    _ = worktree_cwd
-    if is_prepare_lifecycle_phase(target):
-        _clear_prepare_target(model, target)
-    else:
-        if target == LifecyclePhase.BUILD_STARTED:
-            model.build_completed_at = ""
-            _clear_build_review(model)
-            _reset_finalize(model)
-            model.build_start_base_sha = ""
-        elif target == LifecyclePhase.BUILD_COMPLETE:
-            _clear_build_review(model)
-            _reset_finalize(model)
-        elif target in (LifecyclePhase.REVIEW_CHANGES_REQUESTED, LifecyclePhase.REVIEW_APPROVED):
-            _reset_finalize(model)
-    model.lifecycle_phase = target.value

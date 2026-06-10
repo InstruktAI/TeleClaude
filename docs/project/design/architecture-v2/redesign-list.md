@@ -87,18 +87,20 @@ reintroduces any of these patterns is rejected.
 
 ### State machine anti-patterns
 
-**4. Lifecycle phase computed only on reconcile.**
+**4. Lifecycle phase recomputed only on dispatch, not on mutation.**
 
 - _v1_: New todos are scaffolded with `lifecycle_phase = "draft"`. The
-  state machine recomputes phase only when `telec todo reconcile` runs. In
-  between, the persisted phase is stale.
+  state machine recomputes phase only on `telec todo prepare`/`work`
+  dispatch. In between (e.g., after an out-of-band artifact write), the
+  persisted phase is stale.
 - _Failure_: The DRAFT phase persists even after artifacts are present,
   because the state machine doesn't run on artifact-write. The user sees
   "draft" indefinitely.
-- _v2_: State machine evaluates on every state-changing operation. There is
-  no separate "reconcile" path — reconcile only exists as a debugging tool,
-  not as part of normal flow. The persisted phase always matches what the
-  machine would compute.
+- _v2_: State machine evaluates on every state-changing operation; the
+  persisted phase always matches what the machine would compute, derived
+  atomically with the mutation so correctness is never contingent on an actor
+  advancing afterward. There is no separate realignment path — v1's `reconcile`
+  and `mark-phase` surfaces are removed, not carried forward.
 
 **5. Persisted state that the machine cannot reproduce.**
 
@@ -128,8 +130,8 @@ reintroduces any of these patterns is rejected.
 
 **7. Callers mutating service-owned storage directly.**
 
-- _v1_: TUI's `action_reconcile` calls `reconcile_phase_state` in-process,
-  writing `todos.db` directly. CLI handlers reach into `TodosDb` directly.
+- _v1_: CLI handlers and the API reach into `TodosDb` directly to write
+  `todos.db`, with no single mutation chokepoint enforcing validation.
 - _Failure_: Multiple call paths to mutation logic. No single point of
   enforcement. Bypasses any hooks or validation a service might do.
 - _v2_: Services own their Postgres schemas. Other crates call the service's
@@ -141,7 +143,7 @@ reintroduces any of these patterns is rejected.
 
 - _Proposal smell_: "v1 daemon calls v2 workflow service via HTTP," "auth
   service exposes endpoints on a port," "TUI POSTs to the daemon to
-  reconcile."
+  mutate state."
 - _Failure_: Network/serialization overhead for what should be function
   calls. New failure modes (socket unreachable, port conflict). Reintroduces
   the daemon-as-gravity-well coupling.
@@ -329,8 +331,8 @@ reintroduces any of these patterns is rejected.
 
 **24. TUI re-implements business logic.**
 
-- _v1_: TUI's `action_reconcile` calls `reconcile_phase_state` in-process,
-  mutating storage directly.
+- _v1_: TUI action handlers embed workflow logic and reach into in-process
+  state functions or storage directly rather than through one service entry point.
 - _Failure_: TUI contains logic that should live in services. Multiple
   call paths to the same operation. Reasoning about correctness requires
   reading the TUI code.

@@ -17,7 +17,7 @@ The software development lifecycle follows a three-stage model, each driven by i
 
 Sequential artifact production with review gates:
 
-- **Human refinement / handoff** — human edits preparation artifacts directly, then runs `telec todo reconcile [slug]`
+- **Human refinement / handoff** — human edits preparation artifacts directly; the next `telec todo prepare [slug]` dispatch re-derives the lifecycle phase from the updated evidence
 - **Intake** — derive and approve `prd` from `input` or live conversation
 - **Architecture** — derive and approve the code-grounded technical brief, or skip with reason when it does not earn its place
 - **Plan drafting** — produce `implementation-plan` (or split the todo); plan tasks reference PRD criteria, architecture constraints, and feature-spec scenarios

@@ -209,9 +209,8 @@ payload, posture, or emission boundary.
 - **Producer:** `workflow` (v1 Python `TodosDb`)
 - **Emitted when:** the v1 `TodosDb` write-state chokepoint observes a
   lifecycle-phase transition `* → finalize_ready` on an owned-session
-  commit (work-machine claim, reconcile, direct `mark-phase` override,
-  or any future writer that lands the phase through the same
-  chokepoint).
+  commit (the work-machine claim, or any future writer that lands the
+  phase through the same chokepoint).
 - **Payload (domain-named):** `slug`, `branch`, `sha`,
   `worker_session_id`, `ready_at`.
 - **Known consumers:** `IntegrationTriggerCartridge` (spawns the

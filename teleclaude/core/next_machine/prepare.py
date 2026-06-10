@@ -25,10 +25,8 @@ from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
-    LifecycleStage,
     adopt_prepare_handoff_phase,
     is_work_lifecycle_phase,
-    reconcile_lifecycle_phase,
     require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.output_formatting import format_blocker_resolution
@@ -151,9 +149,7 @@ async def _adopt_prepare_phase(
 ) -> dict[str, StateValue]:
     writer = StateWriter(raw_state)
     await _hydrate_artifact_presence_for_adoption(todos_db, slug, writer, repo_root=repo_root)
-    derived = reconcile_lifecycle_phase(writer.state, stage=LifecycleStage.PREPARE, worktree_cwd=repo_root)
-    if derived is None:
-        derived = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root)
+    derived = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root)
     writer.state.lifecycle_phase = derived.value
     payload = writer.to_dict()
     if payload != raw_state:

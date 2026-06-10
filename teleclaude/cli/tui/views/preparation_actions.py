@@ -80,7 +80,6 @@ class PreparationViewActionsMixin:
             "preview_file",
             "prepare",
             "start_work",
-            "reconcile",
             "freeze",
             "unfreeze",
             "toggle_trashed",
@@ -93,7 +92,6 @@ class PreparationViewActionsMixin:
             "new_project",
             "prepare",
             "start_work",
-            "reconcile",
             "freeze",
             "unfreeze",
         }
@@ -508,39 +506,6 @@ class PreparationViewActionsMixin:
             default_message=self._next_command(SlashCommand.NEXT_WORK.value, slug),
             title=f"Start Work: {slug}" if slug else "Start Work",
         )
-
-    def action_reconcile(self) -> None:
-        """r: reconcile the selected todo's lifecycle phase from current state.
-
-        Routes through the daemon API so the mutation hook fires and the
-        projection cache is invalidated. A direct in-process call would write
-        to SQLite but leave the daemon serving the pre-reconcile cached row.
-        """
-        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        if not context:
-            return
-        _, project_path, slug = context
-        if not slug:
-            return
-
-        try:
-            result = tool_api_request(
-                "POST",
-                f"/todos/reconcile/{slug}",
-                json_body={"cwd": project_path},
-                timeout=10.0,
-            )
-        except Exception as exc:
-            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
-            return
-
-        if isinstance(result, dict) and result.get("detail"):
-            self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
-            return
-
-        lifecycle_phase = (result or {}).get("lifecycle_phase", "") if isinstance(result, dict) else ""
-        self.app.notify(f"Reconciled {slug} lifecycle_phase={lifecycle_phase}")  # type: ignore[attr-defined]
-        self.app._refresh_data()  # type: ignore[attr-defined]
 
     def action_freeze(self) -> None:
         """f: freeze a todo to the icebox."""

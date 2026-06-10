@@ -445,17 +445,6 @@ And the todo entry status becomes delivered
 And the todo's worktree (if any) is eligible for cleanup
 ```
 
-#### UC-WFL-8: Reconcile within a stage after evidence change
-
-```
-Given a todo's artifacts or state evidence has changed without going through normal advance
-And the operator runs `telec todo reconcile <slug> --stage prepare`
-When the reconciler runs
-Then workflow re-evaluates the prepare state machine against current evidence
-And aligns lifecycle_phase to match (without skipping forward beyond what evidence supports)
-And emits workflow.todo.phase_advanced if the alignment changed phase
-```
-
 #### UC-WFL-9: Dependency violation blocks dispatch
 
 ```
@@ -684,7 +673,7 @@ Then workflow applies all supplied fields in a single transaction
 And dependency inputs REPLACE the entire `after` set (not patch)
 And positional content writes a new artifact version (default kind `input`, or the kind named by `--artifact`)
 And `--artifact implementation-plan` writes content as the implementation plan artifact without introducing a separate prepared-work kind
-And update can NEVER move lifecycle phase (phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs)
+And update can NEVER move lifecycle phase (phase movement remains the prepare/work/integrate/stamp state-machine verbs)
 And on success emits workflow.todo.updated with a change_summary listing the mutated fields
 And on any partial-failure rolls back so previous state is fully preserved
 ```
@@ -779,11 +768,11 @@ And `telec workflow todo create <slug> <content> --silent` is the CLI form that 
 
 The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is v1-grounded inventory of current v1 source. These feature specs are the v1 parity record; forward/target design for Category-B contract refinements lives in the domain spec, policies, and CLI-surface spec — NOT in these feature specs (per `documentation-first-development` §8a). A v1 inventory entry is corrected in place when current behavior is mis-stated; it is not made a delivery-owned target by a contract-refinement todo. They are the parity contract future v2 cutover work must satisfy or intentionally retire.
 
-- [`todo-lifecycle-phase`](../feature/workflow/todo-lifecycle-phase.md) — Canonical `lifecycle_phase` pointer, `mark-phase` operator override, and `reconcile` evidence-driven re-derivation within a stage.
+- [`todo-lifecycle-phase`](../feature/workflow/todo-lifecycle-phase.md) — Canonical `lifecycle_phase` pointer, derived from artifact evidence by the workflow engine on prepare/work dispatch.
 - [`state-stamping`](../feature/workflow/state-stamping.md) — `telec todo stamp` and the validated state-write boundary (`StateWriter`, `ApprovalsManager`, `ReviewManager`) that owns approvals, verdicts, skip stamps, drift acknowledgments, and finalize handoff.
 - [`artifact-versioning`](../feature/workflow/artifact-versioning.md) — Multi-version workflow artifact storage with SHA256 digest, diff between digests, and cascade delete. Provenance (codebase_sha, referenced_paths) lives on the Todo state, not the artifact row.
 - [`prepare-state-machine`](../feature/workflow/prepare-state-machine.md) — Phase A dispatcher: draft → PRD → architecture (optional) → plan → prepared, with PRD as the sole human approval gate and reviewer verdicts gating derived artifacts.
-- [`work-state-machine`](../feature/workflow/work-state-machine.md) — Phase B dispatcher: prepared → build → review → fix → finalize_ready (terminal), with per-(repo, slug) single-flight lock and machine-owned `prepared → build_started` handoff. The `todo_finalize_ready` integration event is emitted by the TodosDb write-state chokepoint hook, not from within the work-step, so any writer that lands the terminal phase (work-machine claim, reconcile, direct `mark-phase`) produces the event. v1 TodosDb does not serialize writers per project, so the chokepoint provides at-least-once emission per actual `* → finalize_ready` transition; the `IntegrationTriggerCartridge`'s `_spawned_event_keys` dedup on `(slug, sha, worker_session_id)` collapses duplicates to exactly-one integrator spawn, and the integrator's `integration/main` singleton lease serializes spawns into a single integration run per slug.
+- [`work-state-machine`](../feature/workflow/work-state-machine.md) — Phase B dispatcher: prepared → build → review → fix → finalize_ready (terminal), with per-(repo, slug) single-flight lock and machine-owned `prepared → build_started` handoff. The `todo_finalize_ready` integration event is emitted by the TodosDb write-state chokepoint hook, not from within the work-step, so the normal work-machine finalize-ready handoff produces the event. v1 TodosDb does not serialize writers per project, so the chokepoint provides at-least-once emission per actual `* → finalize_ready` transition; the `IntegrationTriggerCartridge`'s `_spawned_event_keys` dedup on `(slug, sha, worker_session_id)` collapses duplicates to exactly-one integrator spawn, and the integrator's `integration/main` singleton lease serializes spawns into a single integration run per slug.
 - [`integration-state-machine`](../feature/workflow/integration-state-machine.md) — Phase C: lease-serialized 12-state machine that squash-merges from `trees/_integration/` and pushes `origin/main`; durable checkpoint enables crash recovery.
 - [`worktree-prep-lifecycle`](../feature/workflow/worktree-prep-lifecycle.md) — Per-slug git worktree at `trees/<slug>/` with a digest-tracked prep marker; archives binary artifacts on delivery cleanup.
 - [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.

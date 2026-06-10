@@ -23,12 +23,9 @@ from teleclaude.cli.tool_commands import (
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES, ARTIFACT_NAMES_RETIRED, ARTIFACT_NAMES_WRITABLE
-from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
-from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances
 from teleclaude.events.producer import ensure_event_producer
@@ -49,120 +46,13 @@ __all__ = [
     "_handle_todo_design",
     "_handle_todo_freeze",
     "_handle_todo_list",
-    "_handle_todo_mark_phase",
-    "_handle_todo_reconcile",
     "_handle_todo_remove",
     "_handle_todo_rename",
     "_handle_todo_show",
     "_handle_todo_split",
     "_handle_todo_stamp",
     "_handle_todo_unfreeze",
-    "handle_mark_phase",
 ]
-
-
-def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
-    """Operator override: set the canonical lifecycle phase."""
-    lifecycle_values = {p.value for p in LifecyclePhase}
-    if phase not in lifecycle_values:
-        prepare_values = {p.value for p in PreparePhase}
-        work_values = {p.value for p in WorkPhase}
-        print(f"Unknown phase value: {phase!r}", file=sys.stderr)
-        print("Valid lifecycle_phase values:", file=sys.stderr)
-        for value in sorted(lifecycle_values):
-            print(f"  {value}", file=sys.stderr)
-        print("Legacy prepare_phase values:", file=sys.stderr)
-        for value in sorted(prepare_values):
-            print(f"  {value}", file=sys.stderr)
-        print("Legacy work_phase values:", file=sys.stderr)
-        for value in sorted(work_values):
-            print(f"  {value}", file=sys.stderr)
-        return 1
-
-    try:
-        mark_phase_state(cwd, slug, phase)
-    except (ValueError, GitCommandError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    print(f"Marked {slug} lifecycle_phase={phase}")
-    return 0
-
-
-def _handle_todo_mark_phase(args: list[str]) -> None:
-    """Handle telec todo mark-phase <slug> --phase <value>.
-
-    Thin argv adapter over :func:`handle_mark_phase`.
-    """
-    slug: str | None = None
-    phase: str | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--phase" and i + 1 < len(args):
-            phase = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "mark-phase"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "mark-phase"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug or not phase:
-        print(_usage("todo", "mark-phase"))
-        raise SystemExit(1)
-
-    exit_code = handle_mark_phase(slug=slug, phase=phase, cwd=str(resolve_invocation_cwd()))
-    if exit_code != 0:
-        raise SystemExit(exit_code)
-
-
-def _handle_todo_reconcile(args: list[str]) -> None:
-    """Handle telec todo reconcile <slug> [--stage prepare|work]."""
-    slug: str | None = None
-    stage: str | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--stage" and i + 1 < len(args):
-            stage = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "reconcile"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "reconcile"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug:
-        print(_usage("todo", "reconcile"))
-        raise SystemExit(1)
-
-    if stage is not None and stage not in {member.value for member in LifecycleStage}:
-        print(f"Unknown stage value: {stage!r}", file=sys.stderr)
-        print("Valid stage values:", file=sys.stderr)
-        for value in sorted(member.value for member in LifecycleStage):
-            print(f"  {value}", file=sys.stderr)
-        raise SystemExit(1)
-
-    try:
-        payload = reconcile_phase_state(str(resolve_invocation_cwd()), slug, stage)
-    except (ValueError, GitCommandError) as exc:
-        print(str(exc), file=sys.stderr)
-        raise SystemExit(1) from exc
-    print(f"Reconciled {slug} lifecycle_phase={payload['lifecycle_phase']}")
 
 
 def _handle_todo(args: list[str]) -> None:
@@ -181,10 +71,8 @@ def _handle_todo(args: list[str]) -> None:
         "freeze": _handle_todo_freeze,
         "integrate": handle_todo_integrate,
         "list": _handle_todo_list,
-        "mark-phase": _handle_todo_mark_phase,
         "prepare": handle_todo_prepare,
         "reactivate": _handle_todo_reactivate,
-        "reconcile": _handle_todo_reconcile,
         "remove": _handle_todo_remove,
         "rename": _handle_todo_rename,
         "set-deps": handle_todo_set_deps,

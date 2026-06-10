@@ -346,19 +346,18 @@ Manage work items
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> [--kind <feature|change|bug|task>] [--after <deps>] [--silent] [--plan]`
+**Usage:** `telec todo create <slug> <content> [--kind <feature|change|bug|task>] [--after <deps>] [--plan]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
 - `--kind`: Optional. The work-unit's entry point into the lifecycle: feature|change|bug|task.
-- `--silent`: Create silently — suppress pickup notification
 - `--plan`: Content is a complete implementation-plan; skip prepare to build (--kind change only).
 
 **Notes:**
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
-- Emits workflow.todo.created for autonomous pickup unless --silent is set.
+- By default this emits workflow.todo.created so a prepare orchestrator auto-picks-up the todo. The hidden --silent flag suppresses that event (no auto-pickup) and must be passed ONLY when the human explicitly asks to file a todo without starting work.
 - Omitting --kind creates a kind-less todo classified by /analyze-todo-input; it proposes only and never executes.
 - --plan is valid only with --kind change and treats content as a complete implementation plan.
 - Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
@@ -451,36 +450,6 @@ Run the Phase B (work) state machine
 Run the Phase C (integrate) state machine
 
 **Usage:** `telec todo integrate [<slug>]`
-
-### `telec todo mark-phase`
-
-Operator override: write the authoritative lifecycle_phase field
-
-**Usage:** `telec todo mark-phase <slug> --phase <value>`
-
-**Flags:**
-
-- `--phase`: Phase value matching the canonical lifecycle phase enum
-
-**Notes:**
-
-- Operator escape hatch; downstream phases will see whatever you set without re-deriving from evidence.
-
-### `telec todo reconcile`
-
-Re-evaluate current todo evidence and align lifecycle_phase within one stage
-
-**Usage:** `telec todo reconcile <slug> [--stage <prepare|work>]`
-
-**Flags:**
-
-- `--stage`: Optional stage override; defaults from current lifecycle_phase
-
-**Notes:**
-
-- Uses the current lifecycle phase's stage implicitly unless --stage is provided.
-- Stage-bounded: prepare reconciliation ignores work evidence, and work reconciliation ignores prepare evidence.
-- Does not dispatch work; run telec todo prepare/work afterward.
 
 ### `telec todo set-deps`
 
