@@ -67,7 +67,7 @@ _REVIEW_STATUS_DISPLAY: dict[str, str] = {
 
 def _display_kind(kind: str | None) -> str:
     if kind is None:
-        return "unknown"
+        return "?"
     return _KIND_DISPLAY.get(kind, kind)
 
 
@@ -235,6 +235,8 @@ _KIND_COLORS_LIGHT: dict[str, str] = {
 
 def _kind_color(kind: str | None) -> str:
     """Return the theme-aware color for the kind label."""
+    if kind is None:
+        return _gold_color()
     colors = _KIND_COLORS_DARK if is_dark_mode() else _KIND_COLORS_LIGHT
     return colors.get(kind or "", colors["feature"])
 

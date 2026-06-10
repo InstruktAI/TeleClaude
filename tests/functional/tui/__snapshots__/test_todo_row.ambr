@@ -1,6 +1,6 @@
 # serializer version: 1
-# name: test_kindless_todo_row_renders_unknown_kind_and_classify_phase
-  '  ├─■ classify-me··unknown··P:classify···'
+# name: test_kindless_todo_row_renders_question_mark_kind_and_classify_phase
+  '  ├─■ classify-me··?··P:classify···'
 # ---
 # name: test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode
   list([
@@ -43,6 +43,16 @@
       'task',
       'light',
       'color(232)',
+    ),
+    tuple(
+      'kindless',
+      'dark',
+      'color(178)',
+    ),
+    tuple(
+      'kindless',
+      'light',
+      'color(136)',
     ),
   ])
 # ---

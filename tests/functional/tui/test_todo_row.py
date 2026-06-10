@@ -12,7 +12,7 @@ from teleclaude.cli.tui.widgets.todo_row import TodoRow
 pytestmark = pytest.mark.functional
 
 
-def test_kindless_todo_row_renders_unknown_kind_and_classify_phase(snapshot: object) -> None:
+def test_kindless_todo_row_renders_question_mark_kind_and_classify_phase(snapshot: object) -> None:
     item = TodoItem(
         slug="classify-me",
         status=TodoStatus.IN_PROGRESS,
@@ -100,10 +100,10 @@ def test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode(
     monkeypatch: pytest.MonkeyPatch, snapshot: object
 ) -> None:
     """Kind column applies distinct per-kind colors in dark and light mode."""
-    kinds = ["feature", "change", "bug", "task"]
+    kinds: list[str | None] = ["feature", "change", "bug", "task", None]
     results: list[tuple[str, str, str | None]] = []
 
-    slug_names = ["alpha", "bravo", "charlie", "delta"]
+    slug_names = ["alpha", "bravo", "charlie", "delta", "echo"]
     for kind, slug in zip(kinds, slug_names):
         item = TodoItem(
             slug=slug,
@@ -127,6 +127,6 @@ def test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode(
                     if hasattr(span.style, "color") and span.style.color:
                         kind_color = span.style.color.name
                         break
-            results.append((kind, mode, kind_color))
+            results.append((kind or "kindless", mode, kind_color))
 
     assert results == snapshot
