@@ -175,7 +175,6 @@ Then Discord renders the transcribed user text with the user's display identity 
 And if the user's display identity cannot be resolved, Discord does not render the transcribed user text as the agent or bot
 ```
 
-<!-- planned:suppress-command-body-in-projection -->
 #### UC-OPD1: Command-body expansion with ADDITIONAL CONTEXT projects as title plus that section, never the body
 
 ```
@@ -201,7 +200,6 @@ Given a user turn whose text is ordinary content with no command-message wrapper
 When that user turn is extracted for projection
 Then the projected text equals the original user text
 ```
-<!-- /planned:suppress-command-body-in-projection -->
 
 #### Output cadence metrics
 

@@ -1,4 +1,15 @@
 # serializer version: 1
+# name: test_command_body_expansion_with_additional_context_projects_title_plus_section
+  '''
+  /next-build suppress-command-body-in-projection
+  
+  ADDITIONAL CONTEXT:
+  Keep this deployment scoped to transcript projection.
+  '''
+# ---
+# name: test_command_body_expansion_without_additional_context_projects_title_only
+  '/next-build suppress-command-body-in-projection'
+# ---
 # name: test_discord_admin_reflection_preserves_user_attribution_for_text_input
   dict({
     'bot_send_count': 0,
@@ -52,4 +63,7 @@
       }),
     ]),
   })
+# ---
+# name: test_non_command_user_turn_projects_unchanged
+  'Please inspect the current projection output.'
 # ---

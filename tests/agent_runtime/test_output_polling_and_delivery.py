@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+import json
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TypedDict, cast
@@ -15,11 +16,13 @@ from teleclaude.adapters.discord.message_ops import MessageOperationsMixin
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core import voice_message_handler
 from teleclaude.core.adapter_client import AdapterRuntime
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
+from teleclaude.core.models import ChannelMetadata, JsonDict, MessageMetadata, PeerInfo, Session
 from teleclaude.core.origins import InputOrigin
+from teleclaude.utils.transcript import extract_last_user_message_with_timestamp
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
@@ -199,6 +202,95 @@ def _reflection_metadata() -> MessageMetadata:
         reflection_actor_avatar_url="https://example.test/avatar.png",
         reflection_origin=InputOrigin.TERMINAL.value,
     )
+
+
+def _write_claude_transcript(path: Path, entries: Sequence[JsonDict]) -> None:
+    path.write_text("\n".join(json.dumps(entry) for entry in entries) + "\n", encoding="utf-8")
+
+
+def _command_message_text(*, additional_context: str | None = None) -> str:
+    args = "suppress-command-body-in-projection"
+    if additional_context is not None:
+        args = f"{args}\n\nADDITIONAL CONTEXT:\n{additional_context}"
+    return f"""<command-message>
+<command-name>/next-build</command-name>
+<command-args>{args}</command-args>
+# Build
+
+This procedure body must stay out of projected user text.
+</command-message>"""
+
+
+def _projected_last_user_message(transcript_path: Path) -> str:
+    projected = extract_last_user_message_with_timestamp(str(transcript_path), AgentName.CLAUDE)
+    assert projected is not None
+    text, _timestamp = projected
+    return text
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/output-polling-and-delivery", "UC-OPD1")
+async def test_command_body_expansion_with_additional_context_projects_title_plus_section(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    transcript_path = tmp_path / "transcript.jsonl"
+    _write_claude_transcript(
+        transcript_path,
+        [
+            {
+                "timestamp": "2026-01-01T00:00:01+00:00",
+                "message": {
+                    "role": "user",
+                    "content": _command_message_text(
+                        additional_context="Keep this deployment scoped to transcript projection."
+                    ),
+                },
+            },
+        ],
+    )
+
+    assert _projected_last_user_message(transcript_path) == snapshot
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/output-polling-and-delivery", "UC-OPD2")
+async def test_command_body_expansion_without_additional_context_projects_title_only(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    transcript_path = tmp_path / "transcript.jsonl"
+    _write_claude_transcript(
+        transcript_path,
+        [
+            {
+                "timestamp": "2026-01-01T00:00:01+00:00",
+                "message": {
+                    "role": "user",
+                    "content": _command_message_text(),
+                },
+            },
+        ],
+    )
+
+    assert _projected_last_user_message(transcript_path) == snapshot
+
+
+@pytest.mark.spec("project/spec/feature/agent_runtime/output-polling-and-delivery", "UC-OPD3")
+async def test_non_command_user_turn_projects_unchanged(tmp_path: Path, snapshot: object) -> None:
+    transcript_path = tmp_path / "transcript.jsonl"
+    _write_claude_transcript(
+        transcript_path,
+        [
+            {
+                "timestamp": "2026-01-01T00:00:01+00:00",
+                "message": {
+                    "role": "user",
+                    "content": "Please inspect the current projection output.",
+                },
+            },
+        ],
+    )
+
+    assert _projected_last_user_message(transcript_path) == snapshot
 
 
 @pytest.mark.spec("project/spec/feature/agent_runtime/output-polling-and-delivery", "UC-OPD4")
