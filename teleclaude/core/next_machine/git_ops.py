@@ -189,18 +189,26 @@ def _path_overlaps_reference(path: str, reference: str) -> bool:
     return normalized_path == normalized_reference or normalized_path.startswith(f"{normalized_reference}/")
 
 
-def extract_referenced_paths(content: str, repo_root: str) -> list[str]:
-    """Return tracked repo paths whose literals are referenced by artifact content."""
-    try:
-        repo = Repo(repo_root, search_parent_directories=True)
-        tracked_output = repo.git.ls_files()
-    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError):
-        return []
-    references = {
-        path.strip()
-        for path in tracked_output.splitlines()
-        if path.strip() and path.strip() in content and not path.strip().startswith(".teleclaude/")
-    }
+def extract_referenced_paths(content: str) -> list[str]:
+    """Return paths declared in fenced referenced-paths blocks."""
+    references: set[str] = set()
+    in_referenced_paths_block = False
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if in_referenced_paths_block:
+            if line.startswith("```"):
+                in_referenced_paths_block = False
+                continue
+            if line and not line.startswith("#"):
+                references.add(line)
+            continue
+
+        if not line.startswith("```"):
+            continue
+        info = line[3:].strip()
+        language = info.split(maxsplit=1)[0] if info else ""
+        if language == "referenced-paths":
+            in_referenced_paths_block = True
     return sorted(references)
 
 
@@ -379,7 +387,7 @@ async def derive_dependency_graph_drift(
         return DRIFT_FRESH
     return _reviewed_verdict_or_pending(
         _drift_stamp_for_artifact(model, state_key),
-        evidence_matches_review=lambda reviewed: reviewed.dep_set_at_review == current,
+        evidence_matches_review=lambda reviewed: _sorted_dependency_entries(reviewed.dep_set_at_review) == current,
     )
 
 
@@ -489,7 +497,14 @@ def _review_is_within_age_window(
 
 
 def _sorted_dependency_entries(entries: list[DependencyEntry]) -> list[DependencyEntry]:
-    return sorted(entries, key=lambda entry: (entry.dep_slug, entry.roadmap_status))
+    normalized = [_normalize_dependency_entry(entry) for entry in entries]
+    return sorted(normalized, key=lambda entry: (entry.dep_slug, entry.roadmap_status))
+
+
+def _normalize_dependency_entry(entry: DependencyEntry) -> DependencyEntry:
+    if entry.roadmap_status == "delivered":
+        return DependencyEntry(dep_slug=entry.dep_slug, roadmap_status="active")
+    return entry
 
 
 def _parse_iso_datetime(value: str) -> datetime:

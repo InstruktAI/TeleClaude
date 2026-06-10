@@ -24,7 +24,7 @@ from teleclaude.cli.tool_commands import (
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES, ARTIFACT_NAMES_RETIRED, ARTIFACT_NAMES_WRITABLE
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
-from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
+from teleclaude.core.next_machine.git_ops import get_head_commit
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances
@@ -688,7 +688,6 @@ def _handle_artifacts_write(args: list[str]) -> None:
             "content": content_val,
             "cwd": cwd,
             "codebase_sha_at_write": get_head_commit(cwd),
-            "referenced_paths": extract_referenced_paths(content_val, cwd),
         },
     )
     if isinstance(result, dict) and result.get("status") == "ok":

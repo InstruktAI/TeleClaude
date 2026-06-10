@@ -20,6 +20,7 @@ from teleclaude.constants import (
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import work as work_machine
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+from teleclaude.core.next_machine.git_ops import DRIFT_FRESH, derive_artifact_drift
 from teleclaude.core.next_machine.kinds import (
     BUG_DIAGNOSE_KINDS,
     FAST_TRACK_PREPARED_KINDS,
@@ -30,14 +31,18 @@ from teleclaude.core.next_machine.lifecycle import (
     LIFECYCLE_PHASE_ORDER,
     LifecyclePhase,
     adopt_prepare_handoff_phase,
+    collapse_drift,
+    derive_lifecycle_drift,
     is_ready_for_work,
 )
+from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.prepare_step_support import prepare_step_prepared
 from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.next_machine.work_steps import _artifact_contract_note
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
-from teleclaude.types.todos import DriftReviewedStamp, TodoState
+from teleclaude.types.todos import DependencyEntry, DriftReviewedStamp, RoadmapStatusLiteral, TodoState
 
 pytestmark = pytest.mark.functional
 
@@ -73,6 +78,14 @@ class _CapturingDb:
         return self._sessions
 
 
+class _DependencyReader:
+    def __init__(self, deps: list[DependencyEntry]) -> None:
+        self._deps = deps
+
+    async def get_deps_with_status(self, _slug: str) -> list[DependencyEntry]:
+        return self._deps
+
+
 @pytest.fixture(autouse=True)
 async def _close_todos_db_after_test() -> AsyncGenerator[None]:
     yield
@@ -101,6 +114,10 @@ async def _add_todo(
             "lifecycle_phase": lifecycle_phase.value,
         },
     )
+
+
+def _dependency_entry(dep_slug: str, roadmap_status: RoadmapStatusLiteral) -> DependencyEntry:
+    return DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
 
 
 @pytest.mark.spec(_SPEC, "UC-WPS1")
@@ -260,6 +277,92 @@ async def test_prepared_bug_with_matching_diagnosis_upstream_does_not_redispatch
     )
 
     assert output == snapshot
+
+
+@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD9")
+async def test_prepare_hydration_refreshes_stale_referenced_paths_without_stamp_churn(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    slug = "stale-reference-refresh"
+    await todos_db.add_to_roadmap(slug)
+    await todos_db.write_artifact(
+        slug,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        "Grounding mentions manifests/cli-surface.md, but no contract block declares it.",
+    )
+    model = _prepared_bug_model()
+    entry = model.artifacts.implementation_plan
+    entry.produced_at = "2026-06-10T00:00:00+00:00"
+    entry.codebase_sha_at_write = "write-sha"
+    entry.referenced_paths = [
+        "manifests/cli-surface.md",
+        "teleclaude/core/next_machine/git_ops.py",
+    ]
+    entry.dependency_set_at_write = [_dependency_entry("dep", "active")]
+    produced_at_before = entry.produced_at
+    state = model.model_dump(exclude_none=True)
+    await todos_db.write_state(slug, state)
+    stamp_before = model.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN].model_copy(deep=True)
+
+    await next_prepare(cast(Db, _CapturingDb([])), slug, str(project_root))
+
+    persisted = await todos_db.read_state(slug)
+    assert persisted is not None
+    writer = StateWriter(persisted)
+    refreshed = writer.state.artifacts.implementation_plan
+    assert refreshed.referenced_paths == []
+    assert refreshed.async_provenance_complete is True
+    assert refreshed.dependency_set_at_write == [_dependency_entry("dep", "active")]
+    assert refreshed.produced_at == produced_at_before
+    assert writer.state.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN] == stamp_before
+    assert derive_artifact_drift(refreshed, None, "", "") == DRIFT_FRESH
+
+    drift = await derive_lifecycle_drift(
+        slug,
+        writer.state,
+        repo_root=str(project_root),
+        todos_db=_DependencyReader([_dependency_entry("dep", "delivered")]),
+        snippet_digest_fn=lambda _snippet_id: "",
+        writer=writer,
+    )
+    assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] == DRIFT_FRESH
+
+
+async def test_prepare_hydration_refreshes_declared_referenced_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    slug = "declared-reference-refresh"
+    await todos_db.add_to_roadmap(slug)
+    await todos_db.write_artifact(
+        slug,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        """
+```referenced-paths
+teleclaude/core/next_machine/git_ops.py
+tests/workflow/test_prepare_state_machine.py
+```
+""",
+    )
+    model = _prepared_bug_model()
+    model.artifacts.implementation_plan.produced_at = "2026-06-10T00:00:00+00:00"
+    model.artifacts.implementation_plan.referenced_paths = ["manifests/cli-surface.md"]
+    produced_at_before = model.artifacts.implementation_plan.produced_at
+    await todos_db.write_state(slug, model.model_dump(exclude_none=True))
+    monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
+
+    await next_prepare(cast(Db, _CapturingDb([])), slug, str(project_root))
+
+    persisted = await todos_db.read_state(slug)
+    assert persisted is not None
+    writer = StateWriter(persisted)
+    assert writer.state.artifacts.implementation_plan.referenced_paths == [
+        "teleclaude/core/next_machine/git_ops.py",
+        "tests/workflow/test_prepare_state_machine.py",
+    ]
+    assert writer.state.artifacts.implementation_plan.produced_at == produced_at_before
 
 
 @pytest.mark.spec(_DRIFT_SPEC, "UC-WDD6")

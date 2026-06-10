@@ -14,13 +14,17 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine import git_ops, provenance, stamps
 from teleclaude.core.next_machine.git_ops import (
+    DRIFT_COSMETIC,
     DRIFT_FRESH,
     DRIFT_PENDING,
+    derive_artifact_drift,
+    derive_dependency_graph_drift,
     derive_upstream_artifact_drift,
+    extract_referenced_paths,
 )
 from teleclaude.core.next_machine.lifecycle import collapse_drift, derive_lifecycle_drift
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.types.todos import DependencyEntry, DriftReviewedStamp, TodoState
+from teleclaude.types.todos import DependencyEntry, DriftReviewedStamp, RoadmapStatusLiteral, TodoState
 
 pytestmark = pytest.mark.functional
 
@@ -32,8 +36,11 @@ _REWRITTEN_DIGEST = "diagnosis-v2"
 
 
 class _DependencyReader:
+    def __init__(self, deps: list[DependencyEntry] | None = None) -> None:
+        self._deps = deps or []
+
     async def get_deps_with_status(self, _slug: str) -> list[DependencyEntry]:
-        return []
+        return self._deps
 
 
 def _empty_snippet_digest(_snippet_id: str) -> str:
@@ -67,6 +74,106 @@ def _prepared_bug_model(*, diagnosis_digest: str = _DIAGNOSIS_DIGEST) -> TodoSta
         },
     )
     return model
+
+
+def _dependency_entry(dep_slug: str, roadmap_status: RoadmapStatusLiteral) -> DependencyEntry:
+    return DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
+
+
+def _plan_with_dependency_set(entries: list[DependencyEntry]) -> TodoState:
+    model = TodoState(kind="change", lifecycle_phase="prepared", schema_version=4)
+    model.artifacts.implementation_plan.digest = "plan-v1"
+    model.artifacts.implementation_plan.async_provenance_complete = True
+    model.artifacts.implementation_plan.dependency_set_at_write = entries
+    return model
+
+
+def test_referenced_paths_come_from_declared_contract_block() -> None:
+    body = """
+This plan mentions manifests/cli-surface.md in prose.
+
+```referenced-paths
+# ignored heading
+teleclaude/core/next_machine/git_ops.py
+
+tests/workflow/test_drift_detection.py
+teleclaude/core/next_machine/git_ops.py
+new/untracked/file.py
+```
+"""
+
+    assert extract_referenced_paths(body) == [
+        "new/untracked/file.py",
+        "teleclaude/core/next_machine/git_ops.py",
+        "tests/workflow/test_drift_detection.py",
+    ]
+
+
+def test_referenced_paths_ignore_prose_mentions_and_missing_contract_blocks() -> None:
+    body = "Grounding mentions manifests/cli-surface.md, but no contract block declares it."
+    entry = TodoState(kind="change", schema_version=4).artifacts.implementation_plan
+    entry.digest = "plan-v1"
+    entry.referenced_paths = extract_referenced_paths(body)
+
+    assert entry.referenced_paths == []
+    assert derive_artifact_drift(entry, None, "", "") == DRIFT_FRESH
+
+
+@pytest.mark.spec(_SPEC, "UC-WDD7")
+async def test_delivered_dependency_status_matches_recorded_active_status() -> None:
+    model = _plan_with_dependency_set([_dependency_entry("dep", "active")])
+
+    drift = await derive_dependency_graph_drift(
+        "todo",
+        model,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        todos_db=_DependencyReader([_dependency_entry("dep", "delivered")]),
+    )
+
+    assert drift == DRIFT_FRESH
+
+
+@pytest.mark.spec(_SPEC, "UC-WDD8")
+async def test_dependency_graph_still_drifts_for_icebox_and_set_membership_changes() -> None:
+    held_to_delivered = await derive_dependency_graph_drift(
+        "todo",
+        _plan_with_dependency_set([_dependency_entry("dep", "icebox")]),
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        todos_db=_DependencyReader([_dependency_entry("dep", "delivered")]),
+    )
+    removed = await derive_dependency_graph_drift(
+        "todo",
+        _plan_with_dependency_set([_dependency_entry("dep", "active")]),
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        todos_db=_DependencyReader([]),
+    )
+    added = await derive_dependency_graph_drift(
+        "todo",
+        _plan_with_dependency_set([]),
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        todos_db=_DependencyReader([_dependency_entry("dep", "active")]),
+    )
+
+    assert held_to_delivered == DRIFT_PENDING
+    assert removed == DRIFT_PENDING
+    assert added == DRIFT_PENDING
+
+
+async def test_dependency_graph_review_anchor_uses_normalized_statuses() -> None:
+    model = _plan_with_dependency_set([])
+    model.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
+        verdict=DRIFT_COSMETIC,
+        dep_set_at_review=[_dependency_entry("dep", "delivered")],
+    )
+
+    drift = await derive_dependency_graph_drift(
+        "todo",
+        model,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        todos_db=_DependencyReader([_dependency_entry("dep", "active")]),
+    )
+
+    assert drift == DRIFT_COSMETIC
 
 
 @pytest.mark.spec(_SPEC, "UC-WDD1")

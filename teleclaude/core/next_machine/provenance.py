@@ -71,7 +71,7 @@ async def sync_artifact_provenance(
     entry = _entry(writer, key)
     entry.digest = await todos_db.artifact_digest(slug, artifact_name)
     entry.codebase_sha_at_write = get_origin_main_sha(repo_root)
-    entry.referenced_paths = extract_referenced_paths(artifact_body, repo_root)
+    entry.referenced_paths = extract_referenced_paths(artifact_body)
     entry.upstream_digests = _current_upstream_digests(writer, key)
     entry.owned_snippet_digests = await read_owned_snippet_digests(
         todos_db,
@@ -119,6 +119,17 @@ def sync_artifact_provenance_sync_subset(
     entry.dependency_set_at_write = []
     entry.async_provenance_complete = False
     _clear_rewrite_drift_state(writer, artifact_name)
+
+
+def refresh_referenced_paths(
+    writer: StateWriter,
+    state_key: str,
+    *,
+    artifact_body: str,
+) -> None:
+    """Refresh only the body-derived code surface for an existing artifact."""
+    entry = _entry(writer, state_key)
+    entry.referenced_paths = extract_referenced_paths(artifact_body)
 
 
 def clear_artifact_provenance(writer: StateWriter, slug: str, artifact_name: str) -> None:

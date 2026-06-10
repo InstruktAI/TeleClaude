@@ -131,7 +131,7 @@ def _sync_artifact_provenance_subset_from_db(
         artifact_name,
         repo_root=cwd,
         sha_at_write=get_origin_main_sha(cwd),
-        referenced_paths=extract_referenced_paths(artifact_body, cwd),
+        referenced_paths=extract_referenced_paths(artifact_body),
         digest=digest,
     )
     return digest

@@ -68,6 +68,13 @@ status across its classes (`substantive` > `pending` > `cosmetic` > `fresh`).
 | **dependency-graph**  | The Todo's immediate `after` set and each direct dep's status at write time vs current. Shallow — not transitive. | The immediate dep set changed (added/removed) OR any direct dep's status flipped (e.g., a HELD dep is now DELIVERED). |
 | **age** _(policy)_    | Artifact `produced_at` vs configurable freshness window.                                                          | `produced_at` is older than the configured window for the artifact kind.                                              |
 
+Pending drift contract update:
+
+| Class                | Evidence checked                                                                                                                        | When pending                                                                                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **code**             | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
+| **dependency-graph** | The Todo's immediate `after` set and each direct dep's normalized status at write time vs current. Shallow -- not transitive.            | The immediate dep set changed (added/removed) OR a direct dep crossed the active/icebox boundary. `active` -> `delivered` is normalized and stays fresh.   |
+
 ### Provenance recorded per artifact
 
 When a tracked artifact is written (`telec todo artifacts write`), the
@@ -82,6 +89,11 @@ drift class that applies to it. Per-artifact provenance:
   "current main" means even when the local repo's HEAD diverges from
   origin/main between write and derive.
 - `referenced_paths` — tracked repo paths mentioned in the artifact body.
+- `referenced_paths` — the sorted, de-duplicated file paths declared inside
+  the implementation-plan artifact's single `` ```referenced-paths `` fenced
+  block. Prose path mentions are not part of the code drift surface. Tracked
+  artifacts that do not declare a block record an empty list, so the code
+  class derives fresh for them.
 - `upstream_artifact_digests` — map of `{upstream_artifact_name: digest}` for
   every artifact this artifact derives from (per artifact-kind table below).
   **Field consolidation (architecture-resolved):** the existing
@@ -124,6 +136,12 @@ slug does not trigger drift).
 | `architecture` (index) |  ✓   | `prd`                 |       ✓       |        ✓         |        ✓         |  ✓  |
 | `implementation-plan`  |  ✓   | `architecture`, `prd`, `diagnosis` |   _(none)_    |        ✓         |        ✓         |  ✓  |
 | `diagnosis`            |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
+
+The `code` column is contract-scoped. Matrix membership stays unchanged so the
+same class is evaluated for every tracked artifact, but today only the
+`implementation-plan` declares a `referenced-paths` contract block. All other
+artifacts have an empty code surface unless a future contract explicitly gives
+them one, and empty-surface code drift derives fresh.
 
 `owned-snippet` applies to artifacts whose authoring phase writes doc
 snippets directly (intake → feature spec; architecture → domain/design
@@ -420,6 +438,45 @@ Scenario: upstream-snippet drift on a referenced domain spec
   And the worker classifies and stamps the verdict
 ```
 
+#### UC-WDD7: Active dependency delivery is not dependency-graph drift
+
+```gherkin
+Scenario: dependency-graph does not drift when an active upstream dep delivers
+  Given a Todo with "after: [feature-X]" and an approved plan
+  And the plan recorded dependency_set_at_write = [{feature-X, status: active}]
+  And feature-X has since reached status = delivered
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then the machine reports no pending dependency-graph drift on implementation-plan
+  And no drift-analyzer worker is dispatched for the dependency-graph class
+```
+
+#### UC-WDD8: Icebox and membership changes remain dependency-graph drift
+
+```gherkin
+Scenario: dependency-graph still drifts for icebox status and direct dependency membership changes
+  Given a Todo with an approved plan
+  And the plan recorded dependency_set_at_write for the Todo's direct dependencies
+  When a direct dependency changes between icebox and delivered
+  Then the machine reports drift.implementation-plan = pending (class: dependency-graph)
+  When a direct dependency is added to or removed from the Todo's immediate after set
+  Then the machine reports drift.implementation-plan = pending (class: dependency-graph)
+```
+
+#### UC-WDD9: Prepare hydration refreshes stale referenced paths without stamp churn
+
+```gherkin
+Scenario: prepare hydration self-heals stale greedy referenced paths
+  Given a prepared Todo whose implementation-plan has complete async provenance
+  And the stored referenced_paths include stale greedy prose matches
+  And the current implementation-plan body declares no referenced-paths contract block
+  And the implementation-plan has an existing drift-reviewed stamp
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then prepare hydration refreshes referenced_paths from the current artifact body
+  And referenced_paths becomes empty without changing produced_at, dependency provenance, or drift-reviewed stamps
+  And code drift for implementation-plan derives fresh
+  And a delivered direct dependency that was recorded active does not create dependency-graph drift
+```
+
 ```gherkin
 Scenario: dependency-graph drift after an upstream dep delivers
   Given a Todo with "after: [feature-X]" and an approved plan
@@ -578,6 +635,12 @@ Scenario: re-writing an artifact clears its drift stamps
   status. Deep transitive changes (a dep's dep changed) are not tracked
   — the immediate dep's own drift detection is responsible for surfacing
   those upward when it is prepared.
+- **Delivered direct deps normalize to active.** In the dependency-graph
+  class, a direct dependency moving from `active` to `delivered` is expected
+  forward progress and does not register drift; any code impact from that
+  delivery is covered by the code class scoped to the plan's declared
+  `referenced-paths` contract. Status changes involving `icebox` and direct
+  dep add/remove still register drift.
 - **Age drift is policy-driven and disabled by default per project until
   the config defaults are set.** Projects that do not configure age
   windows do not pay the age class on their prepare cycles.
@@ -592,6 +655,22 @@ Scenario: re-writing an artifact clears its drift stamps
   validator-accepted inline forms (`@<HOME>/.teleclaude/docs/...` and
   `@docs/...`) and resolves them to canonical snippet IDs (new). The two
   surfaces do not overlap.
+- **Reference extraction has two distinct mechanisms.** `referenced_paths`
+  is a pure projection of the implementation-plan artifact body: the
+  sorted, de-duplicated path lines inside its single
+  `` ```referenced-paths `` contract block. It does not scan prose and does
+  not validate paths against tracked files, so generated-path warnings or
+  grounding notes are not drift surfaces unless the plan declares them in the
+  block. `referenced_snippet_digests` still uses reference extraction against
+  the doc snippet index that recognizes the validator-accepted inline forms
+  (`@<HOME>/.teleclaude/docs/...` and `@docs/...`) and resolves them to
+  canonical snippet IDs. The two surfaces do not overlap.
+- **`referenced_paths` refreshes on prepare hydration.** Because the field is
+  now derived only from the artifact body, prepare hydration refreshes that
+  projection without rewriting the artifact's other provenance. Extractor
+  semantics changes self-heal stale stored values on the next prepare call
+  without resetting `produced_at`, snippet/dependency provenance, or drift
+  review stamps.
 
 ## See Also
 

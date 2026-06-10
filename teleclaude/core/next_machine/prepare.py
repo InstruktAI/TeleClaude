@@ -31,7 +31,7 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.next_machine.output_formatting import format_blocker_resolution
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
-from teleclaude.core.next_machine.provenance import sync_artifact_provenance
+from teleclaude.core.next_machine.provenance import refresh_referenced_paths, sync_artifact_provenance
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
@@ -106,11 +106,12 @@ async def _hydrate_artifact_presence_for_adoption(
     """Load current artifact presence into state before handoff adoption."""
     for state_key, artifact_name in _ADOPTION_ARTIFACTS:
         entry = getattr(writer.state.artifacts, state_key)
-        if entry.digest and entry.async_provenance_complete:
-            continue
         if not await todos_db.artifact_exists(slug, artifact_name):
             continue
         artifact_body = await todos_db.read_artifact(slug, artifact_name)
+        if entry.digest and entry.async_provenance_complete:
+            refresh_referenced_paths(writer, state_key, artifact_body=artifact_body)
+            continue
         await sync_artifact_provenance(
             todos_db,
             writer,

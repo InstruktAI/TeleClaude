@@ -158,6 +158,12 @@ policy. Structure the plan as an ordered task list. Each task must include:
   assertions.
 - **Referenced files**: exact file paths that will be created or modified. These are
   used by the state machine for grounding and staleness detection.
+- **Referenced paths contract**: author exactly one machine-readable
+  `` ```referenced-paths `` fenced block in the plan body, listing every file
+  the work creates or modifies, one path per line. This block is the only code
+  drift surface the state machine reads. File paths mentioned in prose may help
+  the builder, but they are not a drift contract unless they appear in this
+  block.
 
 Verify plan tasks against the domain specs loaded in step 1. Plans that reference
 non-existent APIs, wrong schema fields, or incorrect directory structures are
