@@ -47,7 +47,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     - _get_enabled_agents() -> list[str]
     - _multi_agent: bool
     - _handle_launcher_click(interaction, agent_name, launcher_forum_id) -> None (async)
-    - _build_session_launcher_view() -> object
+    - _build_session_launcher_view(forum_id) -> object
     - _post_or_update_launcher(forum_id) -> None (async)
     """
 

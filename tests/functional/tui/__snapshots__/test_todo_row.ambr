@@ -65,5 +65,5 @@
   ])
 # ---
 # name: test_todo_row_renders_disapproved_review_status
-  '  ├─■ fix-review··chng··B:complete··R:disapproved···'
+  '  ├─■ fix-review··chng··B:complete··R:disapp···'
 # ---

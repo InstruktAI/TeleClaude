@@ -58,7 +58,7 @@ class GatewayHandlersMixin:
     - _require_async_callable(fn, *, label) -> Callable
     - _parse_optional_int(value) -> int | None
     - _ensure_discord_infrastructure() (async)
-    - _build_session_launcher_view() -> object
+    - _build_session_launcher_view(forum_id) -> object
     - _post_or_update_launcher(forum_id) (async)
     - _handle_launcher_click(interaction, agent_name, launcher_forum_id) (async)
     - _register_session_launcher_view(forum_id, message_id) -> None
@@ -103,7 +103,7 @@ class GatewayHandlersMixin:
         @property
         def _multi_agent(self) -> bool: ...
 
-        def _build_session_launcher_view(self) -> object: ...
+        def _build_session_launcher_view(self, *, forum_id: int | None = None) -> object: ...
 
         def _register_session_launcher_view(self, *, forum_id: int | None, message_id: int | None) -> None: ...
 
