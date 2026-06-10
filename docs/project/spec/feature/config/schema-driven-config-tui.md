@@ -143,6 +143,21 @@ And existing validation checks still run from the TUI
 And writes continue to use the existing atomic writer contracts for their target surfaces
 ```
 
+#### UC-CFG-TUI-SCHEMA-9: Internal fields are excluded by schema-declared view metadata
+
+```
+Given a configuration field is runtime-derived, system-resolved, or otherwise not operator-editable
+And that field is marked excluded in the schema's view metadata
+When the human opens `telec config wizard`
+Then the field does not render in the config TUI
+And the exclusion decision is read from the schema's view metadata, not from a TUI-local field name list
+And the retired TUI-local name blacklist is no longer the authority for exclusion
+And the operator can still edit the field by hand in its underlying YAML or config.yml file
+Given a field is operator-editable infrastructure such as a Redis connection tuning field
+Then it renders in the same Infra section that already exposes the Redis URL and password
+And no separate advanced section is introduced to hold it
+```
+
 ### Current hand-patched surfaces to retire
 
 The current TUI config surface contains dynamic reflection machinery, but the
@@ -156,9 +171,16 @@ inputs to that machinery are still hand-patched:
   `PersonEntry` fields.
 - The People save path always writes the global config, so per-person overlay
   fields cannot be edited there.
+- Field exclusion is a flat, hand-maintained name set in the TUI reflection
+  module (the `_BLACKLIST`), divorced from the schema. It holds runtime-derived
+  Discord channel identifiers, system-resolved paths, and complex structures —
+  the same TUI-local hand-patched authority this delivery eliminates on the show
+  side, applied to the hide side.
 
 Delivery retires these as sources of truth. View metadata may remain, but it
-must point at canonical schema paths and persistence sources.
+must point at canonical schema paths and persistence sources. Exclusion is moved
+onto the schema as view metadata (UC-CFG-TUI-SCHEMA-9); the TUI-local name
+blacklist is retired as the authority.
 
 ### Cross-context references
 
@@ -176,6 +198,10 @@ must point at canonical schema paths and persistence sources.
 - Schema field source: canonical config models or env-var registry descriptors.
 - Persistence source: machine config, global overlay, project overlay,
   per-person overlay, or env file.
+- Field render disposition: `visible` (rendered through the schema-driven
+  renderer) or `excluded` (marked in schema view metadata as runtime-derived,
+  system-resolved, or otherwise non-operator-editable; hand-editable in its
+  YAML/`config.yml` file but not shown in the TUI).
 
 ## Known caveats
 
@@ -191,3 +217,15 @@ must point at canonical schema paths and persistence sources.
 - Masked display for sensitive-looking fields is intentionally not required for
   the first delivery. Fields must be reachable; display masking can be added
   later without changing the persistence contract.
+- `invite_token` is relocated out of `PersonConfig` into an ephemeral
+  invitations store under `~/.teleclaude/state/` by this delivery (a
+  config-domain change owned by `project/spec/domain/config`). It is therefore
+  absent from the per-person overlay section by construction, not by an
+  exclusion rule. The relocation keeps invite generation and Telegram/Discord
+  redemption working; the TUI never renders or edits the invitations store.
+- The hidden set delivered via schema view metadata (UC-CFG-TUI-SCHEMA-9)
+  includes machine Discord runtime channel identifiers and the category map,
+  system-resolved computer fields, agent-runtime internals resolved by policy,
+  and adapter QoS tuning blocks. Relocating the Discord channel identifiers out
+  of config entirely (the way `invite_token` is relocated) is explicitly a
+  follow-up, not part of this delivery — they are only hidden here.
