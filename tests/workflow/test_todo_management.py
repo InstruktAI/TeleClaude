@@ -23,6 +23,13 @@ _STATELESS_ANCHOR = "stateless-anchor"
 _DEPENDENT_CHILD = "dependent-child"
 _STRUCTURAL_HOLDER = "structural-holder"
 _STRUCTURAL_CHILD = "structural-child"
+_HOLDER_INPUT = "# Holder input"
+_HOLDER_STAGE = "holder"
+_AGGREGATE_STATE = "aggregate"
+_INPUT_ARTIFACT = "input"
+_PHASE_KEY = "phase"
+_STATE_KEY = "state"
+_CHILDREN_KEY = "children"
 
 
 @pytest.fixture(autouse=True)
@@ -198,3 +205,32 @@ async def test_roadmap_projection_keeps_stateless_group_holders(tmp_path: Path) 
     assert holder.lifecycle_phase is None
     assert holder.build_status is None
     assert holder.review_status is None
+
+
+@pytest.mark.spec(_SPEC, "UC-WM8")
+async def test_show_payload_resolves_stateless_group_holder(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_roadmap(_STRUCTURAL_HOLDER)
+    await todos_db.write_artifact(_STRUCTURAL_HOLDER, _INPUT_ARTIFACT, _HOLDER_INPUT)
+    await todos_db.add_to_roadmap(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
+    await todos_db.write_state(
+        _STRUCTURAL_CHILD,
+        {
+            "schema_version": 4,
+            "kind": "change",
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.DRAFT.value,
+        },
+    )
+
+    payload = await assemble_show_payload(todos_db, _STRUCTURAL_HOLDER, include_artifact_content=True)
+
+    assert payload is not None
+    assert payload["stage"] == _HOLDER_STAGE
+    assert payload["current"] == {_PHASE_KEY: _HOLDER_STAGE, _STATE_KEY: _AGGREGATE_STATE}
+    assert payload["roadmap"][_CHILDREN_KEY] == [_STRUCTURAL_CHILD]
+    assert payload["artifacts"] == [_INPUT_ARTIFACT]
+    assert payload["artifact_content"] == {_INPUT_ARTIFACT: _HOLDER_INPUT}
+    assert _STATE_KEY not in payload

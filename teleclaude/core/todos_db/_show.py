@@ -87,6 +87,7 @@ _PREPARE_VALUES: frozenset[str] = frozenset(
 )
 
 _EVENTS_INLINE_LIMIT = 20
+_HOLDER_PHASE = "holder"
 
 
 # ── Typed payload shapes ────────────────────────────────────────────────────
@@ -410,6 +411,17 @@ async def _find_roadmap_row(todos_db: TodosDb, slug: str) -> TodoRoadmap | None:
     return None
 
 
+async def _holder_children(todos_db: TodosDb, slug: str) -> list[str]:
+    """Return non-removed direct group children for a structural holder slug."""
+    entries = await todos_db.list_roadmap(include_icebox=True, include_delivered=True)
+    children = [
+        str(entry["slug"])
+        for entry in entries
+        if entry.get("group_slug") == slug and entry.get("slug") != slug and entry.get("status") != "removed"
+    ]
+    return sorted(children)
+
+
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
@@ -426,6 +438,60 @@ async def _lookup_removed_state(todos_db: TodosDb, slug: str) -> dict[str, State
     return None
 
 
+async def _resolve_show_state(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    include_removed: bool,
+    initial_state: dict[str, StateValue] | None,
+) -> tuple[dict[str, StateValue] | None, bool, bool]:
+    """Resolve the lifecycle state backing a non-holder show payload."""
+    if initial_state is not None:
+        return initial_state, False, False
+
+    if include_removed:
+        removed_state = await _lookup_removed_state(todos_db, slug)
+        if removed_state is not None:
+            return removed_state, False, True
+
+    delivered_state = await todos_db.read_state_delivered(slug)
+    if delivered_state is not None:
+        return delivered_state, True, False
+
+    return None, False, False
+
+
+async def _assemble_holder_payload(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    roadmap_row: TodoRoadmap,
+    holder_children: list[str],
+    include_artifact_content: bool,
+) -> ShowPayload:
+    """Assemble a structural payload for a holder that intentionally has no state."""
+    deps = await todos_db.load_deps()
+    payload = ShowPayload(
+        slug=slug,
+        stage=_HOLDER_PHASE,
+        current=CurrentBlock(phase=_HOLDER_PHASE, state="aggregate"),
+    )
+    if roadmap_row.description:
+        payload["description"] = roadmap_row.description
+    roadmap_block = _derive_roadmap_block(roadmap_row, deps, slug)
+    roadmap_block["children"] = cast(StateValue, holder_children)
+    payload["roadmap"] = roadmap_block
+    artifact_rows = await todos_db.artifact_metadata(slug)
+    artifact_names = [row["name"] for row in artifact_rows]
+    payload["artifacts"] = list(artifact_names)
+    if include_artifact_content:
+        artifact_content: dict[str, str] = {}
+        for name in artifact_names:
+            artifact_content[name] = await todos_db.read_artifact(slug, name)
+        payload["artifact_content"] = artifact_content
+    return payload
+
+
 async def assemble_show_payload(
     todos_db: TodosDb,
     slug: str,
@@ -434,22 +500,26 @@ async def assemble_show_payload(
     include_artifact_content: bool = False,
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
+    roadmap_row = await _find_roadmap_row(todos_db, slug)
+    holder_children = await _holder_children(todos_db, slug)
     state = await todos_db.read_state(slug)
-    is_delivered = False
-    is_removed = False
-    if state is None:
-        # Active/icebox lookup found nothing — try removed path if requested
-        if include_removed:
-            state = await _lookup_removed_state(todos_db, slug)
-            if state is not None:
-                is_removed = True
+    if state is None and roadmap_row is not None and holder_children:
+        return await _assemble_holder_payload(
+            todos_db,
+            slug,
+            roadmap_row=roadmap_row,
+            holder_children=holder_children,
+            include_artifact_content=include_artifact_content,
+        )
 
-        if state is None:
-            # Try delivered path
-            state = await todos_db.read_state_delivered(slug)
-            if state is None:
-                return None
-            is_delivered = True
+    state, is_delivered, is_removed = await _resolve_show_state(
+        todos_db,
+        slug,
+        include_removed=include_removed,
+        initial_state=state,
+    )
+    if state is None:
+        return None
 
     state_model = TodoState.model_validate(state)
     project_root = _project_root_from_db(todos_db)
@@ -475,7 +545,6 @@ async def assemble_show_payload(
         payload["description"] = description
 
     deps = await todos_db.load_deps()
-    roadmap_row = await _find_roadmap_row(todos_db, slug)
     payload["roadmap"] = _derive_roadmap_block(roadmap_row, deps, slug)
     payload["state"] = _derive_state_block(state_model)
     payload["approvals"] = _derive_approvals_block(state_model)

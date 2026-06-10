@@ -72,6 +72,18 @@ And the holder has no own kind, lifecycle, build, or review state
 And its visible status derives from its leaf children
 ```
 
+#### UC-WM8: Show resolves stateless group holders
+
+```gherkin
+Given an active roadmap row has no todo_state row
+And at least one live child references that row through group_slug
+And the holder has an input artifact
+When the workflow assembles the todo show payload for the holder
+Then the service returns a structural holder payload instead of not-found
+And the payload includes roadmap facts, direct group children, and holder artifacts
+And lifecycle state blocks are not fabricated for the holder
+```
+
 #### UC-WM1: Show reads the caller's project
 
 ```
