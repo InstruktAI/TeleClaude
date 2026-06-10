@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import os
 import sys
 from pathlib import Path
 
@@ -150,11 +151,26 @@ def main(argv: list[str] | None = None) -> int:
 
     violations: list[tuple[str, int, str, str]] = []
 
-    py_files = [
-        p
-        for p in sorted(repo_root.rglob("*.py"))
-        if not any(part.startswith(".") for part in p.parts) and _is_scanned_file(p, repo_root)
-    ]
+    ignored = {
+        ".venv",
+        "node_modules",
+        "trees",
+        ".history",
+        "target",
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+    py_files: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        dirnames[:] = [d for d in dirnames if d not in ignored and not d.startswith(".")]
+        for f in filenames:
+            if f.endswith(".py") and not f.startswith("."):
+                path = Path(dirpath) / f
+                if _is_scanned_file(path, repo_root):
+                    py_files.append(path)
+    py_files.sort()
 
     for path in py_files:
         for lineno, var, source_line in _scan_file(path):

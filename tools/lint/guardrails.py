@@ -8,6 +8,7 @@ import ast
 import fnmatch
 import io
 import json
+import os
 import re
 import tokenize
 import tomllib
@@ -534,7 +535,24 @@ def _remove_empty_claude_md(repo_root: Path, selected_paths: set[str] | None = N
     """
     empty: list[str] = []
     if selected_paths is None:
-        candidates = sorted(repo_root.rglob("CLAUDE.md"))
+        ignored = {
+            ".venv",
+            "node_modules",
+            "trees",
+            ".history",
+            "target",
+            ".git",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+        }
+        candidates = []
+        for dirpath, dirnames, filenames in os.walk(repo_root):
+            dirnames[:] = [d for d in dirnames if d not in ignored and not d.startswith(".")]
+            for f in filenames:
+                if f == "CLAUDE.md":
+                    candidates.append(Path(dirpath) / f)
+        candidates.sort()
     else:
         candidates = [path for path in _iter_selected_files(repo_root, selected_paths) if path.name == "CLAUDE.md"]
 
