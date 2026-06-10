@@ -17,3 +17,97 @@
   # `telec docs index --target <slug>` focuses on one todo's new snippets.
   '''
 # ---
+# name: test_phase2_non_owning_target_keeps_matching_companion_invisible
+  '''
+  # PHASE 2: Selected snippet content
+  # Requested: project/spec/feature/context/target-lens
+  
+  ---
+  id: project/spec/feature/context/target-lens
+  type: spec
+  domain: software-development
+  scope: project
+  description: Target lens snippet.
+  ---
+  # Live Parent
+  
+  Live parent body.
+  
+  '''
+# ---
+# name: test_phase2_plain_read_keeps_matching_companion_invisible
+  '''
+  # PHASE 2: Selected snippet content
+  # Requested: project/spec/feature/context/target-lens
+  
+  ---
+  id: project/spec/feature/context/target-lens
+  type: spec
+  domain: software-development
+  scope: project
+  description: Target lens snippet.
+  ---
+  # Live Parent
+  
+  Live parent body.
+  
+  '''
+# ---
+# name: test_phase2_target_still_resolves_inline_planned_sections
+  dict({
+    'plain': '''
+      # PHASE 2: Selected snippet content
+      # Requested: project/spec/feature/context/target-lens
+      
+      ---
+      id: project/spec/feature/context/target-lens
+      type: spec
+      domain: software-development
+      scope: project
+      description: Target lens snippet.
+      ---
+      # Live Parent
+      
+      Live parent body.
+  
+    ''',
+    'target': '''
+      # PHASE 2: Selected snippet content
+      # Requested: project/spec/feature/context/target-lens
+      
+      ---
+      id: project/spec/feature/context/target-lens
+      type: spec
+      domain: software-development
+      scope: project
+      description: Target lens snippet.
+      ---
+      # Live Parent
+      
+      Live parent body.
+      
+      # Planned Body
+      
+      Planned replacement body.
+  
+    ''',
+  })
+# ---
+# name: test_phase2_target_uses_matching_companion_replacement_body
+  '''
+  # PHASE 2: Selected snippet content
+  # Requested: project/spec/feature/context/target-lens
+  
+  ---
+  id: project/spec/feature/context/target-lens
+  type: spec
+  domain: software-development
+  scope: project
+  description: Target lens snippet.
+  ---
+  # Companion
+  
+  Companion replacement body.
+  
+  '''
+# ---

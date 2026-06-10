@@ -423,7 +423,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<id> [id...] [--target <slug>]",
                 flags=[
                     _H,
-                    Flag("--target", desc="Include the slug's planned sections in the body (default: strip all)"),
+                    Flag(
+                        "--target",
+                        desc="Include the slug's planned sections and companion replacement body (default: strip all)",
+                    ),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

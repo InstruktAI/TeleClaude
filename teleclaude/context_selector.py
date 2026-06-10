@@ -29,6 +29,7 @@ from teleclaude.paths import GLOBAL_SNIPPETS_DIR, REPO_ROOT
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
+from teleclaude.snippet_validation import companion_slug
 from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
@@ -719,17 +720,27 @@ def _read_selected_snippet_body(
     target_slug: str | None,
 ) -> str | None:
     try:
-        raw = snippet.path.read_text(encoding="utf-8")
+        source_path = _target_body_source_path(snippet.path, target_slug)
+        raw = source_path.read_text(encoding="utf-8")
         root_path = (
             global_root if global_snippets_root in snippet.path.parents else (snippet.project_root or project_root)
         )
-        content = resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
+        content = resolve_inline_refs(raw, snippet_path=source_path, root_path=root_path)
         _, body = split_frontmatter(content)
         body = apply_planned_sections(body, target_slug)
         return strip_required_reads_section(body)
     except Exception as exc:
         logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
         return None
+
+
+def _target_body_source_path(snippet_path: Path, target_slug: str | None) -> Path:
+    if target_slug is None:
+        return snippet_path
+    companion_path = snippet_path.with_name(f"{snippet_path.stem}.{target_slug}.md")
+    if companion_path.exists() and companion_slug(companion_path) == target_slug:
+        return companion_path
+    return snippet_path
 
 
 def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity

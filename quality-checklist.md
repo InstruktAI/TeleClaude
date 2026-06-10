@@ -1,20 +1,18 @@
 ## Build Gates (Builder)
 
-- [x] Task 1: Add the unified typed remote-dispatch primitive
-- [x] Task 2: Add the session-ownership resolver
-- [x] Task 3: Migrate the `_session.py` close-forward path and remove `forward_command`
-- [x] Task 4: Migrate `session_remote.py` close path onto the primitive
-- [x] Task 5: Address carried-over remote-close authorization, completion-event, and API-boundary findings
+- [x] Task 1: Resolve a target-owned companion before reading the selected body
+- [x] Task 2: Align `telec docs get --target` help text with the real contract
+- [x] Task 3: Add phase-2 companion retrieval regression coverage
 
 ### Verification
 
-- `uv run pytest tests/agent_runtime/test_session_lifecycle.py`: PASS (`24 passed`, `5 snapshots passed`)
-- `uv run ruff check teleclaude/core/adapter_client/_remote.py teleclaude/api/session_ownership.py teleclaude/core/command_handlers/_session.py teleclaude/api/session_remote.py teleclaude/api/sessions_routes.py tests/agent_runtime/test_session_lifecycle.py`: PASS
-- `telec code test`: PASS
-- `telec code lint`: PASS
-- `rg -n "forward_command" teleclaude tests`: no matches
+- `uv run pytest tests/context/test_doc_snippet_three_phase_retrieval.py::test_phase2_target_uses_matching_companion_replacement_body`: FAIL before accepting the post-fix snapshot; diff changed `# Live Parent` to `# Companion`.
+- `uv run pytest tests/context/test_doc_snippet_three_phase_retrieval.py --snapshot-update`: PASS (`5 passed`, `5 snapshots passed/generated/updated`).
+- `telec code test`: PASS (`5 passed`, `5 snapshots passed`).
+- `telec code lint`: PASS.
 
 ### User-Facing Verification
 
-- Path: `DELETE /sessions/{id}?computer=<peer>` exercised through `tests/agent_runtime/test_session_lifecycle.py::test_delete_remote_session_forwards_to_cached_owner_and_returns_completion_event`.
-- Observed result: the route accepts a cached peer-owned remote close with HTTP 202, returns the close `completion_event`, and dispatches to the cached owning computer without requiring a local DB row.
+- Path: `telec docs get <id> --target <slug>` exercised through `build_context_output(..., target_slug="fix-docs-get-target-companion-bodies")` in `tests/context/test_doc_snippet_three_phase_retrieval.py`.
+- Observed result: the selected phase-2 snippet body renders the target-owned companion replacement body while plain reads and non-owning targets keep the live parent body; inline planned sections still resolve for the owning target.
+- CLI surface source verification: `uv run python` read `CLI_SURFACE["docs"].subcommands["get"]` and confirmed the `--target` description includes planned sections and companion replacement bodies. The installed `telec docs get --help` remained stale in this worktree until the command surface is regenerated/deployed.
