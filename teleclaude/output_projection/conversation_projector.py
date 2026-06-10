@@ -40,7 +40,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
-from teleclaude.output_projection.visibility import is_agent_cli_internal_text
+from teleclaude.output_projection.visibility import ProjectedTextCategory, classify_projected_text
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 from teleclaude.utils.transcript._parsers import normalize_transcript_entry_message
 from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defined]
@@ -87,17 +87,53 @@ def _project_user_tool_results(
 
 def _project_user_text(
     content: str,
+    policy: VisibilityPolicy,
     *,
     entry_ts: str | None,
     entry_idx: int,
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
-    if is_agent_cli_internal_text(content):
-        logger.debug("Sanitized agent-CLI internal user text at index %d", entry_idx)
+    if not _user_text_visible(content, policy):
+        if classify_projected_text(content) is ProjectedTextCategory.SIDE_CHANNEL:
+            logger.debug("Sanitized side-channel user text at index %d", entry_idx)
         return
     yield ProjectedBlock(
         block_type="text",
         block={"type": "text", "text": content},
+        role="user",
+        timestamp=entry_ts,
+        entry_index=entry_idx,
+        file_index=file_index,
+    )
+
+
+def _user_text_visible(text: str, policy: VisibilityPolicy) -> bool:
+    category = classify_projected_text(text)
+    if category is ProjectedTextCategory.SIDE_CHANNEL:
+        return False
+    if category is ProjectedTextCategory.NOTIFICATION:
+        return policy.include_notifications
+    if category is ProjectedTextCategory.SYSTEM_MESSAGE:
+        return policy.include_system_messages
+    return True
+
+
+def _project_user_text_block(
+    block: Mapping[str, object],
+    policy: VisibilityPolicy,
+    *,
+    entry_ts: str | None,
+    entry_idx: int,
+    file_index: int,
+) -> Iterator[ProjectedBlock]:
+    text = str(block.get("text", ""))
+    if not _user_text_visible(text, policy):
+        if classify_projected_text(text) is ProjectedTextCategory.SIDE_CHANNEL:
+            logger.debug("Sanitized side-channel user text block at index %d", entry_idx)
+        return
+    yield ProjectedBlock(
+        block_type="text",
+        block=block,  # type: ignore[arg-type]
         role="user",
         timestamp=entry_ts,
         entry_index=entry_idx,
@@ -119,8 +155,14 @@ def _project_content_block(
         text = str(block.get("text", ""))
         if not text.strip():
             return
-        if role == "user" and is_agent_cli_internal_text(text):
-            logger.debug("Sanitized agent-CLI internal user text block at index %d", entry_idx)
+        if role == "user":
+            yield from _project_user_text_block(
+                block,
+                policy,
+                entry_ts=entry_ts,
+                entry_idx=entry_idx,
+                file_index=file_index,
+            )
             return
         yield ProjectedBlock(
             block_type="text",
@@ -190,7 +232,13 @@ def _project_message_blocks(
         )
         return
     if role == "user" and isinstance(content, str):
-        yield from _project_user_text(content, entry_ts=entry_ts, entry_idx=entry_idx, file_index=file_index)
+        yield from _project_user_text(
+            content,
+            policy,
+            entry_ts=entry_ts,
+            entry_idx=entry_idx,
+            file_index=file_index,
+        )
         return
     if not isinstance(content, list):
         logger.debug("Skipping entry with non-list content at index %d (role=%s)", entry_idx, role)

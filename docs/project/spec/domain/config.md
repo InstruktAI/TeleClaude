@@ -51,10 +51,8 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 **Effective-config snapshot** (optional, for history)
 : A point-in-time record of the effective configuration. Persisted to `config.effective_config_snapshots` table only if history matters; otherwise the service is stateless and computes on demand.
 
-<!-- planned:per-person-output-visibility -->
 **Person output visibility settings**
 : Per-person preferences that control which non-conversational session output categories are eligible for projection on mobile/chat adapters and web/API surfaces. The settings live in the per-person overlay, not in the global `people` identity list.
-<!-- /planned:per-person-output-visibility -->
 
 ### Aggregates
 
@@ -71,7 +69,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the combined (`project_path`, `person_name`) tuple. Global-only computation when both are absent.
 - **Lifecycle:** computed on demand; cached in-memory by consumers per their own caching policy. Recomputed when any overlay file changes (`config.effective.updated` event fires).
 
-<!-- planned:per-person-output-visibility -->
 #### PersonConfig output visibility (value object)
 
 - **Root:** `OutputVisibilitySettings`
@@ -87,7 +84,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - `system_messages`: visible on `mobile` and `web` for admins; hidden for members, contributors, and newcomers.
   - `tool_calls`: visible on `mobile` and `web` for admins; hidden for members, contributors, and newcomers.
 - **Non-configurable categories:** tool results remain TUI-only; checkpoint messages and agent-CLI side-channel artifacts are dropped from projected surfaces; peer cross-share content remains visible on projected surfaces.
-<!-- /planned:per-person-output-visibility -->
 
 #### Runtime Configuration (aggregate)
 

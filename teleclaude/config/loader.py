@@ -7,8 +7,15 @@ import yaml
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
-from teleclaude.config.schema import AppConfig, GlobalConfig, PersonConfig, ProjectConfig
-from teleclaude.paths import GLOBAL_CONFIG_PATH
+from teleclaude.config.schema import (
+    AppConfig,
+    GlobalConfig,
+    OutputVisibilitySettings,
+    PersonConfig,
+    PersonEntry,
+    ProjectConfig,
+)
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -92,6 +99,69 @@ def load_global_config(path: Path | None = None) -> GlobalConfig:
 def load_person_config(path: Path) -> PersonConfig:
     """Load per-person configuration."""
     return load_config(path, PersonConfig)
+
+
+def normalize_person_config_key(value: str) -> str:
+    """Normalize a person name or username for tolerant config directory matching."""
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _person_config_keys(person: PersonEntry) -> set[str]:
+    keys = {normalize_person_config_key(person.name)}
+    if person.username:
+        keys.add(normalize_person_config_key(person.username))
+    return keys
+
+
+def find_person_config_path(person: PersonEntry, people_dir: Path = PEOPLE_DIR) -> Path | None:
+    """Find a per-person config file by scanning known person directories."""
+    person_keys = _person_config_keys(person)
+    for person_config_path in sorted(people_dir.glob("*/teleclaude.yml")):
+        if normalize_person_config_key(person_config_path.parent.name) in person_keys:
+            return person_config_path
+    return None
+
+
+def load_person_config_for_entry(person: PersonEntry, people_dir: Path = PEOPLE_DIR) -> PersonConfig | None:
+    """Load the per-person config for a global person entry when present."""
+    person_config_path = find_person_config_path(person, people_dir)
+    if person_config_path is None:
+        return None
+    return load_person_config(person_config_path)
+
+
+def _find_person_entry(
+    *,
+    people: list[PersonEntry],
+    person_email: str | None = None,
+    person_name: str | None = None,
+) -> PersonEntry | None:
+    normalized_email = person_email.lower() if person_email else None
+    normalized_name = normalize_person_config_key(person_name) if person_name else None
+    for person in people:
+        if normalized_email and person.email.lower() == normalized_email:
+            return person
+        if normalized_name and normalized_name in _person_config_keys(person):
+            return person
+    return None
+
+
+def resolve_person_output_visibility_settings(
+    *,
+    person_email: str | None = None,
+    person_name: str | None = None,
+    people: list[PersonEntry] | None = None,
+    people_dir: Path = PEOPLE_DIR,
+) -> OutputVisibilitySettings | None:
+    """Resolve optional per-person output visibility settings for a recipient."""
+    known_people = people if people is not None else load_global_config().people
+    person = _find_person_entry(people=known_people, person_email=person_email, person_name=person_name)
+    if person is None:
+        return None
+    person_config = load_person_config_for_entry(person, people_dir)
+    if person_config is None:
+        return None
+    return person_config.settings.output_visibility
 
 
 def _is_person_workspace(workspace: Path) -> bool:

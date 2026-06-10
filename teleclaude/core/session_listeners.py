@@ -19,6 +19,7 @@ from typing import Literal
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import LOCAL_COMPUTER, format_system_message
+from teleclaude.core.conversation_messages import TeleClaudeNotificationLabel
 from teleclaude.core.db import db
 from teleclaude.core.tmux_delivery import deliver_listener_message
 
@@ -413,7 +414,7 @@ async def notify_stop(
         f"Session {target_session_id}{location_part}{title_part} finished its turn. "
         f"Use telec sessions tail {target_session_id} to inspect."
     )
-    message = format_system_message("Notification", body)
+    message = format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
     return await _notify_listeners(target_session_id, message)
 
 
@@ -437,7 +438,7 @@ async def notify_input_request(
         f"Use telec sessions tail {target_session_id} to inspect, and "
         f'Use telec sessions send {target_session_id} "your response" to respond.'
     )
-    message = format_system_message("Input Request", body)
+    message = format_system_message(TeleClaudeNotificationLabel.INPUT_REQUEST, body)
     return await _notify_listeners(target_session_id, message)
 
 

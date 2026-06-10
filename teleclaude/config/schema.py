@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -158,6 +158,10 @@ class IntegratorConfig(BaseModel):
 
 
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
+OUTPUT_VISIBILITY_MOBILE: Final = "mobile"
+OUTPUT_VISIBILITY_WEB: Final = "web"
+OUTPUT_VISIBILITY_BOTH: Final = "both"
+OutputVisibilityValue = Literal["mobile", "web", "both"]
 
 
 class PersonEntry(BaseModel):
@@ -179,6 +183,22 @@ class PersonEntry(BaseModel):
         if not value:
             raise ValueError("Person email must be non-empty")
         return value
+
+
+class OutputVisibilitySettings(BaseModel):
+    """Per-person visibility preferences for projected output categories."""
+
+    model_config = ConfigDict(extra="allow")
+    notifications: OutputVisibilityValue | None = None
+    system_messages: OutputVisibilityValue | None = None
+    tool_calls: OutputVisibilityValue | None = None
+
+
+class PersonSettings(BaseModel):
+    """Per-person settings container."""
+
+    model_config = ConfigDict(extra="allow")
+    output_visibility: OutputVisibilitySettings = OutputVisibilitySettings()
 
 
 class TelegramCreds(BaseModel):
@@ -431,6 +451,7 @@ class PersonConfig(BaseModel):
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
     invite_token: str | None = None
+    settings: PersonSettings = PersonSettings()
 
     @field_validator("interests", mode="before")
     @classmethod

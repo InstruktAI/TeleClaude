@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -59,7 +59,7 @@ from teleclaude.core.session_status import compute_agent_status
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
-from teleclaude.output_projection.models import VisibilityPolicy
+from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
 from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
 from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id
 
@@ -143,7 +143,7 @@ class SessionMessagesQuery:
     """Normalized query parameters for message retrieval."""
 
     since: str | None = None
-    include_tools: bool = False
+    include_tools: bool | None = None
     include_thinking: bool = False
     tail_chars: int = 10000
     tail_scope: str = "all"
@@ -151,7 +151,7 @@ class SessionMessagesQuery:
 
 def _parse_session_messages_query(
     since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
-    include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
+    include_tools: bool | None = Query(None, description="Include tool invocation entries when policy allows them"),
     include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
     tail_chars: int = Query(10000, description="Fallback char budget for tmux/session tail output"),
     tail_scope: str = Query("all", description="Message window: all or latest_turn"),
@@ -240,7 +240,9 @@ def _project_session_messages(
     chain: list[str],
     *,
     active_agent: str | None,
-    include_tools: bool,
+    recipient_email: str | None,
+    recipient_role: str | None,
+    include_tools: bool | None,
     include_thinking: bool,
     since: str | None,
 ) -> list[MessageDTO]:
@@ -248,14 +250,19 @@ def _project_session_messages(
     if not chain:
         return []
 
+    policy = visibility_policy_for_person(
+        human_role=recipient_role,
+        person_email=recipient_email,
+        surface=ProjectionSurface.WEB,
+        include_thinking=include_thinking,
+    )
+    if include_tools is False:
+        policy = replace(policy, include_tools=False)
+
     projected_blocks = conversation_projector_module.project_conversation_chain(
         chain,
         agents_module.resolve_parser_agent(active_agent),
-        VisibilityPolicy(
-            include_tools=include_tools,
-            include_tool_results=include_tools,
-            include_thinking=include_thinking,
-        ),
+        policy,
         since=since,
     )
     return [
@@ -596,6 +603,8 @@ async def get_session_messages(
         messages = _project_session_messages(
             _build_message_chain(session.transcript_files, session.native_log_file),
             active_agent=session.active_agent,
+            recipient_email=_identity.email or session.human_email,
+            recipient_role=_identity.human_role or session.human_role,
             include_tools=query.include_tools,
             include_thinking=query.include_thinking,
             since=query.since,

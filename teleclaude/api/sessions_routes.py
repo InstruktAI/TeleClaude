@@ -32,6 +32,7 @@ from teleclaude.api.session_remote import (
     is_remote_target,
 )
 from teleclaude.api.sessions_actions_routes import _infer_role_from_message, _rewrite_codex_next_startup_message
+from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -44,13 +45,13 @@ from teleclaude.config.loader import load_global_config
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_MEMBER,
-    ROLE_INTEGRATOR,
-    ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
 )
 from teleclaude.core import command_handlers
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.conversation_messages import (
+    MACHINE_ROLE_LABELS as _MACHINE_ROLE_LABELS,
+)
 from teleclaude.core.conversation_messages import (
     format_identity_header,
     format_peer_header,
@@ -666,38 +667,6 @@ async def end_session(
     except Exception as e:
         logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
-
-
-def _active_direct_link_response(
-    link_id: str,
-    *,
-    already_active: bool,
-) -> SendMessageResponseDTO:
-    """Return the standard response for blocked direct-link sends."""
-    return SendMessageResponseDTO(
-        status="error",
-        mode="direct",
-        link_id=link_id,
-        message=(
-            (
-                "A direct link is already active with this peer. "
-                if already_active
-                else "A direct link is active with this peer. "
-            )
-            + (
-                "We agreed not to use send during direct conversation "
-                "as it obfuscates the exchange from the observer. "
-                "Your turn-complete output is automatically shared — just talk."
-            )
-        ),
-    )
-
-
-_MACHINE_ROLE_LABELS: dict[str, str] = {
-    ROLE_ORCHESTRATOR: "Orchestrator",
-    ROLE_INTEGRATOR: "Integrator",
-    ROLE_SYSTEM: "System",
-}
 
 
 async def _machine_origin_marker(caller_session_id: str | None) -> str | None:

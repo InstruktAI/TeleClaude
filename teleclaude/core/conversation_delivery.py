@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import LOCAL_COMPUTER
+from teleclaude.constants import HUMAN_ROLE_ADMIN, LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import (
@@ -29,7 +29,12 @@ from teleclaude.core.session_listeners import (
     get_peer_members,
 )
 from teleclaude.output_projection.conversation_projector import project_entries
-from teleclaude.output_projection.models import WEB_POLICY
+from teleclaude.output_projection.models import (
+    WEB_POLICY,
+    ProjectionSurface,
+    VisibilityPolicy,
+    visibility_policy_for_person,
+)
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import _get_entries_for_agent, _parse_timestamp
 
@@ -86,6 +91,7 @@ async def _collect_visible_conversation_segments_since(
     transcript_path: str,
     agent_name: AgentName,
     since_timestamp: datetime,
+    policy: VisibilityPolicy = WEB_POLICY,
 ) -> list[ConversationSegment]:
     """Collect visible user and assistant text after the provided cursor."""
 
@@ -99,7 +105,7 @@ async def _collect_visible_conversation_segments_since(
         current_parts: list[str] = []
         current_timestamp: datetime | None = None
 
-        for block in project_entries(entries, WEB_POLICY, since=since_timestamp.isoformat()):
+        for block in project_entries(entries, policy, since=since_timestamp.isoformat()):
             if block.role not in {"user", "assistant"} or block.block_type != "text":
                 continue
             raw_text = str(block.block.get("text", "")).strip()
@@ -354,8 +360,17 @@ async def _deliver_for_peer(
     if not source_session.native_log_file:
         return 0
 
+    target_session = await db.get_session(target_session_id)
+    target_policy = visibility_policy_for_person(
+        human_role=target_session.human_role if target_session is not None else HUMAN_ROLE_ADMIN,
+        person_email=target_session.human_email if target_session is not None else None,
+        surface=ProjectionSurface.WEB,
+    )
     all_segments = await _collect_visible_conversation_segments_since(
-        source_session.native_log_file, agent_name, since_timestamp
+        source_session.native_log_file,
+        agent_name,
+        since_timestamp,
+        target_policy,
     )
     target_computer = _target_computer_name(peer_computer)
 
