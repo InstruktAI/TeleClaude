@@ -161,7 +161,8 @@ ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
 OUTPUT_VISIBILITY_MOBILE: Final = "mobile"
 OUTPUT_VISIBILITY_WEB: Final = "web"
 OUTPUT_VISIBILITY_BOTH: Final = "both"
-OutputVisibilityValue = Literal["mobile", "web", "both"]
+OUTPUT_VISIBILITY_OFF: Final = "off"
+OutputVisibilityValue = Literal["mobile", "web", "both", "off"]
 
 
 class PersonEntry(BaseModel):
@@ -192,6 +193,14 @@ class OutputVisibilitySettings(BaseModel):
     notifications: OutputVisibilityValue | None = None
     system_messages: OutputVisibilityValue | None = None
     tool_calls: OutputVisibilityValue | None = None
+
+    @field_validator("notifications", "system_messages", "tool_calls", mode="before")
+    @classmethod
+    def normalize_yaml_off(cls, value: Any) -> Any:
+        """Normalize YAML 1.1's unquoted `off` boolean to the explicit off value."""
+        if value is False:
+            return OUTPUT_VISIBILITY_OFF
+        return value
 
 
 class PersonSettings(BaseModel):

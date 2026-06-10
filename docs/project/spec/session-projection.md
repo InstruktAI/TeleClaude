@@ -39,6 +39,10 @@ truth itself.
 | `output_visibility_policy` | Per-recipient policy that decides which non-conversational source categories are eligible for projection before adapter rendering. |
 | `projection_surface` | Destination family used by visibility policy: `mobile` for chat adapters, `web` for browser/API projection, and `tui` for the raw terminal pane. |
 
+Per-person category overrides accept `off`, `mobile`, `web`, `both`, or
+`null`. `off` hides the category on every projected surface. `null` inherits
+the recipient role default.
+
 ### Source truth
 
 - Source order is absolute. Anything rendered to Discord, Telegram, web, or terminal-facing UI must

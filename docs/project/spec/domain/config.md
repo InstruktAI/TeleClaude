@@ -74,8 +74,9 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Root:** `OutputVisibilitySettings`
 - **Contains:** `notifications`, `system_messages`, and `tool_calls`.
 - **Invariants:**
-  - Each field accepts only `null`, `mobile`, `web`, or `both`.
+  - Each field accepts only `null`, `off`, `mobile`, `web`, or `both`.
   - `null` means "use the role-based default", not "hide".
+  - `off` hides the category on every projected surface.
   - The value object belongs to `PersonConfig.settings.output_visibility`.
   - Unknown values fail validation instead of falling through to hidden or visible behavior.
   - Projection consumers derive a `VisibilityPolicy` from these settings plus the recipient's human role and target surface.

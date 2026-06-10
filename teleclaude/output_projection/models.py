@@ -9,6 +9,7 @@ from teleclaude.config.loader import resolve_person_output_visibility_settings
 from teleclaude.config.schema import (
     OUTPUT_VISIBILITY_BOTH,
     OUTPUT_VISIBILITY_MOBILE,
+    OUTPUT_VISIBILITY_OFF,
     OUTPUT_VISIBILITY_WEB,
     OutputVisibilitySettings,
     OutputVisibilityValue,
@@ -55,6 +56,8 @@ def _setting_enabled(
 ) -> bool:
     if setting is None:
         return default
+    if setting == OUTPUT_VISIBILITY_OFF:
+        return False
     if setting == OUTPUT_VISIBILITY_BOTH:
         return True
     if setting == OUTPUT_VISIBILITY_MOBILE:

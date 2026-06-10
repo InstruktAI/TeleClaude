@@ -14,6 +14,7 @@ from teleclaude.config.loader import load_person_config, resolve_person_output_v
 from teleclaude.config.schema import (
     OUTPUT_VISIBILITY_BOTH,
     OUTPUT_VISIBILITY_MOBILE,
+    OUTPUT_VISIBILITY_OFF,
     OUTPUT_VISIBILITY_WEB,
     OutputVisibilitySettings,
     PersonConfig,
@@ -120,7 +121,7 @@ def test_person_config_accepts_output_visibility_settings_from_person_overlay(tm
                 "  output_visibility:",
                 "    notifications: mobile",
                 "    system_messages: web",
-                "    tool_calls: both",
+                "    tool_calls: off",
                 "",
             ]
         ),
@@ -131,7 +132,7 @@ def test_person_config_accepts_output_visibility_settings_from_person_overlay(tm
 
     assert person_config.settings.output_visibility.notifications == OUTPUT_VISIBILITY_MOBILE
     assert person_config.settings.output_visibility.system_messages == OUTPUT_VISIBILITY_WEB
-    assert person_config.settings.output_visibility.tool_calls == OUTPUT_VISIBILITY_BOTH
+    assert person_config.settings.output_visibility.tool_calls == OUTPUT_VISIBILITY_OFF
 
 
 def test_person_config_output_visibility_defaults_to_role_based_policy() -> None:
@@ -271,6 +272,34 @@ def test_output_visibility_settings_override_role_defaults_by_surface() -> None:
     assert not web_policy.include_notifications
     assert web_policy.include_system_messages
     assert web_policy.include_tools
+    assert not web_policy.include_tool_results
+
+
+def test_output_visibility_off_overrides_admin_defaults_on_every_surface() -> None:
+    settings = OutputVisibilitySettings(
+        notifications=OUTPUT_VISIBILITY_OFF,
+        system_messages=OUTPUT_VISIBILITY_OFF,
+        tool_calls=OUTPUT_VISIBILITY_OFF,
+    )
+
+    mobile_policy = visibility_policy_for_recipient(
+        human_role=HUMAN_ROLE_ADMIN,
+        surface=ProjectionSurface.MOBILE,
+        settings=settings,
+    )
+    web_policy = visibility_policy_for_recipient(
+        human_role=HUMAN_ROLE_ADMIN,
+        surface=ProjectionSurface.WEB,
+        settings=settings,
+    )
+
+    assert not mobile_policy.include_notifications
+    assert not mobile_policy.include_system_messages
+    assert not mobile_policy.include_tools
+    assert not mobile_policy.include_tool_results
+    assert not web_policy.include_notifications
+    assert not web_policy.include_system_messages
+    assert not web_policy.include_tools
     assert not web_policy.include_tool_results
 
 
