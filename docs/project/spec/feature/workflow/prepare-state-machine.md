@@ -123,6 +123,15 @@ Then the prepare selector skips that Todo because it is awaiting /analyze-todo-i
 And it reports that no ready prepare items exist instead of raising a lifecycle_phase error
 ```
 
+#### UC-WPS4: Explicit prepare rejects unknown slugs without creating roadmap rows
+
+```gherkin
+Given no active or iceboxed Todo exists for "unknown-prepare"
+When the orchestrator runs "telec todo prepare unknown-prepare"
+Then the prepare machine returns TODO_NOT_FOUND with a concrete todo-create next step
+And no roadmap row is created for "unknown-prepare"
+```
+
 
 ### Cross-context references
 

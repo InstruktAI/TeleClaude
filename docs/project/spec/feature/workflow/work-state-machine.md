@@ -116,6 +116,15 @@ And the artifact contract names the reviewed implementation-plan and the diagnos
 And the lifecycle still requires an explicit "telec todo stamp my-bug --build-complete" before review can dispatch
 ```
 
+#### UC-WSM2: Explicit work rejects unknown slugs without creating roadmap rows
+
+```gherkin
+Given no active or iceboxed Todo exists for "unknown-work"
+When the orchestrator runs "telec todo work unknown-work"
+Then the work machine returns TODO_NOT_FOUND with a concrete todo-create next step
+And no roadmap row is created for "unknown-work"
+```
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.

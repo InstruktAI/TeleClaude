@@ -96,7 +96,7 @@ async def test_prepared_entry_advances_to_build_started_without_removed_phase_co
     assert output == snapshot
 
 
-@pytest.mark.spec(_SPEC, "UC-WSM0")
+@pytest.mark.spec(_SPEC, "UC-WSM2")
 async def test_work_unknown_slug_does_not_create_roadmap_row(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)

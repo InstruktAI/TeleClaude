@@ -138,7 +138,7 @@ async def test_prepare_selector_skips_kindless_todos_without_lifecycle_phase(tmp
     assert output == snapshot
 
 
-@pytest.mark.spec(_SPEC, "UC-WPS3")
+@pytest.mark.spec(_SPEC, "UC-WPS4")
 async def test_prepare_unknown_slug_does_not_create_roadmap_row(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)

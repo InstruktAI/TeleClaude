@@ -150,7 +150,7 @@ async def test_roadmap_projection_includes_kindless_todo_without_lifecycle_phase
     } == snapshot
 
 
-@pytest.mark.spec(_SPEC, "UC-WM1")
+@pytest.mark.spec(_SPEC, "UC-WM6")
 async def test_roadmap_projection_skips_stateless_non_holder_rows(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     await close_todos_db_instances()
@@ -173,7 +173,7 @@ async def test_roadmap_projection_skips_stateless_non_holder_rows(tmp_path: Path
     assert _DEPENDENT_CHILD in by_slug
 
 
-@pytest.mark.spec(_SPEC, "UC-WM1")
+@pytest.mark.spec(_SPEC, "UC-WM7")
 async def test_roadmap_projection_keeps_stateless_group_holders(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     await close_todos_db_instances()

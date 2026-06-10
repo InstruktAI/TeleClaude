@@ -51,6 +51,27 @@ And each section contains dependency-tree entries with nested children
 And an empty visible section is omitted from the JSON object
 ```
 
+#### UC-WM6: Roadmap projection skips stateless non-holder rows
+
+```gherkin
+Given an active roadmap row has no todo_state row
+And that row is not referenced by any live child's group_slug
+When the workflow projects the todo list
+Then the stateless non-holder row is omitted from the projection
+And dependent todos that still have valid state remain visible
+```
+
+#### UC-WM7: Roadmap projection keeps stateless group holders
+
+```gherkin
+Given an active roadmap row has no todo_state row
+And at least one live child references that row through group_slug
+When the workflow projects the todo list
+Then the row remains visible as a structural holder
+And the holder has no own kind, lifecycle, build, or review state
+And its visible status derives from its leaf children
+```
+
 #### UC-WM1: Show reads the caller's project
 
 ```
