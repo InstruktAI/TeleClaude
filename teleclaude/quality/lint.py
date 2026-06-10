@@ -311,7 +311,9 @@ class _JscpdStep:
             # DB migrations are immutable, self-contained snapshots; their
             # boilerplate (SQLite column-drop table rebuild) is intentionally
             # duplicated across revisions and must never be deduplicated.
-            "--ignore-pattern",
+            # `--ignore` takes file-level globs; `--ignore-pattern` is a
+            # code-level token regex and silently fails to exclude these files.
+            "--ignore",
             "**/migrations/**",
             # .gitignore is honored by default (the current jscpd/cpd CLI exposes
             # only --no-gitignore to opt out), so generated artifacts under dist/
