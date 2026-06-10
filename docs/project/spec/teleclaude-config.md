@@ -118,6 +118,17 @@ reflected human input; canonical identity, authorization, and personal workspace
 use `people[].name`.
 
 <!-- planned:dynamic-config-tui -->
+`invite_token` is being relocated out of `PersonConfig` into ephemeral invitation
+state under `~/.teleclaude/state/` — the invitation handshake is an identity
+concern (binding a transport handle to a known person), not configuration. After
+`dynamic-config-tui` delivers, `invite_token` is no longer a per-person config key
+and the `invite_token` row in the block above is removed; invite generation and
+Telegram/Discord redemption read and write the ephemeral invitations store
+instead of scanning per-person overlays. See
+`docs/project/spec/feature/config/schema-driven-config-tui.md`.
+<!-- /planned:dynamic-config-tui -->
+
+<!-- planned:dynamic-config-tui -->
 Typed config keys are part of the interactive config surface. The config wizard
 must render machine config, global overlay, project overlay, per-person overlay,
 and env-backed values from their canonical schemas or registries, with view

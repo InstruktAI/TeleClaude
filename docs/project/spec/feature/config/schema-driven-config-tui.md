@@ -218,11 +218,14 @@ blacklist is retired as the authority.
   the first delivery. Fields must be reachable; display masking can be added
   later without changing the persistence contract.
 - `invite_token` is relocated out of `PersonConfig` into an ephemeral
-  invitations store under `~/.teleclaude/state/` by this delivery (a
-  config-domain change owned by `project/spec/domain/config`). It is therefore
-  absent from the per-person overlay section by construction, not by an
-  exclusion rule. The relocation keeps invite generation and Telegram/Discord
-  redemption working; the TUI never renders or edits the invitations store.
+  invitations store under `~/.teleclaude/state/` by this delivery. The config
+  delta is the field's removal from the `PersonConfig` overlay; the invitation
+  handshake itself (binding a transport handle to a known person) is an identity
+  concern, so the relocated store is identity-conceptual ephemeral state, not a
+  config overlay. The token is therefore absent from the per-person overlay
+  section by construction, not by an exclusion rule. The relocation keeps invite
+  generation and Telegram/Discord redemption working; the TUI never renders or
+  edits the invitations store.
 - The hidden set delivered via schema view metadata (UC-CFG-TUI-SCHEMA-9)
   includes machine Discord runtime channel identifiers and the category map,
   system-resolved computer fields, agent-runtime internals resolved by policy,
