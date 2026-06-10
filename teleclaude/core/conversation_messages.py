@@ -6,9 +6,8 @@ Every machine-originated injection into a session uses the canonical bracket:
     [Role (session_id) on computer]   # category omitted
 
 ``Role`` is a stable taxonomy: ``TeleClaude`` for daemon-injected peer
-bridges; ``Orchestrator``, ``Integrator``, ``System`` for machine-role API
-callers whose marker is prepended at the send-message boundary
-(see ``_MACHINE_ROLE_LABELS`` in ``teleclaude/api/sessions_routes.py``).
+bridges; ``MachineRoleLabel`` values for machine-role API callers whose
+marker is prepended at the send-message boundary.
 ``Category`` is a role-specific stable label used by receivers that dispatch
 on header alone (checkpoint receiver, render paths) — TeleClaude bridges
 carry the ``Peer`` category. ``session_id`` is the originator session, full
@@ -20,7 +19,12 @@ content by the leading bracket — there is no separate stripping pass.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
+from enum import StrEnum
+from types import MappingProxyType
+
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_SYSTEM
 
 _TELECLAUDE_ROLE = "TeleClaude"
 _ORCHESTRATOR_ROLE = "Orchestrator"
@@ -30,6 +34,38 @@ _SEGMENT_HUMAN = "Human"
 _SEGMENT_AGENT = "Agent"
 
 _BRIDGE_PREFIXES: tuple[str, ...] = (f"[{_TELECLAUDE_ROLE} - {_CATEGORY_PEER}",)
+
+
+class MachineRoleLabel(StrEnum):
+    """Canonical labels for machine-originated session message headers."""
+
+    ORCHESTRATOR = "Orchestrator"
+    INTEGRATOR = "Integrator"
+    SYSTEM = "System"
+
+
+class TeleClaudeNotificationLabel(StrEnum):
+    """Canonical labels for daemon notification-style system messages."""
+
+    NOTIFICATION = "Notification"
+    INPUT_REQUEST = "Input Request"
+    LINKED_OUTPUT = "Linked Output"
+    LINKED_OUTPUT_NOTIFICATION = "Linked Output Notification"
+
+
+MACHINE_ROLE_LABELS: Mapping[str, MachineRoleLabel] = MappingProxyType(
+    {
+        ROLE_ORCHESTRATOR: MachineRoleLabel.ORCHESTRATOR,
+        ROLE_INTEGRATOR: MachineRoleLabel.INTEGRATOR,
+        ROLE_SYSTEM: MachineRoleLabel.SYSTEM,
+    }
+)
+TELECLAUDE_NOTIFICATION_LABELS: tuple[TeleClaudeNotificationLabel, ...] = (
+    TeleClaudeNotificationLabel.NOTIFICATION,
+    TeleClaudeNotificationLabel.INPUT_REQUEST,
+    TeleClaudeNotificationLabel.LINKED_OUTPUT,
+    TeleClaudeNotificationLabel.LINKED_OUTPUT_NOTIFICATION,
+)
 
 
 def format_identity_header(

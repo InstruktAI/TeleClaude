@@ -130,21 +130,18 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _iter_admin_people_configs(self) -> list[tuple[str, PersonConfig]]:
         """Load admin person configs from the global people directory."""
-        from teleclaude.config.loader import load_global_config, load_person_config  # startup boundary
+        from teleclaude.config.loader import load_global_config, load_person_config_for_entry  # startup boundary
 
-        people_dir = PEOPLE_DIR
         global_cfg = load_global_config()
         admin_configs: list[tuple[str, PersonConfig]] = []
         for person in global_cfg.people:
             if person.role != HUMAN_ROLE_ADMIN:
                 continue
-            person_key = person.name.lower().replace(" ", "_")
-            person_cfg_path = people_dir / person_key / "teleclaude.yml"
-            if not person_cfg_path.exists():
-                continue
             try:
-                person_cfg = load_person_config(person_cfg_path)
+                person_cfg = load_person_config_for_entry(person, PEOPLE_DIR)
             except Exception:
+                continue
+            if person_cfg is None:
                 continue
             admin_configs.append((person.name, person_cfg))
         return admin_configs

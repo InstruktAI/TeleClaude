@@ -13,8 +13,11 @@ from teleclaude.output_projection.models import (
     THREADED_CLEAN_POLICY,
     WEB_POLICY,
     ProjectedBlock,
+    ProjectionSurface,
     TerminalLiveProjection,
     VisibilityPolicy,
+    visibility_policy_for_person,
+    visibility_policy_for_recipient,
 )
 
 __all__ = [
@@ -22,6 +25,9 @@ __all__ = [
     "THREADED_CLEAN_POLICY",
     "WEB_POLICY",
     "ProjectedBlock",
+    "ProjectionSurface",
     "TerminalLiveProjection",
     "VisibilityPolicy",
+    "visibility_policy_for_person",
+    "visibility_policy_for_recipient",
 ]

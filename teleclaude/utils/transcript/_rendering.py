@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.conversation_projector import project_entries
-from teleclaude.output_projection.models import THREADED_CLEAN_POLICY, VisibilityPolicy
+from teleclaude.output_projection.models import VisibilityPolicy
 
 from ._block_renderers import (
     _extract_tool_subject,
@@ -258,6 +258,7 @@ def render_clean_agent_output(
     transcript_path: str,
     agent_name: AgentName,
     since_timestamp: datetime | None = None,
+    include_tools: bool = True,
 ) -> tuple[str | None, datetime | None]:
     """Render metadata-free markdown for assistant activity.
 
@@ -291,16 +292,21 @@ def render_clean_agent_output(
     if not assistant_entries:
         return None, None
 
-    # Route through canonical conversation projection with THREADED_CLEAN_POLICY.
-    # Policy: thinking visible, tool invocations visible, tool results hidden.
+    # Route through canonical conversation projection.
+    # Policy: thinking visible, tool results hidden, tool invocations caller-controlled.
     # Behavior is identical to the previous iter_assistant_blocks() iteration;
     # the projection layer now owns the visibility decision.
+    clean_policy = VisibilityPolicy(
+        include_tools=include_tools,
+        include_tool_results=False,
+        include_thinking=True,
+    )
     lines: list[str] = []
     emitted = False
     last_entry_dt: datetime | None = None
     last_block_is_tool = False
 
-    for pb in project_entries(assistant_entries, THREADED_CLEAN_POLICY):
+    for pb in project_entries(assistant_entries, clean_policy):
         if pb.role != "assistant":
             continue  # only format assistant content blocks
 
@@ -316,7 +322,7 @@ def render_clean_agent_output(
         if _append_clean_render_block(pb.block, pb.block_type, lines):
             emitted = True
             last_block_is_tool = current_is_tool
-        # tool_result: suppressed by THREADED_CLEAN_POLICY (include_tool_results=False)
+        # tool_result: suppressed by clean_policy (include_tool_results=False)
 
     if not emitted:
         return None, last_entry_dt

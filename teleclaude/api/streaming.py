@@ -32,7 +32,7 @@ from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.conversation_projector import project_entries
-from teleclaude.output_projection.models import WEB_POLICY
+from teleclaude.output_projection.models import ProjectionSurface, VisibilityPolicy, visibility_policy_for_person
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import (
     TranscriptTailCursor,
@@ -197,11 +197,12 @@ async def _replay_history(
     chain: list[str],
     agent_name: AgentName,
     since_timestamp: str | None,
+    policy: VisibilityPolicy,
 ) -> AsyncIterator[str]:
     """Replay existing transcript history with the web visibility policy."""
     for file_path in chain:
         entries = _iter_entries_for_file(file_path, agent_name)
-        for projected in project_entries(entries, WEB_POLICY, since=since_timestamp):
+        for projected in project_entries(entries, policy, since=since_timestamp):
             for sse_event in convert_projected_block(projected):
                 yield sse_event
 
@@ -222,12 +223,13 @@ async def _load_live_transcript_events(
     *,
     cursor: TranscriptTailCursor,
     session_id: str,
+    policy: VisibilityPolicy,
 ) -> tuple[TranscriptTailCursor, list[str]]:
     """Read newly appended transcript data and convert it into SSE events."""
     events: list[str] = []
     batch = read_appended_jsonl_entries(live_file, cursor)
     for entry in batch.entries:
-        for projected in project_entries([entry], WEB_POLICY):
+        for projected in project_entries([entry], policy):
             events.extend(convert_projected_block(projected))
 
     return batch.cursor, events
@@ -253,6 +255,7 @@ async def _resolve_stream_closure(session_id: str) -> tuple[bool, str | None]:
 async def _tail_live_transcript(
     session_id: str,
     live_file: str,
+    policy: VisibilityPolicy,
 ) -> AsyncIterator[str]:
     """Tail the live transcript file and yield incremental SSE events."""
     try:
@@ -302,6 +305,7 @@ async def _tail_live_transcript(
                     current_live_file,
                     cursor=cursor,
                     session_id=session_id,
+                    policy=policy,
                 )
             except TranscriptTailReadError:
                 logger.warning(
@@ -334,6 +338,7 @@ async def _stream_sse(
     session_id: str,
     since_timestamp: str | None,
     user_message: str | None,
+    policy: VisibilityPolicy,
 ) -> AsyncIterator[str]:
     """Generate SSE events: history replay then live tail.
 
@@ -349,7 +354,7 @@ async def _stream_sse(
     async for sse_event in _deliver_user_message(session_id, user_message):
         yield sse_event
 
-    async for sse_event in _replay_history(chain, agent_name, since_timestamp):
+    async for sse_event in _replay_history(chain, agent_name, since_timestamp, policy):
         yield sse_event
 
     if not _stream_is_live(chain):
@@ -357,7 +362,7 @@ async def _stream_sse(
             yield sse_event
         return
 
-    async for sse_event in _tail_live_transcript(session_id, chain[-1]):
+    async for sse_event in _tail_live_transcript(session_id, chain[-1], policy):
         yield sse_event
 
     async for sse_event in _emit_stream_finish(message_id):
@@ -387,11 +392,20 @@ async def chat_stream(http_request: Request, request: ChatStreamRequest) -> Stre
                 user_message = msg.content
                 break
 
+    recipient_email = http_request.headers.get("x-web-user-email") or session.human_email
+    recipient_role = http_request.headers.get("x-web-user-role") or session.human_role
+    policy = visibility_policy_for_person(
+        human_role=recipient_role,
+        person_email=recipient_email,
+        surface=ProjectionSurface.WEB,
+    )
+
     generator = _stream_sse(
         session=session,
         session_id=request.session_id,
         since_timestamp=request.since_timestamp,
         user_message=user_message,
+        policy=policy,
     )
 
     return StreamingResponse(

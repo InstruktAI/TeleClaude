@@ -36,10 +36,8 @@ truth itself.
 | `activity_signal`   | A wakeup that says source state may have changed. It does not define content.                          |
 | `origin_signal`     | The recorded origin for the current user turn. It gates projection across user turns.                  |
 | `last_input_origin` | Live routing/presence signal for the most recently accepted user input. It is not a durable audit log. |
-<!-- planned:per-person-output-visibility -->
 | `output_visibility_policy` | Per-recipient policy that decides which non-conversational source categories are eligible for projection before adapter rendering. |
 | `projection_surface` | Destination family used by visibility policy: `mobile` for chat adapters, `web` for browser/API projection, and `tui` for the raw terminal pane. |
-<!-- /planned:per-person-output-visibility -->
 
 ### Source truth
 
@@ -146,7 +144,6 @@ Adapters do not own:
 `break_threaded_turn` is not a projection primitive. It may drop pending QoS payloads as a delivery
 cleanup, but it must not be used to decide what source content has or has not been projected.
 
-<!-- planned:per-person-output-visibility -->
 ### Output visibility policy
 
 Projection applies per-recipient output visibility before adapter rendering. Adapters
@@ -170,7 +167,6 @@ Checkpoint messages and agent-CLI side-channel artifacts are dropped from every
 projected surface. Peer cross-share content remains visible on every projected
 surface because it is conversational substance, not infrastructure chatter. The TUI
 continues to show the raw pane unchanged and does not consume projection filtering.
-<!-- /planned:per-person-output-visibility -->
 
 ## Allowed values
 
@@ -182,7 +178,6 @@ Canonical origins:
 - `web`
 - `terminal`
 
-<!-- planned:per-person-output-visibility -->
 Projection surfaces:
 
 - `mobile`
@@ -196,7 +191,6 @@ Per-person visibility setting values:
 - `mobile` - show the category only on mobile/chat adapters.
 - `web` - show the category only on web/API projection.
 - `both` - show the category on both mobile/chat adapters and web/API projection.
-<!-- /planned:per-person-output-visibility -->
 
 Projection outcomes:
 

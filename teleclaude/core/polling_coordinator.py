@@ -21,6 +21,7 @@ from teleclaude.core.db import db
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_title import clear_title_projection_state
+from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     extract_last_turn_boundary_timestamp,
@@ -92,11 +93,17 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
     if not assistant_messages:
         return None
 
+    policy = visibility_policy_for_person(
+        human_role=session.human_role,
+        person_email=session.human_email,
+        surface=ProjectionSurface.MOBILE,
+        include_thinking=True,
+    )
     renderable_block_count = count_renderable_assistant_blocks(
         transcript_path,
         agent_name,
         since_timestamp=turn_cursor,
-        include_tools=True,
+        include_tools=policy.include_tools,
         include_tool_results=False,
     )
     is_multi = renderable_block_count > 1
@@ -105,7 +112,7 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
         message, last_ts = render_agent_output(
             transcript_path,
             agent_name,
-            include_tools=True,
+            include_tools=policy.include_tools,
             include_tool_results=False,
             since_timestamp=turn_cursor,
             include_timestamps=False,
@@ -115,6 +122,7 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
             transcript_path,
             agent_name,
             since_timestamp=turn_cursor,
+            include_tools=policy.include_tools,
         )
 
     if not message or not isinstance(last_ts, datetime):

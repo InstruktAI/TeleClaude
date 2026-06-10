@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.loader import load_global_config, load_person_config
+from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR
@@ -67,7 +67,7 @@ class IdentityResolver:
     @staticmethod
     def _normalize_key(value: str) -> str:
         """Normalize person keys for tolerant directory matching."""
-        return "".join(ch for ch in value.lower() if ch.isalnum())
+        return normalize_person_config_key(value)
 
     @staticmethod
     def _normalize_role(role: str) -> str:
