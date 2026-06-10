@@ -79,6 +79,7 @@ class InputHandlersMixin:
 
     _team_channel_map: dict[int, str]
     _project_forum_map: dict[str, int]
+    _forum_project_map: dict[int, str]
 
     _client: object
     _escalation_channel_id: int | None
@@ -116,9 +117,14 @@ class InputHandlersMixin:
         """Public wrapper for Discord session resolution or creation."""
         return await self._resolve_or_create_session(message, first_message=first_message)
 
-    async def handle_launcher_click(self, interaction: object, agent_name: str) -> None:
+    async def handle_launcher_click(
+        self,
+        interaction: object,
+        agent_name: str,
+        launcher_forum_id: int | None = None,
+    ) -> None:
         """Public wrapper for Discord session-launcher button handling."""
-        await self._handle_launcher_click(interaction, agent_name)
+        await self._handle_launcher_click(interaction, agent_name, launcher_forum_id)
 
     def _discord_errors(self) -> tuple[type[Exception], ...]:
         """Return recoverable exception types for Discord adapter side effects."""
@@ -418,15 +424,35 @@ class InputHandlersMixin:
                 return session
         return None
 
-    async def _handle_launcher_click(self, interaction: object, agent_name: str) -> None:
+    async def _handle_launcher_click(
+        self,
+        interaction: object,
+        agent_name: str,
+        launcher_forum_id: int | None = None,
+    ) -> None:
         response = getattr(interaction, "response", None)
         response_defer = getattr(response, "defer", None)
         if callable(response_defer):
             await self._async_callable(response_defer, label="Discord interaction response.defer")(ephemeral=True)
 
-        forum_id = await self._resolve_interaction_forum_id(interaction)
+        forum_id = launcher_forum_id
         project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
         if project_path is None:
+            forum_id = await self._resolve_interaction_forum_id(interaction)
+            project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
+        if project_path is None:
+            channel_id = self._parse_optional_int(getattr(interaction, "channel_id", None))
+            message = getattr(interaction, "message", None)
+            logger.warning(
+                "Discord launcher project resolution failed: agent=%s channel_id=%s resolved_forum_id=%s "
+                "launcher_forum_id=%s message_id=%s known_forum_ids=%s",
+                agent_name,
+                channel_id,
+                forum_id,
+                launcher_forum_id,
+                self._parse_optional_int(getattr(message, "id", None)),
+                sorted(self._forum_project_map.keys()),
+            )
             followup = getattr(interaction, "followup", None)
             followup_send = getattr(followup, "send", None)
             if callable(followup_send):

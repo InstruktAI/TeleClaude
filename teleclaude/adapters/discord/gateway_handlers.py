@@ -60,7 +60,8 @@ class GatewayHandlersMixin:
     - _ensure_discord_infrastructure() (async)
     - _build_session_launcher_view() -> object
     - _post_or_update_launcher(forum_id) (async)
-    - _handle_launcher_click(interaction, agent_name) (async)
+    - _handle_launcher_click(interaction, agent_name, launcher_forum_id) (async)
+    - _register_session_launcher_view(forum_id, message_id) -> None
     - _handle_discord_dm(message) (async)
     - _handle_relay_thread_message(message, text) (async)
     - _is_managed_message(message) -> bool
@@ -103,6 +104,8 @@ class GatewayHandlersMixin:
         def _multi_agent(self) -> bool: ...
 
         def _build_session_launcher_view(self) -> object: ...
+
+        def _register_session_launcher_view(self, *, forum_id: int | None, message_id: int | None) -> None: ...
 
         async def _ensure_discord_infrastructure(self) -> None: ...
 
@@ -239,11 +242,7 @@ class GatewayHandlersMixin:
         if self._multi_agent:
             add_view = getattr(self._client, "add_view", None)
             if callable(add_view):
-                try:
-                    self._launcher_registration_view = self._build_session_launcher_view()
-                    add_view(self._launcher_registration_view)
-                except Exception as exc:
-                    logger.warning("Failed to register persistent Discord launcher view: %s", exc)
+                self._register_session_launcher_view(forum_id=None, message_id=None)
 
             all_forum_ids: set[int] = set(self._project_forum_map.values())
             if self._help_desk_channel_id:

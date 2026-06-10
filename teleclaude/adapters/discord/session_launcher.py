@@ -13,13 +13,19 @@ if TYPE_CHECKING:
 else:
     discord = cast(Any, importlib.import_module("discord"))
 
-LaunchCallback = Callable[[object, str], Awaitable[None]]
+LaunchCallback = Callable[[object, str, int | None], Awaitable[None]]
 
 
 class SessionLauncherView(discord.ui.View):
     """Persistent launcher view with one button per enabled agent."""
 
-    def __init__(self, *, enabled_agents: list[str], on_launch: LaunchCallback) -> None:
+    def __init__(
+        self,
+        *,
+        enabled_agents: list[str],
+        on_launch: LaunchCallback,
+        launcher_forum_id: int | None = None,
+    ) -> None:
         super().__init__(timeout=None)
         for agent_name in enabled_agents:
             button = discord.ui.Button(  # type: ignore[var-annotated]
@@ -29,7 +35,7 @@ class SessionLauncherView(discord.ui.View):
             )
 
             async def _callback(interaction: object, selected_agent: str = agent_name) -> None:
-                await on_launch(interaction, selected_agent)
+                await on_launch(interaction, selected_agent, launcher_forum_id)
 
             button.callback = _callback  # type: ignore[method-assign]
             self.add_item(button)
