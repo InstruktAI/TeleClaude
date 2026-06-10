@@ -49,7 +49,6 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
    ```
 
 6. Stamp finalize readiness: `telec todo stamp {slug} --finalize-ready`.
-7. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
 
 ### Stage B — Work orchestrator: record handoff (not integration)
 
