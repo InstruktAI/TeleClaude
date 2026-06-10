@@ -41,6 +41,15 @@ description: 'TypeScript-specific testing idioms layered over the generic testin
 
 - The spec-coverage tool reports bound / unbound / duplicate / orphan / stale.
 - The reviewer rejects agent-authored unit tests.
+<!-- planned:forbid-ts-unit-tests -->
+- `tools/lint/forbid_ts_unit_tests.py` (pre-commit) structurally blocks agent-authored TypeScript
+  unit tests, mirroring the Python ban's exit-code contract. It resolves the TypeScript surface from
+  `frontend_root` in `teleclaude.yml` (default `frontend`), so a Next.js-only project where the
+  package root is the app is covered by setting `frontend_root` to that root — no special-casing. Any
+  tracked `*.test.ts(x)` under the resolved root that is co-located (e.g. in an `__tests__/`
+  directory) or otherwise outside the doctrine path `<frontend_root>/tests/<domain>/<slug>.test.ts(x)`
+  fails the commit. Playwright e2e specs (`*.spec.ts`) are functional and excluded by suffix.
+<!-- /planned:forbid-ts-unit-tests -->
 
 ## Exceptions
 
