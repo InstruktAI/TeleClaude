@@ -1,0 +1,35 @@
+# serializer version: 1
+# name: test_terminal_session_messages_report_idle_agent_status
+  dict({
+    'active_without_stop': dict({
+      'agent_status': 'active',
+      'last_agent_stop_at': None,
+      'message_count': 0,
+    }),
+    'closed_at_marker_without_stop': dict({
+      'agent_status': 'idle',
+      'last_agent_stop_at': None,
+      'message_count': 0,
+    }),
+    'closed_status_without_stop': dict({
+      'agent_status': 'idle',
+      'last_agent_stop_at': None,
+      'message_count': 0,
+    }),
+    'closing_status_without_stop': dict({
+      'agent_status': 'idle',
+      'last_agent_stop_at': None,
+      'message_count': 0,
+    }),
+    'input_after_stop': dict({
+      'agent_status': 'active',
+      'last_agent_stop_at': '2026-06-09T11:55:00+00:00',
+      'message_count': 0,
+    }),
+    'stopped_without_later_input': dict({
+      'agent_status': 'idle',
+      'last_agent_stop_at': '2026-06-09T11:55:00+00:00',
+      'message_count': 0,
+    }),
+  })
+# ---

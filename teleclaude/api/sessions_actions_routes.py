@@ -644,6 +644,8 @@ async def get_session_messages(
             session.last_agent_stop_at.isoformat() if isinstance(session.last_agent_stop_at, datetime) else None
         )
         agent_status = compute_agent_status(
+            lifecycle_status=session.lifecycle_status,
+            closed_at=session.closed_at,
             last_activity=session.last_activity,
             last_input_at=session.last_message_sent_at,
             last_agent_stop_at=session.last_agent_stop_at,

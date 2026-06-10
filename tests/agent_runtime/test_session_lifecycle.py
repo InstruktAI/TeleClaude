@@ -9,8 +9,9 @@ No fallback to admin should exist for sessions without explicit identity.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 from unittest.mock import AsyncMock
 
 import pytest
@@ -35,6 +36,27 @@ pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 _SPEC = "project/spec/feature/agent_runtime/session-lifecycle"
 
 
+class _RemoteDispatchRecord(TypedDict):
+    computer: str
+    command: str
+    session_id: str | None
+
+
+class _RemoteReadRecord(TypedDict):
+    message_id: str
+    target_computer: str | None
+    timeout: float
+
+
+class _RemoteCloseDispatchRecord(TypedDict):
+    target_computer: str
+    command: str
+    origin: str | None
+    session_id: str | None
+    timeout: float
+    wait_for_response: bool
+
+
 class _RemoteDispatchHarness(_RemoteMixin):
     """Small transport harness for command-stream remote dispatch behavior."""
 
@@ -46,8 +68,8 @@ class _RemoteDispatchHarness(_RemoteMixin):
     ) -> None:
         self.response_text = response_text
         self.read_error = read_error
-        self.sent: list[dict[str, object]] = []
-        self.reads: list[dict[str, object]] = []
+        self.sent: list[_RemoteDispatchRecord] = []
+        self.reads: list[_RemoteReadRecord] = []
 
     async def send_request(
         self,
@@ -89,7 +111,7 @@ class _RemoteDispatchHarness(_RemoteMixin):
 class _RemoteCloseClient:
     def __init__(self, dispatch_error: BaseException | None = None) -> None:
         self.dispatch_error = dispatch_error
-        self.dispatches: list[dict[str, object]] = []
+        self.dispatches: list[_RemoteCloseDispatchRecord] = []
 
     async def dispatch_remote_command(
         self,
@@ -696,6 +718,86 @@ async def test_token_auth_with_null_human_role(api: AsyncClient, cluster_event_b
         headers={"x-session-token": token},
     )
     assert resp.status_code == 200
+
+
+@pytest.mark.spec(_SPEC, "UC-SL22")
+async def test_closed_session_snapshots_report_idle_agent_status(snapshot) -> None:
+    now = datetime(2026, 6, 9, 12, 0, tzinfo=UTC)
+
+    def session_snapshot(
+        session_id: str,
+        *,
+        lifecycle_status: str,
+        closed_at: datetime | None,
+        last_input_at: datetime | None,
+        last_agent_stop_at: datetime | None,
+    ) -> dict[str, str | None]:
+        session = Session(
+            session_id=session_id,
+            computer_name="TestComputer",
+            tmux_session_name=session_id,
+            title=session_id,
+            active_agent="claude",
+            lifecycle_status=lifecycle_status,
+            closed_at=closed_at,
+            last_activity=now,
+            last_message_sent_at=last_input_at,
+            last_agent_stop_at=last_agent_stop_at,
+        )
+        projected = SessionSnapshot.from_db_session(session)
+        return {
+            "status": projected.status,
+            "closed_at": projected.closed_at,
+            "last_agent_stop_at": projected.last_agent_stop_at,
+            "agent_status": projected.agent_status,
+        }
+
+    projections = {
+        "closed_status_without_stop": session_snapshot(
+            "closed-status",
+            lifecycle_status="closed",
+            closed_at=None,
+            last_input_at=now - timedelta(minutes=10),
+            last_agent_stop_at=None,
+        ),
+        "closing_status_without_stop": session_snapshot(
+            "closing-status",
+            lifecycle_status="closing",
+            closed_at=None,
+            last_input_at=now - timedelta(minutes=10),
+            last_agent_stop_at=None,
+        ),
+        "closed_at_marker_without_stop": session_snapshot(
+            "closed-at-marker",
+            lifecycle_status="active",
+            closed_at=now - timedelta(minutes=1),
+            last_input_at=now - timedelta(minutes=10),
+            last_agent_stop_at=None,
+        ),
+        "active_without_stop": session_snapshot(
+            "active-status",
+            lifecycle_status="active",
+            closed_at=None,
+            last_input_at=now - timedelta(minutes=10),
+            last_agent_stop_at=None,
+        ),
+        "stopped_without_later_input": session_snapshot(
+            "stopped-status",
+            lifecycle_status="active",
+            closed_at=None,
+            last_input_at=now - timedelta(minutes=10),
+            last_agent_stop_at=now - timedelta(minutes=5),
+        ),
+        "input_after_stop": session_snapshot(
+            "input-after-stop",
+            lifecycle_status="active",
+            closed_at=None,
+            last_input_at=now - timedelta(minutes=2),
+            last_agent_stop_at=now - timedelta(minutes=5),
+        ),
+    }
+
+    assert projections == snapshot
 
 
 # ---------------------------------------------------------------------------

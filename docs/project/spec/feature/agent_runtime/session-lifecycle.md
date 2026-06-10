@@ -127,7 +127,6 @@ And role `contributor` / `newcomer` / unknown sees only their own sessions (matc
 And requests without identity headers (TUI / tool clients) are NOT filtered by role — they see everything reachable
 ```
 
-<!-- planned:fix-telec-sessions-tail-showing-closed-session-as-active -->
 #### UC-SL22: Listing closed sessions — agent status projection
 
 ```
@@ -139,7 +138,6 @@ Then the terminal lifecycle marker is authoritative over activity timestamps
 And the snapshot reports `agent_status="idle"` even when `last_agent_stop_at` is missing
 And the snapshot still preserves the lifecycle `status` field as `closing` or `closed`
 ```
-<!-- /planned:fix-telec-sessions-tail-showing-closed-session-as-active -->
 
 #### Ending a session — happy path
 

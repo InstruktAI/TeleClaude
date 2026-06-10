@@ -241,8 +241,8 @@ Each telec sessions tail response includes `last_input_at`, `last_activity`,
 `last_agent_stop_at`, and computed `agent_status`.
 
 Status semantics:
-- `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
-- `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+- `active`: the session is non-terminal and the latest observed activity is not an authoritative stop.
+- `idle`: the session is terminal (`closing`/`closed` or `closed_at` set), or the latest turn has an agent stop with no later input.
 - `unknown`: no `last_activity` has been recorded yet.
 
 HEARTBEAT RULE:

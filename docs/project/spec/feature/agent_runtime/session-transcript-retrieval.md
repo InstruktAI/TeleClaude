@@ -67,7 +67,6 @@ And status/timestamp/agent-status fields are still populated from session-ledger
 
 The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block.
 
-<!-- planned:fix-telec-sessions-tail-showing-closed-session-as-active -->
 #### UC-STR1: Terminal session agent status
 
 ```
@@ -78,7 +77,6 @@ Then the terminal lifecycle marker is authoritative over activity timestamps
 And the response reports `agent_status="idle"` even when `last_agent_stop_at` is missing
 And the message projection still returns any transcript or fallback content available for that session
 ```
-<!-- /planned:fix-telec-sessions-tail-showing-closed-session-as-active -->
 
 #### Role inference
 
@@ -122,4 +120,4 @@ Then the service returns the access-control error from the access check
 - **Revivals widen the chain monotonically.** Each agent restart / revive that begins a new native session appends to the session's transcript files; old files remain referenced. Disk pressure scales with revive count for long-lived sessions.
 - **No streaming.** This entry returns a single snapshot. The live streaming surface is the SSE / listener path described elsewhere.
 - **Role inference is parser-supplied, not entry-supplied.** Don't expect the transcript-retrieval flow to second-guess message roles — they are exactly what the per-agent parser produced. The slash-command role inference adjacent to this flow is an unrelated dispatch-side helper.
-- **Agent status is computed at call time.** The status helper derives agent status from last activity / last message sent at / last agent stop at on every call; clients comparing successive responses see the value drift as time passes even without new messages.
+- **Agent status is computed at call time.** The status helper derives agent status from terminal lifecycle markers (`closing`, `closed`, `closed_at`) first, then from last activity / last message sent at / last agent stop at; clients comparing successive responses see the value drift as session metadata changes even without new messages.

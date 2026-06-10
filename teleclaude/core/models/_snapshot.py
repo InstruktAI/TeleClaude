@@ -128,6 +128,8 @@ class SessionSnapshot(
     def from_db_session(cls, session: "Session", computer: str | None = None) -> "SessionSnapshot":
         """Create from database Session object."""
         agent_status = compute_agent_status(
+            lifecycle_status=session.lifecycle_status,
+            closed_at=session.closed_at,
             last_activity=session.last_activity,
             last_input_at=session.last_message_sent_at,
             last_agent_stop_at=session.last_agent_stop_at,
@@ -144,6 +146,7 @@ class SessionSnapshot(
             origin_metadata=dict(session.origin_metadata),
             created_at=session.created_at.isoformat() if session.created_at else None,
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
+            closed_at=session.closed_at.isoformat() if session.closed_at else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
             last_agent_stop_at=session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None,

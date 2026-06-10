@@ -4,6 +4,46 @@
     'human_role': 'member',
   })
 # ---
+# name: test_closed_session_snapshots_report_idle_agent_status
+  dict({
+    'active_without_stop': dict({
+      'agent_status': 'active',
+      'closed_at': None,
+      'last_agent_stop_at': None,
+      'status': 'active',
+    }),
+    'closed_at_marker_without_stop': dict({
+      'agent_status': 'idle',
+      'closed_at': '2026-06-09T11:59:00+00:00',
+      'last_agent_stop_at': None,
+      'status': 'active',
+    }),
+    'closed_status_without_stop': dict({
+      'agent_status': 'idle',
+      'closed_at': None,
+      'last_agent_stop_at': None,
+      'status': 'closed',
+    }),
+    'closing_status_without_stop': dict({
+      'agent_status': 'idle',
+      'closed_at': None,
+      'last_agent_stop_at': None,
+      'status': 'closing',
+    }),
+    'input_after_stop': dict({
+      'agent_status': 'active',
+      'closed_at': None,
+      'last_agent_stop_at': '2026-06-09T11:55:00+00:00',
+      'status': 'active',
+    }),
+    'stopped_without_later_input': dict({
+      'agent_status': 'idle',
+      'closed_at': None,
+      'last_agent_stop_at': '2026-06-09T11:55:00+00:00',
+      'status': 'active',
+    }),
+  })
+# ---
 # name: test_explicit_member_role_preserved
   dict({
     'human_role': 'member',

@@ -14,12 +14,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
+from teleclaude.core.session_status import TERMINAL_LIFECYCLE_STATUSES
 
 logger = get_logger(__name__)
 _CONFIG_FOR_TESTS = config
 IDLE_SUMMARY_INTERVAL_S = 60.0
 PROCESS_START_GRACE_S = 3.0
-_TERMINAL_SESSION_STATUSES = frozenset({"closing", "closed"})
 _HOT_PATH_CAPTURE_LINES = 20
 
 
@@ -95,7 +95,7 @@ class OutputPoller:
         if not session:
             logger.debug("Session %s disappeared (session terminated) session=%s", tmux_session_name, session_id)
             return
-        if session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
+        if session.closed_at or session.lifecycle_status in TERMINAL_LIFECYCLE_STATUSES:
             logger.info(
                 "Session %s disappeared during close transition (watchdog close race) session=%s status=%s",
                 tmux_session_name,
