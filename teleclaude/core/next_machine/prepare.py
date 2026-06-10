@@ -29,7 +29,7 @@ from teleclaude.core.next_machine.lifecycle import (
     is_work_lifecycle_phase,
     require_lifecycle_phase,
 )
-from teleclaude.core.next_machine.output_formatting import format_blocker_resolution
+from teleclaude.core.next_machine.output_formatting import format_blocker_resolution, format_error
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.provenance import refresh_referenced_paths, sync_artifact_provenance
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -203,8 +203,11 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         )
 
     if not await todos_db.slug_in_roadmap(resolved_slug):
-        await todos_db.add_to_roadmap(resolved_slug)
-        logger.info("AUTO_ROADMAP_ADD slug=%s machine=prepare", resolved_slug)
+        return format_error(
+            "TODO_NOT_FOUND",
+            f"No active todo exists for {resolved_slug}. Create it before running prepare.",
+            next_call=f"telec todo create {resolved_slug} <content> [--kind feature|change|bug|task]",
+        )
 
     for iteration in range(_PREPARE_LOOP_LIMIT):
         state = await todos_db.read_state(resolved_slug)

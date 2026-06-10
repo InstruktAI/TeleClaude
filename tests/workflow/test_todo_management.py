@@ -10,6 +10,7 @@ import pytest
 
 from teleclaude.cli.telec.handlers import _todo_show
 from teleclaude.cli.telec.handlers import todo as todo_handlers
+from teleclaude.constants import RoadmapStatus
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
@@ -18,6 +19,10 @@ from teleclaude.core.todos_db._show import assemble_show_payload
 pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/workflow/todo-management"
+_STATELESS_ANCHOR = "stateless-anchor"
+_DEPENDENT_CHILD = "dependent-child"
+_STRUCTURAL_HOLDER = "structural-holder"
+_STRUCTURAL_CHILD = "structural-child"
 
 
 @pytest.fixture(autouse=True)
@@ -143,3 +148,53 @@ async def test_roadmap_projection_includes_kindless_todo_without_lifecycle_phase
         "build_status": todo.build_status,
         "review_status": todo.review_status,
     } == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WM1")
+async def test_roadmap_projection_skips_stateless_non_holder_rows(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_roadmap(_STATELESS_ANCHOR)
+    await todos_db.add_to_roadmap(_DEPENDENT_CHILD, after=[_STATELESS_ANCHOR])
+    await todos_db.write_state(
+        _DEPENDENT_CHILD,
+        {
+            "schema_version": 4,
+            "kind": "change",
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.DRAFT.value,
+        },
+    )
+
+    by_slug = {todo.slug: todo for todo in assemble_roadmap_from_db(str(project_root))}
+
+    assert _STATELESS_ANCHOR not in by_slug
+    assert _DEPENDENT_CHILD in by_slug
+
+
+@pytest.mark.spec(_SPEC, "UC-WM1")
+async def test_roadmap_projection_keeps_stateless_group_holders(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_roadmap(_STRUCTURAL_HOLDER)
+    await todos_db.add_to_roadmap(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
+    await todos_db.write_state(
+        _STRUCTURAL_CHILD,
+        {
+            "schema_version": 4,
+            "kind": "change",
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.PREPARED.value,
+        },
+    )
+
+    by_slug = {todo.slug: todo for todo in assemble_roadmap_from_db(str(project_root))}
+    holder = by_slug[_STRUCTURAL_HOLDER]
+
+    assert holder.status == RoadmapStatus.READY
+    assert holder.kind is None
+    assert holder.lifecycle_phase is None
+    assert holder.build_status is None
+    assert holder.review_status is None

@@ -21,6 +21,7 @@ pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/workflow/work-state-machine"
 _SLUG = "prepared-work"
+_UNKNOWN_SLUG = "unknown-work"
 
 
 @dataclass(frozen=True)
@@ -92,4 +93,15 @@ async def test_prepared_entry_advances_to_build_started_without_removed_phase_co
     output = await next_work(cast(Db, _CapturingDb([])), _SLUG, str(project_root))
 
     assert dispatch_phases == [WorkPhase.BUILD_STARTED]
+    assert output == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM0")
+async def test_work_unknown_slug_does_not_create_roadmap_row(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+
+    output = await next_work(cast(Db, _CapturingDb([])), _UNKNOWN_SLUG, str(project_root))
+
+    assert not await todos_db.slug_in_roadmap(_UNKNOWN_SLUG)
     assert output == snapshot

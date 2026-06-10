@@ -2,3 +2,11 @@
 # name: test_prepared_entry_advances_to_build_started_without_removed_phase_commands
   'BUILD_START_DISPATCH: prepared-work'
 # ---
+# name: test_work_unknown_slug_does_not_create_roadmap_row
+  '''
+  ERROR: TODO_NOT_FOUND
+  No active todo exists for unknown-work. Create and prepare it before running work.
+  
+  NEXT: telec todo create unknown-work <content> [--kind feature|change|bug|task]
+  '''
+# ---

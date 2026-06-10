@@ -5,6 +5,7 @@ DB-backed todo list assembly for CLI, API, and TUI.
 
 import json
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from instrukt_ai_logging import get_logger
@@ -21,6 +22,7 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
 
 logger = get_logger(__name__)
@@ -29,6 +31,17 @@ RECENTLY_DELIVERED_HOURS = 72
 READY_BAND = "ready"
 IN_PREP_BAND = "in_prep"
 _CLASSIFY_PHASE = "classify"
+
+
+@dataclass(frozen=True)
+class _ProjectionFields:
+    todo_status: str
+    kind: str | None
+    build_status: str | None
+    review_status: str | None
+    lifecycle_phase: str | None
+    integration_phase: str | None
+    finalize_status: str | None
 
 
 def recently_delivered_cutoff() -> str:
@@ -168,6 +181,90 @@ def _with_active_band(todo: TodoDTO, delivered_slug_set: set[str]) -> TodoDTO:
     return todo.model_copy(update={"band": band})
 
 
+def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, StateValue] | None) -> _ProjectionFields:
+    if state is None:
+        return _ProjectionFields(
+            todo_status=raw_status,
+            kind=None,
+            build_status=None,
+            review_status=None,
+            lifecycle_phase=None,
+            integration_phase=None,
+            finalize_status=None,
+        )
+
+    raw_kind = state.get("kind")
+    kind = raw_kind if isinstance(raw_kind, str) else None
+
+    finalize_raw = state.get("finalize")
+    finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
+    finalize_status = _non_empty_str(finalize.get("status"))
+
+    kind_is_unset = raw_kind is None
+    if kind_is_unset and state.get("lifecycle_phase") is None:
+        lifecycle = None
+        current_value = _CLASSIFY_PHASE
+        is_draft_lifecycle = False
+    else:
+        lifecycle = require_lifecycle_phase(
+            state.get("lifecycle_phase"),
+            context=f"assemble_roadmap_from_db({slug})",
+        )
+        current_value = lifecycle.value
+        is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
+
+    state_phase = state.get("phase", "")
+    is_delivered = state_phase == RoadmapStatus.DELIVERED
+
+    build_status = derive_build_status(
+        current_value,
+        is_draft=is_draft_lifecycle,
+        is_delivered=is_delivered,
+    )
+    review_status = derive_review_status(
+        current_value,
+        is_draft=is_draft_lifecycle,
+        is_delivered=is_delivered,
+    )
+    lifecycle_phase = None if is_delivered else current_value
+
+    raw_integration_phase = _non_empty_str(state.get("integration_phase"))
+    if raw_integration_phase and raw_integration_phase not in tuple(IntegrationPhase):
+        integration_phase: str | None = IntegrationPhase.STARTED
+    else:
+        integration_phase = raw_integration_phase
+
+    todo_status = raw_status
+    if todo_status == RoadmapStatus.DELIVERED or is_delivered:
+        todo_status = RoadmapStatus.DELIVERED
+        integration_phase = IntegrationPhase.DELIVERED
+    elif todo_status == RoadmapStatus.ACTIVE and is_draft_lifecycle:
+        todo_status = RoadmapStatus.PENDING
+
+    ready, _ = is_ready_for_work(
+        kind=kind if isinstance(kind, str) else TODO_KIND_DEFAULT,
+        lifecycle_phase=lifecycle_phase,
+    )
+    if todo_status == RoadmapStatus.ACTIVE and build_status:
+        todo_status = RoadmapStatus.IN_PROGRESS
+    elif todo_status == RoadmapStatus.ACTIVE and ready:
+        todo_status = RoadmapStatus.READY
+    elif todo_status == RoadmapStatus.ACTIVE and kind_is_unset:
+        todo_status = RoadmapStatus.IN_PROGRESS
+    elif todo_status == RoadmapStatus.ACTIVE and lifecycle_phase:
+        todo_status = RoadmapStatus.IN_PROGRESS
+
+    return _ProjectionFields(
+        todo_status=todo_status,
+        kind=kind,
+        build_status=build_status,
+        review_status=review_status,
+        lifecycle_phase=lifecycle_phase,
+        integration_phase=integration_phase,
+        finalize_status=finalize_status,
+    )
+
+
 def section_sort_key(todo: TodoDTO, *, raw_status: str | None = None) -> tuple[int, object, str]:
     """Sort key for derived todo list sections — newest-first within each section.
 
@@ -290,6 +387,8 @@ def assemble_roadmap_from_db(
         for dr in dep_rows:
             deps_map.setdefault(dr[0], []).append(dr[1])
 
+        holder_slugs = {row[3] for row in rows if row[3] and row[3] != row[1]}
+
         todos: list[TodoDTO] = []
         raw_status_by_id: dict[str, str] = {}
         state_query_total_dt = 0.0
@@ -308,16 +407,28 @@ def assemble_roadmap_from_db(
             state_query_total_dt += time.perf_counter() - state_query_started_at
 
             todo_build_started_at = time.perf_counter()
-            try:
-                state = upcycle_state_dict(json.loads(state_row[0]) if state_row else {})
-            except ValueError as exc:
+            is_holder = slug in holder_slugs
+            if state_row is None and not is_holder:
                 logger.warning(
-                    "Skipping todo with unreadable state",
+                    "Skipping roadmap row without todo state",
                     slug=slug,
                     project_path=project_path,
-                    reason=str(exc),
+                    roadmap_id=str(row_id),
                 )
                 continue
+            if is_holder:
+                state = None
+            else:
+                try:
+                    state = upcycle_state_dict(json.loads(state_row[0]))
+                except ValueError as exc:
+                    logger.warning(
+                        "Skipping todo with unreadable state",
+                        slug=slug,
+                        project_path=project_path,
+                        reason=str(exc),
+                    )
+                    continue
 
             # Check artifact existence from DB (by id)
             artifact_query_started_at = time.perf_counter()
@@ -344,85 +455,27 @@ def assemble_roadmap_from_db(
 
             # --- Derive display values from canonical lifecycle state ---
 
-            kind = state.get("kind")
-
-            finalize_raw = state.get("finalize")
-            finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
-            finalize_status = _non_empty_str(finalize.get("status"))
-
-            kind_is_unset = kind is None
-            if kind_is_unset and state.get("lifecycle_phase") is None:
-                lifecycle = None
-                current_value = _CLASSIFY_PHASE
-                is_draft_lifecycle = False
-            else:
-                lifecycle = require_lifecycle_phase(
-                    state.get("lifecycle_phase"),
-                    context=f"assemble_roadmap_from_db({slug})",
-                )
-                current_value = lifecycle.value
-                is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
-
-            state_phase = state.get("phase", "")
-            is_delivered = state_phase == RoadmapStatus.DELIVERED
-
-            # Build/review status and lifecycle display phase derive from the
-            # canonical lifecycle pointer via shared lifecycle helpers.
-            build_status = derive_build_status(current_value, is_draft=is_draft_lifecycle, is_delivered=is_delivered)
-            review_status = derive_review_status(current_value, is_draft=is_draft_lifecycle, is_delivered=is_delivered)
-            lifecycle_phase = None if is_delivered else current_value
-
-            raw_integration_phase = _non_empty_str(state.get("integration_phase"))
-            # Normalize legacy 12-phase mirror values to the two canonical values.
-            if raw_integration_phase and raw_integration_phase not in tuple(IntegrationPhase):
-                integration_phase: str | None = IntegrationPhase.STARTED
-            else:
-                integration_phase = raw_integration_phase
-
-            todo_status = raw_status  # active/icebox/delivered — authoritative DB state
-            # Re-bucketing below only refines the 'active' bucket into more
-            # granular states (pending/ready/in_progress). Icebox and delivered
-            # are authoritative todo list statuses — never overwrite them from a
-            # lifecycle pointer (which defaults to DRAFT for never-prepared
-            # entries and would otherwise clobber 'icebox' into 'pending').
-            if todo_status == RoadmapStatus.DELIVERED or is_delivered:
-                # Delivered wins over a never-advanced draft lifecycle pointer.
-                todo_status = RoadmapStatus.DELIVERED
-                integration_phase = IntegrationPhase.DELIVERED
-            elif todo_status == RoadmapStatus.ACTIVE and is_draft_lifecycle:
-                todo_status = RoadmapStatus.PENDING
-            ready, _ = is_ready_for_work(
-                kind=kind if isinstance(kind, str) else TODO_KIND_DEFAULT,
-                lifecycle_phase=lifecycle_phase,
-            )
-            if todo_status == RoadmapStatus.ACTIVE and build_status:
-                todo_status = RoadmapStatus.IN_PROGRESS
-            elif todo_status == RoadmapStatus.ACTIVE and ready:
-                todo_status = RoadmapStatus.READY
-            elif todo_status == RoadmapStatus.ACTIVE and kind_is_unset:
-                todo_status = RoadmapStatus.IN_PROGRESS
-            elif todo_status == RoadmapStatus.ACTIVE and lifecycle_phase:
-                todo_status = RoadmapStatus.IN_PROGRESS
+            projection = _derive_projection_fields(slug, raw_status, state)
 
             todos.append(
                 TodoDTO(
                     slug=slug,
-                    status=todo_status,
+                    status=projection.todo_status,
                     description=row[4] or "",
                     has_requirements=has_req_row is not None,
                     has_impl_plan=has_plan_row is not None,
-                    kind=kind if isinstance(kind, str) else None,
+                    kind=projection.kind,
                     ready_since=row[2],
                     updated_at=row[7],
                     created_at=row[8],
-                    build_status=build_status,
-                    review_status=review_status,
+                    build_status=projection.build_status,
+                    review_status=projection.review_status,
                     after=deps_map.get(slug, []),
                     group=row[3],
                     delivered_at=row[6],
-                    lifecycle_phase=lifecycle_phase,
-                    integration_phase=integration_phase,
-                    finalize_status=finalize_status,
+                    lifecycle_phase=projection.lifecycle_phase,
+                    integration_phase=projection.integration_phase,
+                    finalize_status=projection.finalize_status,
                     files=[ar[0] for ar in artifact_rows],
                     version_total=version_total,
                     roadmap_id=str(row_id),

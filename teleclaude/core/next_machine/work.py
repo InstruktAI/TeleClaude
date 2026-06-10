@@ -362,9 +362,11 @@ async def _resolve_explicit_work_slug(
     if not is_bug:
         delivered = await todos_db.delivered_slugs()
     if not is_bug and slug not in delivered and not await todos_db.slug_in_roadmap(slug):
-        await todos_db.add_to_roadmap(slug)
-        logger.info("AUTO_ROADMAP_ADD slug=%s machine=work", slug)
-        deps = await todos_db.load_deps()
+        return "", format_error(
+            "TODO_NOT_FOUND",
+            f"No active todo exists for {slug}. Create and prepare it before running work.",
+            next_call=f"telec todo create {slug} <content> [--kind feature|change|bug|task]",
+        )
 
     holder_error = None
     if not is_bug:

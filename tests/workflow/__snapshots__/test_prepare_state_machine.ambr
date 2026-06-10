@@ -30,6 +30,14 @@
   - slow: complex reasoning, architecture, planning, root cause analysis
   '''
 # ---
+# name: test_prepare_unknown_slug_does_not_create_roadmap_row
+  '''
+  ERROR: TODO_NOT_FOUND
+  No active todo exists for unknown-prepare. Create it before running prepare.
+  
+  NEXT: telec todo create unknown-prepare <content> [--kind feature|change|bug|task]
+  '''
+# ---
 # name: test_prepared_auto_continue_reuses_parent_prepare_worker
   '''
   PREPARED: parent is ready for work.

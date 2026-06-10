@@ -138,6 +138,17 @@ async def test_prepare_selector_skips_kindless_todos_without_lifecycle_phase(tmp
     assert output == snapshot
 
 
+@pytest.mark.spec(_SPEC, "UC-WPS3")
+async def test_prepare_unknown_slug_does_not_create_roadmap_row(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+
+    output = await next_prepare(cast(Db, _CapturingDb([])), "unknown-prepare", str(project_root))
+
+    assert not await todos_db.slug_in_roadmap("unknown-prepare")
+    assert output == snapshot
+
+
 @pytest.mark.spec(_SPEC, "UC-WPS1")
 async def test_prepared_auto_continue_reuses_parent_prepare_worker(tmp_path: Path, snapshot: object) -> None:
     todos_db = await _project_db(tmp_path / "project")
