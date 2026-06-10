@@ -63,12 +63,11 @@ Scenario: Phase 2 auto-loads third-party indexes on prefix match
 ```
 
 ```
-Scenario: Description falls back when frontmatter description is empty
+Scenario: Description is required
   Given a third-party Markdown file with no description in frontmatter
-  And a first-line H1 "# Acme Widgets Reference"
-  When the third-party index is written
-  Then the index entry description is "Acme Widgets Reference"
-  And if the H1 is also missing the description falls back to the filename stem
+  When telec sync validates the file
+  Then a missing-frontmatter-field finding is reported for "description"
+  And the sync exits with a non-zero status
 ```
 
 ### Cross-context references

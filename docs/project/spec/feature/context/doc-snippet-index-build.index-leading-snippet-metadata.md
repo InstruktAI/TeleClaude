@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-description: 'Sync builds the per-scope snippet index.yaml catalog from frontmatter, normalizes titles, and rejects cross-project ID collisions.'
+description: 'Sync derives snippet metadata from paths, writes per-scope index.yaml catalogs, normalizes titles, and rejects cross-project ID collisions.'
 ---
 
 # Doc Snippet Index Build — Spec
