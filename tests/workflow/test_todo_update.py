@@ -369,3 +369,75 @@ async def test_todo_update_refuses_slug_and_kind_after_build_but_allows_after(tm
     assert state["kind"] == TODO_KIND_CHANGE
     assert state["lifecycle_phase"] == LifecyclePhase.BUILD_STARTED.value
     assert (await todos_db.load_deps())["build-work"] == ["parent"]
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
+def test_todo_update_after_csv_expands_to_individual_slugs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": "ok"})
+
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_update([_MY_TODO, "--after", f"{_PARENT_A},{_PARENT_B}"])
+
+    body = tool_api_call.call_args.kwargs["json_body"]
+    assert body["after"] == [_PARENT_A, _PARENT_B]
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
+def test_todo_update_after_repeated_flags_sends_same_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": "ok"})
+
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_update([_MY_TODO, "--after", _PARENT_A, "--after", _PARENT_B])
+
+    body = tool_api_call.call_args.kwargs["json_body"]
+    assert body["after"] == [_PARENT_A, _PARENT_B]
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
+def test_todo_update_after_empty_string_sends_empty_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": "ok"})
+
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_update([_MY_TODO, "--after", ""])
+
+    body = tool_api_call.call_args.kwargs["json_body"]
+    assert body["after"] == []
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
+def test_todo_update_after_mixed_empty_and_nonempty_fails_before_api(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": "ok"})
+
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    with pytest.raises(SystemExit):
+        todo_handlers._handle_todo_update([_MY_TODO, "--after", "", "--after", _PARENT_A])
+
+    tool_api_call.assert_not_called()
+
+
+@pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
+def test_todo_update_after_empty_csv_segment_fails_before_api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": "ok"})
+
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    with pytest.raises(SystemExit):
+        todo_handlers._handle_todo_update([_MY_TODO, "--after", f"{_PARENT_A},,{_PARENT_B}"])
+
+    tool_api_call.assert_not_called()

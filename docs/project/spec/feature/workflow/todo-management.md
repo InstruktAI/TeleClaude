@@ -135,6 +135,20 @@ replaces the todo's dependency set with the supplied parents
 ```
 
 ```
+Given an active todo
+When the operator runs "telec todo update my-todo --after parent-a,parent-b"
+Then the CSV value is expanded and both parents are validated and stored
+equivalent to supplying them as two separate --after flags
+```
+
+```
+Given an active todo with existing dependencies
+When the operator runs 'telec todo update my-todo --after ""'
+Then the dependency leg sends an empty replacement set
+And all existing dependencies for my-todo are removed
+```
+
+```
 Given an active todo whose build has not started
 When the operator runs "telec todo update my-todo --kind bug"
 Then the kind leg handles any orphaned kind-specific artifacts explicitly

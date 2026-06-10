@@ -469,6 +469,34 @@ def _render_remove_refusal(status: dict[object, object], slug: str) -> bool:
     return True
 
 
+def _normalize_after_values(raw_values: list[str]) -> list[str]:
+    """Normalize raw --after CLI values into a validated slug list.
+
+    Accepts CSV per value and repeated flags. ``--after ""`` is the explicit
+    clear: returns ``[]``. Mixed empty/non-empty input and empty CSV segments
+    are rejected with SystemExit(1).
+    """
+    empty_count = sum(1 for v in raw_values if not v.strip())
+    non_empty_count = len(raw_values) - empty_count
+
+    if empty_count and non_empty_count:
+        print("Cannot mix empty --after with non-empty --after values.")
+        raise SystemExit(1)
+
+    if empty_count:
+        return []
+
+    normalized: list[str] = []
+    for raw in raw_values:
+        segments = [s.strip() for s in raw.split(",")]
+        for seg in segments:
+            if not seg:
+                print(f"Empty segment in --after value: {raw!r}")
+                raise SystemExit(1)
+            normalized.append(seg)
+    return normalized
+
+
 def _handle_todo_update(args: list[str]) -> None:
     """Handle telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <kind>] [--force]."""
     if "--help" in args or "-h" in args:
@@ -477,7 +505,8 @@ def _handle_todo_update(args: list[str]) -> None:
 
     slug: str | None = None
     new_slug: str | None = None
-    after: list[str] = []
+    raw_after: list[str] = []
+    after_present = False
     kind: str | None = None
     force = False
 
@@ -488,7 +517,8 @@ def _handle_todo_update(args: list[str]) -> None:
             new_slug = args[i + 1]
             i += 2
         elif arg == "--after" and i + 1 < len(args):
-            after.append(args[i + 1])
+            raw_after.append(args[i + 1])
+            after_present = True
             i += 2
         elif arg == "--kind" and i + 1 < len(args):
             kind = args[i + 1]
@@ -512,6 +542,8 @@ def _handle_todo_update(args: list[str]) -> None:
         print(_usage("todo", "update"))
         raise SystemExit(1)
 
+    after = _normalize_after_values(raw_after) if after_present else []
+
     _validate_slugs(slug, new_slug, *after)
     if kind is not None and kind not in ALL_DUMP_KINDS:
         print(f"unknown todo kind: {kind!r}")
@@ -525,7 +557,7 @@ def _handle_todo_update(args: list[str]) -> None:
     }
     if new_slug is not None:
         body["new_slug"] = new_slug
-    if "--after" in args:
+    if after_present:
         body["after"] = after
     if kind is not None:
         body["kind"] = kind

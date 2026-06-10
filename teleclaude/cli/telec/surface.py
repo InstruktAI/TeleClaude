@@ -554,9 +554,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--slug", desc="New todo slug; delegates to the durable rename engine"),
-                    Flag("--after", desc="Dependency slug (repeatable); replaces all existing dependencies"),
+                    Flag(
+                        "--after",
+                        desc=(
+                            "Dependency slug(s); replaces the full set. "
+                            "CSV accepted: --after parent-a,parent-b. "
+                            "Repeated flags accepted for compatibility: --after parent-a --after parent-b. "
+                            'Use --after "" to clear all dependencies.'
+                        ),
+                    ),
                     Flag("--kind", desc=f"New todo kind: {TODO_KIND_USAGE}"),
                     Flag("--force", desc="Allow permanent orphan-artifact handling for kind migrations"),
+                ],
+                notes=[
+                    "Only mutates slug, deps, or kind; --after replaces the full dependency set.",
+                    "Kind and slug changes are refused after build starts; --after remains allowed.",
+                    "--force only applies to kind orphan handling.",
+                    "Combining --slug with other legs is staged, not a single atomic patch.",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
