@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import cast
 
-from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_FEATURE, canonical_kind
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, canonical_kind
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import KindProposalState, TodoState
+from teleclaude.types.todos import TodoState
 
 LATEST_TODO_STATE_SCHEMA_VERSION = 4
 _V0_SCHEMA_VERSION = 0
@@ -63,7 +63,6 @@ _V2_TO_V3_PHASE: dict[str, str] = {
     "finalize_ready": LifecyclePhase.FINALIZE_READY.value,
     _LEGACY_HANDED_OFF_PHASE: LifecyclePhase.FINALIZE_READY.value,
 }
-_PRE_KIND_PHASES = frozenset({LifecyclePhase.UNKINDED.value, LifecyclePhase.KIND_PROPOSED.value})
 
 
 def _dict(raw: dict[str, StateValue], key: str) -> dict[str, StateValue]:
@@ -222,10 +221,9 @@ def _upcycle_v2_to_v3(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     raw_kind = _text(migrated, "kind")
     if raw_kind:
         migrated["kind"] = canonical_kind(raw_kind)
-    elif migrated["lifecycle_phase"] in _PRE_KIND_PHASES:
-        migrated["kind"] = None
     else:
-        migrated["kind"] = canonical_kind(raw_kind)
+        migrated["kind"] = None
+        migrated.pop("lifecycle_phase", None)
     migrated["schema_version"] = _V3_SCHEMA_VERSION
     return migrated
 
@@ -258,7 +256,7 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             raise ValueError(msg)
         version = _detect_schema_version(migrated)
 
-    if "lifecycle_phase" not in migrated:
+    if "lifecycle_phase" not in migrated and migrated.get("kind") is not None:
         msg = f"todo state schema v{LATEST_TODO_STATE_SCHEMA_VERSION} is missing required lifecycle_phase"
         raise ValueError(msg)
     return migrated
@@ -275,16 +273,13 @@ def upcycle_state_dict(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     raw_kind = _text(latest, "kind")
     if raw_kind:
         latest["kind"] = canonical_kind(raw_kind)
-    elif _text(latest, "lifecycle_phase") in _PRE_KIND_PHASES:
-        latest["kind"] = None
     else:
-        latest["kind"] = KIND_FEATURE
+        latest["kind"] = None
+        latest.pop("lifecycle_phase", None)
     model = TodoState.model_validate(latest)
     payload = model.model_dump(exclude_none=True)
     if model.kind is None:
         payload["kind"] = None
-    if model.kind_proposal == KindProposalState():
-        payload.pop("kind_proposal", None)
     return cast(dict[str, StateValue], payload)
 
 

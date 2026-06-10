@@ -260,10 +260,13 @@ class TodoRow(TelecMixin, Widget):
         """
         maxes: dict[str, int] = {"K": 0, "P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
         for t in todos:
-            if t.kind:
-                maxes["K"] = max(maxes["K"], len(f"{_PHASE_PREFIX_KIND}:{t.kind}"))
+            kind_label = t.kind if t.kind else "unknown"
+            maxes["K"] = max(maxes["K"], len(f"{_PHASE_PREFIX_KIND}:{kind_label}"))
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
+                continue
+            if t.kind is None:
+                maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:classify"))
                 continue
             p_result = lifecycle_phase_label(t.lifecycle_phase)
             if p_result is not None:
@@ -332,7 +335,7 @@ class TodoRow(TelecMixin, Widget):
         # K:<kind> is orthogonal to phase and renders first on every non-holder row.
         result.append_text(
             self._build_col(
-                _PHASE_PREFIX_KIND, self.todo.kind or "", w.get("K", 0), Style(color=_kind_color(), bold=True)
+                _PHASE_PREFIX_KIND, self.todo.kind or "unknown", w.get("K", 0), Style(color=_kind_color(), bold=True)
             )
         )
 
@@ -349,6 +352,14 @@ class TodoRow(TelecMixin, Widget):
         if self.todo.status == TodoStatus.REMOVED:
             age = format_relative_time(self.todo.removed_at) if self.todo.removed_at else ""
             result.append_text(self._build_col("T", age, w.get("P", 0), Style(color=_trashed_color(), bold=True)))
+            return _pad(result, target)
+
+        if self.todo.kind is None:
+            result.append_text(
+                self._build_col(
+                    _PHASE_PREFIX_LIFECYCLE, "classify", w.get("P", 0), Style(color=_gold_color(), bold=True)
+                )
+            )
             return _pad(result, target)
 
         ok = _ok_color()

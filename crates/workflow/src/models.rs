@@ -21,8 +21,6 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "workflow.lifecycle_phase", rename_all = "snake_case")]
 pub enum LifecyclePhase {
-    Unkinded,
-    KindProposed,
     Draft,
     PrdDrafting,
     PrdHumanApproval,
@@ -106,9 +104,7 @@ impl LifecyclePhase {
     /// from `BuildStarted` through `HandedOff`.
     pub fn stage(self) -> LifecycleStage {
         match self {
-            Self::Unkinded
-            | Self::KindProposed
-            | Self::Draft
+            Self::Draft
             | Self::PrdDrafting
             | Self::PrdHumanApproval
             | Self::ArchitectureDrafting
@@ -296,26 +292,6 @@ mod tests {
             LifecyclePhase::PlanDrafting.stage(),
             LifecycleStage::Prepare
         );
-    }
-
-    #[test]
-    fn lifecycle_phase_unkinded_round_trips_and_maps_to_prepare() {
-        let encoded = serde_json::to_string(&LifecyclePhase::Unkinded).expect("serialize");
-        let decoded: LifecyclePhase = serde_json::from_str(&encoded).expect("deserialize");
-
-        assert_eq!(encoded, "\"unkinded\"");
-        assert_eq!(decoded, LifecyclePhase::Unkinded);
-        assert_eq!(decoded.stage(), LifecycleStage::Prepare);
-    }
-
-    #[test]
-    fn lifecycle_phase_kind_proposed_round_trips_and_maps_to_prepare() {
-        let encoded = serde_json::to_string(&LifecyclePhase::KindProposed).expect("serialize");
-        let decoded: LifecyclePhase = serde_json::from_str(&encoded).expect("deserialize");
-
-        assert_eq!(encoded, "\"kind_proposed\"");
-        assert_eq!(decoded, LifecyclePhase::KindProposed);
-        assert_eq!(decoded.stage(), LifecycleStage::Prepare);
     }
 
     #[test]

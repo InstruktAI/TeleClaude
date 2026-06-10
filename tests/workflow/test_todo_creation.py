@@ -5,10 +5,12 @@ from __future__ import annotations
 import sys
 from collections.abc import AsyncGenerator, Mapping
 from pathlib import Path
-from typing import Unpack, cast
+from typing import TypedDict, Unpack, cast
 
 import pytest
 
+from teleclaude.api import todo_routes
+from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
@@ -28,7 +30,9 @@ _KIND_CHANGE = "change"
 _KIND_BUG = "bug"
 _PARENT = "parent"
 _CHILD = "child"
+_KINDLESS = "kindless"
 _NEXT_PREPARE = "/next-prepare"
+_ANALYZE_TODO_INPUT = "/analyze-todo-input"
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +66,7 @@ async def _add_todo(
     )
 
 
-def _created_event(payload: Mapping[str, str | bool]) -> EventEnvelope:
+def _created_event(payload: Mapping[str, object]) -> EventEnvelope:
     return EventEnvelope(
         event=_WORKFLOW_TODO_CREATED,
         source=_SOURCE,
@@ -83,6 +87,10 @@ class _CapturingTelecAPIClient:
 
     async def close(self) -> None:
         return None
+
+
+class _EmittedEvent(TypedDict, total=False):
+    payload: object
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC1")
@@ -159,6 +167,45 @@ async def test_lifecycle_router_dispatches_deps_satisfied_create_from_event_proj
     assert call["command"] == _NEXT_PREPARE
     assert call["args"] == _CHILD
     assert call["project_path"] == str(event_project)
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC5")
+async def test_kindless_create_persists_no_phase_and_dispatches_analyzer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setattr(lifecycle_router, "TelecAPIClient", _CapturingTelecAPIClient)
+    _CapturingTelecAPIClient.calls = []
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(slug=_KINDLESS, content="Classify this raw dump.", cwd=str(project_root))
+    )
+
+    todos_db = await get_todos_db(project_root)
+    state = await todos_db.read_state(_KINDLESS)
+    assert state is not None
+    assert state["kind"] is None
+    assert "lifecycle_phase" not in state
+
+    [event_kwargs] = emitted
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["kind"] is None
+    assert payload["lifecycle_phase"] is None
+
+    await LifecycleRouterCartridge().process(_created_event(payload), cast(PipelineContext, object()))
+
+    [call] = _CapturingTelecAPIClient.calls
+    assert call["command"] == _ANALYZE_TODO_INPUT
+    assert call["args"] == _KINDLESS
+    assert call["project_path"] == str(project_root)
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC4")

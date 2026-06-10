@@ -690,7 +690,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "<slug> [--verdict <v> --phase <p>] [--prd-approved]"
                     " [--architecture-skipped <reason>]"
                     " [--drift-reviewed <artifact> <verdict> <reason>]"
-                    f" [--kind-proposed <{TODO_KIND_USAGE}> <rationale>] [--kind-approved]"
+                    f" [--kind-assign <{TODO_KIND_USAGE}> [<content>]]"
                     " [--finalize-ready]"
                 ),
                 flags=[
@@ -703,16 +703,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--prd-approved", desc="Mark PRD as approved by the human"),
                     Flag("--architecture-skipped", desc="Skip architecture phase with a reason"),
                     Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
-                    Flag("--kind-proposed", desc=f"Record analyzer proposal: <{TODO_KIND_USAGE}> <rationale>"),
                     Flag(
-                        "--kind-approved", desc="Approve the proposed kind and enter that kind's lifecycle entry phase"
+                        "--kind-assign",
+                        desc=f"Assign kind and enter that kind's lifecycle entry phase: <{TODO_KIND_USAGE}> [content]",
                     ),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
-                    'telec todo stamp my-slug --kind-proposed task "actionable task"',
-                    "telec todo stamp my-slug --kind-approved",
+                    'telec todo stamp my-slug --kind-assign task "actionable task"',
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
                 ],

@@ -344,7 +344,7 @@ mod tests {
             todo_id: sample_todo_id(),
             slug: sample_slug(),
             project_id: sample_project_id(),
-            lifecycle_phase: LifecyclePhase::Unkinded,
+            lifecycle_phase: LifecyclePhase::Draft,
             created_at: fixed_timestamp(),
             kind: None,
             creation_mode: CreationMode::Pickup,

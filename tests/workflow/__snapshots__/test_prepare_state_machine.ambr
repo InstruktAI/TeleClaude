@@ -2,6 +2,34 @@
 # name: test_bug_work_mandate_names_plan_and_diagnosis
   'Bug artifact contract for my-bug: the reviewed implementation-plan is the execution spine; the diagnosis is the verified root-cause context the plan grounds on; input is the reported symptom. Write the reproduction test the diagnosis prescribes and drive it red→green.'
 # ---
+# name: test_prepare_selector_skips_kindless_todos_without_lifecycle_phase
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: <none>
+  
+  BLOCKERS:
+  - no active preparation work found
+  
+  NEXT ACTION:
+  1. Create a new todo: `telec todo create <slug> <content> [--kind feature|change|bug|task]`.
+  2. Or pick an existing slug from `telec todo list`.
+  3. Then call `telec todo prepare <slug>` to drive the lifecycle.
+  
+  AGENT SELECTION GUIDANCE:
+  
+  Agent characteristics are in your baseline context (Agent Characteristics concept).
+  Runtime availability:
+  - CLAUDE: available
+  - CODEX: available
+  - GEMINI: available
+  
+  THINKING MODES:
+  - fast: simple tasks, text editing, quick logic
+  - med: standard coding, refactoring, review
+  - slow: complex reasoning, architecture, planning, root cause analysis
+  '''
+# ---
 # name: test_prepared_auto_continue_reuses_parent_prepare_worker
   '''
   PREPARED: parent is ready for work.

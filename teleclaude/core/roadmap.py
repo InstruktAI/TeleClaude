@@ -28,6 +28,7 @@ logger = get_logger(__name__)
 RECENTLY_DELIVERED_HOURS = 72
 READY_BAND = "ready"
 IN_PREP_BAND = "in_prep"
+_CLASSIFY_PHASE = "classify"
 
 
 def recently_delivered_cutoff() -> str:
@@ -349,12 +350,18 @@ def assemble_roadmap_from_db(
             finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
             finalize_status = _non_empty_str(finalize.get("status"))
 
-            lifecycle = require_lifecycle_phase(
-                state.get("lifecycle_phase"),
-                context=f"assemble_roadmap_from_db({slug})",
-            )
-            current_value = lifecycle.value
-            is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
+            kind_is_unset = kind is None
+            if kind_is_unset and state.get("lifecycle_phase") is None:
+                lifecycle = None
+                current_value = _CLASSIFY_PHASE
+                is_draft_lifecycle = False
+            else:
+                lifecycle = require_lifecycle_phase(
+                    state.get("lifecycle_phase"),
+                    context=f"assemble_roadmap_from_db({slug})",
+                )
+                current_value = lifecycle.value
+                is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
             state_phase = state.get("phase", "")
             is_delivered = state_phase == RoadmapStatus.DELIVERED
@@ -392,6 +399,8 @@ def assemble_roadmap_from_db(
                 todo_status = RoadmapStatus.IN_PROGRESS
             elif todo_status == RoadmapStatus.ACTIVE and ready:
                 todo_status = RoadmapStatus.READY
+            elif todo_status == RoadmapStatus.ACTIVE and kind_is_unset:
+                todo_status = RoadmapStatus.IN_PROGRESS
             elif todo_status == RoadmapStatus.ACTIVE and lifecycle_phase:
                 todo_status = RoadmapStatus.IN_PROGRESS
 

@@ -346,8 +346,8 @@ class TodoDumpRequest(BaseModel):
       - "bug":     content is the "input" artifact; skips prepare and enters the fix lane.
       - "task":    content is the "input" artifact; created silent and tracked by task-plan.
 
-    Omitted ``kind`` creates an unkinded todo: content is stored as immutable
-    ``input`` and routed to /analyze-todo-input for proposal only.
+    Omitted ``kind`` creates a kind-less todo: content is stored as immutable
+    ``input`` with no lifecycle_phase and routed to /analyze-todo-input for assignment.
 
     ``silent`` creates the todo without dispatching an orchestrator (parking).
     """

@@ -73,6 +73,12 @@ class _CapturingDb:
     def __init__(self, sessions: list[_Session]) -> None:
         self._sessions = sessions
 
+    async def clear_expired_agent_availability(self) -> None:
+        return None
+
+    async def get_agent_availability(self, _agent_name: str) -> dict[str, str]:
+        return {"status": "available"}
+
     async def list_sessions(self, *, include_closed: bool = False) -> list[_Session]:
         _ = include_closed
         return self._sessions
@@ -118,6 +124,18 @@ async def _add_todo(
 
 def _dependency_entry(dep_slug: str, roadmap_status: RoadmapStatusLiteral) -> DependencyEntry:
     return DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS3")
+async def test_prepare_selector_skips_kindless_todos_without_lifecycle_phase(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_roadmap("classify-me")
+    await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
+
+    output = await next_prepare(cast(Db, _CapturingDb([])), None, str(project_root))
+
+    assert output == snapshot
 
 
 @pytest.mark.spec(_SPEC, "UC-WPS1")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -9,10 +10,20 @@ import pytest
 
 from teleclaude.cli.telec.handlers import _todo_show
 from teleclaude.cli.telec.handlers import todo as todo_handlers
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.roadmap import assemble_roadmap_from_db
+from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db._show import assemble_show_payload
 
 pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/workflow/todo-management"
+
+
+@pytest.fixture(autouse=True)
+async def _close_todos_db_after_test() -> AsyncGenerator[None]:
+    yield
+    await close_todos_db_instances()
 
 
 @pytest.mark.spec(_SPEC, "UC-WM1")
@@ -69,3 +80,66 @@ def test_todo_reactivate_sends_invocation_cwd(monkeypatch: pytest.MonkeyPatch, t
 
     json_body = tool_api_request.call_args.kwargs["json_body"]
     assert Path(json_body["cwd"]) == project_root
+
+
+@pytest.mark.spec(_SPEC, "UC-WM1")
+async def test_show_payload_classifies_kindless_todo_without_lifecycle_phase(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_roadmap("classify-me")
+    await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
+
+    payload = await assemble_show_payload(todos_db, "classify-me")
+
+    assert payload is not None
+    assert {
+        "stage": payload["stage"],
+        "current": payload["current"],
+        "state": payload["state"],
+    } == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WM1")
+async def test_show_payload_buckets_diagnose_as_prepare(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_roadmap("diagnose-me")
+    await todos_db.write_state(
+        "diagnose-me",
+        {
+            "schema_version": 4,
+            "kind": "bug",
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.DIAGNOSE.value,
+        },
+    )
+
+    payload = await assemble_show_payload(todos_db, "diagnose-me")
+
+    assert payload is not None
+    assert {"stage": payload["stage"], "current": payload["current"]} == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WM1")
+async def test_roadmap_projection_includes_kindless_todo_without_lifecycle_phase(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_roadmap("classify-me")
+    await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
+
+    [todo] = assemble_roadmap_from_db(str(project_root))
+
+    assert {
+        "slug": todo.slug,
+        "status": todo.status,
+        "kind": todo.kind,
+        "lifecycle_phase": todo.lifecycle_phase,
+        "build_status": todo.build_status,
+        "review_status": todo.review_status,
+    } == snapshot

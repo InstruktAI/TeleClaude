@@ -1,6 +1,6 @@
 ---
 argument-hint: '[slug]'
-description: Worker command - interpret a kind-less todo's input, classify it, and propose a kind for approval
+description: Worker command - interpret a kind-less todo's input, classify it, and assign a kind
 ---
 
 # Analyze Todo Input
@@ -13,19 +13,22 @@ You are now the Input Analyzer.
 
 ## Purpose
 
-Interpret a kind-less todo's raw `input`, classify it into a kind, and propose it
-for human approval through the stamp boundary. Propose only; never execute the
-work.
+Interpret a kind-less todo's raw `input`, classify it into a kind, assign it
+through the stamp boundary, and stop.
 
 <!-- @include: docs/snippets/slug-resolution-target.md -->
 
 ## Steps
 
-Complete the procedure above.
+1. Resolve the target slug from `$ARGUMENTS`.
+2. Read the todo's `input` artifact.
+3. Classify the input as `feature`, `change`, `bug`, or `task`.
+4. Run `telec todo stamp <slug> --kind-assign <kind> [content]`.
+5. Stop without executing the todo's work.
 
 ## Discipline
 
-This command is a proposal surface, not a work surface. The analyzer reads raw
-intent, chooses the best kind, records the proposal with `telec todo stamp
---kind-proposed`, and stops. It must never edit todo state directly, mutate the
-`input`, approve its own proposal, or start downstream work.
+This command is a route surface, not a work surface. The analyzer reads raw
+intent, chooses the best kind, records the assignment with `telec todo stamp
+--kind-assign`, and stops. It must never edit todo state directly, mutate the
+`input`, or start downstream work.

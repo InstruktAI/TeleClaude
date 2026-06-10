@@ -133,6 +133,8 @@ async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
         state = await todos_db.read_state(slug)
         if state is None or state.get("phase") == "done":
             continue
+        if state.get("kind") is None and state.get("lifecycle_phase") is None:
+            continue
         lifecycle = require_lifecycle_phase(state.get("lifecycle_phase"), context=f"_find_next_prepare_slug_db({slug})")
         if lifecycle != LifecyclePhase.PREPARED and not is_work_lifecycle_phase(lifecycle):
             if not deps_satisfied(deps, prepared, slug):

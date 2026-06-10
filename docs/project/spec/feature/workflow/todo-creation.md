@@ -20,7 +20,7 @@ description: 'Todo creation — `telec todo create <slug> <content> [--kind <kin
 The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, plus a creative-machine entrypoint that does not itself create todo entries:
 
 - **`telec todo create <slug> <content> [--kind <kind>]`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is optional. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
-  - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo enters the `unkinded` phase, and `/analyze-todo-input` is dispatched to classify it and propose a kind for human approval. The classifier proposes only — it never executes the work.
+  - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo is persisted with `kind` unset and no `lifecycle_phase`, and `/analyze-todo-input` is dispatched to classify it and assign a kind autonomously via `telec todo stamp --kind-assign <kind>`. The classifier assigns the kind directly — there is no proposal and no human approval gate — then routes to that kind's entry phase. It never executes the work itself.
   - `--silent` — sets `silent=True` on the request. The route still creates the todo and still emits `workflow.todo.created`, but with `pickup_requested=false` and `creation_mode="silent"`, so the lifecycle router skips dispatch.
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
@@ -39,7 +39,7 @@ The workflow service emits the event with this payload:
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
 - `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
-- `lifecycle_phase` — the post-write `lifecycle_phase` value (`"unkinded"` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
+- `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 
@@ -91,14 +91,16 @@ Then it reports "Error: <content> is required and must not be empty" and exits n
 And no creation request is made
 ```
 
+#### UC-WTC5: Kind-less create dispatches analyzer
+
 ```
 Given a human dumps raw intent and omits `--kind`
 When the CLI parses the flags
 Then it submits a creation request with no kind (kind-less)
-And the workflow service creates the todo, stores the dump as the `input` artifact, and sets lifecycle_phase="unkinded"
-And the workflow service emits workflow.todo.created with kind=null and pickup_requested=true
-And the lifecycle router dispatches /analyze-todo-input, which records a proposal with `telec todo stamp --kind-proposed ...` without executing any work
-And the kind remains unset until a human approves the proposal with `telec todo stamp --kind-approved`
+And the workflow service creates the todo, stores the dump as the `input` artifact, sets kind=null and leaves lifecycle_phase absent
+And the workflow service emits workflow.todo.created with kind=null, lifecycle_phase=null, and pickup_requested=true
+And the lifecycle router dispatches /analyze-todo-input, which classifies the dump and assigns the kind autonomously with `telec todo stamp --kind-assign <kind>` without executing any work
+And the assignment fixes the kind exactly once and routes the todo to that kind's entry phase, with no human approval gate in between
 ```
 
 ```
@@ -172,7 +174,7 @@ And the router dispatches /next-prepare for "child" as usual
 ## Known caveats
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
-- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo whose `input` is classified by `/analyze-todo-input`, which proposes a kind for human approval (it proposes only — it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should skip prepare.
+- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal, no human approval gate — it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should skip prepare.
 - `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` after a successful create. `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification when dependency gates allow pickup.

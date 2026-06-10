@@ -1,0 +1,37 @@
+# serializer version: 1
+# name: test_roadmap_projection_includes_kindless_todo_without_lifecycle_phase
+  dict({
+    'build_status': None,
+    'kind': None,
+    'lifecycle_phase': 'classify',
+    'review_status': None,
+    'slug': 'classify-me',
+    'status': 'in_progress',
+  })
+# ---
+# name: test_show_payload_buckets_diagnose_as_prepare
+  dict({
+    'current': dict({
+      'phase': 'diagnose',
+      'state': 'pending',
+    }),
+    'stage': 'prepare',
+  })
+# ---
+# name: test_show_payload_classifies_kindless_todo_without_lifecycle_phase
+  dict({
+    'current': dict({
+      'phase': 'classify',
+      'state': 'pending',
+    }),
+    'stage': 'prepare',
+    'state': dict({
+      'deferrals_processed': False,
+      'integration_phase': None,
+      'kind': None,
+      'lifecycle_phase': None,
+      'phase': 'pending',
+      'schema_version': 4,
+    }),
+  })
+# ---

@@ -36,7 +36,6 @@ from teleclaude.types.todos import (
     AuditState,
     DependencyEntry,
     DriftReviewedStamp,
-    KindProposalState,
     ReviewVerdictState,
     SkipStamp,
     TodoState,
@@ -90,8 +89,6 @@ def _dump_state(model: TodoState) -> dict[str, StateValue]:
     payload = model.model_dump(exclude_none=True)
     if model.kind is None:
         payload["kind"] = None
-    if model.kind_proposal == KindProposalState():
-        payload.pop("kind_proposal", None)
     return payload
 
 

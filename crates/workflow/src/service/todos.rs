@@ -12,7 +12,8 @@
 //! [`ArtifactName::Input`] artifact. `create_todo` opens a transaction,
 //! inserts the roadmap entry at the tail of the project's roadmap, inserts
 //! kinded todos at `lifecycle_phase = 'prd_drafting'` and kind-less todos at
-//! `lifecycle_phase = 'unkinded'`, persists the required input artifact
+//! `lifecycle_phase = 'draft'` (v2 kind-less -> Draft pending
+//! v2-workflow-cutover reconciliation; v1 is authoritative), persists the required input artifact
 //! (current row + append-only history), commits, then emits
 //! [`crate::events::TodoCreated`] followed by
 //! [`crate::events::ArtifactWritten`]. v2 deliberately refuses
@@ -143,7 +144,7 @@ impl WorkflowService {
         let lifecycle_phase = if kind.is_some() {
             LifecyclePhase::PrdDrafting
         } else {
-            LifecyclePhase::Unkinded
+            LifecyclePhase::Draft
         };
         let after_strings: Vec<String> = after.iter().map(|s| s.as_str().to_owned()).collect();
         let input_digest = sha256_hex(&input_content);

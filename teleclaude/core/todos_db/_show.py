@@ -22,12 +22,15 @@ if TYPE_CHECKING:
 
 
 # Map derived phase value → human-readable phase label for CurrentBlock.phase.
+_CLASSIFY_PHASE = "classify"
 _PHASE_LABEL: dict[str, str] = {
+    _CLASSIFY_PHASE: _CLASSIFY_PHASE,
     LifecyclePhase.DRAFT.value: "draft",
     PreparePhase.PRD_DRAFTING.value: "prd_drafting",
     PreparePhase.PRD_HUMAN_APPROVAL.value: "prd_human_approval",
     PreparePhase.ARCHITECTURE_DRAFTING.value: "architecture_drafting",
     PreparePhase.ARCHITECTURE_REVIEW.value: "architecture_review",
+    PreparePhase.DIAGNOSE.value: "diagnose",
     PreparePhase.PLAN_DRAFTING.value: "plan_drafting",
     PreparePhase.PLAN_REVIEW.value: "plan_review",
     PreparePhase.PREPARED.value: "prepared",
@@ -40,11 +43,13 @@ _PHASE_LABEL: dict[str, str] = {
 
 # Ordered list of derived phase values for previous/next navigation.
 _LIFECYCLE_ORDER: list[str] = [
+    _CLASSIFY_PHASE,
     LifecyclePhase.DRAFT.value,
     PreparePhase.PRD_DRAFTING.value,
     PreparePhase.PRD_HUMAN_APPROVAL.value,
     PreparePhase.ARCHITECTURE_DRAFTING.value,
     PreparePhase.ARCHITECTURE_REVIEW.value,
+    PreparePhase.DIAGNOSE.value,
     PreparePhase.PLAN_DRAFTING.value,
     PreparePhase.PLAN_REVIEW.value,
     PreparePhase.PREPARED.value,
@@ -69,10 +74,12 @@ _DONE_PHASE_VALUES: frozenset[str] = frozenset(
 _PREPARE_VALUES: frozenset[str] = frozenset(
     {
         LifecyclePhase.DRAFT.value,
+        _CLASSIFY_PHASE,
         PreparePhase.PRD_DRAFTING.value,
         PreparePhase.PRD_HUMAN_APPROVAL.value,
         PreparePhase.ARCHITECTURE_DRAFTING.value,
         PreparePhase.ARCHITECTURE_REVIEW.value,
+        PreparePhase.DIAGNOSE.value,
         PreparePhase.PLAN_DRAFTING.value,
         PreparePhase.PLAN_REVIEW.value,
         PreparePhase.BLOCKED.value,
@@ -149,6 +156,8 @@ async def _derive_phase_value(
 ) -> str:
     """Return the current canonical lifecycle phase value for a slug."""
     _ = todos_db, slug, worktree_cwd
+    if state.get("kind") is None and state.get("lifecycle_phase") is None:
+        return _CLASSIFY_PHASE
     return require_lifecycle_phase(
         state.get("lifecycle_phase"),
         context=f"assemble_show_payload({slug})",
@@ -219,7 +228,6 @@ def _derive_state_block(state_model: TodoState) -> dict[str, StateValue]:
     return {
         "schema_version": state_model.schema_version,
         "kind": state_model.kind,
-        "kind_proposal": cast(StateValue, state_model.kind_proposal.model_dump()),
         "phase": state_model.phase,
         "lifecycle_phase": state_model.lifecycle_phase,
         "integration_phase": state_model.integration_phase,

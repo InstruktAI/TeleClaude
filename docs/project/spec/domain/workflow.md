@@ -47,7 +47,7 @@ single owner of the slug cascade.
 : Durable, row-id-keyed metadata captured on the roadmap row at soft-remove time, alongside `removed_at`. It holds `prev_status` — the status the entry held immediately before removal (`active` or `icebox`) — and `removed_deps` — a snapshot of the entry's own outgoing `after` edges as they were at removal. Both exist only so reactivation can restore the entry's own footprint exactly. The snapshot is necessary because `roadmap_deps` is slug-keyed with no row identity: the live outgoing edges MUST be scrubbed at soft-remove (or a same-slug recreate would inherit/collide with them), so they can only survive for reactivation by being parked here. Legacy rows removed before this metadata existed have neither; reactivation falls back to `prev_status=icebox` and no outgoing-edge restore.
 
 **Kind**
-: Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` and routed to `/analyze-todo-input`, which proposes a kind for human approval. Kind is fixed once assigned.
+: Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
 
 <!-- planned:revive-todo-update-command -->
 Pending `revive-todo-update-command`, kind is mutable only before build starts
@@ -60,7 +60,7 @@ kind mutation is refused.
 : Top-level lifecycle band: `draft`, `prepare`, `work`, `integrate`, `delivered`. Each stage is a coherent body of work with its own state machine inside.
 
 **Phase** (per glossary)
-: Sub-state within a stage. Examples for `prepare` stage: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `prepared`. A kind-less intake carries the pre-classification phases `unkinded` (created without a kind, awaiting `/analyze-todo-input`) and `kind_proposed` (analyze has proposed a kind, awaiting human approval) before a kind — and therefore a stage lane — is assigned.
+: Sub-state within a stage. Examples for `prepare` stage: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `diagnose`, `prepared`. A kind-less todo has no `lifecycle_phase` at all: before classification it carries `kind=None` with `lifecycle_phase` absent, and `/analyze-todo-input` assigns a kind autonomously — which fixes the kind and routes it to that kind's entry phase in one step. There is no pre-classification phase value.
 
 **Artifact** (workflow artifact — per glossary)
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
@@ -111,7 +111,7 @@ kind mutation is refused.
   - A todo has exactly one current `(stage, phase)` at any moment.
   - Stage progression is strictly forward: `draft → prepare → work → integrate → delivered`. No backwards transitions; recovery from failure happens within the current stage's machine.
   - An artifact's version history is append-only; old versions are referenced by digest.
-  - A todo's `kind` is fixed once assigned. It may be unset at creation (a kind-less dump in the `unkinded` phase, awaiting `/analyze-todo-input`); analyze proposes a kind, and human approval through the stamp boundary assigns it exactly once. After assignment, changing kind requires deletion + recreation.
+  - A todo's `kind` is fixed once assigned. It may be unset at creation (a kind-less dump with `kind=None` and no `lifecycle_phase`, awaiting `/analyze-todo-input`); analyze classifies the dump and assigns the kind autonomously through the `--kind-assign` stamp boundary exactly once — no proposal, no human approval gate. After assignment, changing kind requires deletion + recreation.
   <!-- planned:revive-todo-update-command -->
   - Pending `revive-todo-update-command`, a todo's `kind` may be changed only
     before build starts by `telec todo update <slug> --kind <kind>`. The update
@@ -149,7 +149,7 @@ kind mutation is refused.
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
-- **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo split` (child of a container). Kind-less creation starts in `unkinded` and routes to `/analyze-todo-input`; approval fixes kind through the stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo split` (child of a container). Kind-less creation starts with `kind=None` and no `lifecycle_phase` and routes to `/analyze-todo-input`, which assigns the kind autonomously through the `--kind-assign` stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
 
 #### Roadmap (aggregate)
 
@@ -199,7 +199,7 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   suppresses pickup dispatch, not the state-change event.
 - **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
   row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
-  initially for ordinary feature/change creates; `unkinded` for kind-less
+  initially for ordinary feature/change creates; `null` for kind-less
   creates; `prepared` for fast-track bug/task/plan creates), `kind`, `created_at`, `created_by_principal` — and adds two
   new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
   and `pickup_requested` (boolean). The v1 daemon bridge derives the
@@ -208,11 +208,11 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
   Existing v2 Rust event consumers continue to see every prior field; the
   contract is strict-additive. `kind` is **nullable**: a kind-less dump
-  (created without `--kind`) emits `kind = null` with
-  `lifecycle_phase = unkinded`, and the pickup routers dispatch
-  `/analyze-todo-input`
-  (classification — it proposes a kind, it does not execute) instead of an
-  SDLC orchestrator.
+  (created without `--kind`) emits `kind = null` and `lifecycle_phase = null`
+  (v1 is authoritative for the nullable pre-classification state),
+  and the pickup routers dispatch `/analyze-todo-input`
+  (classification — it assigns a kind autonomously, it does not execute)
+  instead of an SDLC orchestrator.
 - **Visibility:** CLUSTER
 - **Known consumers:** `integration` (subscription notifications for
   "todo created"), audit log consumers, autonomous pickup consumers (the
@@ -836,9 +836,9 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 
 ## Allowed values
 
-- `kind`: `feature`, `change`, `bug`, `task`; nullable only before approval (`unkinded` / `kind_proposed`).
+- `kind`: `feature`, `change`, `bug`, `task`; nullable only before classification (`kind=None` with no `lifecycle_phase`).
 - `stage`: `draft`, `prepare`, `work`, `integrate`, `delivered`.
-- `prepare phases`: `unkinded`, `kind_proposed`, `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `prepared`.
+- `prepare phases`: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `diagnose`, `prepared`. (A kind-less todo has no `lifecycle_phase`; classification assigns the kind and routes straight to that kind's entry phase.)
 - `work phases`: `pending`, `building`, `review_pending`, `review_complete`, `fixing`, `finalize_pending`, `finalize_ready`.
 - `integrate phases`: per `integration-state-machine` design doc (squash, conflict-resolve, lint, test, push, deliver).
 - `roadmap status` (persisted): `active`, `icebox`, `delivered`, `removed`.

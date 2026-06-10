@@ -496,7 +496,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
     """Create a todo: state + artifact + todo entry in todos.db.
 
     Kind selects the entry point (see TodoDumpRequest):
-      - omitted kind: content is the "input" artifact; enters analyzer proposal.
+      - omitted kind: content is the "input" artifact; enters analyzer assignment.
       - "feature" | "change": content is the "input" artifact; enters prepare
         (feature authors a PRD, change drafts a plan directly).
       - "bug": content is the "input" artifact; apply_prepared_state stamps the
@@ -525,7 +525,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         state = default_state()
         if request.kind is None:
             state["kind"] = None
-            state["lifecycle_phase"] = LifecyclePhase.UNKINDED.value
+            state.pop("lifecycle_phase", None)
         else:
             state["kind"] = request.kind
             if request.kind == TODO_KIND_TASK:
@@ -584,6 +584,8 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
             state["lifecycle_phase"] = str(final_state.get("lifecycle_phase", state.get("lifecycle_phase", "draft")))
             todos_db.on_committed("todo_updated")
 
+        lifecycle_phase = state.get("lifecycle_phase")
+        event_lifecycle_phase = lifecycle_phase if isinstance(lifecycle_phase, str) else None
         await emit_event(
             event="workflow.todo.created",
             source="api.todo.create",
@@ -594,7 +596,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 "kind": None if request.kind is None else map_v1_kind_to_canonical(request.kind),
                 "creation_mode": "pickup" if pickup_requested else "silent",
                 "pickup_requested": pickup_requested,
-                "lifecycle_phase": str(state.get("lifecycle_phase", "draft")),
+                "lifecycle_phase": event_lifecycle_phase,
                 "created_at": datetime.now(UTC).isoformat(),
                 "project_path": effective_cwd,
             },

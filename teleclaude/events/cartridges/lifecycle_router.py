@@ -91,7 +91,7 @@ class LifecycleRouterCartridge:
         if not project_path:
             raise ValueError(f"Cannot dispatch lifecycle lane for {slug}: missing project_path")
         dispatch_args: RunSessionArgs
-        if kind is None or lifecycle_phase == LifecyclePhase.UNKINDED.value:
+        if kind is None:
             dispatch_args = {
                 "command": "/analyze-todo-input",
                 "project_path": project_path,

@@ -711,7 +711,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if not stamp_type:
         print(
             "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
-            "--drift-reviewed, --kind-proposed, --kind-approved, --build-complete, "
+            "--drift-reviewed, --kind-assign, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
             "--art-approved, --visuals-approved)"
         )
@@ -719,8 +719,8 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if stamp_type == "verdict" and not phase:
         print("--verdict requires --phase <phase>")
         raise SystemExit(1)
-    if stamp_type == "kind_proposed" and not phase:
-        print(f"--kind-proposed requires <{TODO_KIND_USAGE}> <rationale>")
+    if stamp_type == "kind_assign" and not phase:
+        print(f"--kind-assign requires <{TODO_KIND_USAGE}> [content]")
         raise SystemExit(1)
 
     if stamp_type == "finalize_ready":
@@ -780,11 +780,11 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             stamp_type = "drift_reviewed"
             value = _json.dumps({"artifact": args[i + 1], "verdict": args[i + 2], "reason": args[i + 3]})
             i += 4
-        elif arg == "--kind-proposed" and i + 2 < len(args):
-            stamp_type = "kind_proposed"
+        elif arg == "--kind-assign" and i + 1 < len(args):
+            stamp_type = "kind_assign"
             phase = args[i + 1]
-            value = args[i + 2]
-            i += 3
+            value = args[i + 2] if i + 2 < len(args) and not args[i + 2].startswith("-") else ""
+            i += 3 if value else 2
         elif arg == "--finalize-ready":
             stamp_type = "finalize_ready"
             value = ""
@@ -807,7 +807,6 @@ _STAMP_BOOLEAN_FLAGS = {
     "--art-approved": "creative_art_approved",
     "--visuals-approved": "creative_visuals_approved",
     "--build-complete": "build_complete",
-    "--kind-approved": "kind_approved",
 }
 
 _STAMP_REASON_FLAGS = {

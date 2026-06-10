@@ -65,7 +65,6 @@ from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import KindProposalState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -97,8 +96,7 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     STATE_KEY_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
 }
-_KIND_PROPOSED_VALUE = "kind_proposed"
-_KIND_APPROVED_VALUE = "kind_approved"
+_KIND_ASSIGN_VALUE = "kind_assign"
 
 _CREATIVE_GATE_STAMPS: dict[str, tuple[str, str]] = {
     "creative_design_spec_confirmed": ("design_spec", "confirmed"),
@@ -183,19 +181,16 @@ async def apply_todo_stamp(
             snippet_digest_fn=snippet_body_digest,
             caller_session_id=caller_session_id or "",
         )
-    elif stamp_type == _KIND_PROPOSED_VALUE:
+    elif stamp_type == _KIND_ASSIGN_VALUE:
         if phase is None:
-            raise ValueError("--kind-proposed requires a kind value")
-        return await _apply_kind_proposed_stamp(
+            raise ValueError("--kind-assign requires a kind value")
+        return await _apply_kind_assign_stamp(
             todos_db,
             writer,
             slug,
-            proposed_kind=phase,
-            rationale=value,
-            caller_session_id=caller_session_id or "",
+            assigned_kind=phase,
+            content=value,
         )
-    elif stamp_type == _KIND_APPROVED_VALUE:
-        _apply_kind_approved_stamp(writer, caller_session_id=caller_session_id or "")
     elif stamp_type == "build_complete":
         await _apply_build_complete_stamp(
             writer,
@@ -209,78 +204,50 @@ async def apply_todo_stamp(
     return await writer.commit(todos_db, slug)
 
 
-async def _apply_kind_proposed_stamp(
+async def _apply_kind_assign_stamp(
     todos_db: TodosDb,
     writer: StateWriter,
     slug: str,
     *,
-    proposed_kind: str,
-    rationale: str,
-    caller_session_id: str,
+    assigned_kind: str,
+    content: str,
 ) -> dict[str, StateValue]:
-    if proposed_kind not in KIND_ENTRY_PHASE:
-        raise StateMutationError(f"unknown proposed kind: {proposed_kind!r}")
-    if not rationale.strip():
-        raise StateMutationError("kind proposal rationale must not be empty")
-    if writer.state.lifecycle_phase != LifecyclePhase.UNKINDED.value:
-        raise StateMutationError(
-            f"cannot propose kind from lifecycle_phase {writer.state.lifecycle_phase!r}; expected 'unkinded'"
-        )
+    if assigned_kind not in KIND_ENTRY_PHASE:
+        raise StateMutationError(f"unknown assigned kind: {assigned_kind!r}")
     if writer.state.kind is not None:
-        raise StateMutationError("cannot propose kind after kind is already fixed")
+        raise StateMutationError("cannot assign kind after kind is already fixed")
 
     now = datetime.now(UTC).isoformat()
-    writer.state.kind_proposal = KindProposalState(
-        proposed_kind=proposed_kind,
-        rationale=rationale.strip(),
-        proposed_at=now,
-        caller_session_id=caller_session_id,
-    )
-    writer.state.lifecycle_phase = LifecyclePhase.KIND_PROPOSED.value
+    writer.state.kind = assigned_kind
+    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[assigned_kind].value
 
-    if proposed_kind != KIND_TASK:
+    if assigned_kind != KIND_TASK:
         return await writer.commit(todos_db, slug)
+    if not content.strip():
+        raise StateMutationError("--kind-assign task requires task-plan content")
 
-    task_plan = _render_task_plan(slug=slug, rationale=rationale.strip(), proposed_at=now)
+    task_plan = _render_task_plan(slug=slug, content=content.strip(), assigned_at=now)
     async with todos_db._session() as session:  # pylint: disable=protected-access
         async with session.begin():
             await todos_db.write_artifact(
                 slug,
                 ARTIFACT_TASK_PLAN,
                 task_plan,
-                updated_by="todo.kind_proposed",
+                updated_by="todo.kind_assign",
                 session=session,
             )
             return await writer.commit(todos_db, slug, session=session)
 
 
-def _apply_kind_approved_stamp(writer: StateWriter, *, caller_session_id: str) -> None:
-    if writer.state.lifecycle_phase != LifecyclePhase.KIND_PROPOSED.value:
-        raise StateMutationError(
-            f"cannot approve kind from lifecycle_phase {writer.state.lifecycle_phase!r}; expected 'kind_proposed'"
-        )
-    if writer.state.kind is not None:
-        raise StateMutationError("cannot approve kind after kind is already fixed")
-
-    proposed_kind = writer.state.kind_proposal.proposed_kind
-    if proposed_kind not in KIND_ENTRY_PHASE:
-        raise StateMutationError(f"unknown proposed kind: {proposed_kind!r}")
-
-    writer.state.kind = proposed_kind
-    writer.state.kind_proposal.approved_at = datetime.now(UTC).isoformat()
-    writer.state.kind_proposal.approved_caller_session_id = caller_session_id
-    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[proposed_kind].value
-
-
-def _render_task_plan(*, slug: str, rationale: str, proposed_at: str) -> str:
+def _render_task_plan(*, slug: str, content: str, assigned_at: str) -> str:
     return (
         f"# {slug} — Task Plan\n\n"
         "## Intent\n\n"
-        f"{rationale}\n\n"
+        f"{content}\n\n"
         "## Steps\n\n"
-        "1. [todo] Refine this task-plan into executable steps after approval.\n\n"
+        "1. [todo] Refine this task-plan into executable steps.\n\n"
         "## Log\n\n"
-        f"- {proposed_at}: Proposed task kind for human approval.\n"
+        f"- {assigned_at}: Assigned task kind.\n"
     )
 
 

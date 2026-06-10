@@ -11,8 +11,6 @@ from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
 
 LifecyclePhaseValue = Literal[
-    "unkinded",
-    "kind_proposed",
     "draft",
     "prd_drafting",
     "prd_human_approval",
@@ -31,7 +29,6 @@ LifecyclePhaseValue = Literal[
 ]
 
 RoadmapStatusLiteral = Literal["active", "icebox", "delivered"]
-_PRE_KIND_PHASE_VALUES = frozenset({"unkinded", "kind_proposed"})
 
 
 class DorActions(BaseModel):
@@ -175,17 +172,6 @@ class ArtifactEntry(BaseModel):
     async_provenance_complete: bool = False
 
 
-class KindProposalState(BaseModel):
-    """Analyzer proposal awaiting human approval."""
-
-    proposed_kind: str = ""
-    rationale: str = ""
-    proposed_at: str = ""
-    caller_session_id: str = ""
-    approved_at: str = ""
-    approved_caller_session_id: str = ""
-
-
 class ArtifactsState(BaseModel):
     """Artifact lifecycle stamps."""
 
@@ -245,14 +231,13 @@ class TodoState(BaseModel):
 
     schema_version: Literal[4] = 4
     phase: str = "pending"
-    lifecycle_phase: LifecyclePhaseValue = "draft"
+    lifecycle_phase: LifecyclePhaseValue | None = "draft"
     prepare_phase: str = Field(default="", exclude=True)
     work_phase: str = Field(default="", exclude=True)
     build_start_base_sha: str = ""
     build_completed_at: str = ""
     build_gate_claim_at: str = ""
     kind: str | None = TODO_KIND_DEFAULT  # canonical values: see teleclaude.types.todo_kind.ALL_DUMP_KINDS
-    kind_proposal: KindProposalState = Field(default_factory=KindProposalState)
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
@@ -288,32 +273,33 @@ class TodoState(BaseModel):
         # persisted before the cutover.
         legacy_keys = {"current", "test_spec_review"}
         lifecycle_phase = data.get("lifecycle_phase")
-        if not legacy_keys.intersection(data) and lifecycle_phase not in LEGACY_LIFECYCLE_PHASE_NORMALIZATION:
+        needs_kindless_phase_default = "kind" in data and data.get("kind") is None and "lifecycle_phase" not in data
+        if (
+            not legacy_keys.intersection(data)
+            and lifecycle_phase not in LEGACY_LIFECYCLE_PHASE_NORMALIZATION
+            and not needs_kindless_phase_default
+        ):
             return data
 
         cleaned = dict(data)
         for key in legacy_keys:
             cleaned.pop(key, None)
+        if needs_kindless_phase_default:
+            cleaned["lifecycle_phase"] = None
         if isinstance(lifecycle_phase, str):
             cleaned["lifecycle_phase"] = LEGACY_LIFECYCLE_PHASE_NORMALIZATION.get(lifecycle_phase, lifecycle_phase)
         return cleaned
 
     @model_validator(mode="after")
     def _validate_kind_window(self) -> TodoState:
-        """Keep nullable kind state bounded to the analyzer proposal window."""
-        if self.lifecycle_phase in _PRE_KIND_PHASE_VALUES:
-            if self.kind is not None:
-                raise ValueError("pre-kind lifecycle phases require kind to be unset")
-            if self.lifecycle_phase == "kind_proposed":
-                proposed_kind = self.kind_proposal.proposed_kind
-                if not proposed_kind:
-                    raise ValueError("kind_proposed state requires kind_proposal.proposed_kind")
-                if proposed_kind not in ALL_DUMP_KINDS:
-                    raise ValueError(f"unknown proposed kind: {proposed_kind!r}")
+        """Keep kind-less state represented by ``kind=None`` and no phase."""
+        if self.kind is None:
+            if self.lifecycle_phase is not None:
+                raise ValueError("kind-less todo state requires lifecycle_phase to be unset")
             return self
 
-        if self.kind is None:
-            raise ValueError(f"lifecycle_phase {self.lifecycle_phase!r} requires a canonical kind")
+        if self.lifecycle_phase is None:
+            raise ValueError(f"todo kind {self.kind!r} requires a canonical lifecycle_phase")
         if self.kind not in ALL_DUMP_KINDS:
             raise ValueError(f"unknown todo kind: {self.kind!r}")
         return self

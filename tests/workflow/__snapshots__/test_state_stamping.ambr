@@ -1,0 +1,19 @@
+# serializer version: 1
+# name: test_kind_assign_task_writes_task_plan_and_prepared_phase
+  '''
+  # stamp-target — Task Plan
+  
+  ## Intent
+  
+  Notify the release channel after deploy.
+  
+  ## Steps
+  
+  1. [todo] Refine this task-plan into executable steps.
+  
+  ## Log
+  
+  - <timestamp> Assigned task kind.
+  
+  '''
+# ---

@@ -133,7 +133,7 @@ subcommands:
         flags:
           --project-root: 'Project root (default: cwd).'
           --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
-          --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo — the content is stored as the input artifact and /analyze-todo-input classifies it, proposing a kind for human approval (it proposes only; it never executes). task is a non-SDLC action lane, created silent and grooming a task-plan.'
+          --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo — the content is stored as the input artifact and /analyze-todo-input classifies it and assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal, no human approval gate; it never executes). task is a non-SDLC action lane, created silent and grooming a task-plan.'
           --group: 'Optional grouping label for the todo entry.'
           --description: 'Optional todo-entry description.'
           --silent: 'Persist without triggering autonomous pickup dispatch. The workflow.todo.created event is still emitted with creation_mode=silent and pickup_requested=false so cache/audit consumers observe the new aggregate; only the pickup dispatch consumers gate themselves on pickup_requested. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: UC-WFL-19.)'
@@ -246,8 +246,7 @@ subcommands:
           --prd-approved: 'Mark PRD approved by the real human.'
           --architecture-skipped: 'Skip architecture phase with a reason.'
           --drift-reviewed: 'Record drift review: artifact, substantive|cosmetic, reason.'
-          --kind-proposed: 'Record analyzer proposal: kind feature|change|bug|task plus rationale/proposal text. Valid only for unkinded todos; leaves kind unset and moves lifecycle_phase to kind_proposed.'
-          --kind-approved: 'Approve the recorded kind proposal. Valid only for kind_proposed todos with kind unset; fixes kind and moves to that kind''s entry phase.'
+          --kind-assign: 'Autonomously assign a kind: feature|change|bug|task, with optional content (a task-plan body for task). Valid only for kind-less todos (kind unset, no lifecycle_phase); fixes the kind exactly once and moves the todo to that kind''s entry phase. No proposal and no human approval gate.'
           --deferrals-processed: 'Mark the deferrals artifact as processed.'
           --design-spec-confirmed: 'Confirm creative design-spec human gate.'
           --art-approved: 'Approve creative art human gate.'
@@ -269,7 +268,7 @@ subcommands:
             flags:
               --project-root: 'Project root (default: cwd).'
               --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
-              --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo classified by /analyze-todo-input, which proposes a kind for human approval and never executes.'
+              --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo classified by /analyze-todo-input, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal, no human approval gate) and never executes.'
               --group: 'Optional grouping label.'
               --description: 'Optional todo-entry description.'
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'

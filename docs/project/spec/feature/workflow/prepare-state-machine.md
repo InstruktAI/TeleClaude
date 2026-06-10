@@ -110,6 +110,19 @@ When the machine derives PREPARED
 Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
 ```
 
+### Selector
+
+The slugless selector skips kind-less Todos until `/analyze-todo-input` assigns a concrete kind. The executable scenario is `UC-WPS3`.
+
+#### UC-WPS3: Slugless prepare skips kind-less Todos awaiting classification
+
+```gherkin
+Given a kind-less Todo exists with kind unset and no lifecycle_phase
+When the orchestrator runs "telec todo prepare" without an explicit slug
+Then the prepare selector skips that Todo because it is awaiting /analyze-todo-input classification
+And it reports that no ready prepare items exist instead of raising a lifecycle_phase error
+```
+
 
 ### Cross-context references
 

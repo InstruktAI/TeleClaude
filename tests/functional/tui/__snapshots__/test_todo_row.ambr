@@ -1,0 +1,4 @@
+# serializer version: 1
+# name: test_kindless_todo_row_renders_unknown_kind_and_classify_phase
+  '  ├─■ classify-me··K:unknown··P:classify···'
+# ---

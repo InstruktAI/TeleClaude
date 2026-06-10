@@ -9,9 +9,9 @@ from teleclaude.cli.tui.utils.formatters import escape_markup
 
 _PYDANTIC_ERROR_TEXT = (
     "1 validation error for TodoDumpRequest\n"
-    "kind_proposal\n"
+    "lifecycle_phase\n"
     "  Value error, [type=value_error, "
-    "input_value={'proposed_kind': '', 'rationale_caller_session_id': ''}, "
+    "input_value='draft', "
     "input_type=dict]\n"
 )
 
