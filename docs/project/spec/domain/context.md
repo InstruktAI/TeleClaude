@@ -87,6 +87,15 @@ This context does NOT own: workflow state (`workflow`), live agent sessions (`ag
 - **Contains:** entries for every doc snippet in scope (id, type, domain, scope, description, visibility, delivered_by when applicable, source path, last-indexed timestamp).
 - **Invariants:**
   - Fully derived from source files; no hand-edits ever.
+<!-- planned:index-leading-snippet-metadata -->
+  - The index is the SINGLE SOURCE OF TRUTH for classification. `id`, `type`,
+    `scope`, and `domain` are derived from the snippet's path (`scope` from the
+    source tree, `domain` from the id's first segment, `type` from the H1
+    suffix) and materialized here — frontmatter no longer authors them, and
+    consumers read these values only from the index. A path that does not
+    resolve to a derivable classification FAILS the build loudly rather than
+    being silently skipped.
+<!-- /planned:index-leading-snippet-metadata -->
   - Re-running sync on unchanged sources produces byte-identical index output.
   - One index per scope (global, project, third-party).
   - **Snippet validation is shape-only for lifecycle frontmatter.** Context validates `delivered_by` shape: when present it must be a non-empty list of slug strings; absence means the snippet is current. No `status` field is validated or required. Roadmap relationship state is owned by lifecycle callers, so validation does not reject unknown slugs and does not enforce delivery-lag drift.
