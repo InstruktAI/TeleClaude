@@ -1,8 +1,6 @@
 ---
-description: 'Input-safety contract for the local TUI control surface: operational
-  bindings stay manual while paste and raw burst input are rejected outside text-entry
-  surfaces.'
-visibility: public
+description: 'Input-safety contract for the local TUI control surface: operational bindings stay manual while paste and raw burst input are rejected outside text-entry surfaces.'
+visibility: 'public'
 ---
 
 # Input Safety — Spec
