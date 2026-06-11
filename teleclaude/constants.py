@@ -559,9 +559,9 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "restricted": f"--sandbox --add-dir {_GEMINI_MOUNT}",
         },
         "model_flags": {
-            "fast": "",
-            "med": "",
-            "slow": "",
+            "fast": "Gemini 3.5 Flash (Low)",
+            "med": "Gemini 3.5 Flash (Medium)",
+            "slow": "Gemini 3.5 Flash (High)",
             "default": "",
         },
         "exec_subcommand": "",
