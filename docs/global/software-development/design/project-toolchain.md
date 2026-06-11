@@ -73,6 +73,17 @@ Workspace scoping (which files are in play for this session/worktree) is resolve
 snapshot-testing) layer on top of the project's own linters where TeleClaude is
 present.
 
+<!-- planned:guardrails-portable-config-lane -->
+The guardrails layer is a domain-blind engine running rule **packs**: a
+**universal pack** ships to every project that runs `telec code lint`, and a
+**TeleClaude pack** is selected only for the mother repo. The bar is locked at
+error with no per-project quality configuration; adoption is convergence, and
+brownfield flex lives only in shrinking exemption ramps. See
+`software-development/design/guardrails-engine` for the engine, the pack split,
+and the distribution model.
+<!-- /planned:guardrails-portable-config-lane -->
+
+
 ## Failure modes
 
 - **No Makefile / missing target.** `telec code <verb>` has nothing to delegate to —
