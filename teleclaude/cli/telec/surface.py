@@ -449,7 +449,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _FLAG_AFTER_DEPS,
                     Flag(
                         "--kind",
-                        desc=(f"Optional. The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}."),
+                        desc=(
+                            f"The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}. Always set it "
+                            "when creating via the CLI — agents classify their own todos; omitting it is the "
+                            "TUI dump path only."
+                        ),
                     ),
                     Flag("--silent", desc="Suppress autonomous pickup — explicit human request only", hidden=True),
                     Flag(
@@ -462,7 +466,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "By default this emits workflow.todo.created so a prepare orchestrator auto-picks-up the "
                     "todo. The hidden --silent flag suppresses that event (no auto-pickup) and must be passed "
                     "ONLY when the human explicitly asks to file a todo without starting work.",
-                    "Omitting --kind creates a kind-less todo classified by /analyze-todo-input; it proposes only and never executes.",
+                    "ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. "
+                    "Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where "
+                    "human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI "
+                    "shortcut to skip classifying work you understand.",
                     "--plan is valid only with --kind change and treats content as a complete implementation plan.",
                     "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
