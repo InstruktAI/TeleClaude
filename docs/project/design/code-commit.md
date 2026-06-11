@@ -31,11 +31,16 @@ The staging model is asymmetric and follows git's data model:
   are staged internally via `_stage_files` so the integrator's conflict
   resolution flow runs through the same sealed path.
 
-The pre-commit hook owns formatting and linting inside git's own atomicity.
+<!-- planned:telec-code-delegates-to-make -->
+Format then lint run in-process against `quality_paths` (the commit pathspec
+filtered to existing files) before `git commit --no-verify`. No framework stash.
+The installed `.git/hooks/pre-commit` is a thin fail-closed telec-owned guard
+performing only a partial-staging check. See ADR-0036.
+<!-- /planned:telec-code-delegates-to-make -->
+<!-- superseded: "The pre-commit hook owns formatting and linting inside git's own atomicity. The pre-commit hook is the single owner of formatter restaging and the retry when hooks modify staged files." -->
 
 The git wrapper redirects raw `git commit` (and `git add`) to this command
-for tmux callers. The pre-commit hook is the single owner of formatter
-restaging and the retry when hooks modify staged files.
+for tmux callers.
 
 **Caller paths:**
 
@@ -157,10 +162,13 @@ The pathspec commit is built internally from `workspace scope plus
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
-4. **Pre-commit hook owns format + lint.** Formatting and linting run inside
-   the hook, which executes inside git's own `index.lock`. Telec does not run
-   a redundant pre-flight pass; that pre-flight would operate on a stale
-   snapshot outside the atomicity primitive.
+<!-- planned:telec-code-delegates-to-make -->
+4. **Format + lint run in-process before `git commit --no-verify`.** `quality_paths`
+   is the pathspec filtered to existing files; format runs first (so lint
+   checks post-format bytes); lint runs second; deletion-only commits skip both.
+   No framework stash, no working-tree reset outside the pathspec. See ADR-0036.
+<!-- /planned:telec-code-delegates-to-make -->
+<!-- superseded: "Pre-commit hook owns format + lint." invariant -->
 
 5. **Path A/B/C classification on main.** Non-integrator commits on main are
    classified:
@@ -198,7 +206,7 @@ telec code commit --approved "feat(scope): subject"
   → partial-staging guard: block if any pathspec file has both staged
     and unstaged changes
   → real git commit -F <msg> -- <pathspec>
-  → pre-commit hook runs format + lint
+  → format + lint run in-process before --no-verify commit <!-- planned:telec-code-delegates-to-make -->
   → lock released
 ```
 
@@ -212,7 +220,7 @@ telec code commit --approved "chore(docs): update snippets [skip ci]"
   → pathspec = scope minus untracked-not-staged
   → modified-tracked docs ride the pathspec unstaged
   → real git commit -F <msg> -- <pathspec>
-  → pre-commit hook runs format + lint
+  → format + lint run in-process before --no-verify commit <!-- planned:telec-code-delegates-to-make -->
   → lock released
 ```
 
@@ -260,9 +268,13 @@ agent did not declare is precisely what the pathspec boundary prevents.
 changes. Exit code 2 — the agent's declaration must match reality; we don't
 quietly drop unreachable claims.
 
-**Pre-commit hook failure.** The hook runs format and lint. If lint fails,
-git aborts the commit and surfaces the hook output. Files remain staged for
-the agent to fix and retry.
+<!-- planned:telec-code-delegates-to-make -->
+**In-process gate failure.** Format or lint fails before `git commit --no-verify`
+is invoked. The lock is released (Python `with` guarantees `__exit__` even on
+`SystemExit`). Files are unchanged — the commit did not happen. The agent fixes
+the violation and retries `telec code commit --approved`.
+<!-- /planned:telec-code-delegates-to-make -->
+<!-- superseded: "Pre-commit hook failure." failure mode -->
 
 **Path B/C gate.** Functional files on main without human approval. Exit
 with guidance. Path B: human approves with `--approved`. Path C: human
