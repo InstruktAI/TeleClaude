@@ -131,7 +131,7 @@ If the work passes the scope/size gate, continue to plan drafting.
 - **Blind-spot honesty** — the blueprint sees only parsed edges; dynamic dispatch, registry/string-keyed wiring, config-driven behavior, cross-language boundaries, and reflection are invisible — name the categories that apply and read those areas directly.
 - **Ground the plan in the verified result** — the change surface and test adjacency derive from the verified candidate set. If the command reports the baseline missing or stale (recorded baseline commit ≠ current main), state the gap and fall back to manual exploration — never silently skip the step.
 
-The blueprint's location, freshness manifest, command surface, and supported languages are specified in `project/spec/domain/context`.
+The blueprint's location, freshness manifest, command surface, and supported languages are specified in `project/spec/codebase-blueprint`.
 
 <!-- /planned:code-intelligence-foundation -->
 

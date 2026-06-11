@@ -62,17 +62,6 @@ This context does NOT own: workflow state (`workflow`), live agent sessions (`ag
 **CRUD surface**
 : Per-kind operations (`telec context <kind> list/get/create/update/delete`) that read source, validate against the kind's schema, and write back to git-tracked source. The foundation that lets agents author their own context (self-improvement).
 
-<!-- planned:code-intelligence-foundation -->
-**Blueprint**
-: A generated structural map of the project's source — symbols (functions, classes, modules) and the dependency edges between them (calls, imports, inheritance, uses), parsed per-language. A context-engineering artifact alongside docs/skills/commands: structural code context that primes agents. Lives at `.teleclaude/blueprint/graph.json` (project root, gitignored, shared across worktrees).
-
-**Blast-radius (affected set)**
-: For an intended change to a symbol or file, the set of dependents it can affect — callers, importers, subclasses, tests — derived by reverse-traversal of the Blueprint's dependency edges. The structural input to a plan's change surface.
-
-**Blind spot**
-: A coupling the Blueprint cannot see because it is not a source-level edge — dynamic dispatch, registry/string-keyed wiring, config-driven behavior, reflection, and every cross-language boundary (Python↔Rust↔TypeScript via FFI/IPC/process). Named explicitly so the agent reads those areas manually rather than trusting an incomplete blast radius.
-<!-- /planned:code-intelligence-foundation -->
-
 ### Aggregates
 
 #### ContextItem (aggregate, per kind)
@@ -233,16 +222,6 @@ telec context agents list / get / update                         # AGENTS files;
 
 Existing `telec docs index/get` and `telec sync` continue to function as shims delegating to the new namespace during the migration window. The pillar restructure (`v2-cli-pillar-restructure`) decides retirement timing.
 
-<!-- planned:code-intelligence-foundation -->
-Blueprint surface (see `### Codebase blueprint`):
-
-```
-telec context blueprint affected <changed-files>   # blast-radius union over the baseline (freshness-checked)
-```
-
-Blueprint generation is not a public verb — `integration` runs `graphify update` at integrate-time (see the integration design's "Blueprint regeneration"). `graphify query` / `graphify path` are used directly against the baseline for discovery/reachability.
-<!-- /planned:code-intelligence-foundation -->
-
 ### Self-improvement / mining (consumer pattern)
 
 The CRUD surface enables agents to author their own context. The mining workers themselves live OUTSIDE this context — they're intelligence (agent workers) that:
@@ -252,20 +231,6 @@ The CRUD surface enables agents to author their own context. The mining workers 
 3. Write via the CRUD surfaces (`telec context skills create` for skills; `telec memory save` for observations)
 
 No mining service exists. No event subscription in context. Pattern detection is intelligence + shared utilities + CLI bridges. See `transport-rules.md` "Cross-cutting concerns via intelligence + shared utilities + CLI" for the pattern.
-
-<!-- planned:code-intelligence-foundation -->
-### Codebase blueprint (structural code intelligence)
-
-`context` owns the **Blueprint contract** — a generated structural map of the source that agents (at plan time especially) consult to obtain the blast radius of an intended change instead of grepping. The engine is the Graphify CLI, adopted as-is behind the `graph.json` data-contract seam (see `project/adr/0016-graphify-as-codebase-blueprint-engine`).
-
-- **Artifact & freshness manifest:** `.teleclaude/blueprint/graph.json` plus a sidecar `.teleclaude/blueprint/manifest.json` carrying `baseline_sha` (the `origin/main` commit the graph was built from), `generated_at`, and `status`. Both live at the project root, gitignored, shared across worktrees (like `todos.db`). The manifest is the freshness signal: a consumer compares `baseline_sha` to the current main baseline and treats a mismatch / missing manifest / non-`ok` `status` as stale.
-- **Languages:** Python, Rust, TypeScript — one graph spanning all three. Python and Rust are high-fidelity; TypeScript extracts and queries but yields a sparser dependency graph (React/JSX), so its blast-radius is less complete — validate per use.
-- **Generation (automation, never agents):** `integration` is the single writer — on a successful remote-main pull it runs the pinned no-LLM refresh `graphify update <repo-root>` and writes `graph.json` + `manifest.json` (see the integration design's *Blueprint regeneration*). `context` owns the contract (location, manifest schema, languages, the query surface); `integration` owns the write because the Blueprint is a generated cache, not authoritative state — a deliberate divergence from the single-owner default. Pinned and installed via `make install`.
-- **Agent how-to (consumption):** the blast-radius discipline lives in the `plan-draft` procedure. The agent-facing surface is **`telec context blueprint affected <changed-files>`** — the one value-add primitive (changed-files → symbol node-ids → `affected` → union, freshness-checked against the manifest), which exists because `graphify affected` resolves only unique symbol seeds and Graphify has no file→dependents primitive of its own. For discovery and reachability, `graphify query "<terms>"` and `graphify path` read the same baseline.
-- **Fallback:** if the manifest reports stale/missing, the area is unsupported, or a Blind spot applies, the agent states the gap and falls back to manual exploration — blast-radius is never silently skipped.
-
-This subsection is the concrete "codebase-intelligence documentation" the plan-draft discipline references.
-<!-- /planned:code-intelligence-foundation -->
 
 ### Context map position
 
@@ -285,7 +250,7 @@ This subsection is the concrete "codebase-intelligence documentation" the plan-d
 ## Known caveats
 
 - **Filesystem-driven, no Postgres schema, no events.** State lives in git + filesystem. Adding a database would be overhead with no payoff; the index file IS the index.
-- **`telec context sync` is the deployment boundary for the authored kinds (docs/skills/commands/agents).** No partial writes; consumers read from deployed locations, never from working-tree source. Sync at commit boundary keeps deployed == committed. <!-- planned:code-intelligence-foundation --> The generated Blueprint is the exception: it is a project-root cache written by `integration` (`.teleclaude/blueprint/graph.json` + `manifest.json`), not sync-deployed, and consumed via the Blueprint contract (manifest freshness check) rather than from a deployed location. <!-- /planned:code-intelligence-foundation -->
+- **`telec context sync` is the deployment boundary.** No partial writes; consumers read from deployed locations, never from working-tree source. Sync at commit boundary keeps deployed == committed.
 - **Mother-project gate** prevents accidental global publishing from non-mother repos.
 - **CRUD writes to source (git-tracked).** Agent self-improvement = agent authors a skill → file lands in git → sync deploys → next agent session has the new skill. Loop closed via git + sync, not via any in-memory state.
 - **No cutover follow-up.** v1 (`teleclaude/docs_index.py` + `context_selector.py` + `sync.py`) and v2 (`crates/context/`) read the same source files. They can coexist forever. The v1 Python paths can retire when convenient (or never).
