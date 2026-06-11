@@ -130,28 +130,24 @@ Node/edge schema (from `ARCHITECTURE.md`):
 - **Scoping inputs:** `.graphifyignore` (gitignore syntax incl. `!` negation)
   excludes paths; `graphify extract <subpath>` graphs a subtree.
 
-## Relevance to TeleClaude (scoped blueprint per todo)
+## Relevance to TeleClaude
 
-The goal — hand an agent an AST-derived blueprint scoped to its assignment so it
-sees blast radius without re-exploring — maps directly onto Graphify primitives:
+TeleClaude adopts Graphify as the engine behind its codebase **Blueprint**. This
+note stays scoped to Graphify-the-tool; the authoritative TeleClaude integration
+design is owned by the project docs — read those, not this section, for how it is
+actually wired:
 
-- **One graph per project, refreshed incrementally** (`--watch`, or re-extract on
-  change). Build once, query many.
-- **Per-todo blast radius** = `graphify affected "<changed symbol/file>"` — gives
-  the dependents (callers, importers, subclasses) with file:line, i.e. the impact
-  set to brief the worker with. Pair with `graphify path` to show how the todo's
-  target connects to other subsystems.
-- **Scoped context delivery** = run the MCP server (`graphify.serve`) so a worker
-  session calls `query_graph` / `get_neighbors` / `shortest_path` on demand
-  rather than receiving the whole graph — keeps token cost low and stays current
-  via hot-reload.
-- **Integration shape:** generate/update `graphify-out/graph.json` per project
-  workspace; at todo dispatch, compute the affected set for the todo's seed
-  symbols and inject it (plus an MCP endpoint) into the worker brief. Tree-sitter
-  covers our stack (Python, TypeScript, Rust). Caveats: edges are `EXTRACTED`
-  (sound) vs `INFERRED`/`AMBIGUOUS` (treat as hints); `affected` is a static
-  dependency reverse-BFS, not a semantic impact analysis; non-code semantic nodes
-  require an LLM backend.
+- **Decision + seam:** `project/adr/0016-graphify-as-codebase-blueprint-engine`
+- **Capability contract:** `project/spec/domain/context` (the "Codebase blueprint" section)
+- **Generation trigger:** the integration design's "Blueprint regeneration"
+- **Plan-time consumption:** the `plan-draft` procedure
+
+In one line: `integration` runs the no-LLM `graphify update` at integrate-time →
+`.teleclaude/blueprint/graph.json` + a `manifest.json` freshness sidecar; agents
+consume via `telec context blueprint affected <changed-files>` (no MCP). The
+durable caveats remain Graphify's: edges are `EXTRACTED` (sound) vs
+`INFERRED`/`AMBIGUOUS` (hints); `affected` is a static reverse-BFS, not semantic
+impact; cross-language and non-source couplings are blind spots.
 
 ## Sources
 

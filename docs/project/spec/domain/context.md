@@ -233,6 +233,16 @@ telec context agents list / get / update                         # AGENTS files;
 
 Existing `telec docs index/get` and `telec sync` continue to function as shims delegating to the new namespace during the migration window. The pillar restructure (`v2-cli-pillar-restructure`) decides retirement timing.
 
+<!-- planned:code-intelligence-foundation -->
+Blueprint surface (see `### Codebase blueprint`):
+
+```
+telec context blueprint affected <changed-files>   # blast-radius union over the baseline (freshness-checked)
+```
+
+Blueprint generation is not a public verb — `integration` runs `graphify update` at integrate-time (see the integration design's "Blueprint regeneration"). `graphify query` / `graphify path` are used directly against the baseline for discovery/reachability.
+<!-- /planned:code-intelligence-foundation -->
+
 ### Self-improvement / mining (consumer pattern)
 
 The CRUD surface enables agents to author their own context. The mining workers themselves live OUTSIDE this context — they're intelligence (agent workers) that:
