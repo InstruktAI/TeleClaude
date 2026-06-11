@@ -1,5 +1,9 @@
 ---
-description: 'How telec code commands resolve workspace scope and hand it to the project''s own make targets across isolated worktrees, shared branches, and explicit file overrides.'
+description: 'How telec code commands resolve workspace scope and compose the project''s native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides.'
+domain: 'software-development'
+id: 'software-development/design/workspace-scoping'
+scope: 'global'
+type: 'design'
 visibility: 'public'
 ---
 
@@ -11,12 +15,20 @@ visibility: 'public'
 and CI. Workspace scoping decides which paths belong to the current operation
 without stashing and without touching another agent's in-progress files.
 
-`telec code` is a thin scoping shim. It resolves which files the current
-operation owns, then delegates execution to the project's own `make` targets —
-it embeds no toolchain and runs no lint/test/format tools itself. The project's
-`Makefile` runs the real suite (native tools plus any repo-local policy scripts)
-with zero TeleClaude dependency. Scoping is the only value `telec code` adds on
-top of `make`.
+`telec code` is the scoping and composition layer. It resolves which files the
+current operation owns, then delegates execution — it embeds no toolchain of its
+own. `telec code lint` composes **two decoupled legs**:
+
+1. the project's own `make lint` — native tools (ruff/pyright/mypy/jscpd, eslint/tsc,
+   cargo) with **zero TeleClaude dependency**; and
+2. TeleClaude's **guardrails lane** — the policy checks
+   (`tools/lint/{guardrails,markdown,home_paths,snapshot_testing,test_discipline}.py`
+   plus the doc-index resource-validation).
+
+`make lint` never contains the guardrails lane and never calls `telec`; the
+guardrails lane is never plumbed into any `Makefile`. This is identical for
+TeleClaude's own repo and any adopting project. `telec code test|format|install`
+are pure delegations to `make test|format|install`.
 
 Three execution contexts drive file resolution:
 
@@ -24,8 +36,8 @@ Three execution contexts drive file resolution:
    the task.
 2. **Shared branch with session identity** — multiple agents may have
    uncommitted work. Scope to the current session's touched dirty files.
-3. **Shared branch without session identity** — human or CI context. Callers run
-   the full suite (no file list).
+3. **Shared branch without session identity** — human or CI context. Both legs
+   run the full suite (no file list).
 4. **Explicit files** — caller passes file arguments directly. Skip workspace
    scoping.
 
@@ -33,31 +45,28 @@ Three execution contexts drive file resolution:
 tools directly and do NOT call back into `telec code`. The delegation is
 one-directional: `telec code lint` resolves scope and invokes `make lint`,
 passing the scoped file list as a **NUL-delimited `FILES_FROM` temp file** (the
-list of paths never travels on the `make` command line, in `$@`/`$*`, or as a
-make goal). A `make lint` with no `FILES_FROM` runs the whole suite. There is no
-`telec code → make → telec code` cycle.
+paths never travel on `make`'s command line, in `$@`/`$*`, or as a make goal),
+and runs the guardrails lane over the same scoped paths. A `make lint` with no
+`FILES_FROM` runs the whole suite. There is no `telec code → make → telec code`
+cycle.
 
-Pre-commit hooks are a separate path: a wrapper writes the staged files
-NUL-delimited to a temp file and runs `make lint FILES_FROM=<tmpfile>`
-(pre-commit appends filenames as argv; the wrapper repackages them into the
-`FILES_FROM` file rather than a shell-split variable). Pre-commit auto-stashes
-unstaged changes, so the working tree it lints equals the staged snapshot. The
-full-pipeline scoping logic in `telec code lint` does not apply on this path.
+Pre-commit hooks invoke `telec code lint` / `telec code format` on the staged
+files — the single entrypoints that apply both legs, with telec owning safe path
+handling. Pre-commit auto-stashes unstaged changes, so the working tree it
+checks equals the staged snapshot.
 
 Tool invocation is separate from file scoping. `telec code` decides which files
-are in play and serializes them into the `FILES_FROM` file; the `Makefile`
-recipes own how each tool runs (e.g. `uv run pyright`, `uv run mypy`, `ruff`,
-`jscpd`, `cargo`, and the repo-local `python tools/lint/*.py` policy scripts),
-consuming the list NUL-safely. In uv-managed Python projects the make recipes
-invoke project tools through the uv-managed entrypoints defined by the Python
-tooling policy.
+are in play; the `make` recipes own how the native tools run, and the guardrails
+lane runs the policy scripts (as subprocess argv — argv-safe). In uv-managed
+Python projects the make recipes invoke project tools through the uv-managed
+entrypoints defined by the Python tooling policy.
 
 The code owner for workspace-derived scope is
 `teleclaude/quality/scope.py::resolve_workspace_scope_resolution()`. Callers may
 own explicit file arguments, output rendering, staging, or fallback behavior,
 but they do not branch on git worktree state directly. Each `telec code` verb
-then serializes the resolved scope into the `FILES_FROM` temp file and invokes
-`make`.
+then renders the resolved scope into a `make` invocation (and, for lint, the
+guardrails lane).
 
 ## Inputs/Outputs
 
@@ -70,50 +79,48 @@ then serializes the resolved scope into the `FILES_FROM` temp file and invokes
 | Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list | CLI arguments (`telec code lint <files...>`)                                                                                             |
 
-| Output                  | Description                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------ |
-| `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                          |
-| `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                  |
-| `scoped_existing_paths` | Workspace-owned existing paths, serialized into the `FILES_FROM` file / staged for commit  |
+| Output                  | Description                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                                           |
+| `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                   |
+| `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane  |
 
 ## Invariants
 
 1. **No stashing.** The scoping mechanism keeps files outside the agent's scope untouched, so there is never a need to stash anything aside.
 2. **Worktrees are task-scoped.** A worktree is isolated — all dirty files
-   belong to the task. Existing dirty files become the `FILES_FROM` list for
-   lint and the commit-staging set. Commit staging may also include deleted
-   dirty paths.
+   belong to the task. Existing dirty files drive both legs and the
+   commit-staging set; commit staging may also include deleted dirty paths.
 3. **Shared branches are session-scoped.** On a shared branch, only files the
-   current session touched and that are dirty enter the `FILES_FROM` list. This
-   prevents agents from linting or committing other agents' in-progress work.
+   current session touched and that are dirty are scoped. This prevents agents
+   from linting or committing other agents' in-progress work.
 4. **Explicit files override everything.** When the caller passes files as
-   arguments, scoping is skipped and those files become the `FILES_FROM` list
-   directly.
-5. **Pre-commit is a separate path.** A wrapper serializes pre-commit's staged
-   file list into the `FILES_FROM` temp file; the full-pipeline scoping logic
-   does not apply.
+   arguments, scoping is skipped and those files drive both legs.
+5. **Pre-commit applies both legs.** Pre-commit invokes `telec code lint` /
+   `telec code format` on staged files; the full-pipeline scoping logic does not
+   apply.
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
 7. **No session identity on a shared branch means full run.** Human and CI
-   contexts have no session identity; `telec code lint` runs `make lint` with no
-   `FILES_FROM` (the whole suite).
-8. **Tool environment is owned by make.** Scoping decides what to check; the
-   project's `make` recipes decide which tool executables and dependency
-   environment to use. `telec code` invokes no tool of its own.
+   contexts have no session identity; both legs run the whole suite.
+8. **Tool environment is owned by make and the lane.** Scoping decides what to
+   check; the project's `make` recipes own the native tool environment, and the
+   guardrails lane owns the policy scripts. `telec code` invokes no tool of its
+   own.
 9. **`make test` is never file-scoped.** The spec-anchored model has no 1:1
    source→test map, so `telec code test` delegates to `make test` with no scope.
-10. **File-scoped vs full-run behavior lives behind make.** On file-scoped runs
-    (worktree, shared branch with session identity, explicit files) `FILES_FROM`
-    points at a NUL-delimited temp file and the make recipes scope each tool to
-    those paths (native tools via `xargs -0`, policy scripts via
-    `--files-from`). On full runs (`--all`, shared branch without session
-    identity, CI) no `FILES_FROM` is set and the recipes run repo-wide. Because
-    paths travel in a NUL-delimited file rather than on a command line, a
-    filename containing spaces or shell metacharacters cannot word-split or
-    inject a make goal. Repo-wide doc-index cross-reference validation is not
-    part of `make lint` — it runs in CI — so an agent's scoped lint never fails
-    on another agent's in-flight docs.
+10. **Both legs fail the command.** `telec code lint` runs the native `make lint`
+    leg first (ruff `--fix` may edit), then the guardrails lane; it exits
+    non-zero if either leg fails. `make lint` carries no guardrails; the
+    guardrails lane carries no native tools.
+11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
+    make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
+    paths; on full runs neither is scoped. Because the make leg's paths travel
+    in a NUL file (not a command line), a filename with spaces or shell
+    metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
+    cross-reference validation runs inside the guardrails lane on full runs, so
+    an agent's scoped lint never fails on another agent's in-flight docs.
 
 ## Primary flows
 
@@ -122,8 +129,8 @@ then serializes the resolved scope into the `FILES_FROM` temp file and invokes
 ```
 telec code lint (no args, worktree detected)
   → resolve dirty paths once
-  → write existing dirty paths NUL-delimited to a FILES_FROM temp file
-  → invoke make lint FILES_FROM=<tmpfile>
+  → make lint FILES_FROM=<nul tempfile of existing dirty paths>   (native leg)
+  → guardrails lane over the same dirty paths                     (policy leg)
 ```
 
 ```
@@ -135,7 +142,7 @@ telec code test (no args)
 telec code commit (worktree detected)
   → resolve dirty paths once
   → git add dirty paths, including deletions
-  → pathspec-scoped commit (pre-commit runs make lint/format on the staged set)
+  → pathspec-scoped commit (pre-commit runs telec code lint/format on the staged set)
 ```
 
 ```
@@ -150,44 +157,40 @@ telec code changed (worktree detected)
 telec code lint (no args, not a worktree, session identity present)
   → resolve dirty paths once
   → intersect dirty files with session-touched files from transcript
-  → validate paths (no traversal, no absolute paths outside project)
-  → write scoped paths NUL-delimited to a FILES_FROM temp file
-  → invoke make lint FILES_FROM=<tmpfile>
+  → validate paths
+  → make lint FILES_FROM=<nul tempfile of scoped paths>  +  guardrails lane <scoped>
 ```
 
 ### Shared branch flow (no session)
 
 ```
 telec code lint (no args, not a worktree, no session identity)
-  → invoke make lint (no FILES_FROM — full suite)
+  → make lint (no FILES_FROM) + guardrails lane (repo-wide) — the full suite
 ```
 
 ### Explicit files flow
 
 ```
 telec code lint <files...>
-  → skip scoping entirely
-  → validate paths
-  → write provided files NUL-delimited to a FILES_FROM temp file
-  → invoke make lint FILES_FROM=<tmpfile>
+  → skip scoping; validate paths
+  → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
 
 ### Pre-commit flow
 
 ```
-pre-commit (staged files as argv)
-  → wrapper writes staged files NUL-delimited to a FILES_FROM temp file
-  → make lint FILES_FROM=<tmpfile>
-  → make recipes scope each tool to those paths (xargs -0 / --files-from)
-  → no telec code scoping logic involved
+pre-commit (staged files)
+  → telec code lint <staged>   (make leg + guardrails lane; telec owns safe transport)
+  → telec code format <staged>
+  → no separate scoping logic involved
 ```
 
 ### Full-run flow
 
 ```
-telec code lint --all   (or make lint with no FILES_FROM, CI, no-session shared branch)
-  → make lint (no FILES_FROM) → every tool runs repo-wide
-  → doc-index cross-reference validation runs in CI, not in make lint
+telec code lint --all   (or CI, no-session shared branch)
+  → make lint (no FILES_FROM) + guardrails lane (repo-wide)
+  → doc-index cross-reference validation runs inside the guardrails lane
 ```
 
 ## Failure modes
@@ -200,15 +203,13 @@ workspace scope.
 **Response:** Exit non-zero. Error message includes actionable guidance:
 `Workspace scope unavailable. Pass files explicitly: telec code lint <files...>`
 
-The agent reads this and retries with explicit file arguments. No silent
-fallback to a broader scope.
+No silent fallback to a broader scope.
 
 ### No session identity on shared branch
 
 No `teleclaude_identity.json` present. This is a human or CI context.
 
-**Response:** Run `make lint` with no `FILES_FROM` — the full suite. Expected
-behavior for manual runs.
+**Response:** Both legs run the full suite. Expected behavior for manual runs.
 
 ### No recognised language artifacts / missing make target
 
@@ -216,5 +217,4 @@ behavior for manual runs.
 delegate to.
 
 **Response:** `make` reports the missing target; `telec code <verb>` surfaces it
-and points at the project-toolchain assessment to wire the target up. Use
-`telec code lint/test/format` after the `Makefile` exposes the target.
+and points at the project-toolchain assessment to wire the target up.

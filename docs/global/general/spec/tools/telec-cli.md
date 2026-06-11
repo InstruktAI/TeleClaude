@@ -60,18 +60,18 @@ test hook is library-only (`cargo test --workspace --lib --quiet`) unless a
 future task changes the hook.
 
 <!-- planned:telec-code-delegates-to-make -->
-`telec code lint|test|format|install` are thin scoping shims: each resolves
-workspace scope and delegates to the project's own `make` target. `telec code
-lint` resolves scope and invokes `make lint`, passing the scoped file list as a
-NUL-delimited `FILES_FROM` temp file (paths never travel on the command line); a
-full `make lint` with no `FILES_FROM` runs on `--all`, CI, or a no-session
-shared branch. `telec code test` runs `make test` (unscoped); `telec code
-format` runs `make format`; `telec code install` runs `make install`. The
-project's `Makefile` owns the toolchain — native tools plus any repo-local
-policy scripts — and runs with zero TeleClaude dependency; `telec code` embeds
-no tool of its own and only serializes the resolved file scope into the
-`FILES_FROM` file. There is no `--step` flag and no guardrails subcommand:
-guardrails run as a repo-local lint step behind `make lint`, never as a `telec`
-command.
+`telec code` is the scoping + composition layer. `telec code lint` resolves
+workspace scope and runs **two decoupled legs**: (1) the project's own `make
+lint` — native tools only, zero TeleClaude dependency — receiving the scoped
+file list as a NUL-delimited `FILES_FROM` temp file (paths never travel on the
+command line); and (2) TeleClaude's **guardrails lane** (the policy checks) over
+the same scoped files. It exits non-zero if either leg fails; a full run (no
+`FILES_FROM`) happens on `--all`, CI, or a no-session shared branch. `telec code
+test` runs `make test` (unscoped); `telec code format` runs `make format`;
+`telec code install` runs `make install`. The project's `Makefile` owns only the
+native toolchain and never contains guardrails or `telec`; the guardrails lane
+is TeleClaude's and is never plumbed into any `Makefile`. There is no `--step`
+flag and no guardrails subcommand — guardrails run only as the second leg of
+`telec code lint`.
 <!-- /planned:telec-code-delegates-to-make -->
 
