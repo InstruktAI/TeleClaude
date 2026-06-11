@@ -257,6 +257,97 @@ And this is justified because every change the integrator commits was individual
 - **Integrator conflict resolution after a squash merge:** edit resolved file; `telec code add <resolved>`; `telec code commit --approved "<msg>"`.
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
+<!-- planned:telec-code-delegates-to-make -->
+### Commit-time gates — in-process, no framework stash
+
+`telec code commit` runs format then lint in-process against `quality_paths`
+(the commit pathspec filtered to existing files) before `git commit --no-verify`.
+No framework stash occurs; files outside the pathspec are not touched. The
+installed `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
+partial-staging check as a backstop for raw `git commit` invocations.
+
+#### UC-CGIP-1 — Commitizen format check blocks malformed message
+
+```
+Given message does not match type(scope): subject or type: subject
+When agent invokes telec code commit --approved "<bad-message>"
+Then SystemExit(1) before format/lint/git-commit invoked
+```
+
+#### UC-CGIP-2 — Gates run format-before-lint against quality_paths
+
+```
+Given pathspec contains existing and deleted files
+When agent invokes telec code commit --approved "<msg>"
+Then quality_paths = pathspec filtered to existing files only
+And handle_format(quality_paths) is called before handle_lint(quality_paths)
+```
+
+#### UC-CGIP-3 — Deletion-only commit bypasses format/lint
+
+```
+Given pathspec contains only a deleted file
+When agent invokes telec code commit --approved "<msg>"
+Then quality_paths is empty
+And neither handle_format nor handle_lint is invoked
+And git commit --no-verify proceeds
+```
+
+#### UC-CGIP-4 — Clean commit proceeds with --no-verify
+
+```
+Given format and lint both pass on quality_paths
+When agent invokes telec code commit --approved "<msg>"
+Then repo.git.commit is called with "--no-verify" in its args
+And no framework stash occurs
+```
+
+#### UC-CGIP-5 — Format failure blocks commit
+
+```
+Given format fails on quality_paths
+When agent invokes telec code commit --approved "<msg>"
+Then SystemExit(1) before repo.git.commit invoked
+```
+
+#### UC-CGIP-6 — Lint failure blocks commit
+
+```
+Given lint fails on quality_paths (after format passed)
+When agent invokes telec code commit --approved "<msg>"
+Then SystemExit(1) before repo.git.commit invoked
+```
+
+#### UC-CGIP-7 — Lock releases cleanly on gate failure
+
+```
+Given handle_lint raises SystemExit(1)
+When telec code commit --approved "<msg>" is invoked
+Then main_branch_lock __exit__ is called (lock released)
+```
+
+### Thin hook backstop
+
+#### UC-TH-1 — Thin hook partial-staging backstop
+
+```
+Given agent bypasses telec and invokes raw git commit with partially staged files
+When the thin .git/hooks/pre-commit runs
+Then it detects the overlap via NUL-safe Python (no unquoted shell expansion)
+And exits non-zero naming the partially staged paths
+And no INSTALL_PYTHON is present in .git/hooks/pre-commit
+```
+
+#### UC-TH-2 — Thin hook passes clean commits
+
+```
+Given working tree has no partially staged files
+When raw git commit is attempted
+Then .git/hooks/pre-commit exits 0
+And the commit proceeds (gates were enforced in-process by telec code commit)
+```
+<!-- /planned:telec-code-delegates-to-make -->
+
 ## See also
 
 - docs/project/design/code-commit.md

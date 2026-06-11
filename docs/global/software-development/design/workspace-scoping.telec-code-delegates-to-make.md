@@ -1,9 +1,5 @@
 ---
 description: 'How telec code commands resolve workspace scope and compose the project''s native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides.'
-domain: 'software-development'
-id: 'software-development/design/workspace-scoping'
-scope: 'global'
-type: 'design'
 visibility: 'public'
 ---
 
@@ -53,10 +49,11 @@ and runs the guardrails lane over the same scoped paths. A `make lint` with no
 `FILES_FROM` runs the whole suite. There is no `telec code → make → telec code`
 cycle.
 
-Pre-commit hooks invoke `telec code lint` / `telec code format` on the staged
-files — the single entrypoints that apply both legs, with telec owning safe path
-handling. Pre-commit auto-stashes unstaged changes, so the working tree it
-checks equals the staged snapshot.
+`telec code commit` runs format then lint in-process against `quality_paths`
+(the commit pathspec filtered to existing files) before `git commit --no-verify`.
+No framework stash, no working-tree reset outside the pathspec. The installed
+`.git/hooks/pre-commit` is a thin telec-owned guard performing only a
+partial-staging check as a backstop for raw `git commit` invocations.
 
 Tool invocation is separate from file scoping. `telec code` decides which files
 are in play; the `make` recipes own how the native tools run, and the guardrails
@@ -99,9 +96,10 @@ guardrails lane).
    from linting or committing other agents' in-progress work.
 4. **Explicit files override everything.** When the caller passes files as
    arguments, scoping is skipped and those files drive both legs.
-5. **Pre-commit applies both legs.** Pre-commit invokes `telec code lint` /
-   `telec code format` on staged files; the full-pipeline scoping logic does not
-   apply.
+5. **Commit gates run in-process, no stash.** `telec code commit` runs format
+   then lint against `quality_paths` before `git commit --no-verify`; the thin
+   `.git/hooks/pre-commit` performs only a partial-staging backstop. No
+   framework stash, no working-tree reset outside the commit pathspec.
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
@@ -145,7 +143,10 @@ telec code test (no args)
 telec code commit (worktree detected)
   → resolve dirty paths once
   → git add dirty paths, including deletions
-  → pathspec-scoped commit (pre-commit runs telec code lint/format on the staged set)
+  → quality_paths = pathspec filtered to existing files
+  → handle_format(quality_paths)                          (in-process, no stash)
+  → handle_lint(quality_paths)                            (in-process, no stash)
+  → git commit --no-verify
 ```
 
 ```
@@ -179,13 +180,14 @@ telec code lint <files...>
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
 
-### Pre-commit flow
+### Thin hook flow
 
 ```
-pre-commit (staged files)
-  → telec code lint <staged>   (make leg + guardrails lane; telec owns safe transport)
-  → telec code format <staged>
-  → no separate scoping logic involved
+raw git commit (partial-staging backstop)
+  → .git/hooks/pre-commit (thin telec-owned guard)
+  → NUL-safe Python partial-staging check only
+  → exits non-zero if staged + unstaged overlap detected
+  → quality gates NOT re-run (they ran in-process via telec code commit)
 ```
 
 ### Full-run flow

@@ -1,9 +1,5 @@
 ---
 description: 'AI-safe telec CLI commands for project work, docs sync, todo scaffolding, and configuration.'
-domain: 'general'
-id: 'general/spec/tools/telec-cli'
-scope: 'global'
-type: 'spec'
 visibility: 'public'
 ---
 
@@ -17,14 +13,10 @@ AI-safe `telec` commands for project work. Run `telec <subcommand> --help` for d
 
 ## Canonical fields
 
-Pending `revive-todo-update-command`, the todo mutation surface includes
-`telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <kind>]
-[--force]` and no longer includes public `telec todo rename` or
-`telec todo set-deps` verbs. The command table below is generated from the CLI
-surface and will reflect this when the delivering code updates
-`teleclaude/cli/telec/surface.py` and `telec sync` runs.
-
-There are many of course, but this section is now intended to reveal the full surface of baseline commands that we want you to know out of the box.
+The command table below is generated from the live CLI surface (`CLI_SURFACE`
+in `teleclaude/cli/telec/surface.py`) and re-rendered into this baseline doc on
+every `telec sync`, so it always reflects the current surface. It reveals the
+full set of baseline commands every agent should know out of the box.
 
 <!-- @exec: telec -h -->
 
@@ -58,7 +50,7 @@ own. `telec code lint` resolves workspace scope and runs **two decoupled legs**:
 eslint/tsc, cargo), zero TeleClaude dependency — receiving the scoped file list
 as a NUL-delimited `FILES_FROM` temp file (paths never travel on the command
 line); and (2) TeleClaude's **guardrails lane** (the policy checks) over the same
-scoped files. It exits non-zero if either leg fails; a full run (no `FILES_FROM`)
+scoped paths. It exits non-zero if either leg fails; a full run (no `FILES_FROM`)
 happens on `--all`, CI, or a no-session shared branch. `telec code test
 [--update-snapshots]` runs `make test` (unscoped; snapshot-update forwarded);
 `telec code format [<files>]` runs `make format` (scoped to the files when
@@ -81,8 +73,15 @@ may use `-p <package>`; cross-crate and full runs use workspace scope). `telec
 code` selects which files are in scope and delegates; it does not invoke Cargo
 itself.
 
-`telec code commit` remains decoupled from the dev-time pipeline. Commit-time
-gates are owned by the pre-commit hooks (which invoke `telec code lint` /
-`telec code format` on the staged set). The current Rust test hook is
-library-only (`cargo test --workspace --lib --quiet`) unless a future task
-changes the hook.
+`telec code commit` runs format then lint in-process against `quality_paths`
+(the commit pathspec filtered to existing files) before `git commit --no-verify`.
+No framework stash, no working-tree reset outside the pathspec. The installed
+`.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
+partial-staging check as a backstop for raw `git commit` invocations.
+
+## Known caveats
+
+- Removing or renaming a subcommand is a breaking change.
+- Changing argument order or required flags is a breaking change.
+- Adding a subcommand is a feature addition.
+- Description-only changes are patches.
