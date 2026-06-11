@@ -1,8 +1,4 @@
 ---
-id: 'project/adr/0035-active-runner-driver-ownership'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
 visibility: 'public'
 number: '35'
 date: '2026-06-11'

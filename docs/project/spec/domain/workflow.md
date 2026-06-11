@@ -121,7 +121,7 @@ kind mutation is refused.
 : A short-lived durable claim keyed by `(canonical_project_root, slug, lane)` that prevents concurrent lifecycle-runner wake-ups from starting duplicate sessions in the boot gap — the interval between a runner deciding to spawn and the spawned session becoming observable. The claim is acquired before spawning and released once the spawned session id is recorded as the todo's `active_runner` (or expired by lease rules if the spawn never lands). It guards only the race; durable ownership thereafter lives in `active_runner`.
 
 **Active runner**
-: The durable, single-valued workflow-owned field on a Todo holding the agent session id currently driving that todo's lifecycle — a link todo → session, with nothing else denormalized onto it. A non-null `active_runner` marks the todo as driven; lane, command, liveness, and project are resolved by dereferencing the session id against the agent-runtime session record. The dispatcher that spawns a lifecycle session is its sole writer, recording the returned session id at spawn — the lifecycle runner for autonomous dispatch, the manual-start command path for an operator `telec todo work|prepare`. The state machine and the driven session never write it. It is single-valued — one driver per todo — and a lane handoff is clear-on-close then write-on-next-dispatch, never a live overwrite. Sub-workers a driver dispatches (reviewers, drift analyzers, build/finalize workers) do not hold it; for `kind=task` the dispatched session is itself the driver. It is cleared on a pure session-id match when the driving session closes (`agent_runtime.session.ended` consumption); a link naming a non-live session is stale, and the lifecycle runner clears it and dispatches.
+: The durable, single-valued workflow-owned field on a Todo holding the agent session id currently driving that todo's lifecycle — a link todo → session, with nothing else denormalized onto it. A non-null `active_runner` marks the todo as driven; lane, command, liveness, and project are resolved by dereferencing the session id against the agent-runtime session record. The dispatcher that spawns a lifecycle session is its sole writer, recording the returned session id at spawn — the lifecycle runner for autonomous dispatch, the manual-start command path for an operator `telec todo work|prepare`. The state machine and the driven session never write it. It is single-valued — one driver per todo — and a lane handoff is clear-on-close then write-on-next-dispatch, never a live overwrite. Sub-workers a driver dispatches (reviewers, drift analyzers, build/finalize workers) do not hold it; for `kind=task` the dispatched session is itself the driver. A link naming a non-live session is stale: the lifecycle runner clears it and dispatches. Session close is a runner wake-up, so a closed driver's link is cleared on the next evaluation.
 <!-- /planned:runner-dispatch -->
 
 **Delivery commit**
@@ -422,8 +422,8 @@ new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
 #### `agent_runtime.session.ended`
 
 - **Producer:** `agent_runtime`
-- **Reaction:** if the ended session is bound to an incomplete workflow todo and the close was explicitly operator-initiated as a stop-work action, workflow sets `hold=true` on that todo and emits `workflow.todo.updated`. Normal worker completion, orchestrator self-cleanup, agent self-quit, tmux death, and maintenance reaping do not set hold.
-- **Failure handling:** if the session cannot be correlated to exactly one `(project, slug)`, workflow logs the skipped interlock and leaves todo state unchanged. Ambiguous close events never infer a hold.
+- **Reaction:** the lifecycle runner consumes the close as a wake-up, re-evaluates the todo the closed session was driving, and clears the now-stale `active_runner` link before applying normal eligibility (a held todo stays parked). The close event itself sets no hold; hold from a manual kill is set at the close command, not inferred here.
+- **Failure handling:** if the close cannot be correlated to exactly one `(project, slug)`, workflow leaves todo state unchanged and logs the skip.
 
 #### Workflow lifecycle wake-ups
 
@@ -865,16 +865,15 @@ Then it returns the digest-anchored unified diff between those two exact version
 And the todo-scoped diff (UC-WFL-18 above) is implemented in terms of this primitive — it never bypasses the digest-anchored history
 ```
 
-#### UC-WFL-19: Silent creation persists state and suppresses pickup dispatch
+#### UC-WFL-19: Legacy silent creation is a boundary alias for hold
 
 ```
-Given an operator wants to enqueue substantive work without triggering autonomous pickup (e.g., bulk-queueing a backlog)
-When the workflow service creates "<slug>" with substantive content and `creation_mode = silent`
-Then the todo row, roadmap row, input artifact, and artifact-version row are persisted exactly as in UC-WFL-1
-And workflow emits workflow.todo.created with creation_mode=silent and pickup_requested=false
-And autonomous pickup consumers observe the event and explicitly do NOT dispatch
-And cache, bridge-refresh, and audit consumers process the event normally
-And `telec workflow todo create <slug> <content> --silent` is the CLI form that drives silent mode at the boundary
+Given a legacy caller creates "<slug>" with the retired `creation_mode = silent` (or `--silent`)
+When the workflow service accepts the creation
+Then the todo is created with `hold=true` and no `creation_mode = silent` state is persisted
+And `workflow.todo.created` carries no silent or `pickup_requested` dispatch semantics
+And the lifecycle runner decides dispatch from `hold` and autostart policy alone, never from a creation-mode flag
+And a `task` created this way is `hold=false` (task no-autostart is policy, not hold)
 ```
 
 <!-- planned:runner-dispatch -->
@@ -919,23 +918,22 @@ And task autostart policy remains false
 And the task is skipped by the runner for policy-disabled, not for hold
 ```
 
-#### UC-WFL-22: Operator session close interlocks by setting hold
+#### UC-WFL-22: Manual session close halts via explicit hold
 
 ```gherkin
-Given a live lifecycle session is bound to incomplete todo "my-slug"
-When an operator explicitly closes that session with stop-work intent
-Then agent_runtime emits `agent_runtime.session.ended` with enough project/slug/initiator information for workflow to correlate it
-And workflow clears `active_runner` on "my-slug" where it equals the closing session id
-And workflow sets `hold=true` on "my-slug"
-And the lifecycle runner does not immediately re-dispatch replacement work for that todo
+Given a live lifecycle session is driving todo "my-slug"
+When an operator manually closes that session (`telec sessions end` or a UI close affordance)
+Then the close command sets `hold=true` on "my-slug"
+And the closing session emits `agent_runtime.session.ended`
+And the lifecycle runner wakes, finds "my-slug" held, and does not re-dispatch it
+And the stale `active_runner` link is cleared
 ```
 
 ```gherkin
-Given a lifecycle session ends because the agent completed, self-quit, was cleaned up by normal prepared/finalize cleanup, or died unexpectedly
-When workflow consumes `agent_runtime.session.ended`
-Then workflow clears `active_runner` where it equals the closing session id, releasing driver ownership
-And workflow does not set hold
-And future runner dispatch remains governed by the normal eligibility gates
+Given a lifecycle session ends because the agent completed, self-quit, was cleaned up by normal prepared/finalize cleanup, or died
+When the lifecycle runner wakes on `agent_runtime.session.ended`
+Then no hold is set
+And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
 <!-- /planned:runner-dispatch -->
 
@@ -1003,4 +1001,5 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 <!-- /planned:orchestrator-terminal-self-end -->
 <!-- planned:runner-dispatch -->
 - docs/project/adr/0035-active-runner-driver-ownership.md
+- docs/project/adr/0036-manual-close-is-an-explicit-halt.md
 <!-- /planned:runner-dispatch -->
