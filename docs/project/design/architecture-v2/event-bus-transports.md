@@ -104,7 +104,9 @@ fast-path stays gone.
   `cluster.*` `ClusterEnvelope`. Consumers ignore unknown fields and
   tolerate absent optionals; a consumer that rejects an envelope because
   of an unknown field is a defect. This implements
-  `project/adr/0026-cross-version-fleet-compatibility`.
+  `project/adr/0030-cross-node-envelope-schema-versioning`, the
+  envelope-level realization of the fleet compatibility contract
+  (`project/adr/0026-cross-version-fleet-compatibility`).
 - **Cross-process delivery is the default within a scope.** Any event
   emitted at a given scope is visible to any process subscribed to that
   scope's channel via that scope's Redis. There is no per-process
