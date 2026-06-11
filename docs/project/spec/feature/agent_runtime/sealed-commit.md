@@ -346,6 +346,16 @@ When raw git commit is attempted
 Then .git/hooks/pre-commit exits 0
 And the commit proceeds (gates were enforced in-process by telec code commit)
 ```
+
+#### UC-TH-3 — Thin hook fails closed on git status probe failure
+
+```
+Given the git status probe (git status --porcelain=v1 -uall -z) returns nonzero
+When the thin .git/hooks/pre-commit runs
+Then the hook exits nonzero immediately
+And the commit is aborted
+And the partial-staging check is NOT silently bypassed
+```
 <!-- /planned:telec-code-delegates-to-make -->
 
 ## See also
