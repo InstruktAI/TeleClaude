@@ -98,7 +98,7 @@ produce a delivery-reverting commit on origin/main. `--confirmed` is
 the integrator's deliberate ratification that the inspection has
 happened.
 
-**Notes carried over from earlier prose:** `rebase.autoStash` and
+**Wrapper defaults:** `rebase.autoStash` and
 `merge.autoStash` are forced off on every wrapper-driven git call.
 `git add -A`/`git add --all`/`git add .` are blocked on main for
 non-integrators regardless of the table above — staging on main always
