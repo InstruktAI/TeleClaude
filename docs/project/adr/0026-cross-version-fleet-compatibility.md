@@ -1,73 +1,52 @@
 ---
-adr_status: accepted
+adr_status: 'proposed'
 date: '2026-06-11'
-description: Cross-node event envelopes carry schema versions and consumers read them
-  tolerantly so mixed-version fleets can interoperate across additive changes.
+description: 'A deliberately multi-version fleet (alpha ahead of beta ahead of stable, permanently) keeps interoperating only by an engineered contract, not by SemVer labels: schema-versioned event envelopes, tolerant readers as law, wire upcasters for non-additive changes, and expand/contract gated on the slowest channel. Automating deployment without this contract amplifies breakage rather than preventing it.'
 number: '26'
-visibility: public
+visibility: 'public'
 ---
 
-# Cross Version Fleet Compatibility — ADR
+# ADR-0026: Cross-Version Fleet Compatibility Contract — ADR
 
 ## Context
 
-TeleClaude fleets can contain nodes upgraded at different times. Cross-node
-events therefore need a compatibility rule that lets newer producers add
-envelope fields without breaking older consumers, and lets newer consumers read
-baseline envelopes emitted before the version stamp existed.
+The fleet is permanently multi-version by design: `alpha` leads, `beta` trails, `stable` (friends, Raspberry Pi) trails further. The shared substrate between heterogeneous nodes is Redis — the `cluster.*` and `workflow.*` event channels (ADR-0013), streams, leases, and any direct session-to-session calls. Per-machine SQLite/Postgres is not shared, so the blast surface for cross-version breakage is the event bus and direct RPC, not local storage.
 
-The v2 Rust `EventEnvelope` and the v1 `cluster.*` `ClusterEnvelope` are the two
-cross-node envelopes in scope for this foundation slice. The Python stream
-`EventEnvelope` is already versioned and already allows extra fields. Capability
-gating, feature registries, and generalized upcasters are separate work.
+SemVer plus the `alpha`/`beta`/`stable` channels is a *labeling* convention. It communicates "this is breaking" to humans; it enforces nothing on the wire. Today the machinery is absent: the v2 `EventEnvelope` carries `channel, idempotency_key, emitted_at, principal, payload` and **no schema version**; the v1 fan-out consumer `from_json`s an event and dispatches it, so a field-shape change throws. As it stands, an `alpha` breaking change *would* reach a friend's `stable` box and break it.
+
+This reframes the deployment work: once auto-install is reliable, it becomes a fast, reliable machine for pushing `alpha`'s breaking changes onto `stable`. **Automating distribution without a compatibility contract amplifies the risk it does not remove.** The contract is therefore a prerequisite of safe auto-deployment, not an adjacent nicety.
 
 ## Decision
 
-Every cross-node envelope carries a schema-version stamp. The current envelope
-shape is version `1`.
+Adopt an engineered compatibility contract for everything crossing between nodes. Four mechanisms, layered:
 
-Consumers are tolerant readers:
+1. **Schema-versioned envelopes.** Every event crossing Redis carries a `schema_version`. The `EventEnvelope` (and the `cluster.*` `ClusterEnvelope`) gain this field.
+2. **Tolerant readers, as law.** Consumers ignore unknown fields and tolerate absent optionals (Postel). Additive changes within a major are then safe across the spread by construction. This is a hard rule, not a best practice — a consumer that rejects on unknown fields is a defect.
+3. **Wire upcasters for the non-additive cases.** When a shared event's shape changes non-additively, the *consumer* upcasts the event to the shape it understands before handling (the ADR-0025 pattern applied at the wire boundary — "upcasting of subscriptions"). This lives on the consume side so a lagging node can swallow a newer producer's event.
+4. **Expand/contract gated on the slowest channel.** To make a breaking change: *expand* (introduce the new alongside the old, both supported), wait until the spread has rolled past the expand point, then *contract* (remove the old) — and contraction is permitted only once the **slowest channel (`stable`)** universally carries the expand. The `alpha → stable` propagation lag *is* the compatibility window: nothing may be removed until the trailing node has passed the expand.
 
-- An absent `schema_version` decodes as version `1`, preserving compatibility
-  with baseline envelopes emitted before the stamp existed.
-- Unknown added fields are ignored by consumers that do not understand them.
-- A present malformed known field remains malformed and must fail at the
-  decode boundary.
-- A consumer that rejects an otherwise valid cross-node envelope because of an
-  unknown field is defective.
+Ownership: the **event-bus** owns the versioned envelope and the upcast hook; **each domain** owns expand/contract on its own events; **`reconciliation`** owns the fleet version/capability map that answers "has the slowest channel caught up?" (ADR-0024, ADR-0027).
 
-This decision applies to the v2 Rust `EventEnvelope` and the v1 `cluster.*`
-`ClusterEnvelope`. Future non-additive envelope changes must bump the schema
-version and provide an explicit migration strategy.
+A pragmatic delivery floor: **versioned envelope + tolerant-reader-as-law + additive-only-within-a-major** makes the large majority of changes safe with zero upcasters. Wire upcasters are built only when a genuinely non-additive change to a shared shape first demands one.
 
 ## Consequences
 
-Mixed-version fleets can tolerate additive envelope evolution: newer nodes can
-emit stamped envelopes and older tolerant readers continue processing the
-fields they understand. Newer nodes can also read unstamped baseline envelopes
-without treating absence as corruption.
+**Positive:**
 
-The rule constrains future event-consumer implementations. Envelope and
-cross-node event payload decoders must not opt into unknown-field rejection
-unless they are validating a non-event ingress boundary. Strict validation
-remains appropriate for HTTP request and query models, which are not governed by
-the cross-node tolerant-reader rule.
+- A deliberately-skewed fleet stays interoperable by construction; a friend's `stable` machine does not fail because `alpha` moved.
+- Auto-deployment becomes safe to automate, because the thing it automates (propagation) can no longer carry silent breakage.
+- The "gated on the slowest channel" rule turns into a concrete, queryable check via the capability map (ADR-0027) rather than human SemVer reasoning.
 
-The version stamp is only a foundation. It does not by itself provide
-capability negotiation, feature gating, or semantic upcasting; those remain
-explicit follow-up concerns.
+**Negative:**
+
+- Every cross-node event needs a version stamp and a tolerant decoder; existing consumers must be audited against the tolerant-reader rule.
+- Expand/contract lengthens the time-to-remove for breaking changes to at least one full `alpha → stable` propagation cycle. This is the intended cost of fleet safety, not a bug.
+- Wire upcasters share the cold-data/chain-growth caveats of ADR-0025; a never-contracted change keeps its upcaster indefinitely.
 
 ## Alternatives Considered
 
-- **Leave envelopes unstamped and rely on informal additive discipline.**
-  Rejected because consumers would have no durable way to reason about envelope
-  shape, and future compatibility work would have to infer baseline state from
-  absence alone.
-- **Build the full upcaster framework immediately.** Rejected for this slice
-  because the immediate compatibility need is additive-envelope tolerance; a
-  generalized upcaster would add more machinery before a non-additive migration
-  exists.
-- **Reject unknown fields to keep schemas strict.** Rejected for cross-node
-  events because strict unknown-field rejection breaks rolling upgrades. Strict
-  ingress validation remains correct for request/query boundaries outside the
-  event mesh.
+**Rely on SemVer + channels alone.** Rejected: a labeling convention enforces nothing on the wire; the current system demonstrates the failure (no envelope version, intolerant consumers).
+
+**Homogenize the fleet (everyone on one version).** Rejected: it contradicts the entire alpha/beta/stable premise. The version spread is a deliberate feature, so interop must be engineered, not avoided.
+
+**Versioned envelopes + upcasters, but no expand/contract discipline.** Rejected: upcasters handle decode, but without gating removal on the slowest channel a producer can still emit a shape no lagging consumer can represent. Expand/contract is what bounds *when* a change is safe, not just *how* it is decoded.
