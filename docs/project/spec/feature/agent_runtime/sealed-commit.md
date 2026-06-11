@@ -66,8 +66,8 @@ And the card surfaces `telec code add` and `--include` for new-file declaration
 ```
 Given an agent on `main` commits a change that touches a doc snippet (docs/**)
 When the commit lands via `telec code commit --approved`
-Then the agent must dispatch an independent reviewer on the commit SHA via `/next-review-commits`
-And the reviewer is a fast or medium agent running the doc-hygiene lane over the changed snippets
+Then an independent fast-or-medium reviewer runs the doc-hygiene lane over the changed snippets on the commit SHA via `/next-review-commits`
+And the agent reuses the reviewer already open for the patch series, or starts one if none is open — never a second
 And the authoring agent never reviews a snippet it wrote
 And a config/state/README-only commit with no doc snippet requires no review
 ```
