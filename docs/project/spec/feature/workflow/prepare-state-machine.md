@@ -213,13 +213,3 @@ And no roadmap row is created for "unknown-prepare"
 <!-- planned:runner-dispatch -->
 - **Runner-owned dependent dispatch supersedes PREPARED auto-continue.** The two current caveats above describe the pre-runner target. After `runner-dispatch`, the concrete dispatch still happens automatically, but it is performed by `workflow.lifecycle_runner` from the emitted wake-up event, not by the parent prepare state-machine response. Parent-worker reuse is forbidden for child dispatch; each child session is explicitly bound to its own slug.
 <!-- /planned:runner-dispatch -->
-
-<!-- planned:orchestrator-terminal-self-end -->
-- **The PREPARED terminal script states the objective outcome, not a next-step decision.** It reports that the Todo is prepared and any reconciled drift is resolved, and emits the cleanup commands — end each live slug worker, then the orchestrator self-end. It does not prompt the orchestrator to start the build cycle. Alongside the self-end it carries a lineage-conditioned reminder: an orchestrator that reached PREPARED as a terminal prepare run self-ends; an orchestrator that bounced here in-line from `telec todo work {slug}` to reconcile drift resumes `telec todo work {slug}` instead of self-ending. The machine states the condition; the orchestrator, which alone knows its own lineage, applies it. No runtime-state marker and no worktree-presence inference is used to detect the bounce.
-<!-- /planned:orchestrator-terminal-self-end -->
-
-## See Also
-
-<!-- planned:orchestrator-terminal-self-end -->
-- docs/project/adr/0034-orchestrator-terminal-resumes-via-lineage-awareness.md
-<!-- /planned:orchestrator-terminal-self-end -->
