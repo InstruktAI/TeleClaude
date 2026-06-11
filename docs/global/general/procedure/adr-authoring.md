@@ -75,7 +75,7 @@ broken:
 5. **Sanity check before commit:**
    - The decision is stated clearly enough that a future agent could re-evaluate it on its merits.
    - The consequences include the negative ones, not just the wins.
-   - The ADR is discoverable: filename matches `id` frontmatter; number matches filename prefix; date is correct; status is accurate.
+   - The ADR is discoverable: the path-derived id matches the filename; authored `number` matches the filename prefix; date is correct; status is accurate.
 
 6. **Record supersession forward-only.** If this ADR supersedes a prior one, set
    this ADR's `supersedes` frontmatter to the prior ADR's id. Do NOT modify the
@@ -107,7 +107,7 @@ Two failure modes dominate. The first is **authoring an ADR as something it is n
 
 ## Recovery
 
-- An ADR with the wrong number can be renamed (file + frontmatter `id` + frontmatter `number`). Other ADRs that reference the renumbered ADR via `supersedes` must be updated.
+- An ADR with the wrong number can be renamed (rename the file and update frontmatter `number`; the id re-derives from the path). Other ADRs that reference the renumbered ADR via `supersedes` must be updated.
 - An ADR that should have been written but wasn't can be written retroactively. The `date` should reflect when the decision was actually made, not when the ADR was written. Note the retroactive nature in the Context section.
 - An ADR with the wrong status (e.g., `accepted` when it should now be `superseded`) is fixed by updating the `adr_status` frontmatter only — the body stays as the historical record.
 
