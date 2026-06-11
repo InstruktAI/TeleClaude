@@ -43,6 +43,25 @@ The default is **skip unless justified**, not "produce when applicable."
 - **Coverage instinct.** Producing a snippet to fill a taxonomy slot rather
   than to capture intent. The discovery-to-taxonomy table is a list of
   shapes worth considering, not a checklist to complete.
+- **Narration (log-in-the-doc).** A snippet body that records *how it got
+  here* or *what is coming* instead of stating *what is*. A body states
+  present-tense intent and contract — nothing else. Each form of narration
+  has a proper home, and the body is never it:
+  - **History** ("replaces the v1 path", "is retired", "used to produce
+    misleading rows", "previously named X") → git. The body describes the
+    current contract; the prior contract is in the history.
+  - **Rationale** ("because X", "this avoids Y", "the reason we chose this")
+    → an ADR (`general/policy/adr-discipline`). Primary artifacts describe
+    the contract; ADRs preserve the why.
+  - **Pending status and provenance** ("Pending `<slug>`, …", "(delivered_by
+    `<slug>`)", "this opt-in is pending") → the `delivered_by` **frontmatter**
+    field, never inline body prose. The delivering slug is coordination
+    metadata; it never appears in the body. A pending snippet's body reads as
+    present-tense contract — `delivered_by` is the only thing that says "not
+    yet" (`software-development/principle/documentation-first-development`).
+  - **Future framing** ("will", "is planned", "the new surface is going to")
+    → present-tense description of the intended shape. Forward design is
+    written as contract, not as forecast.
 
 ### What creates value
 

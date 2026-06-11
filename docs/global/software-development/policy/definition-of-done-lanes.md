@@ -39,6 +39,7 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 | comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                        |
 | logging                 | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes                                   |
 | docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README, and affected doc snippets reflect changes |
+| doc-hygiene             | § Doc-snippet hygiene (when any `docs/**` snippet changed)                  | Verify changed snippet bodies state present-tense contract — no narration            |
 | simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                    |
 
 ### Lane catalog
@@ -309,6 +310,49 @@ backstop to the plan-review documentation hard gate, so a forgotten snippet upda
 cannot reach delivery.
 
 Missing documentation updates are **Important** findings. Missing config surface updates are **Critical** (agents depend on accurate config specs).
+
+#### Doc-snippet hygiene
+
+**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (Narration anti-pattern).
+
+Conditional lane — fires whenever the diff touches any `docs/**` snippet. The
+DoD docs lane above checks that docs *exist and reflect the change*; this lane
+checks that the changed prose is *clean*. A snippet body states present-tense
+intent and contract — nothing else. This is a reviewer judgment, not an automated
+grader: code that scores free-text snippet quality would itself violate
+`principle/intelligence-boundaries`, so the reviewer reads the prose and applies
+the rule.
+
+**Scope.** Audit the **changed regions** (added/modified lines and their enclosing
+section), the snippet's **frontmatter**, and any **newly-added or delivered**
+planned block (`<!-- planned:slug -->`) or companion (`<stem>.<slug>.md`). Do NOT
+re-audit unchanged regions of a snippet the diff merely touched elsewhere —
+pre-existing narration outside the change is not this change's finding. A
+delivered planned/companion body is fully in scope, because delivery touches it.
+
+For each changed snippet body, flag the Narration anti-pattern in its four forms
+(`snippet-value-contract` owns the full definition; do not re-derive it here):
+
+1. **History in the body** — "replaces the v1 path", "is retired", "used to …",
+   "previously named …". Belongs in git.
+2. **Rationale in the body** — "because …", "this avoids …", "the reason we chose
+   …". Belongs in an ADR.
+3. **Inline provenance / coordination metadata** — "(delivered_by `<slug>`)",
+   "Pending `<slug>`, …", a delivering slug named anywhere in body prose. Belongs
+   in the `delivered_by` frontmatter field only.
+4. **Future framing** — "will", "is planned", "the new surface is going to …",
+   instead of a present-tense description of the intended shape.
+
+Severity guidance:
+
+- A **delivered** planned/companion body that carries future-framing or names its
+  slug — now live and false in the standing contract → **Critical**.
+- Narration introduced or modified by this change in a live snippet body →
+  **Important**.
+- A snippet whose contract is correct but carries a stray rationale clause better
+  placed in an ADR → **Important**.
+- Pre-existing narration in a region this change did not touch → **drop the
+  observation; it is not a finding** (the sweep owns it, not this review).
 
 #### Doc-first paradigm check
 
