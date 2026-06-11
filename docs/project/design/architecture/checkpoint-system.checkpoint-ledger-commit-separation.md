@@ -85,6 +85,8 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 20. **Committed code sourced into the action ledger**: A sealed `telec code commit` records its committed files into the session-scoped committed-turn-files marker. The engine unions that payload into the turn's effective files before the no-change early-exit, so category-derived maintenance actions (make restart, tests, log check) survive the HEAD move for any session. The marker persists across checkpoint cycles and is hard-cleared only at `user_prompt_submit`; files the agent committed but did not itself Edit/Write are still categorized, since the commit is the attributing action.
 
+21. **Companion-drift detection**: when a turn's changed files include a live parent doc snippet (`<stem>.md`) whose pending companion sibling (`<stem>.<slug>.md`) exists on disk but is absent from the changed set, the engine surfaces an action to mirror the parent edit into the companion — catching, at agent_stop, the edit that the companion would otherwise clobber when it replaces the parent at delivery. The check is a filename-derived presence test (reusing the companion-detection helpers the doc index uses); companion in the changed set suppresses it for free. It mechanizes only the question code may answer (presence); whether the companion is a correct mirror stays with the reviewer (intelligence-boundaries).
+
 ## Primary flows
 
 ### 0. Context-aware checkpoint builder
@@ -223,3 +225,4 @@ sequenceDiagram
 ## See Also
 
 - docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
+- docs/project/adr/0038-companion-drift-caught-at-checkpoint.md

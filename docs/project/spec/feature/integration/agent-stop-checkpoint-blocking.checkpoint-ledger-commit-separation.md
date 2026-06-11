@@ -289,6 +289,33 @@ And its implied maintenance action is surfaced
 (The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
 ```
 
+#### UC-CP13: Parent snippet edited without its pending companion
+
+```gherkin
+Given a turn edits a live parent doc snippet `<stem>.md`
+And a pending companion sibling `<stem>.<slug>.md` exists on disk
+And the companion is NOT in the turn's changed files
+When the heuristic engine evaluates the turn window
+Then the result surfaces an action telling the agent to mirror the parent edit into the companion
+(else the companion clobbers the parent edit when it replaces the parent at delivery)
+
+Given a turn edits a live parent doc snippet `<stem>.md`
+And its pending companion sibling `<stem>.<slug>.md` is also in the turn's changed files
+When the heuristic engine evaluates the turn window
+Then no companion-drift action is surfaced (the edit is mirrored)
+
+Given a turn edits a doc snippet `<stem>.md` that has no companion sibling on disk
+When the heuristic engine evaluates the turn window
+Then no companion-drift action is surfaced
+
+Given a turn edits only a companion `<stem>.<slug>.md` (not its parent)
+When the heuristic engine evaluates the turn window
+Then no companion-drift action is surfaced
+(The check is a filename-derived presence test over the changed set; whether the
+companion is a correct mirror of the parent is the reviewer's judgment, not the
+checkpoint's.)
+```
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
@@ -362,3 +389,4 @@ And its implied maintenance action is surfaced
 ## See Also
 
 - docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
+- docs/project/adr/0038-companion-drift-caught-at-checkpoint.md
