@@ -26,9 +26,12 @@ own. `telec code lint` composes **two decoupled legs**:
    plus the doc-index resource-validation).
 
 `make lint` never contains the guardrails lane and never calls `telec`; the
-guardrails lane is never plumbed into any `Makefile`. This is identical for
-TeleClaude's own repo and any adopting project. `telec code test|format|install`
-are pure delegations to `make test|format|install`.
+guardrails lane is never plumbed into any `Makefile`. The native Makefile shape
+is identical for TeleClaude's own repo and any adopting project, while the
+current guardrails lane remains TeleClaude-repo-rooted; project-root-aware
+side-project guardrails are delivered by the portable guardrails lane work.
+`telec code test|format|install` are pure delegations to
+`make test|format|install`.
 
 Three execution contexts drive file resolution:
 

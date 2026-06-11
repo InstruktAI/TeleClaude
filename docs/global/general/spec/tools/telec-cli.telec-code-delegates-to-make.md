@@ -68,9 +68,11 @@ lint`.
 
 The project's `Makefile` owns the entire native toolchain and never contains
 guardrails or `telec`; the guardrails lane is TeleClaude's and is never plumbed
-into any `Makefile`. This is identical for TeleClaude's own repo and any adopting
-project — a project stays installable and lintable standalone via `make`, and
-`telec code` layers the guardrails on top where TeleClaude is present.
+into any `Makefile`. The native Makefile contract is identical for TeleClaude's
+own repo and any adopting project — a project stays installable and lintable
+standalone via `make`. The current guardrails lane is TeleClaude-repo-rooted;
+project-root-aware side-project guardrails are delivered by the portable
+guardrails lane work.
 
 Native language support behind `make`: Rust is a first-class language when
 `rust` is declared in `teleclaude.yml` — the project's `make lint`/`format`/`test`
