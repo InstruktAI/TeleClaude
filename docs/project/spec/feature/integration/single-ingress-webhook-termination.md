@@ -89,11 +89,15 @@ And adding a new provider does not require a second public endpoint
 
 - Owned by `integration` (`@docs/project/spec/domain/integration.md`); the inbound-boundary concern.
 - The relay target and cluster delivery are the event-bus CLUSTER scope; the reaction is owned by subscribers, chiefly `reconciliation` (`@docs/project/spec/feature/reconciliation/channel-gated-self-update.md`).
-- The topology decision (LAN bind, router source-restriction, single public node, unconditional relay) is recorded in `project/adr/0028-single-lan-bound-ingress`.
+- The topology decision (LAN bind, router source-restriction, single public node, unconditional relay) is a recorded architectural decision.
 - Supersedes the v1 expression in `@docs/project/spec/feature/integration/deployment-version-fanout.md` (a bespoke deployment-only fan-out that relayed only when the receiver itself updated).
 
 ## Known caveats
 
-- **Version-agnostic by construction.** Bind address, source-restriction mechanics, signature schemes, and bus technology live in the ADR and the delivering implementation, not here. The swap test applies.
+- **Version-agnostic by construction.** Bind address, source-restriction mechanics, signature schemes, and bus technology live in the design layer and the delivering implementation, not here. The swap test applies.
 - **The ingress is a single point of external-event intake.** While it is down, the cluster processes no external events but is not otherwise broken; the relay is stateless, so a second ingress can be added without redesign.
 - **Reachability requires operator setup.** Port-forward at the boundary, the provider-side webhook registration, and the shared secret are operational prerequisites documented with the delivery, not part of this behavioral contract.
+
+## See Also
+
+- docs/project/adr/0028-single-lan-bound-ingress.md

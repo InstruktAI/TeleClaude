@@ -25,9 +25,9 @@ description: Reconciliation bounded context — the control loop that drives eac
 
 The `reconciliation` bounded context owns *desired-state convergence* for the fleet of installations. Its single invariant is **actual → desired**: every responsibility is a step that drives a divergent installation back to the state its configuration declares. It owns version convergence (self-update to the newest release on the installation's channel), installation-level structural migration, process health, scheduled upkeep, and the fleet capability map that makes a deliberately multi-version fleet interoperate safely.
 
-Reconciliation is a control loop, the shape Kubernetes calls a reconciler. It is *not* `integration` — integration owns foreign-protocol boundaries (what external systems we do not control send us); reconciliation owns what *we* do to keep *our* fleet current, on a different change axis (see `project/adr/0024-reconciliation-bounded-context`).
+Reconciliation is a control loop, the shape Kubernetes calls a reconciler. It is *not* `integration` — integration owns foreign-protocol boundaries (what external systems we do not control send us); reconciliation owns what *we* do to keep *our* fleet current, on a different change axis.
 
-This context does NOT own: foreign-protocol ingress or transport (`integration`); per-aggregate data schema evolution (each domain owns its own upcasters on the shared engine — `project/adr/0025-two-layer-migration-model`); agent-artifact authoring or distribution (`agent_artifacts`); product/work lifecycle (`workflow`).
+This context does NOT own: foreign-protocol ingress or transport (`integration`); per-aggregate data schema evolution (each domain owns its own upcasters on the shared engine); agent-artifact authoring or distribution (`agent_artifacts`); product/work lifecycle (`workflow`).
 
 ## Canonical fields
 
@@ -55,7 +55,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 :  One ordered action in a version convergence: checkout/build the target, run installation migrations, restart healthy.
 
 **Installation migration**
-:  An eager, ordered, once-per-host structural migration between releases (DDL, on-disk layout). Distinct from per-aggregate data upcasting, which each domain owns (ADR-0025).
+:  An eager, ordered, once-per-host structural migration between releases (DDL, on-disk layout). Distinct from per-aggregate data upcasting, which each domain owns.
 
 **Health**
 :  The desired condition of the running daemon. Reconciliation converges a crashed or unhealthy daemon by restart.
@@ -67,7 +67,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 :  The set of installations across machines and channels that participate in the same cluster.
 
 **Capability set**
-:  The set of feature-IDs an installation advertises it supports, plus its version (`project/adr/0027-feature-id-capability-gating`).
+:  The set of feature-IDs an installation advertises it supports, plus its version.
 
 **Fleet capability map**
 :  The cluster-wide aggregation of every node's capability set. The authoritative answer to "has the slowest channel caught up enough to require, or to remove, capability F?"
@@ -103,7 +103,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 - **Root:** `FleetCapabilityMap`
 - **Contains:** per-node entries of `computer`, `version`, `channel`, `capability_set`, `last_advertised_at`.
 - **Invariants:**
-  - Each entry is self-reported by its node via the cluster heartbeat (`project/adr/0013-unified-cluster-events`); no node writes another's entry, and no node reads a peer's config to learn its identity, version, or capabilities — the heartbeat is the only source.
+  - Each entry is self-reported by its node via the cluster heartbeat; no node writes another's entry, and no node reads a peer's config to learn its identity, version, or capabilities — the heartbeat is the only source.
   - "Safe to require / contract feature F" is true only when every live entry on every channel — including the slowest — carries F.
   - Entries age out when a node stops advertising (presumed absent).
 - **Identifier:** singleton per cluster view.
@@ -142,14 +142,14 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 - **Payload:** `computer`, `version`, `channel`, `capability_set`.
 - **Visibility:** CLUSTER
 - **Known consumers:** every node's fleet capability map.
-- **Transport:** rides the existing cluster heartbeat mechanism (`project/adr/0013-unified-cluster-events`), which already advertises per-node identity over Redis. Version and `capability_set` extend that self-reported heartbeat payload rather than introducing a separate distribution path; a node never learns a peer's identity, version, or capabilities by reading the peer's config.
+- **Transport:** rides the existing cluster heartbeat mechanism, which already advertises per-node identity over Redis. Version and `capability_set` extend that self-reported heartbeat payload rather than introducing a separate distribution path; a node never learns a peer's identity, version, or capabilities by reading the peer's config.
 
 ### Domain events consumed
 
 #### `integration.inbox.received` (release/version subset)
 
 - **Producer:** `integration`
-- **Reaction:** when the inbound event is a release/version-available signal, evaluate it against this installation's channel policy; on a match, start a convergence run. The event is relayed unconditionally by the ingress (ADR-0028); each node decides independently.
+- **Reaction:** when the inbound event is a release/version-available signal, evaluate it against this installation's channel policy; on a match, start a convergence run. The event is relayed unconditionally by the ingress; each node decides independently.
 - **Failure handling:** evaluation failures are logged; the installation retries on the next signal or periodic self-check.
 
 #### `config.effective.updated`
@@ -229,7 +229,7 @@ And no convergence or error results from the unknown capability
 - **Customer-Supplier downstream of `config`** — desired-state inputs (channel, `pinned_minor`, health definitions).
 - **Rides the event-bus CLUSTER scope** — emits and consumes cluster-visible events; does not own the bus.
 - **Trigger relationship with `workflow`** — the `next-maintain` lifecycle phase is the orchestration entry point that hands off to this context's upkeep convergence; the phase is the trigger, reconciliation is the target.
-- **No relationship with per-domain data evolution** — each domain owns its own upcasters (ADR-0025); reconciliation owns only installation-level structural migration.
+- **No relationship with per-domain data evolution** — each domain owns its own upcasters; reconciliation owns only installation-level structural migration.
 
 ## Allowed values
 
@@ -237,20 +237,21 @@ And no convergence or error results from the unknown capability
 - `convergence step`: `checkout_build`, `migrate`, `restart`.
 - `convergence outcome`: `converged`, `failed`.
 - `health_status`: `healthy`, `unhealthy`, `restarting`.
-- `feature-ID mark`: `ignorable`, `must_negotiate` (per ADR-0027).
+- `feature-ID mark`: `ignorable`, `must_negotiate`.
 
 ## Known caveats
 
-- **The fleet is deliberately multi-version, permanently.** alpha leads, beta trails, stable trails further. Cross-version interop is a continuous first-class invariant, not a transient rollout window. This is why the capability map and the compatibility contract (ADR-0026) live in scope.
-- **The ingress is a single point of external-event intake (ADR-0028).** While it is down the fleet processes no external events but is not broken; a periodic self-check or a second stateless ingress recovers the gap.
-- **Cluster pub/sub is fire-and-forget (ADR-0013).** A node offline when a release event publishes misses it; recovery is the next release signal or a periodic desired-state self-check, not event replay.
-- **Installation migration is distinct from data upcasting.** This context owns the eager, ordered, once-per-host structural migration; per-record data evolution is each domain's own lazy upcasting (ADR-0025). Do not conflate them.
-- **Fleet identity is heartbeat-advertised, never config-sourced.** Each node's identity, version, and capability set reach the cluster through the Redis heartbeat (ADR-0013), which already carries per-node `ComputerInfo`. The fleet capability map consumes that stream. A node reads its own local config only to know itself; it never reads a peer's config, and reconciliation introduces no separate identity distribution path.
+- **The fleet is deliberately multi-version, permanently.** alpha leads, beta trails, stable trails further. Cross-version interop is a continuous first-class invariant, not a transient rollout window. This is why the capability map and the compatibility contract live in scope.
+- **The ingress is a single point of external-event intake.** While it is down the fleet processes no external events but is not broken; a periodic self-check or a second stateless ingress recovers the gap.
+- **Cluster pub/sub is fire-and-forget.** A node offline when a release event publishes misses it; recovery is the next release signal or a periodic desired-state self-check, not event replay.
+- **Installation migration is distinct from data upcasting.** This context owns the eager, ordered, once-per-host structural migration; per-record data evolution is each domain's own lazy upcasting. Do not conflate them.
+- **Fleet identity is heartbeat-advertised, never config-sourced.** Each node's identity, version, and capability set reach the cluster through the Redis heartbeat, which already carries per-node `ComputerInfo`. The fleet capability map consumes that stream. A node reads its own local config only to know itself; it never reads a peer's config, and reconciliation introduces no separate identity distribution path.
 
 ## See Also
 
 - docs/project/adr/0013-unified-cluster-events.md
 - docs/project/adr/0024-reconciliation-bounded-context.md
+- docs/project/adr/0025-two-layer-migration-model.md
 - docs/project/adr/0026-cross-version-fleet-compatibility.md
 - docs/project/adr/0027-feature-id-capability-gating.md
 - docs/project/adr/0028-single-lan-bound-ingress.md

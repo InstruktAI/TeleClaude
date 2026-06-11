@@ -90,11 +90,16 @@ And removal proceeds only when every live node confirms it no longer needs the c
 ### Cross-context references
 
 - Owned by `reconciliation` (`@docs/project/spec/domain/reconciliation.md`); the fleet-interop concern, backed by the fleet capability map.
-- The compatibility mechanisms (versioned envelopes, tolerant readers, upcasters, expand/contract) are decided in `project/adr/0026-cross-version-fleet-compatibility` and `project/adr/0027-feature-id-capability-gating`.
+- The concrete compatibility mechanisms (versioned envelopes, tolerant readers, upcasters, expand/contract) live in the decision and design layer, not in this version-agnostic contract.
 - Pairs with `@docs/project/spec/feature/reconciliation/channel-gated-self-update.md`: self-update creates the version spread; this spec keeps the spread safe.
 
 ## Known caveats
 
-- **Version-agnostic by construction.** This spec names no envelope format, no Redis, no language. The mechanisms live in the ADRs and the delivering implementation. The swap test applies to every scenario.
+- **Version-agnostic by construction.** This spec names no envelope format, no Redis, no language. The mechanisms live in the design layer and the delivering implementation. The swap test applies to every scenario.
 - **The version spread is the steady state, not a transient.** Interop is a permanent invariant; there is no "after rollout" point where skew disappears.
 - **"Safe to ignore" vs "must agree" is a real distinction.** Most new capabilities are safe to ignore; a minority (shared coordination) are not, and mislabeling the second kind as the first reintroduces split-brain risk.
+
+## See Also
+
+- docs/project/adr/0026-cross-version-fleet-compatibility.md
+- docs/project/adr/0027-feature-id-capability-gating.md
