@@ -15,7 +15,10 @@ use std::collections::HashSet;
 use serde_yaml::{Mapping, Value};
 
 use crate::errors::ConfigError;
-use crate::models::{Config, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig};
+use crate::models::{
+    ChannelSubscription, Config, DeploymentChannel, DeploymentConfig, GlobalConfig, PersonConfig,
+    PersonEntry, ProjectConfig,
+};
 
 /// Roles accepted by v1's `PersonEntry.role` field.
 pub const KNOWN_ROLES: &[&str] = &["admin", "member", "contributor", "newcomer"];
@@ -353,7 +356,7 @@ fn validate_integrator(path: &str, value: &Value) -> Result<(), ConfigError> {
     Ok(())
 }
 
-fn validate_deployment(path: &str, value: &Value) -> Result<(), ConfigError> {
+fn validate_deployment_mapping(path: &str, value: &Value) -> Result<(), ConfigError> {
     let mapping = as_mapping(path, value)?;
     validate_one_of(path, mapping, "channel", &["alpha", "beta", "stable"])?;
     let channel = non_null(get(mapping, "channel"))
@@ -396,7 +399,7 @@ fn validate_channel_subscriptions(path: &str, value: &Value) -> Result<(), Confi
     Ok(())
 }
 
-fn validate_project_surface(scope: &str, extra: &Mapping) -> Result<(), ConfigError> {
+fn validate_global_project_surface(scope: &str, extra: &Mapping) -> Result<(), ConfigError> {
     if let Some(value) = non_null(get(extra, "business")) {
         validate_business(&format!("{scope}.business"), value)?;
     }
@@ -413,10 +416,50 @@ fn validate_project_surface(scope: &str, extra: &Mapping) -> Result<(), ConfigEr
         validate_integrator(&format!("{scope}.integrator"), value)?;
     }
     if let Some(value) = non_null(get(extra, "deployment")) {
-        validate_deployment(&format!("{scope}.deployment"), value)?;
+        validate_deployment_mapping(&format!("{scope}.deployment"), value)?;
     }
     if let Some(value) = non_null(get(extra, "channel_subscriptions")) {
         validate_channel_subscriptions(&format!("{scope}.channel_subscriptions"), value)?;
+    }
+    Ok(())
+}
+
+fn validate_project_extra_surface(scope: &str, extra: &Mapping) -> Result<(), ConfigError> {
+    if let Some(value) = non_null(get(extra, "business")) {
+        validate_business(&format!("{scope}.business"), value)?;
+    }
+    if let Some(value) = non_null(get(extra, "jobs")) {
+        validate_jobs(&format!("{scope}.jobs"), value)?;
+    }
+    if let Some(value) = non_null(get(extra, "git")) {
+        as_mapping(&format!("{scope}.git"), value)?;
+    }
+    if let Some(value) = non_null(get(extra, "integrator")) {
+        validate_integrator(&format!("{scope}.integrator"), value)?;
+    }
+    Ok(())
+}
+
+fn validate_deployment(path: &str, deployment: &DeploymentConfig) -> Result<(), ConfigError> {
+    let channel = deployment.channel_at_path(&format!("{path}.channel"))?;
+    let pinned_minor = deployment.pinned_minor_at_path(&format!("{path}.pinned_minor"))?;
+    if channel == DeploymentChannel::Stable && pinned_minor.trim().is_empty() {
+        return Err(validation_failed(
+            &format!("{path}.pinned_minor"),
+            "required when deployment.channel=stable",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_project_channel_subscriptions(
+    path: &str,
+    subscriptions: &[ChannelSubscription],
+) -> Result<(), ConfigError> {
+    for (idx, subscription) in subscriptions.iter().enumerate() {
+        let item_path = format!("{path}[{idx}]");
+        subscription.channel_at_path(&format!("{item_path}.channel"))?;
+        subscription.target_at_path(&format!("{item_path}.target"))?;
     }
     Ok(())
 }
@@ -471,7 +514,7 @@ pub fn validate_global(global: &GlobalConfig) -> Result<(), ConfigError> {
         &global.extra,
         &["creds", "notifications", "timezone"],
     )?;
-    validate_project_surface("global", &global.extra)?;
+    validate_global_project_surface("global", &global.extra)?;
 
     let mut seen_emails: HashSet<String> = HashSet::new();
     for person in &global.people {
@@ -502,7 +545,12 @@ pub fn validate_project(project: &ProjectConfig) -> Result<(), ConfigError> {
         &project.extra,
         &["people", "ops", "creds", "notifications", "timezone"],
     )?;
-    validate_project_surface("project", &project.extra)?;
+    validate_project_extra_surface("project", &project.extra)?;
+    validate_deployment("project.deployment", &project.deployment)?;
+    validate_project_channel_subscriptions(
+        "project.channel_subscriptions",
+        &project.channel_subscriptions,
+    )?;
     Ok(())
 }
 
@@ -721,6 +769,126 @@ deployment:
         )
         .expect("project yaml");
         let err = validate_project(&project).expect_err("deployment rejected");
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_project_rejects_unknown_deployment_channel() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+deployment:
+  channel: canary
+"#,
+        )
+        .expect("project yaml");
+
+        let err = validate_project(&project).expect_err("deployment rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_project_rejects_non_string_deployment_channel_after_load() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+deployment:
+  channel: 42
+"#,
+        )
+        .expect("project yaml");
+
+        let err = validate_project(&project).expect_err("deployment rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_project_rejects_non_string_deployment_pin_after_load() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+deployment:
+  channel: stable
+  pinned_minor: 42
+"#,
+        )
+        .expect("project yaml");
+
+        let err = validate_project(&project).expect_err("deployment rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_project_requires_channel_subscription_channel() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+channel_subscriptions:
+- target: {}
+"#,
+        )
+        .expect("project yaml");
+
+        let err = validate_project(&project).expect_err("subscription rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_project_rejects_null_channel_subscription_channel() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+channel_subscriptions:
+- channel: null
+"#,
+        )
+        .expect("project yaml");
+
+        let err = validate_project(&project).expect_err("subscription rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_project_rejects_non_string_channel_subscription_channel() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+channel_subscriptions:
+- channel: 42
+"#,
+        )
+        .expect("project yaml");
+
+        let err = validate_project(&project).expect_err("subscription rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_project_accepts_empty_string_channel_subscription_channel() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+channel_subscriptions:
+- channel: ""
+"#,
+        )
+        .expect("project yaml");
+
+        validate_project(&project).expect("subscription accepted");
+    }
+
+    #[test]
+    fn validate_project_rejects_non_mapping_channel_subscription_target() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+channel_subscriptions:
+- channel: inbound.whatsapp
+  target: invalid
+"#,
+        )
+        .expect("project yaml");
+
+        let err = validate_project(&project).expect_err("subscription rejected");
+
         assert!(matches!(err, ConfigError::ValidationFailed(_)));
     }
 

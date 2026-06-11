@@ -103,6 +103,7 @@ fn project_extra_string_list(extra: &Mapping, key: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::DeploymentChannel;
     use serde_yaml::Value;
 
     fn yv(s: &str) -> Value {
@@ -277,6 +278,38 @@ mod tests {
         assert_eq!(
             cfg.global.interests,
             vec!["project-1".to_string(), "project-2".to_string()]
+        );
+    }
+
+    #[test]
+    fn effective_config_passes_project_typed_surface_through() {
+        let project: ProjectConfig = serde_yaml::from_str(
+            r#"
+deployment:
+  channel: beta
+hooks:
+  inbound:
+    whatsapp:
+      path: /hooks/whatsapp
+channel_subscriptions:
+- channel: inbound.whatsapp
+"#,
+        )
+        .expect("project yaml");
+
+        let cfg = effective_config(GlobalConfig::default(), Some(project), None);
+        let project = cfg.project.as_ref().expect("project overlay");
+
+        assert_eq!(
+            project.deployment.channel().expect("channel"),
+            DeploymentChannel::Beta
+        );
+        assert!(project.hooks.inbound.contains_key("whatsapp"));
+        assert_eq!(
+            project.channel_subscriptions[0]
+                .channel()
+                .expect("subscription channel"),
+            "inbound.whatsapp"
         );
     }
 }

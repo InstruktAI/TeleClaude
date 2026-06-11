@@ -21,7 +21,10 @@ pub use loaders::{
     load_global, load_person, load_project, ConfigOverlayPaths, GlobalOverlay, PersonOverlay,
     ProjectOverlay,
 };
-pub use models::{Config, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig};
+pub use models::{
+    ChannelSubscription, Config, DeploymentChannel, DeploymentConfig, GlobalConfig, HooksConfig,
+    InboundHook, PersonConfig, PersonEntry, ProjectConfig,
+};
 pub use service::ConfigService;
 pub use validate::{
     validate, validate_global, validate_person_entry, validate_person_overlay, validate_project,

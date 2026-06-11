@@ -10,6 +10,8 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_yaml::{Mapping, Value};
 
+use crate::errors::ConfigError;
+
 /// One person entry from the global `people` list.
 ///
 /// Mirrors `teleclaude.config.schema.PersonEntry`. Role here is a free-form
@@ -65,8 +67,163 @@ pub struct ProjectConfig {
     pub languages: Vec<String>,
     #[serde(default)]
     pub frontend_root: Option<String>,
+    #[serde(default)]
+    pub deployment: DeploymentConfig,
+    #[serde(default)]
+    pub hooks: HooksConfig,
+    #[serde(default)]
+    pub channel_subscriptions: Vec<ChannelSubscription>,
     #[serde(flatten)]
     pub extra: Mapping,
+}
+
+/// Release channel declared by a project deployment block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeploymentChannel {
+    Alpha,
+    Beta,
+    Stable,
+}
+
+impl DeploymentChannel {
+    fn from_str(path: &str, value: &str) -> Result<Self, ConfigError> {
+        match value {
+            "alpha" => Ok(Self::Alpha),
+            "beta" => Ok(Self::Beta),
+            "stable" => Ok(Self::Stable),
+            actual => Err(ConfigError::ValidationFailed(format!(
+                "{path}: unknown value: {actual}"
+            ))),
+        }
+    }
+}
+
+/// Project deployment release-channel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeploymentConfig {
+    #[serde(default = "default_deployment_channel_raw", rename = "channel")]
+    channel_raw: Value,
+    #[serde(
+        default = "default_deployment_pinned_minor_raw",
+        rename = "pinned_minor"
+    )]
+    pinned_minor_raw: Value,
+}
+
+impl Default for DeploymentConfig {
+    fn default() -> Self {
+        Self {
+            channel_raw: default_deployment_channel_raw(),
+            pinned_minor_raw: default_deployment_pinned_minor_raw(),
+        }
+    }
+}
+
+impl DeploymentConfig {
+    pub fn channel(&self) -> Result<DeploymentChannel, ConfigError> {
+        self.channel_at_path("project.deployment.channel")
+    }
+
+    pub(crate) fn channel_at_path(&self, path: &str) -> Result<DeploymentChannel, ConfigError> {
+        match &self.channel_raw {
+            Value::Null => Ok(DeploymentChannel::Alpha),
+            Value::String(value) => DeploymentChannel::from_str(path, value),
+            _ => Err(ConfigError::ValidationFailed(format!(
+                "{path}: must be a string"
+            ))),
+        }
+    }
+
+    pub fn pinned_minor(&self) -> Result<&str, ConfigError> {
+        self.pinned_minor_at_path("project.deployment.pinned_minor")
+    }
+
+    pub(crate) fn pinned_minor_at_path(&self, path: &str) -> Result<&str, ConfigError> {
+        match &self.pinned_minor_raw {
+            Value::Null => Ok(""),
+            Value::String(value) => Ok(value),
+            _ => Err(ConfigError::ValidationFailed(format!(
+                "{path}: must be a string"
+            ))),
+        }
+    }
+}
+
+fn default_deployment_channel_raw() -> Value {
+    Value::String("alpha".into())
+}
+
+fn default_deployment_pinned_minor_raw() -> Value {
+    Value::String(String::new())
+}
+
+/// Inbound hook source configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InboundHook {
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub verify_token: Option<String>,
+    #[serde(default)]
+    pub secret: Option<String>,
+    #[serde(default)]
+    pub normalizer: Option<String>,
+    #[serde(flatten)]
+    pub extra: Mapping,
+}
+
+/// Project hook configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HooksConfig {
+    #[serde(default)]
+    pub inbound: std::collections::BTreeMap<String, InboundHook>,
+    #[serde(flatten)]
+    pub extra: Mapping,
+}
+
+/// Project channel subscription routing entry.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChannelSubscription {
+    #[serde(default, rename = "channel")]
+    channel_raw: Option<Value>,
+    #[serde(default)]
+    pub filter: Option<Value>,
+    #[serde(default, rename = "target")]
+    target_raw: Option<Value>,
+    #[serde(flatten)]
+    pub extra: Mapping,
+}
+
+impl ChannelSubscription {
+    pub fn channel(&self) -> Result<&str, ConfigError> {
+        self.channel_at_path("project.channel_subscriptions[].channel")
+    }
+
+    pub(crate) fn channel_at_path(&self, path: &str) -> Result<&str, ConfigError> {
+        match self.channel_raw.as_ref() {
+            Some(Value::String(value)) => Ok(value),
+            Some(Value::Null) | None => Err(ConfigError::ValidationFailed(format!(
+                "{path}: is required"
+            ))),
+            Some(_) => Err(ConfigError::ValidationFailed(format!(
+                "{path}: must be a string"
+            ))),
+        }
+    }
+
+    pub fn target(&self) -> Result<Option<&Mapping>, ConfigError> {
+        self.target_at_path("project.channel_subscriptions[].target")
+    }
+
+    pub(crate) fn target_at_path(&self, path: &str) -> Result<Option<&Mapping>, ConfigError> {
+        match self.target_raw.as_ref() {
+            Some(Value::Mapping(mapping)) => Ok(Some(mapping)),
+            Some(Value::Null) | None => Ok(None),
+            Some(_) => Err(ConfigError::ValidationFailed(format!(
+                "{path}: must be a mapping"
+            ))),
+        }
+    }
 }
 
 /// Per-person configuration.
@@ -216,6 +373,70 @@ git:
         assert!(project
             .extra
             .contains_key(serde_yaml::Value::String("git".into())));
+    }
+
+    #[test]
+    fn project_config_deserializes_typed_fleet_surface_and_preserves_extra() {
+        let yaml = r#"
+deployment:
+  channel: beta
+  pinned_minor: ''
+hooks:
+  inbound:
+    whatsapp:
+      path: /hooks/whatsapp
+      verify_token: verify-token
+      secret: webhook-secret
+      normalizer: whatsapp
+    github:
+      path: /hooks/github
+channel_subscriptions:
+- channel: inbound.whatsapp
+  target:
+    kind: workflow
+unrelated:
+  still: extra
+"#;
+        let project: ProjectConfig = serde_yaml::from_str(yaml).expect("deserialize project");
+
+        assert_eq!(
+            project.deployment.channel().expect("channel"),
+            DeploymentChannel::Beta
+        );
+        assert_eq!(project.deployment.pinned_minor().expect("pin"), "");
+        let whatsapp = project
+            .hooks
+            .inbound
+            .get("whatsapp")
+            .expect("whatsapp hook");
+        assert_eq!(whatsapp.path.as_deref(), Some("/hooks/whatsapp"));
+        assert_eq!(whatsapp.verify_token.as_deref(), Some("verify-token"));
+        assert_eq!(whatsapp.secret.as_deref(), Some("webhook-secret"));
+        assert_eq!(whatsapp.normalizer.as_deref(), Some("whatsapp"));
+        assert_eq!(
+            project.channel_subscriptions[0]
+                .channel()
+                .expect("subscription channel"),
+            "inbound.whatsapp"
+        );
+        assert!(project
+            .extra
+            .contains_key(serde_yaml::Value::String("unrelated".into())));
+        assert!(!project
+            .extra
+            .contains_key(serde_yaml::Value::String("deployment".into())));
+    }
+
+    #[test]
+    fn absent_deployment_uses_alpha_channel_and_empty_pin() {
+        let project: ProjectConfig =
+            serde_yaml::from_str("project_name: TeleClaude\n").expect("deserialize project");
+
+        assert_eq!(
+            project.deployment.channel().expect("channel"),
+            DeploymentChannel::Alpha
+        );
+        assert_eq!(project.deployment.pinned_minor().expect("pin"), "");
     }
 
     #[test]
