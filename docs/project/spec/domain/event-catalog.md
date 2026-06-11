@@ -41,7 +41,7 @@ Each event below carries:
 - **Emitted when** — the domain condition that triggers emission
 - **Payload** — the data carried, in domain field names
 - **Known consumers** — contexts (and external systems) that subscribe and act
-- **Visibility** — per `event-bus-transports.md` posture: `LOCAL` (in-process only), `CLUSTER` (cross-process via Redis), `PUBLIC` (exposed to external mesh — rare)
+- **Visibility** — per `event-bus-transports.md` posture: `LOCAL` (single-host Redis scope — events confined to this computer), `CLUSTER` (single-owner mesh Redis scope — cross-host within one user's fleet), `PUBLIC` (federation hub Redis scope — cross-mesh, rare). See the **Allowed values** section for the authoritative definition.
 - **Idempotency key** — the field tuple that makes two emissions "the same event" for consumer dedup
 - **Emit posture** — `commit-then-emit` (loud-fail) | `outbox` (atomic with caller commit) | `inbox` (durable capture then publish)
 

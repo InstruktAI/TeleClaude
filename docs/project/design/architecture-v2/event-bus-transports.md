@@ -85,6 +85,22 @@ fast-path stays gone.
     required and then silently dropped when Redis was absent. v2
     explicitly types Cluster and Public as optional, making silent drop
     on absent client the contract — not a contract violation.
+<!-- planned:event-bus-cluster-scope -->
+- **The Cluster client is never absent on a configured install.** It resolves
+  to `CLUSTER_REDIS_URL` when set and otherwise falls back to the mandatory
+  `REDIS_URL` — the single Redis that already carries cross-host `cluster.*`
+  traffic. The "`emit(scope=Cluster)` with Cluster client missing → silent
+  drop" case above is therefore unreachable while `REDIS_URL` is present (which
+  Local already requires): a Cluster emit always routes, to the dedicated
+  Cluster Redis or the shared local one. This preserves the cross-host delivery
+  existing single-Redis installs rely on with zero new configuration; an
+  operator sets `CLUSTER_REDIS_URL` only to split Cluster traffic onto a
+  dedicated Redis. Public keeps the optional semantics above — `PUBLIC_REDIS_URL`
+  when set, otherwise off — so Public emits silent-drop until federation is
+  configured. This regression-safe mapping is required by ADR-0026: a
+  deliberately multi-version, multi-host fleet that already delivers `cluster.*`
+  over one shared Redis must not lose that delivery when scope routing lands.
+<!-- /planned:event-bus-cluster-scope -->
 - **In-coroutine completion signals are not events.** They use Tokio
   primitives (`oneshot`, `broadcast`, `mpsc`) and are named accordingly.
   They never use `event_bus.emit()`. This rule predates and is orthogonal
