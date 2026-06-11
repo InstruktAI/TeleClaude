@@ -85,42 +85,18 @@ fast-path stays gone.
     required and then silently dropped when Redis was absent. v2
     explicitly types Cluster and Public as optional, making silent drop
     on absent client the contract — not a contract violation.
-- **`CLUSTER_REDIS_URL` is the canonical name for the cluster bus Redis;
-  `REDIS_URL` is a deprecated alias for the same endpoint.** There is one
-  cluster bus Redis — not a separate Local instance and Cluster instance. The
-  LOCAL and CLUSTER scopes ride that same Redis; only PUBLIC is a genuinely
-  separate endpoint (`PUBLIC_REDIS_URL`, optional and off by default). The bus
-  resolves the cluster bus endpoint from `CLUSTER_REDIS_URL` when set and
-  otherwise from `REDIS_URL`, which is **retained as a deprecated alias** while
-  the fleet migrates. The "`emit(scope=Cluster)` with Cluster client missing →
-  silent drop" case above is therefore unreachable: one of the two names is
-  always present (Local requires it), so a Cluster emit always routes onto the
-  one bus already carrying `cluster.*` cross-host today — no current deployment
-  changes anything.
-- **This is ADR-0026 expand/contract applied to a config variable.** EXPAND:
-  both `REDIS_URL` and `CLUSTER_REDIS_URL` are honored now, so the rename breaks
-  no live install. CONTRACT: `REDIS_URL` is removed only once the slowest channel
-  has migrated to `CLUSTER_REDIS_URL`. The compatibility window is the migration;
-  until it closes, the alias stays. PUBLIC keeps the optional semantics above —
-  `PUBLIC_REDIS_URL` when set, otherwise silent-drop until federation is
-  configured.
-- **Scope of the "Cluster is optional / silent-drop / may be absent" language in
-  this design.** In this single-bus topology the Cluster client is always present
-  (it rides the bus resolved above), so for the current contract **only PUBLIC is
-  the optional, silent-drop-when-absent scope**, and code may assume the Cluster
-  client is present. The broader "Local mandatory, Cluster and Public optional",
-  "single-computer installs run Local-only", and "code that assumes Cluster is
-  always present is wrong" passages elsewhere in this doc describe the eventual
-  greenfield target — in which LOCAL is split onto its own local-host Redis
-  distinct from the CLUSTER mesh Redis. That split is future work; read those
-  passages as the target state and this section as the current contract.
-- **Requested subscription scopes stay isolated even though LOCAL and CLUSTER
-  share the bus Redis.** Because both scopes ride one Redis under unscoped
-  channel keys, the bus filters each subscription by `envelope.scope`: a
-  `local()` subscription yields only `Local`-scoped envelopes and a `cluster()`
-  subscription only `Cluster`-scoped ones, so "scope is respected literally"
-  holds on the shared bus. `all()` applies no scope filter (and dedups by
-  idempotency key across the bus and a configured Public).
+- **One cluster bus Redis serves the `Local` and `Cluster` scopes.** Its endpoint
+  is configured by `CLUSTER_REDIS_URL`, or by `REDIS_URL`. The `Public` scope has
+  its own endpoint, configured by `PUBLIC_REDIS_URL`. An emit at `Local` or
+  `Cluster` scope routes to the cluster bus; an emit at `Public` scope routes to
+  the Public endpoint when `PUBLIC_REDIS_URL` is configured, and is dropped with a
+  debug log otherwise.
+- **A subscription delivers only the scopes it requests.** The bus decodes each
+  envelope and delivers it when `envelope.scope` is in the subscription's scope
+  set: `SubscriptionScopes::local()` delivers only `Local` envelopes, `cluster()`
+  only `Cluster` envelopes, and `all()` delivers every scope. When the cluster bus
+  and the Public endpoint both carry an envelope with the same `idempotency_key`,
+  the subscription delivers it once.
 - **In-coroutine completion signals are not events.** They use Tokio
   primitives (`oneshot`, `broadcast`, `mpsc`) and are named accordingly.
   They never use `event_bus.emit()`. This rule predates and is orthogonal
@@ -453,3 +429,6 @@ For services consuming other services' events:
   is on the anti-pattern list.
 - docs/project/design/architecture-v2/file-layout.md
   the infrastructure crate.
+- docs/project/adr/0032-cluster-bus-redis-serves-local-and-cluster.md
+- docs/project/adr/0026-cross-version-fleet-compatibility.md
+- docs/project/adr/0013-unified-cluster-events.md
