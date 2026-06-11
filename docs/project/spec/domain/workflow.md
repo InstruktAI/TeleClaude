@@ -868,12 +868,18 @@ And the todo-scoped diff (UC-WFL-18 above) is implemented in terms of this primi
 #### UC-WFL-19: Legacy silent creation is a boundary alias for hold
 
 ```
-Given a legacy caller creates "<slug>" with the retired `creation_mode = silent` (or `--silent`)
+Given a legacy caller creates a non-task "<slug>" with the retired `creation_mode = silent` (or `--silent`)
 When the workflow service accepts the creation
 Then the todo is created with `hold=true` and no `creation_mode = silent` state is persisted
 And `workflow.todo.created` carries no silent or `pickup_requested` dispatch semantics
 And the lifecycle runner decides dispatch from `hold` and autostart policy alone, never from a creation-mode flag
-And a `task` created this way is `hold=false` (task no-autostart is policy, not hold)
+```
+
+```
+Given a legacy caller creates a `task` carrying the force-silent default
+When the workflow service accepts the creation
+Then the task is created with `hold=false` and no `creation_mode = silent` state is persisted
+And it is left undispatched by task autostart policy (no-autostart), not by hold
 ```
 
 <!-- planned:runner-dispatch -->
@@ -883,7 +889,8 @@ And a `task` created this way is `hold=false` (task no-autostart is policy, not 
 Given a workflow, config, or session-close wake-up resolves to project P
 When the lifecycle runner handles the wake-up
 Then it reloads P's current active todo list from workflow storage
-And skips icebox, removed, delivered, held, dependency-blocked, drift-blocked, policy-disabled, and already-driven (`active_runner` set) entries
+And it first reconciles `active_runner`: a link naming a non-live session is cleared before eligibility filtering, so a stale link is never mistaken for an active driver
+And skips icebox, removed, delivered, held, dependency-blocked, drift-blocked, policy-disabled, and already-driven (`active_runner` names a live session) entries
 And for each remaining eligible entry it acquires a `(P, slug, lane)` dispatch claim before spawning a session
 And it starts the exact lifecycle entrypoint for the entry's state: `/analyze-todo-input`, `/next-prepare`, or `/next-work`
 And it records the spawned session id as the entry's `active_runner` and releases the dispatch claim
