@@ -1,5 +1,5 @@
 ---
-description: 'The telec-daemon long-running supervisor: a Tokio runtime shell with signal-driven graceful shutdown, launchd/systemd KeepAlive supervision, the unified multi-unit operator control surface, and the service-loop mount seam that the reconciliation and ingress loops attach to.'
+description: 'The telec-daemon long-running supervisor: a Tokio runtime shell with signal-driven graceful shutdown, launchd/systemd KeepAlive supervision, the unified multi-unit operator control surface, and an empty service-loop mount seam typed for the reconciliation and ingress loops.'
 visibility: 'public'
 delivered_by:
   - rust-daemon-runtime
@@ -9,9 +9,9 @@ delivered_by:
 
 ## Required reads
 
-- docs/project/design/architecture-v2/overview.md
-- docs/project/design/architecture-v2/services.md
-- docs/project/design/architecture-v2/file-layout.md
+- @docs/project/design/architecture-v2/overview.md
+- @docs/project/design/architecture-v2/services.md
+- @docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 
@@ -56,6 +56,9 @@ supervision change, never a change to what any loop computes.
   registration seam; the runtime drives each registered loop's run and shutdown.
   Ingress, reconciliation, and convergence logic live in their own service
   crates, never in the runtime shell's own modules.
+- **The runtime shell registers no loops.** It ships with an empty loop set and
+  tenant-typed extension points; each loop is registered by the context that
+  owns it, never by the shell.
 - **Graceful shutdown is bounded.** On a terminate/interrupt signal the runtime
   drives every registered loop's shutdown to completion within a window that
   stays under the service manager's SIGKILL escalation, then exits cleanly.
@@ -123,17 +126,23 @@ single process in the foreground without the service manager.
 
 ### Service-loop mount seam
 
-At startup the runtime registers a set of service loops; each supplies a run
-future the runtime spawns and a shutdown hook the runtime drives on signal. Two
-loops mount on this seam:
+The seam is a registration contract: a loop supplies a run future the runtime
+spawns and a shutdown hook the runtime drives on signal. The runtime drives the
+lifecycle of whatever loops are registered and owns none of their logic.
 
-- the **reconciliation control loop**, on every installation, and
-- the **integration ingress server**, on the single ingress installation only,
-  gated by role/configuration.
+The runtime ships with an empty loop set — it registers no loops itself. The
+seam is typed for the loops their owning contexts register, each through the
+delivery that owns its logic:
 
-agent_runtime hosting joins the same seam at its own cutover, when the Rust
-`telec-daemon` absorbs the supervisor role the v1 Python daemon holds today. The
-runtime hosts each loop's lifecycle; the loop owns its logic.
+- the **reconciliation control loop**, on every installation;
+- the **integration ingress server**, on the single ingress installation,
+  gated by role/configuration;
+- **agent_runtime hosting**, once the Rust `telec-daemon` carries the supervisor
+  role the v1 Python daemon holds today.
+
+Loop registration belongs to the context that owns the loop, never to this
+runtime shell. The runtime hosts each registered loop's lifecycle; the loop owns
+its logic.
 
 ## Failure modes
 
