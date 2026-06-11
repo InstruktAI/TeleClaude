@@ -52,7 +52,8 @@ The default is **skip unless justified**, not "produce when applicable."
     current contract; the prior contract is in the history.
   - **Rationale** ("because X", "this avoids Y", "the reason we chose this")
     → an ADR (`general/policy/adr-discipline`). Primary artifacts describe
-    the contract; ADRs preserve the why.
+    the contract; ADRs preserve the why. Point to the ADR from the snippet's
+    `## See Also` section — never name it inline in the body.
   - **Pending status and provenance** ("Pending `<slug>`, …", "(delivered_by
     `<slug>`)", "this opt-in is pending") → the `delivered_by` **frontmatter**
     field, never inline body prose. The delivering slug is coordination
