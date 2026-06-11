@@ -1,8 +1,4 @@
 ---
-id: project/spec/domain/reconciliation
-type: spec
-domain: software-development
-scope: project
 visibility: public
 delivered_by:
   - reconciliation-self-update
@@ -118,15 +114,16 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 #### Feature-ID Registry (aggregate)
 
 - **Root:** `FeatureIDRegistry`
-- **Contains:** the declared feature-ID entries, each with its identifier, `mark` (`ignorable` | `must_negotiate`), and the version range it is live in.
+- **Contains:** the declared feature-ID entries, each with its identifier, `mark` (`ignorable` | `must_negotiate`), and the version range it is live in. The catalog is declared in code and fixed per release; it is not operator-tunable configuration, because each mark is a safety decision reviewed together with the behavior it gates.
 - **Invariants:**
   - A feature-ID is stable once declared; its identifier never changes.
   - Every declared feature-ID carries exactly one mark. An `ignorable` feature is safe to bypass when unaware; a `must_negotiate` feature is not.
-  - Graceful-ignore is the default: a node that receives a behavior tagged with an `ignorable` feature-ID it does not carry drops it cleanly — fail-safe ignore, never fail-crash — enforced at the cluster event-bus dispatch.
-  - A `must_negotiate` feature is never silently bypassed: when a node does not carry it, the interaction holds to the previously agreed safe behavior rather than degrading, so no split-brain occurs.
+  - A cross-node behavior carries its feature-ID with the event it rides, so a receiving node gates on it without prior knowledge of the behavior.
+  - Graceful-ignore is the default: a node that receives a behavior tagged with an `ignorable` feature-ID it does not carry drops it cleanly — fail-safe ignore, never fail-crash — enforced at the cluster event-bus dispatch on the consuming node.
+  - A `must_negotiate` feature is never silently bypassed: the initiating node gates the coordinated interaction on the fleet capability map before it proceeds, and holds to the previously agreed safe behavior until the peer advertises the feature-ID — so no split-brain occurs.
   - A feature-ID is retired — its registry entry and gated path removed — only once the fleet capability map shows every live node on every channel, including the slowest, carries it.
 - **Identifier:** singleton — the platform's declared catalog.
-- **Lifecycle:** An entry is added when a new cross-node behavior ships behind a feature-ID, and removed when the capability map confirms universal carriage on the slowest channel.
+- **Lifecycle:** An entry is added in code when a new cross-node behavior ships behind a feature-ID, and removed when the capability map confirms universal carriage on the slowest channel.
 
 ### Domain events emitted
 
@@ -177,81 +174,14 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 - **Reaction:** re-read desired-state inputs (channel, `pinned_minor`, health definitions); re-evaluate drift.
 - **Failure handling:** logged; last-known config remains in force.
 
-### Use cases
+### Use cases (index of feature specs)
 
-#### UC-REC-1: Release on channel triggers convergence
+This section is an index. Each entry references a feature spec that owns the
+Gherkin acceptance scenarios for one capability touching this context; the
+detailed scenarios live in the feature spec, not here.
 
-```gherkin
-Given installation B is enrolled on the beta channel
-And the ingress relays a release-published event onto the cluster bus
-When reconciliation on B evaluates the event against its channel policy
-Then beta matches any published release
-And a ConvergenceRun is created from B's current version to the release version
-And the steps run in order: checkout/build the target, run installation migrations, restart
-And on a healthy restart reconciliation.installation.converged is emitted
-```
-
-#### UC-REC-2: Pure ingress relays; each node reconciles by its own channel
-
-```gherkin
-Given the Raspberry Pi is the ingress and is enrolled on stable with pinned_minor 1.2
-And it relays a release 1.3.0 onto the cluster bus unconditionally
-When the stable Pi evaluates 1.3.0 against its own policy
-Then 1.3.0 is outside pinned_minor 1.2 and the Pi does NOT converge to it
-And the alpha laptop, consuming the same event, evaluates by its own policy
-And no node's decision depends on the ingress's channel
-```
-
-#### UC-REC-3: Exactly-once convergence
-
-```gherkin
-Given installation A has already converged to version 1.3.0
-When A receives the same release-available signal again
-Then drift evaluation finds actual == desired
-And no second ConvergenceRun is created
-And the duplicate signal is a no-op
-```
-
-#### UC-REC-4: Health convergence by restart
-
-```gherkin
-Given the daemon on installation C exits or becomes unhealthy
-When the service manager relaunches it (desired = running healthy)
-Then reconciliation re-evaluates actual against desired on startup
-And advertises its capability set
-And resumes the loop with no manual operator action
-```
-
-#### UC-REC-5: Capability map answers "safe to contract"
-
-```gherkin
-Given a feature-ID F was introduced on alpha and is being phased toward removal
-When reconciliation is asked whether F may be contracted
-Then it consults the fleet capability map
-And returns true only if every live node on every channel — including the slowest, stable — advertises F
-Otherwise it returns false and F's gated path must remain
-```
-
-#### UC-REC-6: A stable node ignores an alpha-only capability gracefully
-
-```gherkin
-Given alpha emits an event tagged with an ignorable feature-ID the stable node does not carry
-When the stable node receives it
-Then the event is dropped cleanly (fail-safe ignore, not fail-crash)
-And the stable node continues operating
-And no convergence or error results from the unknown capability
-```
-
-#### UC-REC-7: A must-negotiate capability refuses rather than splits
-
-```gherkin
-Given a feature-ID marked must_negotiate gates a coordination change
-And one node carries it while the interacting peer does not
-When the two nodes interact
-Then the change is not silently bypassed by the unaware node
-And the interaction holds to the previously agreed safe behavior until both sides carry the feature-ID
-And no split-brain results
-```
+- **channel-gated-self-update** — `docs/project/spec/feature/reconciliation/channel-gated-self-update.md` — each installation converges to the newest release on its channel (alpha/beta/stable), evaluating each release against its own policy, applying a target at most once, and ending healthy or reporting failure.
+- **fleet-cross-version-interop** — `docs/project/spec/feature/reconciliation/fleet-cross-version-interop.md` — a multi-version fleet keeps interoperating: unaware nodes drop ignorable capabilities cleanly, must-negotiate changes hold to prior-safe behavior rather than splitting, and "safe to require / contract feature F" is answered from the fleet capability map's live state.
 
 ### Context map position
 

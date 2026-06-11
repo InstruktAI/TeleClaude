@@ -1,8 +1,4 @@
 ---
-id: project/spec/feature/reconciliation/fleet-cross-version-interop
-type: spec
-domain: software-development
-scope: project
 visibility: public
 delivered_by:
   - feature-id-registry
