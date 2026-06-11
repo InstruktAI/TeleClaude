@@ -66,6 +66,12 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 **Fleet**
 :  The set of installations across machines and channels that participate in the same cluster.
 
+**Feature-ID**
+:  A stable, spec-like identifier for a new cross-node behavior — the named "expand" step in cross-version evolution. A node either carries a feature-ID (it implements the behavior) or it does not. A cross-node behavior carries its feature-ID so an unaware node can gate on it.
+
+**Feature-ID registry**
+:  The authoritative catalog of every declared feature-ID and its `ignorable` / `must_negotiate` mark. It is the source of truth for what a feature-ID means and whether bypassing it when unaware is safe.
+
 **Capability set**
 :  The set of feature-IDs an installation advertises it supports, plus its version.
 
@@ -108,6 +114,19 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
   - Entries age out when a node stops advertising (presumed absent).
 - **Identifier:** singleton per cluster view.
 - **Lifecycle:** Materialized from the heartbeat stream; entries expire on heartbeat timeout.
+
+#### Feature-ID Registry (aggregate)
+
+- **Root:** `FeatureIDRegistry`
+- **Contains:** the declared feature-ID entries, each with its identifier, `mark` (`ignorable` | `must_negotiate`), and the version range it is live in.
+- **Invariants:**
+  - A feature-ID is stable once declared; its identifier never changes.
+  - Every declared feature-ID carries exactly one mark. An `ignorable` feature is safe to bypass when unaware; a `must_negotiate` feature is not.
+  - Graceful-ignore is the default: a node that receives a behavior tagged with an `ignorable` feature-ID it does not carry drops it cleanly — fail-safe ignore, never fail-crash — enforced at the cluster event-bus dispatch.
+  - A `must_negotiate` feature is never silently bypassed: when a node does not carry it, the interaction holds to the previously agreed safe behavior rather than degrading, so no split-brain occurs.
+  - A feature-ID is retired — its registry entry and gated path removed — only once the fleet capability map shows every live node on every channel, including the slowest, carries it.
+- **Identifier:** singleton — the platform's declared catalog.
+- **Lifecycle:** An entry is added when a new cross-node behavior ships behind a feature-ID, and removed when the capability map confirms universal carriage on the slowest channel.
 
 ### Domain events emitted
 
@@ -221,6 +240,17 @@ When the stable node receives it
 Then the event is dropped cleanly (fail-safe ignore, not fail-crash)
 And the stable node continues operating
 And no convergence or error results from the unknown capability
+```
+
+#### UC-REC-7: A must-negotiate capability refuses rather than splits
+
+```gherkin
+Given a feature-ID marked must_negotiate gates a coordination change
+And one node carries it while the interacting peer does not
+When the two nodes interact
+Then the change is not silently bypassed by the unaware node
+And the interaction holds to the previously agreed safe behavior until both sides carry the feature-ID
+And no split-brain results
 ```
 
 ### Context map position
