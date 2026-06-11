@@ -32,8 +32,9 @@ v2 workspace fixed the answers:
   it is not a fire-and-forget precedent. A non-blocking write-back must be justified directly
   from the requirement, not borrowed from an existing pattern.
 
-The PRD fixed one invariant as non-negotiable: write-back must **never clobber a concurrent
-domain write or a newer record version**, while leaving the mechanism to architecture.
+One invariant is non-negotiable and constrains the choice: write-back must **never clobber a
+concurrent domain write or a newer record version**. The mechanism is open; the guarantee is
+not.
 
 ## Decision
 
@@ -50,7 +51,7 @@ The upgraded form is written back from a spawned task (`tokio::spawn`, fire-and-
 log-on-failure) so the read never blocks, and the persist is guarded
 `… WHERE schema_version = $from_version`. If the row already advanced (concurrent write or a
 newer convergence), the CAS matches nothing and the write-back skips — "skip-on-newer." This
-honors the PRD's no-loss guarantee without locking the read path.
+honors the no-loss guarantee without locking the read path.
 
 **3. The engine never names tables; the consumer owns its SQL via a trait.**
 The consuming bounded context implements a persistence trait (fetch payload+version,
@@ -59,10 +60,11 @@ execution and convergence orchestration only. No dynamic table/column interpolat
 so there is no SQL-injection surface and SQL ownership stays inside the owning context.
 
 **4. The kernel ships zero domain transformations and touches no production table.**
-This todo delivers the engine, the binding, the sweep hook, and tests against a synthetic
-fixture aggregate. Adding `schema_version` to `workflow.todos` and authoring workflow's
-`versions/` is a downstream todo. Config is not a binding consumer; if its parsed document
-ever needs evolution it reuses only the synchronous core.
+The engine, the binding, and the sweep hook stand alone, exercised by tests against a
+synthetic fixture aggregate; no production aggregate is wired by them. Wiring a real
+aggregate — adding `schema_version` to `workflow.todos` and authoring workflow's `versions/`
+— is outside this decision's scope. Config is not a binding consumer; the synchronous core is
+reusable on its parsed document without the convergence binding.
 
 ## Consequences
 
