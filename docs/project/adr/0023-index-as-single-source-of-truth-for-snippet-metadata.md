@@ -1,11 +1,9 @@
 ---
-adr_status: accepted
+adr_status: 'accepted'
 date: '2026-06-10'
-description: The per-project index derives id/type/scope/domain from the snippet path
-  and is the single source of truth; frontmatter stops authoring these fields and
-  consumers read only the index.
+description: 'The per-project index derives id/type/scope/domain from the snippet path and is the single source of truth; frontmatter stops authoring these fields and consumers read only the index.'
 number: '23'
-visibility: public
+visibility: 'public'
 ---
 
 # Index As Single Source Of Truth For Snippet Metadata — ADR

@@ -30,11 +30,15 @@ instructed by the state machine and supervises their progress.
 
 ### 1. Enter the state machine
 
-Call `telec todo work [slug]`. Read the returned instruction block and execute it.
-Let the state machine resolve holders and queue selection before reading execution
-artifacts; read the resolved child's `implementation-plan` (with `prd`, optional
-`architecture`, and in-scope feature-spec scenarios as context) before dispatching. Never read
-holder artifacts as executable work input.
+Call `telec todo work {slug}` for the current slug. Read the returned instruction
+block and execute it. The work orchestrator is scoped to that slug only; it does
+not continue into unrelated work after the slug reaches a terminal handoff.
+
+If the slug resolves to a holder, execute only the direct child commands the
+machine returns. Before dispatching a worker for a child, read that child's
+`implementation-plan` (with `prd`, optional `architecture`, and in-scope
+feature-spec scenarios as context). Never read holder artifacts as executable
+work input.
 
 When the state machine instructs a dispatch, select `--mode`:
 
@@ -86,12 +90,14 @@ alive.
 On APPROVE, the state machine dispatches a finalizer via `next-finalize`. The
 finalizer integrates latest main into the worktree, resolves conflicts, pushes
 the branch, and reports FINALIZE_READY. The state machine then drives the finalize
-handoff, emitting end commands for the slug's workers. The work orchestrator advances
-to the next ready slug (or self-ends if the queue is empty).
+handoff, emitting end commands for the slug's workers and then for the work
+orchestrator itself. Successful handoff is the terminal state for this
+orchestrator session.
 
 **Integration is not the work orchestrator's scope — authority ends at finalize.**
 After a finalizer reports FINALIZE_READY, re-enter `telec todo work [slug]` to trigger
-the handoff; the state machine records durable finalize state and emits the next action.
+the handoff; the state machine records durable finalize state and emits the terminal
+cleanup script.
 Never dispatch `next-integrate`, call `telec todo integrate`, or work around permission
 denials to reach integration. Integration is a separate singleton role with its own
 lease, worktree, and dispatch path. If the machine does not advance past finalize,

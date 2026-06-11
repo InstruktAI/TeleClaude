@@ -392,12 +392,8 @@ NEXT ACTION:
 3. When prepare reaches PREPARED again, call `telec todo work {slug}`."""
 
 
-def format_finalize_handoff_complete(slug: str, next_call: str, child_session_ids: list[str] | None = None) -> str:
-    """Format the slug-scoped handoff step after finalize readiness is recorded.
-
-    Ends worker sessions only — the work orchestrator continues to the next
-    queued slug. The work orchestrator self-ends only when the queue is empty.
-    """
+def format_finalize_handoff_complete(slug: str, child_session_ids: list[str] | None = None) -> str:
+    """Format the terminal handoff step after finalize readiness is recorded."""
     steps: list[str] = []
     steps.append(
         f'1. Report: "Candidate {slug} handed off to the integration event chain. '
@@ -410,13 +406,15 @@ def format_finalize_handoff_complete(slug: str, next_call: str, child_session_id
         steps.append(f"{step}. End child sessions:\n   {end_cmds}")
         step += 1
 
-    steps.append(f"{step}. Call {next_call}")
+    steps.append(f"{step}. End this orchestrator session:\n   telec sessions end self")
 
     instructions = "\n".join(steps)
     return f"""FINALIZE HANDOFF COMPLETE: {slug}
 
 INSTRUCTIONS FOR ORCHESTRATOR:
-{instructions}"""
+{instructions}
+
+Work-stage responsibility for {slug} is complete. Do not call telec todo work {slug} again."""
 
 
 def format_stash_debt(slug: str, count: int) -> str:

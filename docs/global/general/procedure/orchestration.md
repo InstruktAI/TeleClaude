@@ -27,7 +27,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 
 ### Orchestration Loop
 
-1. Invoke the state machine (`telec todo work`, `telec todo prepare`, or `telec todo design`) with an optional slug.
+1. Invoke the state machine (`telec todo work {slug}`, `telec todo prepare [slug]`, or `telec todo design [slug]`) with the current target. Work orchestration is slug-scoped; do not call bare `telec todo work` to pick up unrelated work.
 2. Receive the instruction block.
 3. Execute the instructions verbatim. The state machine output is a linear script — follow it top-to-bottom without branching or decision-making.
 4. When a notification arrives OR the heartbeat timer expires, invoke the state machine again.
@@ -42,7 +42,9 @@ The state machine owns every concrete decision: dispatch, session ending, phase 
 - Parent holder input is frozen source material for child seeding. The holder has no lifecycle state and no executable prepare/work artifacts.
 - `telec todo prepare <holder>` emits `telec todo prepare <child>` only for dependency-satisfied direct children that still need preparation.
 - `telec todo work <holder>` emits `telec todo work <child>` only for dependency-satisfied direct children that are ready for work or already in progress.
-- `telec todo work` with no slug scans the todo list until it finds runnable work. A holder with no work-runnable direct child is skipped; it must not block unrelated ready work later in the todo list. Only after the full todo list is exhausted may the machine report `NO_READY_ITEMS` or a dependency blocker.
+- Bare `telec todo work` is not a pickup loop. It emits a terminal self-end
+  script because daemon-runner pickup, not a live orchestrator session, owns
+  selecting future work.
 
 ### Tailing Discipline
 
@@ -134,7 +136,7 @@ tier blocks the verdict — there is no fourth tier and no deferral path.
 
 The loop terminates when the work state machine returns:
 
-- `NO_READY_ITEMS` (run the preparation state machine first)
+- `NO_CURRENT_WORK_SLUG` (no current slug was supplied; end the session)
 - `COMPLETE`
 - Non-recoverable error requiring intervention
 

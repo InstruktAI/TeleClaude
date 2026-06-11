@@ -1,5 +1,5 @@
 ---
-description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
+description: 'Finalize phase. Worker prepares the branch; the work orchestrator records handoff and exits.'
 visibility: 'public'
 ---
 
@@ -11,7 +11,10 @@ visibility: 'public'
 
 ## Goal
 
-Advance `origin/main` only through canonical-root orchestrator apply after a worker proves the branch is finalize-ready.
+Prepare a reviewed branch for integration and end the work orchestrator after the
+finalize-ready handoff is recorded. The work orchestrator never advances
+`origin/main`; delivery is triggered by the integration event chain after the
+workflow state reaches `finalize_ready`.
 
 ## Preconditions
 
@@ -46,7 +49,7 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
 
 6. Stamp finalize readiness: `telec todo stamp {slug} --finalize-ready`.
 
-### Stage B — Work orchestrator: record handoff (not integration)
+### Stage B — Work orchestrator: record handoff and end
 
 The work orchestrator's authority ends here. It records the handoff — it does not
 perform integration. Integration is a separate singleton role (`/next-integrate`)
@@ -60,10 +63,11 @@ orchestrator must never dispatch `/next-integrate` or call `telec todo integrate
    ```
 
 2. The slug-specific rerun emits the integration handoff facts from durable state.
-3. Continue the orchestration loop without a slug:
+3. Execute the terminal cleanup script emitted by the state machine:
 
    ```bash
-   telec todo work
+   telec sessions end <child-session-id>
+   telec sessions end self
    ```
 
 4. If the state machine does not advance past finalize, report the blocker and stop.
@@ -82,9 +86,11 @@ Apply ownership: orchestrator
 
 - Worktree branch rebased/merged with latest `origin/main`.
 - Worktree branch pushed to `origin/{slug}`.
-- Orchestrator receives `FINALIZE_READY`, records durable finalize-ready state, and then triggers the integration handoff via `telec todo work {slug}`.
+- Orchestrator receives `FINALIZE_READY`, records durable finalize-ready state via
+  `telec todo work {slug}`, executes worker cleanup, and ends itself.
 
 ## Recovery
 
 - If conflicts cannot be resolved in worker prepare, report blocker and stop.
-- If the branch is not pushed or the finalize-ready marker cannot be recorded, fix the branch publication issue and rerun the slug-scoped handoff step.
+- If the branch is not pushed or the finalize-ready marker cannot be recorded, fix
+  the branch publication issue and rerun the slug-scoped handoff step.

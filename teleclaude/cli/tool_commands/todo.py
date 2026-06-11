@@ -137,18 +137,19 @@ def handle_todo_work(args: list[str]) -> None:
 
     Usage: telec todo work [<slug>]
 
-    Executes the build/review/fix cycle on prepared work items. Dispatches
-    worker agents for build, review, or fix-review phases as determined by the
-    current state of the slug.
+    Executes the build/review/fix cycle for the provided work item slug.
+    Dispatches worker agents for build, review, or fix-review phases as
+    determined by the current state of the slug. Without a slug, the command
+    emits a terminal self-end script; daemon-runner pickup owns selecting
+    future work.
 
     Requires orchestrator clearance — workers cannot invoke this on themselves.
     Uses the current working directory as the project root.
 
     Options:
-      <slug>       Work item slug (optional; auto-selects next ready item)
+      <slug>       Work item slug for the current orchestrator session
 
     Examples:
-      telec todo work
       telec todo work my-feature
     """
     if "--help" in args or "-h" in args:

@@ -15,6 +15,12 @@ visibility: 'public'
 
 The work state machine is the workflow capability that drives a prepared Todo through Phase B — `prepared` → `build_started` → `build_complete` → `review_changes_requested` (zero-or-more loops) → `review_approved` → terminal `finalize_ready`. Each call by the orchestrator reads the authoritative `lifecycle_phase`, dispatches the matching Phase handler, and returns a verbatim instruction telling the orchestrator what to do next — dispatch a builder, dispatch a reviewer, relay findings to an already-live builder, dispatch a finalizer, or perform terminal worker-session cleanup. Integration emission is owned by the workflow service's phase-transition chokepoint when an owned write lands `lifecycle_phase=finalize_ready`. Build-review verdicts (`approve` | `changes_requested`) drive transitions between build, fix, and finalize; prepare-review vocabulary (`approve` | `needs_work` | `needs_decision`) is unchanged and applies only to the prepare phases.
 
+The work orchestrator is scoped to one current slug. It does not select
+unrelated follow-up work after the slug reaches `finalize_ready`; the terminal
+finalize-ready instruction ends the slug's workers and then ends the
+orchestrator session. Daemon-runner pickup is a separate concern outside this
+per-slug orchestration contract.
+
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. When any tracked artifact's collapsed drift status is `pending` or `substantive`, work does NOT mutate work-state, does NOT create or touch a worktree on this call, and does NOT dispatch any worker; it returns an orchestrator script telling the caller to run `telec todo prepare {slug}` to resolve drift. The prepare flow's existing BLOCKED branch routes the drift analyzer; when prepare reaches `prepared` again, its terminal script line tells the orchestrator to call `telec todo work {slug}` next. The continuation across the bounce is the existing script-driven contract — no new mechanism, no human gate on cosmetic verdicts, and substantive verdicts cascade through the existing re-derivation chain back into a prepared Todo.
@@ -84,6 +90,9 @@ And when the finalizer Stamps finalize_ready with a sha matching worktree HEAD, 
 Then the machine advances to lifecycle_phase=finalize_ready through the state-write boundary
 And the phase-transition chokepoint emits the workflow.todo.phase_advanced event (with phase=finalize_ready in payload)
 And worker-session cleanup happens inside the finalize_ready step
+And the machine emits "telec sessions end self" for the work orchestrator
+And the machine does NOT instruct the orchestrator to call "telec todo work my-feature" again
+And the machine does NOT instruct the orchestrator to continue to unrelated work
 And on any triple-ref mismatch (uncommitted, branch≠HEAD, remote≠local, stamped sha≠HEAD) refuses to advance and instructs the operator to re-stamp
 ```
 
@@ -121,11 +130,24 @@ Then the work machine returns TODO_NOT_FOUND with a concrete todo-create next st
 And no roadmap row is created for "unknown-work"
 ```
 
+#### UC-WSM3: Bare work call terminalizes instead of selecting unrelated work
+
+```gherkin
+Given a work orchestrator has no current slug
+When the orchestrator runs "telec todo work"
+Then the work machine returns NO_CURRENT_WORK_SLUG
+And the machine emits "telec sessions end self"
+And the machine does NOT select a ready todo from the roadmap
+```
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
 - `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload). `IntegrationTriggerCartridge` dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
 - `session_ledger` — the caller's session identity is propagated through the work entry, recorded on the finalize state, and used by the peer-conversation contract that lets the reviewer relay findings directly to the live builder.
+- `daemon runner` — future unattended pickup may choose the next slug outside the
+  work orchestrator session. The Phase B orchestrator remains per-slug and
+  terminal after finalize-ready cleanup.
 
 ## Known caveats
 

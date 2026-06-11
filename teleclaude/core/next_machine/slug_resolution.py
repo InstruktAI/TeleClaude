@@ -45,15 +45,6 @@ class HolderResolutionReason(StrEnum):
     ITEM_NOT_READY = "item_not_ready"
 
 
-class WorkQueueResolutionReason(StrEnum):
-    """Reason codes for no-slug work queue resolution outcomes."""
-
-    HOLDER_CHILDREN = "holder_children"
-    READY = "ready"
-    DEPS_UNSATISFIED = "deps_unsatisfied"
-    NO_READY_ITEMS = "no_ready_items"
-
-
 @dataclass(frozen=True)
 class HolderChildResolution:
     """Resolved direct children for a holder and the runnable subset."""
@@ -61,16 +52,6 @@ class HolderChildResolution:
     children: tuple[str, ...]
     runnable: tuple[str, ...]
     reason: HolderResolutionReason
-
-
-@dataclass(frozen=True)
-class WorkQueueResolution:
-    """Resolved work queue target for no-slug work pickup."""
-
-    slug: str | None
-    holder_slug: str | None = None
-    child_slugs: tuple[str, ...] = ()
-    reason: WorkQueueResolutionReason | None = None
 
 
 async def resolve_slug_async(
@@ -358,56 +339,6 @@ async def resolve_runnable_holder_children_db(
     return HolderChildResolution(children=tuple(children), runnable=(), reason=HolderResolutionReason.ITEM_NOT_READY)
 
 
-async def resolve_next_work_queue_db(
-    todos_db: TodosDb,
-    dependencies: dict[str, list[str]],
-) -> WorkQueueResolution:
-    """Resolve the next runnable work item, skipping blocked holders."""
-    entries = await todos_db.list_roadmap()
-    delivered = await todos_db.delivered_slugs()
-    dependency_delivered = await effective_delivered_slugs_for_dependencies(todos_db, delivered)
-    saw_deps_blocked = False
-
-    for entry in entries:
-        found_slug = entry["slug"]
-        holder_resolution = await resolve_runnable_holder_children_db(
-            todos_db,
-            found_slug,
-            dependencies,
-            mode=HolderResolutionMode.WORK,
-        )
-        if holder_resolution.children:
-            if holder_resolution.runnable:
-                return WorkQueueResolution(
-                    slug=None,
-                    holder_slug=found_slug,
-                    child_slugs=holder_resolution.runnable,
-                    reason=WorkQueueResolutionReason.HOLDER_CHILDREN,
-                )
-            if holder_resolution.reason is HolderResolutionReason.DEPS_UNSATISFIED:
-                saw_deps_blocked = True
-            continue
-
-        phase = await _get_item_phase_db(todos_db, found_slug, delivered)
-        if phase == ItemPhase.DONE.value:
-            continue
-
-        is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, found_slug)
-        if not is_ready:
-            continue
-
-        if not deps_satisfied(dependencies, dependency_delivered, found_slug):
-            saw_deps_blocked = True
-            continue
-
-        return WorkQueueResolution(slug=found_slug, reason=WorkQueueResolutionReason.READY)
-
-    reason = (
-        WorkQueueResolutionReason.DEPS_UNSATISFIED if saw_deps_blocked else WorkQueueResolutionReason.NO_READY_ITEMS
-    )
-    return WorkQueueResolution(slug=None, reason=reason)
-
-
 # ── Legacy sync functions (retained for callers not yet migrated) ────────
 
 
@@ -456,8 +387,6 @@ __all__ = [
     "HolderChildResolution",
     "HolderResolutionMode",
     "HolderResolutionReason",
-    "WorkQueueResolution",
-    "WorkQueueResolutionReason",
     "_get_item_phase_db",
     "_is_ready_for_work_db",
     "deps_satisfied",
@@ -465,7 +394,6 @@ __all__ = [
     "effective_prepared_slugs_for_dependencies",
     "get_item_phase",
     "resolve_holder_children_db",
-    "resolve_next_work_queue_db",
     "resolve_runnable_holder_children_db",
     "resolve_slug_async",
     "set_item_phase",

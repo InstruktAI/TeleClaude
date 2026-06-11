@@ -643,11 +643,11 @@ async def _work_step_finalize_ready(
     worktree_cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """FINALIZE_READY: terminal cleanup. End worker child sessions and continue."""
+    """FINALIZE_READY: terminal cleanup. End child sessions and self."""
     _ = todos_db, cwd, worktree_cwd, state
     session_id = get_session_id() or ""
     child_session_ids = await _list_child_session_ids(db, session_id)
-    return False, format_finalize_handoff_complete(slug, f"telec todo work {slug}", child_session_ids)
+    return False, format_finalize_handoff_complete(slug, child_session_ids)
 
 
 # ---------------------------------------------------------------------------

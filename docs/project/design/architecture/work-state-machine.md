@@ -9,9 +9,9 @@ visibility: 'public'
 
 The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. It shares the same canonical `lifecycle_phase` field as Prepare, but it does not advance that pointer on its own. Natural progression happens only when the current phase receives an authoritative stamp.
 
-**Entry point:** `telec todo work [slug]`
+**Entry point:** `telec todo work {slug}` for orchestrator-driven work
 **Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
-**Terminal outputs:** `COMPLETE`, `NO_READY_ITEMS`, `FINALIZE_READY` (terminal Phase-B lifecycle phase; integration is triggered by the `TodosDb` write-state chokepoint when the phase is written, not by an in-machine handoff step)
+**Terminal outputs:** `COMPLETE`, `NO_CURRENT_WORK_SLUG`, `FINALIZE_READY` (terminal Phase-B lifecycle phase; integration is triggered by the `TodosDb` write-state chokepoint when the phase is written, not by an in-machine handoff step)
 
 ### Referenced files
 
@@ -266,14 +266,14 @@ sequenceDiagram
 
 ### Command dispatch map
 
-| Sub-Phase   | Command              | Worker Role  | Thinking Mode      | Output                        |
-| ----------- | -------------------- | ------------ | ------------------ | ----------------------------- |
-| Build       | `/next-build`        | Builder      | `med`              | Code, tests, commits          |
+| Sub-Phase   | Command              | Worker Role  | Thinking Mode      | Output                                         |
+| ----------- | -------------------- | ------------ | ------------------ | ---------------------------------------------- |
+| Build       | `/next-build`        | Builder      | `med`              | Code, tests, commits                           |
 | Build (bug) | `/next-build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN) |
-| Review      | `/next-review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict |
-| Fix         | `/next-fix-review`   | Fixer        | `med`              | Fix commits                   |
-| Deferrals   | `/next-defer`        | Orchestrator | —                  | New todos from deferrals      |
-| Finalize    | `/next-finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY |
+| Review      | `/next-review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict                  |
+| Fix         | `/next-fix-review`   | Fixer        | `med`              | Fix commits                                    |
+| Deferrals   | `/next-defer`        | Orchestrator | —                  | New todos from deferrals                       |
+| Finalize    | `/next-finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                  |
 
 ### Lifecycle events
 
@@ -289,10 +289,10 @@ sequenceDiagram
 
 ## Failure modes
 
-- **No ready items in todo list**: returns `NO_READY_ITEMS` — run prepare first.
+- **No current work slug**: returns `NO_CURRENT_WORK_SLUG` with `telec sessions end self`; daemon-runner pickup owns selecting future work.
 - **Dependency not satisfied**: returns `BLOCKED` with dependency information.
 - **Stash debt detected**: hard error — git stash is forbidden in agent workflows.
-- **Missing preparation artifacts**: returns `NO_READY_ITEMS` — run `telec todo prepare` first.
+- **Missing preparation artifacts**: returns a prepare-directed error for the current slug — run `telec todo prepare {slug}` first.
 - **Stale preparation grounding**: returns instruction to re-run prepare before building.
 - **Worker crash**: orchestrator retries once, then escalates with context.
 - **Review round limit exceeded**: returns `REVIEW_ROUND_LIMIT` for orchestrator decision — approve with documented follow-up for non-critical residual items, or escalate if unresolved critical findings remain.

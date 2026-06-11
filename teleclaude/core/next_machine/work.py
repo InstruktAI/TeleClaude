@@ -52,10 +52,8 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
     HolderResolutionReason,
-    WorkQueueResolutionReason,
     _get_item_phase_db,
     effective_delivered_slugs_for_dependencies,
-    resolve_next_work_queue_db,
     resolve_runnable_holder_children_db,
     set_item_phase_db,
 )
@@ -116,6 +114,16 @@ def _format_holder_work_commands(holder_slug: str, child_slugs: tuple[str, ...])
         "Execute these child work commands. They may be run in parallel:\n\n"
         f"{commands}\n\n"
         f"Do not dispatch build/review/fix/finalize for holder '{holder_slug}' itself."
+    )
+
+
+def _format_no_current_work_slug() -> str:
+    """Format the terminal no-slug response for per-slug work orchestration."""
+    return (
+        "NO_CURRENT_WORK_SLUG: Work orchestrator sessions are scoped to a single slug.\n\n"
+        "Execute:\n\n"
+        "telec sessions end self\n\n"
+        "No work-stage action is required. Daemon-runner pickup owns selecting future work."
     )
 
 
@@ -321,32 +329,8 @@ async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: st
         _log_next_work_phase(resolved_slug, "slug_resolution", slug_resolution_started, "run", "resolved")
         return resolved_slug, None
 
-    deps = await todos_db.load_deps()
-    queue = await resolve_next_work_queue_db(todos_db, deps)
-    if queue.child_slugs and queue.holder_slug:
-        _log_next_work_phase(queue.holder_slug, "slug_resolution", slug_resolution_started, "run", "holder_children")
-        return "", _format_holder_work_commands(queue.holder_slug, queue.child_slugs)
-    if queue.slug:
-        _log_next_work_phase(queue.slug, "slug_resolution", slug_resolution_started, "run", "resolved")
-        return queue.slug, None
-
-    if queue.reason is WorkQueueResolutionReason.DEPS_UNSATISFIED:
-        _log_next_work_phase(
-            phase_slug, "slug_resolution", slug_resolution_started, "error", "ready_but_deps_unsatisfied"
-        )
-        return "", format_error(
-            "DEPS_UNSATISFIED",
-            "Ready items exist but all have unsatisfied dependencies.",
-            next_call="Complete dependency items first, or check the todo list.",
-        )
-
-    _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "no_ready_items")
-    return "", (
-        "NO_READY_ITEMS: No ready items found in the todo list.\n\n"
-        "Execute:\n\n"
-        "telec sessions end self\n\n"
-        "The work queue is empty. Call telec todo prepare to prepare items first when new work arrives."
-    )
+    _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "no_current_slug")
+    return "", _format_no_current_work_slug()
 
 
 async def _resolve_explicit_work_slug(
