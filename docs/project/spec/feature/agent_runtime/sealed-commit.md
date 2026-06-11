@@ -56,9 +56,20 @@ Given an agent on the `main` branch with a non-integrator role
 When the agent invokes `telec code commit` with no flags
 Then the command prints the Path A/B/C classification card to stderr
 And exits non-zero without producing a commit
-And the card names: A (non-functional + `[skip ci]`), B (small functional + `--approved`), C (functional + reviewer dispatch)
+And the card names: A (docs/config/state — doc-snippet changes require an independent doc-hygiene review), B (small functional + `--approved`), C (functional + reviewer dispatch)
 And the card points at `telec code changed` for scope inspection
 And the card surfaces `telec code add` and `--include` for new-file declaration
+```
+
+#### Doc-snippet commit on main requires an independent doc-hygiene review
+
+```
+Given an agent on `main` commits a change that touches a doc snippet (docs/**)
+When the commit lands via `telec code commit --approved`
+Then the agent must dispatch an independent reviewer on the commit SHA via `/next-review-commits`
+And the reviewer is a fast or medium agent running the doc-hygiene lane over the changed snippets
+And the authoring agent never reviews a snippet it wrote
+And a config/state/README-only commit with no doc snippet requires no review
 ```
 
 #### Approved commit produces a pathspec commit on the resolved scope
