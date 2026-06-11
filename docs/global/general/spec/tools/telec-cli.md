@@ -13,14 +13,10 @@ AI-safe `telec` commands for project work. Run `telec <subcommand> --help` for d
 
 ## Canonical fields
 
-Pending `revive-todo-update-command`, the todo mutation surface includes
-`telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <kind>]
-[--force]` and no longer includes public `telec todo rename` or
-`telec todo set-deps` verbs. The command table below is generated from the CLI
-surface and will reflect this when the delivering code updates
-`teleclaude/cli/telec/surface.py` and `telec sync` runs.
-
-There are many of course, but this section is now intended to reveal the full surface of baseline commands that we want you to know out of the box.
+The command table below is generated from the live CLI surface (`CLI_SURFACE`
+in `teleclaude/cli/telec/surface.py`) and re-rendered into this baseline doc on
+every `telec sync`, so it always reflects the current surface. It reveals the
+full set of baseline commands every agent should know out of the box.
 
 <!-- @exec: telec -h -->
 
@@ -54,8 +50,14 @@ invoke Cargo tooling from the Cargo workspace root. Single-crate Rust changes
 use `-p <package>` where Cargo supports package scoping; cross-crate changes,
 root Cargo metadata changes, and `--all` use workspace scope.
 
-`telec code commit` remains decoupled from the dev-time Rust pipeline. Commit-time
-Rust gates are owned by the existing pre-commit cargo hooks. The current Rust
-test hook is library-only (`cargo test --workspace --lib --quiet`) unless a
-future task changes the hook.
+`telec code commit` is decoupled from the dev-time Rust pipeline. Commit-time
+Rust gates are owned by the pre-commit cargo hooks. The Rust test hook is
+library-only (`cargo test --workspace --lib --quiet`).
+
+## Known caveats
+
+- Removing or renaming a subcommand is a breaking change.
+- Changing argument order or required flags is a breaking change.
+- Adding a subcommand is a feature addition.
+- Description-only changes are patches.
 

@@ -249,5 +249,5 @@ And this is justified because every change the integrator commits was individual
 ## See also
 
 - docs/project/design/code-commit.md
-- docs/project/spec/telec-cli-surface.md
+- docs/global/general/spec/tools/telec-cli.md
 - docs/global/software-development/policy/version-control-safety.md

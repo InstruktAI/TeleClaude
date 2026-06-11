@@ -231,7 +231,7 @@ A TeleClaude tool (`telec sessions escalate`) that customer-facing agents call w
 | Tool spec               | Help desk `docs/project/spec/tools/escalation.md`   | Parameters, return values, behavior contract          |
 | Escalation policy       | Help desk `docs/project/policy/escalation.md`       | When to escalate, thresholds, what qualifies          |
 | Escalation procedure    | Help desk `docs/project/procedure/escalation.md`    | Step-by-step: recognize → call tool → inform customer |
-| Telec CLI surface entry | TeleClaude `docs/project/spec/telec-cli-surface.md` | Session and operator command surface                  |
+| Telec CLI surface entry | TeleClaude `docs/global/general/spec/tools/telec-cli.md` | Session and operator command surface                  |
 
 The operator brain (`AGENTS.master.md`) references the help desk docs:
 
@@ -937,4 +937,4 @@ sequenceDiagram
 - docs/project/design/architecture/outbox.md — Durable outbox for hook event delivery
 - docs/project/design/architecture/jobs-runner.md — Scheduled job runner architecture
 - docs/project/spec/teleclaude-config.md — Configuration schema
-- docs/project/spec/telec-cli-surface.md — Telec command surface for session and orchestration flows
+- docs/global/general/spec/tools/telec-cli.md — Telec command surface for session and orchestration flows
