@@ -9,6 +9,7 @@ members = [
     "crates/config",
     "crates/workflow",
     "crates/telec-cli",
+    "crates/telec-daemon",
 ]
 
 [workspace.package]
@@ -80,6 +81,8 @@ event-bus = { path = "crates/event-bus" }
 identity = { path = "crates/identity" }
 config = { path = "crates/config" }
 workflow = { path = "crates/workflow" }
+
+[workspace.lints]
 
 [profile.release]
 opt-level = 3

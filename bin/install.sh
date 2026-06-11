@@ -803,6 +803,42 @@ install_global_cli() {
     print_success "Installed telec at $target"
 }
 
+install_rust_runtime() {
+    print_header "Installing Rust Runtime"
+
+    if ! command -v cargo &> /dev/null; then
+        print_error "cargo not found. Install the Rust toolchain before installing telec-daemon."
+        exit 1
+    fi
+
+    print_info "Building telec-daemon release binary..."
+    if ! (cd "$INSTALL_DIR" && cargo build --release -p telec-daemon); then
+        print_error "telec-daemon release build failed"
+        exit 1
+    fi
+
+    local target_dir="$HOME/.local/bin"
+    local source_binary="$INSTALL_DIR/target/release/telec-daemon"
+    local target_binary="$target_dir/telec-daemon"
+
+    if [ ! -x "$source_binary" ]; then
+        print_error "Expected telec-daemon binary missing after build: $source_binary"
+        exit 1
+    fi
+
+    mkdir -p "$target_dir"
+    cp "$source_binary" "$target_binary"
+    chmod +x "$target_binary"
+
+    print_success "Installed telec-daemon at $target_binary"
+
+    if [ "$OS" = "macos" ] && [ "$CI_MODE" = false ]; then
+        print_info "Installing telec-daemon launchd unit..."
+        TELEC_DAEMON_BINARY="$target_binary" "$INSTALL_DIR/bin/daemon-control.sh" install-telec-daemon
+        print_success "Installed telec-daemon launchd unit"
+    fi
+}
+
 run_macos_setup_action() {
     local action="$1"
     if [ "$OS" != "macos" ]; then
@@ -910,6 +946,7 @@ main() {
     validate_config
     provision_logs
     install_global_cli
+    install_rust_runtime
     ensure_teleclaude_yaml
 
     if [ "$CI_MODE" = false ]; then

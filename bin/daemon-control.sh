@@ -27,7 +27,10 @@ STARTUP_STREAM_PID=""
 # Platform-specific config
 if [[ "$OSTYPE" == "darwin"* ]]; then
     PLATFORM="macos"
-    SERVICE_LABEL="ai.instrukt.teleclaude.daemon"
+    V1_DAEMON_LABEL="ai.instrukt.teleclaude.daemon"
+    TELEC_DAEMON_LABEL="ai.instrukt.teleclaude.telec-daemon"
+    DOCS_WATCH_LABEL="ai.instrukt.teleclaude.docs-watch"
+    SERVICE_LABEL="$V1_DAEMON_LABEL"
     SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     PLATFORM="linux"
@@ -54,6 +57,51 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+launchd_domain() {
+    printf 'gui/%s\n' "$(id -u)"
+}
+
+launchd_path_env() {
+    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+    if [ -d "/opt/homebrew/bin" ]; then
+        launchd_path="/opt/homebrew/bin:$launchd_path"
+    fi
+    if [ -d "/usr/local/bin" ]; then
+        launchd_path="/usr/local/bin:$launchd_path"
+    fi
+
+    printf '%s\n' "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//'
+}
+
+launchd_plist_path() {
+    local label="$1"
+    printf '%s/Library/LaunchAgents/%s.plist\n' "$HOME" "$label"
+}
+
+managed_launchd_labels() {
+    printf '%s\n' "$V1_DAEMON_LABEL"
+    printf '%s\n' "$TELEC_DAEMON_LABEL"
+    printf '%s\n' "$DOCS_WATCH_LABEL"
+}
+
+unit_name() {
+    case "$1" in
+        "$V1_DAEMON_LABEL")
+            printf 'v1 daemon'
+            ;;
+        "$TELEC_DAEMON_LABEL")
+            printf 'telec-daemon'
+            ;;
+        "$DOCS_WATCH_LABEL")
+            printf 'docs-watch'
+            ;;
+        *)
+            printf '%s' "$1"
+            ;;
+    esac
 }
 
 normalize_required_config_path() {
@@ -220,8 +268,9 @@ install_systemd_docs_watch_service() {
 }
 
 install_launchd_service() {
-    local service_name="ai.instrukt.teleclaude.daemon"
-    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
+    local service_name="$V1_DAEMON_LABEL"
+    local plist_file
+    plist_file="$(launchd_plist_path "$service_name")"
     local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.daemon.plist"
 
     # Create LaunchAgents directory if needed
@@ -235,18 +284,8 @@ install_launchd_service() {
         exit 1
     fi
 
-    # Detect current PATH to ensure brew and other tools are accessible
-    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-
-    if [ -d "/opt/homebrew/bin" ]; then
-        launchd_path="/opt/homebrew/bin:$launchd_path"
-    fi
-    if [ -d "/usr/local/bin" ]; then
-        launchd_path="/usr/local/bin:$launchd_path"
-    fi
-
-    # Remove duplicates from PATH
-    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
+    local launchd_path
+    launchd_path="$(launchd_path_env)"
 
     # Generate plist from template
     sed -e "s|{{PYTHON_PATH}}|$PROJECT_ROOT/.venv/bin/python|g" \
@@ -258,7 +297,8 @@ install_launchd_service() {
 
     # Load service
     log_info "Loading service..."
-    local domain="gui/$(id -u)"
+    local domain
+    domain="$(launchd_domain)"
     # Prefer modern launchctl bootstrap; fall back to legacy load for older macOS.
     launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
     if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
@@ -282,9 +322,51 @@ install_launchd_service() {
     fi
 }
 
+install_launchd_telec_daemon_service() {
+    local service_name="$TELEC_DAEMON_LABEL"
+    local plist_file
+    plist_file="$(launchd_plist_path "$service_name")"
+    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.telec-daemon.plist"
+    local binary_path="${TELEC_DAEMON_BINARY:-$HOME/.local/bin/telec-daemon}"
+
+    mkdir -p "$HOME/Library/LaunchAgents"
+
+    log_info "Creating telec-daemon launchd service from template..."
+
+    if [ ! -f "$template_file" ]; then
+        log_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    if [ ! -x "$binary_path" ]; then
+        log_warn "telec-daemon binary not found or not executable: $binary_path"
+        log_info "Run bin/install.sh or install target/release/telec-daemon to $binary_path"
+        return 0
+    fi
+
+    local launchd_path
+    launchd_path="$(launchd_path_env)"
+
+    sed -e "s|{{BINARY_PATH}}|$binary_path|g" \
+        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
+        -e "s|{{PATH}}|$launchd_path|g" \
+        "$template_file" > "$plist_file"
+
+    log_info "Created telec-daemon plist file"
+
+    log_info "Loading telec-daemon service..."
+    local domain
+    domain="$(launchd_domain)"
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
+        launchctl load "$plist_file"
+    fi
+}
+
 install_launchd_docs_watch_service() {
-    local service_name="ai.instrukt.teleclaude.docs-watch"
-    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
+    local service_name="$DOCS_WATCH_LABEL"
+    local plist_file
+    plist_file="$(launchd_plist_path "$service_name")"
     local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.docs-watch.plist"
 
     mkdir -p "$HOME/Library/LaunchAgents"
@@ -296,16 +378,8 @@ install_launchd_docs_watch_service() {
         exit 1
     fi
 
-    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-
-    if [ -d "/opt/homebrew/bin" ]; then
-        launchd_path="/opt/homebrew/bin:$launchd_path"
-    fi
-    if [ -d "/usr/local/bin" ]; then
-        launchd_path="/usr/local/bin:$launchd_path"
-    fi
-
-    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
+    local launchd_path
+    launchd_path="$(launchd_path_env)"
 
     local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
 
@@ -318,7 +392,8 @@ install_launchd_docs_watch_service() {
     log_info "Created docs watcher plist file"
 
     log_info "Loading docs watcher service..."
-    local domain="gui/$(id -u)"
+    local domain
+    domain="$(launchd_domain)"
     launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
     if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
         launchctl load "$plist_file"
@@ -335,6 +410,7 @@ install_service() {
             ;;
         macos)
             install_launchd_service
+            install_launchd_telec_daemon_service
             install_launchd_docs_watch_service
             ;;
     esac
@@ -438,10 +514,114 @@ except Exception:
 is_service_loaded() {
     if [ "$PLATFORM" = "macos" ]; then
         # `launchctl list` can be unreliable/sandboxed; `print` is more robust.
-        launchctl print "gui/$(id -u)/$SERVICE_LABEL" >/dev/null 2>&1
+        is_launchd_unit_loaded "$SERVICE_LABEL"
     else
         systemctl is-enabled "$SERVICE_LABEL" >/dev/null 2>&1
     fi
+}
+
+is_launchd_unit_loaded() {
+    local label="$1"
+    launchctl print "$(launchd_domain)/$label" >/dev/null 2>&1
+}
+
+ensure_launchd_managed_plists() {
+    local label
+    while IFS= read -r label; do
+        if [ ! -f "$(launchd_plist_path "$label")" ]; then
+            install_service
+            return 0
+        fi
+    done < <(managed_launchd_labels)
+}
+
+start_launchd_unit() {
+    local label="$1"
+    local plist_file
+    plist_file="$(launchd_plist_path "$label")"
+    local domain
+    domain="$(launchd_domain)"
+
+    if [ ! -f "$plist_file" ]; then
+        install_service
+    fi
+
+    if [ ! -f "$plist_file" ] && [ "$label" = "$TELEC_DAEMON_LABEL" ]; then
+        log_warn "$(unit_name "$label"): plist not installed; skipping until telec-daemon is installed"
+        return 0
+    fi
+
+    if [ "$label" = "$TELEC_DAEMON_LABEL" ]; then
+        local binary_path="${TELEC_DAEMON_BINARY:-$HOME/.local/bin/telec-daemon}"
+        if [ ! -x "$binary_path" ]; then
+            log_warn "$(unit_name "$label"): binary not installed at $binary_path; skipping unit"
+            return 0
+        fi
+    fi
+
+    if is_launchd_unit_loaded "$label"; then
+        log_info "$(unit_name "$label"): already loaded"
+        return 0
+    fi
+
+    log_info "$(unit_name "$label"): loading launchd service"
+    launchctl bootstrap "$domain" "$plist_file" 2>/dev/null || launchctl load "$plist_file"
+}
+
+stop_launchd_unit() {
+    local label="$1"
+    local plist_file
+    plist_file="$(launchd_plist_path "$label")"
+    local domain
+    domain="$(launchd_domain)"
+
+    if ! is_launchd_unit_loaded "$label"; then
+        log_warn "$(unit_name "$label"): service not loaded"
+        return 0
+    fi
+
+    log_info "$(unit_name "$label"): booting out launchd service"
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+}
+
+restart_launchd_unit() {
+    local label="$1"
+    local domain
+    domain="$(launchd_domain)"
+
+    if ! is_launchd_unit_loaded "$label"; then
+        start_launchd_unit "$label"
+        return
+    fi
+
+    log_info "$(unit_name "$label"): kickstarting launchd service"
+    launchctl kickstart -k "$domain/$label" 2>/dev/null || true
+}
+
+status_launchd_unit() {
+    local label="$1"
+    local domain
+    domain="$(launchd_domain)"
+    local service_print
+    service_print=$(launchctl print "$domain/$label" 2>/dev/null || true)
+
+    if [ -z "$service_print" ]; then
+        log_warn "$(unit_name "$label"): NOT loaded"
+        return 1
+    fi
+
+    local state
+    local pid
+    local last_exit
+    state=$(echo "$service_print" | awk -F' = ' '/^[[:space:]]*state[[:space:]]*=/{print $2; exit}')
+    pid=$(echo "$service_print" | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}')
+    last_exit=$(echo "$service_print" | awk -F' = ' '/^[[:space:]]*last exit code[[:space:]]*=/{print $2; exit}')
+    log_info "$(unit_name "$label"): ${state:-unknown} (pid: ${pid:-unknown}, last_exit: ${last_exit:-unknown})"
+
+    if [ -n "$state" ] && [ "$state" != "running" ]; then
+        return 1
+    fi
+    return 0
 }
 
 # Start daemon via service manager
@@ -450,14 +630,17 @@ start_daemon() {
 
     log_info "Starting TeleClaude daemon via $PLATFORM service manager..."
 
-    if [ ! -f "$SERVICE_PATH" ]; then
+    if [ "$PLATFORM" = "macos" ]; then
+        ensure_launchd_managed_plists
+    elif [ ! -f "$SERVICE_PATH" ]; then
         install_service
     fi
 
     start_startup_log_stream
 
     if [ "$PLATFORM" = "macos" ]; then
-        local domain="gui/$(id -u)"
+        local domain
+        domain="$(launchd_domain)"
         # Load service if not loaded
         if ! is_service_loaded; then
             log_info "Loading launchd service..."
@@ -467,6 +650,8 @@ start_daemon() {
             log_info "Service already loaded, kickstarting..."
             launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>/dev/null || true
         fi
+        start_launchd_unit "$TELEC_DAEMON_LABEL"
+        start_launchd_unit "$DOCS_WATCH_LABEL"
     else
         # Linux: enable and start systemd service
         log_info "Enabling and starting systemd service..."
@@ -509,24 +694,28 @@ start_daemon() {
 stop_daemon() {
     log_info "Stopping TeleClaude daemon..."
 
+    if [ "$PLATFORM" = "macos" ]; then
+        stop_launchd_unit "$DOCS_WATCH_LABEL"
+        stop_launchd_unit "$TELEC_DAEMON_LABEL"
+        stop_launchd_unit "$SERVICE_LABEL"
+        sleep 1
+        if [ -f "$PID_FILE" ]; then
+            rm -f "$PID_FILE"
+        fi
+        log_info "Managed launchd units stopped"
+        return 0
+    fi
+
     if ! is_service_loaded; then
         log_warn "Service not loaded"
         return 0
     fi
 
-    if [ "$PLATFORM" = "macos" ]; then
-        # macOS: bootout from launchd (unloads the job)
-        local domain="gui/$(id -u)"
-        log_info "Booting out launchd service..."
-        launchctl bootout "$domain" "$SERVICE_PATH" 2>/dev/null || launchctl unload "$SERVICE_PATH" 2>/dev/null || true
-        sleep 1
-    else
-        # Linux: stop and disable systemd service
-        log_info "Stopping and disabling systemd service..."
-        sudo systemctl stop "$SERVICE_LABEL"
-        sudo systemctl disable "$SERVICE_LABEL"
-        sleep 1
-    fi
+    # Linux: stop and disable systemd service
+    log_info "Stopping and disabling systemd service..."
+    sudo systemctl stop "$SERVICE_LABEL"
+    sudo systemctl disable "$SERVICE_LABEL"
+    sleep 1
 
     # Clean up any remaining processes (Linux only; macOS process enumeration may be restricted)
     if [ "$PLATFORM" != "macos" ]; then
@@ -549,32 +738,28 @@ stop_daemon() {
 status_daemon() {
     log_info "Checking daemon status ($PLATFORM)..."
 
+    overall_ok=0
+    v1_loaded=1
+
     # Check if service is loaded
     if ! is_service_loaded; then
-        log_warn "Service NOT loaded/enabled"
+        log_warn "v1 daemon: NOT loaded/enabled"
         log_warn "Run 'make start' to start the service"
-        return 1
+        overall_ok=1
+        v1_loaded=0
+    elif [ "$PLATFORM" = "macos" ]; then
+        status_launchd_unit "$SERVICE_LABEL" || overall_ok=1
+    else
+        log_info "Service: LOADED"
     fi
 
-    log_info "Service: LOADED"
+    if [ "$PLATFORM" = "macos" ]; then
+        status_launchd_unit "$TELEC_DAEMON_LABEL" || overall_ok=1
+        status_launchd_unit "$DOCS_WATCH_LABEL" || overall_ok=1
+    fi
 
     # Check service manager status
-    if [ "$PLATFORM" = "macos" ]; then
-        local domain="gui/$(id -u)"
-        SERVICE_PRINT=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null || true)
-        if [ -n "$SERVICE_PRINT" ]; then
-            STATE=$(echo "$SERVICE_PRINT" | awk -F' = ' '/^[[:space:]]*state[[:space:]]*=/{print $2; exit}')
-            PID=$(echo "$SERVICE_PRINT" | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}')
-            LAST_EXIT=$(echo "$SERVICE_PRINT" | awk -F' = ' '/^[[:space:]]*last exit code[[:space:]]*=/{print $2; exit}')
-            log_info "launchd state: ${STATE:-unknown} (pid: ${PID:-unknown}, last_exit: ${LAST_EXIT:-unknown})"
-            if [ -n "$STATE" ] && [ "$STATE" != "running" ]; then
-                log_warn "Service state is not running: $STATE"
-                return 1
-            fi
-        else
-            log_warn "Unable to query launchd job details (launchctl print returned nothing)"
-        fi
-    else
+    if [ "$PLATFORM" != "macos" ]; then
         SERVICE_STATUS=$(systemctl is-active "$SERVICE_LABEL" 2>/dev/null || echo "inactive")
         log_info "systemctl status: $SERVICE_STATUS"
         if [ "$SERVICE_STATUS" != "active" ]; then
@@ -584,8 +769,6 @@ status_daemon() {
     fi
 
     # Component health checks (API socket + API reads)
-    overall_ok=0
-
     check_unix_socket() {
         local socket_path="$1"
         python3 - <<PY 2>/dev/null
@@ -652,7 +835,10 @@ PY
     }
 
     # API socket health + read checks
-    if [ -S "$API_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
+    if [ "$v1_loaded" -eq 0 ]; then
+        log_warn "Daemon health: SKIPPED (v1 daemon service not loaded)"
+        overall_ok=1
+    elif [ -S "$API_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
         API_SOCKET_HEALTH=$(check_unix_socket "$API_SOCKET" || true)
         if [ "$API_SOCKET_HEALTH" = "ok" ]; then
             log_info "API socket: HEALTHY ($API_SOCKET)"
@@ -694,7 +880,8 @@ restart_daemon() {
 
     OLD_PID=""
     if [ "$PLATFORM" = "macos" ]; then
-        local domain="gui/$(id -u)"
+        local domain
+        domain="$(launchd_domain)"
         OLD_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
     elif [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE")
@@ -706,11 +893,14 @@ restart_daemon() {
 
     # Use service manager restart (reliable and fast)
     if [ "$PLATFORM" = "macos" ]; then
-        local domain="gui/$(id -u)"
+        local domain
+        domain="$(launchd_domain)"
         KICKSTART_OUT=$(launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>&1) || {
             log_error "launchctl kickstart failed: $KICKSTART_OUT"
             return 1
         }
+        restart_launchd_unit "$TELEC_DAEMON_LABEL"
+        restart_launchd_unit "$DOCS_WATCH_LABEL"
 
         # PID may remain unchanged on some macOS restarts; verify via health instead.
         NEW_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
@@ -722,9 +912,9 @@ restart_daemon() {
     fi
 
     # Wait for daemon to come up (up to STARTUP_WAIT_SECONDS)
-    if wait_for_daemon "$STARTUP_WAIT_SECONDS" "$OLD_PID"; then
+    if wait_for_daemon "$OLD_PID"; then
         if [ "$PLATFORM" = "macos" ]; then
-            PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
+            PID=$(launchctl print "$(launchd_domain)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
         fi
         if [ -z "${PID:-}" ] && [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
@@ -754,13 +944,17 @@ kill_daemon() {
 
     OLD_PID=""
     if [ "$PLATFORM" = "macos" ]; then
-        OLD_PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
+        OLD_PID=$(launchctl print "$(launchd_domain)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
         if [ -z "$OLD_PID" ]; then
             log_warn "Could not determine daemon PID via launchctl"
             return 1
         fi
         log_info "Killing daemon via launchd (PID: $OLD_PID)..."
-        launchctl kill SIGKILL "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+        launchctl kill SIGKILL "$(launchd_domain)/$SERVICE_LABEL" 2>/dev/null || true
+        if is_launchd_unit_loaded "$TELEC_DAEMON_LABEL"; then
+            log_info "Killing telec-daemon via launchd..."
+            launchctl kill SIGKILL "$(launchd_domain)/$TELEC_DAEMON_LABEL" 2>/dev/null || true
+        fi
     else
         if [ ! -f "$PID_FILE" ]; then
             log_warn "No PID file found"
@@ -778,7 +972,7 @@ kill_daemon() {
     fi
 
     # Wait for service manager to auto-restart (up to STARTUP_WAIT_SECONDS)
-    if wait_for_daemon "$STARTUP_WAIT_SECONDS" "$OLD_PID"; then
+    if wait_for_daemon "$OLD_PID"; then
         log_info "Daemon auto-restarted by service manager"
         return 0
     fi
@@ -806,8 +1000,15 @@ main() {
         status)
             status_daemon
             ;;
+        install-telec-daemon)
+            if [ "$PLATFORM" != "macos" ]; then
+                log_info "telec-daemon launchd service install is macOS-only"
+                exit 0
+            fi
+            install_launchd_telec_daemon_service
+            ;;
         *)
-            echo "Usage: $0 {start|stop|restart|kill|status}"
+            echo "Usage: $0 {start|stop|restart|kill|status|install-telec-daemon}"
             echo ""
             echo "Commands:"
             echo "  start   - Start the daemon"
@@ -815,6 +1016,7 @@ main() {
             echo "  restart - Restart the daemon"
             echo "  kill    - Kill daemon (service auto-restarts)"
             echo "  status  - Check daemon status"
+            echo "  install-telec-daemon - Install and load the Rust runtime launchd unit"
             exit 1
             ;;
     esac
