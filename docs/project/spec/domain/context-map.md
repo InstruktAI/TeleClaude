@@ -126,6 +126,15 @@ The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which ent
 | --------- | ---------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `context` | `workflow` | Customer-Supplier | Context resolves selections (which snippets to load given a todo's slug, agent, role). Workflow's prepare-orchestrator + build workers consume these selections at session-start time. |
 
+<!-- planned:code-intelligence-foundation -->
+#### Codebase blueprint (structural code intelligence)
+
+| Upstream   | Downstream | Relationship      | Purpose                                                                                                                                                                                                                  |
+| ---------- | ---------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `context`  | `workflow` | Customer-Supplier | `context` owns the project Blueprint (`.teleclaude/blueprint/graph.json`) and supplies its blast-radius to workflow's plan-draft, where the planner derives a change's affected set from structure instead of grepping.    |
+| `workflow` | `context`  | Customer-Supplier | Workflow's integrator regenerates the Blueprint baseline on a successful remote-main pull (the integrate flow triggers a `graphify extract`). The Blueprint reflects the remote-main baseline that worktrees branch from. |
+<!-- /planned:code-intelligence-foundation -->
+
 #### Cross-filesystem coordination
 
 | Upstream  | Downstream      | Relationship                | Purpose                                                                                                                                                                                                                                                        |

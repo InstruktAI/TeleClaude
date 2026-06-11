@@ -62,6 +62,17 @@ This context does NOT own: workflow state (`workflow`), live agent sessions (`ag
 **CRUD surface**
 : Per-kind operations (`telec context <kind> list/get/create/update/delete`) that read source, validate against the kind's schema, and write back to git-tracked source. The foundation that lets agents author their own context (self-improvement).
 
+<!-- planned:code-intelligence-foundation -->
+**Blueprint**
+: A generated structural map of the project's source — symbols (functions, classes, modules) and the dependency edges between them (calls, imports, inheritance, uses), parsed per-language. A context-engineering artifact alongside docs/skills/commands: structural code context that primes agents. Lives at `.teleclaude/blueprint/graph.json` (project root, gitignored, shared across worktrees).
+
+**Blast-radius (affected set)**
+: For an intended change to a symbol or file, the set of dependents it can affect — callers, importers, subclasses, tests — derived by reverse-traversal of the Blueprint's dependency edges. The structural input to a plan's change surface.
+
+**Blind spot**
+: A coupling the Blueprint cannot see because it is not a source-level edge — dynamic dispatch, registry/string-keyed wiring, config-driven behavior, reflection, and every cross-language boundary (Python↔Rust↔TypeScript via FFI/IPC/process). Named explicitly so the agent reads those areas manually rather than trusting an incomplete blast radius.
+<!-- /planned:code-intelligence-foundation -->
+
 ### Aggregates
 
 #### ContextItem (aggregate, per kind)
@@ -231,6 +242,19 @@ The CRUD surface enables agents to author their own context. The mining workers 
 3. Write via the CRUD surfaces (`telec context skills create` for skills; `telec memory save` for observations)
 
 No mining service exists. No event subscription in context. Pattern detection is intelligence + shared utilities + CLI bridges. See `transport-rules.md` "Cross-cutting concerns via intelligence + shared utilities + CLI" for the pattern.
+
+<!-- planned:code-intelligence-foundation -->
+### Codebase blueprint (structural code intelligence)
+
+`context` owns the project's **Blueprint** — a generated structural map of the source that agents (at plan time especially) consult to obtain the blast radius of an intended change instead of grepping. The engine is the Graphify CLI, adopted as-is behind the `graph.json` data-contract seam (see `project/adr/0016-graphify-as-codebase-blueprint-engine`).
+
+- **Languages:** Python, Rust, TypeScript — one graph spanning all three. Python and Rust are high-fidelity; TypeScript extracts and queries but yields a sparser dependency graph (React/JSX), so its blast-radius is less complete — validate per use.
+- **Generation (automation, never agents):** the integrator regenerates the baseline on a successful remote-main pull, writing `.teleclaude/blueprint/graph.json` at the project root (gitignored, shared across worktrees like `todos.db`). Worktrees read that baseline; there is no per-step drift handling — a worktree is stable against the baseline it branched from, and the next integrate refreshes code and Blueprint together. Pinned and installed via `make install`.
+- **Agent how-to (consumption):** the blast-radius discipline lives in the `plan-draft` procedure. Concrete commands: `graphify query "<terms>"` to surface seed symbols; the **blast-radius helper** (`changed-files → symbol node-ids → affected → union`, reading `graph.json`) to get the dependent set — the helper exists because `graphify affected` resolves only unique symbol seeds and Graphify has no file→dependents primitive of its own. Pair with `graphify path` for reachability.
+- **Fallback:** if the Blueprint is missing or stale, the area is unsupported, or a Blind spot applies, the agent states the gap and falls back to manual exploration — blast-radius is never silently skipped.
+
+This subsection is the concrete "codebase-intelligence documentation" the plan-draft discipline references.
+<!-- /planned:code-intelligence-foundation -->
 
 ### Context map position
 

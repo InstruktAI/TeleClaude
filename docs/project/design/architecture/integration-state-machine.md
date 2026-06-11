@@ -466,6 +466,12 @@ flowchart TD
 
 Only bookkeeping files are staged (`git add` by path, not `git add -A`), preserving any dirty state on main.
 
+<!-- planned:code-intelligence-foundation -->
+### Blueprint regeneration
+
+After a successful integration brings the repo root's `main` current (delivery bookkeeping complete), the integrator regenerates the project **codebase Blueprint** — the structural map agents consult at plan time (owned by `context`; see `project/spec/domain/context`). It runs the blueprint engine over the repo root and writes `.teleclaude/blueprint/graph.json` (project root, gitignored). This is the single refresh point: the baseline always reflects the remote-main that worktrees branch from, so there is no per-step drift handling — a worktree is stable against the baseline it branched from, and the next integration refreshes code and Blueprint together. Regeneration is best-effort — a failure is logged and does not fail the integration (consumers fall back to manual exploration when the Blueprint is missing or stale).
+<!-- /planned:code-intelligence-foundation -->
+
 ### Crash recovery
 
 Every phase is recoverable. Re-calling `telec todo integrate` reads the checkpoint and resumes:
