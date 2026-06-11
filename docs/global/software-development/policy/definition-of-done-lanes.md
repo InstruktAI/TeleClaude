@@ -343,10 +343,29 @@ For each changed snippet body, flag the Narration anti-pattern in its four forms
 4. **Future framing** — "will", "is planned", "the new surface is going to …",
    instead of a present-tense description of the intended shape.
 
+When the changed snippet is an ADR (`docs/project/adr/**`), additionally hold its
+body to the ADR contract (`general/policy/adr-discipline`, `general/procedure/adr-authoring`
+— "What an ADR is"):
+
+5. **Forward ADR reference** — the body references a _later_ ADR, a decision that
+   did not exist when this one was recorded. A backward reference to an _earlier_
+   ADR is fine; only the forward direction is the violation, and the sole forward
+   link is `supersedes` frontmatter on the newer ADR.
+6. **Work reference in an ADR** — the body names a todo, slug, `delivered_by`,
+   delivery, or anything TBD, or the `adr` snippet carries a `delivered_by`
+   frontmatter field or a companion file. An ADR records a decision, not work.
+7. **Non-atomic ADR** — the record bundles more than one decision, or shards one
+   cohesive contract across mutually-referencing ADRs (that contract belongs in a
+   spec or domain doc).
+
 Severity guidance:
 
 - A **delivered** planned/companion body that carries future-framing or names its
   slug — now live and false in the standing contract → **Critical**.
+- A forward ADR reference, or any work reference, in an ADR body → **Critical**
+  (it falsifies the timeline or couples the record to ephemeral work).
+- A non-atomic ADR, or a cohesive contract sharded across mutually-referencing
+  ADRs → **Important**.
 - Narration introduced or modified by this change in a live snippet body →
   **Important**.
 - A snippet whose contract is correct but carries a stray rationale clause better

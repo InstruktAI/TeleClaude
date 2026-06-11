@@ -15,6 +15,28 @@ visibility: 'public'
 
 Capture a decision as a structured, discoverable record that future agents can find, evaluate, and (if needed) supersede — without polluting the primary artifacts (specs, procedures, principles) with reasoning logs.
 
+### What an ADR is
+
+An ADR is one atomic, immutable reasoning report on the architecture's decision
+timeline. It records a single decision at the moment it was made: the context and
+forces then in play, the decision taken, and its consequences. It is history —
+never edited after the fact.
+
+Three constraints follow from that nature, and they are the rules most often
+broken:
+
+- **Atomic.** One ADR records one decision. A cohesive contract whose parts must
+  cross-reference is a spec or domain doc; each constituent decision is still its
+  own standalone ADR.
+- **Backward-only on the timeline.** As a fixed point in time, an ADR may rest on
+  decisions that already existed when it was written — referencing an _earlier_
+  ADR is fine. It may **never** reference a _later_ ADR, because at its moment
+  that decision did not exist. The only _forward_ link is `supersedes`, recorded
+  on the newer ADR (see § step 6), never on the one it retires.
+- **Decisions, not work.** An ADR records a decision, never work: no todo, no
+  slug, no `delivered_by`, no delivery, nothing TBD. Those are not points on the
+  decision timeline, and the future is not knowable from a past entry.
+
 ## Preconditions
 
 - A non-trivial decision is being committed to documentation, agent artifacts, or architecture. (Per the ADR discipline policy: a future agent would reasonably ask "why was it done this way?")
@@ -73,6 +95,9 @@ Capture a decision as a structured, discoverable record that future agents can f
 - `date` is ISO-8601 (`YYYY-MM-DD`).
 - `adr_status` is one of the allowed values.
 - All required sections present (Context, Decision, Consequences).
+- Exactly one decision (atomic); a multi-part contract belongs in a spec, not split across ADRs.
+- The body references only earlier ADRs, never a later one; the sole forward link is this ADR's `supersedes`.
+- The body references no work — no todo, slug, `delivered_by`, delivery, or TBD.
 - Decision is stated as a decision, not a question or a narrative.
 - Consequences cover both directions (positive and negative).
 - No prior ADR was modified; supersession is recorded only via this ADR's `supersedes` frontmatter.
@@ -80,7 +105,7 @@ Capture a decision as a structured, discoverable record that future agents can f
 
 ## Discipline
 
-The single most-violated rule here is honesty about alternatives and consequences. Agents writing ADRs after the fact tend to construct retroactive justifications — listing alternatives only to dismiss them, naming only positive consequences. That defeats the ADR's purpose: future agents need an honest record so they can fairly re-evaluate the decision when context changes. If the decision was made under pressure, say so. If the chosen path has known costs, name them. The ADR is for future agents who do not have the present's context; write it for them, not for self-defense.
+Two failure modes dominate. The first is **authoring an ADR as something it is not** — a work log that names todos, slugs, or deliveries, or a node in a cross-linked graph that points forward to decisions not yet made. An ADR is one decision, frozen in time, looking only backward (see § What an ADR is); when the impulse arises to cite a sibling ADR or a delivering slug in the body, that is the warning sign. The second is **dishonesty about alternatives and consequences**: agents writing after the fact construct retroactive justifications — listing alternatives only to dismiss them, naming only positive consequences. Future agents need an honest record so they can fairly re-evaluate the decision when context changes. If the decision was made under pressure, say so; if the chosen path has known costs, name them. Write for the future agent who does not have the present's context, not for self-defense.
 
 ## Recovery
 
