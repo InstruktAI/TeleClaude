@@ -291,10 +291,8 @@ And its implied maintenance action is surfaced
 
 ### Cross-context references
 
-- Belongs (along with the receiver) to `agent_runtime` in the v2 fold,
-  since checkpoint blocking is a property of agent-CLI orchestration,
-  not of external integration. Inventoried here in v1 because it
-  composes with the receiver.
+- Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
+  the receiver it composes with.
 - Reads session row state owned by `agent_runtime`: last user message
   timestamp, last checkpoint timestamp, native log file, working
   subdirectory, project path, turn anchor SHA, working slug,

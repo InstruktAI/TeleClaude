@@ -1,13 +1,9 @@
 ---
-id: 'project/adr/0037-checkpoint-ledger-separates-commit-detection'
-type: 'adr'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-number: '37'
-date: '2026-06-11'
 adr_status: 'accepted'
+date: '2026-06-11'
 description: 'The checkpoint action ledger is time-anchored and includes committed code; the authored-main-commit signal triggers only the post-commit review gate; one turn-scoped escape hatch replaces the permanent disable.'
+number: '37'
+visibility: 'public'
 ---
 
 # Checkpoint Ledger Separates Commit Detection — ADR
