@@ -98,6 +98,9 @@ crates/
 ├── event-bus/                       (library — Redis pub/sub + streams wrapper)
 ├── storage/                         (library — sqlx::PgPool helpers, migration runner)
 ├── state-machine/                   (library — generic engine)
+<!-- planned:data-upcasting-kernel -->
+├── upcasting/                       (library — generic data-upcasting engine, ADR-0025 Layer 1)
+<!-- /planned:data-upcasting-kernel -->
 │
 ├── identity/                        (library — service)
 ├── agent-runtime/                   (library — service)
