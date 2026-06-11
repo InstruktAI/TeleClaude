@@ -105,6 +105,23 @@ fast-path stays gone.
   until it closes, the alias stays. PUBLIC keeps the optional semantics above —
   `PUBLIC_REDIS_URL` when set, otherwise silent-drop until federation is
   configured.
+- **Scope of the "Cluster is optional / silent-drop / may be absent" language in
+  this design.** In this single-bus topology the Cluster client is always present
+  (it rides the bus resolved above), so for the current contract **only PUBLIC is
+  the optional, silent-drop-when-absent scope**, and code may assume the Cluster
+  client is present. The broader "Local mandatory, Cluster and Public optional",
+  "single-computer installs run Local-only", and "code that assumes Cluster is
+  always present is wrong" passages elsewhere in this doc describe the eventual
+  greenfield target — in which LOCAL is split onto its own local-host Redis
+  distinct from the CLUSTER mesh Redis. That split is future work; read those
+  passages as the target state and this section as the current contract.
+- **Requested subscription scopes stay isolated even though LOCAL and CLUSTER
+  share the bus Redis.** Because both scopes ride one Redis under unscoped
+  channel keys, the bus filters each subscription by `envelope.scope`: a
+  `local()` subscription yields only `Local`-scoped envelopes and a `cluster()`
+  subscription only `Cluster`-scoped ones, so "scope is respected literally"
+  holds on the shared bus. `all()` applies no scope filter (and dedups by
+  idempotency key across the bus and a configured Public).
 <!-- /planned:event-bus-cluster-scope -->
 - **In-coroutine completion signals are not events.** They use Tokio
   primitives (`oneshot`, `broadcast`, `mpsc`) and are named accordingly.
