@@ -19,6 +19,9 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo is persisted with `kind` unset and no `lifecycle_phase`, and `/analyze-todo-input` is dispatched to classify it and assign a kind autonomously via `telec todo stamp --kind-assign <kind>`. The classifier assigns the kind directly — there is no proposal and no human approval gate — then routes to that kind's entry phase. It never executes the work itself.
   - `--silent` — sets `silent=True` on the request. The route still creates the todo and still emits `workflow.todo.created`, but with `pickup_requested=false` and `creation_mode="silent"`, so the lifecycle router skips dispatch.
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
+  <!-- planned:task-lane -->
+  - `--datetime <iso-instant>` — valid only for `--kind task`. It records the earliest execution eligibility instant for the task. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
+  <!-- /planned:task-lane -->
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
@@ -36,8 +39,14 @@ The workflow service emits the event with this payload:
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
 - `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
+  <!-- planned:task-lane -->
+  Pending `task-lane`, task creation emits `"task_plan_drafting"` instead of `"prepared"`.
+  <!-- /planned:task-lane -->
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
+<!-- planned:task-lane -->
+- `datetime` — optional ISO-8601 instant for task todos; omitted otherwise.
+<!-- /planned:task-lane -->
 
 ### Use cases
 
@@ -107,6 +116,37 @@ And the workflow service writes state + `input`, sets lifecycle_phase="prepared"
 And the lifecycle router does not auto-dispatch; the task waits durably until a human or a dependency/time trigger starts it
 And when worked, an agent grooms the `task-plan` (ticking off steps, appending results) rather than producing a code commit
 ```
+
+<!-- planned:task-lane -->
+#### UC-WTC6: Task create enters task-plan drafting
+
+```gherkin
+Given a human or agent creates a task with substantive input
+When they run `telec todo create call-supplier-api "<what to do>" --kind task`
+Then workflow writes the roadmap row, Todo state, and `input` artifact atomically
+And sets kind="task" and lifecycle_phase="task_plan_drafting"
+And emits `workflow.todo.created` with kind="task", lifecycle_phase="task_plan_drafting", and project identity
+And the lifecycle runner may dispatch `/next-prepare-task`
+And the task cannot dispatch `/next-run-task` until a `task-plan` exists and the human authorization stamp is present
+```
+
+#### UC-WTC7: Task datetime and dependencies are mutually exclusive
+
+```gherkin
+Given a caller creates a task
+When the request supplies both `--after parent` and `--datetime <iso-instant>`
+Then workflow rejects the request before writing roadmap, state, artifact, or event rows
+And the diagnostic names the mutually exclusive fields
+```
+
+```gherkin
+Given a caller creates a task with `--datetime <iso-instant>`
+When the create request is accepted
+Then the task has no dependency edges
+And the datetime is persisted as the task execution eligibility instant
+And the task still requires a prepared `task-plan` and human authorization before runner dispatch
+```
+<!-- /planned:task-lane -->
 
 ```
 Given an operator runs `telec todo design my-feature`

@@ -22,6 +22,10 @@ The graph has two responsibilities:
 
 Dependency mutations land via `telec todo update <slug> --after <dep>...`, which converges on the workflow service's set-deps capability after existence validation and cycle detection. The public `set-deps` verb is retired. To clear all dependencies, pass `--after ""`; omitting `--after` leaves deps untouched.
 
+<!-- planned:task-lane -->
+For kind=`task`, dependency edges and task datetime are mutually exclusive execution gates. A task may use `after` dependencies to wait for delivered parents, or `datetime` to wait for a clock instant, but not both. The create/update boundary refuses any live state that would persist both a non-empty `after` set and a datetime.
+<!-- /planned:task-lane -->
+
 
 ### Phase-specific gates (two gates, both directions)
 
@@ -143,6 +147,30 @@ Then the router consults the dependency graph and finds the prepare gate unsatis
 And the router does not auto-dispatch /next-prepare for "child"
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
 ```
+
+<!-- planned:task-lane -->
+#### UC-WDG4: Task datetime excludes dependency edges
+
+```gherkin
+Given a task has a non-empty `after` dependency set
+When a caller updates the same task with `--datetime <iso-instant>` without clearing dependencies
+Then workflow refuses the mutation before persistence
+And the task keeps its previous dependency set and datetime state
+```
+
+```gherkin
+Given a task has a datetime
+When a caller updates the same task with a non-empty `--after` set without clearing datetime
+Then workflow refuses the mutation before persistence
+And the task keeps its previous dependency set and datetime state
+```
+
+```gherkin
+Given a task has a datetime
+When the caller clears datetime and sets `--after parent` in the same accepted mutation
+Then workflow persists the dependency edge and leaves datetime empty
+```
+<!-- /planned:task-lane -->
 
 
 ### Cross-context references

@@ -152,6 +152,9 @@ subcommands:
           --project-root: 'Project root (default: cwd).'
           --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
           --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo — the content is stored as the input artifact and /analyze-todo-input classifies it and assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal, no human approval gate; it never executes). task is a non-SDLC action lane, created silent and grooming a task-plan.'
+          <!-- planned:task-lane -->
+          --datetime: 'Optional ISO-8601 datetime for kind=task. Mutually exclusive with --after; the task becomes execution-eligible only after this instant and after human task authorization. The scheduler tick wakes the lifecycle runner; no per-task timer is persisted.'
+          <!-- /planned:task-lane -->
           --group: 'Optional grouping label for the todo entry.'
           --description: 'Optional todo-entry description.'
           --silent: 'Persist without triggering autonomous pickup dispatch. The workflow.todo.created event is still emitted with creation_mode=silent and pickup_requested=false so cache/audit consumers observe the new aggregate; only the pickup dispatch consumers gate themselves on pickup_requested. (delivered_by v2-workflow-cli-refinement-commands; authoritative contract: UC-WFL-19.)'
@@ -265,6 +268,9 @@ subcommands:
           --architecture-skipped: 'Skip architecture phase with a reason.'
           --drift-reviewed: 'Record drift review: artifact, substantive|cosmetic, reason.'
           --kind-assign: 'Autonomously assign a kind: feature|change|bug|task, with optional content (a task-plan body for task). Valid only for kind-less todos (kind unset, no lifecycle_phase); fixes the kind exactly once and moves the todo to that kind''s entry phase. No proposal and no human approval gate.'
+          <!-- planned:task-lane -->
+          --task-approved: 'Approve a prepared task for execution. Valid only for kind=task after a task-plan exists; records the human authorization signal consumed by the lifecycle runner.'
+          <!-- /planned:task-lane -->
           --deferrals-processed: 'Mark the deferrals artifact as processed.'
           --design-spec-confirmed: 'Confirm creative design-spec human gate.'
           --art-approved: 'Approve creative art human gate.'
@@ -287,6 +293,9 @@ subcommands:
               --project-root: 'Project root (default: cwd).'
               --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
               --kind: 'Optional. Todo kind: feature | change | bug | task. Omit to create a kind-less todo classified by /analyze-todo-input, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal, no human approval gate) and never executes.'
+              <!-- planned:task-lane -->
+              --datetime: 'Optional ISO-8601 datetime for kind=task. Mutually exclusive with --after; evaluated by the lifecycle runner on scheduler tick wake-ups after task authorization.'
+              <!-- /planned:task-lane -->
               --group: 'Optional grouping label.'
               --description: 'Optional todo-entry description.'
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
@@ -300,6 +309,9 @@ subcommands:
               --project-root: 'Project root (default: cwd).'
               --artifact: 'Artifact kind to write the positional content as (default `input`). Must be a canonical artifact kind per ARTIFACT_NAMES.'
               --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. The supplied set REPLACES the existing dependency set in full (not patched/appended).'
+              <!-- planned:task-lane -->
+              --datetime: 'Set, replace, or clear the task datetime. Mutually exclusive with a non-empty dependency set; clearing uses an empty value. Emits workflow.todo.updated so the lifecycle runner re-evaluates the task.'
+              <!-- /planned:task-lane -->
               --group: 'New grouping label.'
               --description: 'New todo-entry description.'
               --kind: 'New todo kind (validated against the canonical set).'

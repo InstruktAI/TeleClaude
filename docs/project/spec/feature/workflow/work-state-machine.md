@@ -21,6 +21,10 @@ finalize-ready instruction ends the slug's workers and then ends the
 orchestrator session. Daemon-runner pickup is a separate concern outside this
 per-slug orchestration contract.
 
+<!-- planned:task-lane -->
+Task execution is a separate non-SDLC lane. The lifecycle runner starts `/next-run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `/next-run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and stays alive for human follow-up instead of self-ending through finalize-ready cleanup.
+<!-- /planned:task-lane -->
+
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. When any tracked artifact's collapsed drift status is `pending` or `substantive`, work does NOT mutate work-state, does NOT create or touch a worktree on this call, and does NOT dispatch any worker; it returns an orchestrator script telling the caller to run `telec todo prepare {slug}` to resolve drift. The prepare flow's existing BLOCKED branch routes the drift analyzer; when prepare reaches `prepared` again, its terminal script line tells the orchestrator to call `telec todo work {slug}` next. The continuation across the bounce is the existing script-driven contract — no new mechanism, no human gate on cosmetic verdicts, and substantive verdicts cascade through the existing re-derivation chain back into a prepared Todo.
@@ -63,6 +67,33 @@ When the orchestrator calls "telec todo work my-feature" while the builder is st
 Then the machine refuses to dispatch a second builder
 And returns an instruction to wait for the builder to run "telec todo stamp my-feature --build-complete"
 ```
+
+<!-- planned:task-lane -->
+#### UC-WSM4: Task execution uses next-run-task, not Phase B build
+
+```gherkin
+Given a Todo has kind="task", lifecycle_phase="prepared", a `task-plan`, and a task authorization stamp
+And the task has no datetime, or its datetime is at or before the runner evaluation instant
+When the lifecycle runner evaluates eligible work for the project
+Then it acquires a `(project, slug, task-run)` dispatch claim
+And starts `/next-run-task <slug>` without creating a worktree
+And records or preserves lifecycle_phase="task_running" while the task session is live
+```
+
+```gherkin
+Given a task lacks authorization, lacks a `task-plan`, has a future datetime, is held, or already has a live task-run session/claim
+When the lifecycle runner evaluates eligible work for the project
+Then it does not start `/next-run-task`
+And it leaves the SDLC work state machine untouched
+```
+
+```gherkin
+Given `/next-run-task` reaches the end of the task-plan
+When it has recorded results in the `task-plan`
+Then the task session stays alive for human follow-up
+And it does not self-end, stamp build-complete, dispatch review, or enter finalize-ready
+```
+<!-- /planned:task-lane -->
 
 ```
 Given a Todo whose builder has Stamped build-complete and committed its work

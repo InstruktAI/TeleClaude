@@ -117,6 +117,7 @@ assumption that every v2 event already fires:
 | `workflow.todo.updated` / `workflow.roadmap.entry_moved` | Must be emitted or bridged from v1 mutation paths that change hold, dependency edges, icebox/unfreeze, or task authorization. Rust v2 emissions alone are insufficient while v1 remains authoritative. |
 | `config.effective.updated` | Must be wired from the v1 config watcher/effective-config reload seam, or the runner must receive an equivalent in-process wake-up carrying the same scope semantics. |
 | `agent_runtime.session.ended` | Must be bridged from v1 `SESSION_CLOSED` after extending the payload beyond `session_id` with project/slug/lane/close-intent metadata. |
+| `scheduler.tick.minute` | Pending `task-lane`; v1 must add the in-daemon minute clock emitter and lifecycle-router admission for this wake-up before workflow can subscribe to it for datetime-gated tasks. |
 
 `creation_mode` / `pickup_requested` are migration-only fields after this
 delivery. The durable target control is `workflow.Todo.hold` plus effective
@@ -181,11 +182,11 @@ Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/i
 
 | Event                   | Producer         | Visibility | Posture                                                          |
 | ----------------------- | ---------------- | ---------- | ---------------------------------------------------------------- |
-| `scheduler.tick.minute` | scheduler bridge | CLUSTER    | commit-then-emit (the tick fires per OS cron entry every minute) |
-| `scheduler.tick.hour`   | scheduler bridge | CLUSTER    | derived — fires on the minute-tick that crosses an hour boundary |
-| `scheduler.tick.day`    | scheduler bridge | CLUSTER    | derived — fires on the minute-tick that crosses a day boundary   |
+| `scheduler.tick.minute` | scheduler clock  | CLUSTER    | commit-then-emit (the daemon emits one generic minute tick)      |
+| `scheduler.tick.hour`   | scheduler clock  | CLUSTER    | derived — fires on the minute-tick that crosses an hour boundary |
+| `scheduler.tick.day`    | scheduler clock  | CLUSTER    | derived — fires on the minute-tick that crosses a day boundary   |
 
-The scheduler bridge is one OS cron entry that fires `telec cron tick` every minute, emitting the events above. Per-pillar listeners subscribe and consult their own cadence policy + cursor state to decide whether to act. See `transport-rules.md` "Recurring jobs" section. NOT a bounded context; one-line infrastructure crate.
+The scheduler clock is an in-daemon periodic emitter, not a host-level service configuration or per-task timer. It emits the generic events above; per-pillar listeners subscribe and consult their own cadence policy + cursor state to decide whether to act. NOT a bounded context; infrastructure only.
 
 ### Subscription map
 
@@ -219,6 +220,17 @@ Additional runner subscriptions:
 | `config.effective.updated`     | `workflow.lifecycle_runner` (invalidate autostart policy and re-evaluate affected project/global scope; v1 config watcher is the seam) |
 | `agent_runtime.session.ended`  | `workflow` (session-close interlock: explicit operator stop-work sets hold on the correlated incomplete todo; v1 `SESSION_CLOSED` must be enriched/bridged) |
 <!-- /planned:runner-dispatch -->
+
+<!-- planned:task-lane -->
+Task-lane runner subscriptions:
+
+| Event | Consumers |
+| ----- | --------- |
+| `workflow.todo.updated` | `workflow.lifecycle_runner` (re-evaluate when a task's `task-plan`, authorization stamp, datetime, hold, or dependency/date gate changes) |
+| `scheduler.tick.minute` | `workflow.lifecycle_runner` (re-evaluate tasks whose optional datetime may now be due; the tick never carries task identity and never creates a persisted timer claim by itself) |
+
+The task datetime flow is wake-up-driven rather than timer-state-driven: the daemon scheduler clock emits the generic minute tick, workflow reloads the project todo set, and the lifecycle runner dispatches only tasks that still pass authorization, hold, live-session/claim, and datetime/dependency eligibility at evaluation time.
+<!-- /planned:task-lane -->
 
 ### v1 → v2 event-name mapping
 

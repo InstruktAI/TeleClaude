@@ -26,6 +26,10 @@ realignment command; the pointer is never authored by hand. Legacy phase strings
 on older Todos auto-upcycle on read; the canonical pointer is the single source of
 truth for "where is this Todo, right now."
 
+<!-- planned:task-lane -->
+Pending `task-lane`, the canonical enum includes `task_plan_drafting` and `task_running`. `task_plan_drafting` is a prepare phase for kind=`task`; it derives from kind assignment or task creation before a `task-plan` exists. `task_running` is the non-SDLC live execution marker for `/next-run-task`; it is not a build/review/finalize phase and does not satisfy SDLC work gates.
+<!-- /planned:task-lane -->
+
 Drift between an upstream artifact and the downstream artifacts grounded against
 it is detected objectively (`derive_lifecycle_drift`) and assessed for
 **materiality** only by intelligence — the `/next-drift-analyze` worker stamps

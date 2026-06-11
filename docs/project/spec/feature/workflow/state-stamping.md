@@ -32,6 +32,10 @@ And it sets lifecycle_phase=KIND_ENTRY_PHASE["task"] ("prepared")
 And the state-write boundary re-validates the full state and persists atomically
 ```
 
+<!-- planned:task-lane -->
+Pending `task-lane`, UC-WSS1 is replaced: `--kind-assign task` fixes kind=`task` and routes to `task_plan_drafting`, but it does not write `task-plan` and does not mark the Todo `prepared`. `/next-prepare-task` owns converting the input into a task-plan.
+<!-- /planned:task-lane -->
+
 #### UC-WSS2: SDLC kind assignment fixes kind and enters its lane
 
 ```
@@ -76,6 +80,25 @@ Then the approvals manager records a skip stamp with the reason, timestamp, and 
 And the empty-reason variant is rejected before any write
 And the prepare chain advances past the architecture phase on next dispatch
 ```
+
+<!-- planned:task-lane -->
+#### UC-WSS9: Human task authorization stamps execution approval
+
+```gherkin
+Given a Todo has kind="task", lifecycle_phase="prepared", and a current `task-plan` artifact
+When a human authorizes the task from the TUI or runs `telec todo stamp my-slug --task-approved`
+Then workflow records a task authorization stamp with caller_session_id and approved_at
+And the state-write boundary re-validates the full Todo state before commit
+And workflow emits `workflow.todo.updated` so the lifecycle runner re-evaluates task eligibility
+```
+
+```gherkin
+Given a Todo is not kind="task", is not prepared, or lacks a `task-plan`
+When a caller attempts the task authorization stamp
+Then workflow refuses before mutating state
+And no runner wake-up is emitted
+```
+<!-- /planned:task-lane -->
 
 ```
 Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
@@ -131,6 +154,9 @@ And no commit happens — the stamp call exits before any partial mutation lands
 - The stamp is the **natural worker-completion authority** for build and finalize phases. The state machine does not advance into review or integration until the stamp lands; conversely, the stamp does not run the gates itself — it records the claim and lets the state machine run gates on its next dispatch. This split prevents long-running stamp calls and the zombie processes a synchronous gate run would create.
 - Kind assignment is **autonomous and one-shot**. `--kind-assign <kind>` fixes `kind` exactly once and moves the todo straight to that kind's `KIND_ENTRY_PHASE`; there is no proposal phase and no human approval stamp between classification and the lane. A Todo whose kind is already fixed refuses the stamp.
 - `--kind-assign task` is the only kind-assignment stamp that writes `task-plan`. SDLC assignments record kind + entry phase only and let their normal lane author PRD/implementation artifacts.
+  <!-- planned:task-lane -->
+  Pending `task-lane`, `--kind-assign task` no longer writes `task-plan`; it records kind + entry phase only, and the task prepare command authors the `task-plan`.
+  <!-- /planned:task-lane -->
 - `--build-complete` is **worker-owned and locked**: the caller's session must own `working_slug == <slug>`. Operators cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the working_slug does not match.
 - `--build-started` is **machine-owned**: the stamp rejects this flag explicitly and instructs the caller to run `telec todo work <slug>` so the work state machine owns the transition.
 - The approvals manager clears downstream approvals when an upstream artifact is re-opened. Refining the PRD invalidates the chain of architecture, plan, and finalize-ready approvals that depended on it — the state machine then re-runs the affected review and approval gates on next dispatch.

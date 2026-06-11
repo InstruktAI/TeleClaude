@@ -15,6 +15,10 @@ visibility: 'public'
 
 The prepare state machine is the workflow capability that drives a Todo through its preparation Phases — from the initial `draft` Phase, through `prd_drafting`, `prd_human_approval`, optionally `architecture_drafting` / `architecture_review`, then `plan_drafting` / `plan_review`, and finally `prepared`. Each call by the orchestrator advances exactly one logical step: it reads the persisted Todo state, derives the current Phase from artifact presence and review verdicts, and returns a verbatim instruction telling the orchestrator what to do next — load a drafting procedure inline, dispatch a reviewer worker, request a human approval Stamp, or recognize that the Todo is now `prepared`.
 
+<!-- planned:task-lane -->
+For kind=`task`, prepare is a narrow non-SDLC lane: `task_plan_drafting` loads `/next-prepare-task`, which reads `input`, writes `task-plan`, and calls the prepare machine again. The machine derives `prepared` from task kind + task-plan presence. It does not require PRD approval, architecture, implementation-plan, or reviewer verdicts for tasks.
+<!-- /planned:task-lane -->
+
 Preparation is local-first and runs on the project's `main` branch with no worktree, which is what authorizes it to write artifacts and snippets to the canonical doc layer. The machine itself owns no UI or worker code; it owns the invariants on transitions and the resolution of which next instruction matches the current evidence. When the entrypoint is a split holder, prepare refuses to operate on the holder directly and routes the operator to the runnable direct children instead. When tracked artifacts have drifted along any of the classes enumerated in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, dependency-graph, age), the machine surfaces drift as a blocker and routes to a drift-analyzer worker before the Todo may reach `prepared`; the per-artifact collapsed status follows the `substantive > pending > cosmetic > fresh` priority rule. A loop guard bounds in-call internal transitions so a misconfigured state always surfaces an explicit error rather than spinning silently.
 
 ## Canonical fields
@@ -52,6 +56,26 @@ When the orchestrator stamps "telec todo stamp my-feature --architecture-skipped
 Then on the next prepare call the machine treats architecture as resolved without an Artifact
 And advances past the architecture phases straight to plan_drafting on the next derivation
 ```
+
+<!-- planned:task-lane -->
+#### UC-WPS6: Task prepare drafts a task-plan
+
+```gherkin
+Given a Todo has kind="task", lifecycle_phase="task_plan_drafting", an `input` artifact, and no `task-plan`
+When the orchestrator runs `telec todo prepare my-task`
+Then the prepare machine returns the `/next-prepare-task` procedure-load instruction
+And the task prepare session writes a `task-plan` artifact grounded in `input`
+And on the next prepare call the machine derives lifecycle_phase="prepared"
+And no PRD, architecture, implementation-plan, or review verdict is required
+```
+
+```gherkin
+Given a Todo has kind="task" and lifecycle_phase="prepared"
+When no human task authorization stamp exists
+Then prepare remains terminally prepared
+And execution remains blocked from runner dispatch until authorization is recorded
+```
+<!-- /planned:task-lane -->
 
 ```
 Given an entrypoint slug is a split holder with direct children child-a and child-b

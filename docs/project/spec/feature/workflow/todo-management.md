@@ -163,6 +163,23 @@ Then the dependency leg validates every parent slug, rejects cycles, and
 replaces the todo's dependency set with the supplied parents
 ```
 
+<!-- planned:task-lane -->
+```gherkin
+Given an active task todo
+When the operator runs "telec todo update my-task --datetime 2026-06-12T09:00:00Z"
+Then the update leg validates the ISO-8601 datetime
+And persists it as the task execution eligibility instant
+And emits `workflow.todo.updated` so the lifecycle runner re-evaluates the task
+```
+
+```gherkin
+Given an active task todo has a datetime
+When the operator runs 'telec todo update my-task --datetime ""'
+Then the update leg clears the datetime
+And keeps the rest of the todo state unchanged
+```
+<!-- /planned:task-lane -->
+
 ```
 Given an active todo
 When the operator runs "telec todo update my-todo --after parent-a,parent-b"

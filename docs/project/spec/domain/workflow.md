@@ -43,6 +43,10 @@ single owner of the slug cascade.
 **Kind**
 : Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
 
+<!-- planned:task-lane -->
+Pending `task-lane`, `task` no longer enters `prepared` at creation or kind assignment. It enters `task_plan_drafting`; `/next-prepare-task` converts the raw `input` into a `task-plan` artifact, then the prepare state machine derives `prepared`. Execution is still non-SDLC: no PRD, architecture, implementation-plan, build review, finalize, or commit is required.
+<!-- /planned:task-lane -->
+
 Pending `revive-todo-update-command`, kind is mutable only before build starts
 through `telec todo update <slug> --kind <kind>`. The mutation re-routes
 `lifecycle_phase` through `KIND_ENTRY_PHASE[target]`; once build has started,
@@ -56,6 +60,14 @@ kind mutation is refused.
 
 **Artifact** (workflow artifact — per glossary)
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
+
+<!-- planned:task-lane -->
+**Task authorization**
+: Human approval for a prepared task to be run. It is recorded in workflow state, not inferred from `task-plan` existence. The lifecycle runner may dispatch `/next-run-task` only when the task is prepared, has a `task-plan`, is authorized, is not held, has no live task runner/claim, and satisfies either its dependency gate or its datetime gate.
+
+**Task datetime**
+: Optional ISO-8601 instant on a task Todo. It schedules earliest eligibility for task execution; it is not a stored timer and does not by itself create a runner claim. A task may have either `after` dependencies or `datetime`, never both. Scheduler tick wake-ups let the lifecycle runner re-evaluate due tasks, and the runner is the only component that decides whether the due task may dispatch.
+<!-- /planned:task-lane -->
 
 **Roadmap**
 : Internal ordering/dependency storage for todos: rows, dependency edges, groupings, and statuses. It is surfaced to users as the ordered `telec todo list` view of "what's being worked on and what's next."
@@ -124,6 +136,11 @@ kind mutation is refused.
     and writes `lifecycle_phase = KIND_ENTRY_PHASE[target]`. The mutation is
     refused after build starts.
   - An SDLC todo cannot reach `delivered` stage without a non-empty `delivery_commit` and a successful integrate-state-machine terminal state. A `task` todo is non-SDLC; its durable evidence is the groomed `task-plan` and any recorded results.
+  <!-- planned:task-lane -->
+  - A `task` Todo MUST NOT be dispatched before `task-plan` exists, the task is in `prepared`, and the task authorization stamp is present. Authorization is human-owned; artifact writes and analyzer classification never imply execution approval.
+  - A `task` Todo MAY carry a `datetime` instant, but `datetime` and `after` dependencies are mutually exclusive at create/update boundaries. Clearing one side is allowed; persisting both in the same live entry is refused.
+  - A due datetime is an eligibility input, not a phase transition. The scheduler tick wakes the lifecycle runner; the runner reads current state and dispatches only after all task gates still pass.
+  <!-- /planned:task-lane -->
   - Dependency cycles are forbidden — the dependency graph MUST be a DAG.
   - A todo's slug is immutable across its lifetime EXCEPT via the atomic
     rename operation (`telec todo rename`), which is the only sanctioned slug
@@ -942,7 +959,13 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - `kind`: `feature`, `change`, `bug`, `task`; nullable only before classification (`kind=None` with no `lifecycle_phase`).
 - `stage`: `draft`, `prepare`, `work`, `integrate`, `delivered`.
 - `prepare phases`: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `diagnose`, `prepared`. (A kind-less todo has no `lifecycle_phase`; classification assigns the kind and routes straight to that kind's entry phase.)
+  <!-- planned:task-lane -->
+  Pending `task-lane`, `task_plan_drafting` is also a prepare phase and is the entry point for kind=`task`.
+  <!-- /planned:task-lane -->
 - `work phases`: `pending`, `building`, `review_pending`, `review_complete`, `fixing`, `finalize_pending`, `finalize_ready`.
+  <!-- planned:task-lane -->
+  Pending `task-lane`, `task_running` is also a work-adjacent lifecycle phase for a live `/next-run-task` session. It is non-SDLC and does not participate in build/review/finalize gates.
+  <!-- /planned:task-lane -->
 - `integrate phases`: per `integration-state-machine` design doc (squash, conflict-resolve, lint, test, push, deliver).
 - `roadmap status` (persisted): `active`, `icebox`, `delivered`, `removed`.
 - `todo-list display state` (derived for the todo-list view from persisted roadmap status + lifecycle phase): `pending`, `ready`, `in_progress`, `delivered`, `icebox`. (`removed` is persisted-only — excluded from the default view, surfaced only via the recovery UI.)
