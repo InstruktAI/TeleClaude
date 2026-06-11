@@ -339,8 +339,7 @@ And its implied maintenance action is surfaced
   marker; instead the integration state machine records the
   integrator-maintenance marker carrying the delivered merge range, which the
   engine consumes to force-fire post-merge maintenance for the integrator
-  session. This closes the former gap where integrator merges surfaced no
-  maintenance.
+  session.
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects
@@ -361,3 +360,7 @@ And its implied maintenance action is surfaced
 - The checkpoint message is prefixed so the receiver's system-prompt
   filter can drop the echoed prompt when the agent re-submits it on
   the next turn.
+
+## See Also
+
+- docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
