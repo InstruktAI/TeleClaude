@@ -17,7 +17,7 @@ where <KEY> matches one of the six controlled vars:
   TELECLAUDE_ENV_PATH, TELECLAUDE_SESSION_TMPDIR_BASE, TELECLAUDE_PROJECT_PATH
 
 Usage:
-    uv run python tools/lint/test_discipline.py [--check]
+    uv run python tools/lint/test_discipline.py [--check] [--all] [paths...]
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from __future__ import annotations
 import ast
 import os
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
 _CONTROLLED_VARS = (
@@ -41,7 +42,10 @@ _ALLOWED_READ_IN_RUNTIME_CONFIG = Path("teleclaude/runtime/config.py")
 
 
 def _is_scanned_file(path: Path, repo_root: Path) -> bool:
-    rel = path.relative_to(repo_root).as_posix()
+    try:
+        rel = path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return False
     # Production code under teleclaude/ (excluding runtime/config.py which owns its env-read seam)
     if rel.startswith("teleclaude/") and Path(rel) != _ALLOWED_READ_IN_RUNTIME_CONFIG:
         return True
@@ -49,6 +53,45 @@ def _is_scanned_file(path: Path, repo_root: Path) -> bool:
     if rel.startswith("tests/") and path.name == "conftest.py":
         return True
     return False
+
+
+def _selected_files(repo_root: Path, paths: list[str]) -> Iterable[Path]:
+    root = repo_root.resolve()
+    for raw in paths:
+        candidate = Path(raw)
+        path = candidate if candidate.is_absolute() else root / candidate
+        try:
+            rel = path.resolve(strict=False).relative_to(root)
+        except ValueError:
+            continue
+        resolved = root / rel
+        if resolved.is_dir():
+            yield from sorted(child for child in resolved.rglob("*.py") if _is_scanned_file(child, root))
+        elif resolved.is_file() and _is_scanned_file(resolved, root):
+            yield resolved
+
+
+def _repo_files(repo_root: Path) -> list[Path]:
+    ignored = {
+        ".venv",
+        "node_modules",
+        "trees",
+        ".history",
+        "target",
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+    py_files: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(repo_root):
+        dirnames[:] = [d for d in dirnames if d not in ignored and not d.startswith(".")]
+        for f in filenames:
+            if f.endswith(".py") and not f.startswith("."):
+                path = Path(dirpath) / f
+                if _is_scanned_file(path, repo_root):
+                    py_files.append(path)
+    return sorted(py_files)
 
 
 def _scan_file(path: Path) -> list[tuple[int, str, str]]:
@@ -147,30 +190,13 @@ def _controlled_string(node: ast.AST | None) -> str | None:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    repo_root = Path(__file__).resolve().parents[2]
+    check = "--check" in args
+    run_all = "--all" in args or not any(not arg.startswith("-") for arg in args)
+    paths = [arg for arg in args if arg not in {"--check", "--all"}]
+    repo_root = Path.cwd().resolve()
 
     violations: list[tuple[str, int, str, str]] = []
-
-    ignored = {
-        ".venv",
-        "node_modules",
-        "trees",
-        ".history",
-        "target",
-        ".git",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-    }
-    py_files: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(repo_root):
-        dirnames[:] = [d for d in dirnames if d not in ignored and not d.startswith(".")]
-        for f in filenames:
-            if f.endswith(".py") and not f.startswith("."):
-                path = Path(dirpath) / f
-                if _is_scanned_file(path, repo_root):
-                    py_files.append(path)
-    py_files.sort()
+    py_files = _repo_files(repo_root) if run_all else sorted(set(_selected_files(repo_root, paths)))
 
     for path in py_files:
         for lineno, var, source_line in _scan_file(path):
@@ -178,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
             violations.append((rel, lineno, var, source_line))
 
     if not violations:
-        if "--check" not in args:
+        if not check:
             print("test-discipline: OK - no env-mutation violations found.")
         return 0
 

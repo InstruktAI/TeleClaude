@@ -22,6 +22,7 @@ _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "quality"
 _PYTHON_FILES: list[tuple[str, str]] = [
     ("pyproject.toml.template", "pyproject.toml"),
     ("pre-commit-config.yaml", ".pre-commit-config.yaml"),
+    (".githooks/pre-commit", ".githooks/pre-commit"),
     ("Makefile.template", "Makefile"),
 ]
 
@@ -87,6 +88,7 @@ def _deploy_files(
         content = template_path.read_text(encoding="utf-8")
         content = content.replace("{{project_name}}", project_name)
 
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         if not target_path.exists():
             target_path.write_text(content, encoding="utf-8")
             logger.info("Deployed %s", target_name)

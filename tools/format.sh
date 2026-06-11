@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
-# Thin wrapper — all formatting logic lives in teleclaude.quality.format
+# Thin wrapper for the canonical TeleClaude format command.
 exec telec code format "$@"

@@ -27,11 +27,11 @@ jobs:
         timeout-minutes: 5
 
       - name: Run lint
-        run: make lint
+        run: telec code lint --all
         timeout-minutes: 5
 
       - name: Run tests
-        run: make test
+        run: telec code test
         timeout-minutes: 10
         continue-on-error: false
 

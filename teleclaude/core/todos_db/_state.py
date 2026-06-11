@@ -437,7 +437,7 @@ class TodosDbStateMixin:
             return [str(slug) for slug in result.all()]
 
     async def is_bug_todo(self, slug: str) -> bool:
-        """Check if a todo has kind='bug'."""
+        """Check whether a todo has the canonical bug kind."""
         state = await self.read_state(slug)
         if state is None:
             return False

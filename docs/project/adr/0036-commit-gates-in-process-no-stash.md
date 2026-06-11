@@ -1,5 +1,5 @@
 ---
-adr_status: 'proposed'
+adr_status: 'accepted'
 date: '2026-06-11'
 description: 'telec code commit runs format then lint in-process before git commit --no-verify; the pre-commit framework is retired; .git/hooks/pre-commit is a thin fail-closed partial-staging guard.'
 number: '36'

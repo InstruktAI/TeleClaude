@@ -9,13 +9,13 @@ failed=0
 # Only test commands that have subcommands (where -h can break in child handlers).
 # Top-level -h is handled uniformly in _handle_cli_command and doesn't need per-commit validation.
 while IFS=: read -r cmd subs; do
-    if ! timeout 5 telec "$cmd" -h >/dev/null 2>&1; then
-        echo "FAIL: telec $cmd -h"
+    if ! timeout 5 uv run --quiet python -m teleclaude.cli.telec "$cmd" -h >/dev/null 2>&1; then
+        echo "FAIL: python -m teleclaude.cli.telec $cmd -h"
         failed=1
     fi
     for sub in $subs; do
-        if ! timeout 5 telec "$cmd" "$sub" -h >/dev/null 2>&1; then
-            echo "FAIL: telec $cmd $sub -h"
+        if ! timeout 5 uv run --quiet python -m teleclaude.cli.telec "$cmd" "$sub" -h >/dev/null 2>&1; then
+            echo "FAIL: python -m teleclaude.cli.telec $cmd $sub -h"
             failed=1
         fi
     done

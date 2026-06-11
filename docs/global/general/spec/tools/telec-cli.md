@@ -44,15 +44,38 @@ the signature alone.
 
 <!-- @exec: telec code -h -->
 
-Rust is a first-class `telec code` language when `rust` is declared in
-`teleclaude.yml`. `telec code lint`, `telec code format`, and `telec code test`
-invoke Cargo tooling from the Cargo workspace root. Single-crate Rust changes
-use `-p <package>` where Cargo supports package scoping; cross-crate changes,
-root Cargo metadata changes, and `--all` use workspace scope.
+`telec code` is the scoping + composition layer; it embeds no toolchain of its
+own. `telec code lint` resolves workspace scope and runs **two decoupled legs**:
+(1) the project's own `make lint` — native tools only (ruff/pyright/mypy/jscpd,
+eslint/tsc, cargo), zero TeleClaude dependency — receiving the scoped file list
+as a NUL-delimited `FILES_FROM` temp file (paths never travel on the command
+line); and (2) TeleClaude's **guardrails lane** (the policy checks) over the same
+scoped paths. It exits non-zero if either leg fails; a full run (no `FILES_FROM`)
+happens on `--all`, CI, or a no-session shared branch. `telec code test
+[--update-snapshots]` runs `make test` (unscoped; snapshot-update forwarded);
+`telec code format [<files>]` runs `make format` (scoped to the files when
+given); `telec code install` runs `make install`. There is no `--step` flag and
+no guardrails subcommand — guardrails run only as the second leg of `telec code
+lint`.
 
-`telec code commit` is decoupled from the dev-time Rust pipeline. Commit-time
-Rust gates are owned by the pre-commit cargo hooks. The Rust test hook is
-library-only (`cargo test --workspace --lib --quiet`).
+The project's `Makefile` owns the entire native toolchain and never contains
+guardrails or `telec`; the guardrails lane is TeleClaude's and is never plumbed
+into any `Makefile`. The native Makefile contract is identical for TeleClaude's
+own repo and any adopting project — a project stays installable and lintable
+standalone via `make`. The current guardrails lane is TeleClaude-repo-rooted.
+
+Native language support behind `make`: Rust is a first-class language when
+`rust` is declared in `teleclaude.yml` — the project's `make lint`/`format`/`test`
+recipes invoke Cargo tooling from the Cargo workspace root (single-crate changes
+may use `-p <package>`; cross-crate and full runs use workspace scope). `telec
+code` selects which files are in scope and delegates; it does not invoke Cargo
+itself.
+
+`telec code commit` runs format then lint in-process against `quality_paths`
+(the commit pathspec filtered to existing files) before `git commit --no-verify`.
+No framework stash, no working-tree reset outside the pathspec. The installed
+`.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
+partial-staging check as a backstop for raw `git commit` invocations.
 
 ## Known caveats
 
@@ -60,4 +83,3 @@ library-only (`cargo test --workspace --lib --quiet`).
 - Changing argument order or required flags is a breaking change.
 - Adding a subcommand is a feature addition.
 - Description-only changes are patches.
-

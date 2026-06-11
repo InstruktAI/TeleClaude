@@ -436,18 +436,28 @@ def _resolve_package_for_rust_path(project_root: Path, path: str) -> str | None:
 
 
 def validate_scoped_paths(paths: list[str], project_root: Path) -> list[str]:
-    """Filter out paths with traversal sequences or absolute paths outside project_root.
+    """Return project-relative paths that stay inside *project_root*.
 
-    Security boundary: prevents path injection via crafted transcript data.
+    Security boundary: prevents traversal, sibling-prefix escapes, and
+    leading-dash paths from entering make argv, subprocess argv, or git
+    pathspecs.
     """
     safe: list[str] = []
-    project_root_str = str(project_root.resolve())
-    for p in paths:
-        if ".." in p:
-            logger.warning("Rejected traversal path from workspace scope: %s", p)
+    root = project_root.resolve()
+    for raw_path in paths:
+        if raw_path.startswith("-"):
+            logger.warning("Rejected leading-dash path from workspace scope: %s", raw_path)
             continue
-        if p.startswith("/") and not p.startswith(project_root_str):
-            logger.warning("Rejected absolute path outside project root: %s", p)
+
+        candidate = Path(raw_path)
+        resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError:
+            logger.warning("Rejected path outside project root: %s", raw_path)
             continue
-        safe.append(p)
+        if relative.as_posix().startswith("-"):
+            logger.warning("Rejected leading-dash path from workspace scope: %s", raw_path)
+            continue
+        safe.append(relative.as_posix())
     return safe

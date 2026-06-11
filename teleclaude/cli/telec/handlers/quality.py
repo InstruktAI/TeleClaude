@@ -2,89 +2,173 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
-from teleclaude.quality.format import FormatRunner
 from teleclaude.quality.lint import LintRunner
-from teleclaude.quality.scope import get_project_languages
-from teleclaude.quality.test_runner import TestRunner
+from teleclaude.quality.scope import (
+    WorkspaceScopeKind,
+    resolve_workspace_scope_resolution,
+    validate_scoped_paths,
+)
 
 
 def handle_lint(args: list[str]) -> None:
     """Handle the ``telec code lint`` command.
 
-    No args → full pipeline with context-aware scoping.
-    ``--all`` → run against all source directories (bypass scoping).
-    ``<files...>`` → full pipeline against explicit files (bypass scoping).
-    ``--step <name> [files...]`` → single pipeline step against given files.
+    Runs the project-native make lint leg first, then the TeleClaude
+    guardrails lane over the same scope. ``--step`` is retired.
     """
     run_all = "--all" in args
-    filtered = [a for a in args if a != "--all"]
+    files = _positionals(args, allowed_flags={"--all"}, usage="telec code lint [--all] [<files> ...]")
     project_root = resolve_git_root(resolve_invocation_cwd())
-    runner = LintRunner(project_root=project_root)
 
-    step_name, files = _parse_step_args(filtered)
-    if step_name is not None:
-        runner.run_step(step_name, files)
+    scoped_files = _resolve_quality_scope(project_root, files=files, run_all=run_all)
+    if scoped_files == []:
         return
 
-    runner.run(files=files or None, run_all=run_all)
+    make_exit = _run_make("lint", project_root, files=scoped_files)
+    guardrails_exit = 0
+    try:
+        LintRunner(project_root=project_root).run(
+            files=scoped_files if scoped_files is not None else None,
+            run_all=scoped_files is None,
+        )
+    except SystemExit as exc:
+        guardrails_exit = _system_exit_code(exc)
 
-
-def _parse_step_args(args: list[str]) -> tuple[str | None, list[str]]:
-    """Extract --step value and positional filenames from args.
-
-    Returns ``(step_name, files)``. ``step_name`` is None when the flag is
-    absent. Accepts ``--step NAME`` and ``--step=NAME`` forms.
-    """
-    step_name: str | None = None
-    files: list[str] = []
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--step":
-            if i + 1 >= len(args):
-                msg = "--step requires a value (step name)"
-                raise SystemExit(msg)
-            step_name = args[i + 1]
-            i += 2
-            continue
-        if arg.startswith("--step="):
-            step_name = arg[len("--step=") :]
-            i += 1
-            continue
-        files.append(arg)
-        i += 1
-    return step_name, files
+    if guardrails_exit != 0:
+        raise SystemExit(guardrails_exit)
+    if make_exit != 0:
+        raise SystemExit(make_exit)
 
 
 def handle_test(args: list[str]) -> None:
     """Handle the ``telec code test`` command.
 
-    No args → context-aware scoping to resolve test targets.
-    ``<files...>`` → run against explicit files (bypass scoping).
     ``--update-snapshots`` → accept reviewed snapshot diffs.
     """
-    run_all = "--all" in args
     update_snapshots = "--update-snapshots" in args
-    files = [a for a in args if a not in ("--all", "--update-snapshots")]
-    project_root = resolve_git_root(resolve_invocation_cwd())
-    runner = TestRunner(
-        project_root=project_root,
-        update_snapshots=update_snapshots,
+    files = _positionals(
+        args,
+        allowed_flags={"--all", "--update-snapshots"},
+        usage="telec code test [--all] [--update-snapshots]",
     )
-    targets = runner.resolve_targets(files=files or None, run_all=run_all)
-    runner.run(targets=targets)
+    if files:
+        print("ERROR: telec code test does not accept file operands", file=sys.stderr)
+        raise SystemExit(2)
+    project_root = resolve_git_root(resolve_invocation_cwd())
+    variables = {"SNAPSHOT_UPDATE": "1"} if update_snapshots else None
+    exit_code = _run_make("test", project_root, variables=variables)
+    if exit_code != 0:
+        raise SystemExit(exit_code)
 
 
 def handle_format(args: list[str]) -> None:
     """Handle the ``telec code format`` command.
 
-    No args → format default directories based on configured languages.
-    Positional args → format those specific files (pre-commit mode).
+    No args → project-native make format.
+    Positional args → make format scoped via FILES_FROM.
     """
     run_all = "--all" in args
     project_root = resolve_git_root(resolve_invocation_cwd())
-    languages = get_project_languages(project_root)
-    runner = FormatRunner(project_root=project_root, languages=languages)
-    files = [a for a in args if not a.startswith("-")]
-    runner.run(files=files if files else None, run_all=run_all)
+    files = _positionals(args, allowed_flags={"--all"}, usage="telec code format [--all] [<files> ...]")
+    scoped_files = None
+    if files:
+        scoped_files = _validate_or_exit(files, project_root)
+        if not scoped_files:
+            return
+    elif run_all:
+        scoped_files = None
+
+    exit_code = _run_make("format", project_root, files=scoped_files)
+    if exit_code != 0:
+        raise SystemExit(exit_code)
+
+
+def handle_install(args: list[str]) -> None:
+    """Handle the ``telec code install`` command."""
+    files = _positionals(args, allowed_flags=set(), usage="telec code install")
+    if files:
+        print("ERROR: telec code install does not accept operands", file=sys.stderr)
+        raise SystemExit(2)
+    project_root = resolve_git_root(resolve_invocation_cwd())
+    exit_code = _run_make("install", project_root)
+    if exit_code != 0:
+        raise SystemExit(exit_code)
+
+
+def _positionals(args: list[str], *, allowed_flags: set[str], usage: str) -> list[str]:
+    files: list[str] = []
+    for arg in args:
+        if arg in allowed_flags:
+            continue
+        if arg.startswith("-"):
+            print(f"ERROR: unknown flag or unsafe leading-dash path: {arg}\nUsage: {usage}", file=sys.stderr)
+            raise SystemExit(2)
+        files.append(arg)
+    return files
+
+
+def _resolve_quality_scope(project_root: Path, *, files: list[str], run_all: bool) -> list[str] | None:
+    if files:
+        return _validate_or_exit(files, project_root)
+    if run_all or os.environ.get("CI"):
+        return None
+
+    scope_resolution = resolve_workspace_scope_resolution(project_root)
+    if scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH and not scope_resolution.has_session_identity:
+        return None
+
+    scoped = _validate_or_exit(list(scope_resolution.scoped_existing_paths), project_root)
+    if not scoped:
+        return []
+    return scoped
+
+
+def _validate_or_exit(files: list[str], project_root: Path) -> list[str]:
+    scoped = validate_scoped_paths(files, project_root)
+    if len(scoped) != len(files):
+        print("ERROR: one or more paths were rejected by scoped path validation", file=sys.stderr)
+        raise SystemExit(1)
+    return scoped
+
+
+def _run_make(
+    target: str,
+    project_root: Path,
+    *,
+    files: list[str] | None = None,
+    variables: dict[str, str] | None = None,
+) -> int:
+    cmd = ["make", target]
+    if variables:
+        cmd.extend(f"{key}={value}" for key, value in variables.items())
+    if files is None:
+        return subprocess.run(cmd, cwd=str(project_root), check=False).returncode
+    with _nul_file(files) as files_from:
+        cmd.append(f"FILES_FROM={files_from}")
+        return subprocess.run(cmd, cwd=str(project_root), check=False).returncode
+
+
+@contextmanager
+def _nul_file(files: list[str]) -> Iterator[str]:
+    handle = tempfile.NamedTemporaryFile(delete=False)
+    try:
+        with handle:
+            handle.write(b"\0".join(path.encode("utf-8") for path in files))
+        yield handle.name
+    finally:
+        Path(handle.name).unlink(missing_ok=True)
+
+
+def _system_exit_code(exc: SystemExit) -> int:
+    if isinstance(exc.code, int):
+        return exc.code
+    return 1

@@ -199,7 +199,7 @@ async def test_next_prepare_skips_dep_blocked_top_level_candidate(
     monkeypatch.setattr(prepare, "_adopt_prepare_phase", keep_state)
     monkeypatch.setattr(prepare, "_prepare_dispatch", capture_slug)
 
-    output = await prepare.next_prepare(db=object(), slug=None, cwd=str(project_root))  # type: ignore[arg-type]
+    output = await prepare.next_prepare(db=object(), slug=None, cwd=str(project_root))
 
     assert captured_slug == _OPEN_CHILD
     assert output

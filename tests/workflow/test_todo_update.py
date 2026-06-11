@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.api import todo_routes
 from teleclaude.api.auth import CallerIdentity
@@ -216,7 +218,8 @@ async def test_todo_update_after_replaces_dependencies_and_validates_cycles(tmp_
         identity=_identity(),
     )
 
-    assert response.after == ["feature-b", "feature-c"]
+    sync_response = cast(todo_routes._TodoUpdateResponse, response)
+    assert sync_response.after == ["feature-b", "feature-c"]
     assert (await todos_db.load_deps())["feature-a"] == ["feature-b", "feature-c"]
 
     with pytest.raises(HTTPException) as missing:
@@ -233,7 +236,7 @@ async def test_todo_update_after_replaces_dependencies_and_validates_cycles(tmp_
 
 
 @pytest.mark.spec(_TODO_LIFECYCLE_PHASE_SPEC, "UC-TLP1")
-async def test_todo_update_kind_warns_then_forces_orphan_removal(tmp_path: Path, snapshot: object) -> None:
+async def test_todo_update_kind_warns_then_forces_orphan_removal(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(
@@ -267,11 +270,12 @@ async def test_todo_update_kind_warns_then_forces_orphan_removal(tmp_path: Path,
     assert state is not None
     assert state["kind"] == TODO_KIND_BUG
     assert state["lifecycle_phase"] == LifecyclePhase.DIAGNOSE.value
-    assert response.kind == TODO_KIND_BUG
-    assert response.lifecycle_phase == LifecyclePhase.DIAGNOSE.value
+    sync_response = cast(todo_routes._TodoUpdateResponse, response)
+    assert sync_response.kind == TODO_KIND_BUG
+    assert sync_response.lifecycle_phase == LifecyclePhase.DIAGNOSE.value
     assert not await todos_db.artifact_exists("feature-work", ARTIFACT_PRD)
     assert not await todos_db.artifact_exists("feature-work", ARTIFACT_ARCHITECTURE)
-    assert response.warnings == snapshot(name="force_warnings")
+    assert sync_response.warnings == snapshot(name="force_warnings")
 
 
 @pytest.mark.spec(_ARTIFACT_VERSIONING_SPEC, "UC-WAV4")
@@ -301,7 +305,8 @@ async def test_todo_update_kind_folds_seeded_plan_for_task(tmp_path: Path, snaps
     assert state["lifecycle_phase"] == LifecyclePhase.PREPARED.value
     assert await todos_db.read_artifact("planned-change", ARTIFACT_INPUT) == snapshot
     assert not await todos_db.artifact_exists("planned-change", ARTIFACT_IMPLEMENTATION_PLAN)
-    assert response.folded_artifact == ARTIFACT_IMPLEMENTATION_PLAN
+    sync_response = cast(todo_routes._TodoUpdateResponse, response)
+    assert sync_response.folded_artifact == ARTIFACT_IMPLEMENTATION_PLAN
 
 
 @pytest.mark.spec(_TODO_LIFECYCLE_PHASE_SPEC, "UC-TLP1")
@@ -363,7 +368,8 @@ async def test_todo_update_refuses_slug_and_kind_after_build_but_allows_after(tm
         identity=_identity(),
     )
 
-    assert response.after == ["parent"]
+    sync_response = cast(todo_routes._TodoUpdateResponse, response)
+    assert sync_response.after == ["parent"]
     state = await todos_db.read_state("build-work")
     assert state is not None
     assert state["kind"] == TODO_KIND_CHANGE

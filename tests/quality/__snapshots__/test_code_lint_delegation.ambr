@@ -1,0 +1,81 @@
+# serializer version: 1
+# name: test_lint_passes_adversarial_paths_through_nul_files_from
+  dict({
+    'records': list([
+      dict({
+        'cmd': list([
+          'make',
+          'lint',
+        ]),
+        'cwd': '<project-root>',
+        'files': list([
+          b'a b.py',
+          b'c;d.py',
+        ]),
+      }),
+      dict({
+        'guardrails_files': list([
+          'a b.py',
+          'c;d.py',
+        ]),
+        'guardrails_project_matches': True,
+        'guardrails_project_root': '<project-root>',
+        'guardrails_run_all': False,
+      }),
+    ]),
+  })
+# ---
+# name: test_lint_propagates_make_failure_after_guardrails_run
+  dict({
+    'records': list([
+      tuple(
+        'make',
+        list([
+          'make',
+          'lint',
+        ]),
+        '<project-root>',
+        list([
+          b'teleclaude/core.py',
+        ]),
+      ),
+      tuple(
+        'guardrails',
+        '<project-root>',
+        True,
+        list([
+          'teleclaude/core.py',
+        ]),
+        False,
+      ),
+    ]),
+  })
+# ---
+# name: test_rust_scope_uses_package_when_changed_path_belongs_to_one_crate
+  dict({
+    'kind': <RustScopeKind.PACKAGE: 'package'>,
+    'package': 'telec-core',
+    'rust_owned_paths': tuple(
+      'crates/telec-core/src/lib.rs',
+    ),
+    'workspace_root': True,
+  })
+# ---
+# name: test_rust_scope_uses_workspace_when_root_cargo_manifest_changes
+  dict({
+    'is_workspace': True,
+    'kind': <RustScopeKind.WORKSPACE: 'workspace'>,
+    'package': None,
+    'rust_owned_paths': tuple(
+      'Cargo.toml',
+    ),
+    'workspace_root': True,
+  })
+# ---
+# name: test_validate_scoped_paths_rejects_paths_outside_the_project_boundary
+  dict({
+    'safe_paths': list([
+      'safe.py',
+    ]),
+  })
+# ---

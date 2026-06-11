@@ -4,9 +4,8 @@ Behavior is verified by human-owned functional tests bound to the feature specs,
 not by agent-authored unit tests. This check fails if tracked TypeScript test
 files appear outside the doctrine path under the configured frontend root.
 
-It inspects the git index, not the working filesystem, so it reports exactly
-what a commit introduces and is not fooled by pre-commit's transient
-working-tree stash.
+With explicit paths, it checks only selected working-tree TypeScript test
+files. With no paths or ``--all``, it checks tracked repo-wide files.
 """
 
 from __future__ import annotations
@@ -46,18 +45,21 @@ def _relative_to_frontend(path: str, frontend_root: str) -> str:
     if frontend_root == ".":
         return path
 
-    return Path(path).relative_to(frontend_root).as_posix()
+    try:
+        return Path(path).relative_to(frontend_root).as_posix()
+    except ValueError:
+        return path
 
 
 def _is_typescript_test(path: str) -> bool:
     return path.endswith((".test.ts", ".test.tsx"))
 
 
-def main(repo_root: Path | None = None) -> None:
-    if repo_root is None:
-        repo_root = Path(__file__).resolve().parents[2]
+def _is_off_doctrine(path: str, frontend_root: str) -> bool:
+    return _is_typescript_test(path) and not DOCTRINE_TEST_PATH.fullmatch(_relative_to_frontend(path, frontend_root))
 
-    frontend_root = _resolve_frontend_root(repo_root)
+
+def _repo_offenders(repo_root: Path, frontend_root: str) -> list[str]:
     result = _git_ls_files(repo_root, frontend_root)
     if result.returncode != 0:
         print("Failed to inspect tracked TypeScript files with git ls-files.", file=sys.stderr)
@@ -65,10 +67,40 @@ def main(repo_root: Path | None = None) -> None:
             print(result.stderr.strip(), file=sys.stderr)
         sys.exit(result.returncode or 1)
 
-    offenders = sorted(
-        path
-        for path in result.stdout.splitlines()
-        if _is_typescript_test(path) and not DOCTRINE_TEST_PATH.fullmatch(_relative_to_frontend(path, frontend_root))
+    return sorted(path for path in result.stdout.splitlines() if _is_off_doctrine(path, frontend_root))
+
+
+def _selected_offenders(repo_root: Path, frontend_root: str, paths: list[str]) -> list[str]:
+    offenders: list[str] = []
+    root = repo_root.resolve()
+    for raw in paths:
+        candidate = Path(raw)
+        path = candidate if candidate.is_absolute() else root / candidate
+        try:
+            rel = path.resolve(strict=False).relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if path.is_dir():
+            offenders.extend(
+                child.relative_to(root).as_posix()
+                for child in path.rglob("*")
+                if child.is_file() and _is_off_doctrine(child.relative_to(root).as_posix(), frontend_root)
+            )
+        elif _is_off_doctrine(rel, frontend_root):
+            offenders.append(rel)
+    return sorted(set(offenders))
+
+
+def main(repo_root: Path | None = None, argv: list[str] | None = None) -> None:
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parents[2]
+    args = list(sys.argv[1:] if argv is None else argv)
+    run_all = "--all" in args or not args
+    paths = [arg for arg in args if arg != "--all"]
+
+    frontend_root = _resolve_frontend_root(repo_root)
+    offenders = (
+        _repo_offenders(repo_root, frontend_root) if run_all else _selected_offenders(repo_root, frontend_root, paths)
     )
 
     if offenders:

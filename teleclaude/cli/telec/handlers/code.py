@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, handle_test
+from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
@@ -21,6 +22,7 @@ from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
     resolve_workspace_scope_resolution,
+    validate_scoped_paths,
 )
 from teleclaude.session_identity import get_session_id, get_system_role
 
@@ -33,6 +35,7 @@ _COMMIT_TRAILER = (
     "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
 )
 _TRAILER_MARKER = "🤖 Generated with [TeleClaude]"
+_COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
 
 
 def _with_trailer(message: str) -> str:
@@ -56,6 +59,8 @@ def handle_code(args: list[str]) -> None:
         handle_test(rest)
     elif sub == "format":
         handle_format(rest)
+    elif sub == "install":
+        handle_install(rest)
     elif sub == "commit":
         handle_code_commit(rest)
     elif sub == "changed":
@@ -210,7 +215,7 @@ def handle_code_commit(args: list[str]) -> None:
     Safety primitives:
     1. Orchestrator restriction.
     2. main-branch lock serialises all ``_commit_under_lock`` bodies.
-    3. Pre-commit hook owns format + lint inside git's own atomicity.
+    3. ``telec code commit`` runs format + lint in-process before git commit.
     4. ``--approved`` is the Path A/B/C strategy gate; bare invocation prints
        the classification card and exits.
     5. The pathspec itself bounds the commit — no separate scope-enforcement
@@ -338,14 +343,15 @@ def _commit_under_lock(
 
     Pathspec = resolved workspace scope plus declared ``--include`` paths.
     Anything else in the index is invisible to the pathspec and stays staged
-    for its owner. The pre-commit hook owns format + lint inside git's own
-    atomicity.
+    for its owner. Format and lint run in-process before the final
+    ``git commit --no-verify``; the thin hook is only a raw-git backstop.
     """
     # Resolve any stale .git/index.lock before any git work. The check is
     # essentially free when no lock exists; when one does, it surfaces the
     # waiting state via the daemon log and self-heals orphan locks once
     # lsof confirms no holder (or the age ceiling is reached).
     wait_for_index_lock_clear(project_root)
+    _check_commit_message(message, project_root)
 
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     scope_paths = _commit_stage_paths(scope_resolution)
@@ -377,6 +383,12 @@ def _commit_under_lock(
         if path not in seen:
             seen.add(path)
             pathspec.append(path)
+
+    validated_pathspec = validate_commit_pathspec(pathspec, project_root)
+    if len(validated_pathspec) != len(pathspec):
+        print("ERROR: one or more commit paths were rejected by scoped path validation", file=sys.stderr)
+        raise SystemExit(1)
+    pathspec = validated_pathspec
 
     # Surface the auto-skip BEFORE the empty-pathspec exit so an agent whose
     # only scope is untracked-new sees the actionable reminder, not a
@@ -446,6 +458,11 @@ def _commit_under_lock(
         )
         raise SystemExit(1)
 
+    quality_paths = [path for path in pathspec if (project_root / path).exists()]
+    if quality_paths:
+        handle_format(quality_paths)
+        handle_lint(quality_paths)
+
     # Auto-append the mandated trailer (idempotent) and commit via a message
     # file — robust against multi-line content, no shell arg-splitting.
     final_message = _with_trailer(message)
@@ -458,7 +475,7 @@ def _commit_under_lock(
     # own output so callers see the commit summary and any hook output.
     repo = Repo(str(project_root))
     try:
-        _, stdout, stderr = repo.git.commit("-F", msg_path, "--", *pathspec, with_extended_output=True)
+        _, stdout, stderr = repo.git.commit("-F", msg_path, "--no-verify", "--", *pathspec, with_extended_output=True)
     except GitCommandError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
@@ -544,6 +561,20 @@ def _stage_files(files: list[str], project_root: Path) -> None:
     gitpython → real git binary, bypassing the wrapper."""
     repo = Repo(str(project_root))
     repo.git.add("--", *files)
+
+
+def validate_commit_pathspec(paths: list[str], project_root: Path) -> list[str]:
+    """Validate commit pathspec entries before quality gates or git commit."""
+    return validate_scoped_paths(paths, project_root)
+
+
+def _check_commit_message(message: str, project_root: Path) -> None:
+    """Run the commit message format gate before quality tooling."""
+    _ = project_root
+    subject = message.strip().splitlines()[0] if message.strip() else ""
+    if not _COMMIT_MESSAGE_RE.match(subject):
+        print("ERROR: commit message must follow Commitizen format: type(scope): subject", file=sys.stderr)
+        raise SystemExit(1)
 
 
 def _get_untracked_files(project_root: Path) -> list[str]:

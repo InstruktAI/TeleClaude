@@ -1,0 +1,28 @@
+# serializer version: 1
+# name: test_generated_python_project_make_install_lint_and_test_smoke_without_network
+  dict({
+    'hook_contains_install_python': False,
+    'uv_invocations': list([
+      'run --group dev python -c print("Python environment ready")',
+      'run ruff check .',
+      'run ruff format --check .',
+      'run pyright',
+      'run mypy',
+      'run pytest',
+    ]),
+  })
+# ---
+# name: test_projects_init_installs_thin_precommit_hook_without_legacy_bootstrap
+  dict({
+    'contains_install_python': False,
+    'destination': '.git/hooks/pre-commit',
+    'matches_project_hook': True,
+  })
+# ---
+# name: test_python_quality_skeleton_creates_nested_hook_material
+  dict({
+    'contains_install_python': False,
+    'created_parent': True,
+    'hook_path': '.githooks/pre-commit',
+  })
+# ---

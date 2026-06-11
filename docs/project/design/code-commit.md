@@ -31,11 +31,14 @@ The staging model is asymmetric and follows git's data model:
   are staged internally via `_stage_files` so the integrator's conflict
   resolution flow runs through the same sealed path.
 
-The pre-commit hook owns formatting and linting inside git's own atomicity.
+`telec code commit` runs format then lint in-process against `quality_paths`
+(the commit pathspec filtered to existing files) before `git commit --no-verify`.
+No framework stash, no working-tree reset outside the pathspec. The installed
+`.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
+partial-staging check as a backstop for raw `git commit` invocations.
 
 The git wrapper redirects raw `git commit` (and `git add`) to this command
-for tmux callers. The pre-commit hook is the single owner of formatter
-restaging and the retry when hooks modify staged files.
+for tmux callers.
 
 **Caller paths:**
 
@@ -95,7 +98,7 @@ produce a delivery-reverting commit on origin/main. `--confirmed` is
 the integrator's deliberate ratification that the inspection has
 happened.
 
-**Notes carried over from earlier prose:** `rebase.autoStash` and
+**Wrapper defaults:** `rebase.autoStash` and
 `merge.autoStash` are forced off on every wrapper-driven git call.
 `git add -A`/`git add --all`/`git add .` are blocked on main for
 non-integrators regardless of the table above — staging on main always
@@ -157,10 +160,12 @@ The pathspec commit is built internally from `workspace scope plus
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
-4. **Pre-commit hook owns format + lint.** Formatting and linting run inside
-   the hook, which executes inside git's own `index.lock`. Telec does not run
-   a redundant pre-flight pass; that pre-flight would operate on a stale
-   snapshot outside the atomicity primitive.
+4. **Format + lint run in-process before `git commit --no-verify`.** `telec
+   code commit` runs `handle_format` then `handle_lint` against `quality_paths`
+   (the commit pathspec filtered to existing files) before invoking
+   `git commit --no-verify`. Deletion-only commits (empty `quality_paths`) skip
+   both steps. The thin `.git/hooks/pre-commit` performs only a partial-staging
+   backstop; it does not re-run format or lint.
 
 5. **Path A/B/C classification on main.** Non-integrator commits on main are
    classified:
@@ -177,9 +182,9 @@ The pathspec commit is built internally from `workspace scope plus
    to `telec code commit`. The wrapper retains all other safety blocks
    (stash, checkout, restore, clean, reset, push on main).
 
-8. **Real git bypass for the inner commit.** The final `git commit` call uses
-   the real git binary (via GitPython) so the wrapper's redirect does not loop
-   back into telec.
+8. **Real git bypass for the inner commit.** The final `git commit --no-verify`
+   call uses the real git binary (via GitPython) so the wrapper's redirect does
+   not loop back into telec.
 
 ## Primary flows
 
@@ -197,8 +202,10 @@ telec code commit --approved "feat(scope): subject"
     (modified-tracked files are NOT staged — they ride the pathspec)
   → partial-staging guard: block if any pathspec file has both staged
     and unstaged changes
-  → real git commit -F <msg> -- <pathspec>
-  → pre-commit hook runs format + lint
+  → quality_paths = pathspec filtered to existing files
+  → handle_format(quality_paths)                     (in-process, no stash)
+  → handle_lint(quality_paths)                       (in-process, no stash)
+  → real git commit --no-verify -F <msg> -- <pathspec>
   → lock released
 ```
 
@@ -211,8 +218,10 @@ telec code commit --approved "chore(docs): update snippets [skip ci]"
   → workspace scope = SHARED_BRANCH → scoped dirty paths
   → pathspec = scope minus untracked-not-staged
   → modified-tracked docs ride the pathspec unstaged
-  → real git commit -F <msg> -- <pathspec>
-  → pre-commit hook runs format + lint
+  → quality_paths = pathspec filtered to existing files
+  → handle_format(quality_paths)                     (in-process, no stash)
+  → handle_lint(quality_paths)                       (in-process, no stash)
+  → real git commit --no-verify -F <msg> -- <pathspec>
   → lock released
 ```
 
@@ -227,7 +236,10 @@ telec code commit --approved "fix(scope): subject" --include path/to/extra.py
   → stage extra.py only if it's untracked or unmerged
   → assert extra.py contributes a change (else error)
   → partial-staging guard runs against the merged pathspec
-  → real git commit -F <msg> -- <pathspec>
+  → quality_paths = pathspec filtered to existing files
+  → handle_format(quality_paths)
+  → handle_lint(quality_paths)
+  → real git commit --no-verify -F <msg> -- <pathspec>
   → lock released
 ```
 
@@ -260,9 +272,10 @@ agent did not declare is precisely what the pathspec boundary prevents.
 changes. Exit code 2 — the agent's declaration must match reality; we don't
 quietly drop unreachable claims.
 
-**Pre-commit hook failure.** The hook runs format and lint. If lint fails,
-git aborts the commit and surfaces the hook output. Files remain staged for
-the agent to fix and retry.
+**In-process gate failure.** Format or lint fails on `quality_paths` before
+`git commit --no-verify` is invoked. `telec code commit` exits non-zero with
+the gate output. No commit is produced; files remain in their current state
+for the agent to fix and retry.
 
 **Path B/C gate.** Functional files on main without human approval. Exit
 with guidance. Path B: human approves with `--approved`. Path C: human
@@ -272,5 +285,6 @@ are sent to the same reviewer.
 
 ## See also
 
+- docs/project/adr/0036-commit-gates-in-process-no-stash.md
 - docs/global/software-development/design/workspace-scoping.md
 - docs/global/software-development/policy/version-control-safety.md

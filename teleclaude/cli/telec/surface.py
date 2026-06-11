@@ -1060,16 +1060,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Code quality and commit tools",
         subcommands={
             "lint": CommandDef(
-                desc="Run language-aware lint pipeline",
+                desc="Run native make lint plus TeleClaude guardrails",
                 flags=[
                     _H,
-                    Flag("--step", desc="Run a single pipeline step"),
                     Flag("--all", desc="Run against all configured sources, skip workspace scoping"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "test": CommandDef(
-                desc="Run language-aware test suite",
+                desc="Run native make test",
                 flags=[
                     _H,
                     Flag("--all", desc="Run all tests, skip workspace scoping"),
@@ -1084,8 +1083,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "format": CommandDef(
-                desc="Run language-aware code formatter",
+                desc="Run native make format",
                 flags=[_H, Flag("--all", desc="Format all configured sources, skip workspace scoping")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
+            "install": CommandDef(
+                desc="Run native make install",
+                flags=[_H],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "changed": CommandDef(

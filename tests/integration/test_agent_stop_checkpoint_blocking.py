@@ -51,6 +51,11 @@ def _timeline_with_bash(command: str) -> TurnTimeline:
     return TurnTimeline(tool_calls=[record], has_data=True)
 
 
+def _disable_commit_quality_gates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(code, "handle_format", lambda _paths: None)
+    monkeypatch.setattr(code, "handle_lint", lambda _paths: None)
+
+
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP5A")
 def test_main_branch_review_gate_follows_authored_commit_latch(
@@ -63,6 +68,7 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
     repo = _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _disable_commit_quality_gates(monkeypatch)
 
     first_anchor_sha = repo.git.rev_parse("HEAD").strip()
     (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# authored\n", encoding="utf-8")
@@ -119,6 +125,7 @@ def test_doc_only_main_commit_does_not_arm_review_marker(
     _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _disable_commit_quality_gates(monkeypatch)
 
     (repo_path / "docs").mkdir(parents=True)
     (repo_path / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
@@ -145,6 +152,7 @@ def test_directory_pathspec_does_not_arm_review_marker(
     repo = _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _disable_commit_quality_gates(monkeypatch)
 
     (repo_path / "docs").mkdir(parents=True)
     (repo_path / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Check for raw SQL usage without guard markers in database modules
-# Usage: scripts/check-raw-sql.sh
+# Usage: scripts/check-raw-sql.sh [--project-root <path>] [paths...]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DEFAULT_PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROJECT_ROOT="${DEFAULT_PROJECT_ROOT}"
+SELECTED_PATHS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -20,14 +21,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help)
             cat <<'USAGE'
-Usage: check-raw-sql.sh [--project-root <path>]
+Usage: check-raw-sql.sh [--project-root <path>] [paths...]
 Checks raw SQL usage markers in TeleClaude code.
+With paths, checks only selected raw-SQL-owned files.
 USAGE
             exit 0
             ;;
         *)
-            echo "ERROR: Unknown argument: $1" >&2
-            exit 2
+            SELECTED_PATHS+=("$1")
+            shift
             ;;
     esac
 done
@@ -35,13 +37,47 @@ done
 PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 
 # Files to check for raw SQL
-FILES=(
-    "${PROJECT_ROOT}/teleclaude/core/db/_base.py"
-    "${PROJECT_ROOT}/teleclaude/core/db/_sync.py"
-    "${PROJECT_ROOT}/teleclaude/memory/search.py"
-    "${PROJECT_ROOT}/teleclaude/memory/store.py"
-    "${PROJECT_ROOT}/teleclaude/memory/context/builder.py"
+RAW_SQL_FILES=(
+    "teleclaude/core/db/_base.py"
+    "teleclaude/core/db/_sync.py"
+    "teleclaude/memory/search.py"
+    "teleclaude/memory/store.py"
+    "teleclaude/memory/context/builder.py"
 )
+FILES=()
+
+is_raw_sql_file() {
+    local rel="$1"
+    local owned
+    for owned in "${RAW_SQL_FILES[@]}"; do
+        if [[ "$rel" == "$owned" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+normalize_selected_path() {
+    local path="$1"
+    if [[ "$path" == "${PROJECT_ROOT}/"* ]]; then
+        printf '%s\n' "${path#${PROJECT_ROOT}/}"
+    else
+        printf '%s\n' "${path#./}"
+    fi
+}
+
+if [[ ${#SELECTED_PATHS[@]} -eq 0 ]]; then
+    for rel in "${RAW_SQL_FILES[@]}"; do
+        FILES+=("${PROJECT_ROOT}/${rel}")
+    done
+else
+    for selected in "${SELECTED_PATHS[@]}"; do
+        rel="$(normalize_selected_path "$selected")"
+        if is_raw_sql_file "$rel"; then
+            FILES+=("${PROJECT_ROOT}/${rel}")
+        fi
+    done
+fi
 
 found_violations=0
 

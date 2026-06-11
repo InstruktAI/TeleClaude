@@ -240,8 +240,8 @@ def _is_python_test_file(path: Path, repo_root: Path) -> bool:
     return len(relative.parts) > 1 and relative.parts[0] == "tests"
 
 
-def _iter_targets(raw_targets: Sequence[str], repo_root: Path) -> Iterable[Path]:
-    if not raw_targets:
+def _iter_targets(raw_targets: Sequence[str], repo_root: Path, *, run_all: bool) -> Iterable[Path]:
+    if run_all:
         yield from sorted(f for f in (repo_root / "tests").rglob("*.py") if _is_python_test_file(f, repo_root))
         return
 
@@ -253,14 +253,6 @@ def _iter_targets(raw_targets: Sequence[str], repo_root: Path) -> Iterable[Path]
             found.extend(sorted(f for f in path.rglob("*.py") if _is_python_test_file(f, repo_root)))
         elif path.is_file() and _is_python_test_file(path, repo_root):
             found.append(path)
-
-    if not found:
-        # Targets contained no test files (e.g. source dirs like "teleclaude" in --all mode).
-        # Fall back to scanning tests/ so CI enforcement is not silently skipped.
-        tests_dir = repo_root / "tests"
-        if tests_dir.is_dir():
-            yield from sorted(f for f in tests_dir.rglob("*.py") if _is_python_test_file(f, repo_root))
-        return
 
     yield from found
 
@@ -283,12 +275,14 @@ def lint_file(path: Path, repo_root: Path, exemptions: set[str]) -> list[Finding
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the snapshot-testing linter."""
     args = list(sys.argv[1:] if argv is None else argv)
+    run_all = "--all" in args or not args
+    args = [arg for arg in args if arg != "--all"]
     repo_root = Path.cwd()
     exemptions = _load_exemptions(repo_root)
     findings: list[Finding] = []
     seen: set[Path] = set()
 
-    for path in _iter_targets(args, repo_root):
+    for path in _iter_targets(args, repo_root, run_all=run_all):
         resolved = path.resolve()
         if resolved in seen:
             continue

@@ -244,7 +244,7 @@ class MemorySearch:
                         params["project"] = project
                     sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
                     result = session.exec(  # type: ignore[call-overload]  # guard: raw-sql
-                        text(sql).bindparams(**params)
+                        text(sql).bindparams(**params)  # guard: raw-sql
                     )
                     rows = result.fetchall()
                     return [_row_to_search_result(row) for row in rows]

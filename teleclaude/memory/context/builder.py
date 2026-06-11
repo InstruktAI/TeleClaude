@@ -47,13 +47,13 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
                 obs_sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                 obs_params["identity_key"] = identity_key
             obs_sql += " ORDER BY created_at_epoch DESC LIMIT 100"
-            result = session.exec(text(obs_sql).bindparams(**obs_params))  # type: ignore[call-overload]
+            result = session.exec(text(obs_sql).bindparams(**obs_params))  # type: ignore[call-overload]  # guard: raw-sql
             obs_rows = result.fetchall()
             observations = [_row_to_observation(row) for row in obs_rows]
 
             # Recent summaries
             result = session.exec(  # type: ignore[call-overload]
-                text(
+                text(  # guard: raw-sql
                     "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT 5"
                 ).bindparams(project=project)
             )
@@ -86,7 +86,7 @@ async def _get_recent_observations(
             sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
             params["identity_key"] = identity_key
         sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-        result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]
+        result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]  # guard: raw-sql
         rows = result.fetchall()
         return [_row_to_observation(row) for row in rows]
 
@@ -95,7 +95,7 @@ async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.
     """Fetch recent summaries for a project."""
     async with db._session() as session:
         result = await session.exec(  # type: ignore[call-overload]
-            text(
+            text(  # guard: raw-sql
                 "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT :limit"
             ).bindparams(project=project, limit=limit)
         )

@@ -301,20 +301,15 @@ def _check_mypy_invariants(pyproject: str) -> None:
 
 def _check_lint_pipeline_integrity(repo_root: Path) -> None:
     """Verify critical tool config files haven't been structurally weakened."""
-    # .pre-commit-config.yaml: must contain required hook IDs.
-    # When telec code lint consolidates the pipeline, ruff-check and typecheck are
-    # subsumed by the guardrails hook entry — only require them when telec code lint
-    # is not configured as the guardrails entry.
     precommit_path = repo_root / ".pre-commit-config.yaml"
     if precommit_path.exists():
         precommit = precommit_path.read_text(encoding="utf-8")
-        for hook_id in ("commitizen", "format", "guardrails"):
-            if f"id: {hook_id}" not in precommit:
-                _fail(f".pre-commit-config.yaml: required hook '{hook_id}' is missing")
-        if "telec code lint" not in precommit:
-            for hook_id in ("ruff-check", "typecheck"):
-                if f"id: {hook_id}" not in precommit:
-                    _fail(f".pre-commit-config.yaml: required hook '{hook_id}' is missing")
+        if precommit.strip() != "repos: []":
+            _fail(".pre-commit-config.yaml: pre-commit framework is retired; expected 'repos: []'")
+
+    hook_path = _git_hook_path(repo_root, "pre-commit")
+    if hook_path.exists() and "INSTALL_PYTHON" in hook_path.read_text(encoding="utf-8"):
+        _fail(".git/hooks/pre-commit: legacy INSTALL_PYTHON pre-commit framework hook is forbidden")
 
     # Makefile: must contain lint, test, and format targets
     makefile_path = repo_root / "Makefile"
@@ -323,6 +318,32 @@ def _check_lint_pipeline_integrity(repo_root: Path) -> None:
         for target in ("lint:", "test:", "format:"):
             if target not in makefile:
                 _fail(f"Makefile: required target '{target}' is missing")
+
+
+def _git_hook_path(repo_root: Path, hook_name: str) -> Path:
+    """Resolve a hook path for regular clones and linked git worktrees."""
+    git_entry = repo_root / ".git"
+    if git_entry.is_dir():
+        git_dir = git_entry
+    elif git_entry.is_file():
+        gitdir_line = git_entry.read_text(encoding="utf-8").strip()
+        prefix = "gitdir:"
+        if gitdir_line.startswith(prefix):
+            git_dir = Path(gitdir_line[len(prefix) :].strip())
+            if not git_dir.is_absolute():
+                git_dir = repo_root / git_dir
+        else:
+            return git_entry / "hooks" / hook_name
+    else:
+        return git_entry / "hooks" / hook_name
+
+    common_dir_path = git_dir / "commondir"
+    if common_dir_path.exists():
+        common_dir = Path(common_dir_path.read_text(encoding="utf-8").strip())
+        if not common_dir.is_absolute():
+            common_dir = git_dir / common_dir
+        git_dir = common_dir.resolve()
+    return git_dir / "hooks" / hook_name
 
 
 def _check_module_sizes(repo_root: Path, selected_paths: set[str] | None = None) -> None:

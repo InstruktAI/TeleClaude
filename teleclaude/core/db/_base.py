@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
-from sqlalchemy import text
+from sqlalchemy import text  # guard: raw-sql
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession

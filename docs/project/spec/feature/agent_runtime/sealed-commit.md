@@ -257,7 +257,6 @@ And this is justified because every change the integrator commits was individual
 - **Integrator conflict resolution after a squash merge:** edit resolved file; `telec code add <resolved>`; `telec code commit --approved "<msg>"`.
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
-<!-- planned:telec-code-delegates-to-make -->
 ### Commit-time gates — in-process, no framework stash
 
 `telec code commit` runs format then lint in-process against `quality_paths`
@@ -356,8 +355,6 @@ Then the hook exits nonzero immediately
 And the commit is aborted
 And the partial-staging check is NOT silently bypassed
 ```
-<!-- /planned:telec-code-delegates-to-make -->
-
 ## See also
 
 - docs/project/design/code-commit.md

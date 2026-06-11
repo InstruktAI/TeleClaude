@@ -1,0 +1,76 @@
+# serializer version: 1
+# name: test_commit_runs_format_before_lint_and_uses_no_verify
+  dict({
+    'records': list([
+      'lock-clear',
+      'message',
+      tuple(
+        'format',
+        list([
+          'tracked.py',
+        ]),
+      ),
+      tuple(
+        'lint',
+        list([
+          'tracked.py',
+        ]),
+      ),
+      tuple(
+        'commit',
+        tuple(
+          '-F',
+          '<message-file>',
+          '--no-verify',
+          '--',
+          'tracked.py',
+          'deleted.py',
+        ),
+        True,
+      ),
+      tuple(
+        'show',
+        tuple(
+          '--name-only',
+          '--format=',
+          'HEAD',
+        ),
+      ),
+    ]),
+  })
+# ---
+# name: test_deletion_only_commit_skips_format_and_lint
+  dict({
+    'records': list([
+      'lock-clear',
+      'message',
+      tuple(
+        'commit',
+        tuple(
+          '-F',
+          '<message-file>',
+          '--no-verify',
+          '--',
+          'deleted.py',
+        ),
+        True,
+      ),
+      tuple(
+        'show',
+        tuple(
+          '--name-only',
+          '--format=',
+          'HEAD',
+        ),
+      ),
+    ]),
+  })
+# ---
+# name: test_malformed_message_blocks_before_format_lint_or_commit
+  dict({
+    'records': list([
+      'lock-clear',
+      'message',
+    ]),
+  })
+# ---
