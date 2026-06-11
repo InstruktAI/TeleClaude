@@ -1,7 +1,7 @@
 ---
 adr_status: 'accepted'
 date: '2026-06-11'
-description: 'The two cross-node envelopes — the v2 Rust EventEnvelope and the v1 cluster.* ClusterEnvelope — carry a schema_version stamp (current shape is version 1), and consumers read them as tolerant readers so mixed-version fleets interoperate across additive changes. An absent stamp decodes as version 1, preserving baseline envelopes emitted before the stamp existed.'
+description: 'Cross-node event envelopes carry a schema_version stamp (current shape is version 1) and consumers read them as tolerant readers, so a fleet of differently-versioned nodes interoperates across additive changes. An absent stamp decodes as version 1.'
 number: '30'
 visibility: 'public'
 ---
@@ -10,68 +10,52 @@ visibility: 'public'
 
 ## Context
 
-TeleClaude fleets can contain nodes upgraded at different times. Cross-node
-events therefore need a compatibility rule that lets newer producers add
-envelope fields without breaking older consumers, and lets newer consumers read
-baseline envelopes emitted before the version stamp existed.
-
-This is the concrete envelope-level realization of mechanisms #1–2 (schema-versioned
-envelopes; tolerant readers as law) of the fleet compatibility contract
-(ADR-0026). It governs only the envelope stamp and tolerant-read rule for the two
-cross-node envelopes; capability gating (ADR-0027), the two-layer migration model
-(ADR-0025), and generalized wire upcasters are separate decisions.
-
-The v2 Rust `EventEnvelope` and the v1 `cluster.*` `ClusterEnvelope` are the two
-cross-node envelopes in scope for this foundation slice. The Python stream
-`EventEnvelope` is already versioned and already allows extra fields.
+A fleet can contain nodes upgraded at different times. The envelopes that cross
+node boundaries — the v2 Rust `EventEnvelope` and the v1 `cluster.*`
+`ClusterEnvelope` — need a compatibility rule that lets a newer producer add
+fields without breaking an older consumer, and lets a newer consumer read
+envelopes emitted before any version stamp existed.
 
 ## Decision
 
-Every cross-node envelope carries a schema-version stamp. The current envelope
+Every cross-node envelope carries a `schema_version` stamp. The current envelope
 shape is version `1`.
 
 Consumers are tolerant readers:
 
 - An absent `schema_version` decodes as version `1`, preserving compatibility
-  with baseline envelopes emitted before the stamp existed.
+  with envelopes emitted before the stamp existed.
 - Unknown added fields are ignored by consumers that do not understand them.
-- A present malformed known field remains malformed and must fail at the
-  decode boundary.
-- A consumer that rejects an otherwise valid cross-node envelope because of an
-  unknown field is defective.
+- A present but malformed known field remains malformed and fails at the decode
+  boundary.
+- A consumer that rejects an otherwise valid cross-node envelope solely because
+  of an unknown field is defective.
 
-This decision applies to the v2 Rust `EventEnvelope` and the v1 `cluster.*`
-`ClusterEnvelope`. Future non-additive envelope changes must bump the schema
-version and provide an explicit migration strategy.
+A future non-additive change to a cross-node envelope bumps the schema version
+and carries an explicit migration strategy.
 
 ## Consequences
 
-Mixed-version fleets can tolerate additive envelope evolution: newer nodes can
-emit stamped envelopes and older tolerant readers continue processing the
-fields they understand. Newer nodes can also read unstamped baseline envelopes
-without treating absence as corruption.
+Differently-versioned nodes tolerate additive envelope evolution: a newer node
+emits a stamped envelope and an older tolerant reader keeps processing the fields
+it understands; a newer node reads an unstamped envelope without treating absence
+as corruption.
 
-The rule constrains future event-consumer implementations. Envelope and
-cross-node event payload decoders must not opt into unknown-field rejection
-unless they are validating a non-event ingress boundary. Strict validation
-remains appropriate for HTTP request and query models, which are not governed by
-the cross-node tolerant-reader rule.
+The rule constrains envelope and cross-node payload decoders: they must not opt
+into unknown-field rejection. Strict unknown-field validation remains correct for
+HTTP request and query models, which are not cross-node envelopes.
 
-The version stamp is only a foundation. It does not by itself provide
-capability negotiation, feature gating, or semantic upcasting; those remain
-explicit follow-up concerns owned by ADR-0026's broader contract.
+The stamp is a decode-level compatibility floor only. It does not by itself
+provide capability negotiation, feature gating, or semantic upcasting.
 
 ## Alternatives Considered
 
-- **Leave envelopes unstamped and rely on informal additive discipline.**
-  Rejected because consumers would have no durable way to reason about envelope
-  shape, and future compatibility work would have to infer baseline state from
-  absence alone.
-- **Build the full upcaster framework immediately.** Rejected for this slice
-  because the immediate compatibility need is additive-envelope tolerance; a
-  generalized upcaster would add more machinery before a non-additive migration
-  exists.
+- **Leave envelopes unstamped, rely on informal additive discipline.** Rejected:
+  consumers would have no durable way to reason about envelope shape and would
+  have to infer baseline state from absence alone.
 - **Reject unknown fields to keep schemas strict.** Rejected for cross-node
-  events because strict unknown-field rejection breaks rolling upgrades. Strict
-  ingress validation remains correct for request/query boundaries outside the
-  event mesh.
+  envelopes: strict rejection breaks rolling upgrades. Strict validation stays
+  correct for request and query boundaries.
+- **Build a general upcaster framework now.** Rejected: the present need is
+  additive-envelope tolerance; a general upcaster adds machinery before any
+  non-additive migration exists.
