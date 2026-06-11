@@ -202,3 +202,13 @@ And the machine does NOT select a ready todo from the roadmap
 - Chokepoint emission is at-least-once at the bus layer under concurrent first-transition writers. Integrator spawning remains at-most-once for duplicate same-key events through cartridge dedup, and distinct-key races are serialized by the integration singleton lease.
 - Stash debt in the project root blocks work entirely; the machine refuses to dispatch until the stash is drained, because stash state can silently reintroduce unrelated changes into the worktree branch.
 - Worktree prep failures bubble up as `reason=unexpected_<ExceptionType>` in the log line so the orchestrator can diagnose without round-tripping through daemon logs.
+<!-- planned:orchestrator-terminal-self-end -->
+- The `finalize_ready` terminal script states the objective completion outcome — work-stage responsibility for the slug is complete and the integration event chain owns what follows — and routes its cleanup (end child sessions, then the orchestrator self-end) through the shared session-cleanup formatter. It states no re-call instruction and no negative "do not call `telec todo work` again" phrasing.
+- The cosmetic-verdict drift bounce resumes from the orchestrator's own lineage, not from a build prompt. When work bounces in-line to `telec todo prepare {slug}` to reconcile drift and prepare reaches PREPARED again, the orchestrator resumes `telec todo work {slug}` because the bounce script already instructed it to; the PREPARED terminal supplies a lineage-conditioned reminder, not an unconditional next-phase prompt.
+<!-- /planned:orchestrator-terminal-self-end -->
+
+## See Also
+
+<!-- planned:orchestrator-terminal-self-end -->
+- docs/project/adr/0034-orchestrator-terminal-resumes-via-lineage-awareness.md
+<!-- /planned:orchestrator-terminal-self-end -->
