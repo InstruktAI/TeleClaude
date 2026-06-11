@@ -44,6 +44,20 @@ And pending snippets (those with delivered_by) append " (delivered by: slug1,slu
 And current snippets (no delivered_by) render with no suffix
 ```
 
+#### UC-3PR2: Phase-2 get surfaces pending-change awareness for live parents
+
+```
+Given a snippet whose live parent carries a planned-change marker or companion
+When the caller runs telec docs get <id>
+Then the output renders the current contract body with pending material hidden
+And a pending-changes awareness header names the owning slug
+And the header tells the caller to inspect related files and read the snippet with --target <slug>
+When the caller runs telec docs get <id> --target <slug>
+Then the output renders that slug's pending view
+And no pending-changes awareness header is appended
+```
+
+
 ```
 Given a known snippet ID returned by phase 1
 When the caller runs telec docs get <id>

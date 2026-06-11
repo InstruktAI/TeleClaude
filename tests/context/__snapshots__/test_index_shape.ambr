@@ -22,3 +22,19 @@
     'visibility': 'internal',
   })
 # ---
+# name: test_index_marks_parent_superseded_by_planned_markers_and_companion
+  dict({
+    'activation_trigger': None,
+    'description': 'Pending parent.',
+    'domain': 'project',
+    'id': 'project/spec/feature/context/pending-parent',
+    'scope': 'project',
+    'superseded_by': list([
+      'planned-add',
+      'planned-change-markers',
+      'wholesale-rework',
+    ]),
+    'type': 'spec',
+    'visibility': 'internal',
+  })
+# ---

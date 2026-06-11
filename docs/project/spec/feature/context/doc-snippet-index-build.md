@@ -88,6 +88,18 @@ When the lifecycle-metadata copy step runs
 Then delivered_by is copied into the index entry verbatim
 ```
 
+#### UC-DIB1: Parent entries derive superseded_by from pending carriers
+
+```
+Given a live parent snippet with a pending companion, a planned block, or a planned-change block
+When the index-build phase writes the parent entry
+Then the entry carries superseded_by with each owning slug
+And the pending companion has no independent index entry
+When telec docs index renders the parent line
+Then the line includes " (superseded by: <slugs>)"
+```
+
+
 ### Cross-context references
 
 - **config** — supplies the project slug (from `teleclaude.yml`

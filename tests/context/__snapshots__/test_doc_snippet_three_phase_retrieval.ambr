@@ -1,5 +1,5 @@
 # serializer version: 1
-# name: test_phase1_appends_delivered_by_suffix_for_pending_snippets
+# name: test_phase1_appends_lifecycle_suffixes_for_pending_snippets
   '''
   # PHASE 1: Snippet Index (IDs + descriptions)
   # Review the snippets below and select the IDs you need.
@@ -7,6 +7,7 @@
   
   project/spec/feature/context/current-snippet: A current snippet with no pending state.
   project/spec/feature/context/pending-snippet: A pending snippet owned by two slugs.  (delivered by: slug-a, slug-b)
+  project/spec/feature/context/superseded-snippet: A current snippet with an in-flight change.  (superseded by: slug-c)
   
   # ⚠️  IMPORTANT: Call `telec docs get` again with the snippet IDs of interest!
   
@@ -52,6 +53,76 @@
   Live parent body.
   
   '''
+# ---
+# name: test_phase2_resolves_planned_change_lens_and_default_awareness
+  dict({
+    'other_target': '''
+      # PHASE 2: Selected snippet content
+      # Requested: project/spec/feature/context/target-lens
+      
+      ---
+      id: project/spec/feature/context/target-lens
+      type: spec
+      domain: project
+      scope: project
+      description: Target lens snippet.
+      ---
+      # Live Parent
+      
+      Before paragraph.
+      
+      Current bounded text.
+      
+      After paragraph.
+  
+    ''',
+    'plain': '''
+      # PHASE 2: Selected snippet content
+      # Requested: project/spec/feature/context/target-lens
+      
+      ---
+      id: project/spec/feature/context/target-lens
+      type: spec
+      domain: project
+      scope: project
+      description: Target lens snippet.
+      ---
+      # Live Parent
+      
+      Before paragraph.
+      
+      Current bounded text.
+      
+      After paragraph.
+      
+      
+      # NOTE: This snippet has pending changes.
+      # Owners: planned-change-markers
+      # The text above is the current contract. The on-disk file carries in-flight markers
+      # and/or a companion; before editing, run the related-files discovery
+      # (`ls target-lens.*`) and read `telec docs get project/spec/feature/context/target-lens --target <slug>`.
+    ''',
+    'target': '''
+      # PHASE 2: Selected snippet content
+      # Requested: project/spec/feature/context/target-lens
+      
+      ---
+      id: project/spec/feature/context/target-lens
+      type: spec
+      domain: project
+      scope: project
+      description: Target lens snippet.
+      ---
+      # Live Parent
+      
+      Before paragraph.
+      
+      Replacement bounded text.
+      
+      After paragraph.
+  
+    ''',
+  })
 # ---
 # name: test_phase2_target_still_resolves_inline_planned_sections
   dict({

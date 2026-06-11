@@ -21,6 +21,46 @@
     }),
   ])
 # ---
+# name: TestValidateAllSnippetsScoping.test_malformed_planned_change_markers_report_validation_errors
+  list([
+    dict({
+      'code': 'snippet_planned_change_marker_invalid',
+      'marker': '<!-- planned-change:planned-change-markers -->',
+      'path': 'docs/project/concept/missing-close.md',
+      'reason': 'missing closing marker',
+    }),
+    dict({
+      'code': 'snippet_planned_change_marker_invalid',
+      'marker': '<!-- change:other-slug -->',
+      'path': 'docs/project/concept/mismatched-slug.md',
+      'reason': 'separator slug does not match planned-change-markers',
+    }),
+    dict({
+      'code': 'snippet_planned_change_marker_invalid',
+      'marker': '<!-- planned-change:planned-change-markers -->',
+      'path': 'docs/project/concept/missing-separator.md',
+      'reason': 'missing change separator',
+    }),
+    dict({
+      'code': 'snippet_planned_change_marker_invalid',
+      'marker': '<!-- planned-change:BadSlug -->',
+      'path': 'docs/project/concept/invalid-slug.md',
+      'reason': 'slug must be kebab-case',
+    }),
+    dict({
+      'code': 'snippet_planned_change_marker_invalid',
+      'marker': '<!-- change:BadSlug -->',
+      'path': 'docs/project/concept/invalid-slug.md',
+      'reason': 'slug must be kebab-case',
+    }),
+    dict({
+      'code': 'snippet_planned_change_marker_invalid',
+      'marker': '<!-- /planned-change:BadSlug -->',
+      'path': 'docs/project/concept/invalid-slug.md',
+      'reason': 'slug must be kebab-case',
+    }),
+  ])
+# ---
 # name: TestValidateAllSnippetsScoping.test_section_validation_uses_path_derived_type
   list([
     dict({

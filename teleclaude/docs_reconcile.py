@@ -10,7 +10,7 @@ from typing import Literal, TypedDict, cast
 import yaml
 
 from teleclaude.constants import RoadmapStatus
-from teleclaude.doc_body import strip_planned_markers
+from teleclaude.doc_body import resolve_planned_change_for_delivery, strip_planned_markers
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import companion_parent, companion_slug
 
@@ -259,6 +259,7 @@ def reconcile_delivered_snippets(project_root: Path, slug: str) -> list[Path]:
     On delivery the slug's pending material becomes live, so this:
     - replaces each parent ``<stem>.md`` with its companion ``<stem>.<slug>.md`` and
       deletes the companion,
+    - replaces the slug's ``<!-- planned-change:slug -->`` block with its replacement body,
     - removes the slug's ``<!-- planned:slug -->`` marker lines, keeping their content,
     - drops the slug from any ``delivered_by`` frontmatter (the snippet is now live).
 
@@ -279,7 +280,8 @@ def reconcile_delivered_snippets(project_root: Path, slug: str) -> list[Path]:
     # 2. Strip planned markers and clear delivered_by from the now-live snippets.
     for path in _iter_snippet_files(project_root):
         original = path.read_text(encoding="utf-8")
-        updated = _clear_delivered_slug(strip_planned_markers(original, slug), slug)
+        resolved = resolve_planned_change_for_delivery(original, slug)
+        updated = _clear_delivered_slug(strip_planned_markers(resolved, slug), slug)
         if updated == original:
             continue
         path.write_text(updated, encoding="utf-8")

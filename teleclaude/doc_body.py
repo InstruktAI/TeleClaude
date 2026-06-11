@@ -14,8 +14,11 @@ from pathlib import Path
 __all__ = [
     "INLINE_REF_RE",
     "PLANNED_BLOCK_RE",
+    "PLANNED_CHANGE_BLOCK_RE",
+    "apply_planned_change_sections",
     "apply_planned_sections",
     "resolve_inline_refs",
+    "resolve_planned_change_for_delivery",
     "split_frontmatter",
     "strip_planned_markers",
 ]
@@ -26,6 +29,15 @@ PLANNED_BLOCK_RE = re.compile(
     r"[ \t]*<!--[ \t]*planned:(?P<slug>[a-z0-9-]+)[ \t]*-->[ \t]*\n"
     r"(?P<content>.*?)"
     r"[ \t]*<!--[ \t]*/planned:(?P=slug)[ \t]*-->[ \t]*\n?",
+    re.DOTALL,
+)
+
+PLANNED_CHANGE_BLOCK_RE = re.compile(
+    r"[ \t]*<!--[ \t]*planned-change:(?P<slug>[a-z0-9-]+)[ \t]*-->[ \t]*\n"
+    r"(?P<current>.*?)"
+    r"[ \t]*<!--[ \t]*change:(?P=slug)[ \t]*-->[ \t]*\n"
+    r"(?P<replacement>.*?)"
+    r"[ \t]*<!--[ \t]*/planned-change:(?P=slug)[ \t]*-->[ \t]*\n?",
     re.DOTALL,
 )
 
@@ -82,6 +94,28 @@ def apply_planned_sections(body: str, target_slug: str | None) -> str:
         return ""
 
     return PLANNED_BLOCK_RE.sub(_resolve, body)
+
+
+def apply_planned_change_sections(body: str, target_slug: str | None) -> str:
+    """Resolve ``<!-- planned-change:slug -->`` blocks for the reader's lens."""
+
+    def _resolve(match: re.Match[str]) -> str:
+        if target_slug is not None and match.group("slug") == target_slug:
+            return match.group("replacement")
+        return match.group("current")
+
+    return PLANNED_CHANGE_BLOCK_RE.sub(_resolve, body)
+
+
+def resolve_planned_change_for_delivery(text: str, slug: str) -> str:
+    """Make ``slug``'s planned-change replacements live while preserving other slugs."""
+
+    def _resolve(match: re.Match[str]) -> str:
+        if match.group("slug") == slug:
+            return match.group("replacement")
+        return match.group(0)
+
+    return PLANNED_CHANGE_BLOCK_RE.sub(_resolve, text)
 
 
 def strip_planned_markers(text: str, slug: str) -> str:

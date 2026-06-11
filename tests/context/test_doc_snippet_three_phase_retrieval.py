@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
@@ -18,9 +19,20 @@ _SPEC = "project/spec/feature/context/doc-snippet-three-phase-retrieval"
 _SNIPPET_ID = "project/spec/feature/context/target-lens"
 
 
+class _IndexEntry(TypedDict, total=False):
+    id: str
+    description: str
+    type: str
+    scope: str
+    domain: str
+    visibility: str
+    path: str
+    superseded_by: list[str]
+
+
 @pytest.mark.spec(_SPEC, "UC-3PR1")
-def test_phase1_appends_delivered_by_suffix_for_pending_snippets(tmp_path: Path, snapshot: object) -> None:
-    """Phase-1 output appends ' (delivered by: a,b)' to pending snippets only."""
+def test_phase1_appends_lifecycle_suffixes_for_pending_snippets(tmp_path: Path, snapshot: object) -> None:
+    """Phase-1 output appends lifecycle suffixes to pending snippets only."""
     current = SnippetMeta(
         snippet_id="project/spec/feature/context/current-snippet",
         description="A current snippet with no pending state.",
@@ -39,9 +51,18 @@ def test_phase1_appends_delivered_by_suffix_for_pending_snippets(tmp_path: Path,
         path=tmp_path / "pending.md",
         delivered_by=("slug-a", "slug-b"),
     )
+    superseded = SnippetMeta(
+        snippet_id="project/spec/feature/context/superseded-snippet",
+        description="A current snippet with an in-flight change.",
+        snippet_type="spec",
+        scope="project",
+        domain="project",
+        path=tmp_path / "superseded.md",
+        superseded_by=("slug-c",),
+    )
 
     output = _build_phase1_output(
-        [current, pending],
+        [current, pending, superseded],
         [],
         areas=[],
         test_agent=None,
@@ -69,24 +90,25 @@ description: Target lens snippet.
     )
 
 
-def _write_index(project_root: Path, snippet_path: Path) -> None:
+def _write_index(project_root: Path, snippet_path: Path, *, superseded_by: list[str] | None = None) -> None:
+    entry: _IndexEntry = {
+        "id": _SNIPPET_ID,
+        "description": "Target lens snippet.",
+        "type": "spec",
+        "scope": "project",
+        "domain": "project",
+        "visibility": "public",
+        "path": str(snippet_path.relative_to(project_root)),
+    }
+    if superseded_by:
+        entry["superseded_by"] = superseded_by
     index_path = project_root / "docs" / "project" / "index.yaml"
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(
         json.dumps(
             {
                 "project_root": str(project_root),
-                "snippets": [
-                    {
-                        "id": _SNIPPET_ID,
-                        "description": "Target lens snippet.",
-                        "type": "spec",
-                        "scope": "project",
-                        "domain": "project",
-                        "visibility": "public",
-                        "path": str(snippet_path.relative_to(project_root)),
-                    }
-                ],
+                "snippets": [entry],
             },
             indent=2,
         ),
@@ -101,6 +123,33 @@ def _phase2_output(project_root: Path, *, target_slug: str | None) -> str:
         snippet_ids=[_SNIPPET_ID],
         target_slug=target_slug,
     )
+
+
+@pytest.mark.spec(_SPEC, "UC-3PR2")
+def test_phase2_resolves_planned_change_lens_and_default_awareness(tmp_path: Path, snapshot: object) -> None:
+    snippet_path = tmp_path / "docs" / "project" / "spec" / "feature" / "context" / "target-lens.md"
+    _write_snippet(
+        snippet_path,
+        """# Live Parent
+
+Before paragraph.
+
+<!-- planned-change:planned-change-markers -->
+Current bounded text.
+<!-- change:planned-change-markers -->
+Replacement bounded text.
+<!-- /planned-change:planned-change-markers -->
+
+After paragraph.
+""",
+    )
+    _write_index(tmp_path, snippet_path, superseded_by=["planned-change-markers"])
+
+    assert {
+        "plain": _phase2_output(tmp_path, target_slug=None),
+        "target": _phase2_output(tmp_path, target_slug="planned-change-markers"),
+        "other_target": _phase2_output(tmp_path, target_slug="other-slug"),
+    } == snapshot
 
 
 @pytest.mark.spec(_SPEC, "UC-3PR1")

@@ -323,12 +323,30 @@ grader: code that scores free-text snippet quality would itself violate
 `principle/intelligence-boundaries`, so the reviewer reads the prose and applies
 the rule.
 
+<!-- planned-change:planned-change-markers -->
 **Scope.** Audit the **changed regions** (added/modified lines and their enclosing
 section), the snippet's **frontmatter**, and any **newly-added or delivered**
 planned block (`<!-- planned:slug -->`) or companion (`<stem>.<slug>.md`). Do NOT
 re-audit unchanged regions of a snippet the diff merely touched elsewhere —
 pre-existing narration outside the change is not this change's finding. A
 delivered planned/companion body is fully in scope, because delivery touches it.
+<!-- change:planned-change-markers -->
+**Scope.** Audit the **changed regions** (added/modified lines and their enclosing
+section), the snippet's **frontmatter**, and any **newly-added or delivered**
+planned block (`<!-- planned:slug -->`), planned-change block
+(`<!-- planned-change:slug -->`), or companion (`<stem>.<slug>.md`). Do NOT
+re-audit unchanged regions of a snippet the diff merely touched elsewhere —
+pre-existing narration outside the change is not this change's finding. A
+delivered planned, planned-change, or companion body is fully in scope, because
+delivery touches it.
+<!-- /planned-change:planned-change-markers -->
+
+**Companion re-sync check.** When a commit edits a live parent `<stem>.md` and
+a pending companion `<stem>.<slug>.md` exists, the reviewer reads both the
+parent diff and the companion. The commit is flagged unless the companion is
+re-synced in the same change or the diff records a deliberate coordination
+decision. This is reviewer judgment over the changed files, not an automated
+free-text grader.
 
 For each changed snippet body, flag the Narration anti-pattern in its four forms
 (`snippet-value-contract` owns the full definition; do not re-derive it here):
@@ -368,6 +386,7 @@ Severity guidance:
   ADRs → **Important**.
 - Narration introduced or modified by this change in a live snippet body →
   **Important**.
+- An edited parent snippet with an unsynced pending companion → **Important**.
 - A snippet whose contract is correct but carries a stray rationale clause better
   placed in an ADR → **Important**.
 - Pre-existing narration in a region this change did not touch → **drop the

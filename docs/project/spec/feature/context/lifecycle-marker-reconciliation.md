@@ -78,6 +78,19 @@ Scenario: Staging failure aborts the merge prompt
   And the operator is not prompted to commit until staging succeeds
 ```
 
+#### UC-LMR1: Delivery resolves only the candidate's planned-change block
+
+```
+Given a live parent snippet contains a planned-change block for the current candidate
+And the same parent contains a planned-change block for another slug
+When delivery reconciliation runs for the current candidate
+Then the current candidate's block is replaced by its replacement content
+And all three marker lines for the current candidate are removed
+And the other slug's planned-change block is left unchanged
+And a second reconciliation run makes no further change
+```
+
+
 ### Cross-context references
 
 - workflow — owns todo status; the integrator pre-applies the current slug

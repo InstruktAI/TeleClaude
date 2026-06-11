@@ -20,6 +20,7 @@ from teleclaude.constants import (
 )
 from teleclaude.doc_body import (
     INLINE_REF_RE,
+    apply_planned_change_sections,
     apply_planned_sections,
     resolve_inline_refs,
     split_frontmatter,
@@ -708,6 +709,7 @@ def _read_selected_snippet_body(
         )
         content = resolve_inline_refs(raw, snippet_path=source_path, root_path=root_path)
         _, body = split_frontmatter(content)
+        body = apply_planned_change_sections(body, target_slug)
         body = apply_planned_sections(body, target_slug)
         return strip_required_reads_section(body)
     except Exception as exc:
@@ -722,6 +724,19 @@ def _target_body_source_path(snippet_path: Path, target_slug: str | None) -> Pat
     if companion_path.exists() and companion_slug(companion_path) == target_slug:
         return companion_path
     return snippet_path
+
+
+def _pending_changes_awareness_lines(snippet: SnippetMeta) -> list[str]:
+    slugs = ", ".join(snippet.superseded_by)
+    related_glob = snippet.path.with_suffix("").name + ".*"
+    return [
+        "",
+        "# NOTE: This snippet has pending changes.",
+        f"# Owners: {slugs}",
+        "# The text above is the current contract. The on-disk file carries in-flight markers",
+        "# and/or a companion; before editing, run the related-files discovery",
+        f"# (`ls {related_glob}`) and read `telec docs get {snippet.snippet_id} --target <slug>`.",
+    ]
 
 
 def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
@@ -928,6 +943,8 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
             ).strip()
         )
         parts.append(body.lstrip("\n"))
+        if snippet.superseded_by and target_slug is None:
+            parts.extend(_pending_changes_awareness_lines(snippet))
 
     # Output selected third-party entries (no type, no dependency resolution)
     if third_party_ids:

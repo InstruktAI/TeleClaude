@@ -79,6 +79,24 @@ This is a test fixture.
 Used in functional tests for stripped frontmatter validation.
 """
 
+_PLANNED_CHANGE_CONCEPT_SNIPPET = """\
+---
+description: Planned-change validation fixture.
+---
+
+# Planned Change Validation — Concept
+
+## What
+
+This fixture carries planned-change marker structure.
+
+{planned_change_block}
+
+## Why
+
+Used in functional tests for planned-change marker validation.
+"""
+
 _STRIPPED_POLICY_WITH_CONCEPT_SECTIONS = """\
 ---
 description: Wrong section fixture.
@@ -154,6 +172,70 @@ class TestValidateAllSnippetsScoping:
         validate_all_snippets(tmp_path, paths=[snippet])
 
         assert not get_errors()
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1")
+    def test_valid_planned_change_markers_validate_cleanly(self, tmp_path: Path) -> None:
+        snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(
+                planned_change_block="""<!-- planned-change:planned-change-markers -->
+Current body.
+<!-- change:planned-change-markers -->
+Replacement body.
+<!-- /planned-change:planned-change-markers -->
+
+```
+<!-- planned-change:<slug> -->
+Current body.
+<!-- change:<slug> -->
+Replacement body.
+<!-- /planned-change:<slug> -->
+```"""
+            ),
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        assert not get_errors()
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1")
+    def test_malformed_planned_change_markers_report_validation_errors(self, tmp_path: Path, snapshot: object) -> None:
+        fixtures = {
+            "missing-close.md": """<!-- planned-change:planned-change-markers -->
+Current body.
+<!-- change:planned-change-markers -->
+Replacement body.""",
+            "mismatched-slug.md": """<!-- planned-change:planned-change-markers -->
+Current body.
+<!-- change:other-slug -->
+Replacement body.
+<!-- /planned-change:planned-change-markers -->""",
+            "missing-separator.md": """<!-- planned-change:planned-change-markers -->
+Current body.
+<!-- /planned-change:planned-change-markers -->""",
+            "invalid-slug.md": """<!-- planned-change:BadSlug -->
+Current body.
+<!-- change:BadSlug -->
+Replacement body.
+<!-- /planned-change:BadSlug -->""",
+        }
+        paths = []
+        for filename, block in fixtures.items():
+            snippet = tmp_path / "docs" / "project" / "concept" / filename
+            snippet.parent.mkdir(parents=True, exist_ok=True)
+            snippet.write_text(
+                _PLANNED_CHANGE_CONCEPT_SNIPPET.format(planned_change_block=block),
+                encoding="utf-8",
+            )
+            paths.append(snippet)
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=paths)
+
+        assert _normalized_findings(tmp_path) == snapshot
 
     def test_section_validation_uses_path_derived_type(self, tmp_path: Path, snapshot: object) -> None:
         snippet = tmp_path / "docs" / "project" / "policy" / "wrong-section-fixture.md"

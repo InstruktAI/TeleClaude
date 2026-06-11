@@ -23,7 +23,7 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
 )
-from teleclaude.doc_body import PLANNED_BLOCK_RE
+from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
@@ -520,7 +520,8 @@ def _superseding_slugs(file_path: Path) -> list[str]:
     """Pending slugs touching this live parent, derived from the filesystem — not frontmatter.
 
     A slug supersedes the parent when it owns a companion ``<stem>.<slug>.md`` (full
-    replacement) or an in-body ``<!-- planned:slug -->`` block (additive). The index renders
+    replacement), an in-body ``<!-- planned:slug -->`` block (additive), or an in-body
+    ``<!-- planned-change:slug -->`` block (bounded replacement/removal). The index renders
     these as a ``(superseded by: …)`` suffix on the parent's line; the relationship is carried
     by the filename and the marker, so it needs no frontmatter and auto-clears on delivery.
     """
@@ -537,6 +538,7 @@ def _superseding_slugs(file_path: Path) -> list[str]:
     except OSError:
         body = ""
     slugs.update(match.group("slug") for match in PLANNED_BLOCK_RE.finditer(body))
+    slugs.update(match.group("slug") for match in PLANNED_CHANGE_BLOCK_RE.finditer(body))
     return sorted(slugs)
 
 

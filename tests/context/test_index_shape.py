@@ -12,7 +12,7 @@ from teleclaude.slug import normalize_slug
 pytestmark = pytest.mark.functional
 
 
-def _write_snippet(path: Path, *, description: str, title: str = "Example") -> Path:
+def _write_snippet(path: Path, *, description: str, title: str = "Example", body: str = "Fixture body.") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         f"""---
@@ -22,7 +22,7 @@ description: {description}
 
 ## What
 
-Fixture body.
+{body}
 
 ## Why
 
@@ -42,6 +42,37 @@ def test_index_derives_classifier_fields_from_stripped_frontmatter(tmp_path: Pat
     payload = build_index_payload(tmp_path, tmp_path / "docs" / "project")
 
     assert len(payload["snippets"]) == 1
+    entry = dict(payload["snippets"][0])
+    assert entry.pop("source_project") == normalize_slug(tmp_path.name)
+    assert entry.pop("path") == str(snippet.relative_to(tmp_path))
+    assert entry == snapshot
+
+
+@pytest.mark.spec("project/spec/feature/context/doc-snippet-index-build", "UC-DIB1")
+def test_index_marks_parent_superseded_by_planned_markers_and_companion(tmp_path: Path, snapshot: object) -> None:
+    snippet = _write_snippet(
+        tmp_path / "docs" / "project" / "spec" / "feature" / "context" / "pending-parent.md",
+        description="Pending parent.",
+        body="""Current body.
+
+<!-- planned:planned-add -->
+Added body.
+<!-- /planned:planned-add -->
+
+<!-- planned-change:planned-change-markers -->
+Old body.
+<!-- change:planned-change-markers -->
+New body.
+<!-- /planned-change:planned-change-markers -->
+""",
+    )
+    _write_snippet(
+        snippet.with_name("pending-parent.wholesale-rework.md"),
+        description="Pending companion.",
+    )
+
+    payload = build_index_payload(tmp_path, tmp_path / "docs" / "project")
+
     entry = dict(payload["snippets"][0])
     assert entry.pop("source_project") == normalize_slug(tmp_path.name)
     assert entry.pop("path") == str(snippet.relative_to(tmp_path))

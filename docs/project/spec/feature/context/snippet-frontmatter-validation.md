@@ -54,6 +54,18 @@ Scenario: delivered_by relationship state is not validated here
   And lifecycle code remains responsible for delivery-time reconciliation
 ```
 
+#### UC-SFV1: Planned-change marker shape is validated mechanically
+
+```
+Given a snippet contains a planned-change block with matching open, change, and close markers
+When snippet validation runs
+Then no planned-change marker finding is reported
+Given a snippet contains a planned-change block with a missing close marker, mismatched slug, or missing change separator
+When snippet validation runs
+Then a planned-change marker finding is reported
+```
+
+
 ```
 Scenario: Required reads is not the first H2
   Given a snippet whose first H2 after H1 is "## What it is"
