@@ -443,7 +443,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> [--kind <{TODO_KIND_USAGE}>] [--after <deps>] [--plan]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--plan]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
