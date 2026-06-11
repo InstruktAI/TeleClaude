@@ -261,11 +261,7 @@ def build_checkpoint_message(
 def _commit_instruction(on_main: bool) -> str:
     """Branch-aware commit instruction for the checkpoint message."""
     if on_main:
-        return (
-            "Collect your changes (what changed, why, file types, scope) "
-            "Then execute `telec code commit` (no flags) to surface Path A/B/C; "
-            "after picking, re-run with `--approved '<message>'`."
-        )
+        return "Execute `telec code commit` (no flags) to surface the menu."
     return "Commit your changes with `telec code commit --approved '<message>'`"
 
 
