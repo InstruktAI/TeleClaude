@@ -53,10 +53,6 @@ broken:
 
    ```yaml
    ---
-   id: project/adr/NNNN-kebab-case-title
-   type: adr
-   domain: software-development
-   scope: project
    visibility: public
    number: NNNN
    date: YYYY-MM-DD
@@ -66,6 +62,9 @@ broken:
    # supersedes: [project/adr/0001-prior-decision]
    ---
    ```
+
+   Author only the fields above. `id`, `type`, `domain`, and `scope` are
+   path-derived by the index — do not author them in the source frontmatter.
 
 4. **Write the body** with the required H2 sections in order:
    - `## Context` — the situation that made this decision necessary. What were we trying to accomplish? What constraints or forces were in play? Brief and factual; not a history of the conversation.
@@ -101,7 +100,6 @@ broken:
 - Decision is stated as a decision, not a question or a narrative.
 - Consequences cover both directions (positive and negative).
 - No prior ADR was modified; supersession is recorded only via this ADR's `supersedes` frontmatter.
-- If superseding, the prior ADR has been updated.
 
 ## Discipline
 

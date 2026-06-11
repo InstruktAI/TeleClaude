@@ -52,9 +52,13 @@ site, which is already known, rather than a field stamped on the event.
   the reliable halt.
 - Hold remains a single explicit concept with no inferred sources; the runner
   never guesses intent from how a session ended.
-- A missed or mis-routed hold cannot silently respawn-loop, because the runner
-  only re-dispatches todos that pass the ordinary eligibility gates, hold
-  included.
+- The halt is exactly as reliable as the hold written at the close command — the
+  hold is the only gate, with no separate runner-side backstop. If the close
+  cannot be correlated to the driven todo, the hold is not written and the todo
+  remains dispatchable; that correlation failure must therefore surface
+  (logged / observable), not be swallowed. The close command writing hold on the
+  driven todo before or with termination is the invariant the implementation must
+  hold.
 
 ## Alternatives Considered
 

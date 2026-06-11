@@ -116,7 +116,7 @@ assumption that every v2 event already fires:
 | `workflow.todo.delivered` | Must be emitted or bridged from the v1 delivery stamp path; no v1 emit site is assumed. |
 | `workflow.todo.updated` / `workflow.roadmap.entry_moved` | Must be emitted or bridged from v1 mutation paths that change hold, dependency edges, icebox/unfreeze, or task authorization. Rust v2 emissions alone are insufficient while v1 remains authoritative. |
 | `config.effective.updated` | Must be wired from the v1 config watcher/effective-config reload seam, or the runner must receive an equivalent in-process wake-up carrying the same scope semantics. |
-| `agent_runtime.session.ended` | Must be bridged from v1 `SESSION_CLOSED` after extending the payload beyond `session_id` with project/slug/lane/close-intent metadata. |
+| `agent_runtime.session.ended` | Must be bridged from v1 `SESSION_CLOSED` as a runner wake-up. The payload is not extended with close-intent metadata; the runner correlates the closed session to its todo (via `active_runner`) and resolves the project through the same identity path as other wake-ups. |
 | `scheduler.tick.minute` | Pending `task-lane`; v1 must add the in-daemon minute clock emitter and lifecycle-router admission for this wake-up before workflow can subscribe to it for datetime-gated tasks. |
 
 `creation_mode` / `pickup_requested` are migration-only fields after this
@@ -218,7 +218,7 @@ Additional runner subscriptions:
 | `workflow.todo.delivered`      | `workflow.lifecycle_runner` (re-evaluate downstream dependents after a dependency reaches delivery; v1 delivery emission/bridge is part of this delivery) |
 | `workflow.roadmap.entry_moved` | `workflow.lifecycle_runner` (re-evaluate after dependency, icebox, unfreeze, or delivery movement; v1 mutation emissions/bridges are part of this delivery) |
 | `config.effective.updated`     | `workflow.lifecycle_runner` (invalidate autostart policy and re-evaluate affected project/global scope; v1 config watcher is the seam) |
-| `agent_runtime.session.ended`  | `workflow` (session-close interlock: explicit operator stop-work sets hold on the correlated incomplete todo; v1 `SESSION_CLOSED` must be enriched/bridged) |
+| `agent_runtime.session.ended`  | `workflow.lifecycle_runner` (wake-up: re-evaluate the closed session's todo and clear the now-stale `active_runner` link; a manual close's hold is set at the close command, not inferred here; v1 `SESSION_CLOSED` bridged) |
 <!-- /planned:runner-dispatch -->
 
 <!-- planned:task-lane -->
