@@ -254,7 +254,12 @@ setup_agents_interactive() {
             print_info "OpenAI Codex CLI already installed"
         else
             print_info "Installing OpenAI Codex CLI..."
-            if curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh >> "$LOG_FILE" 2>&1; then
+            local install_ok=0
+            curl -fsSL https://chatgpt.com/codex/install.sh > /tmp/codex_install.sh 2>> "$LOG_FILE" || install_ok=1
+            if [ $install_ok -eq 0 ]; then
+                CODEX_NON_INTERACTIVE=1 sh /tmp/codex_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
+            fi
+            if [ $install_ok -eq 0 ]; then
                 print_success "OpenAI Codex CLI installed"
             else
                 print_warning "Failed to run codex installation script automatically. Make sure 'codex' is installed and in your PATH."
@@ -681,7 +686,12 @@ install_claude_code() {
     fi
 
     print_info "Installing Claude Code via the native installer..."
-    if curl -fsSL https://claude.ai/install.sh | bash >> "$LOG_FILE" 2>&1; then
+    local install_ok=0
+    curl -fsSL https://claude.ai/install.sh > /tmp/claude_install.sh 2>> "$LOG_FILE" || install_ok=1
+    if [ $install_ok -eq 0 ]; then
+        bash /tmp/claude_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
+    fi
+    if [ $install_ok -eq 0 ]; then
         print_success "Claude Code installed"
     else
         print_warning "Failed to install Claude Code (see $LOG_FILE)"
