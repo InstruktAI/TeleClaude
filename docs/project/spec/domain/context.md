@@ -285,7 +285,7 @@ This subsection is the concrete "codebase-intelligence documentation" the plan-d
 ## Known caveats
 
 - **Filesystem-driven, no Postgres schema, no events.** State lives in git + filesystem. Adding a database would be overhead with no payoff; the index file IS the index.
-- **`telec context sync` is the deployment boundary.** No partial writes; consumers read from deployed locations, never from working-tree source. Sync at commit boundary keeps deployed == committed.
+- **`telec context sync` is the deployment boundary for the authored kinds (docs/skills/commands/agents).** No partial writes; consumers read from deployed locations, never from working-tree source. Sync at commit boundary keeps deployed == committed. <!-- planned:code-intelligence-foundation --> The generated Blueprint is the exception: it is a project-root cache written by `integration` (`.teleclaude/blueprint/graph.json` + `manifest.json`), not sync-deployed, and consumed via the Blueprint contract (manifest freshness check) rather than from a deployed location. <!-- /planned:code-intelligence-foundation -->
 - **Mother-project gate** prevents accidental global publishing from non-mother repos.
 - **CRUD writes to source (git-tracked).** Agent self-improvement = agent authors a skill → file lands in git → sync deploys → next agent session has the new skill. Loop closed via git + sync, not via any in-memory state.
 - **No cutover follow-up.** v1 (`teleclaude/docs_index.py` + `context_selector.py` + `sync.py`) and v2 (`crates/context/`) read the same source files. They can coexist forever. The v1 Python paths can retire when convenient (or never).
