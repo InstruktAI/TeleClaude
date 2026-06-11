@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use event_bus::EventBus;
+use event_bus::{EventBus, EventBusConfig};
 use identity::IdentityService;
 use workflow::WorkflowService;
 
@@ -82,9 +82,9 @@ async fn main() -> ExitCode {
 }
 
 async fn run() -> Result<i32> {
-    // Load .env silently so DATABASE_URL / REDIS_URL / TELECLAUDE_OWNER_EMAIL
-    // overlays apply. Failure to find an .env is not an error — the env
-    // may already be populated by the parent shell.
+    // Load .env silently so runtime configuration overlays apply. Failure
+    // to find an .env is not an error — the env may already be populated
+    // by the parent shell.
     let _ = dotenvy::dotenv();
 
     let cli = Cli::parse();
@@ -113,10 +113,14 @@ async fn run() -> Result<i32> {
         .await
         .context("apply identity schema migrations")?;
 
+    let cluster_bus = cfg.cluster_bus_url()?;
     let events = Arc::new(
-        EventBus::connect(&cfg.redis_url)
-            .await
-            .context("connect to Redis event bus")?,
+        EventBus::connect(EventBusConfig {
+            cluster_bus,
+            public: cfg.public_redis_url.clone(),
+        })
+        .await
+        .context("connect to Redis event bus")?,
     );
 
     // Resolve identity: prefer TELEC_SESSION_TOKEN (validated against the

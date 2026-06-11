@@ -7,6 +7,6 @@ pub mod client;
 pub mod envelope;
 pub mod errors;
 
-pub use client::EventBus;
-pub use envelope::EventEnvelope;
+pub use client::{EventBus, EventBusConfig, SubscriptionScopes};
+pub use envelope::{EventEnvelope, EventScope};
 pub use errors::EventBusError;

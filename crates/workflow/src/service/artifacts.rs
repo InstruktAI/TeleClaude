@@ -148,6 +148,7 @@ impl WorkflowService {
                 digest: artifact.digest.clone(),
                 written_at: artifact.updated_at,
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -199,6 +200,7 @@ impl WorkflowService {
                 name,
                 deleted_at: Utc::now(),
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;

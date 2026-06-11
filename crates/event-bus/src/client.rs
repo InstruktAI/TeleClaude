@@ -19,12 +19,14 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use futures::future;
+use futures::stream::{select_all, BoxStream};
 use futures::{Stream, StreamExt};
 use redis::aio::ConnectionManager;
 use redis::Client;
 use tokio::sync::Mutex;
 
-use crate::envelope::EventEnvelope;
+use crate::envelope::{EventEnvelope, EventScope};
 use crate::errors::EventBusError;
 
 /// How long a handled idempotency key is remembered before the entry is
@@ -72,35 +74,103 @@ impl IdempotencyCache {
     }
 }
 
-/// Redis-backed event bus.
-///
-/// Holds:
-/// - a `Client` used to spawn dedicated pub/sub connections on demand,
-/// - a multiplexed `ConnectionManager` for emit (XADD + PUBLISH),
-/// - an in-memory idempotency-key cache.
-///
-/// Wrap in an `Arc` to share across tasks/services.
-pub struct EventBus {
-    client: Client,
-    conn: Mutex<ConnectionManager>,
-    seen: Mutex<IdempotencyCache>,
+/// Runtime configuration for the event bus.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventBusConfig {
+    /// Resolved cluster bus Redis URL. `CLUSTER_REDIS_URL` vs `REDIS_URL`
+    /// name resolution happens in the caller.
+    pub cluster_bus: String,
+    /// Optional public federation Redis URL.
+    pub public: Option<String>,
 }
 
-impl EventBus {
-    /// Connect to Redis at `redis_url` (e.g. `redis://localhost:6379`).
-    pub async fn connect(redis_url: &str) -> Result<Self, EventBusError> {
+/// Subscription scope selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubscriptionScopes {
+    bits: u8,
+}
+
+impl SubscriptionScopes {
+    const LOCAL: u8 = 0b001;
+    const CLUSTER: u8 = 0b010;
+    const PUBLIC: u8 = 0b100;
+    const ALL: u8 = Self::LOCAL | Self::CLUSTER | Self::PUBLIC;
+
+    /// Subscribe to every configured scope.
+    pub fn all() -> Self {
+        Self { bits: Self::ALL }
+    }
+
+    /// Subscribe to Local envelopes only.
+    pub fn local() -> Self {
+        Self { bits: Self::LOCAL }
+    }
+
+    /// Subscribe to Cluster envelopes only.
+    pub fn cluster() -> Self {
+        Self {
+            bits: Self::CLUSTER,
+        }
+    }
+
+    /// Subscribe to Public envelopes only.
+    pub fn public() -> Self {
+        Self { bits: Self::PUBLIC }
+    }
+
+    /// Return a scope set that also includes `scope`.
+    pub fn with(mut self, scope: EventScope) -> Self {
+        self.bits |= bit_for_scope(scope);
+        self
+    }
+
+    fn contains(self, scope: EventScope) -> bool {
+        self.bits & bit_for_scope(scope) != 0
+    }
+
+    fn wants_bus(self) -> bool {
+        self.bits & (Self::LOCAL | Self::CLUSTER) != 0
+    }
+
+    fn wants_public(self) -> bool {
+        self.bits & Self::PUBLIC != 0
+    }
+
+    fn is_all(self) -> bool {
+        self.bits == Self::ALL
+    }
+}
+
+impl Default for SubscriptionScopes {
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
+fn bit_for_scope(scope: EventScope) -> u8 {
+    match scope {
+        EventScope::Local => SubscriptionScopes::LOCAL,
+        EventScope::Cluster => SubscriptionScopes::CLUSTER,
+        EventScope::Public => SubscriptionScopes::PUBLIC,
+    }
+}
+
+struct ScopeClient {
+    client: Client,
+    conn: Mutex<ConnectionManager>,
+}
+
+impl ScopeClient {
+    async fn connect(redis_url: &str) -> Result<Self, EventBusError> {
         let client = Client::open(redis_url)?;
         let conn = ConnectionManager::new(client.clone()).await?;
         Ok(Self {
             client,
             conn: Mutex::new(conn),
-            seen: Mutex::new(IdempotencyCache::with_ttl(IDEMPOTENCY_TTL)),
         })
     }
 
-    /// Emit an envelope to Redis: append to the per-channel Stream, then
-    /// PUBLISH for live subscribers.
-    pub async fn emit(&self, envelope: &EventEnvelope) -> Result<(), EventBusError> {
+    async fn emit(&self, envelope: &EventEnvelope) -> Result<(), EventBusError> {
         let payload = serde_json::to_string(envelope)?;
         let stream_key = format!("{}{}", STREAM_PREFIX, envelope.channel);
 
@@ -120,6 +190,72 @@ impl EventBus {
         Ok(())
     }
 
+    async fn subscribe(
+        &self,
+        channel_pattern: &str,
+    ) -> Result<BoxStream<'static, Result<EventEnvelope, EventBusError>>, EventBusError> {
+        let mut pubsub = self.client.get_async_pubsub().await?;
+        pubsub.psubscribe(channel_pattern).await?;
+        Ok(pubsub.into_on_message().map(decode_message).boxed())
+    }
+}
+
+/// Redis-backed event bus.
+///
+/// Holds:
+/// - a mandatory cluster bus Redis client for Local and Cluster scopes,
+/// - an optional public Redis client for Public scope,
+/// - an in-memory idempotency-key cache.
+///
+/// Wrap in an `Arc` to share across tasks/services.
+pub struct EventBus {
+    bus: ScopeClient,
+    public: Option<ScopeClient>,
+    seen: Mutex<IdempotencyCache>,
+}
+
+impl EventBus {
+    /// Connect to the configured Redis scopes.
+    pub async fn connect(config: EventBusConfig) -> Result<Self, EventBusError> {
+        let bus = ScopeClient::connect(&config.cluster_bus).await?;
+        let public = match config.public {
+            Some(url) => Some(ScopeClient::connect(&url).await?),
+            None => None,
+        };
+        Ok(Self {
+            bus,
+            public,
+            seen: Mutex::new(IdempotencyCache::with_ttl(IDEMPOTENCY_TTL)),
+        })
+    }
+
+    /// Return whether this bus can emit or subscribe to `scope`.
+    pub fn has_scope(&self, scope: EventScope) -> bool {
+        match scope {
+            EventScope::Local | EventScope::Cluster => true,
+            EventScope::Public => self.public.is_some(),
+        }
+    }
+
+    /// Emit an envelope to Redis: append to the per-channel Stream, then
+    /// PUBLISH for live subscribers.
+    pub async fn emit(&self, envelope: &EventEnvelope) -> Result<(), EventBusError> {
+        match envelope.scope {
+            EventScope::Local | EventScope::Cluster => self.bus.emit(envelope).await,
+            EventScope::Public => match &self.public {
+                Some(public) => public.emit(envelope).await,
+                None => {
+                    tracing::debug!(
+                        scope = ?envelope.scope,
+                        channel = %envelope.channel,
+                        "dropping public event because public Redis is not configured",
+                    );
+                    Ok(())
+                }
+            },
+        }
+    }
+
     /// Subscribe to a channel pattern via Redis `PSUBSCRIBE`.
     ///
     /// `channel_pattern` follows Redis pub/sub glob rules: `workflow.*`,
@@ -128,13 +264,46 @@ impl EventBus {
     pub async fn subscribe(
         &self,
         channel_pattern: &str,
+        scopes: SubscriptionScopes,
     ) -> Result<
         impl Stream<Item = Result<EventEnvelope, EventBusError>> + Send + 'static,
         EventBusError,
     > {
-        let mut pubsub = self.client.get_async_pubsub().await?;
-        pubsub.psubscribe(channel_pattern).await?;
-        Ok(pubsub.into_on_message().map(decode_message))
+        let mut streams = Vec::new();
+        if scopes.wants_bus() {
+            streams.push(self.bus.subscribe(channel_pattern).await?);
+        }
+        if scopes.wants_public() {
+            if let Some(public) = &self.public {
+                streams.push(public.subscribe(channel_pattern).await?);
+            }
+        }
+
+        let mut yielded_keys = if streams.len() > 1 {
+            Some(IdempotencyCache::with_ttl(IDEMPOTENCY_TTL))
+        } else {
+            None
+        };
+        Ok(select_all(streams).filter_map(move |result| {
+            let item = match result {
+                Ok(envelope) => {
+                    if !scopes.is_all() && !scopes.contains(envelope.scope) {
+                        None
+                    } else if let Some(cache) = yielded_keys.as_mut() {
+                        if cache.contains(&envelope.idempotency_key) {
+                            None
+                        } else {
+                            cache.mark(&envelope.idempotency_key);
+                            Some(Ok(envelope))
+                        }
+                    } else {
+                        Some(Ok(envelope))
+                    }
+                }
+                Err(err) => Some(Err(err)),
+            };
+            future::ready(item)
+        }))
     }
 
     /// Record that `key` has been handled successfully. Used by subscribers

@@ -85,7 +85,6 @@ fast-path stays gone.
     required and then silently dropped when Redis was absent. v2
     explicitly types Cluster and Public as optional, making silent drop
     on absent client the contract — not a contract violation.
-<!-- planned:event-bus-cluster-scope -->
 - **`CLUSTER_REDIS_URL` is the canonical name for the cluster bus Redis;
   `REDIS_URL` is a deprecated alias for the same endpoint.** There is one
   cluster bus Redis — not a separate Local instance and Cluster instance. The
@@ -122,7 +121,6 @@ fast-path stays gone.
   subscription only `Cluster`-scoped ones, so "scope is respected literally"
   holds on the shared bus. `all()` applies no scope filter (and dedups by
   idempotency key across the bus and a configured Public).
-<!-- /planned:event-bus-cluster-scope -->
 - **In-coroutine completion signals are not events.** They use Tokio
   primitives (`oneshot`, `broadcast`, `mpsc`) and are named accordingly.
   They never use `event_bus.emit()`. This rule predates and is orthogonal

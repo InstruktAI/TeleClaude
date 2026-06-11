@@ -7,6 +7,7 @@
 mod common;
 
 use common::{build_service, human_principal, seed_project};
+use event_bus::EventScope;
 use shared::Slug;
 use sqlx::PgPool;
 use workflow::{
@@ -59,6 +60,32 @@ async fn create_todo_inserts_row_and_emits_event(pool: PgPool) {
     assert_eq!(envelopes.len(), 2);
     assert_eq!(envelopes[0].channel, CHANNEL_TODO_CREATED);
     assert_eq!(envelopes[1].channel, CHANNEL_ARTIFACT_WRITTEN);
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn create_todo_emits_cluster_scoped_workflow_todo_event(pool: PgPool) {
+    let (svc, sink) = build_service(pool);
+    let project = seed_project(&svc).await;
+
+    svc.create_todo(
+        CreateTodoArgs {
+            project,
+            slug: Slug::new("cluster-scope").expect("slug"),
+            kind: Some(TodoKind::Feature),
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
+        &human_principal(),
+    )
+    .await
+    .expect("create_todo succeeds");
+
+    let envelopes = sink.snapshot();
+    assert_eq!(envelopes[0].channel, CHANNEL_TODO_CREATED);
+    assert_eq!(envelopes[0].scope, EventScope::Cluster);
 }
 
 #[sqlx::test(migrator = "MIGRATOR")]

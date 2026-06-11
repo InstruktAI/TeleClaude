@@ -155,6 +155,7 @@ impl WorkflowService {
                 position: entry.position,
                 added_at: Utc::now(),
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -245,6 +246,7 @@ impl WorkflowService {
                     to_position: from_position,
                     moved_at: Utc::now(),
                 },
+                event_bus::EventScope::Cluster,
                 principal,
             )
             .await?;
@@ -316,6 +318,7 @@ impl WorkflowService {
                 to_position: target_position,
                 moved_at: Utc::now(),
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -392,6 +395,7 @@ impl WorkflowService {
                 "slug": entry.slug,
                 "frozen": frozen,
             }),
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -436,6 +440,7 @@ impl WorkflowService {
                 slug: slug.clone(),
                 removed_at: Utc::now(),
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -498,6 +503,7 @@ impl WorkflowService {
                 "commit_hash": entry.commit_hash,
                 "delivered_at": entry.delivered_at,
             }),
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;

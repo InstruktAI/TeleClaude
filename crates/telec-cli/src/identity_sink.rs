@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use event_bus::{envelope::ENVELOPE_SCHEMA_VERSION, EventBus, EventEnvelope};
+use event_bus::{envelope::ENVELOPE_SCHEMA_VERSION, EventBus, EventEnvelope, EventScope};
 use identity::events::{PrincipalCreated, TokenIssued, TokenRevoked};
 use identity::{IdentityError, IdentityEventSink, Principal};
 
@@ -103,6 +103,7 @@ fn build_envelope<T: serde::Serialize>(
     })?;
     Ok(EventEnvelope {
         schema_version: ENVELOPE_SCHEMA_VERSION,
+        scope: EventScope::Cluster,
         channel: channel.to_string(),
         idempotency_key,
         emitted_at: Utc::now(),

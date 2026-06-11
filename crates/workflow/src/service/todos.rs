@@ -252,6 +252,7 @@ impl WorkflowService {
                 created_by_principal: updated_by_value.clone().unwrap_or_default(),
                 project_path,
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -266,6 +267,7 @@ impl WorkflowService {
                 digest: input_digest,
                 written_at: artifact_updated_at,
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -383,6 +385,7 @@ impl WorkflowService {
                 updated_by_principal: String::new(),
                 project_path: String::new(),
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;
@@ -439,6 +442,7 @@ impl WorkflowService {
                 project_id: project,
                 deleted_at: Utc::now(),
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;

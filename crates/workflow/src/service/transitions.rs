@@ -87,6 +87,7 @@ impl WorkflowService {
                 signal: Some(signal_label),
                 occurred_at: Utc::now(),
             },
+            event_bus::EventScope::Cluster,
             principal,
         )
         .await?;

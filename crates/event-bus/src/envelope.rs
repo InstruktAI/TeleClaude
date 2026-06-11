@@ -16,6 +16,21 @@ fn default_envelope_schema_version() -> u32 {
     ENVELOPE_SCHEMA_VERSION
 }
 
+/// Routing scope for an event envelope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventScope {
+    Local,
+    Cluster,
+    Public,
+}
+
+impl Default for EventScope {
+    fn default() -> Self {
+        Self::Local
+    }
+}
+
 /// The canonical event envelope.
 ///
 /// See `docs/project/design/architecture-v2/event-bus-transports.md` for the
@@ -28,6 +43,9 @@ pub struct EventEnvelope {
     /// Future non-additive changes must bump [`ENVELOPE_SCHEMA_VERSION`].
     #[serde(default = "default_envelope_schema_version")]
     pub schema_version: u32,
+    /// Routing directive that determines which scope carries the event.
+    #[serde(default)]
+    pub scope: EventScope,
     /// Channel name in `{service}.{aggregate}.{verb_past}` form.
     pub channel: String,
     /// Stable per-logical-event key used for handler-success dedup.
@@ -50,6 +68,7 @@ mod tests {
     fn envelope_serde_round_trip_preserves_fields() {
         let original = EventEnvelope {
             schema_version: ENVELOPE_SCHEMA_VERSION,
+            scope: EventScope::Cluster,
             channel: "workflow.todo.created".to_string(),
             idempotency_key: "todo-42-created".to_string(),
             emitted_at: DateTime::parse_from_rfc3339("2026-05-16T12:00:00Z")
@@ -67,6 +86,7 @@ mod tests {
             serde_json::from_str(&serialized).expect("envelope deserializes");
 
         assert_eq!(restored, original);
+        assert_eq!(restored.scope, EventScope::Cluster);
     }
 
     #[test]
@@ -81,6 +101,21 @@ mod tests {
         .expect("legacy envelope without schema_version deserializes");
 
         assert_eq!(restored.schema_version, ENVELOPE_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn envelope_deserialize_defaults_absent_scope() {
+        let restored: EventEnvelope = serde_json::from_value(json!({
+            "schema_version": ENVELOPE_SCHEMA_VERSION,
+            "channel": "workflow.todo.created",
+            "idempotency_key": "todo-42-created",
+            "emitted_at": "2026-05-16T12:00:00Z",
+            "principal": null,
+            "payload": {"slug": "demo", "title": "Demo"}
+        }))
+        .expect("legacy envelope without scope deserializes");
+
+        assert_eq!(restored.scope, EventScope::Local);
     }
 
     #[test]

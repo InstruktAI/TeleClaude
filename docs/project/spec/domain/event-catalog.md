@@ -325,9 +325,7 @@ is incidental.
 
 - `visibility`: `LOCAL` (single-host Redis scope — events confined to this computer), `CLUSTER` (single-owner mesh Redis scope — cross-host within one user's fleet), `PUBLIC` (federation hub Redis scope — cross-mesh). Three real Redis client instances in v2; routing is explicit per envelope. See `project/design/architecture-v2/event-bus-transports` for the bus semantics. Single-computer installs run Local-only; emits to Cluster/Public silently drop when those scopes aren't configured.
 
-<!-- planned:event-bus-cluster-scope -->
 Current single-bus contract: there is one cluster bus Redis serving both `LOCAL` and `CLUSTER` scopes — its canonical name is `CLUSTER_REDIS_URL`, with `REDIS_URL` retained as a deprecated alias for the same endpoint. `PUBLIC` is the only optional, off-by-default scope, and only `PUBLIC` emits silent-drop when unconfigured; `CLUSTER` always routes. The "three real Redis client instances", "single-computer installs run Local-only", and "Cluster silently drops" descriptions above are the greenfield target in which `LOCAL` is split onto its own local-host Redis distinct from the `CLUSTER` mesh Redis — future work, not the current contract. See `project/design/architecture-v2/event-bus-transports` for the current bus semantics.
-<!-- /planned:event-bus-cluster-scope -->
 
 - `posture` (emit safety pattern): `commit-then-emit` (the producer commits its state change in Postgres, THEN publishes the event; loud-fail on publish failure — caller treats it as a defect since the state change already landed), `outbox` (the event is written to the producing context's outbox table atomically with the caller's state change; a dispatcher publishes asynchronously — used for outbound external delivery and for cross-context events where at-least-once matters), `inbox` (the event represents an external input captured durably first then published; used for ingress paths from external systems).
 
