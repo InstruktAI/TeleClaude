@@ -1,5 +1,5 @@
 ---
-adr_status: 'proposed'
+adr_status: 'accepted'
 date: '2026-06-11'
 description: 'A deliberately multi-version fleet (alpha ahead of beta ahead of stable, permanently) keeps interoperating only by an engineered contract, not by SemVer labels: schema-versioned event envelopes, tolerant readers as law, wire upcasters for non-additive changes, and expand/contract gated on the slowest channel. Automating deployment without this contract amplifies breakage rather than preventing it.'
 number: '26'
