@@ -86,20 +86,25 @@ fast-path stays gone.
     explicitly types Cluster and Public as optional, making silent drop
     on absent client the contract — not a contract violation.
 <!-- planned:event-bus-cluster-scope -->
-- **The Cluster client is never absent on a configured install.** It resolves
-  to `CLUSTER_REDIS_URL` when set and otherwise falls back to the mandatory
-  `REDIS_URL` — the single Redis that already carries cross-host `cluster.*`
-  traffic. The "`emit(scope=Cluster)` with Cluster client missing → silent
-  drop" case above is therefore unreachable while `REDIS_URL` is present (which
-  Local already requires): a Cluster emit always routes, to the dedicated
-  Cluster Redis or the shared local one. This preserves the cross-host delivery
-  existing single-Redis installs rely on with zero new configuration; an
-  operator sets `CLUSTER_REDIS_URL` only to split Cluster traffic onto a
-  dedicated Redis. Public keeps the optional semantics above — `PUBLIC_REDIS_URL`
-  when set, otherwise off — so Public emits silent-drop until federation is
-  configured. This regression-safe mapping is required by ADR-0026: a
-  deliberately multi-version, multi-host fleet that already delivers `cluster.*`
-  over one shared Redis must not lose that delivery when scope routing lands.
+- **`CLUSTER_REDIS_URL` is the canonical name for the cluster bus Redis;
+  `REDIS_URL` is a deprecated alias for the same endpoint.** There is one
+  cluster bus Redis — not a separate Local instance and Cluster instance. The
+  LOCAL and CLUSTER scopes ride that same Redis; only PUBLIC is a genuinely
+  separate endpoint (`PUBLIC_REDIS_URL`, optional and off by default). The bus
+  resolves the cluster bus endpoint from `CLUSTER_REDIS_URL` when set and
+  otherwise from `REDIS_URL`, which is **retained as a deprecated alias** while
+  the fleet migrates. The "`emit(scope=Cluster)` with Cluster client missing →
+  silent drop" case above is therefore unreachable: one of the two names is
+  always present (Local requires it), so a Cluster emit always routes onto the
+  one bus already carrying `cluster.*` cross-host today — no current deployment
+  changes anything.
+- **This is ADR-0026 expand/contract applied to a config variable.** EXPAND:
+  both `REDIS_URL` and `CLUSTER_REDIS_URL` are honored now, so the rename breaks
+  no live install. CONTRACT: `REDIS_URL` is removed only once the slowest channel
+  has migrated to `CLUSTER_REDIS_URL`. The compatibility window is the migration;
+  until it closes, the alias stays. PUBLIC keeps the optional semantics above —
+  `PUBLIC_REDIS_URL` when set, otherwise silent-drop until federation is
+  configured.
 <!-- /planned:event-bus-cluster-scope -->
 - **In-coroutine completion signals are not events.** They use Tokio
   primitives (`oneshot`, `broadcast`, `mpsc`) and are named accordingly.
