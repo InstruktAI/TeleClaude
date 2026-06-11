@@ -1,6 +1,6 @@
 ---
 delivered_by:
-- v2-config-cutover
+  - v2-config-cutover
 description: Config bounded context — effective configuration resolved from layered
   YAML overlays. Owns the model, validation, and overlay computation. Consumed by
   every service.
@@ -51,8 +51,10 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 : Per-person preferences that control which non-conversational session output categories are eligible for projection on mobile/chat adapters and web/API surfaces. The settings live in the per-person overlay, not in the global `people` identity list.
 
 <!-- planned:runner-dispatch -->
+
 **Workflow autostart policy**
 : Effective-configuration value read by workflow's lifecycle runner to decide which todo kinds may be auto-dispatched. It is policy, not todo state: changing it affects future runner evaluations without rewriting existing todo rows. Defaults are `feature=true`, `change=true`, `bug=true`, and `task=false`.
+
 <!-- /planned:runner-dispatch -->
 
 ### Aggregates
@@ -118,12 +120,14 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Posture:** `commit-then-emit` — the YAML file change is the commit; the event fires after read confirms a new effective config.
 
 <!-- planned:runner-dispatch -->
+
 The v1 Python runtime does not currently emit this canonical event. Pending
 `runner-dispatch`, the existing v1 config watcher/effective-config reload seam
 publishes or directly bridges an equivalent wake-up for workflow's lifecycle
 runner whenever an autostart-relevant key changes. The target event payload
 still uses `scope`/`changed_keys`/`version`; v1 project scopes must resolve to
 one canonical project path or the runner skips dispatch fail-closed.
+
 <!-- /planned:runner-dispatch -->
 
 ### Domain events consumed
@@ -155,16 +159,13 @@ be added as `v2-config-cutover` lands the cutover work.
 - **Integrator Cutover Gate** — `docs/project/spec/feature/config/integrator-cutover-gate.md` — `integrator.cutover.enabled = true` is rejected unless `parity_evidence_accepted = true`; rollback-on-incomplete-parity defaults on.
 - **Subscription Routing** — `docs/project/spec/feature/config/subscription-routing.md` — Subscriptions are a `type`-discriminated union of `JobSubscription` and `YoutubeSubscription`; each carries a `SubscriptionNotification` with `preferred_channel` (default `telegram`).
 - **Person Identity Schema** — `docs/project/spec/feature/config/person-identity-schema.md` — `PersonEntry` declares per-person identity in the global `people` list with a required non-empty stripped email, role enum, and nested expertise mapping; `proficiency` is the deprecated single-level form.
-<!-- planned:dynamic-config-tui -->
 - **Schema Driven Config TUI** — `docs/project/spec/feature/config/schema-driven-config-tui.md` — The config wizard renders typed config fields from canonical schemas and source-aware persistence metadata instead of TUI-local shadow models and fixed field maps. Covers machine, global, project, per-person, and env-backed config surfaces.
-<!-- /planned:dynamic-config-tui -->
 - **Runtime TTS Toggle** — `docs/project/spec/feature/config/runtime-tts-toggle.md` — `RuntimeSettings` is a separate mutable layer persisted as JSON with debounced (0.5s) writes; only `tts.enabled` is mutable today; `parse_patch` strictly rejects unknown keys and non-bool values.
 - **Setup Wizard** — `docs/project/spec/feature/config/setup-wizard.md` — `telec config wizard` is the canonical single TeleClaude-owned interactive surface for every persisted setup value. Guarantees: single setup surface, idempotent re-runs, secret hygiene, partial-resume, at-a-glance status, release-channel + permissions/preflight coverage. Pending delivery of `simplify-install-flow-cleanup` + `install-wizard-enrichment`.
-- **Machine Config Write** — `docs/project/spec/feature/config/machine-config-write.md` — `save_machine_config` mirrors `save_project_config`'s atomic-replace contract for the dataclass-backed machine `config.yml`. Sanctioned write path for machine-level config; v1 does not emit `config.effective.updated` from this writer. Pending delivery of `install-wizard-enrichment`.
-- **Atomic Env File Write** — `docs/project/spec/feature/config/atomic-env-file-write.md` — `set_env_var` is promoted from `target.write_text(...)` to the tmp-file + flush+fsync + `os.replace` pattern so the wizard's per-section atomic-write contract holds uniformly across YAML, machine config, and `.env` surfaces. Pending delivery of `install-wizard-enrichment`.
-<!-- planned:dynamic-config-tui -->
-- **Writer-contract delivery-ownership update** — `dynamic-config-tui` closes the live writer-contract gap for both **Machine Config Write** and **Atomic Env File Write** above. Their cited slug `install-wizard-enrichment` is recorded as delivered but left the code non-conforming (machine `config.yml` writes still skip the durability flush; `set_env_var` still uses a plain non-atomic write). `dynamic-config-tui` provides the sanctioned atomic machine-config writer and promotes the env-file writer to the tmp+flush+fsync+`os.replace` pattern, so its schema-driven persistence routes only through contract-honoring writers. On delivery, the two entries' "Pending delivery of `install-wizard-enrichment`" notes are reconciled to name `dynamic-config-tui` as the closer.
-<!-- /planned:dynamic-config-tui -->
+- **Machine Config Write** — `docs/project/spec/feature/config/machine-config-write.md` — `save_machine_config` mirrors `save_project_config`'s atomic-replace contract for the dataclass-backed machine `config.yml`. Sanctioned write path for machine-level config; v1 does not emit `config.effective.updated` from this writer. Delivered by `dynamic-config-tui`.
+- **Atomic Env File Write** — `docs/project/spec/feature/config/atomic-env-file-write.md` — `set_env_var` is promoted from `target.write_text(...)` to the tmp-file + flush+fsync + `os.replace` pattern so the wizard's per-section atomic-write contract holds uniformly across YAML, machine config, and `.env` surfaces. Delivered by `dynamic-config-tui`.
+
+- **Writer-contract delivery-ownership update** — `dynamic-config-tui` closes the live writer-contract gap for both **Machine Config Write** and **Atomic Env File Write** above. `dynamic-config-tui` provides the sanctioned atomic machine-config writer and promotes the env-file writer to the tmp+flush+fsync+`os.replace` pattern, so its schema-driven persistence routes only through contract-honoring writers.
 - **Agent Env Allow List** — `docs/project/spec/feature/config/agent-env-allow-list.md` — `GlobalConfig.env_allow_list` and `ProjectConfig.env_allow_list` form the user-configurable authorization surface for ambient environment variables entering agent tmux sessions. Global entries cover local agent skills across projects; project entries add repository-specific names. The regular project `.env` remains application/runtime input; agent access requires listing each variable name explicitly.
 
 ### Context map position

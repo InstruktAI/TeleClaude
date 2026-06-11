@@ -18,22 +18,13 @@ Send a new member an email containing deep links to start a private conversation
 
 - At least one adapter is configured (Telegram bot token, Discord bot, or WhatsApp Business number).
 - Email delivery is optional. When `email.enabled` is set and SMTP credentials are present in env (`SMTP_USERNAME`, `SMTP_KEY`, `EMAIL_FROM`), the invite is emailed. When email is disabled or unconfigured, `invite` instead prints the generated links so the admin can relay them to the member manually.
-- Each person gets a single `invite_token` stored in their per-person config (`~/.teleclaude/people/{name}/teleclaude.yml`). The same token is embedded in all platform links.
+- Each person gets a single `invite_token` stored in the ephemeral invitations store under `~/.teleclaude/state/invitations.json`. The same token is embedded in all platform links.
   - Generated on `people add` (automatic) or `invite` (manual resend).
   - Format: `inv_` + 16 random hex chars (e.g., `inv_a8f3b2c9d1e4f071`).
   - Stays valid until a new invite is sent, which rotates the token.
   - No time-based expiry.
   - Already-bound credentials are never overwritten. If telegram is already set and the person clicks the Telegram link again, resume their session — don't re-bind.
-
-<!-- planned:dynamic-config-tui -->
-- The `dynamic-config-tui` delivery relocates the invite token out of per-person
-  config into an ephemeral invitations store under `~/.teleclaude/state/`. The
-  token's lifecycle is unchanged (generated on `people add` / `invite`, single
-  active token, rotated on resend, no time-based expiry); only its storage moves,
-  and redemption resolves the person from the store instead of scanning every
-  per-person overlay. After delivery, "stored in per-person config" above and in
-  the Steps below reads as the ephemeral invitations store.
-<!-- /planned:dynamic-config-tui -->
+  - Redemption resolves the person from the store instead of scanning every per-person overlay.
 
 ## Steps
 

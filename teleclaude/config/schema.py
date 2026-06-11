@@ -411,7 +411,7 @@ class GlobalConfig(BaseModel):
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
     event_domains: DomainsConfig | None = None
-    checkout_root: str | None = None
+    checkout_root: str | None = Field(default=None, json_schema_extra={"exclude_from_tui": True})
 
     @field_validator("env_allow_list")
     @classmethod
@@ -457,9 +457,8 @@ class PersonConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     creds: CredsConfig = CredsConfig()
-    subscriptions: list[SubscriptionEntry] = []
+    subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"exclude_from_tui": True})
     interests: list[str] = []
-    invite_token: str | None = None
     settings: PersonSettings = PersonSettings()
 
     @field_validator("interests", mode="before")

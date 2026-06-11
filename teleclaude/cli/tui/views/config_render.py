@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from rich.style import Style
@@ -16,15 +15,12 @@ from teleclaude.cli.tui.views._config_constants import (
     _GUIDED_STEPS,
     _INFO,
     _OK,
-    _PERSON_EDITABLE_FIELDS,
     _SEP,
     _SUBTABS,
     _TAB_ACTIVE,
     _TAB_INACTIVE,
-    _VALID_ROLES,
     Subtab,
     _normal_style,
-    get_allowed_values_for_field,
 )
 from teleclaude.cli.tui.views.reflection import ReflectedField
 
@@ -39,6 +35,8 @@ class ConfigContentRenderMixin:
         _env_data: list[EnvVarStatus]
         _guided_step_index: int
         _people_data: list[PersonEntry]
+        _editing_var_name: str | None
+        _edit_buffer: str
 
         @property
         def person_editable_fields(self) -> list[str]: ...
@@ -119,74 +117,26 @@ class ConfigContentRenderMixin:
             result.append("\n")
 
             if selected and self._expanded_person == person.name:  # type: ignore[attr-defined]
-                for field_idx, field in enumerate(self.person_editable_fields):
-                    field_selected = field_idx == self._person_field_cursor  # type: ignore[attr-defined]
-                    field_prefix = "▶" if field_selected else " "
-                    field_row_style = Style(reverse=True) if field_selected else _DIM
+                person_fields = self.person_reflected_fields  # type: ignore[attr-defined]
 
-                    field_row = result.plain.count("\n")
-                    self._row_click_map[field_row] = ("person_field", field)  # type: ignore[attr-defined]
+                # Group fields by section preserving order
+                sections: dict[str, list[ReflectedField]] = {}
+                for f in person_fields:
+                    sections.setdefault(f.section, []).append(f)
 
-                    if self._editing_person_field == field:  # type: ignore[attr-defined]
-                        display_name = field
-                        indent = "      "
-                        if ":" in field:
-                            _, child = field.split(":", 1)
-                            display_name = child
-                            indent = "          "
-                        result.append(
-                            f"{indent}{field_prefix} {display_name} = {self._edit_buffer}█\n",
-                            style=field_row_style,
-                        )  # type: ignore[attr-defined]
-                        result.append(f"{indent}    Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
-                    elif field == "role":
-                        value = str(getattr(person, field, "") or "")
-                        result.append(f"      {field_prefix} ", style=_DIM)
-                        result.append("role: ", style=_DIM)
-                        for opt in _VALID_ROLES:
-                            opt_style = _TAB_ACTIVE if opt == value else _TAB_INACTIVE
-                            result.append(f" {opt} ", style=opt_style)
-                        if field_selected:
-                            result.append("  ← → cycle", style=_DIM)
-                        result.append("\n")
-                    elif ":" in field:
-                        parent, child = field.split(":", 1)
-                        raw_parent = getattr(person, parent, None)
-                        val = raw_parent.get(child, None) if isinstance(raw_parent, dict) else None
+                for sec_name, sec_fields in sections.items():
+                    result.append(f"      ▼ {sec_name}\n", style=Style(bold=True))
+                    for f in sec_fields:
+                        f_idx = person_fields.index(f)
+                        field_selected = f_idx == self._person_field_cursor  # type: ignore[attr-defined]
+                        field_prefix = "▶" if field_selected else " "
+                        field_row_style = Style(reverse=True) if field_selected else _normal_style()
 
-                        icon = "✔" if val else "○"
-                        icon_style = _OK if val else _DIM
-
-                        result.append(f"          {field_prefix} {icon} ", style=icon_style)
-                        result.append(f"{child}: ", style=_DIM)
-
-                        allowed = get_allowed_values_for_field(field)
-                        if allowed and field_selected:
-                            result.append(f"{val or '(not set)'}", style=field_row_style)
-                            result.append("  ← → cycle\n", style=_DIM)
-                        else:
-                            result.append(f"{val or '(not set)'}\n", style=field_row_style)
-                    else:
-                        raw_val = getattr(person, field, None)
-                        if isinstance(raw_val, dict):
-                            icon = "📁"
-                            result.append(f"      {field_prefix} {icon} {field}:\n", style=field_row_style)
-                            if field_selected:
-                                result.append("          [Press Enter to add new key]\n", style=_INFO)
-                        elif isinstance(raw_val, list):
-                            value = json.dumps(raw_val)
-                            icon = "✔" if value != "[]" else "○"
-                            icon_style = _OK if value != "[]" else _DIM
-                            result.append(f"      {field_prefix} {icon} ", style=icon_style)
-                            result.append(f"{field}: ", style=_DIM)
-                            result.append(f"{value or '(not set)'}\n", style=field_row_style)
-                        else:
-                            value = str(raw_val or "")
-                            icon = "✔" if value else "○"
-                            icon_style = _OK if value else _DIM
-                            result.append(f"      {field_prefix} {icon} ", style=icon_style)
-                            result.append(f"{field}: ", style=_DIM)
-                            result.append(f"{value or '(not set)'}\n", style=field_row_style)
+                        field_row = result.plain.count("\n")
+                        self._row_click_map[field_row] = ("person_reflected_row", f.key)  # type: ignore[attr-defined]
+                        self._render_reflected_field(
+                            result, f, selected=field_selected, prefix=field_prefix, row_style=field_row_style
+                        )
 
     def _render_environment(self, result: Text) -> None:
         """Render the global environment variable section."""
@@ -381,9 +331,6 @@ class ConfigContentRenderMixin:
                     break
         elif action_type == "person_select":
             person_name = action[1]
-            if self._editing_person_field is not None:  # type: ignore[attr-defined]
-                self._editing_person_field = None  # type: ignore[attr-defined]
-                self._edit_buffer = ""  # type: ignore[attr-defined]
             for i, p in enumerate(self._people_data):  # type: ignore[attr-defined]
                 if p.name == person_name:
                     self._set_current_cursor(i)  # type: ignore[attr-defined]
@@ -394,20 +341,18 @@ class ConfigContentRenderMixin:
                         self._person_field_cursor = 0  # type: ignore[attr-defined]
                     self.refresh(layout=True)  # type: ignore[attr-defined]
                     break
-        elif action_type == "person_field":
-            field = action[1]
-            for field_idx, f in enumerate(_PERSON_EDITABLE_FIELDS):
-                if f == field:
-                    self._person_field_cursor = field_idx  # type: ignore[attr-defined]
-                    person = next(  # type: ignore[attr-defined]
-                        (p for p in self._people_data if p.name == self._expanded_person),
-                        None,
-                    )
-                    if person is not None:
-                        if field == "role":
-                            self._cycle_person_role(person)  # type: ignore[attr-defined]
-                        else:
-                            self._begin_person_field_edit(person, field)  # type: ignore[attr-defined]
+        elif action_type == "person_reflected_row":
+            field_key = action[1]
+            fields = self.person_reflected_fields  # type: ignore[attr-defined]
+            for idx, f in enumerate(fields):
+                if f.key == field_key:
+                    self._person_field_cursor = idx  # type: ignore[attr-defined]
+                    if f.field_type is bool:
+                        self._save_reflected_field(f.key, not f.value)  # type: ignore[attr-defined]
+                    elif f.choices:
+                        self.cycle_enum_field(1)  # type: ignore[attr-defined]
+                    else:
+                        self._begin_edit(f)  # type: ignore[attr-defined]
                     break
 
     def watch_active_subtab(self, _value: int) -> None:

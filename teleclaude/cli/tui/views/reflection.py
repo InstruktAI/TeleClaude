@@ -11,26 +11,6 @@ from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
-_BLACKLIST = {
-    "announcements_channel_id",
-    "general_channel_id",
-    "all_sessions_channel_id",
-    "help_desk_channel_id",
-    "escalation_channel_id",
-    "operator_chat_channel_id",
-    "categories",
-    "operations",
-    "help_desk",
-    "team",
-    "projects_mozbook",
-    "tmux_binary",
-    "trusted_dirs",  # Complex structure handled separately or blacklisted
-    # System-derived, not user-editable in the config view.
-    "user",
-    "default_working_dir",
-    "help_desk_dir",
-}
-
 
 @dataclass
 class ReflectedField:
@@ -44,6 +24,7 @@ class ReflectedField:
     description: str | None = None  # Description from field/metadata
     section: str = "General"  # Group name for accordion folding
     env_var: str | None = None  # Backing environment variable when the config value is a ${VAR} reference
+    owning_source: str = "global"  # The config source owning this field
 
 
 def resolve_env_placeholders(fields: list[ReflectedField]) -> None:
@@ -90,14 +71,17 @@ def _resolve_type_and_choices(ann: Any) -> tuple[Any, list[str] | None]:
     return real_type, None
 
 
-def reflect_schema(obj: Any, prefix: str = "", section: str = "General") -> list[ReflectedField]:
+def reflect_schema(
+    obj: Any, prefix: str = "", section: str = "General", owning_source: str = "global"
+) -> list[ReflectedField]:
     """Inspect a Pydantic model or a dataclass instance and return its ReflectedFields."""
     fields: list[ReflectedField] = []
 
     # 1. Pydantic BaseModel
     if isinstance(obj, BaseModel):
         for name, field_info in type(obj).model_fields.items():
-            if name in _BLACKLIST:
+            extra = field_info.json_schema_extra
+            if isinstance(extra, dict) and extra.get("exclude_from_tui"):
                 continue
 
             full_key = f"{prefix}.{name}" if prefix else name
@@ -106,7 +90,7 @@ def reflect_schema(obj: Any, prefix: str = "", section: str = "General") -> list
             # Recurse into nested BaseModels
             if isinstance(val, BaseModel):
                 sec_name = name.replace("_", " ").title()
-                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name))
+                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name, owning_source=owning_source))
                 continue
 
             ann = field_info.annotation
@@ -124,6 +108,7 @@ def reflect_schema(obj: Any, prefix: str = "", section: str = "General") -> list
                     choices=choices,
                     description=desc,
                     section=section,
+                    owning_source=owning_source,
                 )
             )
 
@@ -132,7 +117,7 @@ def reflect_schema(obj: Any, prefix: str = "", section: str = "General") -> list
         type_hints = get_type_hints(type(obj))
         for f in dataclasses.fields(obj):
             name = f.name
-            if name in _BLACKLIST:
+            if f.metadata and f.metadata.get("exclude_from_tui"):
                 continue
 
             full_key = f"{prefix}.{name}" if prefix else name
@@ -140,7 +125,7 @@ def reflect_schema(obj: Any, prefix: str = "", section: str = "General") -> list
 
             if dataclasses.is_dataclass(val) and not isinstance(val, type):
                 sec_name = name.replace("_", " ").title()
-                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name))
+                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name, owning_source=owning_source))
                 continue
 
             ann = type_hints.get(name, f.type)
@@ -158,19 +143,17 @@ def reflect_schema(obj: Any, prefix: str = "", section: str = "General") -> list
                     choices=choices,
                     description=desc,
                     section=section,
+                    owning_source=owning_source,
                 )
             )
 
     # 3. Dict fallback (e.g. nested unstructured dicts)
     elif isinstance(obj, dict):
         for name, val in obj.items():
-            if name in _BLACKLIST:
-                continue
-
             full_key = f"{prefix}.{name}" if prefix else name
             if isinstance(val, dict):
                 sec_name = name.replace("_", " ").title()
-                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name))
+                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name, owning_source=owning_source))
                 continue
 
             ftype = type(val)
@@ -186,6 +169,7 @@ def reflect_schema(obj: Any, prefix: str = "", section: str = "General") -> list
                     choices=choices,
                     description=None,
                     section=section,
+                    owning_source=owning_source,
                 )
             )
 

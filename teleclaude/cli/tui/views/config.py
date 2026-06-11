@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, get_origin
+import dataclasses
+from typing import Any
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -17,6 +18,7 @@ from teleclaude.cli.config_handlers import (
     EnvVarStatus,
     ValidationResult,
     check_env_vars,
+    get_person_config,
     list_people,
     validate_all,
 )
@@ -24,32 +26,45 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _SUBTABS,
-    AdaptersConfig,
     AdapterSectionProjection,
     AIKeysConfig,
     BackupAdapterConfig,
-    DiscordAdapterConfig,
     EmailAdapterConfig,
     FirecrawlAdapterConfig,
     ProvidersConfig,
-    RedisInfraConfig,
-    SttConfig,
     Subtab,
-    SummarizerTabConfig,
-    TelegramAdapterConfig,
-    TtsConfig,
-    WhatsAppAdapterConfig,
     project_adapter_sections,
 )
 from teleclaude.cli.tui.views._project_actions import _load_raw_config, _resolve_config_path
 from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
 from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema, resolve_env_placeholders
-from teleclaude.config import ComputerConfig
-from teleclaude.config._summarizer import KNOWN_CLOUD_PROVIDERS
-from teleclaude.config.schema import PersonEntry
+from teleclaude.config import (
+    DEFAULT_CONFIG,
+    ComputerConfig,
+    DiscordConfig,
+    RedisConfig,
+    STTConfig,
+    SummarizerConfig,
+    TelegramConfig,
+    TTSConfig,
+    WhatsAppConfig,
+)
+from teleclaude.config._summarizer import parse_summarizer_config
+from teleclaude.config.schema import (
+    DiscordCreds,
+    PersonEntry,
+    TelegramCreds,
+    WhatsAppCreds,
+)
 
 __all__ = ["ConfigContent", "ConfigView"]
+
+
+def _default_section(name: str) -> dict[str, Any]:  # guard: loose-dict - DEFAULT_CONFIG holds the untyped YAML defaults
+    """Return a DEFAULT_CONFIG section as a plain dict for safe merge/unpack."""
+    section = DEFAULT_CONFIG.get(name, {})
+    return section if isinstance(section, dict) else {}
 
 
 class ConfigView(Widget, can_focus=True):
@@ -342,7 +357,6 @@ class ConfigContent(
         self._row_click_map: dict[int, tuple[str, Any]] = {}  # {content_row: action_tuple}
         self._expanded_person: str | None = None
         self._person_field_cursor: int = 0
-        self._editing_person_field: str | None = None
         self._raw_config: dict[str, Any] = {}  # guard: loose-dict - raw config.yml tree
         self._list_element_idx: int = 0
         self._reflected_cache: dict[Subtab, list[ReflectedField]] = {}
@@ -368,53 +382,67 @@ class ConfigContent(
         """Construct the reflected fields for a subtab from the current raw config."""
         if tab == Subtab.INFRA:
             computer_data = self._raw_config.get("computer", {})
+            computer_fields = {f.name for f in dataclasses.fields(ComputerConfig)}
+            filtered_computer = {k: v for k, v in computer_data.items() if k in computer_fields}
             computer_obj = ComputerConfig(
-                name=computer_data.get("name", "Mac"),
-                user=computer_data.get("user", ""),
-                role=computer_data.get("role", "development"),
-                timezone=computer_data.get("timezone", "Europe/Amsterdam"),
-                default_working_dir=computer_data.get("default_working_dir", ""),
-                help_desk_dir=computer_data.get("help_desk_dir", ""),
-                is_master=computer_data.get("is_master", True),
+                name=filtered_computer.get("name", "Mac"),
+                user=filtered_computer.get("user", ""),
+                role=filtered_computer.get("role", "development"),
+                timezone=filtered_computer.get("timezone", "Europe/Amsterdam"),
+                default_working_dir=filtered_computer.get("default_working_dir", ""),
+                help_desk_dir=filtered_computer.get("help_desk_dir", ""),
+                is_master=filtered_computer.get("is_master", True),
                 trusted_dirs=[],
-                host=computer_data.get("host", None),
+                host=filtered_computer.get("host", None),
             )
-            fields = reflect_schema(computer_obj, prefix="computer", section="Computer")
-            # Redis is essential infrastructure; its credentials are ${VAR}-backed
-            # and save to .env. Surfaced here as a mandatory wizard step.
-            redis_obj = RedisInfraConfig(url="${REDIS_URL}", password="${REDIS_PASSWORD}")
-            fields.extend(reflect_schema(redis_obj, prefix="redis", section="Redis"))
+            fields = reflect_schema(computer_obj, prefix="computer", section="Computer", owning_source="machine")
+
+            redis_data = self._raw_config.get("redis", {})
+            merged_redis = {**_default_section("redis"), **redis_data}
+            redis_fields = {f.name for f in dataclasses.fields(RedisConfig)}
+            filtered_redis = {k: v for k, v in merged_redis.items() if k in redis_fields}
+            redis_obj = RedisConfig(**filtered_redis)
+            fields.extend(reflect_schema(redis_obj, prefix="redis", section="Redis", owning_source="machine"))
             return fields
 
         if tab == Subtab.ADAPTERS:
             telegram_data = self._raw_config.get("telegram", {})
-            discord_data = self._raw_config.get("discord", {})
-            whatsapp_data = self._raw_config.get("whatsapp", {})
-            adapters_obj = AdaptersConfig(
-                telegram=TelegramAdapterConfig(
-                    enabled=telegram_data.get("enabled", False),
-                    bot_token=telegram_data.get("bot_token", ""),
-                ),
-                discord=DiscordAdapterConfig(
-                    enabled=discord_data.get("enabled", False),
-                    token=discord_data.get("token", ""),
-                    guild_id=discord_data.get("guild_id", ""),
-                ),
-                whatsapp=WhatsAppAdapterConfig(
-                    enabled=whatsapp_data.get("enabled", False),
-                    phone_number_id=whatsapp_data.get("phone_number_id", ""),
-                    access_token=whatsapp_data.get("access_token", ""),
-                    webhook_secret=whatsapp_data.get("webhook_secret", ""),
-                    verify_token=whatsapp_data.get("verify_token", ""),
-                    template_name=whatsapp_data.get("template_name", ""),
-                    template_language=whatsapp_data.get("template_language", "en_US"),
-                ),
+            merged_telegram = {**_default_section("telegram"), **telegram_data}
+            telegram_fields = {f.name for f in dataclasses.fields(TelegramConfig)}
+            filtered_telegram = {k: v for k, v in merged_telegram.items() if k in telegram_fields}
+            telegram_obj = TelegramConfig(**filtered_telegram)
+            fields = reflect_schema(telegram_obj, prefix="telegram", section="Telegram", owning_source="machine")
+
+            # Add environment-backed Telegram bot token manually
+            fields.append(
+                ReflectedField(
+                    key="telegram.bot_token",
+                    name="Bot Token",
+                    field_type=str,
+                    value=telegram_data.get("bot_token", "${TELEGRAM_BOT_TOKEN}"),
+                    description="Telegram Bot API token from @BotFather",
+                    section="Telegram",
+                    owning_source="machine",
+                )
             )
-            return reflect_schema(adapters_obj, section="Adapters")
+
+            discord_data = self._raw_config.get("discord", {})
+            merged_discord = {**_default_section("discord"), **discord_data}
+            discord_fields = {f.name for f in dataclasses.fields(DiscordConfig)}
+            filtered_discord = {k: v for k, v in merged_discord.items() if k in discord_fields}
+            discord_obj = DiscordConfig(**filtered_discord)
+            fields.extend(reflect_schema(discord_obj, prefix="discord", section="Discord", owning_source="machine"))
+
+            whatsapp_data = self._raw_config.get("whatsapp", {})
+            merged_whatsapp = {**_default_section("whatsapp"), **whatsapp_data}
+            whatsapp_fields = {f.name for f in dataclasses.fields(WhatsAppConfig)}
+            filtered_whatsapp = {k: v for k, v in merged_whatsapp.items() if k in whatsapp_fields}
+            whatsapp_obj = WhatsAppConfig(**filtered_whatsapp)
+            fields.extend(reflect_schema(whatsapp_obj, prefix="whatsapp", section="WhatsApp", owning_source="machine"))
+            return fields
 
         if tab == Subtab.PROVIDERS:
-            # Email/Backup/Firecrawl are .env-only providers; the ${VAR} values
-            # resolve to their env values for display and save back to .env.
+            # Providers remain environment-only settings
             providers_obj = ProvidersConfig(
                 ai=AIKeysConfig(
                     anthropic_api_key="${ANTHROPIC_API_KEY}",
@@ -438,48 +466,34 @@ class ConfigContent(
                 ),
                 firecrawl=FirecrawlAdapterConfig(api_key="${FIRECRAWL_API_KEY}"),
             )
-            return reflect_schema(providers_obj, section="Providers")
+            return reflect_schema(providers_obj, section="Providers", owning_source="machine")
 
         if tab == Subtab.SUMMARIZER:
-            summ_data = self._raw_config.get("summarizer", {})
-            summ = summ_data if isinstance(summ_data, dict) else {}
-            local = summ.get("local", {}) if isinstance(summ.get("local"), dict) else {}
-
-            def _model(provider: str) -> str:
-                section = summ.get(provider, {})
-                return section.get("model", "") if isinstance(section, dict) else ""
-
-            # Always present every known cloud provider in the order list, preserving the
-            # configured order and appending any missing ones, so none can be lost from the list.
-            configured_order = [str(p) for p in summ.get("provider_priority", []) if p]
-            provider_order = configured_order + [p for p in KNOWN_CLOUD_PROVIDERS if p not in configured_order]
-
-            summarizer_obj = SummarizerTabConfig(
-                local_enabled=local.get("enabled", False),
-                # ${VAR}-backed: resolves to the env value and saves to .env.
-                local_base_url="${SUMMARIZER_LLM_BASE_URL}",
-                local_model=local.get("model", ""),
-                provider_priority=provider_order,
-                openai_model=_model("openai"),
-                anthropic_model=_model("anthropic"),
-                google_model=_model("google"),
-            )
-            return reflect_schema(summarizer_obj, section="Summarizer")
+            summarizer_obj = parse_summarizer_config(self._raw_config.get("summarizer", {})) or SummarizerConfig()
+            fields = reflect_schema(summarizer_obj, prefix="summarizer", section="Summarizer", owning_source="machine")
+            # Map summarizer models to their correct YAML paths
+            for f in fields:
+                if f.key.startswith("summarizer.models."):
+                    provider = f.key.split(".")[-1]
+                    f.key = f"summarizer.{provider}.model"
+            return fields
 
         if tab == Subtab.TTS_STT:
             stt_data = self._raw_config.get("stt", {})
+            merged_stt = {**_default_section("stt"), **stt_data}
+            stt_fields = {f.name for f in dataclasses.fields(STTConfig)}
+            filtered_stt = {k: v for k, v in merged_stt.items() if k in stt_fields}
+            stt_obj = STTConfig(**filtered_stt)
+
             tts_data = self._raw_config.get("tts", {})
-            stt_obj = SttConfig(
-                stt_enabled=stt_data.get("enabled", True),
-                stt_service_priority=stt_data.get("service_priority", ["parakeet", "openai"]),
+            merged_tts = {**_default_section("tts"), **tts_data}
+            tts_fields = {f.name for f in dataclasses.fields(TTSConfig)}
+            filtered_tts = {k: v for k, v in merged_tts.items() if k in tts_fields}
+            tts_obj = TTSConfig(**filtered_tts)
+
+            return reflect_schema(stt_obj, prefix="stt", section="STT", owning_source="machine") + reflect_schema(
+                tts_obj, prefix="tts", section="TTS", owning_source="machine"
             )
-            tts_obj = TtsConfig(
-                tts_enabled=tts_data.get("enabled", False),
-                tts_service_priority=tts_data.get(
-                    "service_priority", ["voxcpm", "kokoro", "qwen3", "openai", "elevenlabs", "macos", "pyttsx3"]
-                ),
-            )
-            return reflect_schema(stt_obj, section="STT") + reflect_schema(tts_obj, section="TTS")
 
         return []
 
@@ -491,7 +505,7 @@ class ConfigContent(
     @property
     def is_editing(self) -> bool:
         """Whether an env var or person field is being edited."""
-        return self._editing_var_name is not None or self._editing_person_field is not None
+        return self._editing_var_name is not None
 
     @property
     def is_person_expanded(self) -> bool:
@@ -499,37 +513,46 @@ class ConfigContent(
         return self._expanded_person is not None
 
     @property
-    def person_editable_fields(self) -> list[str]:
-        """Dynamically return the list of editable fields for a person.
-        Flattens dict fields into 'field:key' child fields so they are individually editable.
-        """
-        fields = []
-        base_fields = list(PersonEntry.model_fields.keys())
+    def person_reflected_fields(self) -> list[ReflectedField]:
+        """Return the reflected fields for the expanded person."""
+        if self._expanded_person is None:
+            return []
 
-        if self._expanded_person is not None:
-            person = next((p for p in self._people_data if p.name == self._expanded_person), None)
-            if person is not None:
-                for key in person.__dict__.keys():
-                    if key not in base_fields and not key.startswith("_"):
-                        base_fields.append(key)
+        cache_key = f"person:{self._expanded_person}"
+        cached = self._reflected_cache.get(cache_key)  # type: ignore[arg-type]
+        if cached is not None:
+            return cached
 
-                for field in base_fields:
-                    val = getattr(person, field, None)
-                    is_dict = isinstance(val, dict)
-                    if not is_dict and field in PersonEntry.model_fields:
-                        ann = PersonEntry.model_fields[field].annotation
-                        is_dict = get_origin(ann) is dict or ann is dict
+        person_entry = next((p for p in self._people_data if p.name == self._expanded_person), None)
+        if person_entry is None:
+            return []
 
-                    if is_dict:
-                        fields.append(field)  # Parent dict header
-                        if isinstance(val, dict):
-                            for subkey in val.keys():
-                                fields.append(f"{field}:{subkey}")
-                    else:
-                        fields.append(field)
-        else:
-            fields = base_fields
+        person_config = get_person_config(self._expanded_person)
+
+        # Instantiate optional creds sub-fields if they are None
+        if person_config.creds.telegram is None:
+            person_config.creds.telegram = TelegramCreds(user_name="", user_id=0)
+        if person_config.creds.discord is None:
+            person_config.creds.discord = DiscordCreds(user_id="", nick=None)
+        if person_config.creds.whatsapp is None:
+            person_config.creds.whatsapp = WhatsAppCreds(phone_number="")
+
+        entry_fields = reflect_schema(
+            person_entry, prefix="identity", section="Global Identity", owning_source="global"
+        )
+        overlay_fields = reflect_schema(
+            person_config, prefix="overlay", section="Overlay Settings", owning_source="per-person"
+        )
+
+        fields = entry_fields + overlay_fields
+        resolve_env_placeholders(fields)
+        self._reflected_cache[cache_key] = fields  # type: ignore[index]
         return fields
+
+    @property
+    def person_editable_fields(self) -> list[str]:
+        """Return the keys of person_reflected_fields."""
+        return [f.key for f in self.person_reflected_fields]
 
     def refresh_data(self) -> None:
         """Reload env vars, people, derived projections, and config.yml from disk."""

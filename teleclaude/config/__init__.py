@@ -106,7 +106,7 @@ class TrustedDir:
     name: str
     desc: str
     path: str
-    discord_forum: int | None = None
+    discord_forum: int | None = field(default=None, metadata={"exclude_from_tui": True})
 
 
 @dataclass
@@ -120,15 +120,15 @@ class PollingConfig:
 @dataclass
 class ComputerConfig:
     name: str
-    user: str
+    user: str = field(metadata={"exclude_from_tui": True})
     role: str
     timezone: str
-    default_working_dir: str
-    help_desk_dir: str
+    default_working_dir: str = field(metadata={"exclude_from_tui": True})
+    help_desk_dir: str = field(metadata={"exclude_from_tui": True})
     is_master: bool
-    trusted_dirs: list[TrustedDir]
+    trusted_dirs: list[TrustedDir] = field(metadata={"exclude_from_tui": True})
     host: str | None = None  # Optional hostname/IP for SSH remote execution
-    tmux_binary: str = "tmux"  # Resolved by runtime policy (not user-configurable)
+    tmux_binary: str = field(default="tmux", metadata={"exclude_from_tui": True})
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:
         """Get all trusted directories from config, deduplicated by path."""
@@ -237,14 +237,14 @@ class DiscordConfig:
     enabled: bool
     token: str | None
     guild_id: int | None
-    help_desk_channel_id: int | None = None
-    escalation_channel_id: int | None = None
-    all_sessions_channel_id: int | None = None
-    operator_chat_channel_id: int | None = None
-    announcements_channel_id: int | None = None
-    general_channel_id: int | None = None
-    categories: dict[str, int] | None = None
-    qos: DiscordQoSConfig = field(default_factory=DiscordQoSConfig)
+    help_desk_channel_id: int | None = field(default=None, metadata={"exclude_from_tui": True})
+    escalation_channel_id: int | None = field(default=None, metadata={"exclude_from_tui": True})
+    all_sessions_channel_id: int | None = field(default=None, metadata={"exclude_from_tui": True})
+    operator_chat_channel_id: int | None = field(default=None, metadata={"exclude_from_tui": True})
+    announcements_channel_id: int | None = field(default=None, metadata={"exclude_from_tui": True})
+    general_channel_id: int | None = field(default=None, metadata={"exclude_from_tui": True})
+    categories: dict[str, int] | None = field(default=None, metadata={"exclude_from_tui": True})
+    qos: DiscordQoSConfig = field(default_factory=DiscordQoSConfig, metadata={"exclude_from_tui": True})
 
 
 @dataclass

@@ -1,12 +1,11 @@
 ---
-id: 'project/spec/feature/config/schema-driven-config-tui'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-delivered_by:
-  - dynamic-config-tui
-description: 'Schema-driven TUI config surface for every typed TeleClaude config layer, replacing hand-patched form models and field maps.'
+id: project/spec/feature/config/schema-driven-config-tui
+type: spec
+domain: software-development
+scope: project
+visibility: public
+description: Schema-driven TUI config surface for every typed TeleClaude config layer,
+  replacing hand-patched form models and field maps.
 ---
 
 # Schema Driven Config TUI — Spec

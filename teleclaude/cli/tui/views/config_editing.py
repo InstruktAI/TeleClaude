@@ -2,50 +2,63 @@
 
 from __future__ import annotations
 
-import json
 import os
-from typing import TYPE_CHECKING, Any, get_origin
+from typing import TYPE_CHECKING, Any, get_args
+
+from pydantic import BaseModel
 
 from teleclaude.cli.config_handlers import (
     EnvVarStatus,
     get_global_config,
+    get_person_config,
     rename_person,
     save_global_config,
+    save_machine_config,
+    save_person_config,
     set_env_var,
 )
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _GUIDED_STEPS,
     _SUBTABS,
-    _VALID_ROLES,
+    AdapterSectionProjection,
     Subtab,
-    get_allowed_values_for_field,
 )
-from teleclaude.cli.tui.views._project_actions import _resolve_config_path, _write_raw_config
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
+from teleclaude.config import config
 from teleclaude.config._coerce import as_bool
 from teleclaude.config.schema import PersonEntry
 from teleclaude.config.validation import missing_required_fields, validated_sections
 
-if TYPE_CHECKING:
-    from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
 
-# Reflected field keys prefixed with one of these map to that config.yml section.
-_SECTION_PREFIXES = ("computer", "telegram", "discord", "whatsapp")
-# Flat reflected keys that map to a (section, leaf) pair in config.yml.
-_FLAT_CONFIG_KEYS = {
-    "stt_enabled": ("stt", "enabled"),
-    "stt_service_priority": ("stt", "service_priority"),
-    "tts_enabled": ("tts", "enabled"),
-    "tts_service_priority": ("tts", "service_priority"),
-    # Summarizer subtab (local_base_url is env-backed and routed via env_var, not here).
-    "local_enabled": ("summarizer", "local", "enabled"),
-    "local_model": ("summarizer", "local", "model"),
-    "provider_priority": ("summarizer", "provider_priority"),
-    "openai_model": ("summarizer", "openai", "model"),
-    "anthropic_model": ("summarizer", "anthropic", "model"),
-    "google_model": ("summarizer", "google", "model"),
-}
+def _apply_field_to_global_config(key: str, deserialized: Any) -> None:
+    parts = key.split(".")
+    # Special case for summarizer cloud models
+    if (
+        len(parts) == 3
+        and parts[0] == "summarizer"
+        and parts[1] in ("openai", "anthropic", "google")
+        and parts[2] == "model"
+    ):
+        provider = parts[1]
+        if config.summarizer is not None:
+            config.summarizer.models[provider] = deserialized
+        return
+
+    # Standard traversal
+    obj = config
+    for part in parts[:-1]:
+        obj = getattr(obj, part)
+    setattr(obj, parts[-1], deserialized)
+
+
+def _instantiate_nested_config_model(annotation: Any) -> BaseModel:
+    for candidate in get_args(annotation) or (annotation,):
+        if candidate is type(None):
+            continue
+        if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+            return candidate.model_construct()
+    raise TypeError(f"Cannot instantiate nested config field for {annotation!r}")
 
 
 class ConfigContentEditingMixin:
@@ -57,7 +70,7 @@ class ConfigContentEditingMixin:
         _people_data: list[PersonEntry]
 
         @property
-        def person_editable_fields(self) -> list[str]: ...
+        def person_reflected_fields(self) -> list[ReflectedField]: ...
 
     def move_cursor(self, delta: int) -> None:
         """Move the cursor within the active config section."""
@@ -75,11 +88,12 @@ class ConfigContentEditingMixin:
             return
         if tab == Subtab.PEOPLE:
             if self._expanded_person is not None:  # type: ignore[attr-defined]
+                fields = self.person_reflected_fields
                 self._person_field_cursor = max(  # type: ignore[attr-defined]
                     0,
                     min(
                         self._person_field_cursor + delta,
-                        len(self.person_editable_fields) - 1,
+                        len(fields) - 1,
                     ),  # type: ignore[attr-defined]
                 )
             elif self._people_data:  # type: ignore[attr-defined]
@@ -99,9 +113,6 @@ class ConfigContentEditingMixin:
 
     def activate_current(self) -> None:
         """Activate the current row, entering edit mode when appropriate."""
-        if self._editing_person_field is not None:  # type: ignore[attr-defined]
-            self._save_person_field()
-            return
         if self._editing_var_name is not None:  # type: ignore[attr-defined]
             self.save_edit()
             return
@@ -133,16 +144,15 @@ class ConfigContentEditingMixin:
                         self._status_is_error = False  # type: ignore[attr-defined]
                         self.refresh(layout=True)  # type: ignore[attr-defined]
             else:
-                person = next(  # type: ignore[attr-defined]
-                    (p for p in self._people_data if p.name == self._expanded_person),
-                    None,
-                )
-                if person is not None:
-                    field = self.person_editable_fields[self._person_field_cursor]  # type: ignore[attr-defined]
-                    if get_allowed_values_for_field(field) is not None:
-                        self._cycle_person_enum(person, field, 1)
+                fields = self.person_reflected_fields
+                if fields:
+                    f = fields[self._person_field_cursor]
+                    if f.field_type is bool:
+                        self._save_reflected_field(f.key, not f.value)
+                    elif f.choices:
+                        self.cycle_enum_field(1)
                     else:
-                        self._begin_person_field_edit(person, field)
+                        self._begin_edit(f)
             return
 
         selected = self._current_selected_env()  # type: ignore[attr-defined]
@@ -166,139 +176,11 @@ class ConfigContentEditingMixin:
         self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
-    def _cycle_person_enum(self, person: object, field_name: str, direction: int = 1) -> None:
-        """Dynamically cycle any Literal/enum-backed field in the requested direction."""
-        allowed_values = get_allowed_values_for_field(field_name)
-        if not allowed_values:
-            return
-
-        current_val = None
-        if ":" in field_name:
-            parent, child = field_name.split(":", 1)
-            raw_parent = getattr(person, parent, None) or {}
-            current_val = raw_parent.get(child, allowed_values[0])
-        else:
-            current_val = getattr(person, field_name, allowed_values[0])
-
-        idx = allowed_values.index(current_val) if current_val in allowed_values else -1
-        next_val = allowed_values[(idx + direction) % len(allowed_values)]
-
-        try:
-            config = get_global_config()
-            for p in config.people:
-                if p.name == getattr(person, "name", ""):
-                    if ":" in field_name:
-                        parent, child = field_name.split(":", 1)
-                        raw_parent = getattr(p, parent, None)
-                        if not isinstance(raw_parent, dict):
-                            raw_parent = {}
-                            setattr(p, parent, raw_parent)
-                        raw_parent[child] = next_val
-                    else:
-                        setattr(p, field_name, next_val)
-                    break
-            save_global_config(config)
-            self._status_message = f"Set {field_name} to {next_val}"  # type: ignore[attr-defined]
-            self._status_is_error = False  # type: ignore[attr-defined]
-        except Exception as exc:
-            self._status_message = f"Failed to save {field_name}: {exc}"  # type: ignore[attr-defined]
-            self._status_is_error = True  # type: ignore[attr-defined]
-        self.refresh_data()  # type: ignore[attr-defined]
-
-    def _begin_person_field_edit(self, person: object, field: str) -> None:
-        """Enter edit mode for a specific field on the expanded person."""
-        self._editing_person_field = field  # type: ignore[attr-defined]
-        if ":" in field:
-            parent, child = field.split(":", 1)
-            raw_parent = getattr(person, parent, {})
-            val = raw_parent.get(child, "") if isinstance(raw_parent, dict) else ""
-            self._edit_buffer = str(val or "")
-        else:
-            raw_val = getattr(person, field, None)
-            if isinstance(raw_val, dict):
-                # Editing a parent dictionary prompts to add a new skill key
-                self._edit_buffer = ""
-                person_name = getattr(person, "name", "")
-                self._status_message = f"Add new key to {person_name}.{field}: Enter name of the key"  # type: ignore[attr-defined]
-                self._status_is_error = False  # type: ignore[attr-defined]
-                self.refresh(layout=True)  # type: ignore[attr-defined]
-                return
-            elif isinstance(raw_val, list):
-                self._edit_buffer = json.dumps(raw_val)
-            else:
-                self._edit_buffer = str(raw_val or "")
-        person_name = getattr(person, "name", "")
-        self._status_message = f"Editing {person_name}.{field}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
-        self._status_is_error = False  # type: ignore[attr-defined]
-        self.refresh(layout=True)  # type: ignore[attr-defined]
-
-    def _save_person_field(self) -> None:
-        """Persist the current person-field edit."""
-        if self._editing_person_field is None or self._expanded_person is None:  # type: ignore[attr-defined]
-            return
-
-        field = self._editing_person_field  # type: ignore[attr-defined]
-        value = self._edit_buffer  # type: ignore[attr-defined]
-        person_name = self._expanded_person  # type: ignore[attr-defined]
-
-        if field == "role" and value not in _VALID_ROLES:
-            self._status_message = f"Invalid role. Valid: {', '.join(_VALID_ROLES)}"  # type: ignore[attr-defined]
-            self._status_is_error = True  # type: ignore[attr-defined]
-            self.refresh(layout=True)  # type: ignore[attr-defined]
-            return
-
-        try:
-            config = get_global_config()
-            for p in config.people:
-                if p.name == person_name:
-                    if ":" in field:
-                        parent, child = field.split(":", 1)
-                        raw_parent = getattr(p, parent, None)
-                        if not isinstance(raw_parent, dict):
-                            raw_parent = {}
-                            setattr(p, parent, raw_parent)
-                        raw_parent[child] = value
-                    else:
-                        if field == "name" and value != person_name:
-                            rename_person(person_name, value)
-                            self._expanded_person = value  # type: ignore[attr-defined]
-
-                        # Detect if field is a dict or list to parse appropriately
-                        current_val = getattr(p, field, None)
-                        is_dict = isinstance(current_val, dict)
-
-                        if not is_dict and field in PersonEntry.model_fields:
-                            ann = PersonEntry.model_fields[field].annotation
-                            is_dict = get_origin(ann) is dict or ann is dict
-
-                        if is_dict:
-                            # Adding a new key to the dict
-                            if value.strip():
-                                if current_val is None:
-                                    current_val = {}
-                                    setattr(p, field, current_val)
-                                current_val[value.strip()] = "novice"
-                        elif isinstance(current_val, list):
-                            setattr(p, field, json.loads(value))
-                        else:
-                            setattr(p, field, value or None)
-                    break
-            save_global_config(config)
-            self._status_message = f"Saved {self._expanded_person}.{field}"  # type: ignore[attr-defined]
-            self._status_is_error = False  # type: ignore[attr-defined]
-        except Exception as exc:
-            self._status_message = f"Failed to save: {exc}"  # type: ignore[attr-defined]
-            self._status_is_error = True  # type: ignore[attr-defined]
-
-        self._editing_person_field = None  # type: ignore[attr-defined]
-        self._edit_buffer = ""  # type: ignore[attr-defined]
-        self.refresh_data()  # type: ignore[attr-defined]
-
     def collapse_person(self) -> None:
-        """Collapse the expanded person details and exit person editing."""
+        """Collapse the expanded person details."""
         self._expanded_person = None  # type: ignore[attr-defined]
-        self._editing_person_field = None  # type: ignore[attr-defined]
-        self._edit_buffer = ""  # type: ignore[attr-defined]
+        self._status_message = ""  # type: ignore[attr-defined]
+        self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
     def append_edit_character(self, char: str) -> None:
@@ -344,6 +226,9 @@ class ConfigContentEditingMixin:
         if tab in (Subtab.INFRA, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
             self._save_reflected_field(var_name, self._edit_buffer)  # type: ignore[attr-defined]
             return
+        if tab == Subtab.PEOPLE and self._expanded_person is not None:  # type: ignore[attr-defined]
+            self._save_reflected_field(var_name, self._edit_buffer)  # type: ignore[attr-defined]
+            return
 
         try:
             target_path = set_env_var(var_name, self._edit_buffer)  # type: ignore[attr-defined]
@@ -373,76 +258,76 @@ class ConfigContentEditingMixin:
             f = fields[max(0, min(cursor, len(fields) - 1))]
             return bool(f.choices) or f.field_type is bool or f.field_type in (list[str], list)
         if tab == Subtab.PEOPLE and self._expanded_person is not None:  # type: ignore[attr-defined]
-            field = self.person_editable_fields[self._person_field_cursor]  # type: ignore[attr-defined]
-            return get_allowed_values_for_field(field) is not None
+            fields = self.person_reflected_fields
+            if not fields:
+                return False
+            f = fields[self._person_field_cursor]  # type: ignore[attr-defined]
+            return bool(f.choices) or f.field_type is bool or f.field_type in (list[str], list)
         return False
 
     def cycle_enum_field(self, direction: int) -> None:
         """Cycle the active enum/list/bool field in the requested direction."""
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.INFRA, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
+        if tab == Subtab.PEOPLE and self._expanded_person is not None:  # type: ignore[attr-defined]
+            fields = self.person_reflected_fields
+            cursor = self._person_field_cursor  # type: ignore[attr-defined]
+        else:
             fields = self.reflected_fields  # type: ignore[attr-defined]
-            if fields:
-                cursor = self._current_cursor()  # type: ignore[attr-defined]
-                f = fields[max(0, min(cursor, len(fields) - 1))]
+            cursor = self._current_cursor()  # type: ignore[attr-defined]
 
-                # Booleans toggle between True/False.
-                if f.field_type is bool:
-                    self._save_reflected_field(f.key, not f.value)
-                    return
+        if fields:
+            f = fields[max(0, min(cursor, len(fields) - 1))]
 
-                # If it's a Literal/Enum
-                if f.choices:
-                    current_val = str(f.value)
-                    idx = f.choices.index(current_val) if current_val in f.choices else -1
-                    next_val = f.choices[(idx + direction) % len(f.choices)]
-                    self._save_reflected_field(f.key, next_val)
-                    return
+            # Booleans toggle between True/False.
+            if f.field_type is bool:
+                self._save_reflected_field(f.key, not f.value)
+                return
 
-                # If it's a list/array
-                elif f.field_type in (list[str], list):
-                    items = f.value or []
-                    if items:
-                        self._list_element_idx = (self._list_element_idx + direction) % len(items)  # type: ignore[attr-defined]
-                        self.refresh(layout=True)  # type: ignore[attr-defined]
-                    return
+            # If it's a Literal/Enum
+            if f.choices:
+                current_val = str(f.value)
+                idx = f.choices.index(current_val) if current_val in f.choices else -1
+                next_val = f.choices[(idx + direction) % len(f.choices)]
+                self._save_reflected_field(f.key, next_val)
+                return
 
-        # Fallback to Person enum cycle
-        person = next((p for p in self._people_data if p.name == self._expanded_person), None)  # type: ignore[attr-defined]
-        if person is not None:
-            field = self.person_editable_fields[self._person_field_cursor]  # type: ignore[attr-defined]
-            self._cycle_person_enum(person, field, direction)
+            # If it's a list/array
+            elif f.field_type in (list[str], list):
+                items = f.value or []
+                if items:
+                    self._list_element_idx = (self._list_element_idx + direction) % len(items)  # type: ignore[attr-defined]
+                    self.refresh(layout=True)  # type: ignore[attr-defined]
+                return
 
     def reorder_reflected_list(self, direction: int) -> None:
         """Shift the focused list element left (-1) or right (1)."""
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
-        if tab in (Subtab.INFRA, Subtab.ADAPTERS, Subtab.PROVIDERS, Subtab.SUMMARIZER, Subtab.TTS_STT):
+        if tab == Subtab.PEOPLE and self._expanded_person is not None:  # type: ignore[attr-defined]
+            fields = self.person_reflected_fields
+            cursor = self._person_field_cursor  # type: ignore[attr-defined]
+        else:
             fields = self.reflected_fields  # type: ignore[attr-defined]
-            if fields:
-                cursor = self._current_cursor()  # type: ignore[attr-defined]
-                f = fields[max(0, min(cursor, len(fields) - 1))]
-                if f.field_type in (list[str], list):
-                    items = list(f.value or [])
-                    if not items:
-                        return
+            cursor = self._current_cursor()  # type: ignore[attr-defined]
 
-                    idx = self._list_element_idx  # type: ignore[attr-defined]
-                    new_idx = (idx + direction) % len(items)
+        if fields:
+            f = fields[max(0, min(cursor, len(fields) - 1))]
+            if f.field_type in (list[str], list):
+                items = list(f.value or [])
+                if not items:
+                    return
 
-                    # Swap elements
-                    items[idx], items[new_idx] = items[new_idx], items[idx]
-                    self._list_element_idx = new_idx  # type: ignore[attr-defined]
+                idx = self._list_element_idx  # type: ignore[attr-defined]
+                new_idx = (idx + direction) % len(items)
 
-                    self._save_reflected_field(f.key, items)
+                # Swap elements
+                items[idx], items[new_idx] = items[new_idx], items[idx]
+                self._list_element_idx = new_idx  # type: ignore[attr-defined]
+
+                self._save_reflected_field(f.key, items)
 
     def _apply_field_to_raw_config(self, key: str, deserialized: object) -> None:
         """Write a non-env field value into its config.yml path (any nesting depth)."""
-        if "." in key and key.split(".", 1)[0] in _SECTION_PREFIXES:
-            path: tuple[str, ...] = tuple(key.split("."))
-        elif key in _FLAT_CONFIG_KEYS:
-            path = _FLAT_CONFIG_KEYS[key]
-        else:
-            return
+        path = key.split(".")
         node = self._raw_config  # type: ignore[attr-defined]
         for part in path[:-1]:
             child = node.get(part)
@@ -474,8 +359,13 @@ class ConfigContentEditingMixin:
         return None
 
     def _save_reflected_field(self, key: str, raw_value: Any) -> None:
-        """Parse, validate, and write a reflected field value back to config.yml or .env."""
-        fields = self.reflected_fields  # type: ignore[attr-defined]
+        """Parse, validate, and write a reflected field value back to its source."""
+        tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
+        if tab == Subtab.PEOPLE and self._expanded_person is not None:  # type: ignore[attr-defined]
+            fields = self.person_reflected_fields
+        else:
+            fields = self.reflected_fields  # type: ignore[attr-defined]
+
         f = next((field for field in fields if field.key == key), None)
         if f is None:
             return
@@ -486,15 +376,56 @@ class ConfigContentEditingMixin:
             if f.env_var:
                 # ${VAR}-backed field: persist to .env, leave the placeholder in config.yml.
                 set_env_var(f.env_var, str(deserialized))
-            else:
+            elif f.owning_source == "machine":
                 block_reason = self._section_write_block_reason(key, deserialized)
                 if block_reason is not None:
                     self._status_message = block_reason  # type: ignore[attr-defined]
                     self._status_is_error = True  # type: ignore[attr-defined]
                     return
+                # Update self._raw_config
                 self._apply_field_to_raw_config(key, deserialized)
-                config_path = _resolve_config_path()
-                _write_raw_config(config_path, self._raw_config)  # type: ignore[attr-defined]
+                # Update global config singleton
+                _apply_field_to_global_config(key, deserialized)
+                # Atomic save to config.yml
+                save_machine_config(config)
+            elif f.owning_source == "global":
+                global_config = get_global_config()
+                person_name = self._expanded_person  # type: ignore[attr-defined]
+                for p in global_config.people:
+                    if p.name == person_name:
+                        key_without_prefix = key.split(".", 1)[1]
+                        if ":" in key_without_prefix:
+                            parent, child = key_without_prefix.split(":", 1)
+                            raw_parent = getattr(p, parent, None)
+                            if not isinstance(raw_parent, dict):
+                                raw_parent = {}
+                                setattr(p, parent, raw_parent)
+                            raw_parent[child] = deserialized
+                        else:
+                            if key_without_prefix == "name" and deserialized != person_name:
+                                rename_person(person_name, deserialized)
+                                self._expanded_person = deserialized  # type: ignore[attr-defined]
+                            setattr(p, key_without_prefix, deserialized)
+                        break
+                save_global_config(global_config)
+            elif f.owning_source == "per-person":
+                person_name = self._expanded_person  # type: ignore[attr-defined]
+                person_config = get_person_config(person_name)
+
+                key_without_prefix = key.split(".", 1)[1]
+                parts = key_without_prefix.split(".")
+
+                obj = person_config
+                for part in parts[:-1]:
+                    val = getattr(obj, part)
+                    if val is None:
+                        field_info = type(obj).model_fields[part]
+                        val = _instantiate_nested_config_model(field_info.annotation)
+                        setattr(obj, part, val)
+                    obj = val
+
+                setattr(obj, parts[-1], deserialized)
+                save_person_config(person_name, person_config)
 
             self._editing_var_name = None  # type: ignore[attr-defined]
             self._edit_buffer = ""  # type: ignore[attr-defined]
@@ -509,14 +440,6 @@ class ConfigContentEditingMixin:
 
     def cancel_edit(self) -> None:
         """Cancel the current env-var or person-field edit."""
-        if self._editing_person_field is not None:  # type: ignore[attr-defined]
-            field = self._editing_person_field  # type: ignore[attr-defined]
-            self._editing_person_field = None  # type: ignore[attr-defined]
-            self._edit_buffer = ""  # type: ignore[attr-defined]
-            self._status_message = f"Canceled edit for {field}"  # type: ignore[attr-defined]
-            self._status_is_error = False  # type: ignore[attr-defined]
-            self.refresh(layout=True)  # type: ignore[attr-defined]
-            return
         if not self.is_editing:  # type: ignore[attr-defined]
             return
         var_name = self._editing_var_name  # type: ignore[attr-defined]

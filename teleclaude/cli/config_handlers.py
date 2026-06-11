@@ -9,6 +9,7 @@ Both the interactive menu and onboarding wizard consume this layer.
 
 from __future__ import annotations
 
+import dataclasses
 import fcntl
 import importlib
 import os
@@ -21,11 +22,13 @@ from typing import Any, Literal
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 import teleclaude.config as _tc_config_module
+from teleclaude.config.invitations import load_invitations, save_invitations
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import INVITATIONS_PATH, TELECLAUDE_HOME
 from teleclaude.runtime.config import get_runtime_config
 
 logger = get_logger(__name__)
@@ -345,6 +348,19 @@ def save_person_config(name: str, config: PersonConfig) -> None:
     logger.info("Saved person config for %s to %s", name, target)
 
 
+def save_machine_config(config: _tc_config_module.Config, path: Path | None = None) -> None:
+    """Atomic write of machine configuration (config.yml)."""
+    target = path or _tc_config_module.config_path
+    data = dataclasses.asdict(config)
+    if "default_agent" in data:
+        default_agent = data.pop("default_agent")
+        if "agents" not in data or not isinstance(data["agents"], dict):
+            data["agents"] = {}
+        data["agents"]["default"] = default_agent
+    _atomic_yaml_write(target, data)
+    logger.info("Saved machine config to %s", target)
+
+
 def add_person(entry: PersonEntry) -> None:
     """Add person to global people list and create per-person directory."""
     config = get_global_config()
@@ -389,7 +405,40 @@ def remove_person(name: str, delete_directory: bool = False) -> None:
     logger.info("Removed person '%s' from global config", name)
 
 
-# --- Invite Token ---
+_migration_done = False
+
+
+def _migrate_invitations_if_needed() -> None:
+    """Perform one-shot migration of invite tokens from per-person configs to the invitations store."""
+    global _migration_done
+    if _migration_done:
+        return
+
+    if not INVITATIONS_PATH.exists():
+        logger.info("Invitations store does not exist. Migrating tokens from person configs.")
+        invitations: dict[str, str] = {}
+        person_dirs = list_person_dirs()
+        yaml_loader = YAML()
+        for name in person_dirs:
+            person_path = _PEOPLE_DIR / name / "teleclaude.yml"
+            if not person_path.exists():
+                continue
+            try:
+                with open(person_path, encoding="utf-8") as f:
+                    raw_data = yaml_loader.load(f) or {}
+                if isinstance(raw_data, dict) and "invite_token" in raw_data:
+                    token = raw_data["invite_token"]
+                    if token and isinstance(token, str):
+                        invitations[token] = name
+
+                    person_config = get_person_config(name)
+                    if person_config.model_extra is not None and "invite_token" in person_config.model_extra:
+                        person_config.model_extra.pop("invite_token")
+                    save_person_config(name, person_config)
+            except (OSError, ValueError, YAMLError) as e:
+                logger.warning("Failed to migrate invite_token for person '%s': %s", name, e)
+        save_invitations(invitations)
+    _migration_done = True
 
 
 def generate_invite_token() -> str:
@@ -399,25 +448,43 @@ def generate_invite_token() -> str:
 
 def set_invite_token(name: str) -> str:
     """Generate and persist a new invite token for the person. Returns the token."""
+    _migrate_invitations_if_needed()
     token = generate_invite_token()
-    person_config = get_person_config(name)
-    person_config.invite_token = token
-    save_person_config(name, person_config)
+
+    invitations = load_invitations()
+    # Remove any existing tokens mapped to this person
+    for t, n in list(invitations.items()):
+        if n == name:
+            del invitations[t]
+
+    invitations[token] = name
+    save_invitations(invitations)
+
+    # Also clean up any lingering invite_token from per-person config model_extra
+    try:
+        person_config = get_person_config(name)
+        if person_config.model_extra is not None and "invite_token" in person_config.model_extra:
+            person_config.model_extra.pop("invite_token")
+            save_person_config(name, person_config)
+    except (OSError, ValueError) as e:
+        logger.warning("Failed to clean up invite_token in per-person config for '%s': %s", name, e)
+
     logger.info("Set invite token for '%s'", name)
     return token
 
 
 def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
-    """Scan all person configs to find matching invite_token. Returns (person_name, config) or None."""
-    person_dirs = list_person_dirs()
-    for person_name in person_dirs:
+    """Find a person by their invite token using the O(1) invitations store. Returns (person_name, config) or None."""
+    _migrate_invitations_if_needed()
+    invitations = load_invitations()
+    if token in invitations:
+        person_name = invitations[token]
         try:
             person_config = get_person_config(person_name)
-            if person_config.invite_token == token:
-                return (person_name, person_config)
+            return (person_name, person_config)
         except (OSError, ValueError, KeyError) as e:
             logger.warning("Failed to load config for person '%s': %s", person_name, e)
-            continue
+            return None
     return None
 
 
@@ -601,27 +668,51 @@ def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:
     target = resolve_env_file_path(env_path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    lines: list[str] = []
-    found = False
-    if target.exists():
-        lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
-        for index, line in enumerate(lines):
-            stripped = line.lstrip()
-            if stripped.startswith(f"export {name}="):
-                lines[index] = f"export {name}={value}\n"
-                found = True
-                break
-            if stripped.startswith(f"{name}="):
-                lines[index] = f"{name}={value}\n"
-                found = True
-                break
+    lock_path = target.with_suffix(".lock")
+    tmp_path = target.with_suffix(".tmp")
 
-    if not found:
-        if lines and not lines[-1].endswith("\n"):
-            lines[-1] = f"{lines[-1]}\n"
-        lines.append(f"{name}={value}\n")
+    with open(lock_path, "w", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            pass
 
-    target.write_text("".join(lines), encoding="utf-8")
+        try:
+            lines: list[str] = []
+            found = False
+            if target.exists():
+                lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
+                for index, line in enumerate(lines):
+                    stripped = line.lstrip()
+                    if stripped.startswith(f"export {name}="):
+                        lines[index] = f"export {name}={value}\n"
+                        found = True
+                        break
+                    if stripped.startswith(f"{name}="):
+                        lines[index] = f"{name}={value}\n"
+                        found = True
+                        break
+
+            if not found:
+                if lines and not lines[-1].endswith("\n"):
+                    lines[-1] = f"{lines[-1]}\n"
+                lines.append(f"{name}={value}\n")
+
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write("".join(lines))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, target)
+        except Exception:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise
+        finally:
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+
     os.environ[name] = value
     logger.info("Updated env var %s in %s", name, target)
     return target
