@@ -43,6 +43,7 @@ logger = get_logger(__name__)
 
 # Channel pattern subscribed via Redis pub/sub ``PSUBSCRIBE``.
 CLUSTER_PATTERN = "cluster.*"
+CLUSTER_ENVELOPE_SCHEMA_VERSION = 1
 
 # Channel category prefixes used for dispatch routing.
 SESSION_PREFIX = "cluster.session."
@@ -59,9 +60,11 @@ class ClusterEnvelope:
 
     The envelope is the cross-computer event contract. ``origin`` names the
     publishing computer so receivers can distinguish self-published events
-    (which still need cache updates but must not re-publish).
+    (which still need cache updates but must not re-publish). The current
+    envelope shape is schema version 1; missing versions decode as legacy v1.
     """
 
+    schema_version: int
     channel: str
     idempotency_key: str
     emitted_at: str
@@ -117,7 +120,10 @@ def decode_envelope(raw: bytes | str) -> ClusterEnvelope:
     emitted_at = data.get("emitted_at")
     origin = data.get("origin")
     payload = data.get("payload")
+    schema_version = data.get("schema_version", CLUSTER_ENVELOPE_SCHEMA_VERSION)
 
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version < 1:
+        raise MalformedClusterEnvelopeError("envelope.schema_version is missing or invalid")
     if not isinstance(channel, str) or not channel:
         raise MalformedClusterEnvelopeError("envelope.channel is missing or empty")
     if not isinstance(idempotency_key, str) or not idempotency_key:
@@ -130,6 +136,7 @@ def decode_envelope(raw: bytes | str) -> ClusterEnvelope:
         raise MalformedClusterEnvelopeError("envelope.payload is missing or not an object")
 
     return ClusterEnvelope(
+        schema_version=schema_version,
         channel=channel,
         idempotency_key=idempotency_key,
         emitted_at=emitted_at,

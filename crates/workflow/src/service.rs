@@ -47,7 +47,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use event_bus::{EventBus, EventBusError, EventEnvelope};
+use event_bus::{envelope::ENVELOPE_SCHEMA_VERSION, EventBus, EventBusError, EventEnvelope};
 use identity::Principal;
 use serde::Serialize;
 use shared::ProjectId;
@@ -143,6 +143,7 @@ impl WorkflowService {
         principal: &Principal,
     ) -> Result<(), WorkflowError> {
         let envelope = EventEnvelope {
+            schema_version: ENVELOPE_SCHEMA_VERSION,
             channel: channel.to_owned(),
             idempotency_key: Uuid::new_v4().to_string(),
             emitted_at: Utc::now(),

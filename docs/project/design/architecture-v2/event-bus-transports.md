@@ -99,6 +99,12 @@ fast-path stays gone.
   multi-scope subscriber reading the same logical event from two or
   three clients (e.g., a Cluster event that's federated to Public) does
   not double-fire its handler.
+- **Schema-versioned, tolerant readers as law.** Every cross-node
+  envelope carries `schema_version`: the v2 `EventEnvelope` and the v1
+  `cluster.*` `ClusterEnvelope`. Consumers ignore unknown fields and
+  tolerate absent optionals; a consumer that rejects an envelope because
+  of an unknown field is a defect. This implements
+  `project/adr/0026-cross-version-fleet-compatibility`.
 - **Cross-process delivery is the default within a scope.** Any event
   emitted at a given scope is visible to any process subscribed to that
   scope's channel via that scope's Redis. There is no per-process
@@ -207,6 +213,7 @@ Every event is an envelope. `scope` is required:
 pub enum EventScope { Local, Cluster, Public }
 
 pub struct EventEnvelope {
+    pub schema_version: u32,       // current envelope shape version
     pub channel: String,           // workflow.todo.created
     pub scope: EventScope,         // routing directive — required
     pub idempotency_key: String,   // unique per logical event

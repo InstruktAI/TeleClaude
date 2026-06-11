@@ -159,6 +159,9 @@ fn decode_message(msg: redis::Msg) -> Result<EventEnvelope, EventBusError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::envelope::ENVELOPE_SCHEMA_VERSION;
+    use redis::Value;
+    use serde_json::json;
 
     #[test]
     fn idempotency_cache_marks_and_checks_keys() {
@@ -176,5 +179,30 @@ mod tests {
         cache.mark("ephemeral");
         // TTL=0 means anything inserted is already expired on next touch.
         assert!(!cache.contains("ephemeral"));
+    }
+
+    #[test]
+    fn decode_message_ignores_unknown_top_level_envelope_fields() {
+        let payload = json!({
+            "schema_version": ENVELOPE_SCHEMA_VERSION,
+            "channel": "workflow.todo.created",
+            "idempotency_key": "todo-42-created",
+            "emitted_at": "2026-05-16T12:00:00Z",
+            "principal": null,
+            "payload": {"slug": "demo", "title": "Demo"},
+            "future_capability": {"ignored": true}
+        })
+        .to_string();
+        let msg = redis::Msg::from_owned_value(Value::Array(vec![
+            Value::BulkString(b"message".to_vec()),
+            Value::BulkString(b"workflow.todo.created".to_vec()),
+            Value::BulkString(payload.into_bytes()),
+        ]))
+        .expect("static Redis pub/sub message shape is valid");
+
+        let decoded = decode_message(msg).expect("message decodes with unknown field");
+
+        assert_eq!(decoded.schema_version, ENVELOPE_SCHEMA_VERSION);
+        assert_eq!(decoded.channel, "workflow.todo.created");
     }
 }

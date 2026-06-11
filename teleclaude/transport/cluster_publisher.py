@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
+from teleclaude.transport.cluster_bridge import CLUSTER_ENVELOPE_SCHEMA_VERSION
+
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
@@ -54,6 +56,7 @@ class ClusterPublisher:
     ) -> bool:
         """Publish a single envelope. Returns True if Redis accepted the publish."""
         envelope = {
+            "schema_version": CLUSTER_ENVELOPE_SCHEMA_VERSION,
             "channel": channel,
             "idempotency_key": uuid.uuid4().hex,
             "emitted_at": datetime.now(UTC).isoformat(),

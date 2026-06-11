@@ -8,7 +8,7 @@
 //! ```
 
 use chrono::Utc;
-use event_bus::{EventBus, EventEnvelope};
+use event_bus::{envelope::ENVELOPE_SCHEMA_VERSION, EventBus, EventEnvelope};
 use futures::StreamExt;
 use serde_json::json;
 use std::time::Duration;
@@ -45,6 +45,7 @@ async fn emit_then_subscribe_round_trips_envelope_via_pubsub() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let envelope = EventEnvelope {
+        schema_version: ENVELOPE_SCHEMA_VERSION,
         channel: channel.clone(),
         idempotency_key: "test-key-1".to_string(),
         emitted_at: Utc::now(),
