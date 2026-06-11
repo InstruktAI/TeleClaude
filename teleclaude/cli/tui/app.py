@@ -54,13 +54,19 @@ from teleclaude.cli.tui.messages import (
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.paste_guard import (
-    BURST_THRESHOLD as _BURST_THRESHOLD,
-)
-from teleclaude.cli.tui.paste_guard import (
     PASTE_IGNORED_NOTIFICATION as _PASTE_IGNORED_NOTIFICATION,
 )
 from teleclaude.cli.tui.paste_guard import (
     POST_PASTE_KEY_SUPPRESSION_SECONDS as _POST_PASTE_KEY_SUPPRESSION_SECONDS,
+)
+from teleclaude.cli.tui.paste_guard import (
+    RAW_KEY_BURST_QUIET_SECONDS as _RAW_KEY_BURST_QUIET_SECONDS,
+)
+from teleclaude.cli.tui.paste_guard import (
+    RAW_KEY_BURST_THRESHOLD as _RAW_KEY_BURST_THRESHOLD,
+)
+from teleclaude.cli.tui.paste_guard import (
+    RAW_KEY_BURST_WINDOW_SECONDS as _RAW_KEY_BURST_WINDOW_SECONDS,
 )
 from teleclaude.cli.tui.persistence import Persistable, get_persistence_key
 from teleclaude.cli.tui.state_store import load_state, save_state
@@ -92,6 +98,7 @@ logger = get_logger(__name__)
 APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueError)
 APP_RUNTIME_ERRORS = (APIError, AttributeError, ImportError, LookupError, OSError, RuntimeError, TypeError, ValueError)
 APP_DATA_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
+_GUARD_RELEASED_EVENT_ATTR = "_telec_guard_released"
 _APP_STATE_FIELDS = {
     "_persisted": ("_init_state", "persisted"),
     "_start_view": ("_init_state", "start_view"),
@@ -204,8 +211,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     _chiptunes_state_version: int
     _chiptunes_reconcile_task: asyncio.Task[None] | None
     _paste_guard_keys: deque[tuple[str, str | None]]
-    _paste_guard_flush_scheduled: bool
-    _paste_guard_replay_count: int
+    _paste_guard_flush_timer: Timer | None
+    _paste_guard_window_started_at: float | None
+    _paste_guard_quiet_until: float
     _last_paste_at: float
 
     CSS_PATH = "telec.tcss"
@@ -293,9 +301,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         self._runtime_state = _AppRuntimeState()
         self._media_state = _AppMediaState()
         self._sky_width_timer = None
-        self._paste_guard_keys = deque(maxlen=_BURST_THRESHOLD + 1)
-        self._paste_guard_flush_scheduled = False
-        self._paste_guard_replay_count = 0
+        self._paste_guard_keys = deque(maxlen=_RAW_KEY_BURST_THRESHOLD + 1)
+        self._paste_guard_flush_timer = None
+        self._paste_guard_window_started_at = None
+        self._paste_guard_quiet_until = float("-inf")
         self._last_paste_at = float("-inf")
         self._media_state.animation_engine.on_animation_start = self._show_animation_toast
 
@@ -381,23 +390,33 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         self.notify(_PASTE_IGNORED_NOTIFICATION, severity="warning")
 
     def on_key(self, event: events.Key) -> None:
-        """Coalesce same-turn control-surface keys before binding dispatch."""
-        if self._paste_guard_replay_count > 0:
-            self._paste_guard_replay_count -= 1
-            return
+        """Coalesce control-surface keys before binding dispatch."""
         if self._input_surface_active():
+            return
+        if getattr(event, _GUARD_RELEASED_EVENT_ATTR, False):
             return
 
         event.prevent_default()
         event.stop()
 
         now = _t.monotonic()
-        if now - self._last_paste_at <= _POST_PASTE_KEY_SUPPRESSION_SECONDS:
+        if now - self._last_paste_at <= _POST_PASTE_KEY_SUPPRESSION_SECONDS or now < self._paste_guard_quiet_until:
             return
 
+        if (
+            self._paste_guard_window_started_at is not None
+            and now - self._paste_guard_window_started_at > _RAW_KEY_BURST_WINDOW_SECONDS
+        ):
+            if self._paste_guard_flush_timer is not None:
+                self._paste_guard_flush_timer.stop()
+            self._flush_guarded_keys()
+
+        if self._paste_guard_window_started_at is None:
+            self._paste_guard_window_started_at = now
+
         self._paste_guard_keys.append((event.key, event.character))
-        if len(self._paste_guard_keys) > _BURST_THRESHOLD:
-            self._discard_guarded_keys()
+        if len(self._paste_guard_keys) > _RAW_KEY_BURST_THRESHOLD:
+            self._discard_guarded_keys(now)
             return
 
         self._schedule_guarded_key_flush()
@@ -424,37 +443,36 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         return False
 
     def _schedule_guarded_key_flush(self) -> None:
-        """Schedule buffered manual keys for replay on the next loop turn."""
-        if self._paste_guard_flush_scheduled:
+        """Schedule quiet manual keys for release after the burst window."""
+        if self._paste_guard_flush_timer is not None:
             return
-        self._paste_guard_flush_scheduled = True
-        self.call_later(self._flush_guarded_keys)
+        self._paste_guard_flush_timer = self.set_timer(_RAW_KEY_BURST_WINDOW_SECONDS, self._flush_guarded_keys)
 
     def _flush_guarded_keys(self) -> None:
-        """Replay buffered keys that did not cross the burst threshold."""
+        """Release buffered keys that did not cross the burst threshold."""
         guarded_keys = list(self._paste_guard_keys)
         self._paste_guard_keys.clear()
-        self._paste_guard_flush_scheduled = False
-        self._paste_guard_replay_count += len(guarded_keys)
+        self._paste_guard_flush_timer = None
+        self._paste_guard_window_started_at = None
+        if self._input_surface_active():
+            return
         for key, character in guarded_keys:
-            for node, binding, enabled, _tooltip in self.screen.active_bindings.values():
-                if enabled and binding.key == key:
-                    action = getattr(node, f"action_{binding.action}", None)
-                    if callable(action):
-                        action()
-                        break
+            event = events.Key(key, character)
+            setattr(event, _GUARD_RELEASED_EVENT_ATTR, True)
+            event.set_sender(self)
+            if self._driver is not None:
+                self._driver.send_message(event)
             else:
-                event = events.Key(key, character)
-                event.set_sender(self)
-                if self._driver is not None:
-                    self._driver.send_message(event)
-                else:
-                    self.post_message(event)
+                self.post_message(event)
 
-    def _discard_guarded_keys(self) -> None:
+    def _discard_guarded_keys(self, now: float | None = None) -> None:
         """Drop buffered injected keys and surface one warning."""
+        if self._paste_guard_flush_timer is not None:
+            self._paste_guard_flush_timer.stop()
         self._paste_guard_keys.clear()
-        self._paste_guard_flush_scheduled = False
+        self._paste_guard_flush_timer = None
+        self._paste_guard_window_started_at = None
+        self._paste_guard_quiet_until = (now if now is not None else _t.monotonic()) + _RAW_KEY_BURST_QUIET_SECONDS
         self.notify(_PASTE_IGNORED_NOTIFICATION, severity="warning")
 
     def compose(self) -> ComposeResult:
