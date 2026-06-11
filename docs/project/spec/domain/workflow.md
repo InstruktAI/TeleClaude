@@ -90,6 +90,20 @@ kind mutation is refused.
 **Operation**
 : A long-running task tied to a todo (e.g., a worker session doing build). Tracked as `agent_runtime.operations` from workflow's perspective via the `operation.completed` event.
 
+<!-- planned:runner-dispatch -->
+**Lifecycle runner**
+: The project-scoped autonomous dispatcher for workflow lifecycle work. It is woken by workflow/config/session events, reloads the current todo list for the affected project, evaluates the full eligible set, acquires a dispatch claim for each selected `(project, slug, lane)`, and then starts the relevant `/analyze-todo-input`, `/next-prepare`, or `/next-work` session. It is stateless between events except for durable claims/leases used to prevent duplicate dispatch.
+
+**Hold**
+: A durable manual brake on a todo. When `hold=true`, the lifecycle runner never dispatches that todo automatically in any lane, regardless of kind, dependency readiness, or current phase. Hold is not the same as autostart policy: a todo can be unheld and still not auto-dispatched because its kind defaults to no-autostart.
+
+**Autostart policy**
+: Effective configuration read by the lifecycle runner at evaluation time. The default is `feature=true`, `change=true`, `bug=true`, and `task=false`. A task created normally is therefore unheld but not auto-started; it remains available for explicit `telec todo work <slug>` or for a future policy/config change that allows task autostart.
+
+**Dispatch claim**
+: A short-lived durable claim keyed by `(canonical_project_root, slug, lane)` that prevents concurrent lifecycle-runner wake-ups from starting duplicate sessions. The claim is acquired before spawning an agent session and is released/expired only according to the runner lease rules; live-session lookup is a secondary dedup check, not the primary concurrency guard.
+<!-- /planned:runner-dispatch -->
+
 **Delivery commit**
 : The git commit SHA on `main` that materialized the todo's outcome. Non-empty when stage is `delivered`. The audit trail anchor.
 
@@ -136,6 +150,16 @@ kind mutation is refused.
     `workflow.todo.renamed` event. Slug mutation is refused after build starts.
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
+  <!-- planned:runner-dispatch -->
+  - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
+  - **Hold is the only persisted manual-dispatch brake.** A held todo is skipped by the lifecycle runner until released. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
+  - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.
+  - **Automatic dispatch is single-flight per project/slug/lane.** The runner must acquire a dispatch claim before spawning. It also checks for an existing live lifecycle session for the same canonical project root, slug, and command lane, but absence of a live session alone is insufficient under concurrent wake-ups.
+  - **Live-session dedup is lane-aware and exact-slug.** The runner's secondary live-session check covers root prepare orchestrators, prepare/review/drift workers, worktree-scoped build/review/fix/finalize workers, and future task-run sessions. The v1 `find_live_session_for_slug` worktree helper is not sufficient by itself because root prepare sessions use a separate command+slug title boundary contract; the runner uses a small lane-aware lookup facade over both families and extends it for finalize/task lanes where no helper exists today. Prefix slug matches are forbidden.
+  - **Dependency readiness uses PRD-approved ground for prepare and delivered ground for work.** Dependent prepare may unblock when every direct dependency has a human-approved PRD or stronger evidence; stronger evidence includes `prepared`, work-lane, or delivered states only when the dependency's PRD approval remains human-authored. Dependent work remains blocked until all `after` dependencies are delivered. The v1 dependency-prepared predicate is currently phase-only, so this delivery changes that predicate instead of treating current prepared-ground as sufficient.
+  - **PRD-grounded dependents carry parent-ground drift.** When a dependent prepares against a parent's PRD-approved ground before the parent is delivered, the dependent's drift provenance records the parent ground it relied on. Later parent architecture/plan or parent PRD-approval changes that can materially affect that ground force drift review before the dependent may reach or remain `prepared`.
+  - **Icebox and removed entries are never runner candidates.** Icebox remains an independent operator parking state; removing/re-activating entries follows the existing soft-delete contract and does not imply hold.
+  <!-- /planned:runner-dispatch -->
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
 - **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo split` (child of a container). Kind-less creation starts with `kind=None` and no `lifecycle_phase` and routes to `/analyze-todo-input`, which assigns the kind autonomously through the `--kind-assign` stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
 
@@ -216,6 +240,25 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   serve only the dispatch class. Encoding pickup intent in the payload
   preserves the state-change contract and lets autonomous dispatch consumers
   gate themselves explicitly.
+
+<!-- planned:runner-dispatch -->
+Pending `runner-dispatch`, autonomous pickup is no longer controlled by
+creation-time `creation_mode` / `pickup_requested`. The target dispatch
+contract is:
+
+- `workflow.todo.created` remains emitted for every successful creation and
+  remains a runner wake-up.
+- The event MUST carry enough project identity for the runner to resolve one
+  canonical project root; v1 may continue carrying `project_path` as the bridge
+  field, while the v2 target field is `project_id`.
+- The durable dispatch brake is `hold` on the Todo aggregate. During migration,
+  legacy operator-requested silent creation is translated to `hold=true`.
+  The v1 task `force_silent` default is translated to `hold=false` plus
+  task-autostart disabled; existing tasks are not converted into held todos.
+  Target consumers do not branch on legacy pickup fields.
+- The runner reads effective autostart policy at evaluation time, so config
+  changes can alter future dispatch without rewriting existing todo rows.
+<!-- /planned:runner-dispatch -->
 
 ##### v1 partial-shape (transitional)
 
@@ -348,6 +391,21 @@ new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
 - **Producer:** `config`
 - **Reaction:** invalidate cached effective configuration values used by workflow handlers (operator role mappings, default dispatch agents, etc.).
 - **Failure handling:** stale configuration is tolerated for one request; the next read after the event flushes the cache.
+
+<!-- planned:runner-dispatch -->
+#### `agent_runtime.session.ended`
+
+- **Producer:** `agent_runtime`
+- **Reaction:** if the ended session is bound to an incomplete workflow todo and the close was explicitly operator-initiated as a stop-work action, workflow sets `hold=true` on that todo and emits `workflow.todo.updated`. Normal worker completion, orchestrator self-cleanup, agent self-quit, tmux death, and maintenance reaping do not set hold.
+- **Failure handling:** if the session cannot be correlated to exactly one `(project, slug)`, workflow logs the skipped interlock and leaves todo state unchanged. Ambiguous close events never infer a hold.
+
+#### Workflow lifecycle wake-ups
+
+- **Producer:** `workflow`
+- **Consumed events:** target vocabulary `workflow.todo.created`, `workflow.todo.updated`, `workflow.todo.phase_advanced`, `workflow.todo.delivered`, and `workflow.roadmap.entry_moved`. In the v1 Python pipeline, `workflow.todo.created` already fires with `project_path`; the phase-transition seam currently emits only the legacy finalize-ready event and is generalized by this delivery for PREPARED/work transitions; delivery and roadmap/dependency/hold mutations get explicit v1 emissions or bridges instead of relying on Rust-only v2 events.
+- **Reaction:** the lifecycle runner resolves the affected project, reloads the full active todo set, and dispatches every eligible unheld candidate whose lane is not already claimed or live.
+- **Failure handling:** missing/ambiguous project identity, invalid todo state, unmet dependencies, icebox/removed status, hold, disabled autostart policy, and existing claim/session all result in a skip with structured observability; they do not throw away the event for other eligible todos in the same project.
+<!-- /planned:runner-dispatch -->
 
 ### Use cases
 
@@ -792,6 +850,65 @@ And autonomous pickup consumers observe the event and explicitly do NOT dispatch
 And cache, bridge-refresh, and audit consumers process the event normally
 And `telec workflow todo create <slug> <content> --silent` is the CLI form that drives silent mode at the boundary
 ```
+
+<!-- planned:runner-dispatch -->
+#### UC-WFL-20: Event-driven lifecycle runner dispatches the full eligible set
+
+```gherkin
+Given a workflow, config, or session-close wake-up resolves to project P
+When the lifecycle runner handles the wake-up
+Then it reloads P's current active todo list from workflow storage
+And skips icebox, removed, delivered, held, dependency-blocked, drift-blocked, and policy-disabled entries
+And for each remaining eligible entry it acquires a `(P, slug, lane)` dispatch claim before spawning a session
+And it starts the exact lifecycle entrypoint for the entry's state: `/analyze-todo-input`, `/next-prepare`, or `/next-work`
+And it never dispatches from a project-ambiguous event
+And in v1 every target wake-up is backed by either an existing v1 emission or an explicitly wired v1 seam, never by assuming Rust v2 events reach the Python runner
+```
+
+#### UC-WFL-21: Hold replaces silent as the manual parking mechanism
+
+```gherkin
+Given an operator creates a todo with `--hold`
+When workflow persists the todo
+Then the todo is active and visible in normal todo reads
+And `hold=true` prevents automatic lifecycle-runner dispatch
+And releasing hold makes the todo eligible on the next runner wake-up if all other gates pass
+```
+
+```gherkin
+Given an operator creates a task without `--hold`
+When workflow persists the task
+Then the task has `hold=false`
+And the default autostart policy for `task` evaluates to false
+And the lifecycle runner skips it for policy-disabled, not for hold
+And explicit `telec todo work <slug>` remains valid
+```
+
+```gherkin
+Given a legacy v1 task was stored with `creation_mode=silent` only because task uses the force-silent default
+When runner-dispatch migration derives hold state
+Then the task is stored with `hold=false`
+And task autostart policy remains false
+And the task is skipped by the runner for policy-disabled, not for hold
+```
+
+#### UC-WFL-22: Operator session close interlocks by setting hold
+
+```gherkin
+Given a live lifecycle session is bound to incomplete todo "my-slug"
+When an operator explicitly closes that session with stop-work intent
+Then agent_runtime emits `agent_runtime.session.ended` with enough project/slug/initiator information for workflow to correlate it
+And workflow sets `hold=true` on "my-slug"
+And the lifecycle runner does not immediately re-dispatch replacement work for that todo
+```
+
+```gherkin
+Given a lifecycle session ends because the agent completed, self-quit, was cleaned up by normal prepared/finalize cleanup, or died unexpectedly
+When workflow consumes `agent_runtime.session.ended`
+Then workflow does not set hold
+And future runner dispatch remains governed by the normal eligibility gates
+```
+<!-- /planned:runner-dispatch -->
 
 ### v1 inventory
 

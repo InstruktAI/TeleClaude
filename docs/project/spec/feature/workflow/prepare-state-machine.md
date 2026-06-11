@@ -84,6 +84,25 @@ And the instruction tells the operator to inspect via "telec todo show my-featur
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
 
+<!-- planned:runner-dispatch -->
+Pending `runner-dispatch`, PREPARED no longer dispatches dependent children
+from inside the prepare state machine. The prepare machine's responsibility at
+PREPARED is to persist/emit the phase transition and return its own cleanup
+instruction. Dependent child selection and dispatch belong to the lifecycle
+runner. In v1, PREPARED currently has no runner wake-up emission; this delivery
+wires the existing phase-transition seam (the same seam that currently emits
+finalize-ready only) to publish or bridge the target `workflow.todo.phase_advanced`
+wake-up for PREPARED and other eligibility-changing prepare/work transitions.
+The runner then evaluates the full eligible project set and dispatches children
+only after acquiring `(project, child_slug, prepare)` claims.
+
+This supersedes parent-worker reuse for child prepare. A prepare session must
+not send a new `/next-prepare` instruction to itself, must not rebind a parent
+worker to a child slug, and must not rely on the parent worker's live context as
+the child's execution substrate. The child's context is recovered from frozen
+artifacts/snippets and normal docs retrieval.
+<!-- /planned:runner-dispatch -->
+
 ### Use cases
 
 #### UC-WPS1: PREPARED auto-continues into unblocked child prepare
@@ -105,6 +124,21 @@ Given "parent" reaches PREPARED but has no dependent children whose prepare gate
 When the machine derives PREPARED
 Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
 ```
+
+<!-- planned:runner-dispatch -->
+#### UC-WPS5: PREPARED emits a runner wake-up, not a child dispatch
+
+```gherkin
+Given "parent" reaches lifecycle_phase=PREPARED
+And "child-a" and "child-b" may now have their prepare gates satisfied
+When the orchestrator calls "telec todo prepare parent" and the machine derives PREPARED
+Then the v1 phase-transition seam emits or bridges the target `workflow.todo.phase_advanced` wake-up for "parent"
+And returns only "parent" cleanup/terminal instructions
+And it does not emit `telec sessions send <parent_worker>` for any child
+And it does not emit a fresh `/next-prepare` run for any child
+And the lifecycle runner handles child eligibility and dispatch from the event wake-up
+```
+<!-- /planned:runner-dispatch -->
 
 ### Selector
 
@@ -151,3 +185,7 @@ And no roadmap row is created for "unknown-prepare"
 
 - **Auto-continue at PREPARED is concrete, not advisory.** When a parent reaches `PREPARED` it unblocks the **prepare** gate (not the work gate) of its dependents — so the dependents' prepare auto-continues immediately, while their work still waits for the parent's delivery (see `@spec/feature/workflow/dependency-graph`). The continuation is dispatched, not suggested to the human.
 - **Worker reuse preserves context.** Auto-continue prefers reusing the parent's open prepare worker via `telec sessions send` (the existing reuse-or-spawn dispatch keyed by parent slug + `/next-prepare`), because that worker holds the parent's just-frozen design. One worker thus carries multiple slugs in context across the dependency chain. A fresh `telec sessions run` is the fallback only when no parent worker is live; the parent's design is still recoverable from its now-frozen artifacts and snippets. No session↔slug rebinding is required: the reuse lookup is always keyed by the _parent_ slug (whose worker title is intact), and that worker then drives the child inline.
+
+<!-- planned:runner-dispatch -->
+- **Runner-owned dependent dispatch supersedes PREPARED auto-continue.** The two current caveats above describe the pre-runner target. After `runner-dispatch`, the concrete dispatch still happens automatically, but it is performed by `workflow.lifecycle_runner` from the emitted wake-up event, not by the parent prepare state-machine response. Parent-worker reuse is forbidden for child dispatch; each child session is explicitly bound to its own slug.
+<!-- /planned:runner-dispatch -->

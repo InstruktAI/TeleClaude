@@ -222,6 +222,46 @@ The runtime can coalesce reads when multiple consumers want overlapping windows 
 - **Idempotency key:** `(session_id, closed_at)`.
 - **Posture:** `commit-then-emit`.
 
+<!-- planned:runner-dispatch -->
+Pending `runner-dispatch`, `agent_runtime.session.ended` also carries the
+workflow correlation needed by the session-close interlock:
+
+- `project_path` or `project_id` sufficient for workflow to resolve exactly one
+  project store.
+- `workflow_slug` when the session was launched for a todo lifecycle command;
+  null for unrelated sessions.
+- `command` / `lane` (`analyze`, `prepare`, `work`, `integrate`, or null) so
+  workflow can distinguish lifecycle sessions from general chat sessions.
+- `close_initiator` (`operator` | `agent` | `system`) and `close_intent`
+  (`stop_work` | `normal_completion` | `reap_orphan`) as domain meaning above
+  the low-level `closure_reason`.
+
+For the v1 Python delivery, this is an extension/bridge of the existing
+`SESSION_CLOSED` event, whose current payload carries only `session_id`. The
+producer derives the new fields before emitting/bridging the close:
+
+- CLI `telec sessions end` and human adapter close affordances (Telegram topic
+  close, Discord thread delete/archive, web/TUI close controls) stamp
+  `close_initiator=operator`.
+- Agent/tool-driven self-end after a lifecycle script reaches its terminal
+  instruction stamps `close_initiator=agent` and
+  `close_intent=normal_completion`.
+- Stale-session cleanup, orphan reaping, tmux-death cleanup, and maintenance
+  replay paths stamp `close_initiator=system` and
+  `close_intent=reap_orphan` or `normal_completion`; they can never emit
+  `stop_work`.
+- `close_intent=stop_work` is allowed only for an operator close of a lifecycle
+  session whose latest user/input turn does not have a later authoritative
+  agent-stop/completion signal. In v1 that completion signal is derived from
+  the session ledger fields such as `last_agent_stop_at` relative to the latest
+  input timestamp before termination.
+
+Workflow may set `hold=true` only when the event resolves to one incomplete
+todo and carries `close_initiator=operator` plus `close_intent=stop_work`.
+Agent self-completion, prepare/work cleanup, agent quit, tmux death, and
+maintenance reaping are not cancellation signals and must not create holds.
+<!-- /planned:runner-dispatch -->
+
 #### `agent_runtime.operation.completed`
 
 - **Producer:** `agent_runtime`

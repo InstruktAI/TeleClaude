@@ -22,6 +22,29 @@ entry phase while handling orphaned kind-specific artifacts. The public
 `telec todo rename` and `telec todo set-deps` verbs are retired from the todo
 surface.
 
+<!-- planned:runner-dispatch -->
+### Planned runner hold/autostart surface
+
+Pending `runner-dispatch`, the public manual-parking surface is:
+
+- `telec todo create <slug> <content> [--kind <kind>] [--hold]`
+- `telec todo update <slug> --hold`
+- `telec todo update <slug> --release-hold`
+
+`--hold` stores `hold=true` on the Todo aggregate and suppresses automatic
+lifecycle-runner dispatch until released. `--release-hold` stores `hold=false`.
+These flags are mutually exclusive with each other in a single update call but
+can compose with unrelated update fields when validation remains unambiguous.
+
+`--silent` is retired from the public CLI/help surface. During migration, legacy
+operator-requested silent creation is translated to `hold=true` at the workflow
+boundary. The v1 task `force_silent` default is explicitly excluded: tasks
+created without `--hold` migrate to `hold=false` and remain skipped by the task
+autostart policy. New user-facing docs and command output must speak in
+hold/release terms. Task default no-autostart is not represented as hold and
+must render separately from held state.
+<!-- /planned:runner-dispatch -->
+
 ### Machine-Readable Surface
 
 ```yaml

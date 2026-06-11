@@ -71,6 +71,23 @@ Pending drift contract update:
 | **code**             | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
 | **dependency-graph** | The Todo's immediate `after` set and each direct dep's normalized status at write time vs current. Shallow -- not transitive.            | The immediate dep set changed (added/removed) OR a direct dep crossed the active/icebox boundary. `active` -> `delivered` is normalized and stays fresh.   |
 
+<!-- planned:runner-dispatch -->
+Pending `runner-dispatch`, prepare dependency ground may be satisfied by a
+direct dependency's human-approved PRD before that dependency reaches
+`prepared`. This adds a parent-ground drift class so the relaxation is safe:
+
+| Class | Evidence checked | When pending |
+| ----- | ---------------- | ------------ |
+| **parent-prd-ground** | For each direct dependency used as PRD-approved prepare ground: the dependency slug, PRD artifact digest, human PRD approval timestamp/session, and any later parent architecture/implementation-plan digest recorded when the dependent artifact was written. | A dependency loses or changes its human PRD approval, its PRD digest changes, or later parent architecture/plan evidence appears or changes after the dependent prepared against PRD-only ground. |
+
+The class is evaluated for `prd`, `architecture`, and `implementation-plan`
+artifacts while the todo is still in prepare, and at the work-entry drift check
+before `prepared -> build_started`. A pending or substantive
+`parent-prd-ground` result blocks the dependent exactly like existing drift
+classes. If every direct dependency is delivered, the class derives fresh
+because delivered ground supersedes PRD-only prepare ground.
+<!-- /planned:runner-dispatch -->
+
 ### Provenance recorded per artifact
 
 When a tracked artifact is written (`telec todo artifacts write`), the

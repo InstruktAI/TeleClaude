@@ -95,6 +95,37 @@ consumers (prepare / work dispatch routers) dispatch only when
 process every creation event regardless of mode. See
 `project/spec/domain/workflow` for the full entry.
 
+<!-- planned:runner-dispatch -->
+Pending `runner-dispatch`, autonomous pickup consumers are replaced by the
+workflow lifecycle runner. The canonical target wake-up vocabulary is
+`workflow.todo.created`, `workflow.todo.updated`,
+`workflow.todo.phase_advanced`, `workflow.todo.delivered`,
+`workflow.roadmap.entry_moved`, `config.effective.updated`, and
+`agent_runtime.session.ended`. A wake-up is usable only when it carries or can
+resolve exactly one project identity (`project_id` in the target contract,
+`project_path` in the v1 bridge); project-ambiguous events are skipped
+fail-closed for runner dispatch.
+
+The v1 Python delivery is grounded in the existing v1 event seams, not in an
+assumption that every v2 event already fires:
+
+| Target wake-up | v1 status / required runner-dispatch wiring |
+| -------------- | ------------------------------------------- |
+| `workflow.todo.created` | Already emitted by the v1 todo API with `project_path`; the current lifecycle router consumes it. |
+| `workflow.todo.phase_advanced` | Must be wired from the existing TodosDb/daemon phase-transition seam. Today that seam emits only `domain.software-development.planning.todo_finalize_ready` when the new phase is `finalize_ready`; this delivery generalizes the seam for eligibility-changing prepare/work phase transitions while preserving the existing finalize-ready integration event. |
+| `workflow.todo.delivered` | Must be emitted or bridged from the v1 delivery stamp path; no v1 emit site is assumed. |
+| `workflow.todo.updated` / `workflow.roadmap.entry_moved` | Must be emitted or bridged from v1 mutation paths that change hold, dependency edges, icebox/unfreeze, or task authorization. Rust v2 emissions alone are insufficient while v1 remains authoritative. |
+| `config.effective.updated` | Must be wired from the v1 config watcher/effective-config reload seam, or the runner must receive an equivalent in-process wake-up carrying the same scope semantics. |
+| `agent_runtime.session.ended` | Must be bridged from v1 `SESSION_CLOSED` after extending the payload beyond `session_id` with project/slug/lane/close-intent metadata. |
+
+`creation_mode` / `pickup_requested` are migration-only fields after this
+delivery. The durable target control is `workflow.Todo.hold` plus effective
+autostart policy. Legacy operator-requested silent creation is translated to
+`hold=true` at the workflow boundary; the v1 task `force_silent` default is
+translated to `hold=false` plus task autostart disabled. Event consumers do not
+treat silent wording as a separate dispatch state.
+<!-- /planned:runner-dispatch -->
+
 #### context
 
 NO events emitted. `context` is filesystem-driven. Consumers re-read source/index on demand. `telec context sync` is the implicit "context changed" signal; downstream tools can subscribe to git or file watchers if reactive behavior is ever needed (none currently is).
@@ -174,6 +205,20 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 | `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                                                      |
 | `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                                                        |
 | `config.effective.updated`          | every service that caches config (re-read on next access)                                                                                                              |
+
+<!-- planned:runner-dispatch -->
+Additional runner subscriptions:
+
+| Event                          | Consumers |
+| ------------------------------ | --------- |
+| `workflow.todo.created`        | `workflow.lifecycle_runner` (reload affected project and dispatch eligible unheld entries; v1 source already exists) |
+| `workflow.todo.updated`        | `workflow.lifecycle_runner` (re-evaluate when hold, dependency, kind, artifact, or phase-adjacent metadata changes; v1 source must be wired where absent) |
+| `workflow.todo.phase_advanced` | `workflow.lifecycle_runner` (re-evaluate when prepare/work gates advance; v1 source is the generalized phase-transition seam, while `integration` remains the finalize-ready handoff owner) |
+| `workflow.todo.delivered`      | `workflow.lifecycle_runner` (re-evaluate downstream dependents after a dependency reaches delivery; v1 delivery emission/bridge is part of this delivery) |
+| `workflow.roadmap.entry_moved` | `workflow.lifecycle_runner` (re-evaluate after dependency, icebox, unfreeze, or delivery movement; v1 mutation emissions/bridges are part of this delivery) |
+| `config.effective.updated`     | `workflow.lifecycle_runner` (invalidate autostart policy and re-evaluate affected project/global scope; v1 config watcher is the seam) |
+| `agent_runtime.session.ended`  | `workflow` (session-close interlock: explicit operator stop-work sets hold on the correlated incomplete todo; v1 `SESSION_CLOSED` must be enriched/bridged) |
+<!-- /planned:runner-dispatch -->
 
 ### v1 → v2 event-name mapping
 

@@ -117,6 +117,15 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Idempotency key:** `(scope, version)`. Consumers track the latest version they've applied; older versions are silently dropped.
 - **Posture:** `commit-then-emit` — the YAML file change is the commit; the event fires after read confirms a new effective config.
 
+<!-- planned:runner-dispatch -->
+The v1 Python runtime does not currently emit this canonical event. Pending
+`runner-dispatch`, the existing v1 config watcher/effective-config reload seam
+publishes or directly bridges an equivalent wake-up for workflow's lifecycle
+runner whenever an autostart-relevant key changes. The target event payload
+still uses `scope`/`changed_keys`/`version`; v1 project scopes must resolve to
+one canonical project path or the runner skips dispatch fail-closed.
+<!-- /planned:runner-dispatch -->
+
 ### Domain events consumed
 
 None. Config is a foundation context with no upstream domain — it watches the filesystem and reacts only to file changes, not to other services' events.
