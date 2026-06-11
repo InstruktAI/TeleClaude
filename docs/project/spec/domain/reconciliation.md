@@ -103,11 +103,11 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 - **Root:** `FleetCapabilityMap`
 - **Contains:** per-node entries of `computer`, `version`, `channel`, `capability_set`, `last_advertised_at`.
 - **Invariants:**
-  - Each entry is self-reported by its node; no node writes another's entry.
+  - Each entry is self-reported by its node via the cluster heartbeat (`project/adr/0013-unified-cluster-events`); no node writes another's entry, and no node reads a peer's config to learn its identity, version, or capabilities — the heartbeat is the only source.
   - "Safe to require / contract feature F" is true only when every live entry on every channel — including the slowest — carries F.
   - Entries age out when a node stops advertising (presumed absent).
 - **Identifier:** singleton per cluster view.
-- **Lifecycle:** Built from capability advertisements; entries expire on advertisement timeout.
+- **Lifecycle:** Materialized from the heartbeat stream; entries expire on heartbeat timeout.
 
 ### Domain events emitted
 
@@ -142,6 +142,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 - **Payload:** `computer`, `version`, `channel`, `capability_set`.
 - **Visibility:** CLUSTER
 - **Known consumers:** every node's fleet capability map.
+- **Transport:** rides the existing cluster heartbeat mechanism (`project/adr/0013-unified-cluster-events`), which already advertises per-node identity over Redis. Version and `capability_set` extend that self-reported heartbeat payload rather than introducing a separate distribution path; a node never learns a peer's identity, version, or capabilities by reading the peer's config.
 
 ### Domain events consumed
 
@@ -244,9 +245,11 @@ And no convergence or error results from the unknown capability
 - **The ingress is a single point of external-event intake (ADR-0028).** While it is down the fleet processes no external events but is not broken; a periodic self-check or a second stateless ingress recovers the gap.
 - **Cluster pub/sub is fire-and-forget (ADR-0013).** A node offline when a release event publishes misses it; recovery is the next release signal or a periodic desired-state self-check, not event replay.
 - **Installation migration is distinct from data upcasting.** This context owns the eager, ordered, once-per-host structural migration; per-record data evolution is each domain's own lazy upcasting (ADR-0025). Do not conflate them.
+- **Fleet identity is heartbeat-advertised, never config-sourced.** Each node's identity, version, and capability set reach the cluster through the Redis heartbeat (ADR-0013), which already carries per-node `ComputerInfo`. The fleet capability map consumes that stream. A node reads its own local config only to know itself; it never reads a peer's config, and reconciliation introduces no separate identity distribution path.
 
 ## See Also
 
+- docs/project/adr/0013-unified-cluster-events.md
 - docs/project/adr/0024-reconciliation-bounded-context.md
 - docs/project/adr/0026-cross-version-fleet-compatibility.md
 - docs/project/adr/0027-feature-id-capability-gating.md
