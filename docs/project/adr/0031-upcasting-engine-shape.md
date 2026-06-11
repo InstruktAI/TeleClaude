@@ -23,12 +23,14 @@ v2 workspace fixed the answers:
   `state_extra` JSONB column already present for forward-compat, but **no `schema_version`**
   today.
 - `crates/shared` is deliberately tiny (primitive newtypes + time only). `crates/storage`
-  owns `sqlx::PgPool` helpers and the DDL migration runner. `crates/state-machine` already
-  establishes the precedent of a dedicated generic-engine crate among the infrastructure
-  crosscuts.
-- The established async pattern in `workflow::service` is commit-then-emit: persist, then
-  fire-and-forget the side effect off the request path, log on failure, never roll back
-  because Postgres is the source of truth.
+  owns `sqlx::PgPool` helpers and the DDL migration runner. The v2 file layout already plans
+  `crates/state-machine` as a dedicated generic-engine crate among the infrastructure
+  crosscuts, establishing that pattern for the workspace.
+- The current workspace has no off-request-path persistence helper to reuse:
+  `WorkflowService::publish` awaits `self.events.emit(&envelope)` and returns
+  `WorkflowError::EventEmitAfterCommit` on failure (`crates/workflow/src/service.rs:153`), so
+  it is not a fire-and-forget precedent. A non-blocking write-back must be justified directly
+  from the requirement, not borrowed from an existing pattern.
 
 The PRD fixed one invariant as non-negotiable: write-back must **never clobber a concurrent
 domain write or a newer record version**, while leaving the mechanism to architecture.
@@ -68,8 +70,8 @@ ever needs evolution it reuses only the synchronous core.
 
 - The core is reusable by any consumer — including the file-based `config` — without pulling
   `sqlx`/`tokio`, and `shared` stays tiny.
-- The no-loss guarantee is structural (a conditional `UPDATE`), not a coordination protocol;
-  it composes with the existing fire-and-forget side-effect pattern.
+- The no-loss guarantee is structural (a conditional `UPDATE`), not a coordination protocol,
+  so it holds without locking or serializing the read path.
 - SQL stays inside each bounded context; the engine has no schema knowledge to leak or
   mis-target.
 
@@ -79,7 +81,8 @@ ever needs evolution it reuses only the synchronous core.
   rewritten record may lag. Acceptable: such records are re-read and re-attempted, and hot
   records are not the retirement bottleneck — cold ones are, which the sweep handles.
 - **A new crate is one more workspace member** to register and lint. Justified by the
-  reuse/dependency boundary; the `state-machine` precedent shows the cost is normal.
+  reuse/dependency boundary; the planned `state-machine` crate shows the pattern is normal for
+  the workspace.
 - **The persistence trait pushes boilerplate to each consumer.** Intended: it is the price of
   keeping SQL typed and context-owned rather than centralizing dynamic SQL in the engine.
 

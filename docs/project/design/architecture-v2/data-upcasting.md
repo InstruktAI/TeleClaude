@@ -171,3 +171,5 @@ path so that, once every channel has converged, the spanning upcaster can be rem
   why a dedicated core crate, CAS write-back, and trait-owned SQL.
 - docs/project/spec/domain/reconciliation.md
   owns the distinct installation-structural migration and drives the sweep hook.
+- docs/project/design/architecture-v2/file-layout.md
+  the workspace crate layout this engine's crates sit in.
