@@ -237,7 +237,7 @@ setup_agents_interactive() {
         else
             print_info "Installing Google Gemini/Antigravity (agy)..."
             local install_ok=0
-            curl -fsSL https://antigravity.google/install.sh > /tmp/agy_install.sh 2>> "$LOG_FILE" || install_ok=1
+            curl -fsSL https://antigravity.google/cli/install.sh > /tmp/agy_install.sh 2>> "$LOG_FILE" || install_ok=1
             if [ $install_ok -eq 0 ]; then
                 bash /tmp/agy_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
             fi
@@ -245,6 +245,19 @@ setup_agents_interactive() {
                 print_success "Antigravity CLI (agy) installed"
             else
                 print_warning "Failed to run agy installation script automatically. Make sure 'agy' is installed and in your PATH."
+            fi
+        fi
+    fi
+
+    if [ "$codex_enabled" = true ]; then
+        if command -v codex &> /dev/null; then
+            print_info "OpenAI Codex CLI already installed"
+        else
+            print_info "Installing OpenAI Codex CLI..."
+            if curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh >> "$LOG_FILE" 2>&1; then
+                print_success "OpenAI Codex CLI installed"
+            else
+                print_warning "Failed to run codex installation script automatically. Make sure 'codex' is installed and in your PATH."
             fi
         fi
     fi
@@ -452,7 +465,7 @@ check_node() {
     print_info "Checking Node.js..."
 
     if ! command -v node &> /dev/null; then
-        print_error "Node.js not found (required for Claude Code)"
+        print_error "Node.js not found (required for TeleClaude tooling)"
         print_info "Install: brew install node (macOS) or apt install nodejs npm (Linux)"
         exit 1
     fi
@@ -667,12 +680,12 @@ install_claude_code() {
         return 0
     fi
 
-    print_info "Installing Claude Code globally via npm..."
-    if npm install -g @anthropic-ai/claude-code >> "$LOG_FILE" 2>&1; then
+    print_info "Installing Claude Code via the native installer..."
+    if curl -fsSL https://claude.ai/install.sh | bash >> "$LOG_FILE" 2>&1; then
         print_success "Claude Code installed"
     else
         print_warning "Failed to install Claude Code (see $LOG_FILE)"
-        print_info "You can install manually: npm install -g @anthropic-ai/claude-code"
+        print_info "You can install manually: curl -fsSL https://claude.ai/install.sh | bash"
     fi
 }
 
