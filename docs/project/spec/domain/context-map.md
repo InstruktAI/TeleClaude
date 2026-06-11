@@ -131,8 +131,8 @@ The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which ent
 
 | Upstream   | Downstream | Relationship      | Purpose                                                                                                                                                                                                                  |
 | ---------- | ---------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `context`  | `workflow` | Customer-Supplier | `context` owns the project Blueprint (`.teleclaude/blueprint/graph.json`) and supplies its blast-radius to workflow's plan-draft, where the planner derives a change's affected set from structure instead of grepping.    |
-| `workflow` | `context`  | Customer-Supplier | Workflow's integrator regenerates the Blueprint baseline on a successful remote-main pull (the integrate flow triggers a `graphify extract`). The Blueprint reflects the remote-main baseline that worktrees branch from. |
+| `context`  | `workflow` | Customer-Supplier | `context` owns the Blueprint *contract* (`.teleclaude/blueprint/graph.json` + `manifest.json`, schema, languages, query surface) and supplies its blast-radius to workflow's plan-draft, where the planner derives a change's affected set from structure instead of grepping. |
+| `workflow` | `context`  | Customer-Supplier (single-writer of a context-owned cache) | Workflow's integrator is the single writer of the Blueprint: on a successful remote-main pull it runs `graphify update` and writes `graph.json` + `manifest.json`. A deliberate divergence from single-state-owner — the Blueprint is a generated cache (not authoritative state) and the integrator is the one actor that knows when `main` became current. |
 <!-- /planned:code-intelligence-foundation -->
 
 #### Cross-filesystem coordination

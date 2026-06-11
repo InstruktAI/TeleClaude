@@ -33,18 +33,27 @@ impact.
 
 Adopt the Graphify CLI as-is as the codebase blueprint engine.
 
-- The blueprint is a lazy-generated `graph.json` under `.teleclaude/blueprint/`
-  (already gitignored), refreshed with `graphify extract --update`. A nightly
-  (or on-demand) full extract keeps the baseline current.
-- Agents consume it through the CLI — `extract`, `query`, `affected`, `path` —
-  per `software-development/procedure/codebase-blast-radius`, which is wired in
-  as a required read of the plan-draft phase.
-- **No wrapper, no 1:1 `telec code blueprint <verb>` mapping, no MCP server.**
+- The blueprint is `.teleclaude/blueprint/graph.json` plus a `manifest.json`
+  freshness sidecar (`baseline_sha`, `generated_at`, `status`), gitignored. The
+  integrator regenerates it on a successful remote-main pull with the pinned
+  **no-LLM code refresh `graphify update <repo-root>`** (`extract` is the full
+  AST+LLM path and is not used — code/AST only, no backend key).
+- **Two thin platform surfaces, not a verb-for-verb wrapper** (this refines the
+  earlier "agents use graphify directly" stance to satisfy the CLI-first default
+  and the single-owner boundary):
+  - **`telec context blueprint affected <changed-files>`** — the agent-facing
+    blast-radius primitive (changed-files → symbol node-ids → `affected` → union,
+    freshness-checked). It exists because `graphify affected` resolves only unique
+    symbol seeds and Graphify has no file→dependents primitive. This is a value-add
+    primitive, not a passthrough.
+  - The integrator's `graphify update` generation step (above).
+  - For discovery/reachability, agents still call `graphify query` / `graphify path`
+    directly against the baseline. **No MCP server; no 1:1 verb mapping of Graphify.**
 - The integration **seam is the `graph.json` data contract plus the CLI method**,
   not the vendor identity. We depend on a data shape and a discovery method, both
   of which another engine could satisfy.
-- `affected` (CLI, per-symbol, unbounded depth) is the blast-radius primitive.
-  The MCP is not used — it is query-only and lacks symbol-level `affected`.
+- `affected` (per-symbol, unbounded depth) is the underlying blast-radius primitive;
+  the MCP is not used — it is query-only and lacks symbol-level `affected`.
 
 ## Consequences
 

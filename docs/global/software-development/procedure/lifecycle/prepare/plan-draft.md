@@ -125,13 +125,13 @@ If the work passes the scope/size gate, continue to plan drafting.
 
 ### 2c. Derive the change's blast radius (before drafting)
 
-- **Treat the codebase blueprint as a discovery tool, not an oracle** — it generates structural candidates; the planner verifies each against the source and decides relevance.
-- **Derive the blast radius before drafting** — refresh the blueprint, saturate domain-term queries to find seed symbols (stop when two rounds surface nothing new and every intended file/symbol has appeared), then take and union the dependency closure of each seed.
+- **Treat the result as candidates, not an oracle** — it surfaces structural candidates; the planner verifies each against the source and decides relevance.
+- **Consume the integrator-maintained baseline; never generate or refresh it yourself** (generation is automation, at integrate-time). Run `telec context blueprint affected <intended changed files/symbols>` to get the dependent set (callers, importers, subclasses, tests) with `file:line` — it resolves symbols and checks the baseline's freshness for you. Use `graphify query` / `graphify path` against the baseline to discover seeds and reachability.
 - **Bias to over-inclusion** — a missed dependent is a build-time surprise; an extra candidate is a discarded read. Prefer false positives, prune with judgment.
 - **Blind-spot honesty** — the blueprint sees only parsed edges; dynamic dispatch, registry/string-keyed wiring, config-driven behavior, cross-language boundaries, and reflection are invisible — name the categories that apply and read those areas directly.
-- **Ground the plan in the verified result** — the change surface and test adjacency derive from the verified candidate set; when no blueprint is available, state the gap and fall back to manual exploration, never silently skip the step.
+- **Ground the plan in the verified result** — the change surface and test adjacency derive from the verified candidate set. If the command reports the baseline missing or stale (recorded baseline commit ≠ current main), state the gap and fall back to manual exploration — never silently skip the step.
 
-The concrete blueprint tooling lives in the project's codebase-intelligence documentation; this step is tool-agnostic.
+The blueprint's location, freshness manifest, command surface, and supported languages are specified in `project/spec/domain/context`.
 
 <!-- /planned:code-intelligence-foundation -->
 
