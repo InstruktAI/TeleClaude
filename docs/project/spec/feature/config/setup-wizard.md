@@ -261,7 +261,8 @@ And a person exists in the global people list
 When the human expands that person in the People view
 Then the view shows both global identity fields and per-person overlay fields
 And the per-person overlay fields are rendered from the PersonConfig schema
-And creds, subscriptions, interests, invite_token, and settings are reachable when present
+And creds, subscriptions, interests, and settings are reachable when present
+And invite_token is not shown as an overlay field because it is relocated out of PersonConfig to the ephemeral invitations store under ~/.teleclaude/state/
 And settings.output_visibility values can be set without editing YAML by hand
 And PersonEntry edits write the global config
 And PersonConfig edits write that person's per-person overlay file
