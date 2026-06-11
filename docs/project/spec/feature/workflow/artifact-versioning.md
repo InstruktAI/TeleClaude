@@ -104,8 +104,8 @@ Then the workflow service refuses with a "delivered (read-only)" error
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.
-- Pending `revive-todo-update-command`, `telec todo update --kind ... --force`
-  may remove orphaned kind-specific artifacts as part of a pre-build kind
+- `telec todo update --kind ... --force` may remove orphaned kind-specific
+  artifacts as part of a pre-build kind
   migration. Those removals use the same destructive artifact-remove semantics:
   the current artifact row and full version history are deleted atomically. The
   seeded `change -> task` exception folds an initial `implementation-plan` into
