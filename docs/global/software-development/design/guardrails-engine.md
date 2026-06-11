@@ -12,8 +12,8 @@ delivered_by: [guardrails-portable-config-lane]
 ## Purpose
 
 TeleClaude's guardrails are its opinionated quality bar — substantive
-code/structure checks that run as the always-run lane of `telec code lint`
-(established by `telec-code-delegates-to-make`). This design makes that lane
+code/structure checks that run as the always-run lane of `telec code lint`.
+This design makes that lane
 **portable**: a domain-blind engine runs rules supplied by **packs**, so a side
 project can run TeleClaude's quality bar behind its own `telec code lint`
 without inheriting TeleClaude-specific rules.
