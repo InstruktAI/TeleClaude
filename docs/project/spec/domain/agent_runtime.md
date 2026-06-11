@@ -256,10 +256,21 @@ producer derives the new fields before emitting/bridging the close:
   the session ledger fields such as `last_agent_stop_at` relative to the latest
   input timestamp before termination.
 
+On every resolved close, workflow clears the todo's `active_runner` whenever it
+equals the closing `session_id` — a pure id match, unconditional, and ahead of
+any hold decision — releasing driver ownership so the runner's next evaluation
+can re-dispatch the appropriate lane. Single-state-ownership is preserved: the
+`agent_runtime` close path does not write the workflow todo field directly; it
+emits the close event and workflow clears its own field on consumption. Because
+session reconciliation guarantees a close event for every terminated session,
+this clear always runs, so a set `active_runner` always names a live driver.
+
 Workflow may set `hold=true` only when the event resolves to one incomplete
 todo and carries `close_initiator=operator` plus `close_intent=stop_work`.
 Agent self-completion, prepare/work cleanup, agent quit, tmux death, and
-maintenance reaping are not cancellation signals and must not create holds.
+maintenance reaping are not cancellation signals and must not create holds — but
+they still clear `active_runner`, since driver ownership ends when the session
+does, independent of whether the close warrants a hold.
 <!-- /planned:runner-dispatch -->
 
 #### `agent_runtime.operation.completed`
