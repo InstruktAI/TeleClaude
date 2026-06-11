@@ -5,7 +5,6 @@ domain: software-development
 scope: project
 visibility: public
 delivered_by:
-  - event-envelope-versioning
   - feature-id-registry
 description: A deliberately multi-version fleet keeps interoperating — nodes on
   different channels exchange events without a newer node's changes breaking an
