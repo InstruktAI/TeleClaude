@@ -1,10 +1,8 @@
 ---
 visibility: public
-delivered_by:
-  - reconciliation-self-update
 description: Each installation keeps itself on the newest release for its declared
-  channel (alpha / beta / stable), applying each target version at most once and
-  returning to a healthy running state — without manual operator action.
+  channel (alpha / beta / stable), applying each target version at most once and returning
+  to a healthy running state — without manual operator action.
 ---
 
 # Channel-Gated Self-Update — Spec
@@ -99,4 +97,4 @@ And the only operator-visible signal in the normal case is that the installation
 
 - **Version-agnostic by construction.** This spec names no transport, language, or build tool. Detection (webhook vs poll), fetch (pull vs download), build, and restart mechanics live in the domain spec and the delivering implementation, not here. The swap test applies: every scenario must hold if the entire implementation is replaced.
 - **Exactly-once is per target version, not per signal.** Duplicate or replayed signals are expected and must be absorbed idempotently.
-- **"Healthy" is a desired-state condition, not hardcoded here.** What counts as a healthy running state is observed from the running installation; the contract does not pin the probe.
+- **"Healthy" is observed from the running daemon.** Convergence completes when the supervised daemon is restored and running on the target version; the contract does not pin the specific probe mechanism.
