@@ -1,6 +1,6 @@
 ---
 delivered_by:
-- v2-workflow-cutover
+  - v2-workflow-cutover
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 visibility: public
@@ -44,7 +44,9 @@ single owner of the slug cascade.
 : Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
 
 <!-- planned:task-lane -->
-Pending `task-lane`, `task` no longer enters `prepared` at creation or kind assignment. It enters `task_plan_drafting`; `/next-prepare-task` converts the raw `input` into a `task-plan` artifact, then the prepare state machine derives `prepared`. Execution is still non-SDLC: no PRD, architecture, implementation-plan, build review, finalize, or commit is required.
+
+Pending `task-lane`, `task` no longer enters `prepared` at creation or kind assignment. It enters `task_plan_drafting`; `/next-prepare-task` converts the raw `input` into a `task-plan` artifact and requests human authorization, dispatched by the lifecycle runner rather than the SDLC prepare state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence, and an authorized, scheduled, unheld task is dispatched to `/next-run-task`. Execution is non-SDLC: no PRD, architecture, implementation-plan, build review, finalize, or commit is required.
+
 <!-- /planned:task-lane -->
 
 Pending `revive-todo-update-command`, kind is mutable only before build starts
@@ -62,11 +64,16 @@ kind mutation is refused.
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
 
 <!-- planned:task-lane -->
-**Task authorization**
-: Human approval for a prepared task to be run. It is recorded in workflow state, not inferred from `task-plan` existence. The lifecycle runner may dispatch `/next-run-task` only when the task is prepared, has a `task-plan`, is authorized, is not held, has no live task runner/claim, and satisfies either its dependency gate or its datetime gate.
 
-**Task datetime**
-: Optional ISO-8601 instant on a task Todo. It schedules earliest eligibility for task execution; it is not a stored timer and does not by itself create a runner claim. A task may have either `after` dependencies or `datetime`, never both. Scheduler tick wake-ups let the lifecycle runner re-evaluate due tasks, and the runner is the only component that decides whether the due task may dispatch.
+**Task authorization**
+: Human approval for a prepared task to be run. It is recorded in workflow state, not inferred from `task-plan` existence, and it is the per-task autostart opt-in: the default autostart policy leaves `task=false`, and authorization flips that one task to runnable. The lifecycle runner may dispatch `/next-run-task` only when the task is prepared, has a `task-plan`, is authorized, is not held, has no live task runner/claim, and satisfies either its dependency gate or its schedule gate.
+
+**Task schedule**
+: Optional eligibility schedule on a task Todo — a one-shot ISO-8601 instant or a recurring rule. It sets the earliest (and, when recurring, repeating) eligibility for task execution; it is not a stored timer and does not by itself create a runner claim. A task may have either `after` dependencies or a `schedule`, never both. The durable `task-plan` is reused on every firing — recurrence never re-drafts it, and each firing is a fresh ephemeral run. Scheduler tick wake-ups let the lifecycle runner re-evaluate due tasks, and the runner is the only component that decides whether a due task may dispatch.
+
+**Task log**
+: The `log` artifact for a `kind=task` Todo — the agent's work diary and run-integrity record, appended on every run and read on wake (`general/principle/continuity`). Dated, concise entries of what the run did and encountered — including failures and which scheduled run completed — carry continuity across the memoryless runs and the restart-idempotency signal. It is durable on the Todo; the run's filesystem deliverables live under `{project_root}/workspace/<slug>/`, never archived for a task.
+
 <!-- /planned:task-lane -->
 
 **Roadmap**
@@ -97,8 +104,10 @@ kind mutation is refused.
 : The engine that advances a todo's phase based on artifact production, review verdicts, and orchestrator decisions. Per-stage: prepare state machine, work state machine, integrate state machine.
 
 <!-- planned:orchestrator-terminal-self-end -->
+
 **Terminal output**
 : The instruction a state machine returns at a successful terminal state. It states the objective outcome (e.g., prepared and drift reconciled; work-stage responsibility complete) and emits the cleanup commands — end each live slug worker, then the orchestrator self-end — through one shared session-cleanup formatter. It carries no speculative next-step prompt for an action the terminal does not own. The PREPARED terminal adds a lineage-conditioned reminder: an orchestrator that reached it as a terminal prepare run self-ends, while one that bounced in-line from `telec todo work {slug}` to reconcile drift resumes work; the machine states the condition and the orchestrator applies it from its own lineage, with no runtime-state marker and no worktree-presence inference. The work `finalize_ready` terminal states completion and routes its cleanup through the same shared formatter, with no negative re-call phrasing.
+
 <!-- /planned:orchestrator-terminal-self-end -->
 
 **Verdict**
@@ -108,6 +117,7 @@ kind mutation is refused.
 : A long-running task tied to a todo (e.g., a worker session doing build). Tracked as `agent_runtime.operations` from workflow's perspective via the `operation.completed` event.
 
 <!-- planned:runner-dispatch -->
+
 **Lifecycle runner**
 : The project-scoped autonomous dispatcher for workflow lifecycle work. It is woken by workflow/config/session events, reloads the current todo list for the affected project, evaluates the full eligible set, acquires a dispatch claim for each selected `(project, slug, lane)`, and then starts the relevant `/analyze-todo-input`, `/next-prepare`, or `/next-work` session. It is stateless between events except for durable claims/leases used to prevent duplicate dispatch.
 
@@ -122,6 +132,7 @@ kind mutation is refused.
 
 **Active runner**
 : The durable, single-valued workflow-owned field on a Todo holding the agent session id currently driving that todo's lifecycle — a link todo → session, with nothing else denormalized onto it. A non-null `active_runner` marks the todo as driven; lane, command, liveness, and project are resolved by dereferencing the session id against the agent-runtime session record. The dispatcher that spawns a lifecycle session is its sole writer, recording the returned session id at spawn — the lifecycle runner for autonomous dispatch, the manual-start command path for an operator `telec todo work|prepare`. The state machine and the driven session never write it. It is single-valued — one driver per todo — and a lane handoff is clear-on-close then write-on-next-dispatch, never a live overwrite. Sub-workers a driver dispatches (reviewers, drift analyzers, build/finalize workers) do not hold it; for `kind=task` the dispatched session is itself the driver. A link naming a non-live session is stale: the lifecycle runner clears it and dispatches. Session close is a runner wake-up, so a closed driver's link is cleared on the next evaluation.
+
 <!-- /planned:runner-dispatch -->
 
 **Delivery commit**
@@ -146,8 +157,9 @@ kind mutation is refused.
   - An SDLC todo cannot reach `delivered` stage without a non-empty `delivery_commit` and a successful integrate-state-machine terminal state. A `task` todo is non-SDLC; its durable evidence is the groomed `task-plan` and any recorded results.
   <!-- planned:task-lane -->
   - A `task` Todo MUST NOT be dispatched before `task-plan` exists, the task is in `prepared`, and the task authorization stamp is present. Authorization is human-owned; artifact writes and analyzer classification never imply execution approval.
-  - A `task` Todo MAY carry a `datetime` instant, but `datetime` and `after` dependencies are mutually exclusive at create/update boundaries. Clearing one side is allowed; persisting both in the same live entry is refused.
-  - A due datetime is an eligibility input, not a phase transition. The scheduler tick wakes the lifecycle runner; the runner reads current state and dispatches only after all task gates still pass.
+  - A `task` Todo MAY carry a `schedule` (a one-shot instant or a recurring rule), but `schedule` and `after` dependencies are mutually exclusive at create/update boundaries. Clearing one side is allowed; persisting both in the same live entry is refused.
+  - A due schedule is an eligibility input, not a phase transition. The scheduler tick wakes the lifecycle runner; the runner reads current state and dispatches only after all task gates still pass.
+  - A `task` Todo's `workspace/<slug>/` directory is durable evidence: unlike an SDLC slug it has no delivery teardown and is never archived; it persists for the life of the Todo, and runs read and grow it over time.
   <!-- /planned:task-lane -->
   - Dependency cycles are forbidden — the dependency graph MUST be a DAG.
   - A todo's slug is immutable across its lifetime EXCEPT via the atomic
@@ -268,6 +280,7 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   gate themselves explicitly.
 
 <!-- planned:runner-dispatch -->
+
 Pending `runner-dispatch`, autonomous pickup is no longer controlled by
 creation-time `creation_mode` / `pickup_requested`. The target dispatch
 contract is:
@@ -283,7 +296,7 @@ contract is:
   task-autostart disabled; existing tasks are not converted into held todos.
   Target consumers do not branch on legacy pickup fields.
 - The runner reads effective autostart policy at evaluation time, so config
-  changes can alter future dispatch without rewriting existing todo rows.
+changes can alter future dispatch without rewriting existing todo rows.
 <!-- /planned:runner-dispatch -->
 
 ##### v1 partial-shape (transitional)
@@ -419,6 +432,7 @@ new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
 - **Failure handling:** stale configuration is tolerated for one request; the next read after the event flushes the cache.
 
 <!-- planned:runner-dispatch -->
+
 #### `agent_runtime.session.ended`
 
 - **Producer:** `agent_runtime`
@@ -883,6 +897,7 @@ And it is left undispatched by task autostart policy (no-autostart), not by hold
 ```
 
 <!-- planned:runner-dispatch -->
+
 #### UC-WFL-20: Event-driven lifecycle runner dispatches the full eligible set
 
 ```gherkin
@@ -942,6 +957,7 @@ When the lifecycle runner wakes on `agent_runtime.session.ended`
 Then no hold is set
 And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
+
 <!-- /planned:runner-dispatch -->
 
 ### v1 inventory
@@ -1004,9 +1020,10 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 ## See Also
 
 <!-- planned:orchestrator-terminal-self-end -->
+
 - docs/project/adr/0034-orchestrator-terminal-resumes-via-lineage-awareness.md
-<!-- /planned:orchestrator-terminal-self-end -->
-<!-- planned:runner-dispatch -->
+  <!-- /planned:orchestrator-terminal-self-end -->
+  <!-- planned:runner-dispatch -->
 - docs/project/adr/0035-active-runner-driver-ownership.md
 - docs/project/adr/0036-manual-close-is-an-explicit-halt.md
 <!-- /planned:runner-dispatch -->

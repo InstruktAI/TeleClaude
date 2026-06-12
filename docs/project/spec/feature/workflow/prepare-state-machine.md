@@ -16,7 +16,9 @@ visibility: 'public'
 The prepare state machine is the workflow capability that drives a Todo through its preparation Phases — from the initial `draft` Phase, through `prd_drafting`, `prd_human_approval`, optionally `architecture_drafting` / `architecture_review`, then `plan_drafting` / `plan_review`, and finally `prepared`. Each call by the orchestrator advances exactly one logical step: it reads the persisted Todo state, derives the current Phase from artifact presence and review verdicts, and returns a verbatim instruction telling the orchestrator what to do next — load a drafting procedure inline, dispatch a reviewer worker, request a human approval Stamp, or recognize that the Todo is now `prepared`.
 
 <!-- planned:task-lane -->
-For kind=`task`, prepare is a narrow non-SDLC lane: `task_plan_drafting` loads `/next-prepare-task`, which reads `input`, writes `task-plan`, and calls the prepare machine again. The machine derives `prepared` from task kind + task-plan presence. It does not require PRD approval, architecture, implementation-plan, or reviewer verdicts for tasks.
+
+A `kind=task` Todo does not enter this machine. Task preparation is a separate non-SDLC lane: `/next-prepare-task` reads `input`, writes the `task-plan`, and requests human authorization — dispatched by the lifecycle runner, never by this state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence without any PRD, architecture, implementation-plan, or reviewer verdict.
+
 <!-- /planned:task-lane -->
 
 Preparation is local-first and runs on the project's `main` branch with no worktree, which is what authorizes it to write artifacts and snippets to the canonical doc layer. The machine itself owns no UI or worker code; it owns the invariants on transitions and the resolution of which next instruction matches the current evidence. When the entrypoint is a split holder, prepare refuses to operate on the holder directly and routes the operator to the runnable direct children instead. When tracked artifacts have drifted along any of the classes enumerated in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, dependency-graph, age), the machine surfaces drift as a blocker and routes to a drift-analyzer worker before the Todo may reach `prepared`; the per-artifact collapsed status follows the `substantive > pending > cosmetic > fresh` priority rule. A loop guard bounds in-call internal transitions so a misconfigured state always surfaces an explicit error rather than spinning silently.
@@ -58,23 +60,17 @@ And advances past the architecture phases straight to plan_drafting on the next 
 ```
 
 <!-- planned:task-lane -->
-#### UC-WPS6: Task prepare drafts a task-plan
+
+#### UC-WPS6: Task todos bypass the prepare machine
 
 ```gherkin
-Given a Todo has kind="task", lifecycle_phase="task_plan_drafting", an `input` artifact, and no `task-plan`
-When the orchestrator runs `telec todo prepare my-task`
-Then the prepare machine returns the `/next-prepare-task` procedure-load instruction
-And the task prepare session writes a `task-plan` artifact grounded in `input`
-And on the next prepare call the machine derives lifecycle_phase="prepared"
-And no PRD, architecture, implementation-plan, or review verdict is required
+Given a Todo has kind="task" at lifecycle_phase="task_plan_drafting"
+When an operator runs `telec todo prepare my-task`
+Then the prepare state machine does not own task preparation
+And it routes the operator to the task lane (`/next-prepare-task`, dispatched by the lifecycle runner)
+And it requires no PRD, architecture, implementation-plan, or reviewer verdict for the task
 ```
 
-```gherkin
-Given a Todo has kind="task" and lifecycle_phase="prepared"
-When no human task authorization stamp exists
-Then prepare remains terminally prepared
-And execution remains blocked from runner dispatch until authorization is recorded
-```
 <!-- /planned:task-lane -->
 
 ```
@@ -103,12 +99,12 @@ Then the loop iterates up to the prepare loop limit and exits with a non-recover
 And the instruction tells the operator to inspect via "telec todo show my-feature" and surface the issue to the user
 ```
 
-
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
 
 <!-- planned:runner-dispatch -->
+
 Pending `runner-dispatch`, PREPARED no longer dispatches dependent children
 from inside the prepare state machine. The prepare machine's responsibility at
 PREPARED is to persist/emit the phase transition and return its own cleanup
@@ -125,6 +121,7 @@ not send a new `/next-prepare` instruction to itself, must not rebind a parent
 worker to a child slug, and must not rely on the parent worker's live context as
 the child's execution substrate. The child's context is recovered from frozen
 artifacts/snippets and normal docs retrieval.
+
 <!-- /planned:runner-dispatch -->
 
 ### Use cases
@@ -150,6 +147,7 @@ Then it emits the normal prepared-cleanup (end all live parent sessions, includi
 ```
 
 <!-- planned:runner-dispatch -->
+
 #### UC-WPS5: PREPARED emits a runner wake-up, not a child dispatch
 
 ```gherkin
@@ -162,6 +160,7 @@ And it does not emit `telec sessions send <parent_worker>` for any child
 And it does not emit a fresh `/next-prepare` run for any child
 And the lifecycle runner handles child eligibility and dispatch from the event wake-up
 ```
+
 <!-- /planned:runner-dispatch -->
 
 ### Selector
@@ -186,7 +185,6 @@ Then the prepare machine returns TODO_NOT_FOUND with a concrete todo-create next
 And no roadmap row is created for "unknown-prepare"
 ```
 
-
 ### Cross-context references
 
 - `agent_runtime` — drafting Phases load procedures into the orchestrator session inline; reviewer Phases (architecture-review, plan-review) and the drift-analyzer dispatch a worker session.
@@ -206,10 +204,10 @@ And no roadmap row is created for "unknown-prepare"
 - The prepare loop limit is a contradiction detector, not a workload knob. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - The machine does not auto-add the slug to the todo list when called on a holder; auto-add happens only after holder resolution confirms the slug is a leaf prepare target.
 
-
 - **Auto-continue at PREPARED is concrete, not advisory.** When a parent reaches `PREPARED` it unblocks the **prepare** gate (not the work gate) of its dependents — so the dependents' prepare auto-continues immediately, while their work still waits for the parent's delivery (see `@spec/feature/workflow/dependency-graph`). The continuation is dispatched, not suggested to the human.
 - **Worker reuse preserves context.** Auto-continue prefers reusing the parent's open prepare worker via `telec sessions send` (the existing reuse-or-spawn dispatch keyed by parent slug + `/next-prepare`), because that worker holds the parent's just-frozen design. One worker thus carries multiple slugs in context across the dependency chain. A fresh `telec sessions run` is the fallback only when no parent worker is live; the parent's design is still recoverable from its now-frozen artifacts and snippets. No session↔slug rebinding is required: the reuse lookup is always keyed by the _parent_ slug (whose worker title is intact), and that worker then drives the child inline.
 
 <!-- planned:runner-dispatch -->
+
 - **Runner-owned dependent dispatch supersedes PREPARED auto-continue.** The two current caveats above describe the pre-runner target. After `runner-dispatch`, the concrete dispatch still happens automatically, but it is performed by `workflow.lifecycle_runner` from the emitted wake-up event, not by the parent prepare state-machine response. Parent-worker reuse is forbidden for child dispatch; each child session is explicitly bound to its own slug.
 <!-- /planned:runner-dispatch -->

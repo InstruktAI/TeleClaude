@@ -30,15 +30,14 @@ never executes the work itself and never mutates the `input`.
    Read it as intent to be interpreted, not as a spec to be obeyed literally.
 
 2. **Classify.** Decide which kind the dump is, by what the work actually is:
-   - clean code work with a knowable plan → `change`;
-   - new capability that needs a PRD → `feature`;
+   - any change to the codebase that is not a new capability or a defect → `change`;
+     no pre-existing plan is required — the plan lane drafts one;
+   - a new product capability that needs a PRD → `feature`;
    - a defect to fix → `bug`;
-   - fuzzy / multi-step / an action whose work need not touch the codebase
-     (notify someone, hit an API on a schedule, run an operation, or fan out into
-     several of the above) → `task`.
-     When the dump is genuinely ambiguous between an action and code work, prefer
-     `task`: a task can itself spawn `change`/`bug` todos, so it is the safe
-     container for "do some of this now, defer the code work."
+   - an operation whose work is side-effects only and never touches the codebase
+     (notify someone, hit an API, run an operation, do research) → `task`.
+     Anything that touches the codebase is `change` (or `feature`/`bug`), never
+     `task`: a `task` is the side-effect kind and does not absorb code work.
 
 3. **Assign the kind through the stamp boundary.**
    - For a **`task`**: draft the **`task-plan`** content from the blueprint below,
@@ -67,8 +66,8 @@ more structure than this is ceremony.
 - **Intent** — one line: "I read your dump as …".
 - **Steps** — an ordered, checkable list. Each step is one of:
   - _do X_ — a direct action an agent performs;
-  - _spawn `todo(kind=…)`_ — create/defer a child todo (e.g. the code work as a
-    `change`, a later action as another `task`);
+  - _spawn a follow-on `task`_ — defer a later side-effect operation as another
+    `task` (never code work, which is always a separate `change`/`feature`/`bug`);
   - _wait on `dep` / `time`_ — a gate before the next step.
 - **Status** — per step: `todo` / `done` / `blocked`.
 - **Log** — a short running record of what happened as steps complete.
@@ -87,9 +86,10 @@ The session is the hands; the task-plan is the memory.
 
 - If the `input` is empty or unreadable, do not guess a kind — report the blocker
   and leave the todo kind-less for the human.
-- If classification is genuinely undecidable, assign `task` (the safe container)
-  and say so in the task-plan's intent line; the human can redirect a task into
-  spawned `change`/`bug` work at any time.
+- If classification is genuinely undecidable between an operation and code work,
+  the discriminator is whether it touches the codebase: code work is `change`
+  (or `feature`/`bug`), and only pure side-effect work is a `task`. Decide on that
+  axis rather than defaulting to `task`.
 - If you catch yourself executing a step rather than classifying it, stop: this
   procedure assigns a kind and (for a task) drafts the task-plan only. The work
   itself runs later, in the kind's lane.
@@ -102,5 +102,5 @@ dispatching downstream work by hand, or editing the `input`. Read the `input`,
 decide the kind, and assign it through `telec todo stamp --kind-assign` (drafting
 the `task-plan` first for a task). The kind assignment is autonomous — no human
 approval stands between classification and the lane — so the discipline is the
-restraint to route the work, not perform it. When unsure between an action and
-code work, `task` is the safe container — it can always spawn the code work later.
+restraint to route the work, not perform it. Anything that touches the codebase is
+`change` (or `feature`/`bug`), never `task`; a `task` is pure side-effect work.
