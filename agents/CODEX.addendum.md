@@ -49,6 +49,7 @@ This file defines Codex-specific operating rules for this repository.
 - Fail loudly on contract violations.
 - Diagnose the actual failure before patching.
 - Prove contract-sensitive fixes with targeted tests.
+- When passing Markdown/prose through shell commands, preserve Markdown and quote it safely: never put prose in double quotes; use single-quoted argv with proper single-quote escaping.
 
 ## Communication Rules
 
