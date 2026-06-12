@@ -132,7 +132,7 @@ And the subsequent build_complete round dispatches a fresh reviewer against the 
 ```
 Given a Todo at lifecycle_phase=review_changes_requested whose builder session is not alive
 When the orchestrator calls "telec todo work my-feature"
-Then the machine surfaces BUILDER_NOT_ALIVE for manual intervention, because no durable artifact can substitute for the absent fixer
+Then the machine surfaces BUILDER_NOT_ALIVE for manual intervention
 ```
 
 <!-- /planned:work-reviewer-not-alive-with-existing-session -->
