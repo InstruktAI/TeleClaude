@@ -151,11 +151,7 @@ The ingress is the daemon-hosted HTTP boundary for external provider webhooks. T
 - **Visibility:** CLUSTER
 - **Known consumers:** `agent_runtime` (for inbound messaging targeted at sessions), domain-context handlers per provider.
 - **Idempotency key:** `entry_id` (which is derived from the provider's idempotency_key when available).
-<!-- planned-change:webhook-ingress-service -->
-- **Posture:** `inbox` — durable capture first, then publish. If publish fails, the dispatcher retries; the inbox entry guarantees no loss.
-<!-- change:webhook-ingress-service -->
 - **Posture:** `inbox` for durable messaging capture; `relay` for stateless webhook ingress. Durable capture publishes after an `InboxEntry` exists; relay publishes immediately after source restriction, verification, and normalization.
-<!-- /planned-change:webhook-ingress-service -->
 
 - **Ingress relay producer:** the daemon-hosted ingress also produces this event with `relay` posture. It verifies and normalizes a provider webhook, then emits the same CLUSTER event without writing an `InboxEntry`. For this producer, `entry_id` and the event envelope's `idempotency_key` are the provider delivery id (for GitHub, `X-GitHub-Delivery`); `verified=true`, `provider`, `event_name`, normalized `properties`, original `payload`, and `received_at` carry the same domain meaning as the durable inbox producer. Consumers dedupe by idempotency key and react only when the normalized event is in their interest.
 

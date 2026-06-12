@@ -169,22 +169,12 @@ Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for th
 
 #### integration
 
-| Event | Producer | Visibility | Posture |
-| ----- | -------- | ---------- | ------- |
-
-<!-- planned-change:webhook-ingress-service -->
-
-| `integration.inbox.received` | integration | CLUSTER | inbox |
-
-<!-- change:webhook-ingress-service -->
-
-| `integration.inbox.received` | integration | CLUSTER | inbox / relay |
-
-<!-- /planned-change:webhook-ingress-service -->
-
-| `integration.outbox.appended` | integration | CLUSTER | commit-then-emit |
-| `integration.outbox.delivered` | integration | CLUSTER | commit-then-emit |
-| `integration.outbox.dead_lettered` | integration | CLUSTER | commit-then-emit |
+| Event                              | Producer    | Visibility | Posture          |
+| ---------------------------------- | ----------- | ---------- | ---------------- |
+| `integration.inbox.received`       | integration | CLUSTER    | inbox / relay    |
+| `integration.outbox.appended`      | integration | CLUSTER    | commit-then-emit |
+| `integration.outbox.delivered`     | integration | CLUSTER    | commit-then-emit |
+| `integration.outbox.dead_lettered` | integration | CLUSTER    | commit-then-emit |
 
 `integration.inbox.received` has two producers with the same channel, CLUSTER visibility, payload vocabulary, and idempotency semantics:
 
@@ -192,12 +182,6 @@ Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for th
 - **Stateless webhook ingress relay (`relay` posture):** the daemon-hosted ingress verifies and normalizes provider webhooks, then emits directly with the provider delivery id as `entry_id` and idempotency key. It relays every verified event regardless of the ingress node's own role or reaction.
 
 Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/integration boundary correction. Agent CLI hooks bypass integration entirely — they reach agent_runtime directly via the `telec-hook` subprocess (owned by agent_runtime). Integration's inbox is for true external webhooks only (Telegram, Discord, WhatsApp, GitHub).
-
-<!-- planned:webhook-ingress-service -->
-
-Note: `integration.inbox.received` has two producers. The durable messaging-inbox path uses the `inbox` posture above. The single-ingress webhook terminator is a second producer with a stateless `relay` posture — it verifies, normalizes, and emits in one pass without durable capture, carrying the provider delivery identifier as `entry_id`/`idempotency_key`; consumers absorb replays idempotently. See `project/spec/domain/integration` for both producers.
-
-<!-- /planned:webhook-ingress-service -->
 
 **Detailed entries:** see `project/spec/domain/integration`.
 
@@ -371,11 +355,7 @@ is incidental.
 ## Allowed values
 
 - `visibility`: `LOCAL` (single-host Redis scope — events confined to this computer), `CLUSTER` (single-owner mesh Redis scope — cross-host within one user's fleet), `PUBLIC` (federation hub Redis scope — cross-mesh). Three real Redis client instances in v2; routing is explicit per envelope. See `project/design/architecture-v2/event-bus-transports` for the bus semantics. Single-computer installs run Local-only; emits to Cluster/Public silently drop when those scopes aren't configured.
-<!-- planned-change:webhook-ingress-service -->
-- `posture` (emit safety pattern): `commit-then-emit` (the producer commits its state change in Postgres, THEN publishes the event; loud-fail on publish failure — caller treats it as a defect since the state change already landed), `outbox` (the event is written to the producing context's outbox table atomically with the caller's state change; a dispatcher publishes asynchronously — used for outbound external delivery and for cross-context events where at-least-once matters), `inbox` (the event represents an external input captured durably first then published; used for ingress paths from external systems).
-<!-- change:webhook-ingress-service -->
 - `posture` (emit safety pattern): `commit-then-emit` (the producer commits its state change in Postgres, THEN publishes the event; loud-fail on publish failure — caller treats it as a defect since the state change already landed), `outbox` (the event is written to the producing context's outbox table atomically with the caller's state change; a dispatcher publishes asynchronously — used for outbound external delivery and for cross-context events where at-least-once matters), `inbox` (the event represents an external input captured durably first then published; used for ingress paths from external systems whose drops cannot be re-derived), `relay` (the producer verifies and normalizes an external input and emits immediately without durable ingress state; the event's idempotency key lets consumers absorb provider replays).
-<!-- /planned-change:webhook-ingress-service -->
 
 ## Known caveats
 
