@@ -60,7 +60,6 @@ install:
 				mkdir -p "$$(dirname "$$target_binary")"; \
 				cp target/release/telec-daemon "$$target_binary"; \
 				chmod +x "$$target_binary"; \
-				if [ "$$(uname -s)" = "Darwin" ]; then TELEC_DAEMON_BINARY="$$target_binary" ./bin/daemon-control.sh install-telec-daemon; fi; \
 			else \
 				echo "cargo not found — skipping telec-daemon build (v2, pre-cutover; becomes required at the v2 cutover)."; \
 			fi; \

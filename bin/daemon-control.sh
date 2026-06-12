@@ -82,8 +82,10 @@ launchd_plist_path() {
 }
 
 managed_launchd_labels() {
+    # TELEC_DAEMON_LABEL (v2 Rust) is deliberately absent pre-cutover: the v2
+    # unit is opt-in via `install-telec-daemon` and joins the managed set at
+    # the v2 cutover. Status treats it as required-if-present.
     printf '%s\n' "$V1_DAEMON_LABEL"
-    printf '%s\n' "$TELEC_DAEMON_LABEL"
     printf '%s\n' "$DOCS_WATCH_LABEL"
 }
 
@@ -410,7 +412,8 @@ install_service() {
             ;;
         macos)
             install_launchd_service
-            install_launchd_telec_daemon_service
+            # telec-daemon (v2) is NOT installed here pre-cutover; it is
+            # opt-in via the `install-telec-daemon` subcommand only.
             install_launchd_docs_watch_service
             ;;
     esac
