@@ -32,7 +32,7 @@ from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets
-from teleclaude.git import GitCommandError, Repo
+from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
 from teleclaude.session_identity import get_session_id
@@ -56,7 +56,7 @@ def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, st
     """Run a git command via GitPython; return (returncode, stdout, stderr)."""
     try:
         repo = Repo(cwd, search_parent_directories=True)
-        stdout = str(repo.git.execute(["git", *args]))
+        stdout = str(repo.git.execute([GIT_EXECUTABLE, *args]))
         return 0, stdout, ""
     except GitCommandError as exc:
         rc = exc.status if isinstance(exc.status, int) else 1

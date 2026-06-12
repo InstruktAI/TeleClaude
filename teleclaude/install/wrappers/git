@@ -120,7 +120,9 @@ _real_git() {
     # wrapper silently — rc surfaces but the diagnostic stderr is lost.
     local _rc=0
     "$_real_git_bin" "$@" 2>"$_stderr_capture" || _rc=$?
+    local _had_stderr=0
     if [ -s "$_stderr_capture" ]; then
+        _had_stderr=1
         while IFS= read -r _line || [ -n "$_line" ]; do
             echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
             printf '%s\n' "$_line" >&2
@@ -128,22 +130,31 @@ _real_git() {
     fi
     rm -f "$_stderr_capture"
 
-    _log_wrapper_end "$_inv_id" "$_rc"
+    _log_wrapper_end "$_inv_id" "$_rc" "$_had_stderr"
     return $_rc
 }
 
+# Pass-through start/end is pure tracing: shell prompts and the agent CLI call
+# git dozens of times a second for reads (ls-files, rev-parse, status), and the
+# wrapper's own detection helpers re-enter here too. TRACE keeps that volume out
+# of routine DEBUG views; the queryable audit signal lives in event=blocked
+# (DEBUG) and real git failures (ERROR via _log_wrapper_end).
 _log_wrapper() {
     local _inv_id="$1"
     shift
-    { echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id event=start role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    { echo "$(_ts_cmd) level=TRACE logger=git-wrapper inv=$_inv_id event=start role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
 }
 
 _log_wrapper_end() {
     local _inv_id="$1"
     local _rc="$2"
-    # ERROR only when git itself failed; rc=0 is routine — DEBUG.
-    local _level=DEBUG
-    [ "$_rc" -ne 0 ] && _level=ERROR
+    local _had_stderr="${3:-0}"
+    # rc=0 is routine — TRACE. A non-zero rc with NO stderr is a benign query
+    # outcome (git grep / diff --quiet / rev-parse --verify signalling "no
+    # match"), not a failure — TRACE. Only a non-zero rc WITH a real diagnostic
+    # on stderr (fatal:/error:, a pre-push hook block) earns ERROR.
+    local _level=TRACE
+    [ "$_rc" -ne 0 ] && [ "$_had_stderr" -eq 1 ] && _level=ERROR
     { echo "$(_ts_cmd) level=$_level logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
 }
 

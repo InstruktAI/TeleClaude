@@ -29,7 +29,14 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine.kinds import PLAN_WITHOUT_INTENT_UPSTREAM_KINDS
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
+from teleclaude.git import (
+    GIT_EXECUTABLE,
+    GitCommandError,
+    InvalidGitRepositoryError,
+    NoSuchPathError,
+    Repo,
+    no_autostash_env,
+)
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
 
 logger = get_logger(__name__)
@@ -142,7 +149,7 @@ def run_git_command(args: list[str], cwd: str) -> tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
     try:
         repo = Repo(cwd, search_parent_directories=True)
-        output = str(repo.git.execute(["git", *args]))
+        output = str(repo.git.execute([GIT_EXECUTABLE, *args]))
         return 0, output, ""
     except (InvalidGitRepositoryError, NoSuchPathError):
         return 128, "", "not a git repository"

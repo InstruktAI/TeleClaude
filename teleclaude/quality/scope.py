@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.git import GitCommandError, Repo
+from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
     NoSessionTouchedFiles,
@@ -112,13 +112,13 @@ def is_worktree(project_root: Path) -> bool:
     """
     try:
         git_common = subprocess.run(
-            ["git", "-C", str(project_root), "rev-parse", "--git-common-dir"],
+            [GIT_EXECUTABLE, "-C", str(project_root), "rev-parse", "--git-common-dir"],
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
         git_dir = subprocess.run(
-            ["git", "-C", str(project_root), "rev-parse", "--git-dir"],
+            [GIT_EXECUTABLE, "-C", str(project_root), "rev-parse", "--git-dir"],
             capture_output=True,
             text=True,
             check=True,

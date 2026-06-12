@@ -15,7 +15,7 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.git import GitCommandError, Repo
+from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.paths import STORAGE_DIR
 
 logger = get_logger(__name__)
@@ -26,7 +26,7 @@ def _run_git_cmd(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int
     try:
         repo = Repo(cwd, search_parent_directories=True)
         execute = cast(Callable[..., object], repo.git.execute)
-        output = str(execute(["git", *args], kill_after_timeout=timeout))
+        output = str(execute([GIT_EXECUTABLE, *args], kill_after_timeout=timeout))
         return 0, output, ""
     except GitCommandError as exc:
         if "timeout" in str(exc).lower():

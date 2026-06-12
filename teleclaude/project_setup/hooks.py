@@ -3,12 +3,14 @@
 import subprocess
 from pathlib import Path
 
+from teleclaude.git import GIT_EXECUTABLE
+
 _PRECOMMIT_SOURCE = Path(".githooks") / "pre-commit"
 
 
 def _hook_destination(project_root: Path) -> Path:
     result = subprocess.run(
-        ["git", "rev-parse", "--git-path", "hooks/pre-commit"],
+        [GIT_EXECUTABLE, "rev-parse", "--git-path", "hooks/pre-commit"],
         cwd=project_root,
         text=True,
         capture_output=True,

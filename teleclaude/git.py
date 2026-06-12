@@ -75,25 +75,34 @@ def _logged_execute(self: _Git, command: Any, *args: Any, **kwargs: Any) -> Any:
         result = _original_execute(self, command, *args, **kwargs)
     except GitCommandError as exc:
         duration_ms = int((_time.monotonic() - t0) * 1000)
-        _exec_logger.error(
+        stderr = (str(exc.stderr) if exc.stderr else "").strip()
+        # A non-zero rc with empty stderr is a routine query outcome, not a
+        # failure: `git grep` / `git diff --quiet` / fallback `rev-parse` all
+        # exit non-zero to signal "no match" with nothing on stderr. Only a
+        # real diagnostic (fatal:/error: text on stderr) earns ERROR; the rest
+        # is DEBUG so benign no-match queries don't masquerade as alarms.
+        _log = _exec_logger.error if stderr else _exec_logger.debug
+        _log(
             "git_exec_failed argv=%s rc=%s duration_ms=%d stderr=%s",
             argv,
             exc.status,
             duration_ms,
-            (str(exc.stderr) if exc.stderr else "").strip(),
+            stderr,
             extra={
                 "argv": argv,
                 "rc": exc.status,
                 "duration_ms": duration_ms,
-                "stderr": (str(exc.stderr) if exc.stderr else "").strip(),
+                "stderr": stderr,
                 "stdout": (str(exc.stdout) if exc.stdout else "").strip(),
             },
         )
         raise
     duration_ms = int((_time.monotonic() - t0) * 1000)
+    # Per-call success is pure tracing — central observability of the git seam,
+    # not an operational signal. TRACE keeps it out of routine DEBUG views.
     if isinstance(result, tuple) and len(result) == 3:
         rc, stdout, stderr = result
-        _exec_logger.info(
+        _exec_logger.trace(
             "git_exec argv=%s rc=%s duration_ms=%d",
             argv,
             rc,
@@ -107,7 +116,7 @@ def _logged_execute(self: _Git, command: Any, *args: Any, **kwargs: Any) -> Any:
             },
         )
     else:
-        _exec_logger.info(
+        _exec_logger.trace(
             "git_exec argv=%s rc=0 duration_ms=%d",
             argv,
             duration_ms,
