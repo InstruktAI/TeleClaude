@@ -1,10 +1,27 @@
 # TeleClaude minimal bash env. Read by `bash -c` when $BASH_ENV points
-# here. Same PATH-pin contract as the zsh equivalent.
+# here. Implements the agent-shell PATH-pin contract; the body below is
+# kept byte-identical across zshenv, bashenv, and profile.
+# See project/spec/agent-shell-path.
 #
 # Honors $TELECLAUDE_HOME (matches teleclaude.paths.TELECLAUDE_HOME),
 # falling back to ~/.teleclaude when the override is unset.
 TC_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
+
+# Guarantee the platform's published tool dirs are on PATH regardless of the
+# launching context: ~/.local/bin (graphify, telec) and ~/.cargo/bin (rust).
+# Position among these is non-critical, so add only when missing.
+for _tc_dir in "$HOME/.cargo/bin" "$HOME/.local/bin"; do
+  [ -d "$_tc_dir" ] || continue
+  case ":$PATH:" in
+    *":$_tc_dir:"*) ;;
+    *) PATH="$_tc_dir:$PATH" ;;
+  esac
+done
+# The agent-session git wrapper MUST win: $TC_HOME/bin first. Front-anchored
+# guard so a non-first occurrence is moved to the front.
 case ":$PATH:" in
   ":$TC_HOME/bin:"*) ;;
-  *) export PATH="$TC_HOME/bin:$PATH" ;;
+  *) PATH="$TC_HOME/bin:$PATH" ;;
 esac
+unset _tc_dir
+export PATH
