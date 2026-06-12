@@ -1,6 +1,6 @@
 """Build and manage doc snippet index.yaml files.
 
-Handles title normalization, index generation, and global collision checking.
+Handles index generation and global collision checking.
 Does NOT validate — that's resource_validation.py.
 
 Called by ``telec sync``.
@@ -8,7 +8,6 @@ Called by ``telec sync``.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import NotRequired, TypedDict
@@ -21,7 +20,6 @@ from teleclaude.config.loader import load_project_config
 from teleclaude.constants import (
     SNIPPET_VISIBILITY_INTERNAL,
     SNIPPET_VISIBILITY_VALUES,
-    TYPE_SUFFIX,
 )
 from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
@@ -39,33 +37,10 @@ __all__ = ["load_domains"]
 
 logger = get_logger(__name__)
 
-_H1_LINE = re.compile(r"^#\s+")
-
 
 def _teleclaude_root() -> str:
     """Return teleclaude root path with tilde (portable)."""
     return "~/.teleclaude"
-
-
-def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
-    """Split top-level frontmatter block from body.
-
-    Returns:
-        header_with_fences, body, has_frontmatter
-    """
-    lines = content.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
-        return "", content, False
-    end_idx = None
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            end_idx = i
-            break
-    if end_idx is None:
-        return "", content, False
-    header = "".join(lines[: end_idx + 1])
-    body = "".join(lines[end_idx + 1 :])
-    return header, body, True
 
 
 # ---------------------------------------------------------------------------
@@ -126,90 +101,6 @@ def _copy_needs_domain_baseline_metadata(entry: SnippetEntry, metadata: Mapping[
         entry["needs_domain_baseline"] = raw_value
     elif isinstance(raw_value, str) and raw_value.strip().lower() in {"true", "false"}:
         entry["needs_domain_baseline"] = raw_value.strip().lower() == "true"
-
-
-# ---------------------------------------------------------------------------
-# Title normalization
-# ---------------------------------------------------------------------------
-
-
-def _normalize_title(
-    file_path: Path,
-    content: str,
-    declared_type: str | None,
-    *,
-    project_root: Path,
-    domains: set[str],
-) -> str:
-    """Ensure H1 title has the correct type suffix (e.g. '— Policy')."""
-    suffix = TYPE_SUFFIX.get((declared_type or "").lower())
-    if not suffix:
-        classification, _ = derive_snippet_classification(file_path, project_root=project_root, domains=domains)
-        inferred = classification.type.value if classification else _infer_type_from_path(file_path)
-        suffix = TYPE_SUFFIX.get(inferred) if inferred else None
-    if not suffix:
-        return content
-    lines = content.splitlines()
-    if not lines or not _H1_LINE.match(lines[0]):
-        return content
-    title = lines[0].lstrip("#").strip()
-    expected = f" — {suffix}"
-    if title.endswith(expected):
-        return content
-    base = title.split(" — ")[0].strip() if " — " in title else title
-    lines[0] = f"# {base}{expected}"
-    return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
-
-
-def _infer_type_from_path(file_path: Path) -> str | None:
-    parts = list(file_path.parts)
-    try:
-        baseline_idx = parts.index("baseline")
-    except ValueError:
-        return None
-    if baseline_idx + 1 >= len(parts):
-        return None
-    folder = parts[baseline_idx + 1]
-    return folder if folder in TYPE_SUFFIX else None
-
-
-def normalize_titles(snippets_root: Path, *, project_root: Path, domains: set[str]) -> None:
-    """Normalize H1 titles in all snippets to include the type suffix."""
-    for path in sorted(snippets_root.rglob("*.md")):
-        if path.name in ("index.yaml", "index.md"):
-            continue
-        if is_excluded_snippet_path(path, snippets_root):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except Exception as exc:
-            logger.warning("title_read_failed", path=str(path), error=str(exc))
-            continue
-        normalized_text = text
-        declared_type = None
-        if normalized_text.lstrip().startswith("---"):
-            try:
-                post = frontmatter.loads(normalized_text)
-                meta = post.metadata or {}
-                declared_type = meta.get("type") if isinstance(meta.get("type"), str) else None
-                body = post.content
-            except Exception:
-                body = normalized_text
-        else:
-            body = normalized_text
-        updated = _normalize_title(path, body, declared_type, project_root=project_root, domains=domains)
-        final_content = normalized_text
-        if updated != body:
-            if normalized_text.lstrip().startswith("---"):
-                header, _, has_frontmatter = _split_frontmatter_block(normalized_text)
-                final_content = f"{header}{updated}" if has_frontmatter else updated
-            else:
-                final_content = updated
-        if final_content != text:
-            try:
-                path.write_text(final_content, encoding="utf-8")
-            except Exception as exc:
-                logger.warning("title_write_failed", path=str(path), error=str(exc))
 
 
 def write_third_party_index(project_root: Path) -> None:
@@ -561,11 +452,9 @@ def _eligible_snippet_files(snippets_root: Path, *, include_baseline: bool) -> l
 
 
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
-    """Build the index.yaml payload for a snippet root. Modifies files as side effects
-    (normalizes titles, removes stale indexes)."""
+    """Build the index.yaml payload for a snippet root."""
     domains = load_domains(project_root)
     remove_non_baseline_indexes(snippets_root)
-    normalize_titles(snippets_root, project_root=project_root, domains=domains)
 
     if not snippets_root.exists():
         return {"project_root": str(project_root), "snippets_root": str(snippets_root), "snippets": []}

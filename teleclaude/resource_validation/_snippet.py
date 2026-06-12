@@ -11,6 +11,7 @@ import frontmatter
 
 from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
+    TYPE_SUFFIX,
     RoadmapStatus,
 )
 from teleclaude.core.todos_db import todos_db_path
@@ -437,7 +438,7 @@ def validate_snippet(
     if roadmap_status_map is not None:
         _validate_delivered_by_roadmap(path, meta, roadmap_status_map)
     _validate_planned_change_markers(path, body)
-    _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
+    _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains, classification=classification)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, classification=classification)
 
@@ -469,6 +470,24 @@ def _validate_baseline_index(path: Path, content: str, project_root: Path, *, do
         _error(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
 
+def _validate_h1(path: Path, lines: list[str], classification: SnippetClassification | None) -> None:
+    first_non_empty = next((line for line in lines if line.strip()), "")
+    first_h1_match = _H1_LINE.match(first_non_empty)
+    if not first_h1_match:
+        _error("snippet_missing_h1", path=str(path))
+    else:
+        expected_suffix = TYPE_SUFFIX.get(classification.type.value) if classification is not None else None
+        if expected_suffix and not first_non_empty.endswith(f" — {expected_suffix}"):
+            _error(
+                "snippet_title_suffix_invalid",
+                path=str(path),
+                reason=f"first H1 must end with — {expected_suffix}",
+            )
+    if _SCHEMA["global_"].get("require_h1_first", True):
+        if first_non_empty and not first_h1_match:
+            _error("snippet_h1_not_first", path=str(path))
+
+
 def _validate_snippet_structure(  # pylint: disable=too-many-branches,unused-argument
     path: Path,
     lines: list[str],
@@ -476,14 +495,10 @@ def _validate_snippet_structure(  # pylint: disable=too-many-branches,unused-arg
     has_frontmatter: bool,
     *,
     domains: set[str],
+    classification: SnippetClassification | None,
 ) -> None:
     if _SCHEMA["global_"].get("require_h1", True):
-        first_non_empty = next((line for line in lines if line.strip()), "")
-        if not _H1_LINE.match(first_non_empty):
-            _error("snippet_missing_h1", path=str(path))
-        if _SCHEMA["global_"].get("require_h1_first", True):
-            if first_non_empty and not _H1_LINE.match(first_non_empty):
-                _error("snippet_h1_not_first", path=str(path))
+        _validate_h1(path, lines, classification)
     if not any(_H2_LINE.match(line) for line in lines):
         _error("snippet_missing_h2", path=str(path))
 

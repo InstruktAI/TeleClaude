@@ -11,10 +11,10 @@ Defines the required structure, section headings, and directory layout for docum
 
 ## Canonical fields
 
-Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path and the H1 type-suffix** by the index build (`docs/index.yaml`) and materialized there — it is **never authored in frontmatter**. The index is the single source of truth for these four fields:
+Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path** by the index build (`docs/index.yaml`) and materialized there — it is **never authored in frontmatter**. Validation separately enforces that the H1 type suffix matches the path-derived type. The index is the single source of truth for these four fields:
 
 - `id` — unique snippet identifier. **Derived** from the snippet's path below the docs root.
-- `type` — taxonomy type (see table below). **Derived** from the directory path and confirmed by the H1 type-suffix.
+- `type` — taxonomy type (see table below). **Derived** from the taxonomy directory path and checked against the H1 type-suffix by validation.
 - `domain` — knowledge domain (`general`, `<domain>` such as `software-development`, or `project`). **Derived** as the first path segment of the id.
 - `scope` — `global` or `project`. **Derived** from the path (`docs/global/**` → `global`, `docs/project/**` → `project`).
 
@@ -36,7 +36,7 @@ Frontmatter (optional, authored):
 - `number` — `adr` snippets ONLY (required). Integer matching the filename prefix (e.g., `0007` for `0007-provenance-via-mirror-id.md`).
 - `supersedes` — `adr` snippets ONLY (optional). List of ADR IDs this decision replaces. Forward-only: citing an ADR here records the supersession; the cited ADR is never modified.
 
-Classification (`id`/`type`/`scope`/`domain`) is read from the file path and the H1 type-suffix by the index build, never authored in frontmatter.
+Classification (`id`/`type`/`scope`/`domain`) is read from the file path by the index build, never authored in frontmatter. H1 type-suffix correctness is enforced by validation.
 
 Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They author only `description`; their `id` and `scope` are derived from their path below the third-party root, and they no longer carry `type`.
 

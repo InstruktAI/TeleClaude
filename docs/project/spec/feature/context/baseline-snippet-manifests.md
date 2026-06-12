@@ -73,6 +73,7 @@ And its Required reads dependencies are NOT auto-pulled into the baseline set
 - The caveat above no longer holds. `type` and `scope` are now derived for ALL
   snippets from the path (not only baseline-folder snippets): `scope` from the
   source tree (`docs/global/**`→global, `docs/project/**`→project) and `type`
-  from the H1 suffix. A path that does not resolve to a derivable
+  from the taxonomy folder. Validation separately enforces that the H1 suffix
+  matches the path-derived type. A path that does not resolve to a derivable
   classification no longer gets silently skipped — it FAILS the index build
   loudly with an error naming the offending file.

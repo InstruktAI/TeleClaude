@@ -85,11 +85,12 @@ This context does NOT own: workflow state (`workflow`), live agent sessions (`ag
   - Fully derived from source files; no hand-edits ever.
   - The index is the SINGLE SOURCE OF TRUTH for classification. `id`, `type`,
     `scope`, and `domain` are derived from the snippet's path (`scope` from the
-    source tree, `domain` from the id's first segment, `type` from the H1
-    suffix) and materialized here — frontmatter no longer authors them, and
-    consumers read these values only from the index. A path that does not
-    resolve to a derivable classification FAILS the build loudly rather than
-    being silently skipped.
+    source tree, `domain` from the id's first segment, `type` from the taxonomy
+    folder) and materialized here — frontmatter no longer authors them, and
+    consumers read these values only from the index. Validation enforces that
+    the H1 suffix stays consistent with the path-derived type. A path that does
+    not resolve to a derivable classification FAILS the build loudly rather
+    than being silently skipped.
   - Re-running sync on unchanged sources produces byte-identical index output.
   - One index per scope (global, project, third-party).
   - **Snippet validation is shape-only for lifecycle frontmatter.** Context validates `delivered_by` shape: when present it must be a non-empty list of slug strings; absence means the snippet is current. No `status` field is validated or required. Roadmap relationship state is owned by lifecycle callers, so validation does not reject unknown slugs and does not enforce delivery-lag drift.

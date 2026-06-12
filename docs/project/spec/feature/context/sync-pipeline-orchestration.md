@@ -122,7 +122,7 @@ Scenario: Delivery completes before sync
 
 - Sync is idempotent at the source markdown layer: it may update generated
   indexes and deployed artifacts, but it must not mutate authored
-  `docs/**/*.md` snippets for delivery-state reasons.
+  `docs/**/*.md` snippets.
 - Provenance recording is best-effort: back-end availability is not required
   for sync to complete. When the back-end is unavailable, provenance rows are
   skipped and a warning is emitted. Drift between sync runs and the

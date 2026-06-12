@@ -1,5 +1,5 @@
 ---
-description: 'Sync derives snippet metadata from paths, writes per-scope index.yaml catalogs, normalizes titles, and rejects cross-project ID collisions.'
+description: 'Sync derives snippet metadata from paths, writes per-scope index.yaml catalogs, preserves authored sources, and rejects cross-project ID collisions.'
 visibility: 'public'
 ---
 
@@ -13,14 +13,15 @@ visibility: 'public'
 
 The Index is the authoritative pre-computed catalog of every Source snippet in
 a scope. Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
-each Source's path, normalizes its presentation (titles, paths), and writes
-per-scope `index.yaml` files — one for the project, one for global baseline, one
-for third-party. The derived metadata makes `index.yaml` the single source of
-truth: Sources no longer author `id`/`type`/`scope`/`domain` in frontmatter.
-Consumers (the Selection policy, the CLI verbs, peer agents) read the Index
-instead of re-walking the tree, so discovery is fast and deterministic.
-Cross-project ID collisions are detected at build time so two projects cannot
-silently claim the same snippet identity.
+each Source's path, renders portable paths, and writes per-scope `index.yaml`
+files — one for the project, one for global baseline, one for third-party. The
+index build reads authored Source snippets but never rewrites them; source
+correctness is enforced by validation before commit. The derived metadata makes
+`index.yaml` the single source of truth: Sources no longer author
+`id`/`type`/`scope`/`domain` in frontmatter. Consumers (the Selection policy,
+the CLI verbs, peer agents) read the Index instead of re-walking the tree, so
+discovery is fast and deterministic. Cross-project ID collisions are detected at
+build time so two projects cannot silently claim the same snippet identity.
 
 ## Canonical fields
 
@@ -57,9 +58,9 @@ And the sync exits with a non-zero status
 
 ```
 Given a Source whose H1 heading lacks the type suffix (e.g. "— Policy")
-When the index entry is rendered
-Then the title-normalization step appends the type suffix derived from the path-derived type
-And the rewrite is idempotent on subsequent builds
+When validation runs ahead of the index build
+Then a title-suffix finding is reported for that file
+And the sync exits with a non-zero status
 ```
 
 ```
@@ -88,15 +89,16 @@ When the lifecycle-metadata copy step runs
 Then delivered_by is copied into the index entry verbatim
 ```
 
-#### UC-DIB2: Title normalization leaves double-quoted frontmatter byte-unchanged
+#### UC-DIB2: Index build keeps authored Source bytes unchanged
 
 ```
-Given a snippet whose frontmatter scalars are already double-quoted
-And the H1 title already carries the correct type suffix
-When normalize_titles runs
-Then the snippet file content is unchanged
-When normalize_titles runs a second time
-Then the snippet file content is still unchanged
+Given a Source whose H1 heading lacks the expected type suffix
+And its frontmatter scalars are double-quoted
+When the index-build phase builds the payload
+Then the Source file content is unchanged byte-for-byte
+When the full index build writes index.yaml
+Then the Source file content is still unchanged byte-for-byte
+And the index.yaml file is produced
 ```
 
 #### UC-DIB1: Parent entries derive superseded_by from pending carriers
@@ -121,9 +123,9 @@ Then the line includes " (superseded by: <slugs>)"
 - Non-derivable paths fail loudly. A Source whose path cannot yield
   `id`/`type`/`scope` raises a hard build error naming the path and reason, so
   the sync build stops rather than silently dropping the snippet from the Index.
-- Baseline title normalization only fires for folder names listed in the
-  known type-suffix set. Snippets in unrecognized baseline folders get no
-  title rewrite, producing inconsistent presentation.
+- Source H1 suffix correctness is enforced by snippet validation, not by the
+  index build. The index build assumes source has already passed the validation
+  gate and does not rewrite headings.
 - Project-slug path rewriting is a literal string substitution: `docs/global/`
   becomes `docs/` in the rendered index so the entry is portable to
   `~/.teleclaude/docs/`. Paths in the Index are NOT the working-tree paths;

@@ -113,6 +113,35 @@ This section belongs to a concept, not a policy.
 This section belongs to a concept, not a policy.
 """
 
+_POLICY_SNIPPET_TEMPLATE = """\
+---
+description: H1 suffix validation fixture.
+type: concept
+---
+
+# {title}
+
+## Rules
+
+This fixture defines a rule.
+
+## Rationale
+
+Used in functional tests for H1 suffix validation.
+
+## Scope
+
+Applies to this fixture.
+
+## Enforcement
+
+Validation reports malformed headings.
+
+## Exceptions
+
+None.
+"""
+
 _THIRD_PARTY_WITHOUT_CLASSIFIERS = """\
 ---
 description: Vendor docs.
@@ -246,6 +275,55 @@ Replacement body.
         validate_all_snippets(tmp_path, paths=[snippet])
 
         assert _normalized_findings(tmp_path) == snapshot
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV2")
+    def test_policy_h1_without_type_suffix_reports_validation_error(self, tmp_path: Path) -> None:
+        snippet = tmp_path / "docs" / "project" / "policy" / "unsuffixed-policy.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(_POLICY_SNIPPET_TEMPLATE.format(title="Unsuffixed Policy"), encoding="utf-8")
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        findings = _normalized_findings(tmp_path)
+        assert findings == [
+            {
+                "code": "snippet_title_suffix_invalid",
+                "path": "docs/project/policy/unsuffixed-policy.md",
+                "reason": "first H1 must end with — Policy",
+            }
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV2")
+    def test_policy_h1_with_type_suffix_validates_cleanly(self, tmp_path: Path) -> None:
+        snippet = tmp_path / "docs" / "project" / "policy" / "suffixed-policy.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(_POLICY_SNIPPET_TEMPLATE.format(title="Suffixed Policy — Policy"), encoding="utf-8")
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        assert not get_errors()
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV2")
+    def test_companion_h1_suffix_uses_parent_derived_classification(self, tmp_path: Path) -> None:
+        parent = tmp_path / "docs" / "project" / "policy" / "parent-policy.md"
+        companion = tmp_path / "docs" / "project" / "policy" / "parent-policy.pending-change.md"
+        parent.parent.mkdir(parents=True)
+        parent.write_text(_POLICY_SNIPPET_TEMPLATE.format(title="Parent Policy — Policy"), encoding="utf-8")
+        companion.write_text(_POLICY_SNIPPET_TEMPLATE.format(title="Parent Policy Draft"), encoding="utf-8")
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[companion])
+
+        findings = _normalized_findings(tmp_path)
+        assert findings == [
+            {
+                "code": "snippet_title_suffix_invalid",
+                "path": "docs/project/policy/parent-policy.pending-change.md",
+                "reason": "first H1 must end with — Policy",
+            }
+        ]
 
     def test_third_party_without_classifier_frontmatter_validates_cleanly(self, tmp_path: Path) -> None:
         snippet = tmp_path / "docs" / "third-party" / "vendor.md"

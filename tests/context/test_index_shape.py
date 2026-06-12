@@ -6,9 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from teleclaude.docs_index import build_index_payload, normalize_titles
+from teleclaude.docs_index import build_all_indexes, build_index_payload
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_validation import load_domains
 
 pytestmark = pytest.mark.functional
 
@@ -116,17 +115,23 @@ def test_index_build_fails_loudly_for_non_derivable_snippet_path(tmp_path: Path)
 
 
 @pytest.mark.spec("project/spec/feature/context/doc-snippet-index-build", "UC-DIB2")
-def test_normalize_titles_leaves_double_quoted_frontmatter_unchanged(tmp_path: Path) -> None:
+def test_index_build_keeps_source_snippet_bytes_unchanged(tmp_path: Path) -> None:
     snippet = tmp_path / "docs" / "project" / "policy" / "example.md"
     snippet.parent.mkdir(parents=True, exist_ok=True)
-    content = '---\ndescription: "An example policy."\nvisibility: "public"\n---\n# Example — Policy\n\nBody text.\n'
-    snippet.write_text(content, encoding="utf-8")
+    content = b'---\ndescription: "An example policy."\nvisibility: "public"\n---\n# Example\n\nBody text.\n'
+    snippet.write_bytes(content)
+    (tmp_path / "teleclaude.yml").write_text(
+        "business:\n  domains:\n    software-development: docs\n",
+        encoding="utf-8",
+    )
 
-    snippets_root = tmp_path / "docs" / "project"
-    domains = load_domains(tmp_path)
+    payload = build_index_payload(tmp_path, tmp_path / "docs" / "project")
 
-    normalize_titles(snippets_root, project_root=tmp_path, domains=domains)
-    assert snippet.read_text(encoding="utf-8") == content
+    assert snippet.read_bytes() == content
+    assert len(payload["snippets"]) == 1
 
-    normalize_titles(snippets_root, project_root=tmp_path, domains=domains)
-    assert snippet.read_text(encoding="utf-8") == content
+    written = build_all_indexes(tmp_path)
+
+    assert snippet.read_bytes() == content
+    assert written
+    assert (tmp_path / "docs" / "project" / "index.yaml").is_file()

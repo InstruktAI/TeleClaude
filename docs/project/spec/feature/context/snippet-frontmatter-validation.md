@@ -15,11 +15,12 @@ Snippet frontmatter validation is the context gate that runs on every taxonomy
 source file during `telec sync` and pre-commit markdown validation. It enforces
 the schema of Context snippets so the Index, selection policy, and CRUD
 surface never observe broken frontmatter, broken Required reads, leaked inline
-refs, or wrong taxonomy sections. Validation enforces presence of the authored
-`description`, correct Required-reads placement, inline-ref scoping, and
-per-type section shape — where the type is derived from the path, not from
-frontmatter. `id`/`type`/`scope` are path-derived and are no longer authored or
-validated, so there is no id-to-path check.
+refs, wrong H1 type suffixes, or wrong taxonomy sections. Validation enforces
+presence of the authored `description`, correct Required-reads placement,
+inline-ref scoping, H1 type-suffix consistency, and per-type section shape —
+where the type is derived from the path, not from frontmatter.
+`id`/`type`/`scope` are path-derived and are no longer authored or validated, so
+there is no id-to-path check.
 
 Validation is shape-only for lifecycle metadata. `delivered_by`, when
 present, must be a non-empty list of slug strings; absence means the snippet
@@ -63,6 +64,21 @@ Then no planned-change marker finding is reported
 Given a snippet contains a planned-change block with a missing close marker, mismatched slug, or missing change separator
 When snippet validation runs
 Then a planned-change marker finding is reported
+```
+
+#### UC-SFV2: H1 type suffix is validated from the path-derived type
+
+```
+Given a taxonomy snippet whose path-derived type is "policy"
+And its H1 does not end with "— Policy"
+When snippet validation runs
+Then a snippet_title_suffix_invalid finding is reported for that file
+Given the same taxonomy snippet's H1 ends with "— Policy"
+When snippet validation runs
+Then no title-suffix finding is reported
+Given a pending companion for a policy snippet
+When snippet validation runs on the companion
+Then the required H1 suffix is still derived from the parent policy path
 ```
 
 ```
