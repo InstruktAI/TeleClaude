@@ -440,8 +440,7 @@ def _commit_under_lock(
     # records the working-tree version of <path>, not just the staged hunks.
     # If a file in our pathspec is partially staged (staged version + later
     # working-tree delta), the commit silently sweeps in the unstaged delta —
-    # changes the agent never declared. The pre-commit hook's stash/restore
-    # cycle also corrupts these files. Block the commit; the agent must
+    # changes the agent never declared. Block the commit; the agent must
     # fully (re)stage the partial-staged file before retrying.
     overlap = snapshot.partial_staged & set(pathspec)
     if overlap:

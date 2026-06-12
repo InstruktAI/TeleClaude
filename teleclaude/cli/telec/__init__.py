@@ -60,13 +60,7 @@ from teleclaude.runtime.environment import filter_tui_tmux_environment
 # history,memories,misc,todo}) and tool_commands are lazy-loaded inside
 # the dispatch path. Eager loading drags in the OpenAI/Anthropic SDKs, the
 # summarizer, the mirrors DB, and the todos DB — ~800ms — for every CLI call,
-# including pre-commit lint steps that touch none of them.
-
-# Handler modules (handlers.{auth_cmds,bugs,code,config,content,docs,events_signals,
-# history,memories,misc,todo}) and tool_commands are lazy-loaded inside
-# the dispatch path. Eager loading drags in the OpenAI/Anthropic SDKs, the
-# summarizer, the mirrors DB, and the todos DB — ~800ms — for every CLI call,
-# including pre-commit lint steps that touch none of them.
+# including the in-process lint pass `telec code commit` runs, which touches none of them.
 
 _BOOT = _t.monotonic()
 _CLI_RUNTIME_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
