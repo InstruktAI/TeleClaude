@@ -1,6 +1,6 @@
 ---
 delivered_by:
-- v2-memory
+  - v2-memory
 description: Human memory extraction — the memory-miner agent that reads a session
   mirror, classifies observations about the human as triples in the human-category
   vocabulary, and saves them through the scraper-only write path.

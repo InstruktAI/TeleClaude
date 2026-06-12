@@ -45,16 +45,16 @@ context. Only the caller does.
   review findings, deferrals) are the durable record. Design artifacts to be
   self-contained and readable by any future agent or human.
 - **State machine owns cleanup.** On successful terminal states the state machine emits
-  concrete commands: `telec sessions end <worker_id>` for each live worker tied to the
-  slug, then `telec sessions end self` for the orchestrator. The orchestrator executes
-  these commands verbatim — it never decides session lifecycle on its own initiative.
+concrete commands: `telec sessions end <worker_id>` for each live worker tied to the
+slug, then `telec sessions end self` for the orchestrator. The orchestrator executes
+these commands verbatim — it never decides session lifecycle on its own initiative.
 <!-- planned:orchestrator-terminal-self-end -->
 - **Terminal output states objective outcomes.** A successful terminal emits the
-  cleanup commands and a self-end reminder, and states what is objectively true —
-  the work reached its terminal state. It never emits a speculative next-step
-  prompt that targets an action the terminal does not own; a fabricated "decide
-  whether to start the next phase" instruction is a non-reality the orchestrator
-  may act on.
+cleanup commands and a self-end reminder, and states what is objectively true —
+the work reached its terminal state. It never emits a speculative next-step
+prompt that targets an action the terminal does not own; a fabricated "decide
+whether to start the next phase" instruction is a non-reality the orchestrator
+may act on.
 <!-- /planned:orchestrator-terminal-self-end -->
 - **Blocked states persist as signal.** When a verdict is `needs_decision`, when review
   rounds exceed the limit, or when any error path is reached, the state machine emits no

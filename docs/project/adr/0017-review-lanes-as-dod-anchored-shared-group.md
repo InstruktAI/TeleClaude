@@ -35,8 +35,8 @@ them into one shared catalog, `software-development/policy/definition-of-done-la
   `work/review-commits` executes them minus scope, and `prepare/plan-draft` +
   `prepare/review-plan` anticipate them. All four point at the catalog.
 - **Execution mechanics stay in `work/review`:** the lane execution gate, severity
-  schema, citation rules, and verdict arithmetic are how a review is *run*, not
-  what each lane *checks* — they remain in the review procedure.
+  schema, citation rules, and verdict arithmetic are how a review is _run_, not
+  what each lane _checks_ — they remain in the review procedure.
 - **The docs lane gains the doc-snippet reflection catch** once, in the catalog,
   so build-review and commit-review inherit it as a backstop to the plan-review
   documentation hard gate.
@@ -69,7 +69,7 @@ reviewers `@`-include the lanes as a unit without pulling in the gate checklist.
   rejected — it changes the DoD id and forces updating ≈12 references for no gain
   over the file+subfolder layout.
 - **A standalone `review/lanes/` group not tied to DoD:** rejected — it loses the
-  point that lanes *are* the DoD's review-time enforcement; anchoring under DoD
+  point that lanes _are_ the DoD's review-time enforcement; anchoring under DoD
   keeps gate and check from drifting apart.
 - **Split each lane into its own file under `lanes/`:** rejected for now —
   over-fragmentation; one catalog snippet is the minimal DRY fix. A later split is

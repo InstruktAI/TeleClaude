@@ -241,7 +241,6 @@ And the wizard reminds the human that existing agent sessions must be restarted
   before newly authorized values are visible to those agents
 ```
 
-
 #### UC-WIZ-12: Config forms are schema-driven
 
 ```
@@ -267,7 +266,6 @@ And settings.output_visibility values can be set without editing YAML by hand
 And PersonEntry edits write the global config
 And PersonConfig edits write that person's per-person overlay file
 ```
-
 
 ### Persistence surfaces and writers
 

@@ -90,7 +90,6 @@ And the other slug's planned-change block is left unchanged
 And a second reconciliation run makes no further change
 ```
 
-
 ### Cross-context references
 
 - workflow — owns todo status; the integrator pre-applies the current slug

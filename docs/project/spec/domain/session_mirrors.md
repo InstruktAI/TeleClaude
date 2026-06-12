@@ -1,7 +1,7 @@
 ---
 delivered_by:
-- v2-session-mirrors
-- v2-session-mirrors-cutover
+  - v2-session-mirrors
+  - v2-session-mirrors-cutover
 description: Session Mirrors bounded context — eternal text extracts of agent sessions
   for historical search. One mirror per session, independent of session lifetime,
   text-only.

@@ -1,9 +1,6 @@
 ---
-description: 'The telec-daemon long-running supervisor: a Tokio runtime shell with
-  signal-driven graceful shutdown, launchd/systemd KeepAlive supervision, the unified
-  multi-unit operator control surface, and an empty service-loop mount seam typed
-  for the reconciliation and ingress loops.'
-visibility: public
+description: 'The telec-daemon long-running supervisor: a Tokio runtime shell with signal-driven graceful shutdown, launchd/systemd KeepAlive supervision, the unified multi-unit operator control surface, and an empty service-loop mount seam typed for the reconciliation and ingress loops.'
+visibility: 'public'
 ---
 
 # Daemon Runtime — Design

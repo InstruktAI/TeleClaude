@@ -15,9 +15,9 @@ For the fleet to react to external events (a GitHub release, a provider webhook)
 1. **No inbound route existed.** The GitHub HTTP endpoint is data-driven from `hooks.inbound` in config, which defaults empty and is declared nowhere — GitHub's POST hit a 404.
 2. **The API server bound only to `127.0.0.1`** (`API_TCP_HOST = "127.0.0.1"`, trusted hosts `{127.0.0.1, ::1, localhost}`). Nothing off-box could reach it; there was no LAN-bind knob, no source restriction, and no concept of an "ingress" computer.
 
-Compounding this, the v1 deployment handler only published its cross-host fan-out *after* deciding to update *itself* — so a pure ingress (a Raspberry Pi that should not self-update) would receive the webhook and silently relay nothing.
+Compounding this, the v1 deployment handler only published its cross-host fan-out _after_ deciding to update _itself_ — so a pure ingress (a Raspberry Pi that should not self-update) would receive the webhook and silently relay nothing.
 
-The v2 integration design assumes the HTTP server is reachable but never says *which* machine is public or *how*. The reachability topology is undocumented in both v1 and v2; it is the genuinely net-new piece.
+The v2 integration design assumes the HTTP server is reachable but never says _which_ machine is public or _how_. The reachability topology is undocumented in both v1 and v2; it is the genuinely net-new piece.
 
 ## Decision
 

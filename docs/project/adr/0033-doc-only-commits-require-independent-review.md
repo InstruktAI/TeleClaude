@@ -10,7 +10,7 @@ visibility: 'public'
 
 ## Context
 
-The doc-hygiene review lane (ADR-0029) catches narration, but it only fires inside a *review* — build-review, commit-review, or plan-review anticipation. Doc-only changes never reach one. The `documentation-discipline` policy routes them "in-context, immediately" on `main`, and the `telec code commit` Path A/B/C card stated it outright: *"A) Docs/config/state only: Commit with --approved. Review is not required."* The B/C review gate applied only to functional changes.
+The doc-hygiene review lane (ADR-0029) catches narration, but it only fires inside a _review_ — build-review, commit-review, or plan-review anticipation. Doc-only changes never reach one. The `documentation-discipline` policy routes them "in-context, immediately" on `main`, and the `telec code commit` Path A/B/C card stated it outright: _"A) Docs/config/state only: Commit with --approved. Review is not required."_ The B/C review gate applied only to functional changes.
 
 The result: every doc-only commit — new snippets, edited contracts, ADRs, the reconciliation constitution, and the narration-sweep commits in this very session — landed on `main` with no review at all. The lane built to catch narration could not see the commits most likely to introduce it.
 
@@ -20,7 +20,7 @@ The tempting fix is self-review: have the authoring agent run the lane on its ow
 
 A doc-only commit that changes a doc snippet (`docs/**`) requires an **independent** doc-hygiene commit-review, enforced:
 
-1. **Independent, never self.** The authoring agent may not review a snippet it wrote. After the in-context commit, it dispatches a *separate* reviewer on the commit SHA via `/next-review-commits`.
+1. **Independent, never self.** The authoring agent may not review a snippet it wrote. After the in-context commit, it dispatches a _separate_ reviewer on the commit SHA via `/next-review-commits`.
 2. **Fast or medium agent.** The check is narrow — the doc-hygiene lane over one or two changed snippets, confirming present-tense contract and no narration. It needs little reasoning, so a `--mode fast` (or medium) reviewer is correct and cheap. Cost is not a reason to skip it.
 3. **Enforced, not advisory.** The Path A card instructs the dispatch and says to wait for `REVIEW COMPLETE`; `documentation-discipline` makes a missing review a violation.
 4. **Still in-context, still not a todo.** The review reads the committed diff; it does not re-author. The live design context that makes doc-only work correct is preserved — the reason doc-only work stays out of the lifecycle is untouched.

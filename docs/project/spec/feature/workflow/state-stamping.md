@@ -33,7 +33,9 @@ And the state-write boundary re-validates the full state and persists atomically
 ```
 
 <!-- planned:task-lane -->
+
 `--kind-assign task` fixes kind=`task` and routes to `task_plan_drafting`, but it does not write `task-plan` and does not mark the Todo `prepared`. `/next-prepare-task` owns converting the input into a task-plan.
+
 <!-- /planned:task-lane -->
 
 #### UC-WSS2: SDLC kind assignment fixes kind and enters its lane
@@ -82,6 +84,7 @@ And the prepare chain advances past the architecture phase on next dispatch
 ```
 
 <!-- planned:task-lane -->
+
 #### UC-WSS9: Human task authorization stamps execution approval
 
 ```gherkin
@@ -98,6 +101,7 @@ When a caller attempts the task authorization stamp
 Then workflow refuses before mutating state
 And no runner wake-up is emitted
 ```
+
 <!-- /planned:task-lane -->
 
 ```

@@ -1,6 +1,6 @@
 ---
 delivered_by:
-- v2-identity-cutover
+  - v2-identity-cutover
 description: Identity bounded context — principals (people, machines, sessions), tokens,
   and the resolution of any caller into an authenticated Principal. Foundation for
   every authorization decision.

@@ -1,6 +1,6 @@
 ---
 delivered_by:
-- v2-context
+  - v2-context
 description: Context bounded context — file-based context engineering. Owns docs,
   skills, commands, and agent files. Validates, deploys, exposes CRUD. Foundation
   for self-improvement loops.

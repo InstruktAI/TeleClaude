@@ -2,7 +2,7 @@
 activation_trigger: Use when invoked as the project-category memory miner via /extract-memory-project
   against a session mirror
 delivered_by:
-- v2-memory
+  - v2-memory
 description: Thin wrapper around the general memory-extraction procedure for the project-category
   memory miner. Binds the agent to the project vocabulary, cross-project routing rules,
   and out-of-scope boundary defined in the project extraction feature spec.

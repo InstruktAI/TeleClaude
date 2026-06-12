@@ -1,6 +1,6 @@
 ---
 delivered_by:
-- v2-memory
+  - v2-memory
 description: General playbook for memory extraction agents. Read a session mirror,
   dedup candidate observations against doc snippets, save survivors as triples. Append-only
   event-store semantics. Category-specific overrides live in thin-wrapper procedures.

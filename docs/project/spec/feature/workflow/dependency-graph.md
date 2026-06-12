@@ -23,9 +23,10 @@ The graph has two responsibilities:
 Dependency mutations land via `telec todo update <slug> --after <dep>...`, which converges on the workflow service's set-deps capability after existence validation and cycle detection. The public `set-deps` verb is retired. To clear all dependencies, pass `--after ""`; omitting `--after` leaves deps untouched.
 
 <!-- planned:task-lane -->
-For kind=`task`, dependency edges and task datetime are mutually exclusive execution gates. A task may use `after` dependencies to wait for delivered parents, or `datetime` to wait for a clock instant, but not both. The create/update boundary refuses any live state that would persist both a non-empty `after` set and a datetime.
-<!-- /planned:task-lane -->
 
+For kind=`task`, dependency edges and task datetime are mutually exclusive execution gates. A task may use `after` dependencies to wait for delivered parents, or `datetime` to wait for a clock instant, but not both. The create/update boundary refuses any live state that would persist both a non-empty `after` set and a datetime.
+
+<!-- /planned:task-lane -->
 
 ### Phase-specific gates (two gates, both directions)
 
@@ -42,7 +43,6 @@ Both gates apply in **both dispatch directions**:
 2. **Resolution-time dispatch** — when the prepare/work orchestrators resolve the next runnable slug, the same phase-specific gate skips dep-blocked candidates.
 
 The prepared-set used by the prepare gate, like the delivered-set used by the work gate, is computed with holder roll-up: a holder dependency is satisfied for the prepare gate when every direct child has reached `PREPARED`, mirroring `effective_delivered_slugs_for_dependencies` for the delivered-set.
-
 
 ## Canonical fields
 
@@ -117,7 +117,6 @@ Then all existing edges for that slug are removed
 And the workflow service reports that dependencies were cleared for "alpha"
 ```
 
-
 ### Use cases
 
 #### UC-WDG1: Prepare gate waits for parent PREPARED
@@ -149,6 +148,7 @@ And "child" waits until "parent" reaches PREPARED, which triggers auto-continue 
 ```
 
 <!-- planned:task-lane -->
+
 #### UC-WDG4: Task datetime excludes dependency edges
 
 ```gherkin
@@ -170,8 +170,8 @@ Given a task has a datetime
 When the caller clears datetime and sets `--after parent` in the same accepted mutation
 Then workflow persists the dependency edge and leaves datetime empty
 ```
-<!-- /planned:task-lane -->
 
+<!-- /planned:task-lane -->
 
 ### Cross-context references
 
@@ -185,7 +185,6 @@ Then workflow persists the dependency edge and leaves datetime empty
 - `set-deps` is a full replacement: passing no `--after` clears all edges for the slug; there is no incremental add/remove surface. To merge edges, the caller must read the current edges first and submit the union.
 - `telec todo update --after` carries the same full-replacement semantics. To clear all edges, pass `--after ""`; omitting `--after` leaves deps untouched. There is no incremental add/remove dependency surface; callers that want to merge edges must read the current set and submit the union.
 - At slug retirement, the workflow context scrubs the deleted slug out of other entries' `depends_on` lists — without that, removing a slug could leave dangling deps that block its dependents forever.
-
 
 - The gate is **phase-specific**. The **work** gate is cleared only by `delivered`. The **prepare** gate is cleared by the parent reaching `PREPARED` — a non-`delivered` lifecycle phase. `icebox`, and any lifecycle phase before `PREPARED`, leave the prepare gate closed.
 - Both gates are enforced at **create-time** (lifecycle router, before auto-dispatch) and at **resolution-time** (orchestrator next-runnable resolution). Before this change the router applied no dependency gate at create-time, which let a dep-blocked child auto-dispatch in parallel with its parent.

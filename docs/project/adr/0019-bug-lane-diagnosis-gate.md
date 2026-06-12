@@ -5,7 +5,7 @@ description: Bugs enter a mandatory diagnosis prepare stage and reuse the change
   pipeline, replacing the no-prepare fix lane.
 number: 19
 supersedes:
-- project/adr/0015-kind-as-lifecycle-entry-point
+  - project/adr/0015-kind-as-lifecycle-entry-point
 visibility: public
 ---
 
@@ -23,8 +23,8 @@ fixes result (the Discord typing-indicator fix is the motivating example — it
 passed review and fixed nothing).
 
 The forces in play: bugs must not skip pre-work, but they also must not become
-heavier than a feature. A bug's "what to build" is *discovered* (the diagnosis),
-not *specified*, so the missing rigor is a verified diagnosis gate — not a PRD.
+heavier than a feature. A bug's "what to build" is _discovered_ (the diagnosis),
+not _specified_, so the missing rigor is a verified diagnosis gate — not a PRD.
 
 ## Decision
 

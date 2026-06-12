@@ -89,17 +89,17 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 ### Todo Management
 
-| Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                                                                     |
-| ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                                                                                                                              |
-| `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                                                                                                                           |
-| `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                                                                                                                             |
+| Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                                                    |
+| ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                                                                                                             |
+| `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                                                                                                          |
+| `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                                                                                                            |
 | `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). delivered_by roadmap-trash-reveal-ui. |
-| `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members.                                                                                                          |
-| `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                                                                                                                             |
-| `telec todo stamp`            | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Stamping verdicts and finalize-ready is state machine management.                                                                                                                                                             |
-| `telec todo set-deps`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is work planning. Same as prepare/work.                                                                                                                                                                  |
-| `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                                                                                                                                    |
+| `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members.                                                                                         |
+| `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                                                                                                            |
+| `telec todo stamp`            | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Stamping verdicts and finalize-ready is state machine management.                                                                                                                                            |
+| `telec todo set-deps`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is work planning. Same as prepare/work.                                                                                                                                                 |
+| `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                                                                                                                   |
 
 ### Todo List Management
 
@@ -152,10 +152,15 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec config env list`      | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Environment variables may contain secrets. Admin only.                                                              |
 | `telec config env set`       | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Setting env vars is system modification. Admin only.                                                                |
 | `telec config notify`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Toggling notifications is personal config. Members can manage their own notifications.                              |
+
 <!-- planned-change:move-telec-config-invite-to-people -->
-| `telec config invite`        | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Generating invite links is admin infrastructure.                                                                    |
+
+| `telec config invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
+
 <!-- change:move-telec-config-invite-to-people -->
-| `telec config people invite` | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Generating invite links is admin infrastructure.                                                                    |
+
+| `telec config people invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
+
 <!-- /planned-change:move-telec-config-invite-to-people -->
 
 ### Disagreements with Current `tool_access.py`
@@ -213,8 +218,11 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec config people *`       | Members, contributors, newcomers, customers |
 | `telec config env *`          | Members, contributors, newcomers, customers |
 | `telec config notify`         | Contributors, newcomers, customers          |
+
 <!-- planned-change:move-telec-config-invite-to-people -->
-| `telec config invite`         | Members, contributors, newcomers, customers |
+
+| `telec config invite` | Members, contributors, newcomers, customers |
+
 <!-- change:move-telec-config-invite-to-people -->
 <!-- /planned-change:move-telec-config-invite-to-people -->
 

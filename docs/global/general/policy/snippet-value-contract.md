@@ -43,8 +43,8 @@ The default is **skip unless justified**, not "produce when applicable."
 - **Coverage instinct.** Producing a snippet to fill a taxonomy slot rather
   than to capture intent. The discovery-to-taxonomy table is a list of
   shapes worth considering, not a checklist to complete.
-- **Narration (log-in-the-doc).** A snippet body that records *how it got
-  here* or *what is coming* instead of stating *what is*. A body states
+- **Narration (log-in-the-doc).** A snippet body that records _how it got
+  here_ or _what is coming_ instead of stating _what is_. A body states
   present-tense intent and contract — nothing else. Each form of narration
   has a proper home, and the body is never it:
   - **History** ("replaces the v1 path", "is retired", "used to produce

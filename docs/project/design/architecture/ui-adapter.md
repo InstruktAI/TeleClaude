@@ -99,7 +99,6 @@ stateDiagram-v2
     Closed --> [*]
 ```
 
-
 Accepted UI input opens a fresh output receipt at the core input acceptance
 boundary (`deliver_inbound`), before the input is injected into the agent. The
 adapter clears `output_message_id` and `char_offset`, records
@@ -110,7 +109,6 @@ same user boundary, `_maybe_clear_on_turn_boundary()` adopts the new
 second time. Turn truth stays upstream; only the adapter-local delivery receipt
 is reset. Terminal-origin input has no UI acceptance boundary and keeps the
 purely transcript-driven reset.
-
 
 ### 3. User Input Normalization
 
@@ -210,13 +208,11 @@ UI adapters fire platform typing indicators in response to lifecycle status even
 
 Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` is the status-derived activity pulse for ongoing agent work and must not render visible message content.
 
-
 For UI-origin input, Core emits `accepted` at the input acceptance boundary
 (`deliver_inbound`) so presence starts before any agent hook fires. The pulse
 remains throttled and subject to the same origin/admin lane selection; only the
 emission point moves earlier. Terminal-origin input keeps the late
 `user_prompt_submit` source because it has no UI acceptance boundary.
-
 
 ### 8. Voice Message Processing
 

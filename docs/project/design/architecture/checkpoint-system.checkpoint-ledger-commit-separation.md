@@ -205,22 +205,22 @@ sequenceDiagram
 
 ## Failure modes
 
-| Scenario                                                      | Behavior                                                        | Recovery                                            |
-| ------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
-| Daemon restart during active turn                             | Timestamps persist in DB; next `agent_stop` evaluates correctly | No action needed                                    |
-| DB field missing (migration not run)                          | `AttributeError` on session access                              | Run migration 004; daemon auto-runs on startup      |
-| Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                   | TTS dedup skips speaking; DB still updates          |
-| Slug alignment off                                            | Slug mismatch observation surfaced                              | Agent re-aligns working slug                        |
-| Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                             | Correct behavior                                    |
-| Codex checkpoint loop                                         | Hook re-entry limiter detects repeated blocked stop             | Correct behavior                                    |
-| Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                              | First real user message sets `last_message_sent_at` |
-| DB unavailable in receiver                                    | `_maybe_checkpoint_output` returns None (fail-open)             | Stop passes through normally                        |
-| Hook output malformed                                         | CLI ignores non-JSON stdout; agent stops normally               | Next stop re-evaluates                              |
-| Git not available in hook subprocess                          | `_get_uncommitted_files` returns None → generic Phase 1 message | Correct fail-open behavior                          |
-| Transcript missing or corrupt                                 | `TurnTimeline(has_data=False)` → file-based instructions only   | No suppression; all actions listed                  |
-| Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`       | Performance acceptable for checkpoint frequency     |
-| False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                   | Acceptable: false suppression > false negative (R8) |
-| Committed-turn-files marker write fails (OSError)              | Commit handler logs a warning; the action ledger falls back to dirty-file scoping for that commit | Re-running the implied action manually; next sealed commit re-records |
+| Scenario                                                      | Behavior                                                                                          | Recovery                                                              |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Daemon restart during active turn                             | Timestamps persist in DB; next `agent_stop` evaluates correctly                                   | No action needed                                                      |
+| DB field missing (migration not run)                          | `AttributeError` on session access                                                                | Run migration 004; daemon auto-runs on startup                        |
+| Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                                                     | TTS dedup skips speaking; DB still updates                            |
+| Slug alignment off                                            | Slug mismatch observation surfaced                                                                | Agent re-aligns working slug                                          |
+| Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                                                               | Correct behavior                                                      |
+| Codex checkpoint loop                                         | Hook re-entry limiter detects repeated blocked stop                                               | Correct behavior                                                      |
+| Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                                                                | First real user message sets `last_message_sent_at`                   |
+| DB unavailable in receiver                                    | `_maybe_checkpoint_output` returns None (fail-open)                                               | Stop passes through normally                                          |
+| Hook output malformed                                         | CLI ignores non-JSON stdout; agent stops normally                                                 | Next stop re-evaluates                                                |
+| Git not available in hook subprocess                          | `_get_uncommitted_files` returns None → generic Phase 1 message                                   | Correct fail-open behavior                                            |
+| Transcript missing or corrupt                                 | `TurnTimeline(has_data=False)` → file-based instructions only                                     | No suppression; all actions listed                                    |
+| Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`                                         | Performance acceptable for checkpoint frequency                       |
+| False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                                                     | Acceptable: false suppression > false negative (R8)                   |
+| Committed-turn-files marker write fails (OSError)             | Commit handler logs a warning; the action ledger falls back to dirty-file scoping for that commit | Re-running the implied action manually; next sealed commit re-records |
 
 ## See Also
 

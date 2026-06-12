@@ -110,7 +110,6 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 
 The field is set only at acceptance boundaries where normalized input becomes accepted core state. UI adapters pass origin metadata into the command layer; they do not mutate session state directly. Terminal input has no adapter acceptance boundary, so the terminal hook path records `terminal` at `user_prompt_submit`.
 
-
 At the same UI input acceptance boundary, Core opens the UI output turn before
 agent injection by asking the origin adapter and eligible Discord admin adapter
 to clear delivery receipts and mark `turn_open_pending`, and emits the early
@@ -119,7 +118,6 @@ projection later exposes the accepted user boundary, adapters adopt that
 timestamp as `turn_anchor_ts` and clear `turn_open_pending` without clearing the
 new receipt again. Terminal input has no UI acceptance boundary and continues to
 derive its turn start from the late `user_prompt_submit` hook.
-
 
 Current canonical origins are `telegram`, `discord`, `whatsapp`, `web`, and `terminal`.
 

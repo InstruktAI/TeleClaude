@@ -164,6 +164,7 @@ replaces the todo's dependency set with the supplied parents
 ```
 
 <!-- planned:task-lane -->
+
 ```gherkin
 Given an active task todo
 When the operator runs "telec todo update my-task --datetime 2026-06-12T09:00:00Z"
@@ -178,6 +179,7 @@ When the operator runs 'telec todo update my-task --datetime ""'
 Then the update leg clears the datetime
 And keeps the rest of the todo state unchanged
 ```
+
 <!-- /planned:task-lane -->
 
 ```

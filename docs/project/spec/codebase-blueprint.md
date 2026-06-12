@@ -1,9 +1,6 @@
 ---
-description: The codebase Blueprint — a generated AST structural map agents consult
-  at plan time for an intended change's blast radius. Engine (Graphify CLI), integrate-time
-  generation, freshness manifest, the telec context blueprint affected helper, languages,
-  and blind spots.
-visibility: public
+description: 'The codebase Blueprint — a generated AST structural map agents consult at plan time for an intended change''s blast radius. Engine (Graphify CLI), integrate-time generation, freshness manifest, the telec context blueprint affected helper, languages, and blind spots.'
+visibility: 'public'
 ---
 
 # Codebase Blueprint — Spec

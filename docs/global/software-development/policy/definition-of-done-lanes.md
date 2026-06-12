@@ -2,6 +2,7 @@
 description: 'The review lanes — the review-time enforcement of the Definition of Done. Defined once here; referenced by the build reviewer, the commit reviewer, and anticipated by the planner.'
 visibility: 'public'
 ---
+
 # Review Lanes — Policy
 
 ## Required reads
@@ -20,8 +21,8 @@ the requirement contract). They are defined once here and consumed by:
 - `software-development/procedure/lifecycle/prepare/plan-draft` and `.../prepare/review-plan` — the planner and plan reviewer, which **anticipate** the lanes (the plan must pre-satisfy what build-review will check).
 
 Severity tiers, citation rules, the lane execution gate, and verdict arithmetic
-live in the review procedure, not here — this catalog defines *what each lane
-checks and the authority it answers to*, not how a review is run.
+live in the review procedure, not here — this catalog defines _what each lane
+checks and the authority it answers to_, not how a review is run.
 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
@@ -38,7 +39,7 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 | types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                             |
 | comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                        |
 | logging                 | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes                                   |
-| docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README, and affected doc snippets reflect changes |
+| docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README, and affected doc snippets reflect changes  |
 | doc-hygiene             | § Doc-snippet hygiene (when any `docs/**` snippet changed)                  | Verify changed snippet bodies state present-tense contract — no narration            |
 | simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                    |
 
@@ -162,7 +163,7 @@ Before crediting any test as meaningful coverage, answer concretely: what behavi
   2. **Native type checker / linter** (pyright, mypy, ruff) when a type can't make it unrepresentable but a native rule already covers it.
   3. **Custom `tools/lint/` guard** in `make lint` — **only** when 1–2 provably cannot express the invariant, and with a one-line justification of why no type/native check suffices.
   4. **Never** a runtime test for a static property.
-  A test paying per-cycle cost for a static property — or a `tools/lint` guard duplicating what a type would enforce — is the anti-pattern, not the fix.
+     A test paying per-cycle cost for a static property — or a `tools/lint` guard duplicating what a type would enforce — is the anti-pattern, not the fix.
 - Reject **placeholder or xfail "spec" tests** that document intended-but-not-yet-implemented behavior. The spec-anchored model has no waiting-to-flip tests: an unbound scenario is tracked as coverage backlog by the coverage tool, not as a test sitting in `tests/`. A test exists only to bind a scenario it currently satisfies. Also verify each binding is honest — it drives the real system for its scenario without mocking the thing under test — and that the coverage tool reports no orphan, stale, or duplicate bindings for in-scope specs.
 - Reject **refactor-leftover existence checks** — `assert not (_REPO_ROOT / "old_file.py").exists()` and shape variants. The git history records what was removed; the test adds nothing.
 - Reject **filesystem-inventory snapshots** — `assert _inventory(some_root) == snapshot` where the snapshotted value is a dict/list of file paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to root X," assert emptiness directly: `assert not any(root.rglob("*"))`.
@@ -316,21 +317,24 @@ Missing documentation updates are **Important** findings. Missing config surface
 **Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (Narration anti-pattern).
 
 Conditional lane — fires whenever the diff touches any `docs/**` snippet. The
-DoD docs lane above checks that docs *exist and reflect the change*; this lane
-checks that the changed prose is *clean*. A snippet body states present-tense
+DoD docs lane above checks that docs _exist and reflect the change_; this lane
+checks that the changed prose is _clean_. A snippet body states present-tense
 intent and contract — nothing else. This is a reviewer judgment, not an automated
 grader: code that scores free-text snippet quality would itself violate
 `principle/intelligence-boundaries`, so the reviewer reads the prose and applies
 the rule.
 
 <!-- planned-change:planned-change-markers -->
+
 **Scope.** Audit the **changed regions** (added/modified lines and their enclosing
 section), the snippet's **frontmatter**, and any **newly-added or delivered**
 planned block (`<!-- planned:slug -->`) or companion (`<stem>.<slug>.md`). Do NOT
 re-audit unchanged regions of a snippet the diff merely touched elsewhere —
 pre-existing narration outside the change is not this change's finding. A
 delivered planned/companion body is fully in scope, because delivery touches it.
+
 <!-- change:planned-change-markers -->
+
 **Scope.** Audit the **changed regions** (added/modified lines and their enclosing
 section), the snippet's **frontmatter**, and any **newly-added or delivered**
 planned block (`<!-- planned:slug -->`), planned-change block
@@ -339,6 +343,7 @@ re-audit unchanged regions of a snippet the diff merely touched elsewhere —
 pre-existing narration outside the change is not this change's finding. A
 delivered planned, planned-change, or companion body is fully in scope, because
 delivery touches it.
+
 <!-- /planned-change:planned-change-markers -->
 
 **Companion re-sync check.** When a commit edits a live parent `<stem>.md` and

@@ -10,7 +10,7 @@ visibility: 'public'
 
 ## Context
 
-The platform forbids backward-compatibility cruft in code ("when removing code, remove it completely; no backward compatibility unless explicitly required"). That rule is unenforceable for *persisted* data unless something guarantees domain logic never encounters an old shape — otherwise every read path accretes version-branching, which is exactly the cruft the rule bans.
+The platform forbids backward-compatibility cruft in code ("when removing code, remove it completely; no backward compatibility unless explicitly required"). That rule is unenforceable for _persisted_ data unless something guarantees domain logic never encounters an old shape — otherwise every read path accretes version-branching, which is exactly the cruft the rule bans.
 
 Two different things travel under the word "migration," and conflating them produces a muddled design:
 
@@ -26,7 +26,7 @@ Adopt **two layers**, owned in two different places, plus a hard rule that ties 
 **Layer 1 — Per-aggregate data evolution via lazy upcasting (owned per domain).** A stored record carries a `schema_version`. On read it is pulled through an ordered upcaster chain vN → vN+1 → … → latest before any domain code sees it; the migrated form is written back (best-effort/async, so a read is never blocked on the persist) so the store converges over time. Domain code only ever knows the latest shape. The mechanism splits into:
 
 - **A shared upcasting engine (kernel, not a domain).** A `versions/`-per-aggregate convention, a declarative transformer for the common cases (rename, add-with-default, coerce), an escape hatch to custom imperative handlers for complex cases, and the read-through/write-back machinery. Lives in shared infrastructure (`shared`/`storage`).
-- **The transformations themselves, owned by each bounded context.** `workflow` ships its own `versions/` for the todo aggregate; `config` ships its own for the config document; each *uses* the shared engine. No context reaches across into another's data.
+- **The transformations themselves, owned by each bounded context.** `workflow` ships its own `versions/` for the todo aggregate; `config` ships its own for the config document; each _uses_ the shared engine. No context reaches across into another's data.
 
 Semi-structured payloads (`workflow.todos.state_extra` JSONB, config YAML `extra` passthrough, artifact bodies) are the primary upcasting surface; rigid table DDL stays with structural migrations (Layer 2 / sqlx).
 
@@ -51,7 +51,7 @@ Semi-structured payloads (`workflow.todos.state_extra` JSONB, config YAML `extra
 
 ## Alternatives Considered
 
-**One central migrations domain owning all data evolution.** Rejected: reaches into every context's storage, breaking bounded-context autonomy. The engine is shared *tooling*; the transformations belong with their data.
+**One central migrations domain owning all data evolution.** Rejected: reaches into every context's storage, breaking bounded-context autonomy. The engine is shared _tooling_; the transformations belong with their data.
 
 **Eager bulk migration on upgrade for data too.** Rejected: couples data evolution to release windows, requires downtime or long-running batch jobs, and reintroduces the "did the migration run" coordination problem at the data layer. Lazy upcasting converges opportunistically without a migration window.
 

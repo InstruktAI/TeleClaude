@@ -65,7 +65,7 @@ visibility: 'public'
 ## Rationale
 
 Documentation leads and code catches up (`software-development/principle/documentation-first-development`).
-This policy is the enforceable *rules* layer of that disposition — kept separate
+This policy is the enforceable _rules_ layer of that disposition — kept separate
 from the principle (the why) and the procedure (the how) so a rule is stated once.
 
 The routing rules exist because the failure mode is mechanical: agents pattern-match

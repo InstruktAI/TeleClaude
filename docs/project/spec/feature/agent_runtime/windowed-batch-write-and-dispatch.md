@@ -1,6 +1,6 @@
 ---
 delivered_by:
-- v2-agent-runtime
+  - v2-agent-runtime
 description: Windowed batched write + change-notification dispatch for agent CLI hook
   events. Producer-side write coalescing with zero added latency on the publish path.
 visibility: public

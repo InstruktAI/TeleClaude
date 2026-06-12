@@ -23,11 +23,11 @@ Send a new member an email containing deep links to start a private conversation
 - Email delivery is optional. When `email.enabled` is set and SMTP credentials are present in env (`SMTP_USERNAME`, `SMTP_KEY`, `EMAIL_FROM`), the invite is emailed. When email is disabled or unconfigured, `telec config people invite` instead prints the generated links so the admin can relay them to the member manually.
 <!-- /planned-change:move-telec-config-invite-to-people -->
 - Each person gets a single `invite_token` stored in the ephemeral invitations store under `~/.teleclaude/state/invitations.json`. The same token is embedded in all platform links.
-<!-- planned-change:move-telec-config-invite-to-people -->
+  <!-- planned-change:move-telec-config-invite-to-people -->
   - Generated on `people add` (automatic) or `invite` (manual resend).
-<!-- change:move-telec-config-invite-to-people -->
+  <!-- change:move-telec-config-invite-to-people -->
   - Generated on `people add` (automatic) or `people invite` (manual resend).
-<!-- /planned-change:move-telec-config-invite-to-people -->
+  <!-- /planned-change:move-telec-config-invite-to-people -->
   - Format: `inv_` + 16 random hex chars (e.g., `inv_a8f3b2c9d1e4f071`).
   - Stays valid until a new invite is sent, which rotates the token.
   - No time-based expiry.
@@ -62,13 +62,17 @@ Adding a person automatically:
 ### 1b. Admin resends invite
 
 <!-- planned-change:move-telec-config-invite-to-people -->
+
 ```bash
 telec config invite "John Doe"
 ```
+
 <!-- change:move-telec-config-invite-to-people -->
+
 ```bash
 telec config people invite "John Doe"
 ```
+
 <!-- /planned-change:move-telec-config-invite-to-people -->
 
 For existing people who lost their email or need a fresh link. Generates a new token (invalidating the old one), sends the email again. If email is disabled or unconfigured, the command prints the generated links instead so the admin can share them directly; `--json` always returns the links as machine data.
@@ -148,30 +152,36 @@ Telegram + email only. Discord and WhatsApp links are generated in the email but
 <!-- planned-change:move-telec-config-invite-to-people -->
 3. `invite` resends with fresh token
 <!-- change:move-telec-config-invite-to-people -->
-3. `people invite` resends with fresh token
+4. `people invite` resends with fresh token
 <!-- /planned-change:move-telec-config-invite-to-people -->
-4. Brevo SMTP email sending
-5. Telegram private chat `/start` handler with token-based credential binding
-6. Session creation in personal workspace
+5. Brevo SMTP email sending
+6. Telegram private chat `/start` handler with token-based credential binding
+7. Session creation in personal workspace
 
 ### Implementation gaps
 
-| Component                             | Status           | What's needed                                                                                               |
-| ------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| Component | Status | What's needed |
+| --------- | ------ | ------------- |
+
 <!-- planned-change:move-telec-config-invite-to-people -->
-| `telec config invite`                 | Exists, broken   | Fix bot username resolution, send email, validate email exists                                              |
+
+| `telec config invite` | Exists, broken | Fix bot username resolution, send email, validate email exists |
+
 <!-- change:move-telec-config-invite-to-people -->
-| `telec config people invite`          | Exists, broken   | Fix bot username resolution, send email, validate email exists                                              |
+
+| `telec config people invite` | Exists, broken | Fix bot username resolution, send email, validate email exists |
+
 <!-- /planned-change:move-telec-config-invite-to-people -->
-| `telec config people add` auto-invite | Missing          | Trigger invite on add when email is provided                                                                |
-| Invite token generation               | Missing          | Generate `inv_` + 16 hex chars, store in per-person config                                                  |
-| Telegram private chat handler         | Missing          | `/start` command handler for `ChatType.PRIVATE` with payload parsing                                        |
-| Email sending                         | Missing          | Brevo SMTP integration (`teleclaude/notifications/email.py`)                                                |
-| Email template                        | Missing          | `templates/emails/member-invite.html`                                                                       |
-| Discord DM handler                    | Missing          | DM message handler with identity resolution                                                                 |
-| WhatsApp adapter                      | Missing (icebox) | Out of scope for MVP — include link in email anyway                                                         |
-| Person workspace creation             | Partially exists | `~/.teleclaude/people/{name}/` exists in config, `/workspace/` subfolder needs scaffolding on first session |
-| Token-based credential binding        | Missing          | On first private message, match invite token → bind platform user ID to PersonEntry                         |
+
+| `telec config people add` auto-invite | Missing | Trigger invite on add when email is provided |
+| Invite token generation | Missing | Generate `inv_` + 16 hex chars, store in per-person config |
+| Telegram private chat handler | Missing | `/start` command handler for `ChatType.PRIVATE` with payload parsing |
+| Email sending | Missing | Brevo SMTP integration (`teleclaude/notifications/email.py`) |
+| Email template | Missing | `templates/emails/member-invite.html` |
+| Discord DM handler | Missing | DM message handler with identity resolution |
+| WhatsApp adapter | Missing (icebox) | Out of scope for MVP — include link in email anyway |
+| Person workspace creation | Partially exists | `~/.teleclaude/people/{name}/` exists in config, `/workspace/` subfolder needs scaffolding on first session |
+| Token-based credential binding | Missing | On first private message, match invite token → bind platform user ID to PersonEntry |
 
 ## Outputs
 

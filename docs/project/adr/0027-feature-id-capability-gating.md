@@ -15,7 +15,7 @@ ADR-0026 establishes expand/contract gated on the slowest channel as the discipl
 It is the right tool for exactly one of the two cross-version change kinds, and a category error for the other:
 
 - **New capability** — a new event type, a new optional behavior, a new coordination step a node has never heard of. The safe default is to ignore it. Feature-IDs nail this.
-- **Evolved shape** — a field changes on an event a node *already* consumes. A feature-ID does nothing here; the node knows the event and must still process it, just resiliently. This is the envelope-versioning + tolerant-reader + upcaster lane (ADR-0026).
+- **Evolved shape** — a field changes on an event a node _already_ consumes. A feature-ID does nothing here; the node knows the event and must still process it, just resiliently. This is the envelope-versioning + tolerant-reader + upcaster lane (ADR-0026).
 
 Used for shape evolution, feature-flags explode into a flag-per-field-change and never make the reader tolerant. Used for new capability, they are the cleanest expression of graceful degradation.
 
@@ -25,7 +25,7 @@ Adopt **feature-IDs** as the capability-gating layer, sitting beside (not replac
 
 - **A feature-ID is the named "expand" step.** Expand = ship the new behavior behind a feature-ID that unaware nodes ignore. Contract = retire the ID and delete the gated code path once the slowest channel universally carries it.
 - **Graceful-ignore is the default.** An event or behavior tagged with feature-ID `F` is dropped cleanly by a node that does not carry `F` — fail-safe ignore, never fail-crash. The event-bus enforces this default.
-- **Ignorable vs must-negotiate.** Each feature-ID is marked. *Ignorable* features (most product behavior) are safe to bypass when unaware. *Must-negotiate* features (fleet-coordination changes — a new lease format, a new dedup key) are NOT safe to bypass: an unaware node that ignores them silently does the old, unsafe thing, producing split-brain. Must-negotiate features refuse rather than degrade until the peer advertises support.
+- **Ignorable vs must-negotiate.** Each feature-ID is marked. _Ignorable_ features (most product behavior) are safe to bypass when unaware. _Must-negotiate_ features (fleet-coordination changes — a new lease format, a new dedup key) are NOT safe to bypass: an unaware node that ignores them silently does the old, unsafe thing, producing split-brain. Must-negotiate features refuse rather than degrade until the peer advertises support.
 - **Fleet-advertised capability map.** Each node advertises its feature-ID set; `reconciliation` aggregates these into the fleet capability map (ADR-0024). The map is the authoritative input to "is it safe to require, or to contract, feature `F`?" — a more precise check than a SemVer compare, since a node may run a newer version with a feature disabled.
 - **Lifecycle removal is mandatory.** A feature-ID is retired the moment the capability map shows the slowest channel universally carries it; retirement deletes the gated path. Feature-IDs that never die are themselves backward-compat cruft relocated from code branches into a registry — the exact debt the platform bans (ADR-0025). The removal gate is what keeps the registry honest.
 - **Spec-like identity.** Feature-IDs are stable identifiers like doc-snippet IDs, giving a through-line: feature-ID → feature spec → the events it introduces → the version range it is live in.

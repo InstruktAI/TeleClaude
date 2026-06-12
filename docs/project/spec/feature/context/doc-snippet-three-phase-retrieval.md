@@ -57,7 +57,6 @@ Then the output renders that slug's pending view
 And no pending-changes awareness header is appended
 ```
 
-
 ```
 Given a known snippet ID returned by phase 1
 When the caller runs telec docs get <id>

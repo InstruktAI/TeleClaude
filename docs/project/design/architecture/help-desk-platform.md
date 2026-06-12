@@ -226,11 +226,11 @@ A TeleClaude tool (`telec sessions escalate`) that customer-facing agents call w
 
 **Documentation layering:**
 
-| Artifact                | Location                                            | What it covers                                        |
-| ----------------------- | --------------------------------------------------- | ----------------------------------------------------- |
-| Tool spec               | Help desk `docs/project/spec/tools/escalation.md`   | Parameters, return values, behavior contract          |
-| Escalation policy       | Help desk `docs/project/policy/escalation.md`       | When to escalate, thresholds, what qualifies          |
-| Escalation procedure    | Help desk `docs/project/procedure/escalation.md`    | Step-by-step: recognize → call tool → inform customer |
+| Artifact                | Location                                                 | What it covers                                        |
+| ----------------------- | -------------------------------------------------------- | ----------------------------------------------------- |
+| Tool spec               | Help desk `docs/project/spec/tools/escalation.md`        | Parameters, return values, behavior contract          |
+| Escalation policy       | Help desk `docs/project/policy/escalation.md`            | When to escalate, thresholds, what qualifies          |
+| Escalation procedure    | Help desk `docs/project/procedure/escalation.md`         | Step-by-step: recognize → call tool → inform customer |
 | Telec CLI surface entry | TeleClaude `docs/global/general/spec/tools/telec-cli.md` | Session and operator command surface                  |
 
 The operator brain (`AGENTS.master.md`) references the help desk docs:

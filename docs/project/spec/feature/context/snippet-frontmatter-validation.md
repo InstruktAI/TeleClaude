@@ -65,7 +65,6 @@ When snippet validation runs
 Then a planned-change marker finding is reported
 ```
 
-
 ```
 Scenario: Required reads is not the first H2
   Given a snippet whose first H2 after H1 is "## What it is"

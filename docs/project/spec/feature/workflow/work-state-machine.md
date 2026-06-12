@@ -22,7 +22,9 @@ orchestrator session. Daemon-runner pickup is a separate concern outside this
 per-slug orchestration contract.
 
 <!-- planned:task-lane -->
+
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `/next-run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `/next-run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and stays alive for human follow-up instead of self-ending through finalize-ready cleanup.
+
 <!-- /planned:task-lane -->
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
@@ -69,6 +71,7 @@ And returns an instruction to wait for the builder to run "telec todo stamp my-f
 ```
 
 <!-- planned:task-lane -->
+
 #### UC-WSM4: Task execution uses next-run-task, not Phase B build
 
 ```gherkin
@@ -93,6 +96,7 @@ When it has recorded results in the `task-plan`
 Then the task session stays alive for human follow-up
 And it does not self-end, stamp build-complete, dispatch review, or enter finalize-ready
 ```
+
 <!-- /planned:task-lane -->
 
 ```
@@ -181,13 +185,14 @@ And the machine does NOT select a ready todo from the roadmap
   terminal after finalize-ready cleanup.
 
 <!-- planned:runner-dispatch -->
+
 - `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector
-  for ready work. It evaluates the project todo set, acquires a
-  `(canonical_project_root, slug, work)` dispatch claim, verifies no live
-  `/next-work` session already owns that project/slug/lane, and then starts
-  `/next-work --args <slug>`. The work state machine remains per-slug: a bare
-  `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG`
-  and never scans the roadmap opportunistically.
+for ready work. It evaluates the project todo set, acquires a
+`(canonical_project_root, slug, work)` dispatch claim, verifies no live
+`/next-work` session already owns that project/slug/lane, and then starts
+`/next-work --args <slug>`. The work state machine remains per-slug: a bare
+`telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG`
+and never scans the roadmap opportunistically.
 <!-- /planned:runner-dispatch -->
 
 ## Known caveats

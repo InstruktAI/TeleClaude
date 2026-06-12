@@ -15,7 +15,7 @@ cross-referenced each other — including forward, to decisions that did not yet
 exist — carried `delivered_by` and named todos, and one cohesive contract was
 sharded across several mutually-referencing records. The authoring snippets
 stated immutability and the `supersedes` mechanism but never stated what an ADR
-*is*, so agents inferred its nature and got it wrong, and reviewers had no rule to
+_is_, so agents inferred its nature and got it wrong, and reviewers had no rule to
 check against. Inspecting ADR prose with a regex validator was considered and
 rejected: judging whether a body references a later decision or work is a semantic
 question, and `general/principle/intelligence-boundaries` reserves that judgment

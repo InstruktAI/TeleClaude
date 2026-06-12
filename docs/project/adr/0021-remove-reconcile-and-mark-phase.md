@@ -27,7 +27,7 @@ Two further facts forced the decision:
   `--stage`, so the core inferred the stage from the (possibly wrong) current
   pointer and clamped to it — it could not cross stage boundaries — and the TUI
   reported success even when nothing changed. The flag itself contradicted the
-  operation's premise: you reconcile *because* you do not know the correct state,
+  operation's premise: you reconcile _because_ you do not know the correct state,
   so requiring the caller to assert the stage up front is incoherent.
 - `mark-phase` had no API route, no internal caller, and no-op validation. Its
   only behavioral effect was the mechanical clearing of human approvals on

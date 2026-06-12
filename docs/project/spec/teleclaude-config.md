@@ -123,7 +123,6 @@ Telegram/Discord redemption read and write the ephemeral invitations store
 instead of scanning per-person overlays. See
 `docs/project/spec/feature/config/schema-driven-config-tui.md`.
 
-
 Typed config keys are part of the interactive config surface. The config wizard
 must render machine config, global overlay, project overlay, per-person overlay,
 and env-backed values from their canonical schemas or registries, with view
@@ -131,7 +130,6 @@ metadata only deciding grouping and presentation. `creds`, tokens, secrets, and
 settings are not excluded from the TUI because they are nested or sensitive; any
 masking or reveal-on-edit behavior is a rendering detail layered on top of the
 same editable schema surface.
-
 
 ### Environment variables
 

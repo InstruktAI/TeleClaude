@@ -5,6 +5,7 @@ date: '2026-06-11'
 adr_status: 'accepted'
 description: 'A manual session close halts its todo via an explicit hold set at the close command; the runner self-heals the active_runner link. No close-intent taxonomy is stamped on the close event.'
 ---
+
 # ADR-0036: Manual session close is an explicit halt — ADR
 
 ## Context

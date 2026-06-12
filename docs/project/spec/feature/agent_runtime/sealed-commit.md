@@ -355,6 +355,7 @@ Then the hook exits nonzero immediately
 And the commit is aborted
 And the partial-staging check is NOT silently bypassed
 ```
+
 ## See also
 
 - docs/project/design/code-commit.md

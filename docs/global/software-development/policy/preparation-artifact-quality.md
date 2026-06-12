@@ -255,7 +255,7 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   (gold-plating) and no orphan PRD criteria (coverage gaps).
 - Referenced file paths are explicit in the plan tasks for grounding and
   staleness review.
-- The implementation plan declares exactly one `` ```referenced-paths `` fenced
+- The implementation plan declares exactly one ` ```referenced-paths ` fenced
   contract block listing every file the work creates or modifies. This block is
   the authoritative code drift surface. Per-task prose may still name files for
   builder grounding, but prose path mentions are not part of the drift contract.

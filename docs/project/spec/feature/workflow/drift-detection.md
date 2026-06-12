@@ -1,5 +1,5 @@
 ---
-description: "Detect when a Todo's prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, dependency graph, and age — and force re-grounding before the Todo may reach prepared."
+description: 'Detect when a Todo''s prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, dependency graph, and age — and force re-grounding before the Todo may reach prepared.'
 visibility: 'public'
 ---
 

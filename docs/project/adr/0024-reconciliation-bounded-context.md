@@ -14,13 +14,13 @@ The platform runs as a small fleet of installations on different machines and ch
 
 The question this forced: which bounded context owns "keep actual state equal to desired state across the fleet"?
 
-The instinct was to file it under `integration`. Integration's own change-axis test refutes that. Integration is defined by *foreign* boundaries — protocols and formats controlled by systems we do not own: "when Telegram's webhook format changes, integration changes." Self-update logic does not change when GitHub's webhook shape changes; it changes when *our* channel policy, *our* update procedure, or *our* desired-state model changes. Those are rules about our own fleet, on a different change axis. Folding them into integration makes integration a god-context that owns both "parse foreign protocols" and "manage our fleet."
+The instinct was to file it under `integration`. Integration's own change-axis test refutes that. Integration is defined by _foreign_ boundaries — protocols and formats controlled by systems we do not own: "when Telegram's webhook format changes, integration changes." Self-update logic does not change when GitHub's webhook shape changes; it changes when _our_ channel policy, _our_ update procedure, or _our_ desired-state model changes. Those are rules about our own fleet, on a different change axis. Folding them into integration makes integration a god-context that owns both "parse foreign protocols" and "manage our fleet."
 
-A second observation sharpened the scope: the fleet is *deliberately* multi-version. `alpha` is always ahead of `beta` is always ahead of `stable`. Version skew is not a transient rollout window — it is the steady state, permanently. So guaranteeing that differently-versioned nodes keep interoperating is a first-class, continuous concern that needs an owner, and that owner is whatever knows each node's version and capability set.
+A second observation sharpened the scope: the fleet is _deliberately_ multi-version. `alpha` is always ahead of `beta` is always ahead of `stable`. Version skew is not a transient rollout window — it is the steady state, permanently. So guaranteeing that differently-versioned nodes keep interoperating is a first-class, continuous concern that needs an owner, and that owner is whatever knows each node's version and capability set.
 
 ## Decision
 
-Introduce a new bounded context, **`reconciliation`**, that owns desired-state convergence for the fleet. Its single invariant is *actual → desired*, and every responsibility is a convergence concern:
+Introduce a new bounded context, **`reconciliation`**, that owns desired-state convergence for the fleet. Its single invariant is _actual → desired_, and every responsibility is a convergence concern:
 
 - **Version** — converge each installation to the newest release on its channel (`alpha` / `beta` / `stable`), exactly once, restarting healthy.
 - **Schema (installation-level)** — run the ordered structural release migrations between versions.
@@ -30,13 +30,13 @@ Introduce a new bounded context, **`reconciliation`**, that owns desired-state c
 
 Context relationships:
 
-- **Customer-Supplier downstream of `integration`** — integration terminates and normalizes external webhooks and publishes a cluster-visible event; reconciliation *subscribes* and reconciles. Reconciliation never touches transport or provider protocols.
+- **Customer-Supplier downstream of `integration`** — integration terminates and normalizes external webhooks and publishes a cluster-visible event; reconciliation _subscribes_ and reconciles. Reconciliation never touches transport or provider protocols.
 - **Customer-Supplier downstream of `config`** — config supplies desired-state inputs (channel, `pinned_minor`, health definitions).
 - Rides the **event-bus CLUSTER scope** as infrastructure; does not own it.
 
 Reconciliation does NOT own: per-aggregate data schema evolution (each domain owns its own upcasters on a shared kernel — see ADR-0025); agent-artifact authoring or distribution (`agent_artifacts` keeps `telec sync`); product/work lifecycle (`workflow`).
 
-The name is `reconciliation` because the domain *is* a control loop, the same shape Kubernetes calls a reconciler. "deployment" was rejected as too narrow (it omits health/upkeep/migration); "maintenance" reads as chores on first encounter; "lifecycle" collides with `workflow`'s todo-lifecycle vocabulary.
+The name is `reconciliation` because the domain _is_ a control loop, the same shape Kubernetes calls a reconciler. "deployment" was rejected as too narrow (it omits health/upkeep/migration); "maintenance" reads as chores on first encounter; "lifecycle" collides with `workflow`'s todo-lifecycle vocabulary.
 
 ## Consequences
 

@@ -161,7 +161,7 @@ The pathspec commit is built internally from `workspace scope plus
    must not unstage foreign files they see in the index.
 
 4. **Format + lint run in-process before `git commit --no-verify`.** `telec
-   code commit` runs `handle_format` then `handle_lint` against `quality_paths`
+code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    (the commit pathspec filtered to existing files) before invoking
    `git commit --no-verify`. Deletion-only commits (empty `quality_paths`) skip
    both steps. The thin `.git/hooks/pre-commit` performs only a partial-staging

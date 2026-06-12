@@ -11,8 +11,8 @@ visibility: 'public'
 ## Context
 
 A `dep-gated-prepare-autodispatch` input prescribed the mechanism for prepare
-auto-continue verbatim: *"reuse … the parent's prepare worker … via
-`telec sessions send`."* The implementer adopted that mechanism literally. The
+auto-continue verbatim: _"reuse … the parent's prepare worker … via
+`telec sessions send`."_ The implementer adopted that mechanism literally. The
 result was a self-send: in the PREPARED auto-continue, the "parent's prepare
 worker" resolved to the caller itself — the very session consuming the
 instruction — so the emitted command told the session to message itself

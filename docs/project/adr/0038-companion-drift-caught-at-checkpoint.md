@@ -48,7 +48,7 @@ correctness.
 - The hard, in-loop enforcement of companion mirroring now lives at the checkpoint;
   a review-lane-only enforcement of the same rule becomes redundant as the primary
   gate (it stays only as the correctness backstop).
-- The check fires on presence alone, so a parent edit that is *intentionally* not
+- The check fires on presence alone, so a parent edit that is _intentionally_ not
   mirrored (rare) still nags once until the agent either mirrors it or clears the
   turn-scoped hatch; this is the accepted false-nag cost of a fail-closed presence test.
 
