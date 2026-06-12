@@ -1,8 +1,4 @@
 ---
-id: project/spec/feature/reconciliation/channel-gated-self-update
-type: spec
-domain: software-development
-scope: project
 visibility: public
 delivered_by:
   - reconciliation-self-update
@@ -104,4 +100,4 @@ And the only operator-visible signal in the normal case is that the installation
 
 - **Version-agnostic by construction.** This spec names no transport, language, or build tool. Detection (webhook vs poll), fetch (pull vs download), build, and restart mechanics live in the domain spec and the delivering implementation, not here. The swap test applies: every scenario must hold if the entire implementation is replaced.
 - **Exactly-once is per target version, not per signal.** Duplicate or replayed signals are expected and must be absorbed idempotently.
-- **"Healthy" is defined by `config`.** What counts as a healthy running state is a desired-state input, not hardcoded here.
+- **"Healthy" is a desired-state condition, not hardcoded here.** What counts as a healthy running state is observed from the running installation; the contract does not pin the probe.

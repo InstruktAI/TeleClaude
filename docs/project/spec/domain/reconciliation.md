@@ -170,7 +170,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 #### `config.effective.updated`
 
 - **Producer:** `config`
-- **Reaction:** re-read desired-state inputs (channel, `pinned_minor`, health definitions); re-evaluate drift.
+- **Reaction:** re-read desired-state inputs (channel, `pinned_minor`); re-evaluate drift. Health is observed from the running daemon, not supplied by config.
 - **Failure handling:** logged; last-known config remains in force.
 
 ### Use cases (index of feature specs)
@@ -185,7 +185,7 @@ detailed scenarios live in the feature spec, not here.
 ### Context map position
 
 - **Customer-Supplier downstream of `integration`** — consumes the relayed, normalized inbound release/version events; never touches transport or provider protocols.
-- **Customer-Supplier downstream of `config`** — desired-state inputs (channel, `pinned_minor`, health definitions).
+- **Customer-Supplier downstream of `config`** — desired-state inputs (channel, `pinned_minor`).
 - **Rides the event-bus CLUSTER scope** — emits and consumes cluster-visible events; does not own the bus.
 - **Trigger relationship with `workflow`** — the `next-maintain` lifecycle phase is the orchestration entry point that hands off to this context's upkeep convergence; the phase is the trigger, reconciliation is the target.
 - **No relationship with per-domain data evolution** — each domain owns its own upcasters; reconciliation owns only installation-level structural migration.
