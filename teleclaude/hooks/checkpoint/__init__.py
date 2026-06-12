@@ -5,9 +5,12 @@ Uses session_scoping.resolve_scoped_paths for turn-local file attribution and Tu
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
+from collections.abc import Callable
+
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
+    CHECKPOINT_FILE_CATEGORIES,
     CHECKPOINT_LOG_CHECK_EVIDENCE,
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
@@ -62,8 +65,9 @@ from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointRes
 from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     consume_integrator_maintenance_marker,
+    discharge_commit_obligation,
     has_authored_main_commit_flag,
-    read_committed_turn_files,
+    read_commit_obligations,
     read_integrator_maintenance_marker,
 )
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
@@ -133,12 +137,14 @@ def run_heuristics(
     context: CheckpointContext,
     log_since_window: str = "2m",
     authored_main_commit: bool = False,
+    commit_obligations: list[str] | None = None,
+    discharge_obligation: Callable[[str], bool] | None = None,
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
     result.on_main = _current_branch(context.project_path) == "main"
     result.authored_main_commit = authored_main_commit
-    result.commit_action_required = not _has_commit_evidence_after_last_mutation(
+    result.commit_action_required = bool(git_files) and not _has_commit_evidence_after_last_mutation(
         timeline,
         git_files,
         context.project_path,
@@ -152,8 +158,11 @@ def run_heuristics(
         append_required_action(_post_commit_review_instruction())
         result.post_commit_review_action_required = True
 
-    # 1. File categorization
-    categories: list[FileCategory] = _categorize_files(git_files)
+    # 1. File categorization and commit-obligation sourcing
+    file_categories: list[FileCategory] = _categorize_files(git_files)
+    obligation_categories = _commit_obligation_categories(commit_obligations or [], result.on_main)
+    categories = _dedupe_categories([*file_categories, *obligation_categories])
+    obligation_names = {category.name for category in obligation_categories}
     result.categories = [c.name for c in categories]
 
     # 2. Build required actions with verification gap detection
@@ -183,6 +192,8 @@ def run_heuristics(
                 evidence_seen = _has_evidence(timeline, category.evidence_substrings)
 
         if category.evidence_substrings and evidence_seen:
+            if category.name in obligation_names and discharge_obligation is not None:
+                discharge_obligation(category.name)
             # Also check for status evidence when daemon/config restart was suppressed
             if "make restart" in category.instruction and not _has_status_evidence(timeline):
                 append_required_action("Run `make status` to verify daemon health")
@@ -197,16 +208,16 @@ def run_heuristics(
             )
 
     # Add log check if code changed and not already done
-    has_code_changes = any(c.name != "tests only" for c in categories)
+    has_code_changes = any(c.name != "tests only" for c in file_categories)
     if has_code_changes and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
         append_required_action(f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window}`")
 
     # Add test instruction if code changed and not already done
-    if categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
+    if file_categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
         append_required_action("Run targeted tests for only YOUR changed behavior")
 
     # Test quality review gate: point to policy, not inline rules
-    if any(c.name == "tests only" for c in categories):
+    if any(c.name == "tests only" for c in file_categories):
         append_required_action(
             "Test files were modified — review against test policy before committing: "
             "`telec docs get software-development/policy/testing`. Remove tests that violate policy."
@@ -231,6 +242,30 @@ def run_heuristics(
         result.is_all_clear = True
 
     return result
+
+
+def _commit_obligation_categories(obligations: list[str], on_main: bool) -> list[FileCategory]:
+    """Return checkpoint categories for outstanding commit-derived obligations."""
+    if not on_main:
+        return []
+    obligation_names = set(obligations)
+    return [
+        category
+        for category in CHECKPOINT_FILE_CATEGORIES
+        if category.name in obligation_names and category.main_only and category.instruction
+    ]
+
+
+def _dedupe_categories(categories: list[FileCategory]) -> list[FileCategory]:
+    """Return checkpoint categories once, preserving first-seen order."""
+    seen: set[str] = set()
+    deduped: list[FileCategory] = []
+    for category in categories:
+        if category.name in seen:
+            continue
+        seen.add(category.name)
+        deduped.append(category)
+    return deduped
 
 
 # ---------------------------------------------------------------------------
@@ -504,15 +539,14 @@ def get_checkpoint_content(
             project_path,
         )
         try:
-            committed_turn_files = read_committed_turn_files(session_id)
+            commit_obligations = read_commit_obligations(session_id)
         except OSError:
             logger.warning(
-                "Committed turn files marker read failed",
-                extra={**base_extra, "mode": "committed_turn_files_read_failed"},
+                "Commit obligations marker read failed",
+                extra={**base_extra, "mode": "commit_obligations_read_failed"},
                 exc_info=True,
             )
             return CHECKPOINT_MESSAGE
-        effective_files = _dedupe_strings([*effective_files, *committed_turn_files])
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
 
@@ -520,7 +554,7 @@ def get_checkpoint_content(
         # checkpoint attribution must stay strictly turn-local.
         used_session_fallback = False
 
-        if not effective_files and not force_main_commit_checkpoint:
+        if not effective_files and not force_main_commit_checkpoint and not commit_obligations:
             logger.info(
                 "Checkpoint payload skipped (no turn-local changes)",
                 extra={
@@ -547,7 +581,12 @@ def get_checkpoint_content(
             effective_files,
             project_path,
         )
-        if _is_no_action_only(effective_files) and not force_main_commit_checkpoint and docs_committed:
+        if (
+            _is_no_action_only(effective_files)
+            and not force_main_commit_checkpoint
+            and not commit_obligations
+            and docs_committed
+        ):
             logger.info(
                 "Checkpoint payload skipped (no-action changes only, already committed)",
                 extra={
@@ -580,7 +619,31 @@ def get_checkpoint_content(
             context,
             log_since_window=log_since_window,
             authored_main_commit=authored_main_commit,
+            commit_obligations=commit_obligations,
+            discharge_obligation=lambda action: discharge_commit_obligation(session_id, action),
         )
+
+        if not effective_files and commit_obligations and result.is_all_clear and not force_main_commit_checkpoint:
+            logger.info(
+                "Checkpoint payload skipped (commit obligations satisfied)",
+                extra={
+                    **base_extra,
+                    "timeline_has_data": timeline.has_data,
+                    "timeline_records": len(timeline.tool_calls),
+                    "changed_files": 0,
+                    "workspace_kind": scoped_paths.workspace_kind,
+                    "strategy": scoped_paths.strategy,
+                    "ledger_updated": scoped_paths.ledger_updated,
+                    "categories": result.categories,
+                    "required_actions": 0,
+                    "observations": 0,
+                    "mode": "commit_obligations_satisfied",
+                    "message_len": 0,
+                    "used_session_fallback": used_session_fallback,
+                    "authored_main_commit": authored_main_commit,
+                },
+            )
+            return None
 
         message = _compose_checkpoint_message(effective_files, result)
         if result.post_commit_review_action_required:

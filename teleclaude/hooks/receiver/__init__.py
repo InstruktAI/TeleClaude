@@ -32,7 +32,7 @@ from teleclaude.hooks.adapters.base import read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
-    CHECKPOINT_COMMITTED_TURN_FILES_FLAG,
+    CHECKPOINT_COMMIT_OBLIGATIONS_FLAG,
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
@@ -232,7 +232,7 @@ def _reset_checkpoint_flags(session_id: str) -> None:
     # New user input starts a fresh checkpoint turn.
     consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
     consume_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)
-    consume_checkpoint_flag(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG)
+    consume_checkpoint_flag(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG)
 
 
 def _maybe_checkpoint_output(

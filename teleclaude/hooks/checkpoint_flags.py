@@ -20,7 +20,7 @@ CHECKPOINT_CLEAR_FLAG = "teleclaude_checkpoint_clear"
 CHECKPOINT_RECHECK_FLAG = "teleclaude_checkpoint_recheck"
 CHECKPOINT_AUTHORED_MAIN_COMMIT_FLAG = "teleclaude_checkpoint_authored_main_commit"
 CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG = "teleclaude_checkpoint_integrator_maintenance"
-CHECKPOINT_COMMITTED_TURN_FILES_FLAG = "teleclaude_checkpoint_committed_turn_files"
+CHECKPOINT_COMMIT_OBLIGATIONS_FLAG = "teleclaude_checkpoint_commit_obligations"
 
 
 def session_tmp_base_dir() -> Path:
@@ -113,23 +113,41 @@ def record_integrator_maintenance_marker(session_id: str, merge_range: str) -> N
     flag_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def record_committed_turn_files(session_id: str, files: list[str]) -> None:
-    """Append committed file paths to this turn's action-ledger marker."""
-    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG)
+def record_commit_obligations(session_id: str, actions: list[str]) -> None:
+    """Append commit-derived maintenance actions to this turn's obligation ledger."""
+    if not actions:
+        return
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG)
     flag_path.parent.mkdir(parents=True, exist_ok=True)
     existing = flag_path.read_text(encoding="utf-8") if flag_path.exists() else ""
-    paths = [line for line in existing.splitlines() if line]
-    paths.extend(path for path in files if path)
-    flag_path.write_text("\n".join(_dedupe_preserving_order(paths)) + "\n", encoding="utf-8")
+    current_actions = [line for line in existing.splitlines() if line]
+    current_actions.extend(action for action in actions if action)
+    flag_path.write_text("\n".join(_dedupe_preserving_order(current_actions)) + "\n", encoding="utf-8")
 
 
-def read_committed_turn_files(session_id: str) -> list[str]:
-    """Return committed files recorded for this turn, or [] when no marker exists."""
-    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG)
+def read_commit_obligations(session_id: str) -> list[str]:
+    """Return outstanding commit-derived maintenance actions."""
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG)
     if not flag_path.exists():
         return []
     content = flag_path.read_text(encoding="utf-8")
     return _dedupe_preserving_order([line for line in content.splitlines() if line])
+
+
+def discharge_commit_obligation(session_id: str, action: str) -> bool:
+    """Remove one satisfied maintenance action from the obligation ledger."""
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG)
+    if not flag_path.exists():
+        return False
+    actions = [line for line in flag_path.read_text(encoding="utf-8").splitlines() if line]
+    remaining = [item for item in actions if item != action]
+    if len(remaining) == len(actions):
+        return False
+    if remaining:
+        flag_path.write_text("\n".join(_dedupe_preserving_order(remaining)) + "\n", encoding="utf-8")
+    else:
+        flag_path.unlink()
+    return True
 
 
 def _dedupe_preserving_order(items: list[str]) -> list[str]:

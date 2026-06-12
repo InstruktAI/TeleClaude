@@ -22,26 +22,6 @@ result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
 
-<!-- planned-change:checkpoint-sync-observation-stale -->
-
-The engine is gated by session-scoped flag markers: a turn-scoped **clear
-flag** skips checkpoints for the current turn and is hard-cleared at the
-next user-prompt-submit; turn scoping prevents ordinary file-change
-checkpoints from re-firing after a checkpoint has been delivered; a
-**committed-turn-files marker**, carrying the files of every sealed
-`telec code commit` in the turn, sources those files into the action
-ledger so committing does not empty it, and is hard-cleared at the next
-user-prompt-submit; a fixed-name **authored main commit marker** is
-recorded when this session commits **code** on `main` through the sealed
-`telec code commit` path and triggers only the post-commit review gate,
-then is consumed when that review action is surfaced; and an
-**integrator-maintenance marker**, carrying the delivered merge range, is
-recorded by the integration state machine when it advances repo-root
-`main`, then consumed when the integrator's post-merge maintenance
-checkpoint is surfaced.
-
-<!-- change:checkpoint-sync-observation-stale -->
-
 The engine is gated by session-scoped flag markers: a turn-scoped **clear
 flag** skips checkpoints for the current turn and is hard-cleared at the
 next user-prompt-submit; turn scoping prevents ordinary file-change
@@ -59,22 +39,10 @@ recorded by the integration state machine when it advances repo-root
 `main`, then consumed when the integrator's post-merge maintenance
 checkpoint is surfaced.
 
-<!-- /planned-change:checkpoint-sync-observation-stale -->
-
-<!-- planned-change:checkpoint-sync-observation-stale -->
-
-The action and evidence ledger — what needs doing and what was done since
-the turn started — is time-anchored to the turn window and includes the
-committed-turn-files payload; it is hard-cleared only at user-prompt-submit.
-
-<!-- change:checkpoint-sync-observation-stale -->
-
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and includes
 outstanding commit obligations; each obligation is hard-cleared when evidence
 discharges it, and the ledger is wholesale-cleared at user-prompt-submit.
-
-<!-- /planned-change:checkpoint-sync-observation-stale -->
 
 Version control is consulted only as the category oracle (which file maps
 to which category), never as the arbiter of what is in-scope or done.
@@ -123,23 +91,6 @@ And returns no decision
 And the receiver proceeds to enqueue the agent-stop event
 ```
 
-<!-- planned-change:checkpoint-sync-observation-stale -->
-
-#### UC-CP4: No turn-local changes → no checkpoint
-
-```gherkin
-Given the heuristic engine returns an empty checkpoint result (no required actions)
-And no committed-turn-files marker is present
-And no integrator-maintenance marker is present
-When the checkpoint pre-emit step runs
-Then a debug log records "checkpoint skipped: no turn-local changes"
-And no decision is produced
-And no checkpoint-seen entry is enqueued
-And the agent-stop event enqueues normally
-```
-
-<!-- change:checkpoint-sync-observation-stale -->
-
 #### UC-CP4: No turn-local changes → no checkpoint
 
 ```gherkin
@@ -153,24 +104,6 @@ And no checkpoint-seen entry is enqueued
 And the agent-stop event enqueues normally
 ```
 
-<!-- /planned-change:checkpoint-sync-observation-stale -->
-
-<!-- planned-change:checkpoint-sync-observation-stale -->
-
-#### UC-CP5: Turn-scoped markers cleared on new user prompt
-
-```gherkin
-Given a checkpoint fired earlier in this turn and set the per-turn recheck flag
-And the turn may carry a set clear flag and a committed-turn-files marker
-When a new user-prompt-submit hook arrives that is NOT system-injected
-Then the per-turn recheck flag is consumed
-And the turn-scoped clear flag is consumed
-And the committed-turn-files ledger marker is consumed
-And the next agent-stop in the new turn may fire a fresh checkpoint
-```
-
-<!-- change:checkpoint-sync-observation-stale -->
-
 #### UC-CP5: Turn-scoped markers cleared on new user prompt
 
 ```gherkin
@@ -182,56 +115,6 @@ And the turn-scoped clear flag is consumed
 And the commit-obligation ledger is consumed
 And the next agent-stop in the new turn may fire a fresh checkpoint
 ```
-
-<!-- /planned-change:checkpoint-sync-observation-stale -->
-
-<!-- planned-change:checkpoint-sync-observation-stale -->
-
-#### UC-CP5A: Main-branch post-commit review action follows code authorship
-
-```gherkin
-Given the current branch is main
-And this session authored a main commit through the sealed `telec code commit` path
-And the committed pathspec included code (not a doc-only commit)
-And the session-scoped authored-main-commit marker is present
-When the heuristic engine evaluates the turn window
-Then the result includes the post-commit review-gate surfacing action
-And that action instructs the agent to set a non-blocking 5-minute heartbeat when it recommends review
-And if that heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review
-And waits for REVIEW COMPLETE before reporting completion
-And the authored-main-commit marker is consumed
-(The authored-main-commit marker triggers only the review gate; the committed files
-themselves are sourced into the action ledger via the committed-turn-files marker — see UC-CP12.)
-
-Given the current branch is main
-And this session authored a main commit through the sealed `telec code commit` path
-And the committed pathspec contained only documentation (docs/**, *.md, *.txt, *.rst) with no code
-When the commit gate runs
-Then the authored-main-commit marker is NOT armed
-And the next agent-stop produces no post-commit review-gate surfacing action for that commit
-(Under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.)
-
-Given the current branch is main
-And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session through the sealed path
-And the session-scoped authored-main-commit marker is absent
-And no committed-turn-files marker is present
-And there are no turn-local dirty files
-When the heuristic engine evaluates the turn window
-Then it produces no checkpoint
-And does not emit the post-commit review-gate surfacing action
-
-Given the current branch is main
-And the session-scoped authored-main-commit marker is present
-And there are turn-local dirty files
-When the heuristic engine evaluates the turn window
-Then ordinary checkpoint classification still runs for those files
-And the post-commit review-gate surfacing action is emitted once
-And the authored-main-commit marker is consumed
-And the commit action is suppressed only by commit evidence in the turn timeline, not by the authored-main-commit marker
-And no system role, including integrator, is exempt from this code-authorship rule
-```
-
-<!-- change:checkpoint-sync-observation-stale -->
 
 #### UC-CP5A: Main-branch post-commit review action follows code authorship
 
@@ -275,8 +158,6 @@ And the authored-main-commit marker is consumed
 And the commit action is suppressed only by commit evidence in the turn timeline, not by the authored-main-commit marker
 And no system role, including integrator, is exempt from this code-authorship rule
 ```
-
-<!-- /planned-change:checkpoint-sync-observation-stale -->
 
 #### UC-CP6: Per-adapter checkpoint response payloads
 
@@ -385,35 +266,6 @@ self-attributable, so only the lease-guarded integrator singleton — the record
 marker's owner — receives post-merge maintenance.)
 ```
 
-<!-- planned-change:checkpoint-sync-observation-stale -->
-
-#### UC-CP12: Committed code surfaces maintenance actions
-
-```gherkin
-Given a session commits daemon code through the sealed `telec code commit` path this turn
-And the commit handler records the committed files into the committed-turn-files marker
-And `git diff HEAD` is now empty because the commit moved HEAD
-When the heuristic engine evaluates the turn window
-Then the committed files are unioned into the turn's effective files before the no-change early-exit
-And the engine surfaces the maintenance actions those categories imply (Run `make restart`, plus the test and log-check actions of the changed categories)
-And, on main with code committed, the post-commit review-gate action is surfaced in addition (per UC-CP5A)
-And the committed-turn-files marker is NOT consumed by this evaluation — it persists across checkpoint cycles until the next user-prompt-submit
-
-Given a turn sourced committed files into the action ledger and surfaced `make restart`
-And the agent then runs `make restart` in the same turn
-When the next agent-stop evaluates the turn window
-Then the restart action is suppressed by the make-restart evidence in the timeline (per UC-CP11 suppressibility rules)
-And the committed-turn-files marker still lists the committed files until user-prompt-submit clears it
-
-Given a session commits a file the agent did not itself Edit or Write this turn (a human-staged change the agent committed on request)
-When the heuristic engine evaluates the turn window
-Then that committed file is still categorized from the committed-turn-files marker
-And its implied maintenance action is surfaced
-(The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
-```
-
-<!-- change:checkpoint-sync-observation-stale -->
-
 #### UC-CP12: Committed code surfaces discharging maintenance obligations
 
 ```gherkin
@@ -448,8 +300,6 @@ And its implied maintenance action is surfaced
 (The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
 ```
 
-<!-- /planned-change:checkpoint-sync-observation-stale -->
-
 #### UC-CP13: Parent snippet edited without its pending companion
 
 ```gherkin
@@ -482,46 +332,23 @@ checkpoint's.)
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
   the receiver it composes with.
 - Reads session row state owned by `agent_runtime`: last user message
-timestamp, last checkpoint timestamp, native log file, working
-subdirectory, project path, turn anchor SHA, working slug,
-native session id, and `system_role` (e.g. `"integrator"`) — the role
-is passed to `get_checkpoint_content` and stored in `CheckpointContext`
-to gate the integrator-maintenance force-fire path.
-<!-- planned-change:checkpoint-sync-observation-stale -->
-- Consumes the committed-turn-files marker written by the sealed
-`telec code commit` path for any session, and the integrator-maintenance
-marker written by the integration state machine
-(`project/spec/feature/workflow/integration-state-machine`) at delivery,
-before the per-candidate `pre_merge_head` is cleared.
-<!-- change:checkpoint-sync-observation-stale -->
+  timestamp, last checkpoint timestamp, native log file, working
+  subdirectory, project path, turn anchor SHA, working slug,
+  native session id, and `system_role` (e.g. `"integrator"`) — the role
+  is passed to `get_checkpoint_content` and stored in `CheckpointContext`
+  to gate the integrator-maintenance force-fire path.
 - Consumes the commit-obligation ledger written by the sealed `telec code commit`
-path for any session, and the integrator-maintenance marker written by the
-integration state machine (`project/spec/feature/workflow/integration-state-machine`)
-at delivery, before the per-candidate `pre_merge_head` is cleared.
-<!-- /planned-change:checkpoint-sync-observation-stale -->
+  path for any session, and the integrator-maintenance marker written by the
+  integration state machine (`project/spec/feature/workflow/integration-state-machine`)
+  at delivery, before the per-candidate `pre_merge_head` is cleared.
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
 
 ## Known caveats
 
 - Session-scoped flag markers live in a per-session temporary directory;
-session ids that contain unsafe characters are hashed to a digest
-component for the filesystem path.
-<!-- planned-change:checkpoint-sync-observation-stale -->
-- The clear flag is turn-scoped: it skips checkpoints for the current turn
-  and is hard-cleared at the next non-system user-prompt-submit, alongside
-  the committed-turn-files marker. A checkpoint that recurs across turns is a
-  signal that the heuristics are over-tight — the agent surfaces it to the
-  human rather than re-setting the flag. The recheck loop-guard is the
-  involuntary backstop against an evidence-miss spinning forever.
-- The committed-turn-files marker carries the files of every sealed
-`telec code commit` in the turn (appended across commits, deduped on read).
-The engine unions them into the turn's effective files so a commit does not
-empty the action ledger; per-action evidence suppression silences each
-action once its command runs. The marker is hard-cleared at the next
-user-prompt-submit. Raw `git commit` outside the sealed path does not record
-it.
-<!-- change:checkpoint-sync-observation-stale -->
+  session ids that contain unsafe characters are hashed to a digest
+  component for the filesystem path.
 - The clear flag is turn-scoped: it skips checkpoints for the current turn
   and is hard-cleared at the next non-system user-prompt-submit, alongside
   the commit-obligation ledger. A checkpoint that recurs across turns is a
@@ -529,34 +356,24 @@ it.
   human rather than re-setting the flag. The recheck loop-guard is the
   involuntary backstop against an evidence-miss spinning forever.
 - The commit-obligation ledger carries outstanding `main_only` maintenance
-actions derived from every sealed `telec code commit` in the turn (appended
-across commits, deduped on read). The engine unions them into the turn's
-effective actions so a commit does not empty the action ledger; per-action
-evidence discharges each obligation once its command runs. The ledger is
-hard-cleared at the next user-prompt-submit. Raw `git commit` outside the
-sealed path does not record it.
-<!-- /planned-change:checkpoint-sync-observation-stale -->
+  actions derived from every sealed `telec code commit` in the turn (appended
+  across commits, deduped on read). The engine unions them into the turn's
+  effective actions so a commit does not empty the action ledger; per-action
+  evidence discharges each obligation once its command runs. The ledger is
+  hard-cleared at the next user-prompt-submit. Raw `git commit` outside the
+  sealed path does not record it.
 - The main-branch post-commit review gate is driven by a session-scoped
-authored-main-commit latch recorded by `telec code commit` only for
-commits whose pathspec includes code, then consumed when the review
-action surfaces. The latch triggers only the review gate — never the
-action or evidence ledger. It is not SHA-keyed, so rebases and peer HEAD
-movement do not re-arm it; doc-only commits do not arm it; raw
-`git commit` does not mark authorship.
-<!-- planned-change:checkpoint-sync-observation-stale -->
+  authored-main-commit latch recorded by `telec code commit` only for
+  commits whose pathspec includes code, then consumed when the review
+  action surfaces. The latch triggers only the review gate — never the
+  action or evidence ledger. It is not SHA-keyed, so rebases and peer HEAD
+  movement do not re-arm it; doc-only commits do not arm it; raw
+  `git commit` does not mark authorship.
 - The integrator's raw-git merge does not flow through `telec code commit`
-and so does not arm the authorship latch or the committed-turn-files
-marker; instead the integration state machine records the
-integrator-maintenance marker carrying the delivered merge range, which the
-engine consumes to force-fire post-merge maintenance for the integrator
-session.
-<!-- change:checkpoint-sync-observation-stale -->
-- The integrator's raw-git merge does not flow through `telec code commit`
-and so does not arm the authorship latch or the commit-obligation ledger;
-instead the integration state machine records the integrator-maintenance
-marker carrying the delivered merge range, which the engine consumes to
-force-fire post-merge maintenance for the integrator session.
-<!-- /planned-change:checkpoint-sync-observation-stale -->
+  and so does not arm the authorship latch or the commit-obligation ledger;
+  instead the integration state machine records the integrator-maintenance
+  marker carrying the delivered merge range, which the engine consumes to
+  force-fire post-merge maintenance for the integrator session.
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects

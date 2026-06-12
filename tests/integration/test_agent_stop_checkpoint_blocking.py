@@ -15,12 +15,12 @@ from teleclaude.hooks.checkpoint import get_checkpoint_content, run_heuristics
 from teleclaude.hooks.checkpoint._models import CheckpointContext
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
-    CHECKPOINT_COMMITTED_TURN_FILES_FLAG,
+    CHECKPOINT_COMMIT_OBLIGATIONS_FLAG,
     CHECKPOINT_RECHECK_FLAG,
     has_authored_main_commit_flag,
     has_checkpoint_flag,
-    read_committed_turn_files,
-    record_committed_turn_files,
+    read_commit_obligations,
+    record_commit_obligations,
     record_integrator_maintenance_marker,
     set_checkpoint_flag,
 )
@@ -63,6 +63,22 @@ def _timeline_with_bash(command: str) -> TurnTimeline:
 def _timeline_with_bash_commands(commands: list[str]) -> TurnTimeline:
     records = [ToolCallRecord(tool_name="bash", input_data={"command": command}) for command in commands]
     return TurnTimeline(tool_calls=records, has_data=True)
+
+
+def _checkpoint_payload_for_cycle(
+    session_id: str,
+    repo_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    timeline: TurnTimeline,
+) -> str | None:
+    _patch_checkpoint_timeline(monkeypatch, timeline)
+    return get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
 
 
 def _patch_checkpoint_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeline) -> None:
@@ -116,7 +132,7 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
     )
 
     marker_after_commit = has_authored_main_commit_flag(session_id)
-    committed_files_after_commit = read_committed_turn_files(session_id)
+    committed_obligations_after_commit = read_commit_obligations(session_id)
     authored_payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
@@ -139,7 +155,7 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
     )
 
     assert marker_after_commit is True
-    assert committed_files_after_commit == ["teleclaude/core/tracked.py"]
+    assert committed_obligations_after_commit == ["daemon code"]
     assert marker_after_first_checkpoint is False
     assert peer_payload is None
     assert {"authored_payload": authored_payload} == snapshot
@@ -206,11 +222,11 @@ def test_directory_pathspec_does_not_arm_review_marker(
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP12")
-def test_sealed_commit_records_committed_turn_files_marker(
+def test_sealed_commit_records_commit_obligations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session_id = "checkpoint-committed-files-session"
+    session_id = "checkpoint-commit-obligations-session"
     repo_path = tmp_path / "repo"
     _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
@@ -235,7 +251,7 @@ def test_sealed_commit_records_committed_turn_files_marker(
         system_role=None,
     )
 
-    assert read_committed_turn_files(session_id) == ["teleclaude/core/tracked.py", "docs/guide.md"]
+    assert read_commit_obligations(session_id) == ["daemon code", "telec sync"]
 
 
 @pytest.mark.functional
@@ -249,14 +265,14 @@ def test_user_prompt_reset_consumes_turn_scoped_checkpoint_markers(
 
     set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
     set_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)
-    record_committed_turn_files(session_id, ["teleclaude/core/tracked.py"])
+    record_commit_obligations(session_id, ["daemon code"])
 
     _reset_checkpoint_flags(session_id)
 
     assert has_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG) is False
     assert has_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG) is False
-    assert has_checkpoint_flag(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG) is False
-    assert read_committed_turn_files(session_id) == []
+    assert has_checkpoint_flag(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG) is False
+    assert read_commit_obligations(session_id) == []
 
 
 @pytest.mark.functional
@@ -432,13 +448,13 @@ def test_committed_daemon_code_surfaces_maintenance_after_head_move(
         turn_anchor_sha=anchor_sha,
     )
 
-    assert read_committed_turn_files(session_id) == ["teleclaude/core/tracked.py"]
+    assert read_commit_obligations(session_id) == ["daemon code"]
     assert {"committed_daemon_payload": payload} == snapshot
 
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP12")
-def test_committed_daemon_restart_evidence_suppresses_restart_only(
+def test_satisfied_commit_obligation_discharges_and_does_not_refire(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     snapshot: object,
@@ -447,8 +463,11 @@ def test_committed_daemon_restart_evidence_suppresses_restart_only(
     repo_path = tmp_path / "repo"
     _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    record_committed_turn_files(session_id, ["teleclaude/core/tracked.py"])
-    _patch_checkpoint_timeline(
+    record_commit_obligations(session_id, ["daemon code"])
+
+    restart_payload = _checkpoint_payload_for_cycle(
+        session_id,
+        repo_path,
         monkeypatch,
         _timeline_with_bash_commands(
             [
@@ -457,6 +476,65 @@ def test_committed_daemon_restart_evidence_suppresses_restart_only(
                 "make status",
             ]
         ),
+    )
+    next_payload = _checkpoint_payload_for_cycle(session_id, repo_path, monkeypatch, _empty_timeline())
+
+    assert read_commit_obligations(session_id) == []
+    assert next_payload is None
+    assert {"restart_suppressed_payload": restart_payload} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP12")
+def test_surfaced_commit_obligation_discharges_in_later_cycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    session_id = "checkpoint-committed-sync-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    record_commit_obligations(session_id, ["telec sync"])
+
+    first_payload = _checkpoint_payload_for_cycle(session_id, repo_path, monkeypatch, _empty_timeline())
+    satisfied_payload = _checkpoint_payload_for_cycle(
+        session_id,
+        repo_path,
+        monkeypatch,
+        _timeline_with_bash("telec sync --skip-deploy"),
+    )
+    next_payload = _checkpoint_payload_for_cycle(session_id, repo_path, monkeypatch, _empty_timeline())
+
+    assert read_commit_obligations(session_id) == []
+    assert next_payload is None
+    assert {"first_payload": first_payload, "satisfied_payload": satisfied_payload} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP12")
+def test_committed_code_persists_only_main_only_maintenance_obligations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    session_id = "checkpoint-main-only-obligations-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _disable_commit_quality_gates(monkeypatch)
+
+    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# committed daemon\n", encoding="utf-8")
+    (repo_path / "tests" / "integration").mkdir(parents=True, exist_ok=True)
+    (repo_path / "tests" / "integration" / "test_example.py").write_text(
+        "def test_example():\n    pass\n", encoding="utf-8"
+    )
+    code._commit_under_lock(
+        message="test: record maintenance subset",
+        includes=["teleclaude/core/tracked.py", "tests/integration/test_example.py"],
+        project_root=repo_path,
+        system_role=None,
     )
 
     payload = get_checkpoint_content(
@@ -467,13 +545,14 @@ def test_committed_daemon_restart_evidence_suppresses_restart_only(
         turn_anchor_sha=None,
     )
 
-    assert read_committed_turn_files(session_id) == ["teleclaude/core/tracked.py"]
-    assert {"restart_suppressed_payload": payload} == snapshot
+    assert read_commit_obligations(session_id) == ["daemon code"]
+    assert payload is not None
+    assert {"main_only_payload": payload} == snapshot
 
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP12")
-def test_committed_turn_files_read_failure_returns_visible_checkpoint(
+def test_commit_obligations_read_failure_returns_visible_checkpoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -484,7 +563,7 @@ def test_committed_turn_files_read_failure_returns_visible_checkpoint(
     def raise_marker_error(_session_id: str) -> list[str]:
         raise OSError("marker unavailable")
 
-    monkeypatch.setattr(checkpoint_module, "read_committed_turn_files", raise_marker_error)
+    monkeypatch.setattr(checkpoint_module, "read_commit_obligations", raise_marker_error)
 
     payload = get_checkpoint_content(
         session_id=session_id,
