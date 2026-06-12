@@ -1,5 +1,5 @@
 ---
-description: 'How telec code commands resolve workspace scope and compose the project''s native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides.'
+description: "How telec code commands resolve workspace scope and compose the project's native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides."
 visibility: 'public'
 ---
 
@@ -18,7 +18,7 @@ own. `telec code lint` composes **two decoupled legs**:
 1. the project's own `make lint` — native tools (ruff/pyright/mypy/jscpd, eslint/tsc,
    cargo) with **zero TeleClaude dependency**; and
 2. TeleClaude's **guardrails lane** — the policy checks
-   (`tools/lint/{guardrails,markdown,home_paths,snapshot_testing,test_discipline}.py`
+   (`tools/lint/{guardrails,markdown,home_paths,snapshot_testing}.py`
    plus the doc-index resource-validation).
 
 `make lint` never contains the guardrails lane and never calls `telec`; the
@@ -78,11 +78,11 @@ guardrails lane).
 | Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list | CLI arguments (`telec code lint <files...>`)                                                                                             |
 
-| Output                  | Description                                                                                                 |
+| Output                  | Description                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                                           |
-| `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                   |
-| `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane  |
+| `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                                          |
+| `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                  |
+| `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane |
 
 ## Invariants
 
