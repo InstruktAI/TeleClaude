@@ -37,7 +37,7 @@ New prepare work uses human `prd_approved` rather than a requirements review pha
 2. **Address every finding.** For each:
    - Understand the issue and its referenced location.
    - Apply the minimal fix to the target artifact.
-   - Verify via commit hooks (lint + unit tests) after each fix.
+   - Verify via commit hooks (lint + scenario-bound functional tests) after each fix.
    - Commit one fix per issue when the target is code. For artifact targets
      (`architecture`, `implementation-plan`, or legacy `requirements`),
      persist the updated artifact via

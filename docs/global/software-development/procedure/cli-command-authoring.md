@@ -23,7 +23,7 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 6. **Update `__all__` exports.** Add the handler to the module's `__all__` list.
 
-7. **Write TDD tests.** RED first, then GREEN. Test handler arg parsing and API integration. Use real DB fixtures where possible, not mock theater.
+7. **Bind functional tests to the command's feature-spec scenarios.** Where the command exposes observable product behavior, bind tests via `@spec` to the scenarios in its feature spec, exercising the real API integration at the handler boundary with real DB fixtures, not mock theater. A command that is pure contract tooling (a thin wrapper, a fixed-response shim) is not tested — the artifact is the spec.
 
 8. **Evaluate `@exec` expansion.** Only add to `telec-cli.md` tool spec with 100% certainty of global need. Most commands do not need `@exec`.
 
@@ -43,7 +43,7 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 - A registered `CommandDef` in `CLI_SURFACE`.
 - A handler function in `teleclaude/cli/telec/handlers/`.
 - An API endpoint (if daemon-backed) in `teleclaude/api/`.
-- TDD tests covering arg parsing and API integration.
+- Functional tests bound to the command's feature-spec scenarios (when it exposes observable behavior; contract tooling is not tested).
 - Updated indexes via `telec sync`.
 
 ## Recovery

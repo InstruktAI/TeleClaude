@@ -19,7 +19,7 @@ For each Requirement-Violation, Critical, and Important issue:
 
 1. Understand the issue and referenced file/line.
 2. Apply the minimal fix.
-3. Verify via commit hooks (lint + unit tests).
+3. Verify via commit hooks (lint + scenario-bound functional tests).
 4. Commit one fix per issue, following the commits policy.
 
 Add a "Fixes Applied" section with issue, fix, and commit hash.
@@ -43,7 +43,7 @@ Report summary and readiness for re-review.
 
 1. Read review findings and categorize issues.
 2. Apply minimal fixes for Requirement-Violation, Critical, and Important issues.
-3. Verify via lint/unit tests after each fix.
+3. Verify via lint and scenario-bound functional tests after each fix.
 4. Update the review-findings artifact with fixes applied via `telec todo artifacts write {slug} review-findings "<content>"`.
 5. If a `--direct` peer link exists with a reviewer session: respond to reviewer
    feedback inline, address findings iteratively, and update the verdict by arithmetic:
