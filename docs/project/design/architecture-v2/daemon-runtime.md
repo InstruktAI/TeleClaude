@@ -116,10 +116,15 @@ managed set, and installs and loads it unconditionally.
 <!-- planned:telec-daemon-systemd-unit -->
 On Linux the same contract holds through systemd: a `telec-daemon` unit
 template mirrors the launchd conventions (restart-on-failure supervision,
-`CLUSTER_REDIS_URL` in the unit environment, program path at
-`~/.local/bin/telec-daemon`), is installed only through the explicit
-`install-telec-daemon` subcommand, and the status surface treats the unit as
-required-if-present — identical opt-in semantics on both platforms.
+`WorkingDirectory` at the project root so the binary loads `CLUSTER_REDIS_URL`
+from `.env` exactly as the plist does, program path at
+`~/.local/bin/telec-daemon`) and is installed only through the explicit
+`install-telec-daemon` subcommand. The operator control surface reaches the unit
+identically on both platforms: install and the `status`/`start`/`stop`/`restart`
+verbs treat it as required-if-present — an installed unit must be healthy and is
+operated by every control verb; an absent unit reports one informational line,
+does not degrade overall health, and is skipped by the control verbs. Identical
+opt-in semantics, identical operator surface.
 <!-- /planned:telec-daemon-systemd-unit -->
 
 
