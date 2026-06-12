@@ -73,6 +73,9 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
             - user: Username (optional)
             - host: Hostname (optional)
             - ip: IP address (optional)
+            - version: Runtime version advertised by the peer (optional)
+            - channel: Deployment channel advertised by the peer (optional)
+            - capability_set: Feature-IDs advertised by the peer
         """
         logger.debug("AdapterClient.discover_peers() called, adapters: %s", list(self.adapters.keys()))
 
@@ -115,6 +118,11 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
                         peer_dict["role"] = peer_info.role
                     if peer_info.system_stats:
                         peer_dict["system_stats"] = peer_info.system_stats
+                    if peer_info.version:
+                        peer_dict["version"] = peer_info.version
+                    if peer_info.channel:
+                        peer_dict["channel"] = peer_info.channel
+                    peer_dict["capability_set"] = peer_info.capability_set
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
             except Exception as e:

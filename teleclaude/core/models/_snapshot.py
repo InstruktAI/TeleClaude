@@ -262,6 +262,9 @@ class ComputerInfo:
     role: str | None = None
     is_local: bool = False
     system_stats: SystemStats | None = None
+    version: str | None = None
+    channel: str | None = None
+    capability_set: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert computer info to a JSON-compatible dictionary."""

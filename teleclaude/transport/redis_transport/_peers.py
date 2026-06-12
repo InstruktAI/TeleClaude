@@ -11,6 +11,7 @@ from redis.exceptions import RedisError
 
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.models import JsonDict, MessageMetadata, PeerInfo
+from teleclaude.core.reconciliation import decode_capability_set
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.types import SystemStats
@@ -192,6 +193,8 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
         """Construct a `PeerInfo` instance from a response payload."""
         system_stats_val = computer_info.get("system_stats")
         system_stats = cast(SystemStats | None, system_stats_val) if isinstance(system_stats_val, dict) else None
+        capability_set_val = computer_info.get("capability_set")
+        capability_set = decode_capability_set(capability_set_val)
 
         return PeerInfo(
             name=computer_name,
@@ -203,6 +206,9 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             ip=self._optional_text(computer_info.get("ip")),
             role=self._optional_text(computer_info.get("role")),
             system_stats=system_stats,
+            version=self._optional_text(computer_info.get("version")),
+            channel=self._optional_text(computer_info.get("channel")),
+            capability_set=capability_set,
         )
 
     def _optional_text(self, value: object) -> str | None:

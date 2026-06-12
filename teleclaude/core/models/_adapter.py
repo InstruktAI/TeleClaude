@@ -39,6 +39,9 @@ class PeerInfo:
     ip: str | None = None
     role: str | None = None
     system_stats: SystemStats | None = None
+    version: str | None = None
+    channel: str | None = None
+    capability_set: list[str] = field(default_factory=list)
 
 
 def _int_or_none(value: object) -> int | None:

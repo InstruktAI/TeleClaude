@@ -9,11 +9,14 @@ import signal
 import sys
 import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
+
+from teleclaude import __version__
 
 _MODULE_IMPORT_STARTED_AT = time.perf_counter()
 _IMPORT_TIMINGS: list[tuple[str, float, float]] = []
@@ -50,12 +53,14 @@ _record_import_timing("teleclaude.chiptunes.manager", _t)
 
 _t = time.perf_counter()
 from teleclaude.config import (  # config.py loads .env at import time
+    WORKING_DIR,
     config,
     config_path,
     dotenv_path,
     reload_config,
     restart_required_sections,
 )
+from teleclaude.config.loader import load_project_config
 from teleclaude.core.config_watcher import ConfigWatcher
 
 _record_import_timing("teleclaude.config", _t)
@@ -119,6 +124,15 @@ _t = time.perf_counter()
 from teleclaude.core.models import Session, SessionSnapshot
 
 _record_import_timing("teleclaude.core.models", _t)
+
+_t = time.perf_counter()
+from teleclaude.core.reconciliation import (
+    DEFAULT_FEATURE_ID_REGISTRY,
+    FleetCapabilityEntry,
+    FleetCapabilityMap,
+)
+
+_record_import_timing("teleclaude.core.reconciliation", _t)
 
 _t = time.perf_counter()
 from teleclaude.core.output_poller import OutputPoller
@@ -200,6 +214,11 @@ from teleclaude.transport.identity_bridge import IdentityBridge, IdentityEnvelop
 from teleclaude.transport.workflow_bridge import WorkflowBridge, WorkflowEnvelope
 
 _record_import_timing("teleclaude.transport.workflow_bridge", _t)
+
+_t = time.perf_counter()
+from teleclaude.utils import resolve_project_config_path
+
+_record_import_timing("teleclaude.utils", _t)
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -1124,6 +1143,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         bridge = ClusterBridge(
             redis_factory=_factory,
             dispatch=self._dispatch_cluster_event,
+            registry=DEFAULT_FEATURE_ID_REGISTRY,
         )
         self._cluster_bridge = bridge
         self._cluster_bridge_task = asyncio.create_task(bridge.run(), name="cluster-bridge")
@@ -1132,7 +1152,32 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         async def _redis_provider() -> Any:
             return await redis_adapter.get_redis()
 
-        publisher = ClusterPublisher(origin=config.computer.name, redis_provider=_redis_provider)
+        def _local_capability_entry() -> FleetCapabilityEntry:
+            project_config = load_project_config(resolve_project_config_path(Path(WORKING_DIR)))
+            advertised_at = datetime.now(UTC)
+            return FleetCapabilityEntry(
+                computer=config.computer.name,
+                version=__version__,
+                channel=project_config.deployment.channel,
+                capability_set=DEFAULT_FEATURE_ID_REGISTRY.carried_set(),
+                last_advertised_at=advertised_at,
+            )
+
+        def _fleet_capability_map() -> FleetCapabilityMap:
+            now = datetime.now(UTC)
+            entries = [_local_capability_entry(), *self.cache.get_fleet_capability_entries()]
+            return FleetCapabilityMap.materialize(
+                entries,
+                now=now,
+                heartbeat_ttl_seconds=redis_adapter.heartbeat_ttl,
+            )
+
+        publisher = ClusterPublisher(
+            origin=config.computer.name,
+            redis_provider=_redis_provider,
+            registry=DEFAULT_FEATURE_ID_REGISTRY,
+            capability_map_provider=_fleet_capability_map,
+        )
         self.cache.attach_cluster_publisher(publisher)
         logger.info("Cluster Redis bridge attached to shared RedisTransport")
 

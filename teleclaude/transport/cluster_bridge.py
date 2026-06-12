@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
+from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY, FeatureIDRegistry
 from teleclaude.transport._redis_pubsub import RedisPubSub
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class ClusterEnvelope:
     emitted_at: str
     origin: str
     payload: dict[str, object]  # guard: loose-dict - event-specific payload, not parsed here
+    feature_id: str | None = None
 
     @property
     def category(self) -> ClusterCategory | None:
@@ -120,6 +122,7 @@ def decode_envelope(raw: bytes | str) -> ClusterEnvelope:
     emitted_at = data.get("emitted_at")
     origin = data.get("origin")
     payload = data.get("payload")
+    feature_id = data.get("feature_id")
     schema_version = data.get("schema_version", CLUSTER_ENVELOPE_SCHEMA_VERSION)
 
     if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version < 1:
@@ -134,6 +137,8 @@ def decode_envelope(raw: bytes | str) -> ClusterEnvelope:
         raise MalformedClusterEnvelopeError("envelope.origin is missing or empty")
     if not isinstance(payload, dict):
         raise MalformedClusterEnvelopeError("envelope.payload is missing or not an object")
+    if feature_id is not None and (not isinstance(feature_id, str) or not feature_id):
+        raise MalformedClusterEnvelopeError("envelope.feature_id is invalid")
 
     return ClusterEnvelope(
         schema_version=schema_version,
@@ -142,6 +147,7 @@ def decode_envelope(raw: bytes | str) -> ClusterEnvelope:
         emitted_at=emitted_at,
         origin=origin,
         payload=payload,
+        feature_id=feature_id,
     )
 
 
@@ -182,9 +188,11 @@ class ClusterBridge:
         initial_backoff_s: float = 1.0,
         max_backoff_s: float = 30.0,
         sleep: Callable[[float], Awaitable[None]] | None = None,
+        registry: FeatureIDRegistry = DEFAULT_FEATURE_ID_REGISTRY,
     ) -> None:
         self._redis_factory = redis_factory
         self._dispatch = dispatch
+        self._registry = registry
         self._idempotency = _IdempotencyCache(cache_size)
         self._initial_backoff_s = initial_backoff_s
         self._max_backoff_s = max_backoff_s
@@ -207,6 +215,15 @@ class ClusterBridge:
             )
             return False
 
+        if self._unsupported_feature_id(envelope):
+            logger.info(
+                "Dropping cluster envelope with unsupported feature ID",
+                channel=envelope.channel,
+                idempotency_key=envelope.idempotency_key,
+                feature_id=envelope.feature_id,
+            )
+            return False
+
         if not self._idempotency.seen(envelope.idempotency_key):
             logger.debug(
                 "Skipping duplicate cluster envelope",
@@ -226,6 +243,12 @@ class ClusterBridge:
             )
             return False
         return True
+
+    def _unsupported_feature_id(self, envelope: ClusterEnvelope) -> bool:
+        feature_id = envelope.feature_id
+        if feature_id is None:
+            return False
+        return not self._registry.carries(feature_id)
 
     async def stop(self) -> None:
         """Signal the run loop to terminate at the next iteration."""

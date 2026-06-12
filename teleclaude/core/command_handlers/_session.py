@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING
 import psutil
 from instrukt_ai_logging import get_logger
 
+from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
+from teleclaude.config.loader import load_project_config
 from teleclaude.constants import EVENT_END_SESSION, HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
@@ -21,6 +23,7 @@ from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycl
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import ComputerInfo, MessageMetadata, ProjectInfo, Session, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.roadmap import assemble_roadmap_from_db, recently_delivered_cutoff
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
@@ -29,7 +32,7 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
-from teleclaude.utils import strip_ansi_codes
+from teleclaude.utils import resolve_project_config_path, strip_ansi_codes
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
@@ -369,6 +372,7 @@ async def get_computer_info() -> ComputerInfo:
         "disk": disk_stats,
         "cpu": cpu_stats,
     }
+    project_config = load_project_config(resolve_project_config_path(Path(WORKING_DIR)))
 
     info = ComputerInfo(
         name=config.computer.name,
@@ -378,6 +382,9 @@ async def get_computer_info() -> ComputerInfo:
         host=config.computer.host,
         is_local=True,
         system_stats=system_stats,
+        version=__version__,
+        channel=project_config.deployment.channel,
+        capability_set=sorted(DEFAULT_FEATURE_ID_REGISTRY.carried_set()),
     )
 
     logger.debug("get_computer_info() returning info: %s", info)

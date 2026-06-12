@@ -1,11 +1,9 @@
 ---
 visibility: public
-delivered_by:
-  - feature-id-registry
-description: A deliberately multi-version fleet keeps interoperating — nodes on
-  different channels exchange events without a newer node's changes breaking an
-  older one. New capabilities are ignored by unaware nodes; shared shapes evolve
-  only additively until the slowest channel has caught up.
+description: A deliberately multi-version fleet keeps interoperating — nodes on different
+  channels exchange events without a newer node's changes breaking an older one. New
+  capabilities are ignored by unaware nodes; shared shapes evolve only additively
+  until the slowest channel has caught up.
 ---
 
 # Fleet Cross-Version Interoperability — Spec

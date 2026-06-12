@@ -18,6 +18,7 @@ from teleclaude.config import config
 from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent, RoadmapStatus
 from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
+from teleclaude.core.reconciliation import FleetCapabilityEntry
 from teleclaude.transport.cluster_publisher import ClusterPublisher
 
 logger = get_logger(__name__)
@@ -164,7 +165,13 @@ class DaemonCache:
         self._cluster_publisher = publisher
         logger.info("Cluster publisher attached to DaemonCache")
 
-    def _publish_cluster(self, channel: str, payload: dict[str, object]) -> None:  # guard: loose-dict - event payload
+    def _publish_cluster(
+        self,
+        channel: str,
+        payload: dict[str, object],  # guard: loose-dict - event payload
+        *,
+        feature_id: str | None = None,
+    ) -> None:
         """Schedule a fire-and-forget publish to a ``cluster.*`` channel.
 
         No-op when no publisher is attached (single-computer / test contexts).
@@ -187,7 +194,7 @@ class DaemonCache:
                 origin=publisher.origin,
             )
             return
-        loop.create_task(publisher.publish(channel, payload))
+        loop.create_task(publisher.publish(channel, payload, feature_id=feature_id))
 
     def _signal_stale_read(self, resource_type: str, computer: str) -> None:
         """Signal a stale read to the callback, suppressing any exceptions.
@@ -280,6 +287,19 @@ class DaemonCache:
             List of all cached computer info objects
         """
         return [cached.data for cached in self._computers.values()]
+
+    def get_fleet_capability_entries(self) -> list[FleetCapabilityEntry]:
+        """Return cached heartbeat capability entries with their advertisement time."""
+        return [
+            FleetCapabilityEntry(
+                computer=cached.data.name,
+                version=cached.data.version,
+                channel=cached.data.channel,
+                capability_set=frozenset(cached.data.capability_set),
+                last_advertised_at=cached.cached_at,
+            )
+            for cached in self._computers.values()
+        ]
 
     def get_projects(self, computer: str | None = None) -> list[ProjectInfo]:
         """Get cached projects, optionally filtered by computer.

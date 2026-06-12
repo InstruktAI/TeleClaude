@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.core.models import ComputerInfo, JsonDict
+from teleclaude.core.reconciliation import decode_capability_set
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.types import SystemStats
@@ -20,6 +21,7 @@ from teleclaude.types import SystemStats
 logger = get_logger(__name__)
 
 _REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError)
+
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -103,6 +105,9 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                 host=peer.host,
                 role=peer.role,
                 system_stats=peer.system_stats,
+                version=peer.version,
+                channel=peer.channel,
+                capability_set=peer.capability_set,
             )
             self.cache.update_computer(computer_info)
 
@@ -266,6 +271,9 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                     host=optional_shell_safe_identifier(info.get("host"), "heartbeat host"),
                     role=cast("str | None", info.get("role")),
                     system_stats=cast(SystemStats | None, info.get("system_stats")),
+                    version=cast("str | None", info.get("version")),
+                    channel=cast("str | None", info.get("channel")),
+                    capability_set=decode_capability_set(info.get("capability_set")),
                 )
                 self.cache.update_computer(computer_info)
 

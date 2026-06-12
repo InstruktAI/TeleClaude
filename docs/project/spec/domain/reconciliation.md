@@ -2,10 +2,9 @@
 visibility: public
 delivered_by:
   - reconciliation-self-update
-  - feature-id-registry
-description: Reconciliation bounded context — the control loop that drives each
-  installation's actual state toward its desired state (version per channel, schema,
-  health, upkeep) and guards interoperability across a deliberately multi-version fleet.
+description: Reconciliation bounded context — the control loop that drives each installation's
+  actual state toward its desired state (version per channel, schema, health, upkeep)
+  and guards interoperability across a deliberately multi-version fleet.
 ---
 
 # Reconciliation Domain Spec — Spec
@@ -19,9 +18,9 @@ description: Reconciliation bounded context — the control loop that drives eac
 
 ## What it is
 
-The `reconciliation` bounded context owns *desired-state convergence* for the fleet of installations. Its single invariant is **actual → desired**: every responsibility is a step that drives a divergent installation back to the state its configuration declares. It owns version convergence (self-update to the newest release on the installation's channel), installation-level structural migration, process health, scheduled upkeep, and the fleet capability map that makes a deliberately multi-version fleet interoperate safely.
+The `reconciliation` bounded context owns _desired-state convergence_ for the fleet of installations. Its single invariant is **actual → desired**: every responsibility is a step that drives a divergent installation back to the state its configuration declares. It owns version convergence (self-update to the newest release on the installation's channel), installation-level structural migration, process health, scheduled upkeep, and the fleet capability map that makes a deliberately multi-version fleet interoperate safely.
 
-Reconciliation is a control loop, the shape Kubernetes calls a reconciler. It is *not* `integration` — integration owns foreign-protocol boundaries (what external systems we do not control send us); reconciliation owns what *we* do to keep *our* fleet current, on a different change axis.
+Reconciliation is a control loop, the shape Kubernetes calls a reconciler. It is _not_ `integration` — integration owns foreign-protocol boundaries (what external systems we do not control send us); reconciliation owns what _we_ do to keep _our_ fleet current, on a different change axis.
 
 This context does NOT own: foreign-protocol ingress or transport (`integration`); per-aggregate data schema evolution (each domain owns its own upcasters on the shared engine); agent-artifact authoring or distribution (`agent_artifacts`); product/work lifecycle (`workflow`).
 
@@ -30,52 +29,52 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 ### Ubiquitous language
 
 **Desired state**
-:  The state an installation's configuration declares it should be in — the newest release on its channel, the current schema, a healthy daemon, completed upkeep. The target of the control loop.
+: The state an installation's configuration declares it should be in — the newest release on its channel, the current schema, a healthy daemon, completed upkeep. The target of the control loop.
 
 **Actual state**
-:  The installation's current observed state. Convergence closes the gap between actual and desired.
+: The installation's current observed state. Convergence closes the gap between actual and desired.
 
 **Drift**
-:  A non-zero gap between actual and desired state. Drift triggers a convergence run.
+: A non-zero gap between actual and desired state. Drift triggers a convergence run.
 
 **Convergence / reconcile**
-:  The act of driving actual state to desired state. Continuous, idempotent, and channel-scoped.
+: The act of driving actual state to desired state. Continuous, idempotent, and channel-scoped.
 
 **Channel**
-:  The desired-state selector for version: `alpha` (newest code, every push to main), `beta` (every published release), `stable` (releases within a pinned minor series). The fleet runs all three at once, by design.
+: The desired-state selector for version: `alpha` (newest code, every push to main), `beta` (every published release), `stable` (releases within a pinned minor series). The fleet runs all three at once, by design.
 
 **Pinned minor**
-:  The `major.minor` series a `stable` installation tracks; releases outside it are ignored.
+: The `major.minor` series a `stable` installation tracks; releases outside it are ignored.
 
 **Convergence step**
-:  One ordered action in a version convergence: checkout/build the target, run installation migrations, restart healthy.
+: One ordered action in a version convergence: checkout/build the target, run installation migrations, restart healthy.
 
 **Installation migration**
-:  An eager, ordered, once-per-host structural migration between releases (DDL, on-disk layout). Distinct from per-aggregate data upcasting, which each domain owns.
+: An eager, ordered, once-per-host structural migration between releases (DDL, on-disk layout). Distinct from per-aggregate data upcasting, which each domain owns.
 
 **Health**
-:  The desired condition of the running daemon. Reconciliation converges a crashed or unhealthy daemon by restart.
+: The desired condition of the running daemon. Reconciliation converges a crashed or unhealthy daemon by restart.
 
 **Maintenance / upkeep**
-:  Scheduled convergence tasks (cleanup, rotation, routine checks). Absorbs the `next-maintain` lifecycle phase, which becomes the orchestration entry point handing off to this context.
+: Scheduled convergence tasks (cleanup, rotation, routine checks). Absorbs the `next-maintain` lifecycle phase, which becomes the orchestration entry point handing off to this context.
 
 **Fleet**
-:  The set of installations across machines and channels that participate in the same cluster.
+: The set of installations across machines and channels that participate in the same cluster.
 
 **Feature-ID**
-:  A stable, spec-like identifier for a new cross-node behavior — the named "expand" step in cross-version evolution. A node either carries a feature-ID (it implements the behavior) or it does not. A cross-node behavior carries its feature-ID so an unaware node can gate on it.
+: A stable, spec-like identifier for a new cross-node behavior — the named "expand" step in cross-version evolution. A node either carries a feature-ID (it implements the behavior) or it does not. A cross-node behavior carries its feature-ID so an unaware node can gate on it.
 
 **Feature-ID registry**
-:  The authoritative catalog of every declared feature-ID and its `ignorable` / `must_negotiate` mark. It is the source of truth for what a feature-ID means and whether bypassing it when unaware is safe.
+: The authoritative catalog of every declared feature-ID and its `ignorable` / `must_negotiate` mark. It is the source of truth for what a feature-ID means and whether bypassing it when unaware is safe.
 
 **Capability set**
-:  The set of feature-IDs an installation advertises it supports, plus its version.
+: The set of feature-IDs an installation advertises it supports, plus its version.
 
 **Fleet capability map**
-:  The cluster-wide aggregation of every node's capability set. The authoritative answer to "has the slowest channel caught up enough to require, or to remove, capability F?"
+: The cluster-wide aggregation of every node's capability set. The authoritative answer to "has the slowest channel caught up enough to require, or to remove, capability F?"
 
 **Exactly-once convergence**
-:  An installation applies a given target version at most once; re-receiving the same signal is a no-op. The control loop is idempotent.
+: An installation applies a given target version at most once; re-receiving the same signal is a no-op. The control loop is idempotent.
 
 ### Aggregates
 
@@ -114,7 +113,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 #### Feature-ID Registry (aggregate)
 
 - **Root:** `FeatureIDRegistry`
-- **Contains:** the declared feature-ID entries, each with its identifier, `mark` (`ignorable` | `must_negotiate`), and the version range it is live in. The catalog is declared in code and fixed per release; it is not operator-tunable configuration, because each mark is a safety decision reviewed together with the behavior it gates.
+- **Contains:** the declared feature-ID entries, each with its identifier and `mark` (`ignorable` | `must_negotiate`), plus the registry's carried feature-ID set for this node. The catalog is declared in code and fixed per release; it is not operator-tunable configuration, because each mark is a safety decision reviewed together with the behavior it gates.
 - **Invariants:**
   - A feature-ID is stable once declared; its identifier never changes.
   - Every declared feature-ID carries exactly one mark. An `ignorable` feature is safe to bypass when unaware; a `must_negotiate` feature is not.
