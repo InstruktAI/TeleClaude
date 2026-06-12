@@ -1,5 +1,5 @@
 ---
-description: 'Cross-host fan-out of deployment version_available events to every integration service in the cluster, with self-skip on origin to avoid double-execution.'
+description: 'Superseded v1 mechanism. A deployment-only cross-host fan-out of version-available signals with self-skip on origin. The durable, version-agnostic posture — single-ingress relay plus per-node channel-gated convergence — is owned by single-ingress-webhook-termination and channel-gated-self-update.'
 visibility: 'public'
 ---
 
@@ -13,7 +13,17 @@ visibility: 'public'
 
 ## What it is
 
-A long-running cross-host consumer on each integration service that
+**Status: not the current mechanism.** This spec describes the v1 deployment-only
+fan-out. The current deployment contracts are single-ingress webhook termination
+(`@docs/project/spec/feature/integration/single-ingress-webhook-termination.md`)
+for the inbound boundary — one ingress verifies, normalizes, and relays each
+event to the cluster unconditionally — and channel-gated self-update
+(`@docs/project/spec/feature/reconciliation/channel-gated-self-update.md`) for the
+per-node reaction, where each node evaluates the relayed signal against its
+channel policy and converges exactly once. The scenarios below are not a binding
+target.
+
+The v1 mechanism: a long-running cross-host consumer on each integration service that
 reads from the deployment fanout channel and dispatches each message as
 a local hook event through the integration service's own hook
 dispatcher. This fans out a deployment version-available signal to all
@@ -149,3 +159,10 @@ And "deployment fanout consumer stopped" is logged
 - Per-message backpressure is bounded only by the read batch size; under
   high publish rates the consumer can fall behind without observable
   signal beyond delayed dispatch.
+
+## See Also
+
+- docs/project/spec/feature/integration/single-ingress-webhook-termination.md
+- docs/project/spec/feature/reconciliation/channel-gated-self-update.md
+- docs/project/adr/0028-single-lan-bound-ingress.md
+- docs/project/adr/0024-reconciliation-bounded-context.md

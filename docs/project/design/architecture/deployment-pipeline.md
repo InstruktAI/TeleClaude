@@ -1,5 +1,5 @@
 ---
-description: 'Architecture of the automated webhook-driven deployment pipeline.'
+description: 'Architecture of the deployment pipeline: a single ingress terminates external webhooks and relays them to the cluster bus, where each computer reconciles its own version by channel.'
 visibility: 'public'
 ---
 
@@ -7,48 +7,70 @@ visibility: 'public'
 
 ## Purpose
 
-TeleClaude uses an automated webhook-driven deployment pipeline. When code is
-pushed to `main` or a GitHub release is published, computers self-update based
-on their configured deployment channel. No manual operator command is needed.
+TeleClaude keeps a multi-machine fleet current automatically. The pipeline has
+two responsibilities, owned by two bounded contexts on different change axes:
 
-### Components
+- **Ingress (`integration`)** — terminate external webhooks for the whole
+  cluster at one public node, verify and normalize each payload, and relay it
+  onto the cluster event bus unconditionally.
+- **Convergence (`reconciliation`)** — each computer subscribes to the relayed
+  release/version signal and drives its own actual state toward its desired
+  state: the newest version its channel admits, applied exactly once, ending
+  healthy.
 
-#### `teleclaude/deployment/handler.py`
+The ingress decides nothing about the reaction; the reaction is
+subscriber-driven. This separation is the recorded decision in ADR-0028 (single
+LAN-bound ingress) and ADR-0024 (reconciliation as its own bounded context).
 
-Receives webhook events from GitHub (push, release). Evaluates the event
-against the computer's channel configuration and triggers an update if the
-event matches.
+### Ingress — `teleclaude/hooks/inbound.py`
 
-**Decision matrix:**
+`InboundEndpointRegistry` mounts dynamic inbound webhook routes on the FastAPI
+app. For each registered provider path it verifies the payload signature
+(HMAC-SHA256, constant-time), normalizes the body into the unified `HookEvent`
+shape via a registered normalizer, and hands each event to its `dispatch`
+callable — the relay onto the cluster event bus (CLUSTER visibility). The
+ingress binds to a LAN/router address (not localhost, not promiscuous); the
+router port-forwards public traffic and the accepted source is restricted to
+the router. It is provider-agnostic: one ingress terminates webhooks for every
+provider and project. See
+`docs/project/spec/feature/integration/single-ingress-webhook-termination.md`.
 
-| Event                       | Channel  | Condition                         | Action |
-| --------------------------- | -------- | --------------------------------- | ------ |
-| Push to `main`              | `alpha`  | Always                            | Update |
-| Release published           | `beta`   | Any version                       | Update |
-| Release published           | `stable` | Within `pinned_minor` series      | Update |
-| Fan-out `version_available` | any      | Own channel matches event channel | Update |
+### Cluster relay
 
-#### `teleclaude/deployment/executor.py`
+The verified, normalized event is published onto the event bus at CLUSTER
+scope. Every computer consumes it through its own subscription; only the
+ingress is publicly exposed. The relay is stateless, so a second ingress can be
+added without redesign.
 
-Runs the actual update: `git pull --ff-only`, migration runner, daemon restart.
+### Convergence — `reconciliation`
 
-#### `teleclaude/deployment/migration_runner.py`
+Each computer evaluates a relayed release/version signal against its own channel
+policy and, on a match, starts a convergence run: checkout/build the target,
+run installation migrations, restart healthy. A target version is applied at
+most once (exactly-once); a convergence is not complete until the daemon is
+running and healthy on the target, and a failed step halts the run with a
+recorded reason rather than coming up partially. Channel policy and the
+exactly-once / healthy-or-failed contract are owned by
+`docs/project/spec/feature/reconciliation/channel-gated-self-update.md`; the
+context model (Installation, Convergence Run, Fleet Capability Map) is in
+`docs/project/spec/domain/reconciliation.md`.
 
-Discovers and runs sequential migration scripts between versions.
+A deliberately multi-version fleet (alpha ahead of beta ahead of stable) stays
+interoperable through the fleet capability map and feature-ID gating in
+`teleclaude/core/reconciliation/` — unaware nodes drop ignorable capabilities
+cleanly, and removal of a shared capability waits until every live node carries
+it. See
+`docs/project/spec/feature/reconciliation/fleet-cross-version-interop.md`.
 
-#### Redis Fan-out
+### Current implementation surface
 
-When a GitHub-source event triggers an update on the receiving computer, that
-computer also publishes a `version_available` event to the Redis stream
-`deployment:version_available`. All other daemons subscribed to the stream
-evaluate the event and update if their channel config matches.
-
-This means only one computer needs a direct GitHub webhook connection. Others
-receive updates via Redis fan-out.
-
-### Deployment Channels
-
-Configured in `project.deployment.channel` in `config.yml`:
+The ingress (`teleclaude/hooks/inbound.py`) and the fleet capability map /
+feature-ID registry (`teleclaude/core/reconciliation/`) are in place. The
+convergence reaction currently runs through the deployment executor in
+`teleclaude/deployment/` (channel evaluation in `handler.py`, the
+checkout/migrate/install/restart steps in `executor.py`); the standalone
+`reconciliation` control loop is the target owner of that reaction. Channel
+configuration lives in `project.deployment.channel` in `config.yml`:
 
 ```yaml
 project:
@@ -61,48 +83,70 @@ project:
 
 **Inputs:**
 
-- GitHub webhook events (push to `main`, release published)
-- `config.yml` with `project.deployment.channel` and optional `pinned_minor`
-- Redis `version_available` stream messages from peer computers
+- External provider webhooks (GitHub push to `main`, GitHub release published,
+  other provider events) arriving at the single ingress.
+- `config.yml` with `project.deployment.channel` and optional `pinned_minor`.
+- The relayed cluster-scoped release/version event consumed by each computer.
 
 **Outputs:**
 
-- `git pull --ff-only` + migration run + daemon restart on matching computers
-- Redis `version_available` fan-out event to notify peer computers
+- A verified, normalized event relayed onto the cluster event bus.
+- On each subscribing computer whose channel admits the version: a convergence
+  run (checkout/build → migrate → restart) ending healthy on the target, or a
+  halted run with a recorded failure reason.
 
 ## Invariants
 
-- **Channel-gated updates**: A computer only applies an update when the event matches its configured channel.
-- **Single webhook receiver**: Only one computer needs a direct GitHub webhook connection; others update via Redis fan-out.
-- **Fan-out loop prevention**: Events with `source=deployment` do not re-broadcast.
-- **Idempotent migration runner**: Sequential migrations are tracked; re-running skips already-applied steps.
+- **Single public surface.** Exactly one computer (the ingress) accepts
+  external webhooks; every other computer reacts by subscription.
+- **Unconditional relay.** The ingress relays every verified event regardless
+  of its own channel, role, or whether it would itself act.
+- **Channel-gated convergence.** A computer converges only when the signal
+  matches its channel policy; `stable` ignores releases outside its
+  `pinned_minor`.
+- **Exactly-once per target version.** Re-receiving the same version signal is
+  a no-op; the convergence loop is idempotent.
+- **Healthy-or-failed.** A convergence is complete only when the daemon is
+  running and healthy on the target; a failed step halts with a recorded
+  reason, never a silent partial state.
 
 ## Primary flows
 
-```
-GitHub → Webhook → handler.py
-                     ↓
-              channel match?
-                ↙         ↘
-             yes             no → skip
-              ↓
-          executor.py
-        (git pull + restart)
-              ↓
-        Redis fan-out
-       version_available
-              ↓
-       Other daemons
-    (evaluate own channel)
+```mermaid
+flowchart TD
+    GH[External provider webhook] --> ING[Ingress: verify + normalize]
+    ING -->|relay unconditionally| BUS[Cluster event bus CLUSTER scope]
+    BUS --> N1[Computer A subscription]
+    BUS --> N2[Computer B subscription]
+    BUS --> N3[Computer C subscription]
+    N1 --> P1{channel admits version?}
+    P1 -->|yes| C1[Converge: checkout/build to migrate to restart healthy]
+    P1 -->|no| S1[Skip]
 ```
 
 ## Failure modes
 
-- Config load failure: logged, update skipped (non-fatal).
-- `execute_update` failure: logged via task exception handler.
-- Fan-out loop prevention: events with `source=deployment` do not re-broadcast.
+- **Ingress down.** No external events are processed while it is down; the
+  cluster is not otherwise broken. Recovery is the next release signal, a
+  periodic desired-state self-check, or a second stateless ingress.
+- **Unverified payload.** Signature verification fails at the ingress; nothing
+  is relayed and the sender receives a rejection response.
+- **Cluster pub/sub is fire-and-forget.** A computer offline when a signal
+  publishes misses it; recovery is the next signal or a periodic self-check,
+  not event replay.
+- **Convergence step failure.** The run halts and records the failure reason;
+  the computer does not come up in a partial or unhealthy state. Config-load
+  failure is logged and the update skipped (non-fatal).
+- **Idempotent migrations.** Installation migrations are tracked; re-running
+  skips already-applied steps.
 
 ## See Also
 
 - docs/project/procedure/deploy.md — operator procedure
+- docs/project/spec/feature/integration/single-ingress-webhook-termination.md
+- docs/project/spec/feature/reconciliation/channel-gated-self-update.md
+- docs/project/spec/feature/reconciliation/fleet-cross-version-interop.md
+- docs/project/spec/domain/reconciliation.md
+- docs/project/adr/0028-single-lan-bound-ingress.md
+- docs/project/adr/0024-reconciliation-bounded-context.md
 - docs/project/spec/teleclaude-config.md — config schema for deployment

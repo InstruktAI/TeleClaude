@@ -136,6 +136,14 @@ async def handle_deployment_event(
         logger.debug("Deployment handler: skipping event source=%s type=%s", event.source, event.type)
         return
 
+    # Exactly-once: a target version is applied at most once. If the installation
+    # already runs the desired version, a repeated release signal is a no-op.
+    if should_update:
+        target_version = str(version_info.get("version", ""))
+        if target_version and target_version == __version__:
+            logger.debug("Deployment handler: already at target version %s; no second update", target_version)
+            should_update = False
+
     if not should_update:
         logger.debug(
             "Deployment handler: no update for channel=%s source=%s type=%s action=%s",
