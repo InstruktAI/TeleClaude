@@ -178,8 +178,10 @@ async def _handle_build_complete_claim(
             f"Execute in order:\n\n"
             f'telec sessions send {builder_id} "{escaped}"\n\n'
             f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-            f"Start a new non-blocking heartbeat timer via "
-            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
+            f"Start a new non-blocking backup heartbeat timer via "
+            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
+            f"The timer is a bare sleep — a check-in to re-engage your judgment, never a "
+            f"condition test, never a tighter interval.\n"
             f"When the builder reports idle after re-stamping, call telec todo work {slug}."
         )
 
@@ -352,8 +354,10 @@ async def _work_step_build_complete(
             f"Execute in order:\n\n"
             f'telec sessions send {reviewer_id} "{escaped}"\n\n'
             f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-            f"Start a new non-blocking heartbeat timer via "
-            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
+            f"Start a new non-blocking backup heartbeat timer via "
+            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
+            f"The timer is a bare sleep — a check-in to re-engage your judgment, never a "
+            f"condition test, never a tighter interval.\n"
             f"When the reviewer reports idle, call telec todo work {slug}."
         )
 
@@ -473,9 +477,11 @@ async def _work_step_review_changes_requested(
         f"Tell the reviewer to start a direct conversation with the fixer:\n"
         f"telec sessions send {reviewer_id} {quoted_reviewer_message} (you will use regular send, NOT --direct)\n\n"
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f"Start a new non-blocking heartbeat timer via "
-        f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
-        f"Wait for fixer to complete (monitor via heartbeat; do not poll continuously).\n"
+        f"Start a new non-blocking backup heartbeat timer via "
+        f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
+        f"The timer is a bare sleep — a check-in to re-engage your judgment, never a "
+        f"condition test, never a tighter interval.\n"
+        f"Wait passively for fixer to complete (the timer re-engages you; never poll).\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call telec todo work {slug}."
     )

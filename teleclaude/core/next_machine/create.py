@@ -126,9 +126,10 @@ def _format_creative_iteration_script(
         f"Execute in order:\n\n"
         f'telec sessions send {worker_session_id} "{escaped}"\n\n'
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-        f"and save the new task_id.\n"
-        f"Wait for the worker to idle.\n"
+        f'Start a new non-blocking backup heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+        f"and save the new task_id. The timer is a bare sleep — a check-in to re-engage your "
+        f"judgment, never a condition test, never a tighter interval.\n"
+        f"Wait passively for the worker to idle.\n"
         f"When the worker idles, call telec todo design {slug}."
     )
 

@@ -141,8 +141,10 @@ async def _dispatch_worker(
             f"Execute in order:\n\n"
             f'telec sessions send {worker_id} "{escaped}"\n\n'
             f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-            f"Start a new non-blocking heartbeat timer via "
-            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
+            f"Start a new non-blocking backup heartbeat timer via "
+            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
+            f"The timer is a bare sleep — a check-in to re-engage your judgment, never a "
+            f"condition test, never a tighter interval.\n"
             f"When the worker reports idle, call telec todo prepare {slug}."
         )
 

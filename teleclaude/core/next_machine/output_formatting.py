@@ -224,17 +224,25 @@ telec sessions run --command "{formatted_command}" --args "{args}" --project "{p
   --agent "<your selection>" --mode "{mode_slot}" --subfolder "{subfolder}"{additional_context_flag}
 Save the returned session_id.
 
-STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:
 Bash(command="sleep 300", run_in_background=true)
 Save the returned task_id.
 Save the current time as <marker_timestamp> for the tailing discipline.
-The timer runs in the background; notifications and timer completion arrive in your conversation.
+INTENT — read this before continuing: the notification is the completion signal; you will be told.
+This timer is a backup check-in only — its sole purpose is to re-engage YOUR judgment when you have
+heard nothing. It is not a control loop and it does not watch the worker; you do.
+- The timer is always a bare sleep. It never tests conditions, never invokes telec, never loops.
+  (A shell test deciding "done/not done" is assessment smuggled into automation — forbidden.)
+- Exactly one timer exists at a time. Kill the old (KillShell) before starting a new one.
+- 300 seconds is the floor. NEVER set a tighter heartbeat.
 
-STEP 3 - WAIT:
+STEP 3 - WAIT PASSIVELY:
 Tell the user: "Dispatched session <session_id>. Waiting for completion."
-Act on the next event that fires in your conversation — notification or timer completion.
+Do nothing until an event arrives in your conversation. No tailing between events, no extra
+watchers, no tighter timers.
 
-TAILING DISCIPLINE:
+TAILING DISCIPLINE (every arriving event — a notification or your backup timer completing —
+licenses exactly one tail; no event, no tail):
 - First tail: default latest-turn window (no --since). Save the latest message timestamp as <marker_timestamp>.
 - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
 Each telec sessions tail response includes `last_input_at`, `last_activity`,
@@ -246,14 +254,18 @@ Status semantics:
 - `unknown`: no `last_activity` has been recorded yet.
 
 HEARTBEAT RULE:
-- On notification arrival or timer completion: tail the session (first time: default latest-turn window; subsequent: --since <marker_timestamp>).
-- Update <marker_timestamp> to the latest message timestamp when new messages appear.
-- If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+- On notification arrival: tail once and act on what you read.
+- On timer completion (you heard nothing): tail once and judge what you see. Silence may be deep
+  work, saturation, or a dead worker — that assessment is yours, never a script's.
+- If `agent_status` is `active`: reset ONE bare backup timer and return to passive waiting.
 - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
-- If `agent_status` is `unknown`: wait for the next event.
+- If `agent_status` is `unknown`: reset ONE bare backup timer and return to passive waiting.
+- RECOVERY: if you cannot tell whether your timer survived (restart, compaction): kill any timers
+  you can, start ONE bare timer, resume passive waiting. Never compensate for uncertainty with
+  extra watchers or shorter intervals.
 
 FEEDBACK MESSAGES:
-- When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+- When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new backup heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
 - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
 
 {post_block}
