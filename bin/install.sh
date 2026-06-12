@@ -770,6 +770,76 @@ GRAPHIFY_PINNED_VERSION="0.8.33"
 # transitive dependency is resolved live from the index.
 GRAPHIFY_LOCK_FILE="$INSTALL_DIR/graphifyy-$GRAPHIFY_PINNED_VERSION.requirements.txt"
 
+# ── Canonical CLI publish location ────────────────────────────────────────────
+# Every platform CLI (telec, graphify, telec-daemon) publishes to one
+# OS-agnostic location: ~/.local/bin. The daemon and all agent shells guarantee
+# it on PATH (project/spec/agent-shell-path), so it always resolves. We create it
+# if missing and never scatter binaries to brew/usr-local.
+TELEC_BIN_DIR="$HOME/.local/bin"
+_TELEC_PATH_PROMPTED=0
+
+# publish_binary <name> <source>: idempotently link <source> to
+# $TELEC_BIN_DIR/<name>, and transparently migrate our own stale copies out of
+# other PATH dirs. Only removes a symlink that resolves to <source> — a foreign
+# binary of the same name is never touched. No prompts; safe to re-run.
+publish_binary() {
+    local name="$1" source="$2"
+    local canonical="$TELEC_BIN_DIR/$name"
+    mkdir -p "$TELEC_BIN_DIR"
+
+    local d other
+    for d in /opt/homebrew/bin /usr/local/bin; do
+        other="$d/$name"
+        if [ -L "$other" ] && [ "$(readlink "$other")" = "$source" ]; then
+            rm -f "$other" 2>/dev/null || sudo rm -f "$other"
+            print_info "Migrated $name out of $d into $TELEC_BIN_DIR"
+        fi
+    done
+
+    if [ "$(readlink "$canonical" 2>/dev/null)" != "$source" ]; then
+        ln -sfn "$source" "$canonical"
+    fi
+    _ensure_local_bin_on_path
+}
+
+# _ensure_local_bin_on_path: one-shot. If $TELEC_BIN_DIR is not on the user's
+# PATH, present a guarded snippet and (interactively) offer to inject it into the
+# detected shell rc. This is the only approval gate in the install — everything
+# else is transparent.
+_ensure_local_bin_on_path() {
+    [ "$_TELEC_PATH_PROMPTED" = 1 ] && return 0
+    _TELEC_PATH_PROMPTED=1
+    case ":$PATH:" in *":$TELEC_BIN_DIR:"*) return 0 ;; esac
+
+    local rc
+    case "$(basename "${SHELL:-sh}")" in
+        zsh) rc="$HOME/.zshrc" ;;
+        bash) rc="$HOME/.bashrc" ;;
+        *) rc="$HOME/.profile" ;;
+    esac
+    if [ -f "$rc" ] && grep -qF '.local/bin' "$rc" 2>/dev/null; then
+        return 0
+    fi
+
+    local line='case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
+    print_warning "$TELEC_BIN_DIR is not on your PATH — TeleClaude CLIs won't resolve in new shells."
+    printf '  Suggested addition to %s:\n' "$rc"
+    printf '    # TeleClaude: resolve user-published CLIs (telec, graphify)\n'
+    printf '    %s\n' "$line"
+    if [ -t 0 ]; then
+        printf '  Append it to %s now? [Y/n] ' "$rc"
+        local ans
+        read -r ans
+        case "$ans" in
+            [Nn]*) print_info "Skipped — add the line above, then open a new shell." ; return 0 ;;
+        esac
+        printf '\n# TeleClaude: resolve user-published CLIs (telec, graphify)\n%s\n' "$line" >> "$rc"
+        print_success "Added ~/.local/bin to PATH in $rc — open a new shell to apply."
+    else
+        print_info "Add the line above to $rc, then open a new shell."
+    fi
+}
+
 # Install the Blueprint engine (graphify) so it is on PATH on every agent machine.
 # Graphify is synced into a dedicated managed venv from the hash lock and the
 # verified executable is symlinked onto PATH.
@@ -784,30 +854,10 @@ install_blueprint_engine() {
     local graphify_venv="$TELECLAUDE_HOME/tools/graphify/$GRAPHIFY_PINNED_VERSION"
     local graphify_bin="$graphify_venv/bin/graphify"
 
-    local target_dir="$HOME/.local/bin"
-    if [ -d "$target_dir" ] && [[ ":$PATH:" == *":$target_dir:"* ]]; then
-        :
-    elif [ "$OS" = "macos" ] && [ -d "/opt/homebrew/bin" ]; then
-        target_dir="/opt/homebrew/bin"
-    elif [ -d "/usr/local/bin" ]; then
-        target_dir="/usr/local/bin"
-    else
-        mkdir -p "$target_dir"
-    fi
-    local target="$target_dir/graphify"
-
-    link_graphify() {
-        if [ -w "$target_dir" ]; then
-            ln -sf "$graphify_bin" "$target"
-        else
-            sudo ln -sf "$graphify_bin" "$target"
-        fi
-    }
-
     # Skip only when the pinned version is already present in the managed venv —
     # an arbitrary graphify already on PATH is never trusted.
     if [ -x "$graphify_bin" ] && [ "$("$graphify_bin" --version 2>/dev/null | awk '{print $2}')" = "$GRAPHIFY_PINNED_VERSION" ]; then
-        link_graphify
+        publish_binary graphify "$graphify_bin"
         print_info "Blueprint engine (graphify $GRAPHIFY_PINNED_VERSION) already installed"
         return 0
     fi
@@ -837,7 +887,7 @@ install_blueprint_engine() {
         exit 1
     fi
 
-    link_graphify
+    publish_binary graphify "$graphify_bin"
     print_success "Blueprint engine installed (graphify $GRAPHIFY_PINNED_VERSION)"
 }
 
@@ -858,31 +908,8 @@ install_global_cli() {
     fi
     print_header "Installing Global CLI (telec)"
 
-    local target_dir=""
-    local local_bin="$HOME/.local/bin"
-    if [ -d "$local_bin" ] && [[ ":$PATH:" == *":$local_bin:"* ]]; then
-        target_dir="$local_bin"
-    elif [ "$OS" = "macos" ] && [ -d "/opt/homebrew/bin" ]; then
-        target_dir="/opt/homebrew/bin"
-    elif [ -d "/usr/local/bin" ]; then
-        target_dir="/usr/local/bin"
-    elif [ -d "$local_bin" ]; then
-        target_dir="$local_bin"
-        print_warning "$local_bin exists but is not in PATH; telec may not be globally resolvable"
-    else
-        target_dir="$local_bin"
-        mkdir -p "$target_dir"
-        print_warning "Created $local_bin, but it is not in PATH; telec may not be globally resolvable"
-    fi
-
-    local target="$target_dir/telec"
-    if [ -w "$target_dir" ]; then
-        ln -sf "$INSTALL_DIR/bin/telec" "$target"
-    else
-        sudo ln -sf "$INSTALL_DIR/bin/telec" "$target"
-    fi
-
-    print_success "Installed telec at $target"
+    publish_binary telec "$INSTALL_DIR/bin/telec"
+    print_success "Installed telec at $TELEC_BIN_DIR/telec"
 }
 
 install_rust_runtime() {
