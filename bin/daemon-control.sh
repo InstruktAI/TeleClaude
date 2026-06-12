@@ -754,7 +754,13 @@ status_daemon() {
     fi
 
     if [ "$PLATFORM" = "macos" ]; then
-        status_launchd_unit "$TELEC_DAEMON_LABEL" || overall_ok=1
+        # telec-daemon (v2 Rust) is required-if-present until the v2 cutover:
+        # an installed unit must be healthy; an absent unit is informational.
+        if [ -f "$HOME/Library/LaunchAgents/$TELEC_DAEMON_LABEL.plist" ]; then
+            status_launchd_unit "$TELEC_DAEMON_LABEL" || overall_ok=1
+        else
+            log_info "telec-daemon (v2, pre-cutover): not installed — OK"
+        fi
         status_launchd_unit "$DOCS_WATCH_LABEL" || overall_ok=1
     fi
 

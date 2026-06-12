@@ -53,14 +53,17 @@ install:
 			if command -v pnpm >/dev/null 2>&1; then pnpm --dir frontend install --ignore-scripts; else npm --prefix frontend install --ignore-scripts; fi; \
 		fi; \
 		if [ -f Cargo.toml ]; then \
-			if ! command -v cargo >/dev/null 2>&1; then echo "cargo not found. Install the Rust toolchain before installing telec-daemon." >&2; exit 1; fi; \
-			cargo fetch; \
-			cargo build --release -p telec-daemon; \
-			target_binary="$$HOME/.local/bin/telec-daemon"; \
-			mkdir -p "$$(dirname "$$target_binary")"; \
-			cp target/release/telec-daemon "$$target_binary"; \
-			chmod +x "$$target_binary"; \
-			if [ "$$(uname -s)" = "Darwin" ]; then TELEC_DAEMON_BINARY="$$target_binary" ./bin/daemon-control.sh install-telec-daemon; fi; \
+			if command -v cargo >/dev/null 2>&1; then \
+				cargo fetch; \
+				cargo build --release -p telec-daemon; \
+				target_binary="$$HOME/.local/bin/telec-daemon"; \
+				mkdir -p "$$(dirname "$$target_binary")"; \
+				cp target/release/telec-daemon "$$target_binary"; \
+				chmod +x "$$target_binary"; \
+				if [ "$$(uname -s)" = "Darwin" ]; then TELEC_DAEMON_BINARY="$$target_binary" ./bin/daemon-control.sh install-telec-daemon; fi; \
+			else \
+				echo "cargo not found — skipping telec-daemon build (v2, pre-cutover; becomes required at the v2 cutover)."; \
+			fi; \
 		fi; \
 		hook_dest="$$(git rev-parse --git-path hooks/pre-commit 2>/dev/null || printf ".git/hooks/pre-commit")"; \
 		mkdir -p "$$(dirname "$$hook_dest")"; \
