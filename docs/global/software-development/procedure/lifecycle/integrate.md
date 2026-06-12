@@ -47,9 +47,12 @@ each decision point until the queue is drained.
 3. After executing, call `telec todo integrate` again to advance.
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
 5. Before any push, run repo-wide verification:
-   - `make lint`
-   - `make test`
+   - `telec code lint --all`
+   - `telec code test --all`
      If either command fails, fix the failures, rerun both, then resume the state machine.
+     Use the `telec code` verbs, not raw `make`: `telec code lint --all` runs the native
+     `make lint` leg **and** the TeleClaude guardrails lane (raw `make lint` skips the
+     guardrails), matching exactly what the pre-push hook enforces.
    - The pre-push hook at `.githooks/pre-push` enforces `telec code lint --all` automatically.
      If the hook blocks the push with `ERROR: Integration push blocked — telec code lint --all failed.`,
      resolve the reported lint violations and retry.
@@ -67,7 +70,7 @@ The branch has been squash-merged; staged changes are ready.
    - Body: summarize what changed, key decisions, scope
    - Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
 3. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
-4. When the state machine reaches push, `make lint` and `make test` must already be green.
+4. When the state machine reaches push, `telec code lint --all` and `telec code test --all` must already be green.
 
 ### CONFLICT RESOLUTION REQUIRED
 
@@ -107,7 +110,7 @@ commit` directly.
 8. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
 9. If conflicts are genuinely unresolvable, call `telec todo integrate` without
    committing — the state machine will detect this and re-prompt.
-10. Before any push, `make lint` and `make test` must pass.
+10. Before any push, `telec code lint --all` and `telec code test --all` must pass.
 
 ### PUSH REJECTION RECOVERY
 
