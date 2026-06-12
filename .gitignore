@@ -105,3 +105,7 @@ docs/diagrams/
 # Helpdesk generated files (should NEVER happen but must never be tracked)
 helpdesk/
 !helpdesk/AGENTS.master.md
+
+# Ephemeral content dumps (telec content dump); keep folder structure only
+publications/inbox/*
+!publications/inbox/.gitkeep
