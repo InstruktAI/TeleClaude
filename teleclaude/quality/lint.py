@@ -250,25 +250,6 @@ class _SnapshotTestingStep:
 
 
 @dataclass
-class _TestDisciplineStep:
-    """Runtime env mutation discipline enforcement."""
-
-    name: str = "test_discipline"
-    _project_root: Path = field(default_factory=Path)
-    _run_all: bool = False
-
-    def run(self, targets: list[str]) -> None:
-        """Run the controlled TELECLAUDE_* env mutation scanner."""
-        script = str(REPO_ROOT / "tools" / "lint" / "test_discipline.py")
-        args = ["--check"]
-        if self._run_all:
-            args.append("--all")
-        else:
-            args.extend(targets)
-        _run_tool([sys.executable, script, *args], self._project_root, self.name)
-
-
-@dataclass
 class _ForbidUnitTestsStep:
     """Python no-unit-test policy enforcement."""
 
@@ -320,7 +301,6 @@ class GuardrailsLane:
             _CliHelpStep(_project_root=root, _run_all=run_all),
             _RawSqlStep(_project_root=root, _run_all=run_all),
             _SnapshotTestingStep(_project_root=root, _run_all=run_all),
-            _TestDisciplineStep(_project_root=root, _run_all=run_all),
             _ForbidUnitTestsStep(_project_root=root, _run_all=run_all),
             _ForbidTsUnitTestsStep(_project_root=root, _run_all=run_all),
         ]

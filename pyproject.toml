@@ -105,7 +105,7 @@
     extend-select=[
       "F403",    # import * used; unable to detect undefined names
       "F405",    # name may be undefined, or defined from star imports
-      "PLC0415", # import-outside-top-level (preview) — enforced via guardrail allowlist
+      "PLC0415", # import-outside-top-level (preview) — ruff owns it; per-file-ignores allowlist the startup-boundary files
     ]
     ignore=[
       "B008",  # function-call-in-default-argument — false positive on FastAPI Depends()

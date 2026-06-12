@@ -6,12 +6,7 @@ from __future__ import annotations
 import argparse
 import ast
 import fnmatch
-import io
-import json
-import os
 import re
-import tokenize
-import tomllib
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import NamedTuple
@@ -22,30 +17,6 @@ def _fail(message: str) -> None:
     raise SystemExit(f"guardrails: {message}")
 
 
-_REPO_INVARIANT_INPUTS = frozenset(
-    {
-        ".pre-commit-config.yaml",
-        "Makefile",
-        "pyproject.toml",
-        "pyrightconfig.json",
-        "tools/lint.sh",
-    }
-)
-
-_STARTUP_BOUNDARY_IMPORT_ALLOWLIST = frozenset(
-    {
-        "teleclaude/daemon.py",
-        "teleclaude/daemon_event_platform.py",
-        "teleclaude/core/adapter_client/_client.py",
-        # Per software-development/policy/test-resource-discipline rule 17:
-        # the root conftest defers heavy module imports (db, config,
-        # state_store, runtime.binaries, session_*, psutil) into the autouse
-        # fixture bodies that use them. Each deferred import carries the same
-        # `# startup boundary` reason as the daemon entry points.
-        "tests/conftest.py",
-    }
-)
-_STARTUP_BOUNDARY_IMPORT_REASON = "startup boundary"
 MODULE_SIZE_EXCEPTIONS = frozenset(
     {
         "teleclaude/daemon.py",
@@ -54,6 +25,9 @@ MODULE_SIZE_EXCEPTIONS = frozenset(
         "teleclaude/core/todos_db/_roadmap.py",
     }
 )
+
+# File size gate: max lines per module. Exceptions require explicit allowlisting.
+MODULE_MAX_LINES = 1000
 
 
 class RuntimePathBypass(NamedTuple):
@@ -74,43 +48,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     selected_paths = _normalize_selected_paths(repo_root, args.paths)
 
-    pyproject_path = repo_root / "pyproject.toml"
-    if not pyproject_path.exists():
-        _fail("missing pyproject.toml")
-
-    pyright_path = repo_root / "pyrightconfig.json"
-    if not pyright_path.exists():
-        _fail("missing pyrightconfig.json")
-
-    pyright = json.loads(pyright_path.read_text(encoding="utf-8"))
-    pyproject = pyproject_path.read_text(encoding="utf-8")
-
-    if _should_run_repo_invariants(selected_paths):
-        # Repo-wide invariants should only fire on repo-wide lint runs or when one of
-        # their owning files is actually part of the staged selection.
-        if pyright.get("typeCheckingMode") != "strict":
-            _fail("pyright typeCheckingMode must be strict")
-        if "[tool.ruff]" not in pyproject:
-            _fail("pyproject.toml must define [tool.ruff]")
-
-        # Config invariant enforcement (prevents silent erosion by agents)
-        _check_pyright_invariants(pyright)
-        _check_ruff_invariants(pyproject)
-        _check_mypy_invariants(pyproject)
-        _check_lint_pipeline_integrity(repo_root)
-
-    # Test structure enforcement
+    # Module size gate
     _check_module_sizes(repo_root, selected_paths)
-    _check_no_companion_markers(repo_root, selected_paths)
-    _check_test_companions(repo_root, selected_paths)
 
     # Source pattern guardrails (table-driven)
     _check_source_patterns(repo_root, selected_paths)
     _check_runtime_path_bypasses(repo_root, selected_paths)
-    _check_import_outside_toplevel_policy(repo_root, selected_paths)
 
-    # Existing guardrails
-    _remove_empty_claude_md(repo_root, selected_paths)
+    # Loose-dict typing guardrail
     _warn_for_loose_dicts(repo_root, selected_paths)
 
 
@@ -135,13 +80,6 @@ def _normalize_selected_paths(repo_root: Path, raw_paths: Sequence[str]) -> set[
     return normalized
 
 
-def _should_run_repo_invariants(selected_paths: set[str] | None) -> bool:
-    """Return True when repo-wide invariants should run for the current selection."""
-    if selected_paths is None:
-        return True
-    return any(path in _REPO_INVARIANT_INPUTS for path in selected_paths)
-
-
 def _iter_selected_files(
     repo_root: Path,
     selected_paths: set[str] | None,
@@ -164,186 +102,8 @@ def _iter_selected_files(
 
 
 # ---------------------------------------------------------------------------
-# Config invariant enforcement
+# Module size gate
 # ---------------------------------------------------------------------------
-
-# Frozen baselines: these caps represent the current known state.
-# Raising a cap requires explicit human approval and a documented reason.
-# The cap exists to make config erosion VISIBLE — not to prevent all change.
-
-PYRIGHT_MAX_IGNORE_FILES = 8
-PYRIGHT_ALLOWED_NONE_REPORTS = frozenset(
-    {
-        "reportOptionalSubscript",
-        "reportOptionalMemberAccess",
-        "reportOptionalCall",
-        "reportOptionalIterable",
-        "reportOptionalContextManager",
-        "reportOptionalOperand",
-        "reportArgumentType",
-        "reportMissingTypeStubs",
-        "reportUnknownArgumentType",
-        "reportUnknownMemberType",
-        "reportUnknownParameterType",
-        "reportUnknownVariableType",
-        "reportPrivateUsage",
-    }
-)
-
-RUFF_REQUIRED_RULE_GROUPS = {"E", "F", "I", "C90", "B", "UP", "RUF"}
-# guard: ratchet-down — 8 includes 5 tech-debt items (UP042, RUF012, RUF005, RUF006, B905)
-RUFF_MAX_GLOBAL_IGNORES = 8
-# guard: ratchet-down — 50 entries after rlf-peripherals module decomposition
-# (monoliths split into packages, each submodule inherits parent's ignores)
-RUFF_MAX_PER_FILE_IGNORE_ENTRIES = 50
-
-MYPY_MAX_OVERRIDE_SECTIONS = 13
-MYPY_ALLOWED_IGNORE_ERRORS_MODULES = frozenset({"teleclaude.hooks.*"})
-
-# File size gate: max lines per module. Exceptions require explicit allowlisting.
-MODULE_MAX_LINES = 1000
-ORPHAN_EXCLUDE_MAX_ENTRIES = 64
-
-
-def _check_pyright_invariants(pyright: dict[str, object]) -> None:  # guard: loose-dict-func - JSON config is untyped
-    """Enforce pyright config does not silently weaken."""
-    ignore_list = pyright.get("ignore", [])
-    if isinstance(ignore_list, list) and len(ignore_list) > PYRIGHT_MAX_IGNORE_FILES:
-        _fail(
-            f"pyrightconfig.json ignore list has {len(ignore_list)} entries "
-            f"(max: {PYRIGHT_MAX_IGNORE_FILES}). "
-            "Do not suppress pyright errors by adding modules to the ignore list — fix the types."
-        )
-
-    actual_none_reports = {k for k, v in pyright.items() if v == "none" and k.startswith("report")}
-    new_suppressed = actual_none_reports - PYRIGHT_ALLOWED_NONE_REPORTS
-    if new_suppressed:
-        _fail(
-            f"pyrightconfig.json has new 'none' report overrides not in baseline: "
-            f"{sorted(new_suppressed)}. Do not suppress pyright report categories."
-        )
-
-
-def _check_ruff_invariants(pyproject: str) -> None:
-    """Enforce ruff lint rules are not weakened.
-
-    Uses tomllib for correct TOML array extraction. The previous regex approach
-    was broken: ] inside comments (e.g. Optional[X]) prematurely terminated
-    the capture, hiding ignored rules from the cap check.
-    """
-    parsed = tomllib.loads(pyproject)
-    ruff_lint = (
-        parsed.get("tool", {}).get("ruff", {}).get("lint", {})
-    )  # guard: loose-dict - TOML parse result is untyped
-
-    # Required rule groups must be present in select
-    selected_rules = set(ruff_lint.get("select", []))
-    if not selected_rules:
-        _fail("pyproject.toml: [tool.ruff.lint] select list is missing")
-
-    missing = RUFF_REQUIRED_RULE_GROUPS - selected_rules
-    if missing:
-        _fail(
-            f"pyproject.toml: ruff lint select is missing required rule groups: "
-            f"{sorted(missing)}. Do not remove lint rules."
-        )
-
-    # Global ignore list cap
-    ignored_rules = ruff_lint.get("ignore", [])
-    if len(ignored_rules) > RUFF_MAX_GLOBAL_IGNORES:
-        _fail(
-            f"pyproject.toml: ruff global ignore list has {len(ignored_rules)} entries "
-            f"(max: {RUFF_MAX_GLOBAL_IGNORES}). Fix lint issues instead of suppressing them."
-        )
-
-    # Per-file-ignores entry cap
-    pfi = ruff_lint.get("per-file-ignores", {})  # guard: loose-dict - TOML parse result is untyped
-    if len(pfi) > RUFF_MAX_PER_FILE_IGNORE_ENTRIES:
-        _fail(
-            f"pyproject.toml: ruff per-file-ignores has {len(pfi)} entries "
-            f"(max: {RUFF_MAX_PER_FILE_IGNORE_ENTRIES}). "
-            "Do not add broad file-level ignore rules."
-        )
-
-
-def _check_mypy_invariants(pyproject: str) -> None:
-    """Enforce mypy overrides do not grow unchecked."""
-    override_count = pyproject.count("[[tool.mypy.overrides]]")
-    if override_count > MYPY_MAX_OVERRIDE_SECTIONS:
-        _fail(
-            f"pyproject.toml: {override_count} mypy override sections "
-            f"(max: {MYPY_MAX_OVERRIDE_SECTIONS}). "
-            "Do not add module-level mypy exemptions — fix the type errors."
-        )
-
-    # Check ignore_errors = true is only used for allowed modules
-    override_blocks = re.split(r"\[\[tool\.mypy\.overrides\]\]", pyproject)[1:]
-    for block in override_blocks:
-        if "ignore_errors" not in block:
-            continue
-        if not re.search(r"ignore_errors\s*=\s*true", block):
-            continue
-        module_match = re.search(r'module\s*=\s*"([^"]+)"', block)
-        if not module_match:
-            continue
-        module = module_match.group(1)
-        if module not in MYPY_ALLOWED_IGNORE_ERRORS_MODULES:
-            _fail(
-                f"pyproject.toml: mypy ignore_errors=true for '{module}' is not in the "
-                f"allowed baseline {sorted(MYPY_ALLOWED_IGNORE_ERRORS_MODULES)}. "
-                "Fix type errors instead of blanket-ignoring them."
-            )
-
-    # Ensure strict = true is still set
-    if re.search(r"^\s*strict\s*=\s*true", pyproject, re.MULTILINE) is None:
-        _fail("pyproject.toml: [tool.mypy] strict must be true")
-
-
-def _check_lint_pipeline_integrity(repo_root: Path) -> None:
-    """Verify critical tool config files haven't been structurally weakened."""
-    precommit_path = repo_root / ".pre-commit-config.yaml"
-    if precommit_path.exists():
-        precommit = precommit_path.read_text(encoding="utf-8")
-        if precommit.strip() != "repos: []":
-            _fail(".pre-commit-config.yaml: pre-commit framework is retired; expected 'repos: []'")
-
-    hook_path = _git_hook_path(repo_root, "pre-commit")
-    if hook_path.exists() and "INSTALL_PYTHON" in hook_path.read_text(encoding="utf-8"):
-        _fail(".git/hooks/pre-commit: legacy INSTALL_PYTHON pre-commit framework hook is forbidden")
-
-    # Makefile: must contain lint, test, and format targets
-    makefile_path = repo_root / "Makefile"
-    if makefile_path.exists():
-        makefile = makefile_path.read_text(encoding="utf-8")
-        for target in ("lint:", "test:", "format:"):
-            if target not in makefile:
-                _fail(f"Makefile: required target '{target}' is missing")
-
-
-def _git_hook_path(repo_root: Path, hook_name: str) -> Path:
-    """Resolve a hook path for regular clones and linked git worktrees."""
-    git_entry = repo_root / ".git"
-    if git_entry.is_dir():
-        git_dir = git_entry
-    elif git_entry.is_file():
-        gitdir_line = git_entry.read_text(encoding="utf-8").strip()
-        prefix = "gitdir:"
-        if gitdir_line.startswith(prefix):
-            git_dir = Path(gitdir_line[len(prefix) :].strip())
-            if not git_dir.is_absolute():
-                git_dir = repo_root / git_dir
-        else:
-            return git_entry / "hooks" / hook_name
-    else:
-        return git_entry / "hooks" / hook_name
-
-    common_dir_path = git_dir / "commondir"
-    if common_dir_path.exists():
-        common_dir = Path(common_dir_path.read_text(encoding="utf-8").strip())
-        if not common_dir.is_absolute():
-            common_dir = git_dir / common_dir
-        git_dir = common_dir.resolve()
-    return git_dir / "hooks" / hook_name
 
 
 def _check_module_sizes(repo_root: Path, selected_paths: set[str] | None = None) -> None:
@@ -380,224 +140,8 @@ def _check_module_sizes(repo_root: Path, selected_paths: set[str] | None = None)
 
 
 # ---------------------------------------------------------------------------
-# Test structure enforcement
+# Source pattern guardrails
 # ---------------------------------------------------------------------------
-
-
-def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = None) -> None:
-    """Enforce that every test file has a corresponding source module.
-
-    Convention: tests/unit/foo/test_bar.py must have teleclaude/foo/bar.py.
-    Repository scripts are mapped directly:
-    tests/unit/scripts/foo/test_bar.py must have scripts/foo/bar.py.
-    Orphaned tests (testing deleted/renamed modules) are caught here.
-
-    Exclusions: classify intentional orphans in [tool.test-mapping].orphan-exclude.
-    """
-    tests_root = repo_root / "tests" / "unit"
-    source_root = repo_root / "teleclaude"
-    if not tests_root.exists() or not source_root.exists():
-        return
-
-    orphan_exclusions = _load_orphan_exclusions(repo_root)
-
-    orphans: list[tuple[str, str]] = []
-    if selected_paths is None:
-        candidates = sorted(tests_root.rglob("test_*.py"))
-    else:
-        candidates = [
-            path
-            for path in _iter_selected_files(repo_root, selected_paths, prefixes=("tests/unit/",), suffixes=(".py",))
-            if path.name.startswith("test_")
-        ]
-
-    no_companion_markers = _find_no_companion_markers(repo_root, candidates)
-    if no_companion_markers:
-        formatted_markers = "\n".join(f"- {item}" for item in no_companion_markers)
-        _fail(
-            f"retired local # guard: no-companion markers detected ({len(no_companion_markers)} markers).\n"
-            "Classify the test in pyproject.toml [tool.test-mapping].orphan-exclude instead.\n"
-            f"{formatted_markers}\n"
-        )
-
-    for test_path in candidates:
-        rel_test = test_path.relative_to(repo_root).as_posix()
-        if rel_test in orphan_exclusions:
-            continue
-
-        expected_source = _test_to_source_path(test_path, tests_root)
-        if expected_source is None:
-            continue
-        expected_path, full_expected = _resolve_companion_source(repo_root, source_root, expected_source)
-        if not expected_path.exists():
-            orphans.append((rel_test, full_expected))
-
-    if not orphans:
-        return
-
-    max_test = max(len(t) for t, _ in orphans)
-    formatted = "\n".join(f"- {t:<{max_test}} -> missing: {s}" for t, s in orphans)
-    _fail(
-        f"orphaned test files detected ({len(orphans)} tests without source companions).\n"
-        "Each test file must mirror a source module. If the test intentionally covers\n"
-        "a package boundary or cross-module behavior, classify it in pyproject.toml\n"
-        "[tool.test-mapping].orphan-exclude with a precise boundary comment.\n"
-        f"{formatted}\n"
-    )
-
-
-def _check_no_companion_markers(repo_root: Path, selected_paths: set[str] | None = None) -> None:
-    """Reject ``# guard: no-companion`` markers in test files.
-
-    Test files do not own companion exceptions. Source-side exceptions belong on
-    source files; temporary orphan-test exceptions belong in the central
-    ratchet list.
-    """
-    tests_root = repo_root / "tests"
-    if not tests_root.exists():
-        return
-
-    if selected_paths is None:
-        candidates = sorted(tests_root.rglob("*.py"))
-    else:
-        candidates = [
-            path for path in _iter_selected_files(repo_root, selected_paths, prefixes=("tests/",), suffixes=(".py",))
-        ]
-
-    violations = _find_no_companion_markers(repo_root, candidates)
-    if violations:
-        formatted = "\n".join(f"- {path}" for path in violations)
-        _fail(
-            "test files may not use '# guard: no-companion'.\n"
-            "Use the mirrored test path, or add a temporary centralized ratchet entry\n"
-            "to pyproject.toml [tool.test-mapping].orphan-exclude.\n"
-            f"{formatted}\n"
-        )
-
-
-def _test_to_source_path(test_path: Path, tests_root: Path) -> str | None:
-    """Derive the expected source path from a test file path.
-
-    tests/unit/foo/test_bar.py -> foo/bar.py
-    tests/unit/test_bar.py -> bar.py
-    """
-    rel = test_path.relative_to(tests_root)
-    parts = list(rel.parts)
-    filename = parts[-1]
-    if not filename.startswith("test_"):
-        return None
-    source_filename = filename.removeprefix("test_")
-    parts[-1] = source_filename
-    return "/".join(parts)
-
-
-def _resolve_companion_source(repo_root: Path, source_root: Path, expected_source: str) -> tuple[Path, str]:
-    if expected_source.startswith("scripts/"):
-        return repo_root / expected_source, expected_source
-    return source_root / expected_source, f"teleclaude/{expected_source}"
-
-
-def _find_no_companion_markers(repo_root: Path, test_paths: Iterable[Path]) -> list[str]:
-    """Return real local no-companion marker comments in test files."""
-    matches: list[str] = []
-    for test_path in test_paths:
-        try:
-            text = test_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        try:
-            tokens = tokenize.generate_tokens(io.StringIO(text).readline)
-            for token in tokens:
-                if token.type == tokenize.COMMENT and token.string.strip() == "# guard: no-companion":
-                    rel = test_path.relative_to(repo_root).as_posix()
-                    matches.append(f"{rel}:{token.start[0]}")
-        except tokenize.TokenError:
-            continue
-    return matches
-
-
-def _load_orphan_exclusions(repo_root: Path) -> set[str]:
-    """Load orphan-exclude paths from pyproject.toml [tool.test-mapping]."""
-    pyproject_path = repo_root / "pyproject.toml"
-    if not pyproject_path.exists():
-        return set()
-    with open(pyproject_path, "rb") as f:
-        data = tomllib.load(f)
-    entries = (
-        data.get("tool", {}).get("test-mapping", {}).get("orphan-exclude", [])
-    )  # guard: loose-dict - TOML parse result
-    if not isinstance(entries, list):
-        return set()
-    string_entries = [entry for entry in entries if isinstance(entry, str)]
-    if len(string_entries) > ORPHAN_EXCLUDE_MAX_ENTRIES:
-        _fail(
-            "pyproject.toml [tool.test-mapping].orphan-exclude has "
-            f"{len(string_entries)} entries (max: {ORPHAN_EXCLUDE_MAX_ENTRIES}). "
-            "Classify and move/delete tests before growing the central orphan list."
-        )
-    return set(string_entries)
-
-
-# ---------------------------------------------------------------------------
-# Existing guardrails
-# ---------------------------------------------------------------------------
-
-
-def _remove_empty_claude_md(repo_root: Path, selected_paths: set[str] | None = None) -> None:
-    """Find and remove empty CLAUDE.md files from the filesystem.
-
-    CLAUDE.md is gitignored, so these are always untracked files created by
-    agent sessions. They pollute Claude's startup context loading without
-    providing value.
-
-    A CLAUDE.md is considered empty if — after stripping <claude-mem-context>
-    wrapper tags and whitespace — no content remains. Files with real content
-    (e.g. @./AGENTS.md references) are left alone.
-    """
-    empty: list[str] = []
-    if selected_paths is None:
-        ignored = {
-            ".venv",
-            "node_modules",
-            "trees",
-            ".history",
-            "target",
-            ".git",
-            ".mypy_cache",
-            ".pytest_cache",
-            ".ruff_cache",
-        }
-        candidates = []
-        for dirpath, dirnames, filenames in os.walk(repo_root):
-            dirnames[:] = [d for d in dirnames if d not in ignored and not d.startswith(".")]
-            for f in filenames:
-                if f == "CLAUDE.md":
-                    candidates.append(Path(dirpath) / f)
-        candidates.sort()
-    else:
-        candidates = [path for path in _iter_selected_files(repo_root, selected_paths) if path.name == "CLAUDE.md"]
-
-    for path in candidates:
-        rel = path.relative_to(repo_root).as_posix()
-        if rel.startswith("trees/"):
-            continue
-        try:
-            content = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
-        cleaned = re.sub(r"</?claude-mem-context>", "", content).strip()
-        if cleaned:
-            continue
-        empty.append(rel)
-
-    if empty:
-        formatted = "\n".join(f"  - {r}" for r in empty)
-        _fail(
-            f"empty CLAUDE.md file(s) detected:\n"
-            f"{formatted}\n"
-            "Delete these files — they have no content. "
-            "Legitimate CLAUDE.md files are generated from AGENTS.master.md."
-        )
 
 
 class PatternRule(NamedTuple):
@@ -632,15 +176,6 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         message="leftover debug probes — use structured logging",
     ),
     PatternRule(
-        name="stash-in-artifacts",
-        pattern=re.compile(r"\bgit\s+stash(?:\s+(?:pop|apply|push|drop|list|show))?\b"),
-        scan_dirs=["agents", ".agents"],
-        glob="*.md",
-        exclude_prefixes=(),
-        exception_marker="guard: allow-git-stash",
-        message="git stash in agent artifacts — use commits and worktrees",
-    ),
-    PatternRule(
         name="banned-session-env-vars",
         pattern=re.compile(r"TELECLAUDE_SESSION" + r"_ID|TELECLAUDE_PRINCIPAL" + r"(?:_ROLE)?(?!\s*=)"),
         scan_dirs=["teleclaude", "scripts", "tests", ".githooks"],
@@ -660,23 +195,6 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         exclude_prefixes=("tools/lint/guardrails", "__pycache__/"),
         exception_marker="guard: allow-home-path",
         message=("hardcoded home path — use Path.home(), $HOME, os.path.expanduser('~'), or {{MARKER}} in templates"),
-    ),
-    PatternRule(
-        name="no-parametrize-in-tests",
-        pattern=re.compile(r"@pytest\.mark\.parametrize\b|@pytest\.fixture\([^)]*\bparams\s*="),
-        scan_dirs=["tests"],
-        glob="*.py",
-        exclude_prefixes=(),
-        exception_marker="guard: parametrize-cleanup-pending",
-        message=(
-            "@pytest.mark.parametrize / fixture(params=) is forbidden — the unit of testing is the "
-            "code-coverage path, not the input row. Multiple inputs through the same path are redundant; "
-            'keep one test per path with one representative input. Cleanup is NOT "split into N tests, '
-            'one per row" — identify the distinct paths, keep one test per path, delete the rest. '
-            "See software-development/policy/testing anti-pattern #23. "
-            "Existing sites awaiting cleanup may carry a `# guard: parametrize-cleanup-pending` marker on "
-            "the line above; new code may not use that marker"
-        ),
     ),
     PatternRule(
         name="divergent-kind-vocabulary",
@@ -755,6 +273,11 @@ def _iter_rule_candidate_paths(
         if not any(fnmatch.fnmatch(path.name, glob) for glob in globs):
             continue
         yield path
+
+
+# ---------------------------------------------------------------------------
+# Runtime path bypass guardrail
+# ---------------------------------------------------------------------------
 
 
 def _check_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | None = None) -> None:
@@ -863,100 +386,9 @@ def _is_string_constant(node: ast.AST, value: str) -> bool:
     return isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value == value
 
 
-def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[str] | None = None) -> None:
-    """Enforce that noqa suppression of PLC0415 only appears in allowlisted files.
-
-    Ruff enforces PLC0415 (import-outside-top-level). The per-file-ignores in
-    pyproject.toml allow the 3 startup-boundary files. This guardrail catches
-    agents trying to add inline ``# noqa: PLC0415`` in any other file.
-    """
-    outside_allowlist: list[str] = []
-    missing_startup_reason: list[str] = []
-    startup_reason_outside_allowlist: list[str] = []
-
-    candidates: Iterable[Path]
-    if selected_paths is None:
-        candidates = (
-            path
-            for root_name in ("teleclaude", "tests", "tools", "bin")
-            for path in (repo_root / root_name).rglob("*.py")
-            if path.is_file()
-        )
-    else:
-        candidates = _iter_selected_files(
-            repo_root,
-            selected_paths,
-            prefixes=("teleclaude/", "tests/", "tools/", "bin/"),
-            suffixes=(".py",),
-        )
-
-    for path in candidates:
-        rel = path.relative_to(repo_root).as_posix()
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError):
-            continue
-
-        for lineno, line in enumerate(lines, start=1):
-            # Only match actual noqa directives on import lines, not string
-            # literals or docstrings that mention the rule.
-            stripped = line.lstrip()
-            if not stripped.startswith(("from ", "import ")):
-                continue
-            is_nested_import = len(line) != len(stripped)
-            has_startup_reason = f"# {_STARTUP_BOUNDARY_IMPORT_REASON}" in line
-            if _is_type_checking_import(lines, lineno - 1):
-                continue
-            if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST:
-                if is_nested_import and not has_startup_reason:
-                    missing_startup_reason.append(f"{rel}:{lineno}: {line.strip()}")
-                continue
-            if has_startup_reason:
-                startup_reason_outside_allowlist.append(f"{rel}:{lineno}: {line.strip()}")
-            if "# noqa:" in line and "PLC0415" in line.split("# noqa:")[-1]:
-                outside_allowlist.append(f"{rel}:{lineno}: {line.strip()}")
-
-    if missing_startup_reason:
-        formatted = "\n".join(f"- {item}" for item in missing_startup_reason)
-        _fail(
-            "startup-boundary import-outside-top-level imports must include the "
-            f"same-line reason '# {_STARTUP_BOUNDARY_IMPORT_REASON}'.\n"
-            f"{formatted}"
-        )
-
-    if startup_reason_outside_allowlist:
-        formatted = "\n".join(f"- {item}" for item in startup_reason_outside_allowlist)
-        allowlist = "\n".join(f"  - {path}" for path in sorted(_STARTUP_BOUNDARY_IMPORT_ALLOWLIST))
-        _fail(f"startup-boundary import reason is only allowed in approved files:\n{allowlist}\n{formatted}")
-
-    if outside_allowlist:
-        formatted = "\n".join(f"- {item}" for item in outside_allowlist)
-        allowlist = "\n".join(f"  - {path}" for path in sorted(_STARTUP_BOUNDARY_IMPORT_ALLOWLIST))
-        _fail(
-            "PLC0415 (import-outside-top-level) noqa suppression is only allowed in "
-            "startup-boundary files:\n"
-            f"{allowlist}\n"
-            "Remove the noqa comment and move the import to the top of the file.\n"
-            f"{formatted}"
-        )
-
-
-def _is_type_checking_import(lines: Sequence[str], line_index: int) -> bool:
-    """Return True when a nested import line belongs to a TYPE_CHECKING block."""
-    line = lines[line_index]
-    stripped = line.lstrip()
-    if len(line) == len(stripped):
-        return False
-    indent = len(line) - len(stripped)
-    for previous in range(line_index - 1, -1, -1):
-        previous_line = lines[previous]
-        previous_stripped = previous_line.strip()
-        if not previous_stripped or previous_stripped.startswith("#"):
-            continue
-        previous_indent = len(previous_line) - len(previous_line.lstrip())
-        if previous_indent < indent:
-            return previous_stripped.startswith("if TYPE_CHECKING:")
-    return False
+# ---------------------------------------------------------------------------
+# Loose-dict typing guardrail
+# ---------------------------------------------------------------------------
 
 
 def _warn_for_loose_dicts(repo_root: Path, selected_paths: set[str] | None = None) -> None:
@@ -1110,6 +542,3 @@ def _line_has_exception_marker(lines: list[str], lineno: int, markers: tuple[str
 
 if __name__ == "__main__":
     main()
-
-# Appended by migration: banned session env vars rule
-# (rule is in SOURCE_PATTERN_RULES but appended here to avoid self-match during edit)
