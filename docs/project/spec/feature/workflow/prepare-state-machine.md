@@ -105,7 +105,7 @@ Auto-continue is the PREPARED transition behavior that dispatches prepare for ne
 
 <!-- planned:runner-dispatch -->
 
-Pending `runner-dispatch`, PREPARED no longer dispatches dependent children
+PREPARED does not dispatch dependent children
 from inside the prepare state machine. The prepare machine's responsibility at
 PREPARED is to persist/emit the phase transition and return its own cleanup
 instruction. Dependent child selection and dispatch belong to the lifecycle

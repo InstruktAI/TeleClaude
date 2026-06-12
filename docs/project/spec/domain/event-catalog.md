@@ -98,8 +98,7 @@ process every creation event regardless of mode. See
 
 <!-- planned:runner-dispatch -->
 
-Pending `runner-dispatch`, autonomous pickup consumers are replaced by the
-workflow lifecycle runner. The canonical target wake-up vocabulary is
+Autonomous pickup is driven by the workflow lifecycle runner. The canonical target wake-up vocabulary is
 `workflow.todo.created`, `workflow.todo.updated`,
 `workflow.todo.phase_advanced`, `workflow.todo.delivered`,
 `workflow.roadmap.entry_moved`, `config.effective.updated`, and

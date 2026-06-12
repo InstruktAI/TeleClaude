@@ -1,5 +1,5 @@
 ---
-description: 'Detect when a Todo''s prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, dependency graph, and age — and force re-grounding before the Todo may reach prepared.'
+description: "Detect when a Todo's prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, dependency graph, and age — and force re-grounding before the Todo may reach prepared."
 visibility: 'public'
 ---
 
@@ -66,18 +66,19 @@ status across its classes (`substantive` > `pending` > `cosmetic` > `fresh`).
 
 Pending drift contract update:
 
-| Class                | Evidence checked                                                                                                                        | When pending                                                                                                                                              |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Class                | Evidence checked                                                                                                                         | When pending                                                                                                                                               |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **code**             | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
 | **dependency-graph** | The Todo's immediate `after` set and each direct dep's normalized status at write time vs current. Shallow -- not transitive.            | The immediate dep set changed (added/removed) OR a direct dep crossed the active/icebox boundary. `active` -> `delivered` is normalized and stays fresh.   |
 
 <!-- planned:runner-dispatch -->
-Pending `runner-dispatch`, prepare dependency ground may be satisfied by a
+
+Prepare dependency ground may be satisfied by a
 direct dependency's human-approved PRD before that dependency reaches
 `prepared`. This adds a parent-ground drift class so the relaxation is safe:
 
-| Class | Evidence checked | When pending |
-| ----- | ---------------- | ------------ |
+| Class                 | Evidence checked                                                                                                                                                                                                                                               | When pending                                                                                                                                                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **parent-prd-ground** | For each direct dependency used as PRD-approved prepare ground: the dependency slug, PRD artifact digest, human PRD approval timestamp/session, and any later parent architecture/implementation-plan digest recorded when the dependent artifact was written. | A dependency loses or changes its human PRD approval, its PRD digest changes, or later parent architecture/plan evidence appears or changes after the dependent prepared against PRD-only ground. |
 
 The class is evaluated for `prd`, `architecture`, and `implementation-plan`
@@ -86,6 +87,7 @@ before `prepared -> build_started`. A pending or substantive
 `parent-prd-ground` result blocks the dependent exactly like existing drift
 classes. If every direct dependency is delivered, the class derives fresh
 because delivered ground supersedes PRD-only prepare ground.
+
 <!-- /planned:runner-dispatch -->
 
 ### Provenance recorded per artifact
@@ -103,7 +105,7 @@ drift class that applies to it. Per-artifact provenance:
   origin/main between write and derive.
 - `referenced_paths` — tracked repo paths mentioned in the artifact body.
 - `referenced_paths` — the sorted, de-duplicated file paths declared inside
-  the implementation-plan artifact's single `` ```referenced-paths `` fenced
+  the implementation-plan artifact's single ` ```referenced-paths ` fenced
   block. Prose path mentions are not part of the code drift surface. Tracked
   artifacts that do not declare a block record an empty list, so the code
   class derives fresh for them.
@@ -142,13 +144,13 @@ slug does not trigger drift).
 
 ### Per-artifact coverage matrix
 
-| Artifact               | code | upstream-artifact     | owned-snippet | upstream-snippet | dependency-graph | age |
-| ---------------------- | :--: | --------------------- | :-----------: | :--------------: | :--------------: | :-: |
-| `input`                |  ✓   | _(none)_              |   _(none)_    |        ✓         |        ✓         |  ✓  |
-| `prd`                  |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
-| `architecture` (index) |  ✓   | `prd`                 |       ✓       |        ✓         |        ✓         |  ✓  |
+| Artifact               | code | upstream-artifact                  | owned-snippet | upstream-snippet | dependency-graph | age |
+| ---------------------- | :--: | ---------------------------------- | :-----------: | :--------------: | :--------------: | :-: |
+| `input`                |  ✓   | _(none)_                           |   _(none)_    |        ✓         |        ✓         |  ✓  |
+| `prd`                  |  ✓   | `input`                            |       ✓       |        ✓         |        ✓         |  ✓  |
+| `architecture` (index) |  ✓   | `prd`                              |       ✓       |        ✓         |        ✓         |  ✓  |
 | `implementation-plan`  |  ✓   | `architecture`, `prd`, `diagnosis` |   _(none)_    |        ✓         |        ✓         |  ✓  |
-| `diagnosis`            |  ✓   | `input`               |       ✓       |        ✓         |        ✓         |  ✓  |
+| `diagnosis`            |  ✓   | `input`                            |       ✓       |        ✓         |        ✓         |  ✓  |
 
 The `code` column is contract-scoped. Matrix membership stays unchanged so the
 same class is evaluated for every tracked artifact, but today only the
@@ -671,7 +673,7 @@ Scenario: re-writing an artifact clears its drift stamps
 - **Reference extraction has two distinct mechanisms.** `referenced_paths`
   is a pure projection of the implementation-plan artifact body: the
   sorted, de-duplicated path lines inside its single
-  `` ```referenced-paths `` contract block. It does not scan prose and does
+  ` ```referenced-paths ` contract block. It does not scan prose and does
   not validate paths against tracked files, so generated-path warnings or
   grounding notes are not drift surfaces unless the plan declares them in the
   block. `referenced_snippet_digests` still uses reference extraction against

@@ -32,7 +32,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 **Slug**
 : A kebab-case name for a todo, stable across that todo's lifetime except via the atomic `telec todo rename` operation — the only sanctioned slug mutation (see the Todo-aggregate invariant and UC-WFL-13). It is the **active alias**, not the durable row identity: a roadmap entry has its own durable row identity (v1: `roadmap.id`), and `slug` is unique only among **live** entries (`active`/`icebox` and their derived `pending`/`in_progress` display states). Retained non-live rows — `delivered` (history) and `removed` (within the retention window) — may share a slug with a fresh live entry. Resolving a slug to "the todo" therefore means "the live entry for this slug"; history/removed rows are addressed by durable row identity.
 
-Pending `revive-todo-update-command`, the public slug mutation surface is
+The public slug mutation surface is
 `telec todo update <slug> --slug <new>` rather than `telec todo rename`. The
 underlying atomic rename engine and `workflow.todo.renamed` event remain the
 single owner of the slug cascade.
@@ -49,7 +49,7 @@ single owner of the slug cascade.
 
 <!-- /planned:task-lane -->
 
-Pending `revive-todo-update-command`, kind is mutable only before build starts
+Kind is mutable only before build starts
 through `telec todo update <slug> --kind <kind>`. The mutation re-routes
 `lifecycle_phase` through `KIND_ENTRY_PHASE[target]`; once build has started,
 kind mutation is refused.
@@ -149,7 +149,7 @@ kind mutation is refused.
   - Stage progression is strictly forward: `draft → prepare → work → integrate → delivered`. No backwards transitions; recovery from failure happens within the current stage's machine.
   - An artifact's version history is append-only; old versions are referenced by digest.
   - A todo's `kind` is fixed once assigned. It may be unset at creation (a kind-less dump with `kind=None` and no `lifecycle_phase`, awaiting `/analyze-todo-input`); analyze classifies the dump and assigns the kind autonomously through the `--kind-assign` stamp boundary exactly once — no proposal, no human approval gate. After assignment, changing kind requires deletion + recreation.
-  - Pending `revive-todo-update-command`, a todo's `kind` may be changed only
+  - A todo's `kind` may be changed only
     before build starts by `telec todo update <slug> --kind <kind>`. The update
     validates the target kind, handles invalid old-kind artifacts explicitly,
     and writes `lifecycle_phase = KIND_ENTRY_PHASE[target]`. The mutation is
@@ -181,7 +181,7 @@ kind mutation is refused.
     and refused if any non-removed entry already holds the new slug (only
     soft-`removed` retained slugs are collision-free rename targets,
     consistent with the slug-reuse rule).
-  - Pending `revive-todo-update-command`, the sanctioned public slug mutation
+  - The sanctioned public slug mutation
     is `telec todo update <slug> --slug <new>`. The operation delegates to the
     existing atomic rename engine and keeps the same all-or-nothing cascade and
     `workflow.todo.renamed` event. Slug mutation is refused after build starts.
@@ -281,7 +281,7 @@ The default roadmap order is derived, not manually positioned. The dependency tr
 
 <!-- planned:runner-dispatch -->
 
-Pending `runner-dispatch`, autonomous pickup is no longer controlled by
+Autonomous pickup is not controlled by
 creation-time `creation_mode` / `pickup_requested`. The target dispatch
 contract is:
 
@@ -993,11 +993,11 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - `stage`: `draft`, `prepare`, `work`, `integrate`, `delivered`.
 - `prepare phases`: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `diagnose`, `prepared`. (A kind-less todo has no `lifecycle_phase`; classification assigns the kind and routes straight to that kind's entry phase.)
   <!-- planned:task-lane -->
-  Pending `task-lane`, `task_plan_drafting` is also a prepare phase and is the entry point for kind=`task`.
+  `task_plan_drafting` is the kind=`task` entry phase, owned by the task lane rather than the SDLC prepare state machine.
   <!-- /planned:task-lane -->
 - `work phases`: `pending`, `building`, `review_pending`, `review_complete`, `fixing`, `finalize_pending`, `finalize_ready`.
   <!-- planned:task-lane -->
-  Pending `task-lane`, `task_running` is also a work-adjacent lifecycle phase for a live `/next-run-task` session. It is non-SDLC and does not participate in build/review/finalize gates.
+  `task_running` is the task lane's live-execution phase for a `/next-run-task` session. It is non-SDLC and does not participate in build/review/finalize gates.
   <!-- /planned:task-lane -->
 - `integrate phases`: per `integration-state-machine` design doc (squash, conflict-resolve, lint, test, push, deliver).
 - `roadmap status` (persisted): `active`, `icebox`, `delivered`, `removed`.
