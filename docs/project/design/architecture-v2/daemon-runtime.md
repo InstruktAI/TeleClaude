@@ -101,15 +101,17 @@ plist mirrors the v1 daemon plist conventions — `RunAtLoad`, `KeepAlive`,
 `AbandonProcessGroup`, file-descriptor limits, null standard streams — and its
 program arguments point at the installed binary under `~/.local/bin/`.
 
-`make install` builds the workspace (`cargo build --release`), installs the
-binary into `~/.local/bin/` per the file-layout install-symlink pattern, and
-loads the supervised unit. The plist references a binary that install has
-already produced, so `KeepAlive` always supervises a real target. Until the
-v2 cutover this leg is conditional: install builds and loads `telec-daemon`
-only when the Rust toolchain is present (skipping with a notice otherwise),
-and `make status` treats the unit as required-if-present — an installed unit
-must be healthy; an absent unit reports one informational line and does not
-degrade overall health. The cutover makes both unconditional.
+`make install` builds the workspace (`cargo build --release`) and installs the
+binary into `~/.local/bin/` per the file-layout install-symlink pattern — when
+the Rust toolchain is present (skipping with a notice otherwise). Pre-cutover
+it never installs or loads the supervised unit: the launchd unit is installed
+only through the explicit `install-telec-daemon` subcommand, which references
+a binary install has already produced, so `KeepAlive` always supervises a real
+target. The unit is excluded from the managed launchd set, and
+status/start/restart treat it as required-if-present — an installed unit must
+be healthy; an absent unit reports one informational line and does not degrade
+overall health. The v2 cutover makes the build mandatory, adds the unit to the
+managed set, and installs and loads it unconditionally.
 
 ### Unified operator control surface
 
