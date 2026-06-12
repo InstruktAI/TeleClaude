@@ -1,7 +1,5 @@
 ---
 visibility: public
-delivered_by:
-  - reconciliation-self-update
 description: Reconciliation bounded context — the control loop that drives each installation's
   actual state toward its desired state (version per channel, schema, health, upkeep)
   and guards interoperability across a deliberately multi-version fleet.
@@ -167,7 +165,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 - **Reaction:** when the inbound event is a release/version-available signal, evaluate it against this installation's channel policy; on a match, start a convergence run. The event is relayed unconditionally by the ingress; each node decides independently.
 - **Failure handling:** evaluation failures are logged; the installation retries on the next signal or periodic self-check.
 
-#### `config.effective.updated`
+#### Effective config self-check
 
 - **Producer:** `config`
 - **Reaction:** re-read desired-state inputs (channel, `pinned_minor`); re-evaluate drift. Health is observed from the running daemon, not supplied by config. This event-driven path is deferred until a producer exists (the event is currently reserved, not emitted); meanwhile the loop re-reads config on its periodic self-check.

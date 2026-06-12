@@ -14,7 +14,7 @@ visibility: 'public'
 
 ## What it is
 
-The exhaustive catalog of domain events emitted by the platform's eight bounded contexts. Each event is named in the producing context's ubiquitous language, carries a payload of domain-meaningful fields, and lists its known consumers.
+The exhaustive catalog of domain events emitted by the platform's bounded contexts. Each event is named in the producing context's ubiquitous language, carries a payload of domain-meaningful fields, and lists its known consumers.
 
 This catalog is the contract that defines cross-context coordination: when two services interact via events (per the context-map relationships), this document is where the wire shape is fixed. Code that emits events must match the catalog; code that consumes events depends on the catalog. The catalog evolves through PRs that touch both this file and the producing context's domain spec.
 
@@ -26,7 +26,8 @@ Skeleton on first commit: structure + lifecycle/spine context events. Per-contex
 
 Every event name follows: `<context>.<noun>.<past-tense-verb>` or `<context>.<past-tense-verb>` when no sub-noun is meaningful.
 
-- `<context>` — one of the eight services (`workflow`, `identity`, `config`, `context`, `agent_runtime`, `session_mirrors`, `integration`, `memory`). v2 fold: `knowledge` + `agent_artifacts` collapsed into `context`; `memory` added.
+- `<context>` — one of the platform services (`workflow`, `identity`, `config`, `context`, `agent_runtime`, `session_mirrors`, `integration`, `memory`, `reconciliation`). v2 fold: `knowledge` + `agent_artifacts` collapsed into `context`; `memory` added.
+
 - `<noun>` — the entity or aggregate the event is about (optional; omitted when the context only has one primary subject).
 - `<past-tense-verb>` — what happened (`created`, `updated`, `deleted`, `started`, `ended`, `received`, `delivered`, `phase_advanced`, etc.).
 
@@ -191,17 +192,17 @@ Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/i
 | -------------------------------------- | -------------- | ---------- | -------------------------------------------------------------------- |
 | `reconciliation.capability.advertised` | reconciliation | CLUSTER    | rides the cluster heartbeat (self-reported version + capability set) |
 
-<!-- planned:reconciliation-self-update -->
-
 | Event                                        | Producer       | Visibility | Posture                                                                                  |
 | -------------------------------------------- | -------------- | ---------- | ---------------------------------------------------------------------------------------- |
 | `reconciliation.installation.drift_detected` | reconciliation | CLUSTER    | commit-then-emit (a relayed release matches this node's channel policy)                  |
 | `reconciliation.installation.converged`      | reconciliation | CLUSTER    | commit-then-emit (the node is running and healthy on the target version)                 |
 | `reconciliation.convergence.failed`          | reconciliation | CLUSTER    | commit-then-emit (a convergence step halts; carries `failed_step` and `failure_context`) |
 
-The convergence loop consumes `integration.inbox.received` (release/version subset, relayed by the single ingress), evaluates each release against the node's channel policy, and runs an exactly-once `ConvergenceRun` per target version. Desired-state config (`channel`, `pinned_minor`) is re-read on the loop's periodic self-check; the `config.effective.updated` event-driven path is deferred until a producer exists (the event is reserved, not yet emitted). `reconciliation.capability.advertised` is already current — it rides the cluster heartbeat the fleet capability map consumes.
+`reconciliation.installation.drift_detected` carries `computer`, `channel`, `current_version`, `desired_version`, and `reason`.
+`reconciliation.installation.converged` carries `computer`, `channel`, `from_version`, `to_version`, and `converged_at`.
+`reconciliation.convergence.failed` carries `computer`, `run_id`, `from_version`, `to_version`, `failed_step`, and `failure_context`.
 
-<!-- /planned:reconciliation-self-update -->
+The convergence loop consumes `integration.inbox.received` (release/version subset, relayed by the single ingress), evaluates each release against the node's channel policy, and runs an exactly-once `ConvergenceRun` per target version. Desired-state config (`channel`, `pinned_minor`) is re-read on the loop's periodic self-check; the `config.effective.updated` event-driven path is deferred until a producer exists (the event is reserved, not yet emitted). `reconciliation.capability.advertised` is already current — it rides the cluster heartbeat the fleet capability map consumes.
 
 **Detailed entries:** see `project/spec/domain/reconciliation`.
 
@@ -219,20 +220,22 @@ The scheduler clock is an in-daemon periodic emitter, not a host-level service c
 
 Inverse view: for each event, which consumers act on it. Populated as per-context specs land.
 
-| Event                               | Consumers                                                                                                                                                              |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `integration.inbox.received`        | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound)                                                                                 |
-| `agent_runtime.session.started`     | `frontend` (live UI), audit log consumers                                                                                                                              |
-| `agent_runtime.session.updated`     | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation)                                                                                       |
-| `agent_runtime.session.ended`       | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal)                                       |
-| `session_mirrors.mirror.created`    | `frontend` (history search index refresh), audit log consumers                                                                                                         |
-| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                                                       |
-| `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                                                                    |
-| `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                                                                    |
-| `workflow.todo.renamed`             | `frontend` (re-key roadmap/todo view old→new), `telec-tui` (cache invalidation — drop old_slug, refetch new_slug), `integration` (slug-keyed subscription bookkeeping) |
-| `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                                                      |
-| `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                                                        |
-| `config.effective.updated`          | every service that caches config (re-read on next access)                                                                                                              |
+| Event | Consumers |
+| ----- | --------- |
+
+| `integration.inbox.received` | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound); `reconciliation` (release/version subset) |
+
+| `agent_runtime.session.started` | `frontend` (live UI), audit log consumers |
+| `agent_runtime.session.updated` | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation) |
+| `agent_runtime.session.ended` | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal) |
+| `session_mirrors.mirror.created` | `frontend` (history search index refresh), audit log consumers |
+| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step) |
+| `workflow.todo.phase_advanced` | `integration` (outbox notifications to recipients per subscription) |
+| `workflow.todo.delivered` | `integration` (delivery announcement notifications) |
+| `workflow.todo.renamed` | `frontend` (re-key roadmap/todo view old→new), `telec-tui` (cache invalidation — drop old_slug, refetch new_slug), `integration` (slug-keyed subscription bookkeeping) |
+| `memory.observation.saved` | audit log consumers; future memory miner correlating observations |
+| `scheduler.tick.minute` | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.) |
+| `config.effective.updated` | every service that caches config (re-read on next access) |
 
 <!-- planned:runner-dispatch -->
 
