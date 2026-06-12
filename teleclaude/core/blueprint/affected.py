@@ -53,6 +53,7 @@ class AffectedResult:
     unmatched_files: list[str]
 
 
+# guard: loose-dict-func - untrusted graph.json parsed from the external graphify engine; runtime-validated, never structurally trusted
 def load_graph(path: Path) -> dict[str, object] | None:
     """Load a Blueprint graph.json, returning ``None`` if absent or malformed.
 
@@ -90,6 +91,7 @@ def _normalize_changed(path: str, repo_root: Path) -> str:
     return Path(path).as_posix()
 
 
+# guard: loose-dict-func - untrusted graph.json from the external graphify engine; every field is runtime-validated within
 def compute_affected(graph: dict[str, object], changed_files: list[str], *, repo_root: Path) -> AffectedResult:
     """Compute the union blast radius of ``changed_files`` over the graph.
 

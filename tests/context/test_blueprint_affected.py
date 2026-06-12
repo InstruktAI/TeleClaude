@@ -19,6 +19,7 @@ _BASELINE = "mainbaselinesha0001"
 _DEPENDENT_LINE_INDENT = "  "
 
 
+# guard: loose-dict-func - fixture mirroring the untrusted graph.json contract under test
 def _graph() -> dict[str, object]:
     """A dependency chain app.main -> top.run -> mid.use_base -> core.base, plus noise.
 
