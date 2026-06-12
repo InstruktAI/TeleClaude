@@ -67,12 +67,12 @@ class _CapturedUpdate:
     """Capturing async fake for ``execute_update`` — the process boundary."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict]] = []  # type: ignore[type-arg]
+        self.calls: list[tuple[str, dict]] = []
 
     async def __call__(
         self,
         channel: str,
-        version_info: dict,  # type: ignore[type-arg]
+        version_info: dict,
         *,
         get_redis: object = None,
     ) -> None:
@@ -85,7 +85,7 @@ async def _run_decision(
     channel: str,
     pinned_minor: str,
     event: HookEvent,
-) -> list[tuple[str, dict]]:  # type: ignore[type-arg]
+) -> list[tuple[str, dict]]:
     """Drive the real channel-policy decision; return captured execute_update calls."""
     captured = _CapturedUpdate()
     config_stub = _ProjectConfigStub(DeploymentConfig(channel=channel, pinned_minor=pinned_minor))
@@ -188,7 +188,7 @@ class _StatusRedis:
     """Fake Redis capturing each status payload written during convergence."""
 
     def __init__(self) -> None:
-        self.payloads: list[dict] = []  # type: ignore[type-arg]
+        self.payloads: list[dict] = []
 
     async def set(self, _key: str, value: str) -> None:
         self.payloads.append(json.loads(value))
@@ -211,7 +211,7 @@ async def test_convergence_halts_with_recorded_reason_on_step_failure(
     status_redis = _StatusRedis()
 
     async def get_redis() -> Redis:
-        return status_redis  # type: ignore[return-value]
+        return status_redis  # pyright: ignore[reportReturnType]
 
     async def failing_exec(*_args: object, **_kwargs: object) -> _FailingGitProc:
         return _FailingGitProc()
