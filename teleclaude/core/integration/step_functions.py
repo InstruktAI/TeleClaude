@@ -17,6 +17,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREMENTS, WORKTREE_DIR
 from teleclaude.core import integration_bridge as bridge
+from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
 from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso, _write_checkpoint
 from teleclaude.core.integration.formatters import (
     _format_commit_decision,
@@ -768,6 +769,23 @@ def _step_push_rejected(
     return False, _format_push_rejected(rejection, key.slug)
 
 
+def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str) -> str | None:
+    """Refresh the codebase Blueprint after repo root syncs to pushed origin/main.
+
+    The integrator is the single writer of the context-owned Blueprint cache.
+    Best-effort by contract: regenerate_blueprint never raises; a non-ok status
+    yields a warning string and never blocks delivery.
+    """
+    manifest = regenerate_blueprint(cwd, baseline_sha=baseline_sha)
+    if manifest.status is not BlueprintStatus.OK:
+        return (
+            f"Blueprint regeneration did not complete (status={manifest.status.value}); "
+            "blast-radius falls back to manual exploration until the next integrate."
+        )
+    logger.info("Blueprint regenerated at baseline %s", baseline_sha)
+    return None
+
+
 def _step_push_succeeded(
     *,
     checkpoint: IntegrationCheckpoint,
@@ -787,6 +805,7 @@ def _step_push_succeeded(
     # but does not block cleanup — the integration worktree already pushed.
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
     rc, _, _ = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
+    repo_root_synced = rc == 0
     if rc != 0:
         msg = (
             f"Repo root main is behind origin/main after delivering {key.slug}. "
@@ -834,6 +853,17 @@ def _step_push_succeeded(
                 )
                 logger.warning(msg, exc_info=True)
                 warnings.append(msg)
+                checkpoint.warnings = warnings
+
+    # Refresh the Blueprint only once repo root holds the pushed origin/main, so its
+    # baseline_sha matches the delivered commit. Best-effort: never blocks delivery.
+    if repo_root_synced:
+        baseline_sha = _get_head_sha(cwd)
+        if baseline_sha:
+            blueprint_warning = _regenerate_blueprint_after_delivery(cwd=cwd, baseline_sha=baseline_sha)
+            if blueprint_warning:
+                logger.warning(blueprint_warning)
+                warnings.append(blueprint_warning)
                 checkpoint.warnings = warnings
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value

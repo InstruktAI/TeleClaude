@@ -79,6 +79,10 @@ CLAUDE.md
 # Generated build artifacts (never tracked)
 **/index.yaml
 
+# Blueprint engine working directory (graphify cache/output; the published
+# Blueprint lives under .teleclaude/blueprint/). Never tracked.
+graphify-out/
+
 # Rust (v2 workspace) — target/ is build output, never tracked.
 # Cargo.lock IS tracked at workspace root (binary workspace policy).
 target/

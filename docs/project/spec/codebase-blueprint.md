@@ -1,8 +1,9 @@
 ---
-description: The codebase Blueprint — a generated AST structural map agents consult at plan time for an intended change's blast radius. Engine (Graphify CLI), integrate-time generation, freshness manifest, the telec context blueprint affected helper, languages, and blind spots.
+description: The codebase Blueprint — a generated AST structural map agents consult
+  at plan time for an intended change's blast radius. Engine (Graphify CLI), integrate-time
+  generation, freshness manifest, the telec context blueprint affected helper, languages,
+  and blind spots.
 visibility: public
-delivered_by:
-- code-intelligence-foundation
 ---
 
 # Codebase Blueprint — Spec
@@ -48,14 +49,21 @@ mismatch / missing manifest / non-`ok` `status` as stale.
 ### Languages
 
 Python, Rust, TypeScript — one graph spanning all three. Python and Rust are
-high-fidelity; TypeScript extracts and queries but yields a sparser dependency
-graph (React/JSX), so its blast-radius is less complete — validate per use.
+high-fidelity: most symbols carry their dependents, and blast-radius is dense.
+TypeScript extracts and queries, and traces type and interface imports well — a
+shared `types.ts` surfaces its full fan-in. Its dependency graph is materially
+sparser everywhere else: component and runtime wiring (`.tsx`, barrel
+`index.ts`, default exports, dynamic imports) is largely unmodeled, so most
+TypeScript files report an empty or thin blast-radius. For TypeScript an empty
+or thin `affected` result is low-confidence — read it as "the Blueprint cannot
+see the dependents," never as "there are none," and fall back to manual
+exploration.
 
 ### Generation (automation, never agents)
 
 `integration` is the single writer. On a successful remote-main pull it runs the
 pinned no-LLM refresh `graphify update <repo-root>` and writes `graph.json` +
-`manifest.json` (see the integration design's *Blueprint regeneration*).
+`manifest.json` (see the integration design's _Blueprint regeneration_).
 `context` owns the contract (location, manifest schema, languages, the query
 surface); `integration` owns the write because the Blueprint is a generated
 cache, not authoritative state — a deliberate divergence from the single-owner

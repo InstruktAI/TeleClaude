@@ -24,3 +24,35 @@
 - No browser or web UI path changed.
 - CLI/doc retrieval behavior was verified at the functional boundary: phase-1 output renders `superseded by`, phase-2 default reads render current planned-change content plus the awareness header, targeted reads render replacement content without the awareness header.
 - Delivery and validation behavior were verified at their public boundaries: reconciliation rewrites only the delivered slug's planned-change block and is idempotent; snippet validation accepts well-formed blocks and reports malformed marker shape.
+
+### Task 4 TypeScript Fidelity Validation
+
+**Command run:** `bin/telec context blueprint affected auth.ts`
+**Graph source:** `graphify update frontend/` (frontend-only run; source_file paths are frontend-relative, e.g. `auth.ts` not `frontend/auth.ts`)
+**Changed file used:** `frontend/auth.ts` (the shared NextAuth authentication boundary, imported by all API routes)
+
+**Observed output:**
+
+```
+Blast radius — 18 dependent(s) of 1 changed file(s):
+  app/api/agents/availability/route.ts:1  route.ts
+  app/api/auth/[...nextauth]/route.ts:1  route.ts
+  app/api/chat/route.ts:1  route.ts
+  app/api/computers/route.ts:1  route.ts
+  app/api/jobs/[name]/run/route.ts:1  route.ts
+  app/api/jobs/route.ts:1  route.ts
+  app/api/projects/route.ts:1  route.ts
+  app/api/sessions/[id]/agent-restart/route.ts:1  route.ts
+  app/api/sessions/[id]/messages/route.ts:1  route.ts
+  app/api/sessions/[id]/revive/route.ts:1  route.ts
+  app/api/sessions/[id]/route.ts:1  route.ts
+  app/api/sessions/route.ts:1  route.ts
+  app/api/settings/route.ts:1  route.ts
+  app/api/todos/[slug]/prepare/route.ts:1  route.ts
+  app/api/todos/[slug]/refine/route.ts:1  route.ts
+  app/api/todos/[slug]/work/route.ts:1  route.ts
+  app/api/todos/route.ts:1  route.ts
+  app/dashboard/layout.tsx:1  layout.tsx
+```
+
+**Fidelity result:** TypeScript extraction finds module-level import dependents for a shared authentication boundary (auth.ts → all API routes and dashboard layout). 18 dependents found — the fan-in of a widely-imported auth module surfaces correctly. Granularity is file/module-level (labels show "route.ts", not function names), consistent with the documented TS caveat: "component and runtime wiring (.tsx, barrel index.ts, default exports, dynamic imports) is largely unmodeled." Import-based edges (the auth boundary pattern) are captured; dynamic/runtime wiring is not. The documented caveat in `project/spec/codebase-blueprint` Languages section is accurate and does not need tightening.

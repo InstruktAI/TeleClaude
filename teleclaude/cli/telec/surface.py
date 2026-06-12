@@ -399,6 +399,33 @@ CLI_SURFACE: dict[str, CommandDef] = {
         ],
         auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),
+    "context": CommandDef(
+        desc="Codebase context engineering surface",
+        subcommands={
+            "blueprint": CommandDef(
+                desc="Query the codebase Blueprint (structural blast-radius)",
+                subcommands={
+                    "affected": CommandDef(
+                        desc="Print the blast-radius dependents of changed files",
+                        args="<changed-files>",
+                        flags=[_H],
+                        notes=[
+                            "Maps each changed file to its symbols, runs a transitive reverse "
+                            "dependency traversal over the Blueprint, and prints the union of "
+                            "dependents with file:line.",
+                            "When the Blueprint is missing or stale (manifest baseline != current "
+                            "main), prints a fallback notice and exits 0 — fall back to manual "
+                            "exploration; blast-radius is never silently skipped.",
+                        ],
+                        examples=[
+                            "telec context blueprint affected teleclaude/core/foo.py teleclaude/api/bar.py",
+                        ],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+                    ),
+                },
+            ),
+        },
+    ),
     "docs": CommandDef(
         desc="Query documentation snippets",
         subcommands={

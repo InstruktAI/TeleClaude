@@ -121,8 +121,6 @@ work that will fail gate validation. Split first:
 
 If the work passes the scope/size gate, continue to plan drafting.
 
-<!-- planned:code-intelligence-foundation -->
-
 ### 2c. Derive the change's blast radius (before drafting)
 
 - **Treat the result as candidates, not an oracle** — it surfaces structural candidates; the planner verifies each against the source and decides relevance.
@@ -132,8 +130,6 @@ If the work passes the scope/size gate, continue to plan drafting.
 - **Ground the plan in the verified result** — the change surface and test adjacency derive from the verified candidate set. If the command reports the baseline missing or stale (recorded baseline commit ≠ current main), state the gap and fall back to manual exploration — never silently skip the step.
 
 The blueprint's location, freshness manifest, command surface, and supported languages are specified in `project/spec/codebase-blueprint`.
-
-<!-- /planned:code-intelligence-foundation -->
 
 ### 3. Draft the implementation plan
 
@@ -155,7 +151,7 @@ policy. Structure the plan as an ordered task list. Each task must include:
 - **Referenced files**: exact file paths that will be created or modified. These are
   used by the state machine for grounding and staleness detection.
 - **Referenced paths contract**: author exactly one machine-readable
-  `` ```referenced-paths `` fenced block in the plan body, listing every file
+  ` ```referenced-paths ` fenced block in the plan body, listing every file
   the work creates or modifies, one path per line. This block is the only code
   drift surface the state machine reads. File paths mentioned in prose may help
   the builder, but they are not a drift contract unless they appear in this

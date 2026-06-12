@@ -1,0 +1,4 @@
+# serializer version: 1
+# name: test_delivery_warns_when_blueprint_manifest_write_fails
+  'Blueprint regeneration did not complete (status=error); blast-radius falls back to manual exploration until the next integrate.'
+# ---

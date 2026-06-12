@@ -1,5 +1,5 @@
 ---
-description: 'Relationships between the eight bounded contexts — partnership, customer-supplier, ACL, conformist. The system''s social graph at the domain level.'
+description: "Relationships between the eight bounded contexts — partnership, customer-supplier, ACL, conformist. The system's social graph at the domain level."
 visibility: 'public'
 ---
 
@@ -126,14 +126,12 @@ The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which ent
 | --------- | ---------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `context` | `workflow` | Customer-Supplier | Context resolves selections (which snippets to load given a todo's slug, agent, role). Workflow's prepare-orchestrator + build workers consume these selections at session-start time. |
 
-<!-- planned:code-intelligence-foundation -->
 #### Codebase blueprint (structural code intelligence)
 
-| Upstream   | Downstream | Relationship      | Purpose                                                                                                                                                                                                                  |
-| ---------- | ---------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `context`  | `workflow` | Customer-Supplier | `context` owns the Blueprint *contract* (`.teleclaude/blueprint/graph.json` + `manifest.json`, schema, languages, query surface) and supplies its blast-radius to workflow's plan-draft, where the planner derives a change's affected set from structure instead of grepping. |
+| Upstream   | Downstream | Relationship                                               | Purpose                                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `context`  | `workflow` | Customer-Supplier                                          | `context` owns the Blueprint _contract_ (`.teleclaude/blueprint/graph.json` + `manifest.json`, schema, languages, query surface) and supplies its blast-radius to workflow's plan-draft, where the planner derives a change's affected set from structure instead of grepping.                                                                               |
 | `workflow` | `context`  | Customer-Supplier (single-writer of a context-owned cache) | Workflow's integrator is the single writer of the Blueprint: on a successful remote-main pull it runs `graphify update` and writes `graph.json` + `manifest.json`. A deliberate divergence from single-state-owner — the Blueprint is a generated cache (not authoritative state) and the integrator is the one actor that knows when `main` became current. |
-<!-- /planned:code-intelligence-foundation -->
 
 #### Cross-filesystem coordination
 
