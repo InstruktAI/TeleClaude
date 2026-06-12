@@ -7,9 +7,9 @@ visibility: 'public'
 
 ## Required reads
 
-- docs/project/design/architecture-v2/overview.md
-- docs/project/design/architecture-v2/transport-rules.md
-- docs/project/design/architecture-v2/file-layout.md
+- @docs/project/design/architecture-v2/overview.md
+- @docs/project/design/architecture-v2/transport-rules.md
+- @docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 

@@ -140,7 +140,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 - **Emitted when:** an installation reaches desired state and is healthy on the target version.
 - **Payload:** `computer`, `channel`, `from_version`, `to_version`, `converged_at`.
 - **Visibility:** CLUSTER
-- **Known consumers:** operator dashboards; the fleet capability map (version refresh).
+- **Known consumers:** operator dashboards. The fleet capability map is NOT a consumer here: per the Fleet Capability Map invariant, a node's version and capabilities reach the cluster only through the heartbeat (`reconciliation.capability.advertised`), never by a peer consuming this event.
 
 #### `reconciliation.convergence.failed`
 

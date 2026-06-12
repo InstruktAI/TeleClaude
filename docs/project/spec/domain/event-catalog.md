@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
 - @docs/project/design/architecture-v2/event-bus-transports.md
 - @docs/project/spec/domain/glossary.md
 - @docs/project/spec/domain/context-map.md
@@ -96,6 +96,7 @@ process every creation event regardless of mode. See
 `project/spec/domain/workflow` for the full entry.
 
 <!-- planned:runner-dispatch -->
+
 Pending `runner-dispatch`, autonomous pickup consumers are replaced by the
 workflow lifecycle runner. The canonical target wake-up vocabulary is
 `workflow.todo.created`, `workflow.todo.updated`,
@@ -109,15 +110,15 @@ fail-closed for runner dispatch.
 The v1 Python delivery is grounded in the existing v1 event seams, not in an
 assumption that every v2 event already fires:
 
-| Target wake-up | v1 status / required runner-dispatch wiring |
-| -------------- | ------------------------------------------- |
-| `workflow.todo.created` | Already emitted by the v1 todo API with `project_path`; the current lifecycle router consumes it. |
-| `workflow.todo.phase_advanced` | Must be wired from the existing TodosDb/daemon phase-transition seam. Today that seam emits only `domain.software-development.planning.todo_finalize_ready` when the new phase is `finalize_ready`; this delivery generalizes the seam for eligibility-changing prepare/work phase transitions while preserving the existing finalize-ready integration event. |
-| `workflow.todo.delivered` | Must be emitted or bridged from the v1 delivery stamp path; no v1 emit site is assumed. |
-| `workflow.todo.updated` / `workflow.roadmap.entry_moved` | Must be emitted or bridged from v1 mutation paths that change hold, dependency edges, icebox/unfreeze, or task authorization. Rust v2 emissions alone are insufficient while v1 remains authoritative. |
-| `config.effective.updated` | Must be wired from the v1 config watcher/effective-config reload seam, or the runner must receive an equivalent in-process wake-up carrying the same scope semantics. |
-| `agent_runtime.session.ended` | Must be bridged from v1 `SESSION_CLOSED` as a runner wake-up. The payload is not extended with close-intent metadata; the runner correlates the closed session to its todo (via `active_runner`) and resolves the project through the same identity path as other wake-ups. |
-| `scheduler.tick.minute` | Pending `task-lane`; v1 must add the in-daemon minute clock emitter and lifecycle-router admission for this wake-up before workflow can subscribe to it for datetime-gated tasks. |
+| Target wake-up                                           | v1 status / required runner-dispatch wiring                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workflow.todo.created`                                  | Already emitted by the v1 todo API with `project_path`; the current lifecycle router consumes it.                                                                                                                                                                                                                                                              |
+| `workflow.todo.phase_advanced`                           | Must be wired from the existing TodosDb/daemon phase-transition seam. Today that seam emits only `domain.software-development.planning.todo_finalize_ready` when the new phase is `finalize_ready`; this delivery generalizes the seam for eligibility-changing prepare/work phase transitions while preserving the existing finalize-ready integration event. |
+| `workflow.todo.delivered`                                | Must be emitted or bridged from the v1 delivery stamp path; no v1 emit site is assumed.                                                                                                                                                                                                                                                                        |
+| `workflow.todo.updated` / `workflow.roadmap.entry_moved` | Must be emitted or bridged from v1 mutation paths that change hold, dependency edges, icebox/unfreeze, or task authorization. Rust v2 emissions alone are insufficient while v1 remains authoritative.                                                                                                                                                         |
+| `config.effective.updated`                               | Must be wired from the v1 config watcher/effective-config reload seam, or the runner must receive an equivalent in-process wake-up carrying the same scope semantics.                                                                                                                                                                                          |
+| `agent_runtime.session.ended`                            | Must be bridged from v1 `SESSION_CLOSED` as a runner wake-up. The payload is not extended with close-intent metadata; the runner correlates the closed session to its todo (via `active_runner`) and resolves the project through the same identity path as other wake-ups.                                                                                    |
+| `scheduler.tick.minute`                                  | Pending `task-lane`; v1 must add the in-daemon minute clock emitter and lifecycle-router admission for this wake-up before workflow can subscribe to it for datetime-gated tasks.                                                                                                                                                                              |
 
 `creation_mode` / `pickup_requested` are migration-only fields after this
 delivery. The durable target control is `workflow.Todo.hold` plus effective
@@ -125,6 +126,7 @@ autostart policy. Legacy operator-requested silent creation is translated to
 `hold=true` at the workflow boundary; the v1 task `force_silent` default is
 translated to `hold=false` plus task autostart disabled. Event consumers do not
 treat silent wording as a separate dispatch state.
+
 <!-- /planned:runner-dispatch -->
 
 #### context
@@ -177,37 +179,40 @@ Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for th
 Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/integration boundary correction. Agent CLI hooks bypass integration entirely — they reach agent_runtime directly via the `telec-hook` subprocess (owned by agent_runtime). Integration's inbox is for true external webhooks only (Telegram, Discord, WhatsApp, GitHub).
 
 <!-- planned:webhook-ingress-service -->
-Note: `integration.inbox.received` has two producers. The durable messaging-inbox path uses the `inbox` posture above. The single-ingress webhook terminator is a second producer with a stateless `relay` posture — it verifies, normalizes, and emits in one pass without durable capture, carrying the provider delivery identifier as `entry_id`/`idempotency_key`; consumers absorb replays idempotently. See `project/spec/domain/integration` for both producers.
-<!-- /planned:webhook-ingress-service -->
 
+Note: `integration.inbox.received` has two producers. The durable messaging-inbox path uses the `inbox` posture above. The single-ingress webhook terminator is a second producer with a stateless `relay` posture — it verifies, normalizes, and emits in one pass without durable capture, carrying the provider delivery identifier as `entry_id`/`idempotency_key`; consumers absorb replays idempotently. See `project/spec/domain/integration` for both producers.
+
+<!-- /planned:webhook-ingress-service -->
 
 **Detailed entries:** see `project/spec/domain/integration`.
 
 #### reconciliation
 
-| Event                                     | Producer       | Visibility | Posture                                                        |
-| ----------------------------------------- | -------------- | ---------- | -------------------------------------------------------------- |
-| `reconciliation.capability.advertised`    | reconciliation | CLUSTER    | rides the cluster heartbeat (self-reported version + capability set) |
+| Event                                  | Producer       | Visibility | Posture                                                              |
+| -------------------------------------- | -------------- | ---------- | -------------------------------------------------------------------- |
+| `reconciliation.capability.advertised` | reconciliation | CLUSTER    | rides the cluster heartbeat (self-reported version + capability set) |
 
 <!-- planned:reconciliation-self-update -->
-| Event                                  | Producer       | Visibility | Posture                                                              |
-| -------------------------------------- | -------------- | ---------- | ------------------------------------------------------------------- |
-| `reconciliation.installation.drift_detected` | reconciliation | CLUSTER | commit-then-emit (a relayed release matches this node's channel policy) |
-| `reconciliation.installation.converged`      | reconciliation | CLUSTER | commit-then-emit (the node is running and healthy on the target version) |
-| `reconciliation.convergence.failed`          | reconciliation | CLUSTER | commit-then-emit (a convergence step halts; carries `failed_step` and `failure_context`) |
+
+| Event                                        | Producer       | Visibility | Posture                                                                                  |
+| -------------------------------------------- | -------------- | ---------- | ---------------------------------------------------------------------------------------- |
+| `reconciliation.installation.drift_detected` | reconciliation | CLUSTER    | commit-then-emit (a relayed release matches this node's channel policy)                  |
+| `reconciliation.installation.converged`      | reconciliation | CLUSTER    | commit-then-emit (the node is running and healthy on the target version)                 |
+| `reconciliation.convergence.failed`          | reconciliation | CLUSTER    | commit-then-emit (a convergence step halts; carries `failed_step` and `failure_context`) |
 
 The convergence loop consumes `integration.inbox.received` (release/version subset, relayed by the single ingress) and `config.effective.updated`, evaluates each release against the node's channel policy, and runs an exactly-once `ConvergenceRun` per target version. `reconciliation.capability.advertised` is already current — it rides the cluster heartbeat the fleet capability map consumes.
+
 <!-- /planned:reconciliation-self-update -->
 
 **Detailed entries:** see `project/spec/domain/reconciliation`.
 
 #### scheduler (infrastructure crate, not a service)
 
-| Event                   | Producer         | Visibility | Posture                                                          |
-| ----------------------- | ---------------- | ---------- | ---------------------------------------------------------------- |
-| `scheduler.tick.minute` | scheduler clock  | CLUSTER    | commit-then-emit (the daemon emits one generic minute tick)      |
-| `scheduler.tick.hour`   | scheduler clock  | CLUSTER    | derived — fires on the minute-tick that crosses an hour boundary |
-| `scheduler.tick.day`    | scheduler clock  | CLUSTER    | derived — fires on the minute-tick that crosses a day boundary   |
+| Event                   | Producer        | Visibility | Posture                                                          |
+| ----------------------- | --------------- | ---------- | ---------------------------------------------------------------- |
+| `scheduler.tick.minute` | scheduler clock | CLUSTER    | commit-then-emit (the daemon emits one generic minute tick)      |
+| `scheduler.tick.hour`   | scheduler clock | CLUSTER    | derived — fires on the minute-tick that crosses an hour boundary |
+| `scheduler.tick.day`    | scheduler clock | CLUSTER    | derived — fires on the minute-tick that crosses a day boundary   |
 
 The scheduler clock is an in-daemon periodic emitter, not a host-level service configuration or per-task timer. It emits the generic events above; per-pillar listeners subscribe and consult their own cadence policy + cursor state to decide whether to act. NOT a bounded context; infrastructure only.
 
@@ -231,28 +236,32 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 | `config.effective.updated`          | every service that caches config (re-read on next access)                                                                                                              |
 
 <!-- planned:runner-dispatch -->
+
 Additional runner subscriptions:
 
-| Event                          | Consumers |
-| ------------------------------ | --------- |
-| `workflow.todo.created`        | `workflow.lifecycle_runner` (reload affected project and dispatch eligible unheld entries; v1 source already exists) |
-| `workflow.todo.updated`        | `workflow.lifecycle_runner` (re-evaluate when hold, dependency, kind, artifact, or phase-adjacent metadata changes; v1 source must be wired where absent) |
-| `workflow.todo.phase_advanced` | `workflow.lifecycle_runner` (re-evaluate when prepare/work gates advance; v1 source is the generalized phase-transition seam, while `integration` remains the finalize-ready handoff owner) |
-| `workflow.todo.delivered`      | `workflow.lifecycle_runner` (re-evaluate downstream dependents after a dependency reaches delivery; v1 delivery emission/bridge is part of this delivery) |
-| `workflow.roadmap.entry_moved` | `workflow.lifecycle_runner` (re-evaluate after dependency, icebox, unfreeze, or delivery movement; v1 mutation emissions/bridges are part of this delivery) |
-| `config.effective.updated`     | `workflow.lifecycle_runner` (invalidate autostart policy and re-evaluate affected project/global scope; v1 config watcher is the seam) |
+| Event                          | Consumers                                                                                                                                                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workflow.todo.created`        | `workflow.lifecycle_runner` (reload affected project and dispatch eligible unheld entries; v1 source already exists)                                                                                                         |
+| `workflow.todo.updated`        | `workflow.lifecycle_runner` (re-evaluate when hold, dependency, kind, artifact, or phase-adjacent metadata changes; v1 source must be wired where absent)                                                                    |
+| `workflow.todo.phase_advanced` | `workflow.lifecycle_runner` (re-evaluate when prepare/work gates advance; v1 source is the generalized phase-transition seam, while `integration` remains the finalize-ready handoff owner)                                  |
+| `workflow.todo.delivered`      | `workflow.lifecycle_runner` (re-evaluate downstream dependents after a dependency reaches delivery; v1 delivery emission/bridge is part of this delivery)                                                                    |
+| `workflow.roadmap.entry_moved` | `workflow.lifecycle_runner` (re-evaluate after dependency, icebox, unfreeze, or delivery movement; v1 mutation emissions/bridges are part of this delivery)                                                                  |
+| `config.effective.updated`     | `workflow.lifecycle_runner` (invalidate autostart policy and re-evaluate affected project/global scope; v1 config watcher is the seam)                                                                                       |
 | `agent_runtime.session.ended`  | `workflow.lifecycle_runner` (wake-up: re-evaluate the closed session's todo and clear the now-stale `active_runner` link; a manual close's hold is set at the close command, not inferred here; v1 `SESSION_CLOSED` bridged) |
+
 <!-- /planned:runner-dispatch -->
 
 <!-- planned:task-lane -->
+
 Task-lane runner subscriptions:
 
-| Event | Consumers |
-| ----- | --------- |
-| `workflow.todo.updated` | `workflow.lifecycle_runner` (re-evaluate when a task's `task-plan`, authorization stamp, datetime, hold, or dependency/date gate changes) |
+| Event                   | Consumers                                                                                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workflow.todo.updated` | `workflow.lifecycle_runner` (re-evaluate when a task's `task-plan`, authorization stamp, datetime, hold, or dependency/date gate changes)                                        |
 | `scheduler.tick.minute` | `workflow.lifecycle_runner` (re-evaluate tasks whose optional datetime may now be due; the tick never carries task identity and never creates a persisted timer claim by itself) |
 
 The task datetime flow is wake-up-driven rather than timer-state-driven: the daemon scheduler clock emits the generic minute tick, workflow reloads the project todo set, and the lifecycle runner dispatches only tasks that still pass authorization, hold, live-session/claim, and datetime/dependency eligibility at evaluation time.
+
 <!-- /planned:task-lane -->
 
 ### v1 → v2 event-name mapping
