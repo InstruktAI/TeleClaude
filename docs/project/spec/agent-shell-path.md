@@ -19,15 +19,22 @@ contract. A change to the guaranteed set must be reflected in **both**.
 
 ## Canonical fields
 
-### Guaranteed directories (priority order)
+### Guaranteed directories
 
-1. `$TELECLAUDE_HOME/bin` (default `~/.teleclaude/bin`) — **must be first**. The
-   agent-session git wrapper lives here and must win over the real `git`.
-2. `~/.local/bin` — platform-published binaries (`graphify`, `telec`).
-3. `~/.cargo/bin` — rust toolchain (rust is a first-class platform language).
+The shared tool set is guaranteed in **both** execution contexts, since both
+shell out to these by bare name:
 
-Directories 2–3 are added only when present and their relative order is not
-load-bearing; directory 1 is force-pinned to the front.
+- `~/.local/bin` — platform-published binaries (`graphify`, `telec`).
+- `~/.cargo/bin` — rust toolchain (rust is a first-class platform language).
+
+Each is added only when present and their relative order is not load-bearing.
+
+One directory is **agent-shell only**:
+
+- `$TELECLAUDE_HOME/bin` (default `~/.teleclaude/bin`) — force-pinned to the
+  front so the agent-session git wrapper wins over the real `git`. The daemon
+  does not add it: its git calls resolve absolutely, and it does not use the
+  wrapper.
 
 ### Implementation 1 — agent shells
 
@@ -49,9 +56,7 @@ The daemon runs direct subprocesses (e.g. blueprint regeneration calling
 `graphify`) that **bypass the agent shells**, inheriting the daemon process PATH
 set by its launchd/systemd unit. `bin/daemon-control.sh` generates that PATH —
 `launchd_path_env()` (macOS) and the systemd unit `Environment=PATH` (Linux) —
-and must include `~/.local/bin` for the same reason. The blueprint engine being
-unreachable because the unit PATH omitted `~/.local/bin` is the failure this
-contract exists to prevent.
+and includes the shared tool set (`~/.local/bin`, `~/.cargo/bin`).
 
 ## Known caveats
 

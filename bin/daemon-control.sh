@@ -64,10 +64,11 @@ launchd_domain() {
 }
 
 launchd_path_env() {
-    # ~/.local/bin first: that is where the platform publishes its global
-    # binaries (graphify, telec). The daemon shells out to them by bare name,
-    # so the dir must be on its PATH for every project it manages.
-    local launchd_path="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    # Platform-published tool dirs first: ~/.local/bin (graphify, telec) and
+    # ~/.cargo/bin (rust). The daemon shells out to these by bare name, so they
+    # must be on its PATH for every project it manages.
+    # See project/spec/agent-shell-path (Implementation 2 — the daemon).
+    local launchd_path="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     printf '%s\n' "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//'
 }
 
@@ -170,7 +171,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$PROJECT_ROOT
-Environment="PATH=$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 # SSH_AUTH_SOCK sourced from keychain in wrapper
 ExecStart=$PROJECT_ROOT/bin/teleclaude-wrapper.sh
 Restart=on-failure
@@ -239,7 +240,7 @@ install_systemd_docs_watch_service() {
     local service_file="/etc/systemd/system/${service_name}.service"
     local template_file="$PROJECT_ROOT/templates/teleclaude-docs-watch.service"
     local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
-    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 
     log_info "Creating global docs watcher systemd service..."
 
