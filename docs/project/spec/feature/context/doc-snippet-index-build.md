@@ -88,6 +88,17 @@ When the lifecycle-metadata copy step runs
 Then delivered_by is copied into the index entry verbatim
 ```
 
+#### UC-DIB2: Title normalization leaves double-quoted frontmatter byte-unchanged
+
+```
+Given a snippet whose frontmatter scalars are already double-quoted
+And the H1 title already carries the correct type suffix
+When normalize_titles runs
+Then the snippet file content is unchanged
+When normalize_titles runs a second time
+Then the snippet file content is still unchanged
+```
+
 #### UC-DIB1: Parent entries derive superseded_by from pending carriers
 
 ```
@@ -98,7 +109,6 @@ And the pending companion has no independent index entry
 When telec docs index renders the parent line
 Then the line includes " (superseded by: <slugs>)"
 ```
-
 
 ### Cross-context references
 

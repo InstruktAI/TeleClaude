@@ -68,42 +68,6 @@ def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
     return header, body, True
 
 
-def _normalize_frontmatter_single_quotes(content: str) -> str:
-    """Normalize frontmatter scalars to single-quoted values.
-
-    TODO: GitHub issue openai/codex#11495
-    Remove this compatibility normalization once Codex CLI frontmatter false
-    positives are fixed upstream.
-    """
-    header, body, has_frontmatter = _split_frontmatter_block(content)
-    if not has_frontmatter:
-        return content
-
-    header_lines = header.splitlines(keepends=False)
-    if len(header_lines) < 2:
-        return content
-    raw_frontmatter = "\n".join(header_lines[1:-1])
-    try:
-        payload = yaml.safe_load(raw_frontmatter)
-    except Exception:
-        return content
-    if not isinstance(payload, dict):
-        return content
-    if any(isinstance(v, dict | list | tuple | set) for v in payload.values()):
-        return content
-
-    rendered_lines: list[str] = ["---"]
-    for key, value in payload.items():
-        value_str = "" if value is None else str(value)
-        value_quoted = "'" + value_str.replace("'", "''") + "'"
-        rendered_lines.append(f"{key}: {value_quoted}")
-    rendered_lines.append("---")
-    rendered_header = "\n".join(rendered_lines) + "\n"
-
-    normalized = rendered_header + body
-    return normalized if normalized != content else content
-
-
 # ---------------------------------------------------------------------------
 # Type definitions
 # ---------------------------------------------------------------------------
@@ -221,7 +185,7 @@ def normalize_titles(snippets_root: Path, *, project_root: Path, domains: set[st
         except Exception as exc:
             logger.warning("title_read_failed", path=str(path), error=str(exc))
             continue
-        normalized_text = _normalize_frontmatter_single_quotes(text)
+        normalized_text = text
         declared_type = None
         if normalized_text.lstrip().startswith("---"):
             try:
