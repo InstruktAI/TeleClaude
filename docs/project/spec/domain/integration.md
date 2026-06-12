@@ -1,7 +1,7 @@
 ---
 delivered_by:
-- v2-integration
-- v2-integration-cutover
+  - v2-integration
+  - v2-integration-cutover
 description: Integration bounded context — true external boundaries. Inbound HTTP
   webhooks from third-party providers (Telegram, Discord, WhatsApp, GitHub) and outbound
   delivery to those same providers. Agent CLI hook reception lives in agent_runtime,
@@ -130,6 +130,17 @@ This context does NOT own: domain business rules (each domain service owns its r
 - **Identifier:** `worker_id`.
 - **Lifecycle:** Created when the daemon spawns a worker. Heartbeat updated on cadence. Removed when the worker exits cleanly OR is reclaimed after timeout.
 
+### Ingress (v2 inbound boundary)
+
+The ingress is the daemon-hosted HTTP boundary for external provider webhooks. The daemon mounts it as an axum-backed `ServiceLoop` named `integration-ingress`; the integration crate owns source restriction, provider verification, normalization, and relay behavior while the daemon owns lifecycle.
+
+- **Single public endpoint role:** only machines with ingress enabled bind the HTTP listener. Non-ingress machines register no external webhook listener.
+- **Real peer source restriction:** the listener accepts requests only when the TCP peer address observed by axum `ConnectInfo<SocketAddr>` is in `allowed_source`. Forwarded headers such as `X-Forwarded-For` are ignored for trust decisions.
+- **Provider verifier + normalizer registry:** the route resolves the provider name through integration's registry. Each provider entry supplies that provider's concrete verifier and normalizer; unknown provider names fail closed.
+- **Fail-closed verification:** a provider request proceeds only when the provider verifier accepts the raw body and signature under the configured secret. Missing provider configuration, missing secret, missing or malformed signature, signature mismatch, and unsupported provider all reject before relay.
+- **Constant-time HMAC:** HMAC-based providers compare signatures in constant time and never log, return, or emit secrets or raw verification material.
+- **Unconditional CLUSTER relay:** every verified normalized event emits `integration.inbox.received` at `visibility=CLUSTER` regardless of the ingress node's own role, channel, project set, or whether it would itself act on the event.
+
 ### Domain events emitted
 
 #### `integration.inbox.received`
@@ -140,7 +151,13 @@ This context does NOT own: domain business rules (each domain service owns its r
 - **Visibility:** CLUSTER
 - **Known consumers:** `agent_runtime` (for inbound messaging targeted at sessions), domain-context handlers per provider.
 - **Idempotency key:** `entry_id` (which is derived from the provider's idempotency_key when available).
+<!-- planned-change:webhook-ingress-service -->
 - **Posture:** `inbox` — durable capture first, then publish. If publish fails, the dispatcher retries; the inbox entry guarantees no loss.
+<!-- change:webhook-ingress-service -->
+- **Posture:** `inbox` for durable messaging capture; `relay` for stateless webhook ingress. Durable capture publishes after an `InboxEntry` exists; relay publishes immediately after source restriction, verification, and normalization.
+<!-- /planned-change:webhook-ingress-service -->
+
+- **Ingress relay producer:** the daemon-hosted ingress also produces this event with `relay` posture. It verifies and normalizes a provider webhook, then emits the same CLUSTER event without writing an `InboxEntry`. For this producer, `entry_id` and the event envelope's `idempotency_key` are the provider delivery id (for GitHub, `X-GitHub-Delivery`); `verified=true`, `provider`, `event_name`, normalized `properties`, original `payload`, and `received_at` carry the same domain meaning as the durable inbox producer. Consumers dedupe by idempotency key and react only when the normalized event is in their interest.
 
 #### `integration.outbox.appended`
 
