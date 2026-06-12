@@ -117,6 +117,26 @@ And refuses to dispatch a fresh reviewer until the builder restamps build-comple
 And on every re-review round the reviewer is re-dispatched against the merge-base diff, not the full diff
 ```
 
+<!-- planned:work-reviewer-not-alive-with-existing-session -->
+
+```
+Given a Todo at lifecycle_phase=review_changes_requested with a durable review-findings artifact and a stamped verdict=changes_requested
+And the builder session is alive
+And no live reviewer session exists for the slug
+When the orchestrator calls "telec todo work my-feature"
+Then the machine relays the durable review-findings directly to the live builder session, instructing it to read the review-findings artifact, address every Requirement-Violation/Critical/Important finding, and restamp build-complete
+And does NOT surface REVIEWER_NOT_ALIVE
+And the subsequent build_complete round dispatches a fresh reviewer against the new HEAD
+```
+
+```
+Given a Todo at lifecycle_phase=review_changes_requested whose builder session is not alive
+When the orchestrator calls "telec todo work my-feature"
+Then the machine surfaces BUILDER_NOT_ALIVE for manual intervention, because no durable artifact can substitute for the absent fixer
+```
+
+<!-- /planned:work-reviewer-not-alive-with-existing-session -->
+
 ```
 Given a Todo at lifecycle_phase=review_approved with no pending deferrals
 When the orchestrator calls "telec todo work my-feature"
