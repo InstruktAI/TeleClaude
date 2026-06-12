@@ -22,16 +22,27 @@ result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
 
-The engine is gated by session-scoped flag markers: a persistent **clear
-flag** disables checkpoints for the session entirely; turn scoping
-prevents ordinary file-change checkpoints from re-firing after a
-checkpoint has been delivered; a fixed-name **authored main commit
-marker** is recorded when this session commits **code** on `main` through
-the sealed `telec code commit` path, then consumed when the post-commit
-review action is surfaced; and an **integrator-maintenance marker**,
-carrying the delivered merge range, is recorded by the integration state
-machine when it advances repo-root `main`, then consumed when the
-integrator's post-merge maintenance checkpoint is surfaced.
+The engine is gated by session-scoped flag markers: a turn-scoped **clear
+flag** skips checkpoints for the current turn and is hard-cleared at the
+next user-prompt-submit; turn scoping prevents ordinary file-change
+checkpoints from re-firing after a checkpoint has been delivered; a
+**committed-turn-files marker**, carrying the files of every sealed
+`telec code commit` in the turn, sources those files into the action
+ledger so committing does not empty it, and is hard-cleared at the next
+user-prompt-submit; a fixed-name **authored main commit marker** is
+recorded when this session commits **code** on `main` through the sealed
+`telec code commit` path and triggers only the post-commit review gate,
+then is consumed when that review action is surfaced; and an
+**integrator-maintenance marker**, carrying the delivered merge range, is
+recorded by the integration state machine when it advances repo-root
+`main`, then consumed when the integrator's post-merge maintenance
+checkpoint is surfaced.
+
+The action and evidence ledger — what needs doing and what was done since
+the turn started — is time-anchored to the turn window and includes the
+committed-turn-files payload; it is hard-cleared only at user-prompt-submit.
+Version control is consulted only as the category oracle (which file maps
+to which category), never as the arbiter of what is in-scope or done.
 
 ## Canonical fields
 
@@ -42,7 +53,7 @@ integrator's post-merge maintenance checkpoint is surfaced.
 ```gherkin
 Given a Claude session has modified source files in the current turn
 And no commit has been recorded since the last mutation
-And the persistent clear flag is not set
+And the turn-scoped clear flag is not set
 When Claude invokes the receiver with a Stop event
 Then the checkpoint pre-emit step loads the session row
 And resolves the project path (falling back to a transcript-derived working directory, adjusted for any worktree subdirectory)
@@ -55,15 +66,16 @@ And the Claude adapter formats a block decision carrying the message
 And the receiver emits the block decision and exits cleanly BEFORE enqueueing the agent-stop event
 ```
 
-#### UC-CP2: Persistent clear flag skips checkpoint
+#### UC-CP2: Turn-scoped clear flag skips checkpoint for the current turn
 
 ```gherkin
 Given the session-scoped checkpoint clear flag is set
 When the checkpoint pre-emit step runs
 Then the per-turn recheck flag is cleared so a future re-enable can re-arm checkpoints cleanly
-And a "checkpoint skipped (persistent clear flag)" info log emits
+And a "checkpoint skipped (clear flag)" info log emits
 And the checkpoint pre-emit returns no decision
 And the receiver enqueues the agent-stop event normally without emitting a block response
+(The clear flag is itself hard-cleared at the next user-prompt-submit, so the skip lasts one turn only.)
 ```
 
 #### UC-CP3: No turn start → no checkpoint
@@ -80,6 +92,7 @@ And the receiver proceeds to enqueue the agent-stop event
 
 ```gherkin
 Given the heuristic engine returns an empty checkpoint result (no required actions)
+And no committed-turn-files marker is present
 And no integrator-maintenance marker is present
 When the checkpoint pre-emit step runs
 Then a debug log records "checkpoint skipped: no turn-local changes"
@@ -88,12 +101,15 @@ And no checkpoint-seen entry is enqueued
 And the agent-stop event enqueues normally
 ```
 
-#### UC-CP5: Per-turn recheck flag cleared on new user prompt
+#### UC-CP5: Turn-scoped markers cleared on new user prompt
 
 ```gherkin
 Given a checkpoint fired earlier in this turn and set the per-turn recheck flag
+And the turn may carry a set clear flag and a committed-turn-files marker
 When a new user-prompt-submit hook arrives that is NOT system-injected
 Then the per-turn recheck flag is consumed
+And the turn-scoped clear flag is consumed
+And the committed-turn-files ledger marker is consumed
 And the next agent-stop in the new turn may fire a fresh checkpoint
 ```
 
@@ -110,6 +126,8 @@ And that action instructs the agent to set a non-blocking 5-minute heartbeat whe
 And if that heartbeat fires without a user response approving or declining review, the agent dispatches the commit(s) to review
 And waits for REVIEW COMPLETE before reporting completion
 And the authored-main-commit marker is consumed
+(The authored-main-commit marker triggers only the review gate; the committed files
+themselves are sourced into the action ledger via the committed-turn-files marker — see UC-CP12.)
 
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path
@@ -120,8 +138,9 @@ And the next agent-stop produces no post-commit review-gate surfacing action for
 (Under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.)
 
 Given the current branch is main
-And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session
+And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session through the sealed path
 And the session-scoped authored-main-commit marker is absent
+And no committed-turn-files marker is present
 And there are no turn-local dirty files
 When the heuristic engine evaluates the turn window
 Then it produces no checkpoint
@@ -134,6 +153,7 @@ When the heuristic engine evaluates the turn window
 Then ordinary checkpoint classification still runs for those files
 And the post-commit review-gate surfacing action is emitted once
 And the authored-main-commit marker is consumed
+And the commit action is suppressed only by commit evidence in the turn timeline, not by the authored-main-commit marker
 And no system role, including integrator, is exempt from this code-authorship rule
 ```
 
@@ -244,44 +264,107 @@ self-attributable, so only the lease-guarded integrator singleton — the record
 marker's owner — receives post-merge maintenance.)
 ```
 
+#### UC-CP12: Committed code surfaces maintenance actions
+
+```gherkin
+Given a session commits daemon code through the sealed `telec code commit` path this turn
+And the commit handler records the committed files into the committed-turn-files marker
+And `git diff HEAD` is now empty because the commit moved HEAD
+When the heuristic engine evaluates the turn window
+Then the committed files are unioned into the turn's effective files before the no-change early-exit
+And the engine surfaces the maintenance actions those categories imply (Run `make restart`, plus the test and log-check actions of the changed categories)
+And, on main with code committed, the post-commit review-gate action is surfaced in addition (per UC-CP5A)
+And the committed-turn-files marker is NOT consumed by this evaluation — it persists across checkpoint cycles until the next user-prompt-submit
+
+Given a turn sourced committed files into the action ledger and surfaced `make restart`
+And the agent then runs `make restart` in the same turn
+When the next agent-stop evaluates the turn window
+Then the restart action is suppressed by the make-restart evidence in the timeline (per UC-CP11 suppressibility rules)
+And the committed-turn-files marker still lists the committed files until user-prompt-submit clears it
+
+Given a session commits a file the agent did not itself Edit or Write this turn (a human-staged change the agent committed on request)
+When the heuristic engine evaluates the turn window
+Then that committed file is still categorized from the committed-turn-files marker
+And its implied maintenance action is surfaced
+(The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
+```
+
+#### UC-CP13: Parent snippet edited without its pending companion
+
+```gherkin
+Given a turn edits a live parent doc snippet `<stem>.md`
+And a pending companion sibling `<stem>.<slug>.md` exists on disk
+And the companion is NOT in the turn's changed files
+When the heuristic engine evaluates the turn window
+Then the result surfaces an action telling the agent to mirror the parent edit into the companion
+(else the companion clobbers the parent edit when it replaces the parent at delivery)
+
+Given a turn edits a live parent doc snippet `<stem>.md`
+And its pending companion sibling `<stem>.<slug>.md` is also in the turn's changed files
+When the heuristic engine evaluates the turn window
+Then no companion-drift action is surfaced (the edit is mirrored)
+
+Given a turn edits a doc snippet `<stem>.md` that has no companion sibling on disk
+When the heuristic engine evaluates the turn window
+Then no companion-drift action is surfaced
+
+Given a turn edits only a companion `<stem>.<slug>.md` (not its parent)
+When the heuristic engine evaluates the turn window
+Then no companion-drift action is surfaced
+(The check is a filename-derived presence test over the changed set; whether the
+companion is a correct mirror of the parent is the reviewer's judgment, not the
+checkpoint's.)
+```
+
 ### Cross-context references
 
-- Belongs (along with the receiver) to `agent_runtime` in the v2 fold,
-  since checkpoint blocking is a property of agent-CLI orchestration,
-  not of external integration. Inventoried here in v1 because it
-  composes with the receiver.
+- Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
+  the receiver it composes with.
 - Reads session row state owned by `agent_runtime`: last user message
   timestamp, last checkpoint timestamp, native log file, working
   subdirectory, project path, turn anchor SHA, working slug,
   native session id, and `system_role` (e.g. `"integrator"`) — the role
   is passed to `get_checkpoint_content` and stored in `CheckpointContext`
   to gate the integrator-maintenance force-fire path.
-- Consumes the integrator-maintenance marker written by the integration
-  state machine (`project/spec/feature/workflow/integration-state-machine`)
-  at delivery, before the per-candidate `pre_merge_head` is cleared.
+- Consumes the committed-turn-files marker written by the sealed
+  `telec code commit` path for any session, and the integrator-maintenance
+  marker written by the integration state machine
+  (`project/spec/feature/workflow/integration-state-machine`) at delivery,
+  before the per-candidate `pre_merge_head` is cleared.
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
 
 ## Known caveats
 
-- Persistent flag markers live in a per-session temporary directory;
+- Session-scoped flag markers live in a per-session temporary directory;
   session ids that contain unsafe characters are hashed to a digest
   component for the filesystem path.
-- The clear flag persists across turns until explicitly removed; it is
-  the user/operator's responsibility to delete it to re-enable
-  checkpoints.
+- The clear flag is turn-scoped: it skips checkpoints for the current turn
+  and is hard-cleared at the next non-system user-prompt-submit, alongside
+  the committed-turn-files marker. A checkpoint that recurs across turns is a
+  signal that the heuristics are over-tight — the agent surfaces it to the
+  human rather than re-setting the flag. The recheck loop-guard is the
+  involuntary backstop against an evidence-miss spinning forever.
+- The committed-turn-files marker carries the files of every sealed
+  `telec code commit` in the turn (appended across commits, deduped on read).
+  The engine unions them into the turn's effective files so a commit does not
+  empty the action ledger; per-action evidence suppression silences each
+  action once its command runs. The marker is hard-cleared at the next
+  user-prompt-submit. Raw `git commit` outside the sealed path does not record
+  it.
 - The main-branch post-commit review gate is driven by a session-scoped
   authored-main-commit latch recorded by `telec code commit` only for
   commits whose pathspec includes code, then consumed when the review
-  action surfaces. The latch is not SHA-keyed, so rebases and peer HEAD
+  action surfaces. The latch triggers only the review gate — never the
+  action or evidence ledger. It is not SHA-keyed, so rebases and peer HEAD
   movement do not re-arm it; doc-only commits do not arm it; raw
   `git commit` does not mark authorship.
 - The integrator's raw-git merge does not flow through `telec code commit`
-  and so does not arm the authorship latch; instead the integration state
-  machine records the integrator-maintenance marker carrying the delivered
-  merge range, which the engine consumes to force-fire post-merge
-  maintenance for the integrator session. This closes the former gap where
-  integrator merges surfaced no maintenance.
+  and so does not arm the authorship latch or the committed-turn-files
+  marker; instead the integration state machine records the
+  integrator-maintenance marker carrying the delivered merge range, which the
+  engine consumes to force-fire post-merge maintenance for the integrator
+  session.
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects
@@ -302,3 +385,8 @@ marker's owner — receives post-merge maintenance.)
 - The checkpoint message is prefixed so the receiver's system-prompt
   filter can drop the echoed prompt when the agent re-submits it on
   the next turn.
+
+## See Also
+
+- docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
+- docs/project/adr/0038-companion-drift-caught-at-checkpoint.md

@@ -20,6 +20,7 @@ CHECKPOINT_CLEAR_FLAG = "teleclaude_checkpoint_clear"
 CHECKPOINT_RECHECK_FLAG = "teleclaude_checkpoint_recheck"
 CHECKPOINT_AUTHORED_MAIN_COMMIT_FLAG = "teleclaude_checkpoint_authored_main_commit"
 CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG = "teleclaude_checkpoint_integrator_maintenance"
+CHECKPOINT_COMMITTED_TURN_FILES_FLAG = "teleclaude_checkpoint_committed_turn_files"
 
 
 def session_tmp_base_dir() -> Path:
@@ -112,6 +113,37 @@ def record_integrator_maintenance_marker(session_id: str, merge_range: str) -> N
     flag_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def record_committed_turn_files(session_id: str, files: list[str]) -> None:
+    """Append committed file paths to this turn's action-ledger marker."""
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG)
+    flag_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = flag_path.read_text(encoding="utf-8") if flag_path.exists() else ""
+    paths = [line for line in existing.splitlines() if line]
+    paths.extend(path for path in files if path)
+    flag_path.write_text("\n".join(_dedupe_preserving_order(paths)) + "\n", encoding="utf-8")
+
+
+def read_committed_turn_files(session_id: str) -> list[str]:
+    """Return committed files recorded for this turn, or [] when no marker exists."""
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG)
+    if not flag_path.exists():
+        return []
+    content = flag_path.read_text(encoding="utf-8")
+    return _dedupe_preserving_order([line for line in content.splitlines() if line])
+
+
+def _dedupe_preserving_order(items: list[str]) -> list[str]:
+    """Return values once, preserving first-seen order."""
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
 def read_integrator_maintenance_marker(session_id: str) -> str | None:
     """Return the integrator-maintenance marker content, or None if absent."""
     flag_path = checkpoint_flag_path(session_id, CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG)
@@ -132,9 +164,5 @@ def consume_integrator_maintenance_marker(session_id: str) -> str | None:
 
 
 def is_checkpoint_disabled(session_id: str) -> bool:
-    """Persistent checkpoint disable switch.
-
-    While this file exists, checkpoints are skipped.
-    Re-enable by removing the file.
-    """
+    """Return True when checkpoints are manually skipped for the current turn."""
     return has_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)

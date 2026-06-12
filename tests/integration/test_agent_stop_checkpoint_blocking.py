@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import teleclaude.hooks.checkpoint as checkpoint_module
 from teleclaude.cli.telec.handlers import code
 from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.core.agents import AgentName
@@ -13,9 +14,17 @@ from teleclaude.git import Repo
 from teleclaude.hooks.checkpoint import get_checkpoint_content, run_heuristics
 from teleclaude.hooks.checkpoint._models import CheckpointContext
 from teleclaude.hooks.checkpoint_flags import (
+    CHECKPOINT_CLEAR_FLAG,
+    CHECKPOINT_COMMITTED_TURN_FILES_FLAG,
+    CHECKPOINT_RECHECK_FLAG,
     has_authored_main_commit_flag,
+    has_checkpoint_flag,
+    read_committed_turn_files,
     record_integrator_maintenance_marker,
+    set_checkpoint_flag,
+    record_committed_turn_files,
 )
+from teleclaude.hooks.receiver import _reset_checkpoint_flags
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 _SPEC = "project/spec/feature/integration/agent-stop-checkpoint-blocking"
@@ -51,9 +60,32 @@ def _timeline_with_bash(command: str) -> TurnTimeline:
     return TurnTimeline(tool_calls=[record], has_data=True)
 
 
+def _timeline_with_bash_commands(commands: list[str]) -> TurnTimeline:
+    records = [ToolCallRecord(tool_name="bash", input_data={"command": command}) for command in commands]
+    return TurnTimeline(tool_calls=records, has_data=True)
+
+
+def _patch_checkpoint_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeline) -> None:
+    monkeypatch.setattr(checkpoint_module, "extract_effective_tool_calls", lambda *_args, **_kwargs: timeline)
+
+
 def _disable_commit_quality_gates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(code, "handle_format", lambda _paths: None)
     monkeypatch.setattr(code, "handle_lint", lambda _paths: None)
+
+
+def _write_parent_and_companion(
+    repo_path: Path,
+    *,
+    slug: str = "checkpoint-ledger-commit-separation",
+) -> tuple[str, str]:
+    docs_dir = repo_path / "docs" / "project" / "spec" / "feature" / "integration"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    parent = docs_dir / "agent-stop-checkpoint-blocking.md"
+    companion = docs_dir / f"agent-stop-checkpoint-blocking.{slug}.md"
+    parent.write_text("# Parent\n", encoding="utf-8")
+    companion.write_text("# Companion\n", encoding="utf-8")
+    return parent.relative_to(repo_path).as_posix(), companion.relative_to(repo_path).as_posix()
 
 
 @pytest.mark.functional
@@ -69,6 +101,10 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
     monkeypatch.setattr(code, "get_session_id", lambda: session_id)
     _disable_commit_quality_gates(monkeypatch)
+    _patch_checkpoint_timeline(
+        monkeypatch,
+        _timeline_with_bash("telec code commit --approved 'test: authored main commit'"),
+    )
 
     first_anchor_sha = repo.git.rev_parse("HEAD").strip()
     (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# authored\n", encoding="utf-8")
@@ -80,6 +116,7 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
     )
 
     marker_after_commit = has_authored_main_commit_flag(session_id)
+    committed_files_after_commit = read_committed_turn_files(session_id)
     authored_payload = get_checkpoint_content(
         session_id=session_id,
         transcript_path=None,
@@ -88,13 +125,7 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
         turn_anchor_sha=first_anchor_sha,
     )
     marker_after_first_checkpoint = has_authored_main_commit_flag(session_id)
-    second_payload = get_checkpoint_content(
-        session_id=session_id,
-        transcript_path=None,
-        agent_name=AgentName.CODEX,
-        project_path=str(repo_path),
-        turn_anchor_sha=first_anchor_sha,
-    )
+    _reset_checkpoint_flags(session_id)
 
     peer_anchor_sha = repo.git.rev_parse("HEAD").strip()
     (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# peer\n", encoding="utf-8")
@@ -108,8 +139,8 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
     )
 
     assert marker_after_commit is True
+    assert committed_files_after_commit == ["teleclaude/core/tracked.py"]
     assert marker_after_first_checkpoint is False
-    assert second_payload is None
     assert peer_payload is None
     assert {"authored_payload": authored_payload} == snapshot
 
@@ -171,6 +202,61 @@ def test_directory_pathspec_does_not_arm_review_marker(
     )
 
     assert has_authored_main_commit_flag(session_id) is False
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP12")
+def test_sealed_commit_records_committed_turn_files_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-committed-files-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _disable_commit_quality_gates(monkeypatch)
+
+    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# first\n", encoding="utf-8")
+    code._commit_under_lock(
+        message="test: record committed file",
+        includes=["teleclaude/core/tracked.py"],
+        project_root=repo_path,
+        system_role=None,
+    )
+
+    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# second\n", encoding="utf-8")
+    (repo_path / "docs").mkdir(parents=True, exist_ok=True)
+    (repo_path / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+    code._commit_under_lock(
+        message="test: append committed files",
+        includes=["teleclaude/core/tracked.py", "docs/guide.md"],
+        project_root=repo_path,
+        system_role=None,
+    )
+
+    assert read_committed_turn_files(session_id) == ["teleclaude/core/tracked.py", "docs/guide.md"]
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP5")
+def test_user_prompt_reset_consumes_turn_scoped_checkpoint_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-reset-session"
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+
+    set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
+    set_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)
+    record_committed_turn_files(session_id, ["teleclaude/core/tracked.py"])
+
+    _reset_checkpoint_flags(session_id)
+
+    assert has_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG) is False
+    assert has_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG) is False
+    assert has_checkpoint_flag(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG) is False
+    assert read_committed_turn_files(session_id) == []
 
 
 @pytest.mark.functional
@@ -312,6 +398,106 @@ def test_agents_merge_delta_does_not_surface_restart_self_in_maintenance(
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP12")
+def test_committed_daemon_code_surfaces_maintenance_after_head_move(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    session_id = "checkpoint-committed-daemon-session"
+    repo_path = tmp_path / "repo"
+    repo = _init_supported_repo(repo_path)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _disable_commit_quality_gates(monkeypatch)
+    _patch_checkpoint_timeline(
+        monkeypatch,
+        _timeline_with_bash("telec code commit --approved 'test: daemon commit'"),
+    )
+
+    anchor_sha = repo.git.rev_parse("HEAD").strip()
+    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# committed daemon\n", encoding="utf-8")
+    code._commit_under_lock(
+        message="test: daemon commit",
+        includes=["teleclaude/core/tracked.py"],
+        project_root=repo_path,
+        system_role=None,
+    )
+
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=anchor_sha,
+    )
+
+    assert read_committed_turn_files(session_id) == ["teleclaude/core/tracked.py"]
+    assert {"committed_daemon_payload": payload} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP12")
+def test_committed_daemon_restart_evidence_suppresses_restart_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    session_id = "checkpoint-committed-restart-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    record_committed_turn_files(session_id, ["teleclaude/core/tracked.py"])
+    _patch_checkpoint_timeline(
+        monkeypatch,
+        _timeline_with_bash_commands(
+            [
+                "telec code commit --approved 'test: daemon commit'",
+                "make restart",
+                "make status",
+            ]
+        ),
+    )
+
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert read_committed_turn_files(session_id) == ["teleclaude/core/tracked.py"]
+    assert {"restart_suppressed_payload": payload} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP12")
+def test_committed_turn_files_read_failure_returns_visible_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-committed-read-failure-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+
+    def raise_marker_error(_session_id: str) -> list[str]:
+        raise OSError("marker unavailable")
+
+    monkeypatch.setattr(checkpoint_module, "read_committed_turn_files", raise_marker_error)
+
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert payload == CHECKPOINT_MESSAGE
+
+
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP10")
 def test_docs_dir_change_surfaces_telec_sync(
     tmp_path: Path,
@@ -340,6 +526,74 @@ def test_docs_dir_telec_sync_suppressed_with_evidence(
     result = run_heuristics(["docs/spec.md"], timeline, context)
 
     assert _TELEC_SYNC_INSTR not in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP13")
+def test_parent_snippet_edit_with_pending_companion_surfaces_mirror_action(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    parent_rel, _companion_rel = _write_parent_and_companion(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics([parent_rel], _empty_timeline(), context)
+
+    assert {"parent_only_actions": result.required_actions} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP13")
+def test_parent_and_companion_change_suppresses_mirror_action(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    parent_rel, companion_rel = _write_parent_and_companion(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics([parent_rel, companion_rel], _empty_timeline(), context)
+
+    assert {"parent_and_companion_actions": result.required_actions} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP13")
+def test_parent_snippet_without_companion_suppresses_mirror_action(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    docs_dir = repo_path / "docs" / "project" / "spec" / "feature" / "integration"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    parent = docs_dir / "agent-stop-checkpoint-blocking.md"
+    parent.write_text("# Parent\n", encoding="utf-8")
+    parent_rel = parent.relative_to(repo_path).as_posix()
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics([parent_rel], _empty_timeline(), context)
+
+    assert {"parent_without_companion_actions": result.required_actions} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP13")
+def test_companion_only_change_suppresses_mirror_action(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    _parent_rel, companion_rel = _write_parent_and_companion(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics([companion_rel], _empty_timeline(), context)
+
+    assert {"companion_only_actions": result.required_actions} == snapshot
 
 
 @pytest.mark.functional

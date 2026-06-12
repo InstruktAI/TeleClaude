@@ -2,6 +2,7 @@
 
 import re
 import shlex
+from pathlib import Path
 
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
@@ -28,9 +29,11 @@ from teleclaude.hooks.checkpoint._git import (
     _split_shell_segments,
 )
 from teleclaude.hooks.checkpoint._models import CheckpointContext
+from teleclaude.snippet_validation import companion_parent, is_companion
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 __all__ = [
+    "_check_companion_drift",
     "_check_edit_hygiene",
     "_check_error_state",
     "_check_slug_alignment",
@@ -760,6 +763,39 @@ def _check_edit_hygiene(timeline: TurnTimeline, git_files: list[str]) -> list[st
             observations.append("Changes span multiple subsystems — consider committing completed work incrementally")
 
     return observations
+
+
+def _check_companion_drift(git_files: list[str], project_path: str) -> list[str]:
+    """Return actions for parent snippet edits missing their pending companions."""
+    changed = {path.strip().replace("\\", "/") for path in git_files if path.strip()}
+    if not changed:
+        return []
+
+    project_root = Path(project_path)
+    actions: list[str] = []
+    for rel_path in sorted(changed):
+        if not rel_path.startswith("docs/") or not rel_path.endswith(".md"):
+            continue
+        parent_path = project_root / rel_path
+        if is_companion(parent_path):
+            continue
+        for companion_path in _pending_companions(parent_path):
+            companion_rel = companion_path.relative_to(project_root).as_posix()
+            if companion_rel in changed:
+                continue
+            actions.append(f"Mirror `{rel_path}` into pending companion `{companion_rel}` before stopping")
+    return actions
+
+
+def _pending_companions(parent_path: Path) -> list[Path]:
+    """Return pending companion siblings for a live parent snippet path."""
+    if not parent_path.exists():
+        return []
+    return sorted(
+        candidate
+        for candidate in parent_path.parent.glob(f"{parent_path.stem}.*.md")
+        if is_companion(candidate) and companion_parent(candidate) == parent_path
+    )
 
 
 # ---------------------------------------------------------------------------

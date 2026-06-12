@@ -31,6 +31,8 @@ from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
+    CHECKPOINT_CLEAR_FLAG,
+    CHECKPOINT_COMMITTED_TURN_FILES_FLAG,
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
@@ -227,9 +229,10 @@ def _build_receiver_error_payload(
 
 
 def _reset_checkpoint_flags(session_id: str) -> None:
-    # Keep CLEAR persistent across turns; clear the per-turn fired marker so
-    # the next turn's first checkpoint can fire.
+    # New user input starts a fresh checkpoint turn.
     consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
+    consume_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)
+    consume_checkpoint_flag(session_id, CHECKPOINT_COMMITTED_TURN_FILES_FLAG)
 
 
 def _maybe_checkpoint_output(
@@ -245,10 +248,10 @@ def _maybe_checkpoint_output(
     to let the stop pass through to the normal enqueue path. The caller is
     responsible for formatting the reason into agent-specific JSON via the adapter.
     """
-    # Session-scoped persistent disable: while clear marker exists, skip checkpoints.
+    # Turn-scoped manual clear: while the marker exists, skip checkpoints for this turn.
     if is_checkpoint_disabled(session_id):
         consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
-        logger.info("Checkpoint skipped (persistent clear flag)", session_id=session_id, agent=agent)
+        logger.info("Checkpoint skipped (turn-scoped clear flag)", session_id=session_id, agent=agent)
         return None
 
     row = _load_checkpoint_row(session_id)

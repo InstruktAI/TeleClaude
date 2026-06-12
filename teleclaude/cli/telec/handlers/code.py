@@ -16,7 +16,7 @@ from teleclaude.cli.telec.handlers.quality import handle_format, handle_install,
 from teleclaude.cli.telec.help import _usage
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
-from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
+from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_committed_turn_files
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
@@ -36,6 +36,7 @@ _COMMIT_TRAILER = (
 )
 _TRAILER_MARKER = "🤖 Generated with [TeleClaude]"
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
+_DOC_COMMIT_PATTERNS = ["docs/**", "*.md", "*.txt", "*.rst"]
 
 
 def _with_trailer(message: str) -> str:
@@ -487,22 +488,31 @@ def _commit_under_lock(
     # Use actual committed file paths from git rather than the requested pathspec
     # strings, which may contain directory names or unexpanded globs that would
     # falsely match or miss doc patterns.
-    _DOC_PATTERNS = ["docs/**", "*.md", "*.txt", "*.rst"]
     try:
         committed_files = [p for p in repo.git.show("--name-only", "--format=", "HEAD").splitlines() if p]
     except GitCommandError:
         committed_files = list(pathspec)
-    committed_includes_code = any(not any(fnmatch(p, pat) for pat in _DOC_PATTERNS) for p in committed_files)
-    if _current_branch(project_root) == "main" and committed_includes_code:
-        try:
-            session_id = get_session_id()
-            if session_id:
-                record_authored_main_commit(session_id)
-        except Exception as exc:
-            logger.warning("Failed to record authored main commit checkpoint flag", error=str(exc))
+    _record_commit_checkpoint_markers(project_root, committed_files)
     # system_role is retained on the signature for symmetry with prior gates;
     # the pathspec boundary makes a separate scope-enforcement step redundant.
     del system_role
+
+
+def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[str]) -> None:
+    """Record checkpoint markers derived from the sealed commit."""
+    session_id = get_session_id()
+    if session_id:
+        try:
+            record_committed_turn_files(session_id, committed_files)
+        except OSError as exc:
+            logger.warning(
+                "Failed to record committed turn files checkpoint marker",
+                session_id=session_id,
+                error=str(exc),
+            )
+    committed_includes_code = any(not any(fnmatch(p, pat) for pat in _DOC_COMMIT_PATTERNS) for p in committed_files)
+    if _current_branch(project_root) == "main" and committed_includes_code and session_id:
+        record_authored_main_commit(session_id)
 
 
 def _print_abc_classification() -> None:

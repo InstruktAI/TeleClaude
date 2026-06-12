@@ -16,6 +16,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.hooks.checkpoint._evidence import (
+    _check_companion_drift,
     _check_edit_hygiene,
     _check_error_state,
     _check_slug_alignment,
@@ -62,6 +63,7 @@ from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     consume_integrator_maintenance_marker,
     has_authored_main_commit_flag,
+    read_committed_turn_files,
     read_integrator_maintenance_marker,
 )
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
@@ -76,6 +78,7 @@ __all__ = [
     "TranscriptObservability",
     "_canonical_tool_name",
     "_categorize_files",
+    "_check_companion_drift",
     "_check_edit_hygiene",
     "_check_error_state",
     "_check_slug_alignment",
@@ -140,8 +143,6 @@ def run_heuristics(
         git_files,
         context.project_path,
     )
-    if result.authored_main_commit and not git_files:
-        result.commit_action_required = False
 
     def append_required_action(action: str) -> None:
         if action not in result.required_actions:
@@ -216,6 +217,8 @@ def run_heuristics(
 
     # 4. Edit hygiene
     result.observations.extend(_check_edit_hygiene(timeline, git_files))
+    for action in _check_companion_drift(git_files, context.project_path):
+        append_required_action(action)
 
     # 5. Working slug alignment
     result.observations.extend(_check_slug_alignment(git_files, context))
@@ -242,8 +245,9 @@ _RESPONSE_POLICY = (
 )
 _ESCAPE_HATCH = (
     "Escape hatch (last resort only, and only when there is no actionable information left): "
-    'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. '
-    "Re-enable by removing that file."
+    'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to skip checkpoints for this turn; '
+    "it clears at the next user prompt. If the same checkpoint recurs across turns, "
+    "surface it as a bug instead of clearing it again."
 )
 
 
@@ -499,6 +503,16 @@ def get_checkpoint_content(
             timeline,
             project_path,
         )
+        try:
+            committed_turn_files = read_committed_turn_files(session_id)
+        except OSError:
+            logger.warning(
+                "Committed turn files marker read failed",
+                extra={**base_extra, "mode": "committed_turn_files_read_failed"},
+                exc_info=True,
+            )
+            return CHECKPOINT_MESSAGE
+        effective_files = _dedupe_strings([*effective_files, *committed_turn_files])
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
 
