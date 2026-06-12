@@ -15,7 +15,7 @@ visibility: 'public'
 
 ## Rationale
 
-- The `make` targets are the safe, idempotent service interface; they encapsulate the platform-specific launchd/systemd mechanics so agents need no host-level judgement and no human gate for routine service operations. Routing through them limits accidental downtime while keeping checkpoint-required operations unblocked — a stale "human approval" gate that makes an agent refuse a required `make install`/`make restart` is itself the failure this policy prevents.
+- The `make` targets are the safe, idempotent service interface: they encapsulate the platform-specific launchd/systemd mechanics, so agents need no host-level judgement and routine service operations need no human gate. Routing every operation through them limits accidental downtime while keeping checkpoint-required operations unblocked.
 
 ## Scope
 
@@ -29,3 +29,7 @@ visibility: 'public'
 ## Exceptions
 
 - None.
+
+## See Also
+
+- docs/project/adr/0041-agents-own-daemon-lifecycle-via-make.md
