@@ -15,7 +15,7 @@ from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT, SlashComm
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
-from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
+from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_send_command, format_tool_call
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 
 if TYPE_CHECKING:
@@ -120,11 +120,10 @@ def _format_creative_iteration_script(
         f"Read the feedback (look for the most recent human message and any updated review context), "
         f"revise the artifacts in {workspace_subdir}, and report when ready for re-review."
     )
-    escaped = message.replace('"', '\\"')
     return (
         f"{phase_label.upper()} ITERATION REQUIRED: {slug}\n\n"
         f"Execute in order:\n\n"
-        f'telec sessions send {worker_session_id} "{escaped}"\n\n'
+        f"{format_send_command(worker_session_id, message)}\n\n"
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
         f'Start a new non-blocking backup heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
         f"and save the new task_id. The timer is a bare sleep — a check-in to re-engage your "

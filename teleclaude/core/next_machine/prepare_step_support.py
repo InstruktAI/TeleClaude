@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.core.next_machine.output_formatting import format_prepared
+from teleclaude.core.next_machine.output_formatting import format_prepared, format_send_command
 from teleclaude.core.next_machine.runtime.sessions import (
     find_live_prepare_worker_for_slug,
     find_live_root_next_prepare_session_for_slug,
@@ -86,8 +86,7 @@ async def build_prepare_autocontinue(
             f"{parent_slug} is PREPARED and frozen in your context; drive prepare for unblocked child "
             f"{child_slug}: telec todo prepare {child_slug}"
         )
-        escaped = message.replace('"', '\\"')
-        return f'telec sessions send {worker_id} "{escaped}"', worker_id
+        return format_send_command(worker_id, message), worker_id
     return f"telec sessions run --command /next-prepare --args {child_slug} --project {project_root}", None
 
 

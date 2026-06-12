@@ -44,7 +44,7 @@
   
   AUTO-CONTINUE:
   Execute in order:
-  telec sessions send sess-parent-worker "parent is PREPARED and frozen in your context; drive prepare for unblocked child child: telec todo prepare child"
+  telec sessions send sess-parent-worker 'parent is PREPARED and frozen in your context; drive prepare for unblocked child child: telec todo prepare child'
   
   telec sessions end sess-parent-reviewer
   

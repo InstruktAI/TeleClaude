@@ -25,6 +25,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_blocker_resolution,
     format_pending_classes_for_dispatch,
     format_procedure_load,
+    format_send_command,
     format_tool_call,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
@@ -135,11 +136,10 @@ async def _dispatch_worker(
             f"drift_reviewed for each re-assessed artifact."
         )
         message = f"{additional_context} {base_message}" if additional_context else base_message
-        escaped = message.replace('"', '\\"')
         return False, (
             f"WORKER RE-DISPATCH (reuse): {slug}\n\n"
             f"Execute in order:\n\n"
-            f'telec sessions send {worker_id} "{escaped}"\n\n'
+            f"{format_send_command(worker_id, message)}\n\n"
             f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
             f"Start a new non-blocking backup heartbeat timer via "
             f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '

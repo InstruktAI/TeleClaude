@@ -5,6 +5,7 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
@@ -148,6 +149,16 @@ def _format_pre_dispatch_block(pre_dispatch: str) -> str:
 """
 
 
+def format_send_command(session_id: str, message: str) -> str:
+    """Render a shell-safe `telec sessions send` command for emitted scripts.
+
+    Emitted scripts are executed verbatim by orchestrators, so the message is
+    quoted as a single shell token; command substitution and quotes inside it
+    stay inert.
+    """
+    return f"telec sessions send {session_id} {shlex.quote(message)}"
+
+
 def _format_additional_context(request: ToolCallRequest) -> tuple[str, str]:
     """Return the additional-context CLI flag and rendered block."""
     additional_context = str(request.get("additional_context", ""))
@@ -155,7 +166,7 @@ def _format_additional_context(request: ToolCallRequest) -> tuple[str, str]:
         return "", ""
     escaped_context = additional_context.replace("\n", "\\n")
     return (
-        f' --additional-context "{escaped_context}"',
+        f" --additional-context {shlex.quote(escaped_context)}",
         f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n",
     )
 

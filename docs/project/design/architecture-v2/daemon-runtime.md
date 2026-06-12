@@ -104,7 +104,12 @@ program arguments point at the installed binary under `~/.local/bin/`.
 `make install` builds the workspace (`cargo build --release`), installs the
 binary into `~/.local/bin/` per the file-layout install-symlink pattern, and
 loads the supervised unit. The plist references a binary that install has
-already produced, so `KeepAlive` always supervises a real target.
+already produced, so `KeepAlive` always supervises a real target. Until the
+v2 cutover this leg is conditional: install builds and loads `telec-daemon`
+only when the Rust toolchain is present (skipping with a notice otherwise),
+and `make status` treats the unit as required-if-present — an installed unit
+must be healthy; an absent unit reports one informational line and does not
+degrade overall health. The cutover makes both unconditional.
 
 ### Unified operator control surface
 

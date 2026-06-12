@@ -42,6 +42,7 @@ from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_error,
     format_finalize_handoff_complete,
+    format_send_command,
     format_tool_call,
     format_uncommitted_changes,
 )
@@ -172,11 +173,10 @@ async def _handle_build_complete_claim(
             f"Build gates failed on your build_complete claim for {slug}. "
             f"Fix the failures and re-stamp build_complete.\n\n{gate_output}"
         )
-        escaped = message.replace('"', '\\"')
         return False, (
             f"BUILD GATE FAILED: {slug}\n\n"
             f"Execute in order:\n\n"
-            f'telec sessions send {builder_id} "{escaped}"\n\n'
+            f"{format_send_command(builder_id, message)}\n\n"
             f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
             f"Start a new non-blocking backup heartbeat timer via "
             f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
@@ -348,11 +348,10 @@ async def _work_step_build_complete(
             f"counts are zero. Stamp verdict with "
             f"`telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`."
         )
-        escaped = message.replace('"', '\\"')
         return False, (
             f"REVIEW RE-DISPATCH: {slug}\n\n"
             f"Execute in order:\n\n"
-            f'telec sessions send {reviewer_id} "{escaped}"\n\n'
+            f"{format_send_command(reviewer_id, message)}\n\n"
             f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
             f"Start a new non-blocking backup heartbeat timer via "
             f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
