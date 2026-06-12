@@ -19,7 +19,7 @@ For each Requirement-Violation, Critical, and Important issue:
 
 1. Understand the issue and referenced file/line.
 2. Apply the minimal fix.
-3. Verify via commit hooks (lint + scenario-bound functional tests).
+3. Verify: lint runs at the commit gate; run scenario-bound functional tests separately via `telec code test`.
 4. Commit one fix per issue, following the commits policy.
 
 Add a "Fixes Applied" section with issue, fix, and commit hash.
