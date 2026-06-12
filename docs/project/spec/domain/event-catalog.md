@@ -176,7 +176,30 @@ Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for th
 
 Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/integration boundary correction. Agent CLI hooks bypass integration entirely — they reach agent_runtime directly via the `telec-hook` subprocess (owned by agent_runtime). Integration's inbox is for true external webhooks only (Telegram, Discord, WhatsApp, GitHub).
 
+<!-- planned:webhook-ingress-service -->
+Note: `integration.inbox.received` has two producers. The durable messaging-inbox path uses the `inbox` posture above. The single-ingress webhook terminator is a second producer with a stateless `relay` posture — it verifies, normalizes, and emits in one pass without durable capture, carrying the provider delivery identifier as `entry_id`/`idempotency_key`; consumers absorb replays idempotently. See `project/spec/domain/integration` for both producers.
+<!-- /planned:webhook-ingress-service -->
+
+
 **Detailed entries:** see `project/spec/domain/integration`.
+
+#### reconciliation
+
+| Event                                     | Producer       | Visibility | Posture                                                        |
+| ----------------------------------------- | -------------- | ---------- | -------------------------------------------------------------- |
+| `reconciliation.capability.advertised`    | reconciliation | CLUSTER    | rides the cluster heartbeat (self-reported version + capability set) |
+
+<!-- planned:reconciliation-self-update -->
+| Event                                  | Producer       | Visibility | Posture                                                              |
+| -------------------------------------- | -------------- | ---------- | ------------------------------------------------------------------- |
+| `reconciliation.installation.drift_detected` | reconciliation | CLUSTER | commit-then-emit (a relayed release matches this node's channel policy) |
+| `reconciliation.installation.converged`      | reconciliation | CLUSTER | commit-then-emit (the node is running and healthy on the target version) |
+| `reconciliation.convergence.failed`          | reconciliation | CLUSTER | commit-then-emit (a convergence step halts; carries `failed_step` and `failure_context`) |
+
+The convergence loop consumes `integration.inbox.received` (release/version subset, relayed by the single ingress) and `config.effective.updated`, evaluates each release against the node's channel policy, and runs an exactly-once `ConvergenceRun` per target version. `reconciliation.capability.advertised` is already current — it rides the cluster heartbeat the fleet capability map consumes.
+<!-- /planned:reconciliation-self-update -->
+
+**Detailed entries:** see `project/spec/domain/reconciliation`.
 
 #### scheduler (infrastructure crate, not a service)
 

@@ -382,6 +382,58 @@ concerns via intelligence + shared utilities + CLI" for the pattern.
 
 ---
 
+<!-- planned:reconciliation-self-update -->
+
+### 9. `reconciliation`
+
+**Owns:**
+
+- desired-state convergence for the local installation (version per channel,
+  installation-level structural migration, process health)
+- the channel-gated self-update control loop, mounted as a `ServiceLoop` on
+  the `telec-daemon` seam and running on every node
+- exactly-once application of a target version, and `ConvergenceRun` history
+  retained for operator inspection
+- the fleet capability map view it materializes from the cluster heartbeat,
+  and the in-code feature-ID registry that gates cross-node behavior
+
+**Does not own:**
+
+- foreign-protocol ingress or transport (`integration` terminates and relays
+  external webhooks; reconciliation only subscribes to the relayed event)
+- per-aggregate data evolution (each domain owns its own upcasters)
+- agent-artifact distribution (`context`) or product lifecycle (`workflow`)
+
+**Postgres schema:** none yet. The loop runs on every node — including nodes
+that have not provisioned v2 Postgres — so for this slice the exactly-once
+applied-version record and `ConvergenceRun` history live in a lightweight
+local store, mirroring the v1 deployment status/migration-ledger pattern.
+The Postgres `reconciliation` schema is an intentional deferral to the v2
+cutover; standing it up now would couple self-update to a store that
+`make install` does not yet provision, violating the run-on-every-node
+invariant.
+
+**Emits events:** `reconciliation.installation.drift_detected`,
+`reconciliation.installation.converged`, `reconciliation.convergence.failed`,
+`reconciliation.capability.advertised` (the last rides the cluster heartbeat).
+
+**Subscribes to:** `integration.inbox.received` (release/version subset,
+relayed by the single ingress) and `config.effective.updated` (desired-state
+inputs). Each node decides independently; the ingress relays unconditionally.
+
+**Cross-runtime window note.** During v1→v2 the feature-ID capability map and
+the heartbeat that carries it are delivered in v1 Python. The v2 loop does not
+call into v1: it reads the same cluster heartbeat from Redis and materializes
+its own capability view, honoring the reconciliation invariant that the
+heartbeat is the single source of fleet identity/version/capabilities and no
+separate distribution path exists.
+
+**Why it exists:** ADR-0024 makes fleet convergence its own bounded context,
+separate from `integration`'s foreign-protocol boundary. The control loop is
+the actuator that v1's never-functional deployment plumbing lacked.
+
+<!-- /planned:reconciliation-self-update -->
+
 ### Cross-cutting infrastructure crates (not services)
 
 These live at `crates/` alongside the services but are **infrastructure**,
