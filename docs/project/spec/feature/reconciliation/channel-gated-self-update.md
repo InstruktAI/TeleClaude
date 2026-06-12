@@ -1,8 +1,6 @@
 ---
-visibility: public
-description: Each installation keeps itself on the newest release for its declared
-  channel (alpha / beta / stable), applying each target version at most once and returning
-  to a healthy running state — without manual operator action.
+visibility: 'public'
+description: 'Each installation keeps itself on the newest release for its declared channel (alpha / beta / stable), applying each target version at most once and returning to a healthy running state — without manual operator action.'
 ---
 
 # Channel-Gated Self-Update — Spec
