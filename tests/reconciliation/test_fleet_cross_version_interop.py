@@ -81,6 +81,7 @@ class _PeerHarness(_PeersMixin):
         self.reconnects.append(reason)
 
 
+# guard: loose-dict-func - synthesizes arbitrary cross-version heartbeat wire payloads; heterogeneous values and override bag by design
 def _heartbeat_payload(
     *,
     computer_name: str,

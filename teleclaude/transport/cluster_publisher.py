@@ -70,6 +70,7 @@ class ClusterPublisher:
         if not self._feature_publish_allowed(feature_id):
             return False
 
+        # guard: loose-dict - event envelope assembled for immediate JSON serialization; heterogeneous wire values
         envelope: dict[str, object] = {
             "schema_version": CLUSTER_ENVELOPE_SCHEMA_VERSION,
             "channel": channel,

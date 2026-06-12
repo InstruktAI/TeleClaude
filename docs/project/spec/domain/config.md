@@ -104,6 +104,22 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the machine itself (one runtime config per machine, no further sub-identity).
 - **Lifecycle:** authored and mutated through the TUI setup wizard (`telec config wizard`), which is the canonical single human-facing surface for every persisted TeleClaude setup value — initial install and idempotent re-runs alike. A non-interactive `telec config patch` surface also exists for scripted mutation; its current v1 implementation raw-merges YAML and is not part of the wizard delivery contract. Behavioural contract for the wizard surface (single setup surface, idempotent re-runs, secret hygiene, partial-resume, at-a-glance status, permissions/preflight) lives in `project/spec/feature/config/setup-wizard`.
 
+#### Ingress Configuration (value object)
+
+- **Root:** `IngressConfig`
+- **Contains:** `enabled` (bool, default false), `bind` (socket address), `allowed_source` (set of real peer addresses), and `providers` (map keyed by provider name; each `providers.<name>.secret` is that provider's verification secret).
+- **Invariants:**
+  - Ingress configuration is per-machine configuration read by the daemon at startup.
+  - `enabled=false` means the daemon registers no ingress service loop and ignores absent `bind`, `allowed_source`, and provider entries.
+  - `enabled=true` requires `bind` and at least one `allowed_source`; absence is a hard validation error.
+  - `bind` names a concrete LAN or boundary-facing address. Loopback addresses and the promiscuous `0.0.0.0` bind fail validation.
+  - `allowed_source` contains the real TCP peer addresses accepted by the ingress; forwarded headers are not accepted as source identity.
+  - Every configured provider requires a non-empty `providers.<name>.secret`. An enabled provider with no secret fails validation.
+  - Provider names resolve against integration's provider registry. Unknown provider names fail closed at request handling.
+  - Secrets are validation and verification inputs only; config events, logs, and relay payloads never include the secret value.
+- **Identifier:** the machine's runtime configuration.
+- **Lifecycle:** authored with the machine configuration consumed by the daemon. The daemon reads it before service-loop registration; changes take effect on the next daemon configuration reload or restart.
+
 ### Domain events emitted
 
 #### `config.effective.updated`
