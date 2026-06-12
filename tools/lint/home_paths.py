@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Reject bare hardcoded HOME paths under .teleclaude in markdown files.
 
-Scans selected working-tree files, a repo-wide working-tree list, or the
-staged set (relative to the calling project's cwd) for
+Modes:
+- explicit working-tree files from ``--working-tree-files``;
+- tracked repo-wide markdown files from ``--repo-wide``;
+- staged markdown blobs when neither mode is requested.
+
+Scans the selected mode (relative to the calling project's cwd) for
 ``/Users/<user>/.teleclaude/...`` or ``/home/<user>/.teleclaude/...`` patterns
 that should be ``~/.teleclaude/...`` instead. ``@``-prefixed resource refs are
-managed by the ``teleclaude-docs`` git filter and are allowed. Used by `telec code lint
+managed by the ``teleclaude-docs`` git filter and are allowed. Used by `telec code lint`
 and as a raw pre-commit backstop.
 
 Project root is derived from cwd, never from this script's filesystem
@@ -37,6 +41,26 @@ def _staged_markdown_files(project_root: Path) -> list[Path]:
     )
     if result.returncode != 0:
         return []
+    return [project_root / name for name in result.stdout.split("\0") if name]
+
+
+def _tracked_markdown_files(project_root: Path) -> list[Path]:
+    """Return tracked markdown files, relative to project root."""
+    # Git tracked-file enumeration has no native Python binding and must match git's index.
+    result = subprocess.run(
+        [GIT_EXECUTABLE, "ls-files", "-z", "--", "*.md"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = f"git ls-files failed with exit code {result.returncode}."
+        if result.stdout:
+            message = f"{message}\nstdout:\n{result.stdout.rstrip()}"
+        if result.stderr:
+            message = f"{message}\nstderr:\n{result.stderr.rstrip()}"
+        raise RuntimeError(message)
     return [project_root / name for name in result.stdout.split("\0") if name]
 
 
@@ -85,18 +109,25 @@ def main(argv: list[str] | None = None) -> int:
         nargs="*",
         help="Filesystem paths to scan from the working tree. Omit for staged-blob mode.",
     )
+    parser.add_argument(
+        "--repo-wide",
+        action="store_true",
+        help="Scan tracked repo-wide markdown files from the working tree.",
+    )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     project_root = Path(args.project_root).resolve()
 
-    if args.working_tree_files is None:
-        offenders = [
-            path for path in _staged_markdown_files(project_root) if _staged_file_has_home_path(path, project_root)
-        ]
-    else:
+    if args.working_tree_files is not None:
         offenders = [
             path
             for path in _resolve_working_tree_files(project_root, args.working_tree_files)
             if _working_tree_file_has_home_path(path)
+        ]
+    elif args.repo_wide:
+        offenders = [path for path in _tracked_markdown_files(project_root) if _working_tree_file_has_home_path(path)]
+    else:
+        offenders = [
+            path for path in _staged_markdown_files(project_root) if _staged_file_has_home_path(path, project_root)
         ]
     if not offenders:
         return 0

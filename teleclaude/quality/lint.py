@@ -125,10 +125,7 @@ class _HomePathsStep:
         script = str(REPO_ROOT / "tools" / "lint" / "home_paths.py")
         cmd = [sys.executable, script, "--project-root", str(self._project_root)]
         if self._run_all:
-            md = sorted(path.relative_to(self._project_root).as_posix() for path in self._project_root.rglob("*.md"))
-            if not md:
-                return
-            cmd.extend(["--working-tree-files", *md])
+            cmd.append("--repo-wide")
         else:
             md = markdown_files(targets)
             if not md:

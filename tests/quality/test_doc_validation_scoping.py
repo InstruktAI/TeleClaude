@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import teleclaude.quality.lint as lint_module
+from teleclaude.git import GIT_EXECUTABLE
 from teleclaude.resource_validation import (
     clear_errors,
     get_errors,
@@ -23,6 +24,11 @@ from teleclaude.resource_validation import (
 pytestmark = pytest.mark.functional
 
 _RESOURCE_VALIDATION_ARG = "--skip-deploy"
+_HOME_PATHS_STEP = "home_paths"
+_REPO_WIDE_ARG = "--repo-wide"
+_WORKING_TREE_FILES_ARG = "--working-tree-files"
+_TRACKED_OFFENDER = Path("docs/offender.md")
+_UNTRACKED_OFFENDER = Path(".temp/offender.md")
 
 _GOOD_SNIPPET = """\
 ---
@@ -175,6 +181,16 @@ def _normalized_findings(base: Path) -> list[dict[str, str]]:
             item["path"] = str(Path(raw_path).relative_to(base))
         normalized.append(item)
     return normalized
+
+
+def _run_git(project_root: Path, *args: str) -> None:
+    subprocess.run(
+        [GIT_EXECUTABLE, *args],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
 
 
 class TestValidateAllSnippetsScoping:
@@ -419,3 +435,62 @@ class TestLintPipelineDocValidationScoping:
 
         sync_calls = [cmd for cmd in invocations if _RESOURCE_VALIDATION_ARG in cmd]
         assert sync_calls, f"telec sync must run on full run, got invocations: {invocations}"
+
+    def test_full_run_invokes_home_paths_repo_wide_without_file_operands(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        invocations: list[tuple[str, list[str]]] = []
+
+        def fake_run_tool(cmd: list[str], _project_root: Path, step_name: str) -> None:
+            invocations.append((step_name, list(cmd)))
+
+        monkeypatch.setattr(lint_module, "_run_tool", fake_run_tool)
+        monkeypatch.setattr(lint_module, "_pipeline_ctx", [tmp_path])
+
+        lint_module.run_pipeline([], run_all=True)
+
+        home_paths_commands = [cmd for step_name, cmd in invocations if step_name == _HOME_PATHS_STEP]
+        assert len(home_paths_commands) == 1
+        home_paths_command = home_paths_commands[0]
+        assert _REPO_WIDE_ARG in home_paths_command
+        assert _WORKING_TREE_FILES_ARG not in home_paths_command
+        assert home_paths_command[-1] == _REPO_WIDE_ARG
+
+    def test_full_run_home_paths_scans_tracked_markdown_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tracked = tmp_path / _TRACKED_OFFENDER
+        tracked.parent.mkdir(parents=True)
+        tracked.write_text("/Users/Morriz/.teleclaude/docs/general/spec/tools/telec-cli.md\n", encoding="utf-8")
+        untracked = tmp_path / _UNTRACKED_OFFENDER
+        untracked.parent.mkdir(parents=True)
+        untracked.write_text("/Users/Morriz/.teleclaude/docs/general/spec/tools/telec-cli.md\n", encoding="utf-8")
+        _run_git(tmp_path, "init")
+        _run_git(tmp_path, "add", _TRACKED_OFFENDER.as_posix())
+        home_paths_results: list[subprocess.CompletedProcess[str]] = []
+
+        def fake_run_tool(cmd: list[str], project_root: Path, step_name: str) -> None:
+            if step_name != _HOME_PATHS_STEP:
+                return
+            result = subprocess.run(
+                cmd,
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            home_paths_results.append(result)
+            if result.returncode != 0:
+                raise SystemExit(result.returncode)
+
+        monkeypatch.setattr(lint_module, "_run_tool", fake_run_tool)
+        monkeypatch.setattr(lint_module, "_pipeline_ctx", [tmp_path])
+
+        with pytest.raises(SystemExit) as exc_info:
+            lint_module.run_pipeline([], run_all=True)
+
+        assert exc_info.value.code == 1
+        assert len(home_paths_results) == 1
+        result = home_paths_results[0]
+        assert result.returncode == 1
+        assert [Path(line) for line in result.stdout.splitlines()] == [_TRACKED_OFFENDER]
