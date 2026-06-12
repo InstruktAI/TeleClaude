@@ -11,6 +11,7 @@
         'files': list([
           b'a b.py',
           b'c;d.py',
+          b'',
         ]),
       }),
     ]),
@@ -28,6 +29,7 @@
         '<project-root>',
         list([
           b'teleclaude/core.py',
+          b'',
         ]),
       ),
     ]),

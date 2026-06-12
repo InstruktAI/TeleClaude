@@ -162,7 +162,11 @@ def _nul_file(files: list[str]) -> Iterator[str]:
     handle = tempfile.NamedTemporaryFile(delete=False)
     try:
         with handle:
-            handle.write(b"\0".join(path.encode("utf-8") for path in files))
+            # NUL-terminate every path (not NUL-separate). The Makefile reads this
+            # via `while read -r -d "" path`, which returns non-zero on a final
+            # record with no trailing NUL — silently dropping the last file from
+            # the scoped format/lint set. The trailing terminator keeps it in.
+            handle.write(b"".join(path.encode("utf-8") + b"\0" for path in files))
         yield handle.name
     finally:
         Path(handle.name).unlink(missing_ok=True)

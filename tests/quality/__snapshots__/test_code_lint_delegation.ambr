@@ -11,6 +11,7 @@
         'files': list([
           b'a b.py',
           b'c;d.py',
+          b'',
         ]),
       }),
       dict({
@@ -37,6 +38,7 @@
         '<project-root>',
         list([
           b'teleclaude/core.py',
+          b'',
         ]),
       ),
       tuple(
