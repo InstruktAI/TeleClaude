@@ -1,5 +1,5 @@
 ---
-description: "Relationships between the eight bounded contexts — partnership, customer-supplier, ACL, conformist. The system's social graph at the domain level."
+description: 'Relationships between the eight bounded contexts — partnership, customer-supplier, ACL, conformist. The system''s social graph at the domain level.'
 visibility: 'public'
 ---
 
@@ -144,6 +144,26 @@ The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which ent
 | Upstream | Downstream    | Relationship      | Purpose                                                                                                                                                                                             |
 | -------- | ------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `memory` | (all callers) | Open Host Service | Memory is queried/written by agents and humans throughout the system. No strong upstream relationship beyond the spine; no strong downstream relationship beyond callers consuming what they query. |
+
+<!-- planned:reconciliation-self-update -->
+
+#### Reconciliation (fleet convergence)
+
+On delivery `reconciliation` joins as a bounded context (the 9th), per ADR-0024.
+It is a control loop mounted on the daemon seam, running on every node.
+
+| Upstream         | Downstream          | Relationship       | Purpose                                                                                                                                                                          |
+| ---------------- | ------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `integration`    | `reconciliation`    | Customer-Supplier  | Integration relays `integration.inbox.received`; reconciliation consumes the release/version subset and evaluates it against this node's channel policy. Never touches transport. |
+| `config`         | `reconciliation`    | Open Host Service  | Reconciliation reads desired-state inputs (`channel`, `pinned_minor`) at startup and on its periodic self-check; health is observed from the running daemon, not config-supplied. |
+| `reconciliation` | (fleet / operators) | Published Language | Emits cluster-scope `reconciliation.installation.{drift_detected,converged}` and `reconciliation.convergence.failed`; `reconciliation.capability.advertised` rides the heartbeat. |
+| `workflow`       | `reconciliation`    | Customer-Supplier  | The `next-maintain` lifecycle phase is the orchestration entry point that hands off to reconciliation's upkeep convergence; the phase triggers, reconciliation executes.         |
+
+Reconciliation owns no transport and reads no peer's config: fleet identity,
+version, and capabilities reach it only through the cluster heartbeat
+(single-source invariant).
+
+<!-- /planned:reconciliation-self-update -->
 
 ### Anti-corruption layers (v1 → v2 migration)
 
