@@ -1,5 +1,5 @@
 ---
-description: 'The eight services that compose v2 TeleClaude. Each is a Rust crate with a Postgres schema; binaries embed the crates they need.'
+description: 'The services that compose v2 TeleClaude. Each is a Rust crate with a clear storage posture; binaries embed the crates they need.'
 visibility: 'public'
 ---
 
@@ -13,7 +13,7 @@ visibility: 'public'
 
 ## Purpose
 
-Define the eight services that compose v2 TeleClaude — what each owns, what
+Define the nine services that compose v2 TeleClaude — what each owns, what
 each explicitly does not own, and how they relate to one another. This is the
 service-oriented decomposition that the file layout and transport rules
 implement.
@@ -53,7 +53,7 @@ implement.
 
 ## Primary flows
 
-### The eight services
+### The services
 
 ### 1. `identity`
 
@@ -382,7 +382,37 @@ concerns via intelligence + shared utilities + CLI" for the pattern.
 
 ---
 
-<!-- planned:reconciliation-self-update -->
+### 9. `reconciliation`
+
+**Owns:**
+
+- installation desired-state convergence
+- channel-gated self-update policy
+- exactly-once applied-version state
+- ordered convergence runs
+- fleet capability-map materialization from heartbeat advertisements
+
+**Does not own:**
+
+- external webhook ingress or provider protocols (`integration`)
+- peer identity/version/capability truth beyond consuming heartbeat advertisements
+- per-aggregate data upcasting owned by each domain
+- v1 deployment paths during the migration window
+
+**Postgres schema:** NONE in this slice. The applied-version ledger and run history use a local store under `TELECLAUDE_HOME`; the Postgres schema is deferred to the v2 cutover while every node still needs the loop.
+
+**Emits events:** `reconciliation.installation.drift_detected`,
+`reconciliation.installation.converged`, `reconciliation.convergence.failed`.
+
+**Subscribes to:** `integration.inbox.received` for the release/version subset.
+Config drift is re-evaluated by the loop's own self-check interval because
+`config.effective.updated` is reserved and not emitted.
+
+**Why it exists:** every installation evaluates release visibility against its
+own channel policy and converges itself exactly once per target version while
+remaining safe in a deliberately mixed-version fleet.
+
+---
 
 ### 9. `reconciliation`
 
@@ -435,8 +465,6 @@ separate distribution path exists.
 separate from `integration`'s foreign-protocol boundary. The control loop is
 the actuator that v1's never-functional deployment plumbing lacked.
 
-<!-- /planned:reconciliation-self-update -->
-
 ### Cross-cutting infrastructure crates (not services)
 
 These live at `crates/` alongside the services but are **infrastructure**,
@@ -455,12 +483,14 @@ not bounded domains. Services and binaries depend on them.
 
 The fixed set of v2 binaries:
 
-| Binary          | Embeds (typical)                                                         | Purpose                                |
-| --------------- | ------------------------------------------------------------------------ | -------------------------------------- |
-| `telec`         | workflow, identity, config, knowledge, observability                     | CLI                                    |
-| `telec-tui`     | workflow, agent_runtime, identity, observability, event_bus (subscriber) | TUI                                    |
-| `telec-daemon`  | agent_runtime, identity, integration, event_bus, observability           | Long-running supervisor                |
-| `telec-api`     | all services (read-mostly), identity, observability                      | HTTP API for browser                   |
+| Binary      | Embeds (typical)                                                         | Purpose |
+| ----------- | ------------------------------------------------------------------------ | ------- |
+| `telec`     | workflow, identity, config, knowledge, observability                     | CLI     |
+| `telec-tui` | workflow, agent_runtime, identity, observability, event_bus (subscriber) | TUI     |
+
+| `telec-daemon` | agent_runtime, identity, integration, reconciliation, event_bus, observability | Long-running supervisor |
+
+| `telec-api` | all services (read-mostly), identity, observability | HTTP API for browser |
 | `worker-<name>` | the service crate it serves (e.g. integration), event_bus, observability | Per integration's outbox/inbox workers |
 
 Each binary embeds exactly what it needs. No more, no less. Multiple
@@ -481,6 +511,8 @@ One local Postgres instance. Schema per service:
 | `integration`     | `integration`                         | Outbox/inbox/dlq — for true external webhooks only                                                              |
 | `config`          | `config` (optional, for history only) | Otherwise stateless                                                                                             |
 | `memory`          | `memory`                              | Observations with full-text index on title                                                                      |     | body |
+
+| `reconciliation` | **none** | Local applied-version ledger under `TELECLAUDE_HOME`; Postgres deferred until v2 cutover |
 
 Single Postgres, clean ownership, no fragmentation.
 

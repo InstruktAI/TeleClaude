@@ -7,13 +7,22 @@ use anyhow::{anyhow, Context, Result};
 use config::{ConfigOverlayPaths, ConfigService};
 use event_bus::{EventBus, EventBusConfig};
 use integration::IngressServer;
-use telec_daemon::{DaemonRuntime, IngressServiceLoop, OsShutdownSource};
+use reconciliation::{
+    AppliedVersionLedger, CommandStepExecutor, ConfigServiceDesiredStateProvider,
+    ConvergenceExecutor, ReconciliationRunner, RedisHeartbeatCapabilityMapProvider,
+};
+use telec_daemon::{
+    DaemonRuntime, IngressServiceLoop, OsShutdownSource, ReconciliationServiceLoop,
+};
 use tracing::{error, info, warn};
 
 const LOG_SOURCE: &str = "telec-daemon";
 const CLUSTER_REDIS_URL_ENV: &str = "CLUSTER_REDIS_URL";
 const REDIS_URL_ENV: &str = "REDIS_URL";
 const PUBLIC_REDIS_URL_ENV: &str = "PUBLIC_REDIS_URL";
+const TELECLAUDE_COMPUTER_NAME_ENV: &str = "TELECLAUDE_COMPUTER_NAME";
+const HOSTNAME_ENV: &str = "HOSTNAME";
+const HEARTBEAT_TTL_SECONDS: u64 = 60;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -38,24 +47,36 @@ async fn run() -> Result<()> {
     info!(source = LOG_SOURCE, "telec-daemon starting");
 
     let config_paths = config_overlay_paths().context("resolve config overlay paths")?;
-    let config = ConfigService::new(config_paths)
+    let config = ConfigService::new(config_paths.clone())
         .load()
         .context("load effective config")?;
 
+    let event_bus_config = EventBusConfig {
+        cluster_bus: cluster_bus_url()?,
+        public: optional_env(PUBLIC_REDIS_URL_ENV),
+    };
+    let cluster_bus = event_bus_config.cluster_bus.clone();
+    let event_bus = Arc::new(
+        EventBus::connect(event_bus_config)
+            .await
+            .context("connect cluster event bus for daemon loops")?,
+    );
+
     let mut runtime = DaemonRuntime::empty();
     if config.global.ingress.enabled {
-        let event_bus = Arc::new(
-            EventBus::connect(EventBusConfig {
-                cluster_bus: cluster_bus_url()?,
-                public: optional_env(PUBLIC_REDIS_URL_ENV),
-            })
-            .await
-            .context("connect cluster event bus for ingress")?,
-        );
-        let server = IngressServer::from_config(&config.global.ingress, event_bus)
+        let server = IngressServer::from_config(&config.global.ingress, Arc::clone(&event_bus))
             .context("build ingress server")?;
         runtime.register_loop(Arc::new(IngressServiceLoop::new(server)));
     }
+    runtime.register_loop(Arc::new(ReconciliationServiceLoop::new(Arc::new(
+        reconciliation_runner(
+            Arc::clone(&event_bus),
+            config_paths.clone(),
+            cluster_bus,
+            env::current_dir().context("resolve repository root")?,
+        )
+        .await?,
+    ))));
 
     runtime
         .run(&OsShutdownSource)
@@ -67,10 +88,7 @@ async fn run() -> Result<()> {
 }
 
 fn config_overlay_paths() -> Result<ConfigOverlayPaths> {
-    let teleclaude_home = match env::var("TELECLAUDE_HOME") {
-        Ok(value) if !value.is_empty() => PathBuf::from(value),
-        _ => PathBuf::from(required_env("HOME")?).join(".teleclaude"),
-    };
+    let teleclaude_home = teleclaude_home()?;
 
     let project = match env::var("TELECLAUDE_PROJECT_CONFIG_PATH") {
         Ok(value) if !value.is_empty() => Some(PathBuf::from(value)),
@@ -88,6 +106,47 @@ fn config_overlay_paths() -> Result<ConfigOverlayPaths> {
     })
 }
 
+async fn reconciliation_runner(
+    event_bus: Arc<EventBus>,
+    config_paths: ConfigOverlayPaths,
+    cluster_bus: String,
+    repo_root: PathBuf,
+) -> Result<ReconciliationRunner> {
+    let home = teleclaude_home()?;
+    let ledger = Arc::new(AppliedVersionLedger::under_home(&home));
+    let capability_map = Arc::new(
+        RedisHeartbeatCapabilityMapProvider::connect(
+            &cluster_bus,
+            std::time::Duration::from_secs(HEARTBEAT_TTL_SECONDS),
+        )
+        .await
+        .context("connect heartbeat capability map")?,
+    );
+    let convergence = Arc::new(ConvergenceExecutor::new(
+        Arc::new(CommandStepExecutor::new(repo_root)),
+        Arc::clone(&ledger),
+        capability_map,
+    ));
+    let desired_state = Arc::new(ConfigServiceDesiredStateProvider::new(
+        config_paths,
+        computer_name(),
+        env!("CARGO_PKG_VERSION").to_string(),
+    ));
+    Ok(ReconciliationRunner::with_event_bus_publisher(
+        event_bus,
+        desired_state,
+        ledger,
+        convergence,
+    ))
+}
+
+fn teleclaude_home() -> Result<PathBuf> {
+    match env::var("TELECLAUDE_HOME") {
+        Ok(value) if !value.is_empty() => Ok(PathBuf::from(value)),
+        _ => Ok(PathBuf::from(required_env("HOME")?).join(".teleclaude")),
+    }
+}
+
 fn required_env(key: &str) -> Result<String> {
     match env::var(key) {
         Ok(value) if !value.is_empty() => Ok(value),
@@ -100,6 +159,12 @@ fn optional_env(key: &str) -> Option<String> {
         Ok(value) if !value.is_empty() => Some(value),
         _ => None,
     }
+}
+
+fn computer_name() -> String {
+    optional_env(TELECLAUDE_COMPUTER_NAME_ENV)
+        .or_else(|| optional_env(HOSTNAME_ENV))
+        .unwrap_or_else(|| "local".to_string())
 }
 
 fn cluster_bus_url() -> Result<String> {

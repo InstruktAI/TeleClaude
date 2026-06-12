@@ -27,7 +27,9 @@ on older Todos auto-upcycle on read; the canonical pointer is the single source 
 truth for "where is this Todo, right now."
 
 <!-- planned:task-lane -->
+
 The canonical enum includes `task_plan_drafting` and `task_running` — task-lane phases owned by the task lane, not by the SDLC prepare or work state machines. `task_plan_drafting` holds a kind=`task` Todo from kind assignment or task creation until `/next-prepare-task` writes a `task-plan`; the phase then advances to `prepared` (awaiting human authorization). `task_running` is the non-SDLC live execution marker while `/next-run-task` is dispatched by the lifecycle runner; it is not a build/review/finalize phase and does not satisfy SDLC work gates.
+
 <!-- /planned:task-lane -->
 
 Drift between an upstream artifact and the downstream artifacts grounded against
