@@ -45,7 +45,7 @@ single owner of the slug cascade.
 
 <!-- planned:task-lane -->
 
-Pending `task-lane`, `task` no longer enters `prepared` at creation or kind assignment. It enters `task_plan_drafting`; `/next-prepare-task` converts the raw `input` into a `task-plan` artifact and requests human authorization, dispatched by the lifecycle runner rather than the SDLC prepare state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence, and an authorized, scheduled, unheld task is dispatched to `/next-run-task`. Execution is non-SDLC: no PRD, architecture, implementation-plan, build review, finalize, or commit is required.
+`task` does not enter `prepared` at creation or kind assignment. It enters `task_plan_drafting`; `/next-prepare-task` converts the raw `input` into a `task-plan` artifact and requests human authorization, dispatched by the lifecycle runner rather than the SDLC prepare state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence, and an authorized, scheduled, unheld task is dispatched to `/next-run-task`. Execution is non-SDLC: no PRD, architecture, implementation-plan, build review, finalize, or commit is required.
 
 <!-- /planned:task-lane -->
 

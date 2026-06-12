@@ -40,7 +40,7 @@ The workflow service emits the event with this payload:
 - `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
   <!-- planned:task-lane -->
-  Pending `task-lane`, task creation emits `"task_plan_drafting"` instead of `"prepared"`.
+  Task creation emits `"task_plan_drafting"`.
   <!-- /planned:task-lane -->
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.

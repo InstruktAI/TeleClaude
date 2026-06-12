@@ -11,7 +11,7 @@ number: '40'
 
 `project/adr/0015-kind-as-lifecycle-entry-point` introduced `task` as the
 non-SDLC kind: an actionable unit an agent performs directly, created silent,
-grooming a `task-plan`. The follow-on task-lane design then modeled task
+grooming a `task-plan`. A follow-on design for this lane then modeled task
 preparation as a degenerate path **through the SDLC prepare state machine**
 (`task_plan_drafting → prepared`, derived by the same machine that owns
 PRD/architecture/plan/review), entered through `telec todo prepare`, and modeled
@@ -87,25 +87,24 @@ its own tasks, logs, and outputs independently of any code project.
 
 ## Consequences
 
-- The task-lane pending design across the workflow specs is revised to this
-  model; the prepare-state-machine task branch (task entering prepare, deriving
-  `prepared`) is removed. `task_plan_drafting` and `task_running` are task-lane
-  phases, not prepare-machine phases.
-- New deliverables under the `task-lane` slug: the `/next-prepare-task` and
-  `/next-run-task` procedures, the `log` artifact, and recurrence (the
-  `schedule` generalizing the one-shot `datetime`).
+- Tasks no longer route through the SDLC prepare state machine; the prepare
+  machine carries no task branch, and `task_plan_drafting` and `task_running`
+  are task-lane phases rather than prepare-machine phases.
+- The model introduces the `/next-prepare-task` and `/next-run-task` procedures,
+  a `log` artifact, and recurrence — the `schedule` generalizing the one-shot
+  `datetime`.
 - The result handoff (send a message / email) is invoked by the `task-plan`
   through the existing `telec` CLI surface; `/next-run-task` does not own a
-  handoff primitive. Extending outbound messaging to external recipients is a
-  separate capability.
-- Holder-as-task-decomposition is not part of this model; a holder remains the
-  generic split primitive for SDLC todos.
+  handoff primitive. Outbound messaging to external recipients is out of scope
+  for this decision.
+- A holder remains the generic split primitive for SDLC todos; it is not a
+  task-decomposition mechanism.
 - The output convention is enforced by prominent instruction in
-  `/next-run-task`; a hard filesystem sandbox is deferred (`worker-sandbox-profiles`).
+  `/next-run-task`; a hard filesystem sandbox is out of scope for this decision.
 
 ## Alternatives Considered
 
-- **Route tasks through the prepare state machine** (the prior pending design) —
+- **Route tasks through the prepare state machine** (the prepare-machine-coupled design) —
   rejected: it entangles a non-SDLC flow with SDLC machinery and vocabulary for
   marginal reuse of phase derivation, when the lifecycle runner already owns the
   task gates and the routing is a small guard table.
