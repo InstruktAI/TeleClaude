@@ -264,6 +264,8 @@ self-attributable, so only the lease-guarded integrator singleton — the record
 marker's owner — receives post-merge maintenance.)
 ```
 
+<!-- planned-change:checkpoint-sync-observation-stale -->
+
 #### UC-CP12: Committed code surfaces maintenance actions
 
 ```gherkin
@@ -288,6 +290,45 @@ Then that committed file is still categorized from the committed-turn-files mark
 And its implied maintenance action is surfaced
 (The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
 ```
+
+<!-- change:checkpoint-sync-observation-stale -->
+
+#### UC-CP12: Committed code surfaces discharging maintenance obligations
+
+```gherkin
+Given a session commits daemon code through the sealed `telec code commit` path this turn
+And the commit handler categorizes the committed pathspec and records the owed main_only maintenance obligations (make install / uv sync / make restart / telec sync) into the commit-obligation ledger
+And `git diff HEAD` is now empty because the commit moved HEAD
+When the heuristic engine evaluates the turn window
+Then the outstanding obligations are unioned into the turn's effective actions before the no-change early-exit
+And the engine surfaces the maintenance actions those obligations imply (Run `make restart`)
+And, on main with code committed, the post-commit review-gate action is surfaced in addition (per UC-CP5A)
+And the test and log-check actions are NOT recorded as commit obligations — they remain cycle-local advisories on the dirty tree only
+And the unsatisfied obligation persists into later checkpoint cycles until its evidence is observed or user-prompt-submit clears the ledger
+
+Given a turn recorded a make-restart obligation and surfaced it
+And the agent then runs `make restart` in the same turn
+When the next agent-stop evaluates the turn window
+Then the make-restart evidence in the timeline discharges the obligation, removing it from the ledger
+And no make-restart action is surfaced
+And the obligation does not reappear in any subsequent cycle of this turn
+
+Given a turn recorded a telec-sync obligation and surfaced it in an earlier checkpoint cycle with no evidence
+And the agent runs a full `telec sync` in a later cycle in response to that surfaced action
+When the agent-stop for that later cycle evaluates the turn window
+Then the telec-sync evidence discharges the obligation, removing it from the ledger
+And a following zero-change cycle surfaces no telec-sync action
+And fires no checkpoint on account of the committed file
+(This is the cross-cycle discharge contract: an obligation satisfied in any cycle is durably ticked off and cannot re-hammer the agent in a later cycle. Its absence is the checkpoint-sync-observation-stale defect.)
+
+Given a session commits a file the agent did not itself Edit or Write this turn (a human-staged change the agent committed on request)
+When the heuristic engine evaluates the turn window
+Then that committed file's maintenance obligations are still recorded from the commit
+And its implied maintenance action is surfaced
+(The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
+```
+
+<!-- /planned-change:checkpoint-sync-observation-stale -->
 
 #### UC-CP13: Parent snippet edited without its pending companion
 
