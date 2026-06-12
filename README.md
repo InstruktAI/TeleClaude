@@ -118,7 +118,7 @@ make start
 instrukt-ai-logs teleclaude  # Monitor the newly installed daemon
 ```
 
-`make install`, `telec config wizard`, and `make start` are for this TeleClaude repo itself. They install machine-global tooling, collect interactive configuration, and bring the daemon up. The CLIs (`telec`, `graphify`) install to `~/.local/bin`; if that directory isn't on your `PATH` yet, the installer detects your shell and offers to add it — no manual PATH editing.
+`make install`, `telec config wizard`, and `make start` are for this TeleClaude repo itself. They install machine-global tooling, collect interactive configuration, and bring the daemon up. The installer publishes the CLIs (`telec`, `graphify`) to `~/.local/bin` and, if that directory isn't on your `PATH`, detects your shell and offers to add it — no manual PATH editing.
 
 `telec projects init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up docs sync, hooks, registry state, and project-local config. It is project setup, not repo installation.
 

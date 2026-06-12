@@ -781,7 +781,9 @@ _TELEC_PATH_PROMPTED=0
 # publish_binary <name> <source>: idempotently link <source> to
 # $TELEC_BIN_DIR/<name>, and transparently migrate our own stale copies out of
 # other PATH dirs. Only removes a symlink that resolves to <source> — a foreign
-# binary of the same name is never touched. No prompts; safe to re-run.
+# binary of the same name is never touched. Pure filesystem work, no prompts,
+# safe to re-run. The PATH offer is a separate one-shot (_ensure_local_bin_on_path)
+# called once from main().
 publish_binary() {
     local name="$1" source="$2"
     local canonical="$TELEC_BIN_DIR/$name"
@@ -799,13 +801,13 @@ publish_binary() {
     if [ "$(readlink "$canonical" 2>/dev/null)" != "$source" ]; then
         ln -sfn "$source" "$canonical"
     fi
-    _ensure_local_bin_on_path
 }
 
 # _ensure_local_bin_on_path: one-shot. If $TELEC_BIN_DIR is not on the user's
-# PATH, present a guarded snippet and (interactively) offer to inject it into the
-# detected shell rc. This is the only approval gate in the install — everything
-# else is transparent.
+# PATH, present a guarded snippet and — only when running interactively — offer
+# to inject it into the detected shell rc. Under --yes/--ci (NON_INTERACTIVE) it
+# prints the snippet and continues without blocking. The only approval gate in
+# the install; everything else is transparent.
 _ensure_local_bin_on_path() {
     [ "$_TELEC_PATH_PROMPTED" = 1 ] && return 0
     _TELEC_PATH_PROMPTED=1
@@ -826,7 +828,7 @@ _ensure_local_bin_on_path() {
     printf '  Suggested addition to %s:\n' "$rc"
     printf '    # TeleClaude: resolve user-published CLIs (telec, graphify)\n'
     printf '    %s\n' "$line"
-    if [ -t 0 ]; then
+    if [ "$NON_INTERACTIVE" = false ] && [ -t 0 ]; then
         printf '  Append it to %s now? [Y/n] ' "$rc"
         local ans
         read -r ans
@@ -1056,6 +1058,7 @@ main() {
     validate_config
     provision_logs
     install_global_cli
+    _ensure_local_bin_on_path
     install_rust_runtime
     ensure_teleclaude_yaml
 
