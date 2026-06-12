@@ -20,9 +20,9 @@ from teleclaude.hooks.checkpoint_flags import (
     has_authored_main_commit_flag,
     has_checkpoint_flag,
     read_committed_turn_files,
+    record_committed_turn_files,
     record_integrator_maintenance_marker,
     set_checkpoint_flag,
-    record_committed_turn_files,
 )
 from teleclaude.hooks.receiver import _reset_checkpoint_flags
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
