@@ -1,0 +1,27 @@
+[package]
+name = "integration"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+config.workspace = true
+event-bus.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+axum = "0.7"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+futures = "0.3"
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

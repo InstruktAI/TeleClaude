@@ -11,6 +11,7 @@
 //! issue) or [`ConfigError::MergeConflict`] (duplicate roster email).
 
 use std::collections::HashSet;
+use std::net::SocketAddr;
 
 use serde_yaml::{Mapping, Value};
 
@@ -464,6 +465,64 @@ fn validate_project_channel_subscriptions(
     Ok(())
 }
 
+fn validate_ingress_bind(path: &str, bind: &str) -> Result<(), ConfigError> {
+    let address: SocketAddr = bind
+        .parse()
+        .map_err(|_| validation_failed(path, "must be a socket address"))?;
+    if address.ip().is_loopback() {
+        return Err(validation_failed(path, "must not be loopback"));
+    }
+    if address.ip().is_unspecified() {
+        return Err(validation_failed(
+            path,
+            "must not be an unspecified address",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_ingress(path: &str, global: &GlobalConfig) -> Result<(), ConfigError> {
+    let ingress = &global.ingress;
+    if !ingress.enabled {
+        return Ok(());
+    }
+
+    let bind_path = format!("{path}.bind");
+    let Some(bind) = ingress
+        .bind
+        .as_deref()
+        .filter(|bind| !bind.trim().is_empty())
+    else {
+        return Err(validation_failed(
+            &bind_path,
+            "is required when ingress.enabled=true",
+        ));
+    };
+    validate_ingress_bind(&bind_path, bind)?;
+
+    if ingress.allowed_source.is_empty() {
+        return Err(validation_failed(
+            &format!("{path}.allowed_source"),
+            "is required when ingress.enabled=true",
+        ));
+    }
+
+    for (provider_name, provider) in &ingress.providers {
+        if provider
+            .secret
+            .as_deref()
+            .is_none_or(|secret| secret.trim().is_empty())
+        {
+            return Err(validation_failed(
+                &format!("{path}.providers.{provider_name}.secret"),
+                "is required when ingress.enabled=true",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn validate_creds(path: &str, value: &Value) -> Result<(), ConfigError> {
     let mapping = as_mapping(path, value)?;
     if let Some(value) = non_null(get(mapping, "telegram")) {
@@ -515,6 +574,7 @@ pub fn validate_global(global: &GlobalConfig) -> Result<(), ConfigError> {
         &["creds", "notifications", "timezone"],
     )?;
     validate_global_project_surface("global", &global.extra)?;
+    validate_ingress("global.ingress", global)?;
 
     let mut seen_emails: HashSet<String> = HashSet::new();
     for person in &global.people {
@@ -659,6 +719,114 @@ mod tests {
     fn validate_global_rejects_person_only_keys() {
         let global: GlobalConfig = serde_yaml::from_str("creds: {}\n").expect("global yaml");
         let err = validate_global(&global).expect_err("person-only key rejected");
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_global_accepts_enabled_ingress_with_secreted_provider() {
+        let global: GlobalConfig = serde_yaml::from_str(
+            r#"
+ingress:
+  enabled: true
+  bind: 203.0.113.10:8080
+  allowed_source:
+  - 198.51.100.7
+  providers:
+    github:
+      secret: github-secret
+"#,
+        )
+        .expect("global yaml");
+
+        validate_global(&global).expect("valid ingress config");
+    }
+
+    #[test]
+    fn validate_global_requires_ingress_bind_when_enabled() {
+        let global: GlobalConfig = serde_yaml::from_str(
+            r#"
+ingress:
+  enabled: true
+  allowed_source:
+  - 198.51.100.7
+"#,
+        )
+        .expect("global yaml");
+
+        let err = validate_global(&global).expect_err("missing bind rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_global_requires_ingress_allowed_source_when_enabled() {
+        let global: GlobalConfig = serde_yaml::from_str(
+            r#"
+ingress:
+  enabled: true
+  bind: 203.0.113.10:8080
+"#,
+        )
+        .expect("global yaml");
+
+        let err = validate_global(&global).expect_err("missing allowed source rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_global_rejects_loopback_ingress_bind() {
+        let global: GlobalConfig = serde_yaml::from_str(
+            r#"
+ingress:
+  enabled: true
+  bind: 127.0.0.1:8080
+  allowed_source:
+  - 198.51.100.7
+"#,
+        )
+        .expect("global yaml");
+
+        let err = validate_global(&global).expect_err("loopback bind rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_global_rejects_unspecified_ingress_bind() {
+        let global: GlobalConfig = serde_yaml::from_str(
+            r#"
+ingress:
+  enabled: true
+  bind: 0.0.0.0:8080
+  allowed_source:
+  - 198.51.100.7
+"#,
+        )
+        .expect("global yaml");
+
+        let err = validate_global(&global).expect_err("unspecified bind rejected");
+
+        assert!(matches!(err, ConfigError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn validate_global_rejects_enabled_ingress_provider_without_secret() {
+        let global: GlobalConfig = serde_yaml::from_str(
+            r#"
+ingress:
+  enabled: true
+  bind: 203.0.113.10:8080
+  allowed_source:
+  - 198.51.100.7
+  providers:
+    github: {}
+"#,
+        )
+        .expect("global yaml");
+
+        let err = validate_global(&global).expect_err("missing provider secret rejected");
+
         assert!(matches!(err, ConfigError::ValidationFailed(_)));
     }
 

@@ -7,6 +7,7 @@ members = [
     "crates/event-bus",
     "crates/identity",
     "crates/config",
+    "crates/integration",
     "crates/workflow",
     "crates/telec-cli",
     "crates/telec-daemon",
@@ -80,6 +81,7 @@ storage = { path = "crates/storage" }
 event-bus = { path = "crates/event-bus" }
 identity = { path = "crates/identity" }
 config = { path = "crates/config" }
+integration = { path = "crates/integration" }
 workflow = { path = "crates/workflow" }
 
 [workspace.lints]

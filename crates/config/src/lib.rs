@@ -23,7 +23,7 @@ pub use loaders::{
 };
 pub use models::{
     ChannelSubscription, Config, DeploymentChannel, DeploymentConfig, GlobalConfig, HooksConfig,
-    InboundHook, PersonConfig, PersonEntry, ProjectConfig,
+    InboundHook, IngressConfig, IngressProvider, PersonConfig, PersonEntry, ProjectConfig,
 };
 pub use service::ConfigService;
 pub use validate::{

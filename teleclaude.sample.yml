@@ -2,6 +2,14 @@
 # project_slug: your-project-slug
 # project_name: Your Project
 # frontend_root: frontend  # optional layout override: directory containing TypeScript/frontend project
+# ingress:
+#   enabled: false
+#   bind: 203.0.113.10:8080
+#   allowed_source:
+#     - 198.51.100.7
+#   providers:
+#     github:
+#       secret: ${GITHUB_WEBHOOK_SECRET}
 # business:
 #   domains:
 #     software-development: docs  # default

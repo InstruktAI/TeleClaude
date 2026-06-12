@@ -7,6 +7,9 @@
 //! happen on the explicit fields, while unknown content rides along
 //! unchanged for inspection by downstream services.
 
+use std::collections::{BTreeMap, BTreeSet};
+use std::net::IpAddr;
+
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_yaml::{Mapping, Value};
 
@@ -44,6 +47,32 @@ pub struct GlobalConfig {
     pub interests: Vec<String>,
     #[serde(default)]
     pub checkout_root: Option<String>,
+    #[serde(default)]
+    pub ingress: IngressConfig,
+    #[serde(flatten)]
+    pub extra: Mapping,
+}
+
+/// Cluster webhook ingress configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IngressConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub bind: Option<String>,
+    #[serde(default)]
+    pub allowed_source: BTreeSet<IpAddr>,
+    #[serde(default)]
+    pub providers: BTreeMap<String, IngressProvider>,
+    #[serde(flatten)]
+    pub extra: Mapping,
+}
+
+/// Provider-specific webhook ingress secret material.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IngressProvider {
+    #[serde(default)]
+    pub secret: Option<String>,
     #[serde(flatten)]
     pub extra: Mapping,
 }
@@ -176,7 +205,7 @@ pub struct InboundHook {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HooksConfig {
     #[serde(default)]
-    pub inbound: std::collections::BTreeMap<String, InboundHook>,
+    pub inbound: BTreeMap<String, InboundHook>,
     #[serde(flatten)]
     pub extra: Mapping,
 }
@@ -343,6 +372,7 @@ event_domains:
         assert_eq!(config.people[0].role, "admin");
         assert_eq!(config.people[1].name, "tester");
         assert_eq!(config.checkout_root.as_deref(), Some("/Users/x/Workspace"));
+        assert!(!config.ingress.enabled);
         // Unknown top-level keys (event_domains) ride in extra.
         assert!(
             config
@@ -350,6 +380,55 @@ event_domains:
                 .contains_key(serde_yaml::Value::String("event_domains".into())),
             "event_domains must land in the extra catch-all"
         );
+    }
+
+    #[test]
+    fn global_config_deserializes_typed_ingress_surface() {
+        let yaml = r#"
+ingress:
+  enabled: true
+  bind: 203.0.113.10:8080
+  allowed_source:
+  - 198.51.100.7
+  - 198.51.100.7
+  providers:
+    github:
+      secret: github-secret
+      label: primary
+"#;
+
+        let global: GlobalConfig = serde_yaml::from_str(yaml).expect("deserialize ingress");
+
+        assert!(global.ingress.enabled);
+        assert_eq!(global.ingress.bind.as_deref(), Some("203.0.113.10:8080"));
+        assert_eq!(global.ingress.allowed_source.len(), 1);
+        assert!(global
+            .ingress
+            .allowed_source
+            .contains(&"198.51.100.7".parse::<IpAddr>().expect("test ip")));
+        let github = global
+            .ingress
+            .providers
+            .get("github")
+            .expect("github provider");
+        assert_eq!(github.secret.as_deref(), Some("github-secret"));
+        assert!(github
+            .extra
+            .contains_key(serde_yaml::Value::String("label".into())));
+        assert!(!global
+            .extra
+            .contains_key(serde_yaml::Value::String("ingress".into())));
+    }
+
+    #[test]
+    fn absent_ingress_uses_disabled_default() {
+        let global: GlobalConfig =
+            serde_yaml::from_str("checkout_root: /tmp/work\n").expect("deserialize global");
+
+        assert!(!global.ingress.enabled);
+        assert!(global.ingress.bind.is_none());
+        assert!(global.ingress.allowed_source.is_empty());
+        assert!(global.ingress.providers.is_empty());
     }
 
     #[test]
@@ -463,6 +542,7 @@ telegram_user: ownerbot
         let global: GlobalConfig = serde_yaml::from_str(yaml).expect("deserialize empty");
         assert!(global.people.is_empty());
         assert!(global.checkout_root.is_none());
+        assert!(!global.ingress.enabled);
         assert!(global.extra.is_empty());
     }
 
