@@ -119,14 +119,7 @@ def test_index_build_fails_loudly_for_non_derivable_snippet_path(tmp_path: Path)
 def test_normalize_titles_leaves_double_quoted_frontmatter_unchanged(tmp_path: Path) -> None:
     snippet = tmp_path / "docs" / "project" / "policy" / "example.md"
     snippet.parent.mkdir(parents=True, exist_ok=True)
-    content = (
-        '---\n'
-        'description: "An example policy."\n'
-        'visibility: "public"\n'
-        '---\n'
-        '# Example — Policy\n\n'
-        'Body text.\n'
-    )
+    content = '---\ndescription: "An example policy."\nvisibility: "public"\n---\n# Example — Policy\n\nBody text.\n'
     snippet.write_text(content, encoding="utf-8")
 
     snippets_root = tmp_path / "docs" / "project"
