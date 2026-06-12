@@ -26,24 +26,29 @@ const HEARTBEAT_TTL_SECONDS: u64 = 60;
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    let _ = dotenvy::dotenv();
+
+    // The guard must outlive the error handler below: a guard scoped inside
+    // run() is dropped before the error is logged, losing the fatal line.
+    let _log_guard = match observability::init(LOG_SOURCE) {
+        Ok(guard) => Some(guard),
+        Err(observability::InitError::AlreadyInitialized) => None,
+        Err(other) => {
+            eprintln!("telec-daemon: failed to initialize tracing: {other}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            error!(error = %err, "telec-daemon exited with error");
+            error!(error = format!("{err:#}"), "telec-daemon exited with error");
             ExitCode::FAILURE
         }
     }
 }
 
 async fn run() -> Result<()> {
-    let _ = dotenvy::dotenv();
-
-    let _log_guard = match observability::init(LOG_SOURCE) {
-        Ok(guard) => Some(guard),
-        Err(observability::InitError::AlreadyInitialized) => None,
-        Err(other) => return Err(other).context("initialize tracing subscriber"),
-    };
-
     info!(source = LOG_SOURCE, "telec-daemon starting");
 
     let config_paths = config_overlay_paths().context("resolve config overlay paths")?;

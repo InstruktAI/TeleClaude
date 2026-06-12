@@ -57,6 +57,9 @@ redis = { version = "0.27", features = [
     "tokio-comp",
     "connection-manager",
     "streams",
+    # rediss:// support for the cluster bus; rustls so cross-builds (Pi) need no system TLS.
+    "tokio-rustls-comp",
+    "tls-rustls-webpki-roots",
 ] }
 
 # Tracing / logging
