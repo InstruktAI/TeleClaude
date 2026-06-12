@@ -1,5 +1,5 @@
 ---
-description: 'The codebase Blueprint — a generated AST structural map agents consult at plan time for an intended change''s blast radius. Engine (Graphify CLI), integrate-time generation, freshness manifest, the telec context blueprint affected helper, languages, and blind spots.'
+description: "The codebase Blueprint — a generated AST structural map agents consult at plan time for an intended change's blast radius. Engine (Graphify CLI), integrate-time generation, freshness manifest, the telec context blueprint affected helper, languages, and blind spots."
 visibility: 'public'
 ---
 
@@ -58,9 +58,23 @@ exploration.
 
 ### Generation (automation, never agents)
 
+<!-- planned-change:fix-blueprint-not-available -->
+
 `integration` is the single writer. On a successful remote-main pull it runs the
 pinned no-LLM refresh `graphify update <repo-root>` and writes `graph.json` +
 `manifest.json` (see the integration design's _Blueprint regeneration_).
+
+<!-- change:fix-blueprint-not-available -->
+
+`integration` is the single writer. On a successful remote-main pull it runs the
+pinned no-LLM refresh `graphify update --force <repo-root>` and writes
+`graph.json` + `manifest.json` (see the integration design's _Blueprint
+regeneration_). `--force` makes the full-corpus rebuild authoritative: it
+overwrites the cached graph even when the new extraction has fewer symbols, so a
+legitimately smaller graph cannot wedge generation at a non-`ok` status.
+
+<!-- /planned-change:fix-blueprint-not-available -->
+
 `context` owns the contract (location, manifest schema, languages, the query
 surface); `integration` owns the write because the Blueprint is a generated
 cache, not authoritative state — a deliberate divergence from the single-owner
