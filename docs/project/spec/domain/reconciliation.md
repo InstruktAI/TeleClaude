@@ -11,8 +11,8 @@ description: Reconciliation bounded context — the control loop that drives eac
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/software-development/spec/domain-spec.md
 - @docs/project/spec/domain/glossary.md
 - @docs/project/spec/domain/context-map.md
 

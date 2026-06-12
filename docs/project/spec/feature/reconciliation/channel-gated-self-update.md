@@ -11,7 +11,6 @@ description: Each installation keeps itself on the newest release for its declar
 
 ## Required reads
 
-- docs/global/software-development/spec/feature-spec.md
 - @docs/project/spec/domain/reconciliation.md
 
 ## What it is
