@@ -418,8 +418,11 @@ invariant.
 `reconciliation.capability.advertised` (the last rides the cluster heartbeat).
 
 **Subscribes to:** `integration.inbox.received` (release/version subset,
-relayed by the single ingress) and `config.effective.updated` (desired-state
-inputs). Each node decides independently; the ingress relays unconditionally.
+relayed by the single ingress). Each node decides independently; the ingress
+relays unconditionally. Desired-state config inputs (`channel`, `pinned_minor`)
+are re-read on the loop's periodic self-check; the `config.effective.updated`
+event-driven path is deferred until a producer exists (the event is reserved,
+not yet emitted).
 
 **Cross-runtime window note.** During v1→v2 the feature-ID capability map and
 the heartbeat that carries it are delivered in v1 Python. The v2 loop does not

@@ -200,7 +200,7 @@ Note: `integration.inbox.received` has two producers. The durable messaging-inbo
 | `reconciliation.installation.converged`      | reconciliation | CLUSTER    | commit-then-emit (the node is running and healthy on the target version)                 |
 | `reconciliation.convergence.failed`          | reconciliation | CLUSTER    | commit-then-emit (a convergence step halts; carries `failed_step` and `failure_context`) |
 
-The convergence loop consumes `integration.inbox.received` (release/version subset, relayed by the single ingress) and `config.effective.updated`, evaluates each release against the node's channel policy, and runs an exactly-once `ConvergenceRun` per target version. `reconciliation.capability.advertised` is already current — it rides the cluster heartbeat the fleet capability map consumes.
+The convergence loop consumes `integration.inbox.received` (release/version subset, relayed by the single ingress), evaluates each release against the node's channel policy, and runs an exactly-once `ConvergenceRun` per target version. Desired-state config (`channel`, `pinned_minor`) is re-read on the loop's periodic self-check; the `config.effective.updated` event-driven path is deferred until a producer exists (the event is reserved, not yet emitted). `reconciliation.capability.advertised` is already current — it rides the cluster heartbeat the fleet capability map consumes.
 
 <!-- /planned:reconciliation-self-update -->
 

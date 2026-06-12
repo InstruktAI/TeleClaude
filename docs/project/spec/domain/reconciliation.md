@@ -170,7 +170,7 @@ This context does NOT own: foreign-protocol ingress or transport (`integration`)
 #### `config.effective.updated`
 
 - **Producer:** `config`
-- **Reaction:** re-read desired-state inputs (channel, `pinned_minor`); re-evaluate drift. Health is observed from the running daemon, not supplied by config.
+- **Reaction:** re-read desired-state inputs (channel, `pinned_minor`); re-evaluate drift. Health is observed from the running daemon, not supplied by config. This event-driven path is deferred until a producer exists (the event is currently reserved, not emitted); meanwhile the loop re-reads config on its periodic self-check.
 - **Failure handling:** logged; last-known config remains in force.
 
 ### Use cases (index of feature specs)
