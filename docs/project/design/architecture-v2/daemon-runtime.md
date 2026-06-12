@@ -113,6 +113,16 @@ be healthy; an absent unit reports one informational line and does not degrade
 overall health. The v2 cutover makes the build mandatory, adds the unit to the
 managed set, and installs and loads it unconditionally.
 
+<!-- planned:telec-daemon-systemd-unit -->
+On Linux the same contract holds through systemd: a `telec-daemon` unit
+template mirrors the launchd conventions (restart-on-failure supervision,
+`CLUSTER_REDIS_URL` in the unit environment, program path at
+`~/.local/bin/telec-daemon`), is installed only through the explicit
+`install-telec-daemon` subcommand, and the status surface treats the unit as
+required-if-present — identical opt-in semantics on both platforms.
+<!-- /planned:telec-daemon-systemd-unit -->
+
+
 ### Unified operator control surface
 
 ```mermaid
