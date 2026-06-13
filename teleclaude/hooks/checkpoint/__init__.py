@@ -675,6 +675,15 @@ def get_checkpoint_content(
                 "post_commit_review_action_required": result.post_commit_review_action_required,
             },
         )
+        logger.debug(
+            "Checkpoint payload content",
+            extra={
+                **base_extra,
+                "observations": list(result.observations),
+                "required_actions": list(result.required_actions),
+                "categories": result.categories,
+            },
+        )
         return message
 
     except Exception:

@@ -50,6 +50,7 @@ def set_checkpoint_flag(session_id: str, flag_name: str) -> None:
     try:
         flag_path.parent.mkdir(parents=True, exist_ok=True)
         flag_path.touch()
+        logger.debug("Checkpoint flag set", session_id=session_id, flag=flag_name)
     except OSError as exc:
         logger.warning(
             "Failed to set checkpoint flag",
@@ -87,6 +88,7 @@ def consume_checkpoint_flag(session_id: str, flag_name: str) -> bool:
         return False
     try:
         flag_path.unlink()
+        logger.debug("Checkpoint flag consumed", session_id=session_id, flag=flag_name)
     except OSError as exc:
         logger.warning(
             "Failed to consume checkpoint flag",
@@ -123,6 +125,7 @@ def record_commit_obligations(session_id: str, actions: list[str]) -> None:
     current_actions = [line for line in existing.splitlines() if line]
     current_actions.extend(action for action in actions if action)
     flag_path.write_text("\n".join(_dedupe_preserving_order(current_actions)) + "\n", encoding="utf-8")
+    logger.debug("Checkpoint commit obligations recorded", session_id=session_id, actions=actions)
 
 
 def read_commit_obligations(session_id: str) -> list[str]:
@@ -147,6 +150,7 @@ def discharge_commit_obligation(session_id: str, action: str) -> bool:
         flag_path.write_text("\n".join(_dedupe_preserving_order(remaining)) + "\n", encoding="utf-8")
     else:
         flag_path.unlink()
+    logger.debug("Checkpoint commit obligation discharged", session_id=session_id, action=action)
     return True
 
 
