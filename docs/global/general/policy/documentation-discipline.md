@@ -39,6 +39,13 @@ visibility: 'public'
   or adds a documented contract updates the corresponding snippet
   (spec / principle / policy / concept / ADR), or records an explicit
   `doc_impact_none: <reason>`.
+- **A behavioral delta is a change to code-enforced, observable behavior — not to
+  guidance prose.** Reflection triggers when the _contract_ a test could bind
+  (`Given / When / Then`) changes. Advisory text the agent reads — CLI guidance
+  strings, prompts, menu copy — _is_ its own documentation: editing it is a
+  doc-layer-internal change that takes at most a doc-hygiene check, never a
+  feature-spec use case. If no test could bind the change, it is not a contract
+  delta and authors no use case.
 - **A snippet without `delivered_by` is the current contract; staleness is a
   defect.** If code changes and a current snippet does not, the snippet is wrong —
   the change updates it (preferred) or adds `delivered_by` with the change's slug.
