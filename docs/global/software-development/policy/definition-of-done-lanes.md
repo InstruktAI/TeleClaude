@@ -26,22 +26,22 @@ checks and the authority it answers to_, not how a review is run.
 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
-| Lane                    | Reference                                                                   | Task                                                                                 |
-| ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| scope                   | § Scope verification                                                        | Verify delivery matches PRD intent — no gold-plating, no gaps                        |
-| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                                     |
-| paradigm                | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency                                |
-| principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                  |
-| intelligence-boundaries | `principle/intelligence-boundaries`                                         | Find code that classifies, scores, judges, or auto-edits free-text content semantics |
-| security                | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage                                |
-| tests                   | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage                     |
-| errors                  | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling                                   |
-| types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                             |
-| comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                        |
-| logging                 | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes                                   |
-| docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README, and affected doc snippets reflect changes  |
-| doc-hygiene             | § Doc-snippet hygiene (when any `docs/**` snippet changed)                  | Verify changed snippet bodies state present-tense contract — no narration            |
-| simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                    |
+| Lane                    | Reference                                                                   | Task                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| scope                   | § Scope verification                                                        | Verify delivery matches PRD intent — no gold-plating, no gaps                          |
+| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                                       |
+| paradigm                | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency, forward-migration of owned data |
+| principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                    |
+| intelligence-boundaries | `principle/intelligence-boundaries`                                         | Find code that classifies, scores, judges, or auto-edits free-text content semantics   |
+| security                | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage                                  |
+| tests                   | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage                       |
+| errors                  | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling                                     |
+| types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                               |
+| comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                          |
+| logging                 | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes                                     |
+| docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README, and affected doc snippets reflect changes    |
+| doc-hygiene             | § Doc-snippet hygiene (when any `docs/**` snippet changed)                  | Verify changed snippet bodies state present-tense contract — no narration              |
+| simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                      |
 
 ### Lane catalog
 
@@ -97,15 +97,16 @@ Severity guidance:
 
 #### Paradigm-fit assessment
 
-**Authority:** `design-fundamentals`.
+**Authority:** `design-fundamentals`, `backward-compatibility-hygiene`.
 
 Check whether the implementation follows existing codebase paradigms:
 
 1. **Data flow**: Does it use the established data layer, or bypass it with inline hacks?
 2. **Component reuse**: Does it reuse and parameterize existing components, or copy-paste them?
 3. **Pattern consistency**: Does it follow patterns established by adjacent code?
+4. **Schema evolution**: For data the project owns (persisted state, config, artifacts), does it migrate the stored shape forward, or carry a backward-compatibility branch for an old shape? The contract for owned data is forward-migration (`backward-compatibility-hygiene`, Owned internal data); a version-tolerance branch in domain code is the violation, not the workaround.
 
-Paradigm violations are **Important** at minimum. Copy-paste of a parameterizable component is Important. Bypassing the data layer is Critical.
+Paradigm violations are **Important** at minimum. Copy-paste of a parameterizable component is Important. Bypassing the data layer is Critical. A backward-compatibility branch on owned data — version tolerance smeared through domain logic where a forward migration is the contract — is Critical.
 
 #### Principle violation hunt
 
@@ -169,6 +170,7 @@ Before crediting any test as meaningful coverage, answer concretely: what behavi
 - Reject **refactor-leftover existence checks** — `assert not (_REPO_ROOT / "old_file.py").exists()` and shape variants. The git history records what was removed; the test adds nothing.
 - Reject **filesystem-inventory snapshots** — `assert _inventory(some_root) == snapshot` where the snapshotted value is a dict/list of file paths produced by walking a directory tree. The snapshot pins the implementation's output layout, not behavior. If the behavior is "no files written to root X," assert emptiness directly: `assert not any(root.rglob("*"))`.
 - Reject **default-value tests** — `assert MyClass().field == DEFAULT_VALUE`. The library owns the default-handling contract. The only legitimate version of this assertion is when the default value drives a downstream behavioral branch and the test exercises that branch.
+- Reject **tests that pin a superseded owned-data shape** — a test asserting an old config, artifact, or persisted-aggregate schema the code is meant to migrate forward (`backward-compatibility-hygiene`, Owned internal data). It makes the dead compatibility path load-bearing and resists its own deletion. Schema-evolution coverage belongs in the migration's `vN → vN+1` golden-fixture test asserting the current shape — never in a test that locks the old one in place.
 - Review snapshot deltas in the PR with the same weight as code deltas. Read each snapshot diff and confirm it matches the change's stated intent. An unreviewed or unjustified snapshot update is a finding.
 - A test file appearing on the project's string-assertion exemption list is acceptable only if the current PR does not touch that file. If the PR touches a listed test file, the file must be migrated to snapshots in the same change and removed from the exemption list.
 
