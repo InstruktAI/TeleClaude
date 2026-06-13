@@ -608,6 +608,25 @@ def test_docs_dir_telec_sync_suppressed_with_evidence(
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP10")
+def test_worktree_omits_main_only_categories_from_summary_and_actions(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    repo_path = tmp_path / "repo"
+    repo = _init_supported_repo(repo_path)
+    repo.git.checkout("-b", "feature/x")  # off main — a worktree branch
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics(["agents/commands/next-work.md", "docs/spec.md"], _empty_timeline(), context)
+
+    # syncable sources (main_only) is deferred to integration off main; the summary and
+    # actions hold only the non-main_only agent-artifacts category.
+    assert _TELEC_SYNC_INSTR not in result.required_actions
+    assert {"worktree_categories": result.categories, "worktree_actions": result.required_actions} == snapshot
+
+
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP13")
 def test_parent_snippet_edit_with_pending_companion_surfaces_mirror_action(
     tmp_path: Path,

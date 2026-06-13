@@ -151,16 +151,16 @@ def run_heuristics(
     obligation_categories = _commit_obligation_categories(commit_obligations or [], result.on_main)
     categories = _dedupe_categories([*file_categories, *obligation_categories])
     obligation_names = {category.name for category in obligation_categories}
-    result.categories = [c.name for c in categories]
 
-    # 2. Build required actions with verification gap detection
+    # 2. Build required actions and the "Changed:" summary together, so the summary
+    # lists only categories with an outstanding consideration this turn. A category
+    # whose action is irrelevant in this context (main_only off a worktree) or already
+    # satisfied (its evidence was observed) is omitted from both the actions and the summary.
+    shown_categories: list[str] = []
     for category in sorted(categories, key=lambda c: c.precedence):
-        if not category.instruction:
-            continue  # e.g., hook runtime — no action needed
-
-        # Main-only categories (telec setup, dependencies, daemon code, config) are irrelevant in
-        # worktrees — the running system is installed from main and unaffected
-        # until integration. These are the integrator's responsibility.
+        # Main-only categories (telec setup, dependencies, daemon code, config,
+        # syncable sources) are irrelevant in worktrees — the running system is
+        # installed from main and unaffected until integration.
         if category.main_only and not result.on_main:
             continue
 
@@ -169,11 +169,7 @@ def run_heuristics(
             if category.evidence_must_follow_last_mutation:
                 mutation_idx = _last_category_mutation_index(timeline, category, context.project_path)
                 if mutation_idx is not None:
-                    evidence_seen = _has_evidence_after_index(
-                        timeline,
-                        category.evidence_substrings,
-                        mutation_idx,
-                    )
+                    evidence_seen = _has_evidence_after_index(timeline, category.evidence_substrings, mutation_idx)
                 else:
                     evidence_seen = _has_evidence(timeline, category.evidence_substrings)
             else:
@@ -182,15 +178,12 @@ def run_heuristics(
         if category.evidence_substrings and evidence_seen:
             if category.name in obligation_names and discharge_obligation is not None:
                 discharge_obligation(category.name)
-            continue  # Suppress the main instruction
+            continue  # Satisfied this turn — no action, and omitted from the summary
 
-        append_required_action(category.instruction)
-        # Add observation about missing verification
-        if timeline.has_data and category.evidence_substrings:
-            result.observations.append(
-                f"{category.name.capitalize()} was modified but "
-                f"`{category.evidence_substrings[0]}` was not observed this turn"
-            )
+        shown_categories.append(category.name)
+        if category.instruction:
+            append_required_action(category.instruction)
+    result.categories = shown_categories
 
     # Add log check if runtime code changed and not already done. Doc/artifact
     # sources (is_code=False) deploy via sync — they have no runtime to inspect.

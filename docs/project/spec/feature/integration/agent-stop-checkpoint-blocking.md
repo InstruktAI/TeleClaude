@@ -242,6 +242,14 @@ Then the `telec sync` validation action is suppressed
 Given the turn-local changes touch agents/** (agent artifacts) and also require telec sync
 When the heuristic engine evaluates the turn window
 Then both the agent-artifacts restart-self action and the telec-sync validation action are surfaced, each once, in category precedence order
+
+Given the session is on a worktree branch (not main)
+And the turn-local changes touch docs/** or agents/commands/** (syncable sources, a main_only category) alongside agents/** (agent artifacts)
+When the heuristic engine evaluates the turn window
+Then the telec-sync validation action is omitted, because main_only work is deferred to integration on main
+And syncable sources is omitted from the changed-category summary
+And the agent-artifacts restart-self action still surfaces
+(The changed-category summary lists only categories with an outstanding consideration this turn: a category whose action is deferred off-main, or already satisfied by observed evidence, is omitted from both the required actions and the summary.)
 ```
 
 #### UC-CP11: Integrator post-merge maintenance force-fire

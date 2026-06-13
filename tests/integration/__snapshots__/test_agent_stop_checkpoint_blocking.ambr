@@ -37,9 +37,6 @@
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
       2. Run `make restart`
       
-      Observations:
-      - Daemon code was modified but `make restart` was not observed this turn
-      
       Execute every required action above before responding to the user.
       
       Response policy: complete ALL required actions first. Do not compose the debrief until every action is done. Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. Do not mention checkpoint chores.
@@ -93,9 +90,6 @@
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
       2. Run `make restart`
-      
-      Observations:
-      - Daemon code was modified but `make restart` was not observed this turn
       
       Execute every required action above before responding to the user.
       
@@ -169,9 +163,6 @@
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. Run `telec sync`
       
-      Observations:
-      - Syncable sources was modified but `telec sync` was not observed this turn
-      
       Execute every required action above before responding to the user.
       
       Response policy: complete ALL required actions first. Do not compose the debrief until every action is done. Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. Do not mention checkpoint chores.
@@ -179,5 +170,15 @@
       Escape hatch (last resort only, and only when there is no actionable information left): run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to skip checkpoints for this turn; it clears at the next user prompt. If the same checkpoint recurs across turns, surface it as a bug instead of clearing it again.
     ''',
     'satisfied_payload': None,
+  })
+# ---
+# name: test_worktree_omits_main_only_categories_from_summary_and_actions
+  dict({
+    'worktree_actions': list([
+      'Reload artifacts: `telec sessions restart self`',
+    ]),
+    'worktree_categories': list([
+      'agent artifacts',
+    ]),
   })
 # ---
