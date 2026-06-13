@@ -745,8 +745,6 @@ class ContentInputModal(ModalScreen[str | None]):
 
     BINDINGS = [
         ("escape", "dismiss_modal", "Cancel"),
-        ("ctrl+s", "submit_modal", "Create"),
-        ("ctrl+j", "submit_modal", "Create"),
     ]
 
     def __init__(
@@ -766,7 +764,7 @@ class ContentInputModal(ModalScreen[str | None]):
             yield TextArea(placeholder=self._placeholder, id="content-input")
             yield Label("", id="content-error")
             with Horizontal(id="modal-actions"):
-                yield Button("[Ctrl+S] Create", variant="primary", id="create-btn")
+                yield Button("Create", variant="primary", id="create-btn")
                 yield Button("[Esc] Cancel", id="cancel-btn")
 
     def on_mount(self) -> None:
@@ -774,9 +772,6 @@ class ContentInputModal(ModalScreen[str | None]):
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
-
-    def action_submit_modal(self) -> None:
-        self._do_create()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel-btn":
