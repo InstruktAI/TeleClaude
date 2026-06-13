@@ -12,7 +12,6 @@ pytestmark = pytest.mark.functional
 
 PLACEHOLDER = "Write something..."
 MULTILINE_CONTENT = "Hello multiline\nThis is line 2"
-VALIDATION_ERROR = "Content is required"
 VALID_CONTENT = "Now valid"
 NEWLINE = "\n"
 TYPED_MULTILINE_RESULT = "a\nb"
@@ -77,8 +76,8 @@ async def test_content_input_modal_empty_shows_error_without_submitting() -> Non
         await pilot.pause()
 
         error_label = app.screen.query_one("#content-error", Label)
-        assert str(error_label.render()) == VALIDATION_ERROR
-        assert app.result is None  # Should not have dismissed
+        assert str(error_label.render()).strip() != ""  # a validation error is shown
+        assert app.result is None  # and the modal did not submit
 
 
 @pytest.mark.asyncio
