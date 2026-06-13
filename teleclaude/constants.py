@@ -306,7 +306,6 @@ class FileCategory:
 
 
 # Evidence patterns for general verification actions (R4)
-CHECKPOINT_STATUS_EVIDENCE = ["make status"]
 CHECKPOINT_TEST_EVIDENCE = ["pytest", "make test", "telec code test"]
 CHECKPOINT_RESTART_EVIDENCE = ["make restart"]
 CHECKPOINT_AGENT_RESTART_EVIDENCE = ["telec sessions restart", "/agent-restart", "agent_restart"]
@@ -424,17 +423,6 @@ CHECKPOINT_NO_ACTION_PATTERNS: list[str] = [
     "*.txt",
     "*.rst",
 ]
-
-# Error enrichment patterns (R5 Layer 2)
-CHECKPOINT_ERROR_ENRICHMENT: list[tuple[str, str]] = [
-    ("Traceback (most recent call last)", "Python errors remain unresolved — verify they are fixed"),
-    ("SyntaxError", "Syntax errors remain — verify the code is valid"),
-    ("ImportError", "Import errors remain — check dependencies or module paths"),
-    ("ModuleNotFoundError", "Import errors remain — check dependencies or module paths"),
-]
-CHECKPOINT_TEST_ERROR_COMMANDS = ["pytest", "make test", "telec code test"]
-CHECKPOINT_TEST_ERROR_MESSAGE = "Test failures remain — re-run tests after fixes"
-CHECKPOINT_GENERIC_ERROR_MESSAGE = "A command returned errors — verify the issue is resolved"
 
 # Worktree directory name (git worktrees live at {project}/trees/{slug})
 WORKTREE_DIR = "trees"

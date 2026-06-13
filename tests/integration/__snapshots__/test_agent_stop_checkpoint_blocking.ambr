@@ -19,7 +19,6 @@
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
       2. Run `make restart`
-      3. All steps done — only then proceed
       
       Execute every required action above before responding to the user.
       
@@ -39,7 +38,6 @@
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
       2. Run `make restart`
-      3. All steps done — only then proceed
       
       Observations:
       - Daemon code was modified but `make restart` was not observed this turn
@@ -82,7 +80,6 @@
       2. Install updated dependencies: `uv sync`
       3. Run `make restart`
       4. Run `telec sync`
-      5. All steps done — only then proceed
       
       Execute every required action above before responding to the user.
       
@@ -102,7 +99,6 @@
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
       2. Run `make restart`
-      3. All steps done — only then proceed
       
       Observations:
       - Daemon code was modified but `make restart` was not observed this turn
@@ -184,7 +180,6 @@
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. Run `telec sync`
-      2. All steps done — only then proceed
       
       Observations:
       - Telec sync was modified but `telec sync` was not observed this turn

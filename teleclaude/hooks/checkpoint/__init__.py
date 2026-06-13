@@ -21,15 +21,10 @@ from teleclaude.core.agents import AgentName
 from teleclaude.hooks.checkpoint._evidence import (
     _check_companion_drift,
     _check_edit_hygiene,
-    _check_error_state,
     _check_slug_alignment,
     _command_has_evidence,
-    _command_invokes_search,
-    _command_references_file,
-    _commands_overlap,
     _compute_log_since_window,
     _dedupe_strings,
-    _enrich_error,
     _extract_plan_file_paths,
     _has_commit_evidence,
     _has_commit_evidence_after_last_mutation,
@@ -83,19 +78,14 @@ __all__ = [
     "_categorize_files",
     "_check_companion_drift",
     "_check_edit_hygiene",
-    "_check_error_state",
     "_check_slug_alignment",
     "_command_has_evidence",
-    "_command_invokes_search",
     "_command_likely_mutates_files",
-    "_command_references_file",
-    "_commands_overlap",
     "_commit_instruction",
     "_compose_checkpoint_message",
     "_compute_log_since_window",
     "_current_branch",
     "_dedupe_strings",
-    "_enrich_error",
     "_extract_apply_patch_paths",
     "_extract_plan_file_paths",
     "_extract_shell_command",
@@ -218,10 +208,7 @@ def run_heuristics(
             "`telec docs get software-development/policy/testing`. Remove tests that violate policy."
         )
 
-    # 3. Error state detection
-    result.observations.extend(_check_error_state(timeline))
-
-    # 4. Edit hygiene
+    # 3. Edit hygiene
     result.observations.extend(_check_edit_hygiene(timeline, git_files))
     for action in _check_companion_drift(git_files, context.project_path):
         append_required_action(action)
@@ -347,7 +334,6 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     if result.required_actions or result.commit_action_required:
         if result.commit_action_required:
             actions.append(commit_line)
-        actions.append("All steps done — only then proceed")
 
     if actions:
         lines.append("")
@@ -430,7 +416,6 @@ def _build_integrator_maintenance_checkpoint(
     ]
     for i, action in enumerate(actions, 1):
         lines.append(f"{i}. {action}")
-    lines.append(f"{len(actions) + 1}. All steps done — only then proceed")
     lines.extend(
         [
             "",
