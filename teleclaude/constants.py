@@ -303,6 +303,7 @@ class FileCategory:
     evidence_must_follow_last_mutation: bool = False
     main_only: bool = False  # Skip instruction when not on main (worktree branches)
     precedence: int = 0  # Lower = earlier in required actions
+    is_code: bool = True  # False for source files that deploy via sync (no runtime verification)
 
 
 # Evidence patterns for general verification actions (R4)
@@ -390,14 +391,16 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         instruction="Reload artifacts: `telec sessions restart self`",
         evidence_substrings=CHECKPOINT_AGENT_RESTART_EVIDENCE,
         precedence=50,
+        is_code=False,
     ),
     FileCategory(
-        name="telec sync",
+        name="syncable sources",
         include_patterns=["agents/**", "agents/commands/**", "docs/**"],
         instruction="Run `telec sync`",
         evidence_substrings=["telec sync"],
         main_only=True,
         precedence=55,
+        is_code=False,
     ),
     FileCategory(
         name="hook runtime",
@@ -416,8 +419,8 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
 ]
 
 # Patterns for bare non-code files (capture-only, no action required).
-# docs/** is intentionally excluded here — those files now match the
-# "telec sync" FileCategory so agents are nudged to validate them.
+# docs/** is intentionally excluded here — those files match the
+# "syncable sources" FileCategory so agents are nudged to validate them.
 CHECKPOINT_NO_ACTION_PATTERNS: list[str] = [
     "*.md",
     "*.txt",

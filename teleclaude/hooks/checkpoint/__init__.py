@@ -192,13 +192,15 @@ def run_heuristics(
                 f"`{category.evidence_substrings[0]}` was not observed this turn"
             )
 
-    # Add log check if code changed and not already done
-    has_code_changes = any(c.name != "tests only" for c in file_categories)
+    # Add log check if runtime code changed and not already done. Doc/artifact
+    # sources (is_code=False) deploy via sync — they have no runtime to inspect.
+    has_code_changes = any(c.is_code and c.name != "tests only" for c in file_categories)
     if has_code_changes and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
         append_required_action(f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window}`")
 
-    # Add test instruction if code changed and not already done
-    if file_categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
+    # Add test instruction if code changed and not already done. Doc/artifact-only
+    # turns have no behavior to test.
+    if any(c.is_code for c in file_categories) and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
         append_required_action("Run targeted tests for only YOUR changed behavior")
 
     # Test quality review gate: point to policy, not inline rules
@@ -385,7 +387,7 @@ def _build_integrator_maintenance_checkpoint(
 
     categories = _categorize_files(all_files)
     # Integrator maintenance surfaces only main_only categories (setup, deps,
-    # daemon restart, telec sync). Non-main_only categories like agent-artifacts
+    # daemon restart, syncable sources). Non-main_only categories like agent-artifacts
     # (restart-self) are not the integrator's maintenance responsibility and must
     # not appear here regardless of what files were in the merge delta.
     maintenance_categories = [c for c in categories if c.main_only]

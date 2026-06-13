@@ -4,8 +4,6 @@
     'agent_cmd_result': list([
       'Reload artifacts: `telec sessions restart self`',
       'Run `telec sync`',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
-      'Run targeted tests for only YOUR changed behavior',
     ]),
   })
 # ---
@@ -54,8 +52,6 @@
   dict({
     'companion_only_actions': list([
       'Run `telec sync`',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
-      'Run targeted tests for only YOUR changed behavior',
     ]),
   })
 # ---
@@ -63,8 +59,6 @@
   dict({
     'docs_sync_result': list([
       'Run `telec sync`',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
-      'Run targeted tests for only YOUR changed behavior',
     ]),
   })
 # ---
@@ -73,7 +67,7 @@
     'maintenance_payload': '''
       [TeleClaude Checkpoint] - Integrator post-merge maintenance
       
-      Changed (merge delta): telec setup, dependencies, daemon code, telec sync
+      Changed (merge delta): telec setup, dependencies, daemon code, syncable sources
       
       Required actions (maintenance after delivery — complete before next integration):
       1. Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)
@@ -133,8 +127,6 @@
   dict({
     'parent_and_companion_actions': list([
       'Run `telec sync`',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
-      'Run targeted tests for only YOUR changed behavior',
     ]),
   })
 # ---
@@ -142,8 +134,6 @@
   dict({
     'parent_only_actions': list([
       'Run `telec sync`',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
-      'Run targeted tests for only YOUR changed behavior',
       'Mirror `docs/project/spec/feature/integration/agent-stop-checkpoint-blocking.md` into pending companion `docs/project/spec/feature/integration/agent-stop-checkpoint-blocking.checkpoint-ledger-commit-separation.md` before stopping',
     ]),
   })
@@ -152,8 +142,6 @@
   dict({
     'parent_without_companion_actions': list([
       'Run `telec sync`',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
-      'Run targeted tests for only YOUR changed behavior',
     ]),
   })
 # ---
@@ -176,13 +164,13 @@
     'first_payload': '''
       [TeleClaude Checkpoint] - Context-aware checkpoint
       
-      Changed: telec sync
+      Changed: syncable sources
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. Run `telec sync`
       
       Observations:
-      - Telec sync was modified but `telec sync` was not observed this turn
+      - Syncable sources was modified but `telec sync` was not observed this turn
       
       Execute every required action above before responding to the user.
       

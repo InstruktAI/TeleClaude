@@ -251,7 +251,7 @@ def test_sealed_commit_records_commit_obligations(
         system_role=None,
     )
 
-    assert read_commit_obligations(session_id) == ["daemon code", "telec sync"]
+    assert read_commit_obligations(session_id) == ["daemon code", "syncable sources"]
 
 
 @pytest.mark.functional
@@ -406,8 +406,8 @@ def test_agents_merge_delta_does_not_surface_restart_self_in_maintenance(
     )
 
     # Agents-only merge delta has no main_only categories → no maintenance payload
-    # (telec sync is main_only, so it would surface for docs; agents/** matches
-    # telec sync too, so a payload could surface — but restart-self must not appear)
+    # (syncable sources is main_only, so it would surface for docs; agents/** matches
+    # syncable sources too, so a payload could surface — but restart-self must not appear)
     if payload is not None:
         assert "restart self" not in payload
         assert "telec sessions restart" not in payload
@@ -495,7 +495,7 @@ def test_surfaced_commit_obligation_discharges_in_later_cycle(
     repo_path = tmp_path / "repo"
     _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    record_commit_obligations(session_id, ["telec sync"])
+    record_commit_obligations(session_id, ["syncable sources"])
 
     first_payload = _checkpoint_payload_for_cycle(session_id, repo_path, monkeypatch, _empty_timeline())
     satisfied_payload = _checkpoint_payload_for_cycle(
