@@ -27,6 +27,7 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
+    ROLE_ORCHESTRATOR,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
@@ -116,8 +117,8 @@ async def apply_todo_stamp(
 ) -> dict[str, StateValue]:
     """Apply one parsed todo stamp and return the updated state.
 
-    ``build_complete`` is intentionally worker-owned: the caller must be a
-    TeleClaude session whose durable ``working_slug`` matches the stamped slug.
+    ``build_complete`` is intentionally worker- or orchestrator-owned: the caller
+    must be a trusted TeleClaude session for the stamped slug.
     """
     if stamp_type == "verdict":
         _validate_verdict_stamp(phase, value)
@@ -442,9 +443,10 @@ async def _validate_build_complete_owner(
     if not caller_session_id:
         raise PermissionError(f"build_complete stamp for {slug} requires a TeleClaude worker session")
     working_slug = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "working_slug")
-    if working_slug is None:
-        raise PermissionError(f"build_complete stamp for {slug} requires a known TeleClaude session")
-    if working_slug != slug:
-        raise PermissionError(
-            f"build_complete stamp for {slug} requires caller session {caller_session_id} to own working_slug={slug}"
-        )
+    system_role = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "system_role")
+    if working_slug == slug or system_role == ROLE_ORCHESTRATOR:
+        return
+    raise PermissionError(
+        f"build_complete stamp for {slug} requires caller session {caller_session_id} "
+        f"to own working_slug={slug} or have system_role={ROLE_ORCHESTRATOR}"
+    )

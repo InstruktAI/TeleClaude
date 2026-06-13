@@ -123,10 +123,14 @@ And the prepare state machine routes back to architecture_drafting on next dispa
 And the substantive stamp does not need lazy expiry — re-derivation produces a fresh artifact whose write clears the drift stamps and re-captures provenance
 ```
 
-```
-Given a worker session whose durable working_slug matches the Todo and whose lifecycle_phase is build_started
-When the worker runs "telec todo stamp my-slug --build-complete"
-Then the build-complete ownership check confirms the caller session owns working_slug == my-slug (permission denied otherwise)
+#### UC-WSS4: Build-complete accepts the owning worker or work orchestrator
+
+```gherkin
+Given a worker session whose durable working_slug matches the Todo, or a work-orchestrator session whose durable system_role is "orchestrator"
+And the Todo lifecycle_phase is build_started
+When the trusted session runs "telec todo stamp my-slug --build-complete"
+Then the build-complete ownership check accepts the caller because working_slug == my-slug or system_role == orchestrator
+And a missing session id, a plain operator shell, or a foreign worker session is refused before any write
 And the build-complete handler confirms the current phase is build_started or review_changes_requested (refused otherwise)
 And the worktree-commits check confirms the worktree has commits beyond main (refused otherwise)
 And build_gate_claim_at is set to the current timestamp and persisted through the state-write boundary
@@ -150,7 +154,7 @@ And no commit happens — the stamp call exits before any partial mutation lands
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
-- `agent_runtime` — worker sessions invoke `telec todo stamp` at phase boundaries (`--build-complete`, `--finalize-ready`, `--verdict … --phase build_review`); the build-complete ownership check reads the session's `working_slug` from the agent_runtime sessions table to enforce ownership.
+- `agent_runtime` — worker sessions and work-orchestrator sessions invoke `telec todo stamp` at phase boundaries (`--build-complete`, `--finalize-ready`, `--verdict … --phase build_review`); the build-complete ownership check reads the caller's `working_slug` and `system_role` from the agent_runtime sessions table to accept either the owning worker or the work orchestrator.
 - `workflow` — `/analyze-todo-input` assigns a kind-less Todo's kind autonomously through `--kind-assign`; there is no separate human approval stamp.
 
 ## Known caveats
@@ -161,7 +165,7 @@ And no commit happens — the stamp call exits before any partial mutation lands
   <!-- planned:task-lane -->
   `--kind-assign task` records kind + entry phase only and does not write `task-plan`; the task prepare command authors the `task-plan`.
   <!-- /planned:task-lane -->
-- `--build-complete` is **worker-owned and locked**: the caller's session must own `working_slug == <slug>`. Operators cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the working_slug does not match.
+- `--build-complete` is **worker- or orchestrator-owned and locked**: the caller must be either the owning worker (`working_slug == <slug>`) or a work orchestrator (`system_role == orchestrator`). Operators still cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the caller is neither accepted shape.
 - `--build-started` is **machine-owned**: the stamp rejects this flag explicitly and instructs the caller to run `telec todo work <slug>` so the work state machine owns the transition.
 - The approvals manager clears downstream approvals when an upstream artifact is re-opened. Refining the PRD invalidates the chain of architecture, plan, and finalize-ready approvals that depended on it — the state machine then re-runs the affected review and approval gates on next dispatch.
 - The `--architecture-skipped` skip stamp **requires a non-empty reason**. The empty-reason variant is refused before any write.

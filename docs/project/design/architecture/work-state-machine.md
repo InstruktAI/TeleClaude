@@ -81,7 +81,7 @@ build_review:
 ## Invariants
 
 - **Routing from canonical phase**: all routing decisions read `lifecycle_phase` from `todo state (todos.db)`.
-- **Build gates before review**: the worker-owned `build_complete` stamp validates diff-scoped gates before review can be dispatched.
+- **Build gates before review**: the worker- or orchestrator-owned `build_complete` stamp validates diff-scoped gates before review can be dispatched.
 - **Artifact verification**: mechanical checks at phase boundaries (tasks checked, commits exist, findings substantive).
 - **Reviewer reuse**: when review is already in flight for a slug, the state machine reuses the live reviewer session instead of dispatching a second reviewer.
 - **Verdict reconciliation**: `review-findings` is authoritative only for the currently dispatched review head (`review_dispatch_head`). Stale findings from an older round must not short-circuit a fresh re-review.
