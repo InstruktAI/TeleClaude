@@ -317,7 +317,12 @@ async def _apply_approval_stamp(
         repo_root=repo_root,
         snippet_digest_fn=snippet_digest_fn,
     )
-    ApprovalsManager(writer).approve(field_name, caller_session_id=caller_session_id or "")
+    approved_digest = writer.state.artifacts.prd.digest if artifact_name == ARTIFACT_PRD else ""
+    ApprovalsManager(writer).approve(
+        field_name,
+        caller_session_id=caller_session_id or "",
+        approved_digest=approved_digest,
+    )
 
 
 def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) -> None:

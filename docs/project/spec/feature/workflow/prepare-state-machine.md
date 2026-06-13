@@ -59,6 +59,18 @@ Then on the next prepare call the machine treats architecture as resolved withou
 And advances past the architecture phases straight to plan_drafting on the next derivation
 ```
 
+#### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
+
+```gherkin
+Given a feature Todo whose prd_approved Stamp is human-approved with approved_digest bound to the approved prd
+When the prd Artifact is rewritten so its live digest no longer equals approved_digest
+And the orchestrator calls "telec todo prepare my-feature"
+Then the machine does not advance past the PRD gate
+And it derives lifecycle_phase=prd_human_approval
+And only a human approval whose approved_digest equals the current prd digest advances past that gate
+And an approval with no bound approved_digest keeps satisfying the PRD gate for legacy state
+```
+
 <!-- planned:task-lane -->
 
 #### UC-WPS6: Task todos bypass the prepare machine

@@ -79,6 +79,7 @@ class ApprovalStamp(BaseModel):
     approved: bool = False
     approved_at: str = ""
     caller_session_id: str = ""
+    approved_digest: str = ""
 
 
 class SkipStamp(BaseModel):

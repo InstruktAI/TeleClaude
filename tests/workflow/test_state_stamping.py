@@ -11,6 +11,7 @@ from git import Actor, Repo
 
 import teleclaude.core.db as db_mod
 from teleclaude.constants import (
+    ARTIFACT_PRD,
     ARTIFACT_TASK_PLAN,
     LOCAL_COMPUTER,
     ROLE_ORCHESTRATOR,
@@ -20,10 +21,10 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
-from teleclaude.core.next_machine.state_mutation import StateMutationError
+from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
-from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
+from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_FEATURE, TODO_KIND_TASK
 
 pytestmark = pytest.mark.functional
 
@@ -60,6 +61,20 @@ async def _add_build_started_todo(todos_db: TodosDb, slug: str) -> None:
             "lifecycle_phase": LifecyclePhase.BUILD_STARTED.value,
         },
     )
+
+
+async def _add_feature_todo_with_prd(todos_db: TodosDb, slug: str) -> None:
+    await todos_db.add_to_roadmap(slug)
+    await todos_db.write_state(
+        slug,
+        {
+            "schema_version": 4,
+            "kind": TODO_KIND_FEATURE,
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.PRD_HUMAN_APPROVAL.value,
+        },
+    )
+    await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nApprove this.", updated_by="test")
 
 
 async def _create_runtime_session(
@@ -116,6 +131,32 @@ async def test_kind_assign_change_fixes_kind_and_entry_phase(tmp_path: Path) -> 
     assert state["kind"] == TODO_KIND_CHANGE
     assert state["lifecycle_phase"] == LifecyclePhase.PLAN_DRAFTING.value
     assert "kind_proposal" not in state
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS5")
+async def test_prd_approval_records_current_artifact_digest(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_feature_todo_with_prd(todos_db, _SLUG)
+    old_digest = await todos_db.artifact_digest(_SLUG, ARTIFACT_PRD)
+    await todos_db.write_artifact(_SLUG, ARTIFACT_PRD, "# PRD\n\nApprove this current version.", updated_by="test")
+    current_digest = await todos_db.artifact_digest(_SLUG, ARTIFACT_PRD)
+
+    await apply_todo_stamp(
+        cwd=str(project_root),
+        slug=_SLUG,
+        stamp_type="prd_approved",
+        caller_session_id="human-session",
+    )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert old_digest != current_digest
+    assert writer.state.approvals.prd_approved.approved is True
+    assert _ISO_TIMESTAMP_RE.fullmatch(writer.state.approvals.prd_approved.approved_at)
+    assert writer.state.approvals.prd_approved.approved_digest == current_digest
+    assert writer.state.artifacts.prd.digest == current_digest
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS1")

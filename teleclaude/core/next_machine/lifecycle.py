@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from typing import cast
 
 from teleclaude.constants import (
     ARTIFACT_DIAGNOSIS,
@@ -52,7 +53,7 @@ from teleclaude.types.lifecycle import (
     WORK_LIFECYCLE_PHASES,
     LifecyclePhase,
 )
-from teleclaude.types.todos import ApprovalStamp, ReviewVerdictState, TodoState
+from teleclaude.types.todos import ApprovalStamp, ArtifactEntry, ReviewVerdictState, TodoState
 
 __all__ = [
     "LIFECYCLE_PHASE_ORDER",
@@ -261,6 +262,11 @@ def _artifact_exists(model: TodoState, key: str) -> bool:
     return bool(entry.digest or entry.produced_at)
 
 
+def _artifact_digest(model: TodoState, key: str) -> str:
+    entry = cast(ArtifactEntry, getattr(model.artifacts, key))
+    return entry.digest
+
+
 def _artifact_present(model: TodoState, key: str, *, artifact_presence: _ArtifactPresence | None = None) -> bool:
     if artifact_presence is not None and key in artifact_presence:
         return artifact_presence[key]
@@ -310,6 +316,20 @@ def _approval_is_human(stamp: ApprovalStamp) -> bool:
     if not stamp.caller_session_id:
         return False
     return _session_principal(stamp.caller_session_id).startswith("human:")
+
+
+def _approval_current(stamp: ApprovalStamp, current_digest: str) -> bool:
+    """Return True when a human approval still matches the approved PRD content.
+
+    The digest binds the human approval to the PRD content that was approved.
+    Divergence re-opens the approval gate; an empty digest preserves legacy
+    approval state written before the digest field existed.
+    """
+    if not _approval_is_human(stamp):
+        return False
+    if not stamp.approved_digest:
+        return True
+    return stamp.approved_digest == current_digest
 
 
 def _review_approved(review: ReviewVerdictState) -> bool:
@@ -496,7 +516,7 @@ def _feature_phase(
     has_legacy_requirements = _artifact_present(model, STATE_KEY_REQUIREMENTS, artifact_presence=artifact_presence)
     if not (has_prd or has_legacy_requirements):
         return LifecyclePhase.PRD_DRAFTING
-    if has_prd and not _approval_is_human(model.approvals.prd_approved):
+    if has_prd and not _approval_current(model.approvals.prd_approved, _artifact_digest(model, STATE_KEY_PRD)):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
     if not has_prd and has_legacy_requirements and not _review_approved(model.requirements_review):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
@@ -602,7 +622,7 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.PRD_DRAFTING:
         return _intent_artifact_exists(model)
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
-        return _approval_is_human(model.approvals.prd_approved) or (
+        return _approval_current(model.approvals.prd_approved, _artifact_digest(model, STATE_KEY_PRD)) or (
             _artifact_exists(model, STATE_KEY_REQUIREMENTS) and _review_approved(model.requirements_review)
         )
     if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:

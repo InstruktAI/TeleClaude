@@ -191,13 +191,18 @@ class ApprovalsManager:
         """Typed approvals state under edit."""
         return self._writer.approvals
 
-    def approve(self, field_name: str, *, caller_session_id: str) -> None:
+    def approve(self, field_name: str, *, caller_session_id: str, approved_digest: str = "") -> None:
         """Stamp a human approval field by name."""
         now = datetime.now(UTC).isoformat()
         setattr(
             self.state,
             field_name,
-            ApprovalStamp(approved=True, approved_at=now, caller_session_id=caller_session_id),
+            ApprovalStamp(
+                approved=True,
+                approved_at=now,
+                caller_session_id=caller_session_id,
+                approved_digest=approved_digest,
+            ),
         )
 
     def skip(self, field_name: str, *, reason: str, caller_session_id: str) -> None:

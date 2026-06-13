@@ -9,8 +9,11 @@ from typing import cast
 
 import pytest
 
+import teleclaude.core.db as db_mod
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_PRD,
+    LOCAL_COMPUTER,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
@@ -25,6 +28,7 @@ from teleclaude.core.next_machine.kinds import (
     BUG_DIAGNOSE_KINDS,
     FAST_TRACK_PREPARED_KINDS,
     KIND_BUG,
+    KIND_FEATURE,
     KIND_TASK,
 )
 from teleclaude.core.next_machine.lifecycle import (
@@ -41,6 +45,7 @@ from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.next_machine.work_steps import _artifact_contract_note
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.types.todos import DependencyEntry, DriftReviewedStamp, RoadmapStatusLiteral, TodoState
 
@@ -120,6 +125,46 @@ async def _add_todo(
             "lifecycle_phase": lifecycle_phase.value,
         },
     )
+
+
+async def _create_human_runtime_session(project_root: Path, *, session_id: str) -> str:
+    runtime_db = await db_mod.get_db()
+    session = await runtime_db.create_session(
+        computer_name=LOCAL_COMPUTER,
+        tmux_session_name=f"tmux-{session_id}",
+        last_input_origin=InputOrigin.TERMINAL.value,
+        title=session_id,
+        session_id=session_id,
+        human_email="operator@example.test",
+        human_role="owner",
+        project_path=str(project_root),
+        working_slug=None,
+        emit_session_started=False,
+    )
+    return session.session_id
+
+
+async def _add_feature_with_rewritten_approved_prd(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    caller_session_id: str,
+    approved_digest: str | None,
+) -> tuple[str, str]:
+    await todos_db.add_to_roadmap(slug)
+    await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nApproved version.", updated_by="test")
+    old_digest = await todos_db.artifact_digest(slug, ARTIFACT_PRD)
+    await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nCurrent version.", updated_by="test")
+    current_digest = await todos_db.artifact_digest(slug, ARTIFACT_PRD)
+
+    model = TodoState(kind=KIND_FEATURE, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=4)
+    model.artifacts.prd.digest = current_digest
+    model.artifacts.prd.async_provenance_complete = True
+    model.approvals.prd_approved.approved = True
+    model.approvals.prd_approved.caller_session_id = caller_session_id
+    model.approvals.prd_approved.approved_digest = old_digest if approved_digest is None else approved_digest
+    await todos_db.write_state(slug, model.model_dump(exclude_none=True))
+    return old_digest, current_digest
 
 
 def _dependency_entry(dep_slug: str, roadmap_status: RoadmapStatusLiteral) -> DependencyEntry:
@@ -250,6 +295,47 @@ def test_bug_derives_diagnose_until_diagnosis_then_flows_like_a_plan() -> None:
 
     model.plan_review.verdict = "approve"
     assert adopt_prepare_handoff_phase(model, artifact_presence=with_plan) == LifecyclePhase.PREPARED
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS8")
+async def test_prd_rewritten_after_approval_is_re_approved(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    caller_session_id = await _create_human_runtime_session(
+        project_root,
+        session_id=f"{tmp_path.name}-prd-approval-human",
+    )
+    stale_slug = "stale-prd-approval"
+    legacy_slug = "legacy-prd-approval"
+
+    old_digest, current_digest = await _add_feature_with_rewritten_approved_prd(
+        todos_db,
+        stale_slug,
+        caller_session_id=caller_session_id,
+        approved_digest=None,
+    )
+    assert old_digest != current_digest
+
+    await next_prepare(cast(Db, _CapturingDb([])), stale_slug, str(project_root))
+
+    stale_state = await todos_db.read_state(stale_slug)
+    assert stale_state is not None
+    stale_writer = StateWriter(stale_state)
+    assert stale_writer.state.lifecycle_phase == LifecyclePhase.PRD_HUMAN_APPROVAL.value
+
+    await _add_feature_with_rewritten_approved_prd(
+        todos_db,
+        legacy_slug,
+        caller_session_id=caller_session_id,
+        approved_digest="",
+    )
+
+    await next_prepare(cast(Db, _CapturingDb([])), legacy_slug, str(project_root))
+
+    legacy_state = await todos_db.read_state(legacy_slug)
+    assert legacy_state is not None
+    legacy_writer = StateWriter(legacy_state)
+    assert legacy_writer.state.lifecycle_phase == LifecyclePhase.ARCHITECTURE_DRAFTING.value
 
 
 def test_bug_is_not_work_ready_before_prepared() -> None:

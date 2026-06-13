@@ -66,6 +66,17 @@ And the state-write boundary re-validates the full state and persists atomically
 And the next prepare-machine dispatch observes the approval and advances lifecycle_phase
 ```
 
+#### UC-WSS5: Human PRD approval records the current PRD digest
+
+```gherkin
+Given a Todo with a written PRD artifact
+When a human runs "telec todo stamp my-slug --prd-approved"
+Then the stamp hydrates the current PRD artifact provenance before recording the approval
+And the recorded prd_approved Stamp includes caller_session_id, approved_at, and approved_digest
+And approved_digest equals the current PRD artifact digest
+And the state-write boundary re-validates the full state and persists atomically
+```
+
 ```
 Given a reviewer worker has read the implementation plan
 When the worker runs "telec todo stamp my-slug --verdict approve --phase plan_review"
