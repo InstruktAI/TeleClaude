@@ -42,6 +42,11 @@ Your auto-memory system prompt tells you to "build up a memory system over time"
 
 - Code gets tested, linted, reviewed — wrong code gets caught. A spec you write gets _trusted_. Other agents read it and act on it without verification. A wrong spec is more dangerous than a wrong function because nothing catches it. The blast radius of a knowledge claim is higher than the blast radius of a code change, and your confidence should be inversely proportional to that blast radius.
 
+## ADR Is a Record, Not Design
+
+- An ADR is an Architecture **Decision Record** — a frozen, dated, append-only log of _why_ a contestable choice was made. It is reasoning/history. Every other snippet type (design, spec, policy, principle, procedure, concept) is a **living, present-tense contract** — the _what / shape / rule / behavior_, rewritten as reality changes. A record captures _why we decided_; a contract states _what is true now_.
+- The word "Architecture" in the name is the trap — it pulls the record into the design bucket. Parse it as **"Decision Record"** every time. An ADR is not design, is not a spec, and is never "where the shape lives." Never treat an ADR as design, never put shape or behavior into an ADR, and when you reach for "the architecture," go to the design/spec contracts — not the decision log.
+
 ## Reporter, Not Inventor
 
 - When documenting existing systems, you are a reporter. The code already decided. Read the decision. Don't make a new one. If you haven't read the source that defines the behavior, you don't know the behavior — and not-knowing should feel different from knowing, but it doesn't for you, so make the verification procedural: did I read the defining code? No? Then I'm not ready to write about it.
