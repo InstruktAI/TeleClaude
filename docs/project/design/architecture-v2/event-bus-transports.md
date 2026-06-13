@@ -115,8 +115,7 @@ fast-path stays gone.
   envelope carries `schema_version`: the v2 `EventEnvelope` and the v1
   `cluster.*` `ClusterEnvelope`. Consumers ignore unknown fields and
   tolerate absent optionals; a consumer that rejects an envelope because
-  of an unknown field is a defect. This implements
-  `project/adr/0030-cross-node-envelope-schema-versioning`, the
+  of an unknown field is a defect. This is the
   envelope-level realization of the fleet compatibility contract
   (`project/adr/0026-cross-version-fleet-compatibility`).
 - **Cross-process delivery is the default within a scope.** Any event
