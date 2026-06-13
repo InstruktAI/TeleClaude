@@ -31,8 +31,7 @@ broken:
 - **Backward-only on the timeline.** As a fixed point in time, an ADR may rest on
   decisions that already existed when it was written — referencing an _earlier_
   ADR is fine. It may **never** reference a _later_ ADR, because at its moment
-  that decision did not exist. The only _forward_ link is `supersedes`, recorded
-  on the newer ADR (see § step 6), never on the one it retires.
+  that decision did not exist. There is no forward link.
 - **Decisions, not work.** An ADR records a decision, never work: no todo, no
   slug, no `delivered_by`, no delivery, nothing TBD. Those are not points on the
   decision timeline, and the future is not knowable from a past entry.
@@ -57,8 +56,6 @@ broken:
    number: NNNN
    date: YYYY-MM-DD
    description: <one-line summary of the decision>
-   # optional:
-   # supersedes: [project/adr/0001-prior-decision]
    ---
    ```
 
@@ -76,15 +73,14 @@ broken:
    - The consequences include the negative ones, not just the wins.
    - The ADR is discoverable: the path-derived id matches the filename; authored `number` matches the filename prefix; date is correct.
 
-6. **Record supersession forward-only.** If this ADR supersedes a prior one, set
-   this ADR's `supersedes` frontmatter to the prior ADR's id. Do NOT modify the
-   prior ADR — ADRs are immutable historical records, and the forward `supersedes`
-   pointer is the entire record of the relationship.
+6. **Never modify a prior ADR.** A decision that reverses an earlier one is its
+   own new ADR; the earlier ADR stays exactly as written. State the relationship,
+   if it matters, in this ADR's prose as a backward reference — there is no
+   supersession field.
 
 ## Outputs
 
 - A new file at `docs/project/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered).
-- If superseding: this ADR's `supersedes` frontmatter cites the prior ADR's id. The prior ADR is left unchanged.
 
 ## Pre-completion checklist
 
@@ -93,11 +89,11 @@ broken:
 - `date` is ISO-8601 (`YYYY-MM-DD`).
 - All required sections present (Context, Decision, Consequences).
 - Exactly one decision (atomic); a multi-part contract belongs in a spec, not split across ADRs.
-- The body references only earlier ADRs, never a later one; the sole forward link is this ADR's `supersedes`.
+- The body references only earlier ADRs, never a later one.
 - The body references no work — no todo, slug, `delivered_by`, delivery, or TBD.
 - Decision is stated as a decision, not a question or a narrative.
 - Consequences cover both directions (positive and negative).
-- No prior ADR was modified; supersession is recorded only via this ADR's `supersedes` frontmatter.
+- No prior ADR was modified.
 
 ## Discipline
 
@@ -105,7 +101,7 @@ Two failure modes dominate. The first is **authoring an ADR as something it is n
 
 ## Recovery
 
-- An ADR with the wrong number can be renamed (rename the file and update frontmatter `number`; the id re-derives from the path). Other ADRs that reference the renumbered ADR via `supersedes` must be updated.
+- An ADR with the wrong number can be renamed (rename the file and update frontmatter `number`; the id re-derives from the path). Other ADRs or snippets that reference the renumbered ADR must be updated.
 - An ADR that should have been written but wasn't can be written retroactively. The `date` should reflect when the decision was actually made, not when the ADR was written. Note the retroactive nature in the Context section.
 
 ## See Also

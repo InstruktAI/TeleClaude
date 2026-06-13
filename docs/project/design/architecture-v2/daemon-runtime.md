@@ -114,6 +114,7 @@ overall health. The v2 cutover makes the build mandatory, adds the unit to the
 managed set, and installs and loads it unconditionally.
 
 <!-- planned:telec-daemon-systemd-unit -->
+
 On Linux the same contract holds through systemd: a `telec-daemon` unit
 template mirrors the launchd conventions (restart-on-failure supervision,
 `WorkingDirectory` at the project root so the binary loads `CLUSTER_REDIS_URL`
@@ -125,8 +126,8 @@ verbs treat it as required-if-present — an installed unit must be healthy and 
 operated by every control verb; an absent unit reports one informational line,
 does not degrade overall health, and is skipped by the control verbs. Identical
 opt-in semantics, identical operator surface.
-<!-- /planned:telec-daemon-systemd-unit -->
 
+<!-- /planned:telec-daemon-systemd-unit -->
 
 ### Unified operator control surface
 
