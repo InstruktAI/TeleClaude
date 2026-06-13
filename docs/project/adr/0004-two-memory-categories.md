@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-21'
 description: 'Memory observations are classified into exactly two categories — human (about a person) and project (about a project). A third "general" category was considered and deferred for lack of a concrete use case.'
 number: '4'

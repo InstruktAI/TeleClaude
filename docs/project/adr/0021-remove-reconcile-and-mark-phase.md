@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-09'
 description: 'Removed the telec todo reconcile and mark-phase commands and the mechanical-invalidation subsystem; lifecycle_phase derives from evidence on dispatch, and drift materiality stays an intelligence judgment.'
 number: '21'

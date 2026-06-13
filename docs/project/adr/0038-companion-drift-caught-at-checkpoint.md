@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'Companion-edit drift (a live parent snippet reworked without its pending companion) is caught in-loop by a checkpoint presence heuristic at agent_stop, with the review lane retained as the correctness backstop.'
 number: '38'

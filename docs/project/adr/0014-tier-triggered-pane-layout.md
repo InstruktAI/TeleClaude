@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-03'
 description: 'The Sessions-view pane renderer swaps same-tier cells in place and minimally reflows on tier change, replacing the destroy-and-rebuild + select-layout even-horizontal approach; one canonical state owner enforces invariant I1.'
 number: '14'

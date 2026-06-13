@@ -1,12 +1,11 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-05'
 description: 'Testing moves from agent-authored unit tests (1:1 source mapping, TDD iron-law) to spec-anchored behavioral tests that bind human-authored feature-spec scenarios. No agent unit tests where no compiler enforces correctness; functional + smoke levels; coverage measured against the scenario inventory; spec-mirrored test files; fingerprint-based drift detection.'
-number: '14'
+number: '46'
 visibility: 'public'
 ---
 
-# ADR-0014: Spec-Anchored Behavioral Testing Replaces Agent-Authored Unit Tests — ADR
+# ADR-0046: Spec-Anchored Behavioral Testing Replaces Agent-Authored Unit Tests — ADR
 
 ## Context
 

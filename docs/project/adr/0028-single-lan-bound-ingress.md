@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'A single ingress computer terminates all external webhooks for the cluster: it binds its webhook server to a LAN/router address (not localhost, not promiscuous), the router port-forwards public traffic to it, it restricts accepted sources to the router, normalizes each payload to a unified event, and relays it onto Redis at cluster scope. No other computer needs public exposure; the ingress need not be the master. This supersedes the v1 localhost-only bind and the self-update-gated deployment fan-out.'
 number: '28'

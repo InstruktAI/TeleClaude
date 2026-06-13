@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-28'
 description: 'Shared (generic) Discord channels — Operations, Help Desk (Customer Sessions, Escalations), and Team — are provisioned by the master computer only. Non-master computers resolve them by name but never create, so a shared Discord app cannot accrue duplicate channels.'
 number: '12'

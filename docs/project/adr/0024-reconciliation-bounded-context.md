@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'Keeping a fleet of installations converged to a desired state (version, schema, health, upkeep) is its own bounded context — reconciliation — not part of integration. Integration owns foreign-protocol boundaries; reconciliation owns the control loop that drives actual state toward desired state and guards cross-version fleet interop.'
 number: '24'

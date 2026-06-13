@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: "The in-line work→prepare drift bounce resumes via the orchestrator's own lineage awareness, not via runtime state. The PREPARED terminal emits cleanup commands plus a lineage-conditioned self-end-vs-resume reminder and does not detect which case applies. A runtime-state marker on the todo and worktree-presence inference were both rejected: the bounce is one continuous in-line session and precedes worktree creation, so neither is needed."
 number: '34'

@@ -1,12 +1,11 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'telec code commit runs format then lint in-process before git commit --no-verify; the pre-commit framework is retired; .git/hooks/pre-commit is a thin fail-closed partial-staging guard.'
-number: '36'
+number: '47'
 visibility: 'public'
 ---
 
-# ADR-0036: Commit Gates Run In-Process; Pre-Commit Framework Retired — ADR
+# ADR-0047: Commit Gates Run In-Process; Pre-Commit Framework Retired — ADR
 
 ## Context
 

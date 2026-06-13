@@ -1,5 +1,4 @@
 ---
-adr_status: accepted
 date: 2026-06-08
 description: Bugs enter a mandatory diagnosis prepare stage and reuse the change plan→plan-review→build
   pipeline, replacing the no-prepare fix lane.

@@ -1,5 +1,4 @@
 ---
-adr_status: 'proposed'
 date: '2026-06-11'
 description: 'The ADR-0025 Layer-1 upcasting engine is shaped as a dedicated storage-agnostic transform core (crates/upcasting, serde_json only) plus a Postgres convergence binding in crates/storage; write-back is a non-blocking compare-and-set guarded by schema_version (skip-on-newer), and the engine never names tables — the consuming context implements a persistence trait with its own sqlx.'
 number: '44'

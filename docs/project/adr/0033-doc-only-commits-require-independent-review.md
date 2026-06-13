@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'A doc-only commit that changes a doc snippet is not review-exempt: it requires an independent fast/medium doc-hygiene commit-review on the committed SHA. The authoring agent may never review a snippet it wrote, because it believes its own work is correct. The check is narrow and cheap — the doc-hygiene lane over one or two changed snippets — so enforcing it costs little.'
 number: '33'

@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-02'
 description: 'Cross-computer state propagation moves to a single ``cluster.*`` Redis pub/sub channel namespace. Local cache becomes a materialized view of cluster events; the legacy heartbeat-digest pull and the per-data-type "interest" gate are retired.'
 number: '13'

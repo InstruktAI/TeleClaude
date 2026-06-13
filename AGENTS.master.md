@@ -32,7 +32,7 @@ A v2 Rust workspace lives alongside v1 under `crates/`. It exposes a parallel `W
 - [DEVELOPMENT] **`make pg-up` / `make pg-down` / `make pg-reset`** bring local Postgres 17 + Redis 7 up via `docker-compose.yml`. Postgres is v2-only and is **not** part of `make install` yet. TODO: wire native Postgres setup into `make install` at the v2 workflow cutover.
 - **`cargo build/test/clippy --workspace`** are the v2 quality gates. Pre-commit hooks run `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` on Rust changes.
 - **Authoritative cutover is a future dedicated todo** (`v2-workflow-cutover`). It will migrate v1's HTTP API, TUI, integration, operations, and `next_machine/` orchestrator off SQLite onto the v2 Postgres schema in one coordinated step. Until then, do not delete v1 paths and do not run `telec migrate-workflow-v1` against real project data.
-- **The `workflow` crate's `RoadmapEntry`/`roadmap` modeling does NOT represent the intended shape.** The workflow domain has one entity — the todo, ordered and dependency-gated; there is no separate roadmap concept. See `project/adr/0009-workflow-domain-has-no-roadmap`; the rework is tracked by the `v2-workflow-drop-roadmap` todo. (v1's legacy `roadmap` table/module names stay until cutover.)
+- **The `workflow` crate's `RoadmapEntry`/`roadmap` modeling does NOT represent the intended shape.** The workflow domain has one entity — the todo, ordered and dependency-gated; there is no separate roadmap concept. See `project/adr/0045-workflow-domain-has-no-roadmap`; the rework is tracked by the `v2-workflow-drop-roadmap` todo. (v1's legacy `roadmap` table/module names stay until cutover.)
 
 ## TUI work
 

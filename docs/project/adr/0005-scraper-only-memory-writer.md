@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-21'
 description: 'Memory is writable exclusively by the dedicated memory extraction agents (the scrapers). All other agents are prohibited from calling telec memories save.'
 number: '5'

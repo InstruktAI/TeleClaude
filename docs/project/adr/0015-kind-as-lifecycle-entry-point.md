@@ -1,5 +1,4 @@
 ---
-adr_status: 'superseded'
 date: '2026-06-06'
 description: 'A kind names the lifecycle entry point: the SDLC kinds (feature/change/bug), the non-SDLC `task` kind, and an optional kind at intake (kind-less dumps are classified and auto-assigned by /analyze-todo-input).'
 number: '15'

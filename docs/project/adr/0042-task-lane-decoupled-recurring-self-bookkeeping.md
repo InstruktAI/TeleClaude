@@ -1,7 +1,6 @@
 ---
 description: 'The task lane is decoupled from the SDLC prepare machine: two runner-routed agent runs (draft-plan, run) gated by human authorization, recurrence via a schedule reusing the durable task-plan, ephemeral runs over a durable todo, self-bookkeeping via a continuity log, and a predictable durable workspace output home.'
 date: '2026-06-12'
-adr_status: 'accepted'
 number: '42'
 ---
 

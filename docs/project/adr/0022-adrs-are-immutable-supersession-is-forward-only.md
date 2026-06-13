@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-09'
 description: 'ADRs are immutable historical records; a superseding ADR cites the prior one via a forward supersedes pointer and never mutates it (no adr_status edit on the prior).'
 number: '22'

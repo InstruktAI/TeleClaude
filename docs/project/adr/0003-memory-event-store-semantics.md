@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-21'
 description: 'Memory writes are append-only — multiple rows with the same (subject, predicate, object) are allowed. Dedup is a read-time concern for downstream consumers, not a write-time check.'
 number: '3'

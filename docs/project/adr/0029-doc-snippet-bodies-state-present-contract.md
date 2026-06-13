@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'A doc-snippet body states present-tense intent and contract only. History belongs in git, rationale in an ADR, pending status and provenance in the delivered_by frontmatter field, and forward design is written as present-tense contract — never as narration in the body. This is enforced by a reviewer lane (doc-snippet hygiene), not an automated grader, because scoring free-text quality in code would violate intelligence-boundaries.'
 number: '29'

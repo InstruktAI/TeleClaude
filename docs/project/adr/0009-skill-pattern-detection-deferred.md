@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-21'
 description: 'Skill pattern detection is deferred. Skills, when they come, will be per-human curation of external libraries (not memory-promotion). The future shape is captured in a design doc; no implementation in v2.'
 number: '9'

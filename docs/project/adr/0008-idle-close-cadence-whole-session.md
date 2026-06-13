@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-21'
 description: 'Memory extraction runs over the whole session delta on two triggers — idle ≥30 minutes or session close. Per-turn windowing (e.g., Hermes-style every-N-turns) is not used for memory.'
 number: '8'

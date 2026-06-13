@@ -1,5 +1,4 @@
 ---
-adr_status: 'proposed'
 date: '2026-06-11'
 description: 'The portable guardrails are a domain-blind engine running rule packs, locked at error with no per-project quality configuration; brownfield flex lives only in shrinking exemption ramps, and guardrails never watch the watchers.'
 number: '39'

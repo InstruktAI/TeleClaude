@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-21'
 description: 'Memory observations are stored as (subject, predicate, object) triples rather than as flat title+narrative+type records.'
 number: '2'

@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-08'
 description: 'Mechanism (HOW) named in upstream intent is a verifiable hypothesis the consuming author overrides against code reality, not a directive — and not something a creation-time gate rejects.'
 number: '20'

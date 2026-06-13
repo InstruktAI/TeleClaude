@@ -1,6 +1,5 @@
 ---
 date: '2026-06-11'
-adr_status: 'accepted'
 number: '32'
 description: 'One cluster bus Redis serves both the Local and Cluster scopes; CLUSTER_REDIS_URL is its canonical config name and REDIS_URL configures the same endpoint, and subscriptions separate the co-mingled scopes by filtering on envelope.scope.'
 ---

@@ -2,7 +2,6 @@
 visibility: 'public'
 number: '35'
 date: '2026-06-11'
-adr_status: 'accepted'
 description: "A todo's lifecycle driver is owned by a durable session-id link the dispatcher writes, verified lazily against the live-session ledger — not inferred from session titles."
 ---
 

@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'The checkpoint action ledger is time-anchored and includes committed code; the authored-main-commit signal triggers only the post-commit review gate; one turn-scoped escape hatch replaces the permanent disable.'
 number: '37'

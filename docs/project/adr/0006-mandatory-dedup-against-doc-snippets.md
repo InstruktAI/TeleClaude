@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-05-21'
 description: 'Before saving any memory triple, the scraper must search existing doc snippets for substantive coverage and discard candidates that are already codified. Codified knowledge does not get re-encoded as memory.'
 number: '6'

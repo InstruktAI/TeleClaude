@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-08'
 description: 'Typed-in input, whether human or inter-actor, defines a real session turn; only hook side-channel artifacts are excluded from turn boundaries and notification dedup resets.'
 number: '18'

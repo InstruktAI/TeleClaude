@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'Two distinct migration concerns are separated: per-aggregate data evolution via lazy upcasting (migrate-on-read, write-back) owned by each domain on a shared engine, and installation-level structural convergence owned by reconciliation. There is no central migrations domain; backward-compatibility branches in domain code are forbidden because the upcaster guarantees the domain only ever sees the latest shape.'
 number: '25'

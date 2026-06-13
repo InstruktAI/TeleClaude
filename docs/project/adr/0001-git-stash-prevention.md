@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-03-20'
 description: 'Phantom git stash entries from test runs and stale worktree wrappers blocked the work state machine; resolved via test-isolation, mark-phase auto-commit, worktree-preferring state IO, and defense-in-depth autostash prevention.'
 number: '1'

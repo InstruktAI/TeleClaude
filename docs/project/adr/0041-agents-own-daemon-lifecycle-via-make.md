@@ -2,7 +2,6 @@
 visibility: 'public'
 number: '41'
 date: '2026-06-12'
-adr_status: 'accepted'
 description: 'Agents operate the daemon through the make targets; routine service operations are not gated on human approval.'
 ---
 

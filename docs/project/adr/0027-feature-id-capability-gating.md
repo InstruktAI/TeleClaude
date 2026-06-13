@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-11'
 description: 'New cross-node behavior is gated behind spec-like feature-IDs that unaware nodes safely ignore — the explicit, named form of the expand step. Each feature-ID is marked ignorable or must-negotiate, nodes advertise their capability set into a fleet capability map, and an ID is retired (with its gated code path) only once the slowest channel universally carries it. Feature-IDs gate new capabilities; they do not replace envelope versioning for evolving shared shapes.'
 number: '27'

@@ -1,5 +1,4 @@
 ---
-adr_status: 'accepted'
 date: '2026-06-06'
 description: 'Adopt the Graphify CLI (graphifyy, MIT) as the codebase blueprint engine. Generation is integrate-time `graphify update` (no-LLM) writing .teleclaude/blueprint/graph.json plus a manifest; the agent-facing surface is one value-add primitive, `telec context blueprint affected <changed-files>`, with `graphify query`/`path` for discovery. No MCP, no verb-for-verb wrapper. The seam is the graph.json data contract plus the CLI method, not the vendor identity, so the engine is replaceable at low cost.'
 number: '16'

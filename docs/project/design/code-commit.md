@@ -285,6 +285,6 @@ are sent to the same reviewer.
 
 ## See also
 
-- docs/project/adr/0036-commit-gates-in-process-no-stash.md
+- docs/project/adr/0047-commit-gates-in-process-no-stash.md
 - docs/global/software-development/design/workspace-scoping.md
 - docs/global/software-development/policy/version-control-safety.md
