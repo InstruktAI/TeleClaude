@@ -40,7 +40,7 @@ Create or update agent artifacts that follow the schema and compile correctly fo
    the procedure's `## Outputs`. Add Inputs/Outputs ONLY to a self-contained command that
    has no such counterpart. This is a judgement, not a machine check — listing several
    procedures for context is not the same as having one that owns your inputs and outputs.
-8. **ADR discipline (decision capture).** If your artifact change embeds a non-trivial decision — one a future agent might reasonably ask "why was it done this way?" about — author an accompanying ADR per `general/policy/adr-discipline`, following `general/procedure/adr-authoring`. Artifacts describe the _current behavior_; ADRs preserve the _reasoning_. Do not embed reasoning logs in primary artifacts.
+8. **ADR discipline (decision capture).** Artifacts describe the _current behavior_; they hold no reasoning logs. An ADR is reserved for a real, contestable decision and the default is none — consult `general/policy/adr-discipline` for the bar before writing one.
 9. After any doc change, run `telec sync`.
 
 ## Outputs

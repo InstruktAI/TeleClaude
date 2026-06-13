@@ -360,7 +360,7 @@ For each changed snippet body, flag the Narration anti-pattern in its four forms
 1. **History in the body** — "replaces the v1 path", "is retired", "used to …",
    "previously named …". Belongs in git.
 2. **Rationale in the body** — "because …", "this avoids …", "the reason we chose
-   …". Belongs in an ADR.
+   …". Belongs in the snippet's own Rationale section where its type has one, or is dropped.
 3. **Inline provenance / coordination metadata** — "(delivered_by `<slug>`)",
    "Pending `<slug>`, …", a delivering slug named anywhere in body prose. Belongs
    in the `delivered_by` frontmatter field only.
@@ -393,8 +393,7 @@ Severity guidance:
 - Narration introduced or modified by this change in a live snippet body →
   **Important**.
 - An edited parent snippet with an unsynced pending companion → **Important**.
-- A snippet whose contract is correct but carries a stray rationale clause better
-  placed in an ADR → **Important**.
+- A snippet whose contract is correct but carries a stray rationale clause that belongs in its Rationale section or is dropped → **Important**.
 - Pre-existing narration in a region this change did not touch → **drop the
   observation; it is not a finding** (the sweep owns it, not this review).
 

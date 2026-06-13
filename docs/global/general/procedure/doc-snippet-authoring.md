@@ -86,7 +86,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 
     - **Related-file discovery.** Before editing a live parent `<stem>.md`, list sibling files by stripping `.md` and globbing the stem (`ls docs/.../<stem>.*`). If a pending companion `<stem>.<slug>.md` exists, mirror the parent edit into that companion or coordinate ownership. A parent edit that leaves its pending companion unsynced is a defect.
 
-13. **ADR discipline (decision capture).** If your snippet change embeds a non-trivial decision — one a future agent might reasonably ask "why was it done this way?" about — author an accompanying ADR per `general/policy/adr-discipline`, following `general/procedure/adr-authoring`. Specs, procedures, and principles describe the _current state_; ADRs preserve the _reasoning_. Do not embed reasoning logs in primary artifacts.
+13. **ADR discipline (decision capture).** Specs, procedures, and principles describe the _current state_; they hold no reasoning logs. An ADR is reserved for a real, contestable decision and the default is none — consult `general/policy/adr-discipline` for the bar before writing one.
 
 ## Outputs
 
