@@ -2,8 +2,6 @@
 date: '2026-06-12'
 description: 'Committed code is sourced into the checkpoint action ledger as derived maintenance obligations, each discharged when its evidence is observed in any later checkpoint cycle; the wholesale user-prompt-submit clear is a backstop, not the only clear.'
 number: '43'
-supersedes:
-  - project/adr/0037-checkpoint-ledger-separates-commit-detection
 visibility: 'public'
 ---
 

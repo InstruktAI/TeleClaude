@@ -2,7 +2,6 @@
 date: '2026-06-12'
 description: 'Guardrails are TeleClaude-owned and provided as part of the stack; they catch substantive code/structure issues only — the rules that watched other tools or duplicated native type/lint enforcement are removed, and there is no per-project quality-config surface. Supersedes the portable/pack framing of ADR 0039.'
 number: '40'
-supersedes: ['project/adr/0039-guardrails-locked-no-config']
 visibility: 'public'
 ---
 

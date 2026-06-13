@@ -3,8 +3,6 @@ date: 2026-06-08
 description: Bugs enter a mandatory diagnosis prepare stage and reuse the change plan→plan-review→build
   pipeline, replacing the no-prepare fix lane.
 number: 19
-supersedes:
-  - project/adr/0015-kind-as-lifecycle-entry-point
 visibility: public
 ---
 
