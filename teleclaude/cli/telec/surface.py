@@ -387,7 +387,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
     ),
     "sync": CommandDef(
-        desc="Validate (always blocks), then build indexes and deploy artifacts",
+        desc="Validate doc/snippet/artifact sources (blocks on findings) and apply your edits",
         args="[--skip-deploy]",
         flags=[
             _H,
