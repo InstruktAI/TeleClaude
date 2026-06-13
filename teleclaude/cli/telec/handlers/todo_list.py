@@ -10,7 +10,7 @@ from teleclaude.api_models import TodoDTO
 from teleclaude.cli.telec.help import _usage
 from teleclaude.core.roadmap import parse_since_to_cutoff
 from teleclaude.core.roadmap_tree import RoadmapNode, build_roadmap_sections, flatten
-from teleclaude.project_root import resolve_invocation_cwd, resolve_state_root
+from teleclaude.project_root import resolve_invocation_project_root
 from teleclaude.services.work import get_work_service
 
 __all__ = ["_handle_todo_list"]
@@ -129,7 +129,7 @@ def _parse_todo_list_args(args: list[str]) -> _TodoListArgs:
 
 
 def _resolve_todo_project_root() -> Path:
-    return resolve_state_root(resolve_invocation_cwd())
+    return resolve_invocation_project_root()
 
 
 def _print_sectioned_todo_list(sections: list[tuple[str, list[RoadmapNode]]]) -> None:

@@ -5,7 +5,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-__all__ = ["resolve_git_root", "resolve_invocation_cwd", "resolve_state_root", "resolve_workspace_root"]
+__all__ = [
+    "resolve_git_root",
+    "resolve_invocation_cwd",
+    "resolve_invocation_project_root",
+    "resolve_state_root",
+    "resolve_workspace_root",
+]
 
 
 def resolve_invocation_cwd() -> Path:
@@ -37,6 +43,17 @@ def resolve_invocation_cwd() -> Path:
     if pwd:
         return Path(pwd)
     return Path.cwd()
+
+
+def resolve_invocation_project_root() -> Path:
+    """Return the canonical main project root for the current invocation.
+
+    Normalizes the invocation cwd — which may be a todo worktree or a subdir —
+    back to the owning main checkout via :func:`resolve_state_root`. Doc and
+    other shared-state lookups resolve against main's artifacts, which are the
+    only place those artifacts live; a worktree never carries a generated index.
+    """
+    return resolve_state_root(resolve_invocation_cwd())
 
 
 def resolve_workspace_root(start: str | Path) -> Path:

@@ -15,7 +15,7 @@ from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.project_root import resolve_invocation_cwd, resolve_state_root
+from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_project_root
 from teleclaude.project_setup import init_project
 from teleclaude.project_setup.onboard_flow import run_analyze, run_assess, run_onboard
 
@@ -92,7 +92,7 @@ def _handle_version() -> None:
 
 def _handle_sync(args: list[str]) -> None:
     """Handle telec sync command."""
-    project_root = resolve_state_root(resolve_invocation_cwd())
+    project_root = resolve_invocation_project_root()
     skip_deploy = False
     skip_validation = False
 

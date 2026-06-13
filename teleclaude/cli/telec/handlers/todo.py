@@ -29,7 +29,7 @@ from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.git import GitCommandError
-from teleclaude.project_root import resolve_invocation_cwd, resolve_state_root
+from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_project_root
 from teleclaude.session_identity import get_session_id
 from teleclaude.slug import validate_slug
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
@@ -110,7 +110,7 @@ def _validate_slugs(*slugs: str | None) -> None:
 
 
 def _resolve_todo_project_root() -> Path:
-    return resolve_state_root(resolve_invocation_cwd())
+    return resolve_invocation_project_root()
 
 
 def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:
