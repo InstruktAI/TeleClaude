@@ -56,7 +56,6 @@ broken:
    visibility: public
    number: NNNN
    date: YYYY-MM-DD
-   adr_status: accepted # proposed | accepted | deprecated (superseded is a derived state, never hand-set by a superseding ADR)
    description: <one-line summary of the decision>
    # optional:
    # supersedes: [project/adr/0001-prior-decision]
@@ -75,7 +74,7 @@ broken:
 5. **Sanity check before commit:**
    - The decision is stated clearly enough that a future agent could re-evaluate it on its merits.
    - The consequences include the negative ones, not just the wins.
-   - The ADR is discoverable: the path-derived id matches the filename; authored `number` matches the filename prefix; date is correct; status is accurate.
+   - The ADR is discoverable: the path-derived id matches the filename; authored `number` matches the filename prefix; date is correct.
 
 6. **Record supersession forward-only.** If this ADR supersedes a prior one, set
    this ADR's `supersedes` frontmatter to the prior ADR's id. Do NOT modify the
@@ -92,7 +91,6 @@ broken:
 - Filename matches `NNNN-kebab-case-title.md`.
 - `number` frontmatter matches the prefix.
 - `date` is ISO-8601 (`YYYY-MM-DD`).
-- `adr_status` is one of the allowed values.
 - All required sections present (Context, Decision, Consequences).
 - Exactly one decision (atomic); a multi-part contract belongs in a spec, not split across ADRs.
 - The body references only earlier ADRs, never a later one; the sole forward link is this ADR's `supersedes`.
@@ -109,7 +107,6 @@ Two failure modes dominate. The first is **authoring an ADR as something it is n
 
 - An ADR with the wrong number can be renamed (rename the file and update frontmatter `number`; the id re-derives from the path). Other ADRs that reference the renumbered ADR via `supersedes` must be updated.
 - An ADR that should have been written but wasn't can be written retroactively. The `date` should reflect when the decision was actually made, not when the ADR was written. Note the retroactive nature in the Context section.
-- An ADR with the wrong status (e.g., `accepted` when it should now be `superseded`) is fixed by updating the `adr_status` frontmatter only — the body stays as the historical record.
 
 ## See Also
 
