@@ -332,8 +332,23 @@ def _approval_current(stamp: ApprovalStamp, current_digest: str) -> bool:
     return stamp.approved_digest == current_digest
 
 
-def _review_approved(review: ReviewVerdictState) -> bool:
-    return review.verdict in ("approve", "skipped")
+def _review_current(review: ReviewVerdictState, current_digest: str) -> bool:
+    """Return True when ``review`` approves or skips the *current* artifact.
+
+    An ``approve`` verdict binds ``approved_digest`` to the artifact content the
+    reviewer saw. When the artifact is rewritten afterward its live digest
+    diverges, the approval no longer applies, and the gate must route back to
+    review. A ``skipped`` verdict carries no artifact and always passes; an
+    ``approve`` with no bound digest passes unchanged so pre-digest legacy state
+    keeps its prior phase.
+    """
+    if review.verdict == "skipped":
+        return True
+    if review.verdict != "approve":
+        return False
+    if not review.approved_digest:
+        return True
+    return review.approved_digest == current_digest
 
 
 def _clear_build_review(model: TodoState) -> None:
@@ -476,7 +491,7 @@ def _plan_only_phase(
 ) -> LifecyclePhase:
     if not _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence):
         return LifecyclePhase.PLAN_DRAFTING
-    if not _review_approved(model.plan_review):
+    if not _review_current(model.plan_review, _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN)):
         if model.plan_review.cleared_by_substantive_drift:
             return LifecyclePhase.PLAN_DRAFTING
         return LifecyclePhase.PLAN_REVIEW
@@ -518,7 +533,11 @@ def _feature_phase(
         return LifecyclePhase.PRD_DRAFTING
     if has_prd and not _approval_current(model.approvals.prd_approved, _artifact_digest(model, STATE_KEY_PRD)):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
-    if not has_prd and has_legacy_requirements and not _review_approved(model.requirements_review):
+    if (
+        not has_prd
+        and has_legacy_requirements
+        and not _review_current(model.requirements_review, _artifact_digest(model, STATE_KEY_REQUIREMENTS))
+    ):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
 
     architecture_skipped = model.approvals.architecture_skipped is not None
@@ -526,7 +545,7 @@ def _feature_phase(
     if not architecture_skipped:
         if not _artifact_present(model, STATE_KEY_ARCHITECTURE, artifact_presence=artifact_presence):
             return LifecyclePhase.ARCHITECTURE_DRAFTING
-        if not _review_approved(model.architecture_review):
+        if not _review_current(model.architecture_review, _artifact_digest(model, STATE_KEY_ARCHITECTURE)):
             if model.architecture_review.cleared_by_substantive_drift:
                 return LifecyclePhase.ARCHITECTURE_DRAFTING
             return LifecyclePhase.ARCHITECTURE_REVIEW
@@ -623,18 +642,19 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
         return _intent_artifact_exists(model)
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
         return _approval_current(model.approvals.prd_approved, _artifact_digest(model, STATE_KEY_PRD)) or (
-            _artifact_exists(model, STATE_KEY_REQUIREMENTS) and _review_approved(model.requirements_review)
+            _artifact_exists(model, STATE_KEY_REQUIREMENTS)
+            and _review_current(model.requirements_review, _artifact_digest(model, STATE_KEY_REQUIREMENTS))
         )
     if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
-        return _review_approved(model.architecture_review)
+        return _review_current(model.architecture_review, _artifact_digest(model, STATE_KEY_ARCHITECTURE))
     if phase == LifecyclePhase.DIAGNOSE:
         return _artifact_exists(model, STATE_KEY_DIAGNOSIS)
     if phase == LifecyclePhase.PLAN_DRAFTING:
         return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:
-        return _review_approved(model.plan_review)
+        return _review_current(model.plan_review, _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN))
     if phase == LifecyclePhase.BUILD_STARTED:
         return bool(model.build_completed_at)
     if phase == LifecyclePhase.BUILD_COMPLETE:

@@ -59,6 +59,17 @@ Then on the next prepare call the machine treats architecture as resolved withou
 And advances past the architecture phases straight to plan_drafting on the next derivation
 ```
 
+#### UC-WPS7: A plan rewritten after approval is re-reviewed before prepared
+
+```gherkin
+Given a Todo whose plan_review verdict is approve with approved_digest bound to the reviewed implementation-plan
+When the implementation-plan Artifact is rewritten so its live digest no longer equals approved_digest
+And the orchestrator calls "telec todo prepare my-change"
+Then the machine does NOT derive prepared
+And it derives lifecycle_phase=plan_review so the rewritten plan is re-reviewed
+And only an approve verdict whose approved_digest equals the current plan digest derives prepared
+```
+
 #### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
 
 ```gherkin

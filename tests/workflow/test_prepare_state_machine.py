@@ -28,6 +28,7 @@ from teleclaude.core.next_machine.kinds import (
     BUG_DIAGNOSE_KINDS,
     FAST_TRACK_PREPARED_KINDS,
     KIND_BUG,
+    KIND_CHANGE,
     KIND_FEATURE,
     KIND_TASK,
 )
@@ -336,6 +337,21 @@ async def test_prd_rewritten_after_approval_is_re_approved(tmp_path: Path) -> No
     assert legacy_state is not None
     legacy_writer = StateWriter(legacy_state)
     assert legacy_writer.state.lifecycle_phase == LifecyclePhase.ARCHITECTURE_DRAFTING.value
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS7")
+def test_plan_rewritten_after_approval_is_re_reviewed() -> None:
+    model = TodoState(kind=KIND_CHANGE, schema_version=4)
+    model.artifacts.implementation_plan.digest = "plan-approved"
+    model.plan_review.verdict = "approve"
+    model.plan_review.approved_digest = "plan-approved"
+    # Approval bound to the live plan digest → prepared.
+    assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PREPARED
+
+    # Plan rewritten after approval: live digest diverges from approved_digest,
+    # so the stale approval no longer applies and the gate routes back to review.
+    model.artifacts.implementation_plan.digest = "plan-rewritten"
+    assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PLAN_REVIEW
 
 
 def test_bug_is_not_work_ready_before_prepared() -> None:
