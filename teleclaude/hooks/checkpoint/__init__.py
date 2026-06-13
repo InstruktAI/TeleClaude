@@ -158,7 +158,7 @@ def run_heuristics(
         if not category.instruction:
             continue  # e.g., hook runtime — no action needed
 
-        # Main-only categories (setup, deps, daemon restart) are irrelevant in
+        # Main-only categories (telec setup, dependencies, daemon code, config) are irrelevant in
         # worktrees — the running system is installed from main and unaffected
         # until integration. These are the integrator's responsibility.
         if category.main_only and not result.on_main:
@@ -386,8 +386,8 @@ def _build_integrator_maintenance_checkpoint(
         return None
 
     categories = _categorize_files(all_files)
-    # Integrator maintenance surfaces only main_only categories (setup, deps,
-    # daemon restart, syncable sources). Non-main_only categories like agent-artifacts
+    # Integrator maintenance surfaces only main_only categories (telec setup,
+    # dependencies, daemon code, config, syncable sources). Non-main_only categories like agent-artifacts
     # (restart-self) are not the integrator's maintenance responsibility and must
     # not appear here regardless of what files were in the merge delta.
     maintenance_categories = [c for c in categories if c.main_only]
