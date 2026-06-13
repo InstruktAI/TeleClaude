@@ -23,7 +23,7 @@ The contract resolves four classes of file state at commit time:
 
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
-On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **Path A/B/C** classification card and exits — no commit takes place. `--approved` is the human-approved gate that lets the commit proceed; on a worktree or integrator role, `--approved` is still required but the A/B/C surfacing is bypassed.
+On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the human-approved gate that lets the commit proceed; on a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
 ## Canonical fields
 
@@ -49,16 +49,25 @@ And exits non-zero without staging anything
 And inspection commands (`git diff`, `git status`, `git log`) remain available
 ```
 
-#### Bare telec code commit on main surfaces Path A/B/C
+#### Bare telec code commit on main surfaces the review-routing gate
 
 ```
 Given an agent on the `main` branch with a non-integrator role
-When the agent invokes `telec code commit` with no flags
-Then the command prints the Path A/B/C classification card to stderr
-And exits non-zero without producing a commit
-And the card names: A (docs/config/state — doc-snippet changes require an independent doc-hygiene review), B (small functional + `--approved`), C (functional + reviewer dispatch)
-And the card points at `telec code changed` for scope inspection
-And the card surfaces `telec code add` and `--include` for new-file declaration
+When the agent invokes `telec code commit` with no message and no flags
+Then the command prints the review-routing gate to stderr
+And exits 0 — serving the gate is the successful outcome, not a failure
+And the gate routes review by what the diff touches: functional code/tests → agent-judged med code review; doc snippets (docs/**) or agent artifacts (agents/**) → required fast doc-hygiene review; neither → no review
+And the gate points at `telec code changed` for scope inspection
+And the gate surfaces `telec code add` and `--include` for new-file declaration
+```
+
+#### telec code commit with a message but no --approved is a forgotten gate
+
+```
+Given an agent on the `main` branch with a non-integrator role
+When the agent invokes `telec code commit "<message>"` without `--approved`
+Then the command prints the gate to stderr without producing a commit
+And exits non-zero, so a wrapper cannot read the no-op as a successful commit
 ```
 
 #### Doc-snippet commit on main requires an independent doc-hygiene review
@@ -239,12 +248,12 @@ Then the command prints an error requiring a quoted message
 And exits non-zero without producing a commit
 ```
 
-#### Integrator role bypasses the Path A/B/C surfacing
+#### Integrator role bypasses the gate surfacing
 
 ```
 Given the session's system role resolves to integrator
 When the integrator invokes `telec code commit --approved "<msg>"` on main
-Then the Path A/B/C card is NOT printed
+Then the review-routing gate is NOT printed
 And the commit proceeds (subject to the other invariants — pathspec construction, partial-staging guard, etc.)
 And this is justified because every change the integrator commits was individually approved via its delivery's lifecycle
 ```
@@ -323,6 +332,25 @@ Then SystemExit(1) before repo.git.commit invoked
 Given handle_lint raises SystemExit(1)
 When telec code commit --approved "<msg>" is invoked
 Then main_branch_lock __exit__ is called (lock released)
+```
+
+#### UC-CGIP-8 — Bare commit surfaces the gate and exits 0
+
+```
+Given a non-integrator agent invokes telec code commit with no message and no --approved
+When the branch is main (review-routing gate) or any other branch (short help)
+Then the guidance is printed and no commit occurs
+And SystemExit(0) — serving the gate is the successful outcome of a bare invocation
+```
+
+#### UC-CGIP-9 — Message without --approved is a forgotten gate
+
+```
+Given a non-integrator agent invokes telec code commit "<message>" without --approved
+When the branch is main
+Then SystemExit(1) and no commit occurs
+And on any other branch SystemExit(2)
+And the non-zero exit stops a wrapper from reading the no-op as a successful commit
 ```
 
 ### Thin hook backstop

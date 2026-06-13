@@ -193,3 +193,55 @@ def test_commit_rejects_leading_dash_pathspec(tmp_path: Path, monkeypatch: pytes
             project_root=tmp_path,
             system_role=None,
         )
+
+
+def _patch_gate(monkeypatch: pytest.MonkeyPatch, *, branch: str) -> None:
+    """Patch the dependencies the un-approved gate path touches before exiting."""
+    monkeypatch.setattr(code, "get_system_role", lambda: "builder")
+    monkeypatch.setattr(code, "resolve_invocation_cwd", lambda: Path("/repo"))
+    monkeypatch.setattr(code, "resolve_git_root", lambda _cwd: Path("/repo"))
+    monkeypatch.setattr(code, "_current_branch", lambda _project_root: branch)
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-8")
+def test_bare_commit_on_main_surfaces_gate_and_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_gate(monkeypatch, branch="main")
+
+    with pytest.raises(SystemExit) as exc:
+        code.handle_code_commit([])
+
+    assert exc.value.code == 0
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-8")
+def test_bare_commit_off_main_surfaces_help_and_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_gate(monkeypatch, branch="topic")
+
+    with pytest.raises(SystemExit) as exc:
+        code.handle_code_commit([])
+
+    assert exc.value.code == 0
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-9")
+def test_message_without_approved_on_main_exits_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_gate(monkeypatch, branch="main")
+
+    with pytest.raises(SystemExit) as exc:
+        code.handle_code_commit(["feat(x): y"])
+
+    assert exc.value.code == 1
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CGIP-9")
+def test_message_without_approved_off_main_exits_two(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_gate(monkeypatch, branch="topic")
+
+    with pytest.raises(SystemExit) as exc:
+        code.handle_code_commit(["feat(x): y"])
+
+    assert exc.value.code == 2
