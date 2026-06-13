@@ -35,7 +35,6 @@ from teleclaude.hooks.checkpoint._evidence import (
     _has_commit_evidence_after_last_mutation,
     _has_evidence,
     _has_evidence_after_index,
-    _has_status_evidence,
     _iter_shell_command_records,
     _last_category_mutation_index,
     _segment_matches_evidence,
@@ -106,7 +105,6 @@ __all__ = [
     "_has_commit_evidence",
     "_has_evidence",
     "_has_evidence_after_index",
-    "_has_status_evidence",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
     "_is_no_action_only",
@@ -194,9 +192,6 @@ def run_heuristics(
         if category.evidence_substrings and evidence_seen:
             if category.name in obligation_names and discharge_obligation is not None:
                 discharge_obligation(category.name)
-            # Also check for status evidence when daemon/config restart was suppressed
-            if "make restart" in category.instruction and not _has_status_evidence(timeline):
-                append_required_action("Run `make status` to verify daemon health")
             continue  # Suppress the main instruction
 
         append_required_action(category.instruction)
@@ -419,8 +414,6 @@ def _build_integrator_maintenance_checkpoint(
         if category.evidence_substrings:
             evidence_seen = _has_evidence(timeline, category.evidence_substrings)
         if category.evidence_substrings and evidence_seen:
-            if "make restart" in category.instruction and not _has_status_evidence(timeline):
-                actions.append("Run `make status` to verify daemon health")
             continue
         actions.append(category.instruction)
 

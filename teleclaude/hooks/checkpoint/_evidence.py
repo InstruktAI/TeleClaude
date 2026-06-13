@@ -49,7 +49,6 @@ __all__ = [
     "_has_commit_evidence_after_last_mutation",
     "_has_evidence",
     "_has_evidence_after_index",
-    "_has_status_evidence",
     "_iter_shell_command_records",
     "_last_category_mutation_index",
     "_last_git_file_mutation_index",
@@ -245,27 +244,6 @@ def _last_git_file_mutation_index(
             last_index = idx
 
     return last_index
-
-
-def _has_status_evidence(timeline: TurnTimeline) -> bool:
-    """Check if make status was run after a restart."""
-    if not timeline.has_data:
-        return False
-    saw_restart = False
-    for record in timeline.tool_calls:
-        tool_name = _canonical_tool_name(record.tool_name)
-        if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
-            continue
-        command = _extract_shell_command(record.input_data)
-        if record.had_error:
-            continue
-        for segment in _split_shell_segments(command):
-            if _segment_matches_evidence(segment, "make restart"):
-                saw_restart = True
-                continue
-            if saw_restart and any(_segment_matches_evidence(segment, sub) for sub in CHECKPOINT_STATUS_EVIDENCE):
-                return True
-    return False
 
 
 def _segment_matches_evidence(segment: str, evidence: str) -> bool:
