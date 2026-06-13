@@ -39,7 +39,6 @@ from teleclaude.core.next_machine.lifecycle import (
     collapse_drift,
     derive_lifecycle_drift,
     is_ready_for_work,
-    phase_is_complete,
 )
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.prepare_step_support import prepare_step_prepared
@@ -342,10 +341,12 @@ async def test_prd_rewritten_after_approval_is_re_approved(tmp_path: Path) -> No
 
 @pytest.mark.spec(_SPEC, "UC-WPS7")
 def test_review_approval_is_invalidated_when_its_artifact_is_rewritten() -> None:
-    """An approve verdict satisfies its gate only while approved_digest equals the
-    live artifact digest; a rewrite after approval re-opens the gate. Holds at every
-    reviewer gate: plan (phase derivation), architecture, and legacy requirements."""
-    # Plan gate — full phase derivation to PREPARED.
+    """An approve verdict satisfies its review gate only while approved_digest equals
+    the live artifact digest; rewriting the artifact after approval re-opens the gate.
+    Verified through the real derivation (adopt_prepare_handoff_phase) at the plan,
+    architecture, and legacy-requirements gates — the architecture and requirements
+    gates are reached via the no-PRD legacy-requirements path."""
+    # Plan gate.
     plan = TodoState(kind=KIND_CHANGE, schema_version=4)
     plan.artifacts.implementation_plan.digest = "plan-approved"
     plan.plan_review.verdict = "approve"
@@ -354,24 +355,28 @@ def test_review_approval_is_invalidated_when_its_artifact_is_rewritten() -> None
     plan.artifacts.implementation_plan.digest = "plan-rewritten"
     assert adopt_prepare_handoff_phase(plan) == LifecyclePhase.PLAN_REVIEW
 
-    # Architecture gate.
+    # Architecture gate: current requirements pass the intent gate, current
+    # architecture advances to plan_drafting; rewriting architecture re-opens review.
     arch = TodoState(kind=KIND_FEATURE, schema_version=4)
+    arch.artifacts.requirements.digest = "req-current"
+    arch.requirements_review.verdict = "approve"
+    arch.requirements_review.approved_digest = "req-current"
     arch.artifacts.architecture.digest = "arch-approved"
     arch.architecture_review.verdict = "approve"
     arch.architecture_review.approved_digest = "arch-approved"
-    assert phase_is_complete(arch, LifecyclePhase.ARCHITECTURE_REVIEW) is True
+    assert adopt_prepare_handoff_phase(arch) == LifecyclePhase.PLAN_DRAFTING
     arch.artifacts.architecture.digest = "arch-rewritten"
-    assert phase_is_complete(arch, LifecyclePhase.ARCHITECTURE_REVIEW) is False
+    assert adopt_prepare_handoff_phase(arch) == LifecyclePhase.ARCHITECTURE_REVIEW
 
-    # Legacy requirements gate (prd_human_approval is satisfied by an approved
-    # requirements review when no human prd approval is present).
+    # Legacy-requirements gate: current requirements advance past the intent gate;
+    # rewriting requirements re-opens prd_human_approval.
     req = TodoState(kind=KIND_FEATURE, schema_version=4)
     req.artifacts.requirements.digest = "req-approved"
     req.requirements_review.verdict = "approve"
     req.requirements_review.approved_digest = "req-approved"
-    assert phase_is_complete(req, LifecyclePhase.PRD_HUMAN_APPROVAL) is True
+    assert adopt_prepare_handoff_phase(req) == LifecyclePhase.ARCHITECTURE_DRAFTING
     req.artifacts.requirements.digest = "req-rewritten"
-    assert phase_is_complete(req, LifecyclePhase.PRD_HUMAN_APPROVAL) is False
+    assert adopt_prepare_handoff_phase(req) == LifecyclePhase.PRD_HUMAN_APPROVAL
 
 
 def test_bug_is_not_work_ready_before_prepared() -> None:
