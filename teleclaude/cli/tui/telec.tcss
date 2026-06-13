@@ -50,7 +50,7 @@ ContentSwitcher:focus-within {
     border: round $connector;
 }
 
-#modal-box Input:focus {
+#modal-box Input:focus, #modal-box TextArea:focus {
     background: $surface;
     border: round $connector;
 }
@@ -282,13 +282,13 @@ Button.-primary:hover {
 }
 
 /* ── Global input styling ──────────────────────────────── */
-Input {
+Input, TextArea {
     background: $surface;
     color: $foreground;
     border: round $input-border;
 }
 
-Input:focus {
+Input:focus, TextArea:focus {
     border: round $connector;
 }
 
@@ -356,7 +356,7 @@ Toast .toast--title {
 /* ── Modals ────────────────────────────────────────────── */
 /* Single thin border with title on top border line */
 
-ConfirmModal, StartSessionModal, NewProjectModal {
+ConfirmModal, StartSessionModal, NewProjectModal, CreateSlugModal, ContentInputModal {
     align: center middle;
 }
 
@@ -397,6 +397,25 @@ StartSessionModal #modal-box {
 StartSessionModal #modal-computer,
 StartSessionModal #modal-project {
     color: $foreground;
+}
+
+/* ── CreateSlugModal ─────────────────────────────────── */
+
+CreateSlugModal #modal-box {
+    width: 52;
+    max-height: 14;
+}
+
+/* ── ContentInputModal ───────────────────────────────── */
+
+ContentInputModal #modal-box {
+    width: 64;
+    max-height: 22;
+}
+
+ContentInputModal TextArea {
+    height: 8;
+    margin: 1 0 0 0;
 }
 
 /* Field groups: thin border with title on border line */

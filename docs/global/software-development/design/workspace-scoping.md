@@ -1,5 +1,5 @@
 ---
-description: 'How telec code commands resolve workspace scope and compose the project''s native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides.'
+description: "How telec code commands resolve workspace scope and compose the project's native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides."
 visibility: 'public'
 ---
 

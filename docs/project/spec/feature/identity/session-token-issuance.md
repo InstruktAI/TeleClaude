@@ -1,5 +1,5 @@
 ---
-description: 'Issue a v1 session token at bootstrap for system-principal sessions and write it into the session''s TMPDIR identity file.'
+description: "Issue a v1 session token at bootstrap for system-principal sessions and write it into the session's TMPDIR identity file."
 visibility: 'public'
 ---
 

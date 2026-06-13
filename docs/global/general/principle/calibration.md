@@ -1,5 +1,5 @@
 ---
-description: 'Match the communication register to the human''s depth in the topic at hand. Attunement modulates in real time; calibration provides the anchor.'
+description: "Match the communication register to the human's depth in the topic at hand. Attunement modulates in real time; calibration provides the anchor."
 visibility: 'public'
 ---
 

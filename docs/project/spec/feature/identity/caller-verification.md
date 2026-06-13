@@ -1,5 +1,5 @@
 ---
-description: 'Resolve every authenticated inbound call into a `CallerIdentity` via the identity context''s single caller-verification capability.'
+description: "Resolve every authenticated inbound call into a `CallerIdentity` via the identity context's single caller-verification capability."
 visibility: 'public'
 ---
 

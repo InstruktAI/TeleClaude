@@ -1,5 +1,5 @@
 ---
-description: 'Authorize web-frontend session-scoped operations against the session owner, the session''s shared/private visibility, and the caller''s role.'
+description: "Authorize web-frontend session-scoped operations against the session owner, the session's shared/private visibility, and the caller's role."
 visibility: 'public'
 ---
 

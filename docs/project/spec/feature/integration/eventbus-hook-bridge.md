@@ -1,5 +1,5 @@
 ---
-description: 'Subscribes to the integration service''s internal event bus, normalizes each event into a HookEvent, runs it through the Contract matcher, and dispatches to internal handlers or webhook subscriber endpoints.'
+description: "Subscribes to the integration service's internal event bus, normalizes each event into a HookEvent, runs it through the Contract matcher, and dispatches to internal handlers or webhook subscriber endpoints."
 visibility: 'public'
 ---
 

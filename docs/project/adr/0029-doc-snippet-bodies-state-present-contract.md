@@ -10,7 +10,7 @@ visibility: 'public'
 
 ## Context
 
-Doc snippets had accreted narration: history ("replaces the v1 path", "is retired"), inline rationale ("produced misleading rows"), coordination metadata smeared into body prose ("(delivered_by `<slug>`)", "Pending `<slug>`, the surface is …"), and future framing. `docs/project/spec/telec-cli-surface.md` was the representative sample — nearly every command description carried a `(delivered_by …; authoritative contract: …)` tail and at least one history clause, and two "Planned … surface" sections narrated future work in the body. One of them had been _delivered_: the planned markers were stripped on delivery and the future-framing prose survived as standing contract.
+Doc snippets had accreted narration: history ("replaces the v1 path", "is retired"), inline rationale ("produced misleading rows"), coordination metadata smeared into body prose ("(delivered*by `<slug>`)", "Pending `<slug>`, the surface is …"), and future framing. `docs/project/spec/telec-cli-surface.md` was the representative sample — nearly every command description carried a `(delivered_by …; authoritative contract: …)` tail and at least one history clause, and two "Planned … surface" sections narrated future work in the body. One of them had been \_delivered*: the planned markers were stripped on delivery and the future-framing prose survived as standing contract.
 
 The doc-first principle already says forward design is first-class and the body describes "the intended shape of the system" — present tense, the design written down. `adr-discipline` already says primary artifacts "MUST describe the current state — they are NOT reasoning logs." So the rule existed in spirit across two snippets, but:
 

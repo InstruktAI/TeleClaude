@@ -1,5 +1,5 @@
 ---
-description: 'On-demand read of a session''s native agent transcript, with chain-aware projection, since/tools/thinking filtering, and a pane-tail fallback.'
+description: "On-demand read of a session's native agent transcript, with chain-aware projection, since/tools/thinking filtering, and a pane-tail fallback."
 visibility: 'public'
 ---
 

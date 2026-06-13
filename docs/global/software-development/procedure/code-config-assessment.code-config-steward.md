@@ -1,5 +1,5 @@
 ---
-description: 'Steward a project''s tool configuration toward blessed defaults — apply where missing or weaker, ask only on conflict.'
+description: "Steward a project's tool configuration toward blessed defaults — apply where missing or weaker, ask only on conflict."
 visibility: 'public'
 ---
 

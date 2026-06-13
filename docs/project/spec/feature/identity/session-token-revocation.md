@@ -1,5 +1,5 @@
 ---
-description: 'Remove a session''s tokens from the ledger and invalidate auth caches early in the termination path so in-flight calls are rejected immediately.'
+description: "Remove a session's tokens from the ledger and invalidate auth caches early in the termination path so in-flight calls are rejected immediately."
 visibility: 'public'
 ---
 

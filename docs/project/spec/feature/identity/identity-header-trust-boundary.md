@@ -1,5 +1,5 @@
 ---
-description: 'Reject web-user identity signals at the identity context''s transport boundary unless the call originates from a trusted loopback host.'
+description: "Reject web-user identity signals at the identity context's transport boundary unless the call originates from a trusted loopback host."
 visibility: 'public'
 ---
 

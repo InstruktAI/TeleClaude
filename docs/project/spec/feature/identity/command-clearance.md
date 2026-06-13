@@ -1,5 +1,5 @@
 ---
-description: 'Gate every protected operation on the CLI verb''s role allowlist via the command-clearance capability.'
+description: "Gate every protected operation on the CLI verb's role allowlist via the command-clearance capability."
 visibility: 'public'
 ---
 

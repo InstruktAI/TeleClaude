@@ -1,5 +1,5 @@
 ---
-description: 'Emulate the Product Owner role to enable autonomous intake when no human is in the loop. The emulator answers the BA''s elicitation questions from the user''s stance plus a fixed set of standing wishes for platform quality. Does not write artifacts, does not approve, does not stamp.'
+description: "Emulate the Product Owner role to enable autonomous intake when no human is in the loop. The emulator answers the BA's elicitation questions from the user's stance plus a fixed set of standing wishes for platform quality. Does not write artifacts, does not approve, does not stamp."
 visibility: 'public'
 ---
 

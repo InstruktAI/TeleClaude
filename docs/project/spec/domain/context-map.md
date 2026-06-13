@@ -1,5 +1,5 @@
 ---
-description: 'Relationships between the bounded contexts — partnership, customer-supplier, ACL, conformist. The system''s social graph at the domain level.'
+description: "Relationships between the bounded contexts — partnership, customer-supplier, ACL, conformist. The system's social graph at the domain level."
 visibility: 'public'
 ---
 

@@ -5,6 +5,7 @@ date: '2026-06-12'
 adr_status: 'accepted'
 description: 'Agents operate the daemon through the make targets; routine service operations are not gated on human approval.'
 ---
+
 # Agents Own Daemon Lifecycle via Make Targets — ADR
 
 ## Context
@@ -37,13 +38,13 @@ not an approval gate.
 ## Consequences
 
 - The failure mode where an agent refuses a checkpoint-mandated `make
-  install`/`make restart` on policy grounds is removed; the checkpoint engine and
+install`/`make restart` on policy grounds is removed; the checkpoint engine and
   the service-control policy now agree.
 - `bin/daemon-control.sh` is correctly scoped as the `make` targets' internal
   implementation detail rather than a forbidden command.
 - Agents now carry responsibility for daemon lifecycle operations that were
   nominally reserved for humans. A faulty change deployed via `make
-  restart`/`make install` reaches the running service, so the safeguard shifts
+restart`/`make install` reaches the running service, so the safeguard shifts
   from a policy-level approval gate to code review plus the checkpoint engine's
   own post-restart verification (`make status`).
 - There is no longer a human checkpoint immediately before a service restart;

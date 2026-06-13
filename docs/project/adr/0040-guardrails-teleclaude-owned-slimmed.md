@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## Context
 
-ADR 0039 proposed a *portable* guardrails engine with universal/TeleClaude rule
+ADR 0039 proposed a _portable_ guardrails engine with universal/TeleClaude rule
 packs so a side project could run a subset of the bar. That portability premise
 was not adopted: guardrails are **TeleClaude-owned and shipped as part of the
 stack**, run as the always-run lane of `telec code lint` — not a kit a side

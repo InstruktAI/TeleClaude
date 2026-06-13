@@ -1,5 +1,5 @@
 ---
-description: 'Idempotent bootstrap for the mirror store''s schema — mirrors, tombstones, the full-text index, and the index-sync triggers — plus per-process compatibility migrations that keep older databases readable by newer code.'
+description: "Idempotent bootstrap for the mirror store's schema — mirrors, tombstones, the full-text index, and the index-sync triggers — plus per-process compatibility migrations that keep older databases readable by newer code."
 visibility: 'public'
 ---
 

@@ -18,7 +18,7 @@ _DUMP_PATH = "/todos/dump"
 _METHOD_POST = "POST"
 _TODO_SLUG = "kindless-todo"
 _BUG_SLUG = "broken-thing"
-_CONTENT = "captured content"
+_CONTENT = "captured content\nwith multiple lines"
 _KIND_BUG = "bug"
 
 

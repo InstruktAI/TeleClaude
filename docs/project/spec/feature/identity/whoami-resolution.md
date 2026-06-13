@@ -1,5 +1,5 @@
 ---
-description: 'Report the caller''s identity via `telec auth whoami` — agent sessions resolve through the identity context, terminal sessions read the TTY login.'
+description: "Report the caller's identity via `telec auth whoami` — agent sessions resolve through the identity context, terminal sessions read the TTY login."
 visibility: 'public'
 ---
 

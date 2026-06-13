@@ -1,5 +1,5 @@
 ---
-description: 'Listener-based subscription/notification fan-out — sessions (and external subscribers) register interest in a target session''s lifecycle events (stop, input-request) and receive notifications via host-pane injection. Excludes the bidirectional direct-conversation-link mechanism.'
+description: "Listener-based subscription/notification fan-out — sessions (and external subscribers) register interest in a target session's lifecycle events (stop, input-request) and receive notifications via host-pane injection. Excludes the bidirectional direct-conversation-link mechanism."
 visibility: 'public'
 ---
 

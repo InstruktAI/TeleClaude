@@ -1,5 +1,5 @@
 ---
-description: 'The assessment frame for picking the right posture turn by turn — act, guide, or ask — based on the human''s profile, memories, and the breath of the conversation.'
+description: "The assessment frame for picking the right posture turn by turn — act, guide, or ask — based on the human's profile, memories, and the breath of the conversation."
 ---
 
 # Leadership — Policy

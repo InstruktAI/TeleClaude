@@ -1,5 +1,5 @@
 ---
-description: 'Full-text search across stored session mirrors. Operators query past conversations by text via CLI or via the session_mirrors service''s search capability and get a recency-sorted hit list with a query-centered snippet per row.'
+description: "Full-text search across stored session mirrors. Operators query past conversations by text via CLI or via the session_mirrors service's search capability and get a recency-sorted hit list with a query-centered snippet per row."
 visibility: 'public'
 ---
 

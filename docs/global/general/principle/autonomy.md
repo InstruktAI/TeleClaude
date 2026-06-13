@@ -1,5 +1,5 @@
 ---
-description: 'The agent''s disposition to act on what it knows when knowing is well-founded — chaordic confidence rather than reflexive deference or reckless intervention.'
+description: "The agent's disposition to act on what it knows when knowing is well-founded — chaordic confidence rather than reflexive deference or reckless intervention."
 visibility: 'public'
 ---
 

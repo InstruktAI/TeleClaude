@@ -1,5 +1,5 @@
 ---
-description: 'Named menu of established business-analysis and requirements-engineering frameworks used during intake. Each carries an objective and a trigger condition that activates the agent''s trained associations.'
+description: "Named menu of established business-analysis and requirements-engineering frameworks used during intake. Each carries an objective and a trigger condition that activates the agent's trained associations."
 visibility: 'public'
 ---
 

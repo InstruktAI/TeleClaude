@@ -1,5 +1,5 @@
 ---
-description: 'Split a Todo into child Todos persisted under the parent''s group, each inheriting the parent''s canonical kind and entering at that kind''s lifecycle entry phase; split stays non-auto-routing and its output instructs the splitting agent to tend each child; the parent becomes a stateless holder with frozen input that re-routes subsequent prepare/work requests to a runnable direct child.'
+description: "Split a Todo into child Todos persisted under the parent's group, each inheriting the parent's canonical kind and entering at that kind's lifecycle entry phase; split stays non-auto-routing and its output instructs the splitting agent to tend each child; the parent becomes a stateless holder with frozen input that re-routes subsequent prepare/work requests to a runnable direct child."
 visibility: 'public'
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: 'Delivers operator and orchestrator input (text messages and keystrokes) into running agent sessions via the agent_runtime service''s host-pane paste-buffer pipeline.'
+description: "Delivers operator and orchestrator input (text messages and keystrokes) into running agent sessions via the agent_runtime service's host-pane paste-buffer pipeline."
 visibility: 'public'
 ---
 

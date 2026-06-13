@@ -22,7 +22,7 @@ from textual.events import Click
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widget import Widget
-from textual.widgets import Button, Input, Label
+from textual.widgets import Button, Input, Label, TextArea
 
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
@@ -745,6 +745,8 @@ class ContentInputModal(ModalScreen[str | None]):
 
     BINDINGS = [
         ("escape", "dismiss_modal", "Cancel"),
+        ("ctrl+s", "submit_modal", "Create"),
+        ("ctrl+j", "submit_modal", "Create"),
     ]
 
     def __init__(
@@ -761,19 +763,19 @@ class ContentInputModal(ModalScreen[str | None]):
         with Vertical(id="modal-box") as box:
             box.border_title = self._title
             yield Label("Enter a description:", id="content-label")
-            yield Input(placeholder=self._placeholder, id="content-input")
+            yield TextArea(placeholder=self._placeholder, id="content-input")
             yield Label("", id="content-error")
             with Horizontal(id="modal-actions"):
-                yield Button("[Enter] Create", variant="primary", id="create-btn")
+                yield Button("[Ctrl+S] Create", variant="primary", id="create-btn")
                 yield Button("[Esc] Cancel", id="cancel-btn")
 
     def on_mount(self) -> None:
-        self.query_one("#content-input", Input).focus()
+        self.query_one("#content-input", TextArea).focus()
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
 
-    def on_input_submitted(self, _event: Input.Submitted) -> None:
+    def action_submit_modal(self) -> None:
         self._do_create()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -784,9 +786,9 @@ class ContentInputModal(ModalScreen[str | None]):
             self._do_create()
 
     def _do_create(self) -> None:
-        content_input = self.query_one("#content-input", Input)
+        content_input = self.query_one("#content-input", TextArea)
         error_label = self.query_one("#content-error", Label)
-        content = content_input.value.strip()
+        content = content_input.text.strip()
         if not content:
             error_label.update("Content is required")
             return

@@ -1,5 +1,5 @@
 ---
-description: 'Periodic background worker that discovers known agent transcripts and refreshes any mirror whose stored mtime is older than the file''s mtime. Logs reconciliation counters and store-WAL size deltas per pass.'
+description: "Periodic background worker that discovers known agent transcripts and refreshes any mirror whose stored mtime is older than the file's mtime. Logs reconciliation counters and store-WAL size deltas per pass."
 visibility: 'public'
 ---
 

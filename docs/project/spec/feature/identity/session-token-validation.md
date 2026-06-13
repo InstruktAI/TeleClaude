@@ -1,5 +1,5 @@
 ---
-description: 'Validate an inbound session-token signal at the identity context''s boundary, returning a CallerIdentity carrying the bound principal and role.'
+description: "Validate an inbound session-token signal at the identity context's boundary, returning a CallerIdentity carrying the bound principal and role."
 visibility: 'public'
 ---
 

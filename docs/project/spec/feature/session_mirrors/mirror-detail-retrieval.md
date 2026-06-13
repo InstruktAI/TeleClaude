@@ -1,5 +1,5 @@
 ---
-description: 'Fetch one session mirror by exact or prefix session identifier and render its conversation text. Used by `telec history show` and by the session_mirrors service''s detail capability.'
+description: "Fetch one session mirror by exact or prefix session identifier and render its conversation text. Used by `telec history show` and by the session_mirrors service's detail capability."
 visibility: 'public'
 ---
 

@@ -1,6 +1,6 @@
 ---
 visibility: 'public'
-description: 'Reconciliation bounded context — the control loop that drives each installation''s actual state toward its desired state (version per channel, schema, health, upkeep) and guards interoperability across a deliberately multi-version fleet.'
+description: "Reconciliation bounded context — the control loop that drives each installation's actual state toward its desired state (version per channel, schema, health, upkeep) and guards interoperability across a deliberately multi-version fleet."
 ---
 
 # Reconciliation Domain Spec — Spec

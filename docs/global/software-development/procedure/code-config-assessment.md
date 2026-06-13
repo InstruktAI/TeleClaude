@@ -1,5 +1,5 @@
 ---
-description: 'Assess a project''s tool configuration against blessed templates and report coverage gaps.'
+description: "Assess a project's tool configuration against blessed templates and report coverage gaps."
 visibility: 'public'
 ---
 
