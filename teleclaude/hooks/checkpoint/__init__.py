@@ -19,8 +19,8 @@ from teleclaude.constants import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.hooks.checkpoint._evidence import (
+    _check_blast_radius,
     _check_companion_drift,
-    _check_edit_hygiene,
     _check_slug_alignment,
     _command_has_evidence,
     _compute_log_since_window,
@@ -76,8 +76,8 @@ __all__ = [
     "TranscriptObservability",
     "_canonical_tool_name",
     "_categorize_files",
+    "_check_blast_radius",
     "_check_companion_drift",
-    "_check_edit_hygiene",
     "_check_slug_alignment",
     "_command_has_evidence",
     "_command_likely_mutates_files",
@@ -210,8 +210,8 @@ def run_heuristics(
             "`telec docs get software-development/policy/testing`. Remove tests that violate policy."
         )
 
-    # 3. Edit hygiene
-    result.observations.extend(_check_edit_hygiene(timeline, git_files))
+    # 3. Blast-radius observation
+    result.observations.extend(_check_blast_radius(git_files))
     for action in _check_companion_drift(git_files, context.project_path):
         append_required_action(action)
 

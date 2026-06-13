@@ -26,8 +26,8 @@ from teleclaude.snippet_validation import companion_parent, is_companion
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 __all__ = [
+    "_check_blast_radius",
     "_check_companion_drift",
-    "_check_edit_hygiene",
     "_check_slug_alignment",
     "_command_has_evidence",
     "_compute_log_since_window",
@@ -301,33 +301,13 @@ def _is_expected_commit_classification(record: ToolCallRecord) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _check_edit_hygiene(timeline: TurnTimeline, git_files: list[str]) -> list[str]:
-    """Check for editing practices that indicate potential issues."""
+def _check_blast_radius(git_files: list[str]) -> list[str]:
+    """Observe when changes span many top-level subsystems (git-only, no transcript needed)."""
     observations: list[str] = []
-
-    # Edit without read: file_path in Edit but not in any preceding Read
-    if timeline.has_data:
-        read_files: set[str] = set()
-        for record in timeline.tool_calls:
-            tool_name = _canonical_tool_name(record.tool_name)
-            if tool_name == "read":
-                path = str(record.input_data.get("file_path", ""))
-                if path:
-                    read_files.add(path)
-            elif tool_name == "edit":
-                path = str(record.input_data.get("file_path", ""))
-                if path and path not in read_files:
-                    observations.append(
-                        "Files were edited without being read first this turn — verify changes are correct"
-                    )
-                    break  # One observation is enough
-
-    # Wide blast radius: changes span many top-level directories (git-only, no transcript needed)
     if git_files:
         top_dirs = {f.split("/")[0] for f in git_files if "/" in f}
         if len(top_dirs) > CHECKPOINT_BLAST_RADIUS_THRESHOLD:
             observations.append("Changes span multiple subsystems — consider committing completed work incrementally")
-
     return observations
 
 
