@@ -152,17 +152,19 @@ def run_heuristics(
     categories = _dedupe_categories([*file_categories, *obligation_categories])
     obligation_names = {category.name for category in obligation_categories}
 
-    # 2. Build required actions and the "Changed:" summary together, so the summary
-    # lists only categories with an outstanding consideration this turn. A category
-    # whose action is irrelevant in this context (main_only off a worktree) or already
-    # satisfied (its evidence was observed) is omitted from both the actions and the summary.
-    shown_categories: list[str] = []
+    # 2. Build required actions and the "Changed:" summary together. A category appears
+    # in the summary only when it drives a surfaced action this turn. A category whose
+    # action is irrelevant here (main_only off a worktree), already satisfied (its
+    # evidence was observed), or auto-applying with no outstanding work is omitted from both.
+    shown: set[str] = set()
     for category in sorted(categories, key=lambda c: c.precedence):
         # Main-only categories (telec setup, dependencies, daemon code, config,
         # syncable sources) are irrelevant in worktrees — the running system is
         # installed from main and unaffected until integration.
         if category.main_only and not result.on_main:
             continue
+        if not category.instruction:
+            continue  # no per-category action (e.g. hook runtime); may still drive code actions below
 
         evidence_seen = False
         if category.evidence_substrings:
@@ -180,21 +182,22 @@ def run_heuristics(
                 discharge_obligation(category.name)
             continue  # Satisfied this turn — no action, and omitted from the summary
 
-        shown_categories.append(category.name)
-        if category.instruction:
-            append_required_action(category.instruction)
-    result.categories = shown_categories
+        append_required_action(category.instruction)
+        shown.add(category.name)
 
-    # Add log check if runtime code changed and not already done. Doc/artifact
-    # sources (is_code=False) deploy via sync — they have no runtime to inspect.
-    has_code_changes = any(c.is_code and c.name != "tests only" for c in file_categories)
-    if has_code_changes and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
+    # Collective code actions (logs, tests) — attributed in the summary to the is_code
+    # categories that drive them, so a code change with no per-category action (e.g. hook
+    # runtime) appears while outstanding and drops out once satisfied. Doc/artifact sources
+    # (is_code=False) deploy via sync and have no runtime to inspect or behavior to test.
+    code_categories = [c for c in file_categories if c.is_code]
+    if any(c.name != "tests only" for c in code_categories) and not _has_evidence(
+        timeline, CHECKPOINT_LOG_CHECK_EVIDENCE
+    ):
         append_required_action(f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window}`")
-
-    # Add test instruction if code changed and not already done. Doc/artifact-only
-    # turns have no behavior to test.
-    if any(c.is_code for c in file_categories) and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
+        shown.update(c.name for c in code_categories if c.name != "tests only")
+    if code_categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
         append_required_action("Run targeted tests for only YOUR changed behavior")
+        shown.update(c.name for c in code_categories)
 
     # Test quality review gate: point to policy, not inline rules
     if any(c.name == "tests only" for c in file_categories):
@@ -202,6 +205,9 @@ def run_heuristics(
             "Test files were modified — review against test policy before committing: "
             "`telec docs get software-development/policy/testing`. Remove tests that violate policy."
         )
+        shown.add("tests only")
+
+    result.categories = [c.name for c in sorted(categories, key=lambda c: c.precedence) if c.name in shown]
 
     # 3. Blast-radius observation
     result.observations.extend(_check_blast_radius(git_files))

@@ -627,6 +627,41 @@ def test_worktree_omits_main_only_categories_from_summary_and_actions(
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP10")
+def test_code_change_with_outstanding_actions_shown_in_summary(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    # hook runtime has no per-category action; while its log/test actions are outstanding
+    # it drives them, so it appears in the summary alongside those actions.
+    result = run_heuristics(["teleclaude/hooks/checkpoint/_evidence.py"], _empty_timeline(), context)
+
+    assert {"hook_categories": result.categories, "hook_actions": result.required_actions} == snapshot
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP10")
+def test_code_change_without_outstanding_actions_omitted_from_summary(
+    tmp_path: Path,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+    timeline = _timeline_with_bash_commands(["uv run pytest tests/foo.py", "instrukt-ai-logs teleclaude --since 5m"])
+
+    # hook runtime auto-applies; once its log/test actions are satisfied it has nothing
+    # outstanding, so it is omitted from both the summary and the required actions.
+    result = run_heuristics(["teleclaude/hooks/checkpoint/_evidence.py"], timeline, context)
+
+    assert not result.categories
+    assert not result.required_actions
+
+
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP13")
 def test_parent_snippet_edit_with_pending_companion_surfaces_mirror_action(
     tmp_path: Path,

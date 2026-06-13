@@ -7,6 +7,17 @@
     ]),
   })
 # ---
+# name: test_code_change_with_outstanding_actions_shown_in_summary
+  dict({
+    'hook_actions': list([
+      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      'Run targeted tests for only YOUR changed behavior',
+    ]),
+    'hook_categories': list([
+      'hook runtime',
+    ]),
+  })
+# ---
 # name: test_committed_code_persists_only_main_only_maintenance_obligations
   dict({
     'main_only_payload': '''

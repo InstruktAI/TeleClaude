@@ -250,6 +250,17 @@ Then the telec-sync validation action is omitted, because main_only work is defe
 And syncable sources is omitted from the changed-category summary
 And the agent-artifacts restart-self action still surfaces
 (The changed-category summary lists only categories with an outstanding consideration this turn: a category whose action is deferred off-main, or already satisfied by observed evidence, is omitted from both the required actions and the summary.)
+
+Given the turn-local changes touch a code category with no per-category action (e.g. teleclaude/hooks/**, which auto-applies on next invocation) and no `telec sync`/restart obligation
+And no log-check or test evidence appears in the timeline yet
+When the heuristic engine evaluates the turn window
+Then the category appears in the changed-category summary and the log-check and test actions it drives are surfaced
+
+Given the same code category change
+And the log-check and test evidence both appear in the timeline
+When the heuristic engine evaluates the turn window
+Then the category is omitted from the summary and no action is surfaced for it
+(A category never appears in the summary without a corresponding surfaced action: the summary is attributed from surfaced actions, including the collective log-check and test actions, not from the raw changed-file set.)
 ```
 
 #### UC-CP11: Integrator post-merge maintenance force-fire
