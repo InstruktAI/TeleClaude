@@ -675,7 +675,7 @@ def get_checkpoint_content(
                 "post_commit_review_action_required": result.post_commit_review_action_required,
             },
         )
-        logger.debug(
+        logger.trace(
             "Checkpoint payload content",
             extra={
                 **base_extra,
