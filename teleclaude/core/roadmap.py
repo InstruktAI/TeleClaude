@@ -409,7 +409,7 @@ def assemble_roadmap_from_db(
             todo_build_started_at = time.perf_counter()
             is_holder = slug in holder_slugs
             if state_row is None and not is_holder:
-                logger.warning(
+                logger.debug(
                     "Skipping roadmap row without todo state",
                     slug=slug,
                     project_path=project_path,
