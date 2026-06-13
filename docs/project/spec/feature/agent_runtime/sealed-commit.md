@@ -67,7 +67,7 @@ And the gate surfaces `telec code add` and `--include` for new-file declaration
 Given an agent on the `main` branch with a non-integrator role
 When the agent invokes `telec code commit "<message>"` without `--approved`
 Then the command prints the gate to stderr without producing a commit
-And exits non-zero, so a wrapper cannot read the no-op as a successful commit
+And exits non-zero without producing a commit
 ```
 
 #### Doc-snippet commit on main requires an independent doc-hygiene review
@@ -350,7 +350,6 @@ Given a non-integrator agent invokes telec code commit "<message>" without --app
 When the branch is main
 Then SystemExit(1) and no commit occurs
 And on any other branch SystemExit(2)
-And the non-zero exit stops a wrapper from reading the no-op as a successful commit
 ```
 
 ### Thin hook backstop
