@@ -12,6 +12,7 @@ from sqlalchemy import update
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._models import (
     ROADMAP_TABLE,
     TODO_ARTIFACT_TABLE,
@@ -82,7 +83,7 @@ class TodosDbArtifactsMixin:
         entry = result.first()
         if entry is not None:
             if await self._is_artifact_holder_slug(session, slug):
-                raise ValueError(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
+                raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
             return entry.id
 
         delivered = await session.exec(
@@ -229,7 +230,7 @@ class TodosDbArtifactsMixin:
                 .limit(1)
             ).first()
             if holder is not None:
-                raise ValueError(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
+                raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
 
             now = datetime.now(UTC).isoformat()
             digest = _sha256(content)

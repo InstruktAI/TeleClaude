@@ -9,6 +9,7 @@ from teleclaude.project_root import resolve_state_root
 
 from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
+from ._errors import HolderWriteRefused
 from ._roadmap import TodosDbRoadmapMixin
 from ._roadmap_soft_delete import TodosDbRoadmapSoftDeleteMixin
 from ._rows import ArtifactMetadataRow, ArtifactVersionRow, RoadmapRow
@@ -93,6 +94,7 @@ def get_todos_db_sync(project_root_or_cwd: str | Path) -> TodosDb:
 __all__ = [
     "ArtifactMetadataRow",
     "ArtifactVersionRow",
+    "HolderWriteRefused",
     "RoadmapRow",
     "TodosDb",
     "close_todos_db_instances",

@@ -19,6 +19,7 @@ from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_B
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.types.state_value import StateValue
 
+from ._errors import HolderWriteRefused
 from ._migration_logs import record_v2_to_v3_migration
 from ._models import ROADMAP_DEPS_TABLE, ROADMAP_TABLE, TODO_STATE_TABLE, RoadmapDep, TodoRoadmap, TodoStateModel
 from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
@@ -146,6 +147,16 @@ class TodosDbStateMixin:
             .limit(1)
         )
         return result.first() is not None
+
+    async def is_holder(self, slug: str) -> bool:
+        """Whether ``slug`` is a structural holder (split into children).
+
+        Holders carry no todo_state or artifacts — their children own those.
+        Public predicate so callers (e.g. the API) can refuse holder writes with
+        a clean 409 before attempting one.
+        """
+        async with self._session() as session:  # type: ignore[attr-defined]
+            return await self._is_state_holder_slug(session, slug)
 
     async def _stamp_ready_since_for_payload(
         self,
@@ -302,7 +313,7 @@ class TodosDbStateMixin:
                 raise ValueError(msg)
             if await self._is_state_holder_slug(db_session, slug):
                 msg = f"write_state: holder slug {slug!r} cannot have todo_state"
-                raise ValueError(msg)
+                raise HolderWriteRefused(msg)
 
             now = datetime.now(UTC).isoformat()
             state_model = await db_session.get(TodoStateModel, row_id)
@@ -508,7 +519,7 @@ class TodosDbStateMixin:
             ).first()
             if holder is not None:
                 msg = f"write_state_sync: holder slug {slug!r} cannot have todo_state"
-                raise ValueError(msg)
+                raise HolderWriteRefused(msg)
 
             now = datetime.now(UTC).isoformat()
             state_model = session.get(TodoStateModel, str(row_id))

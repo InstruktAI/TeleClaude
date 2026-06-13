@@ -11,8 +11,8 @@ from fastapi import HTTPException
 
 from teleclaude.api import todo_routes
 from teleclaude.cli.telec.handlers import todo as todo_handlers
-from teleclaude.constants import ARTIFACT_INPUT
-from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT
+from teleclaude.core.todos_db import HolderWriteRefused, TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE, TODO_KIND_TASK
@@ -154,3 +154,31 @@ def test_split_success_output_instructs_agent_to_tend_children(
     assert Path(json_body["cwd"]) == project_root
     captured = capsys.readouterr()
     assert {"stdout": captured.out, "stderr": captured.err} == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WTS8")
+async def test_holder_artifact_write_returns_clean_409_not_500(tmp_path: Path) -> None:
+    """A write to a holder is refused with a clean 409 (and a typed db error), never a raw 500."""
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, kind=TODO_KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, _INPUT_BODY, updated_by="test")
+    await todo_routes.todo_split(slug=_PARENT, children=[_CHILD_A, _CHILD_B], cwd=str(project_root))
+
+    assert await todos_db.is_holder(_PARENT) is True
+
+    # API surface: a holder write returns a clean 409, not a raw 500.
+    with pytest.raises(HTTPException) as exc:
+        await todo_routes.write_artifact(
+            slug=_PARENT,
+            name=ARTIFACT_IMPLEMENTATION_PLAN,
+            content="# parent-slug — Implementation Plan\n",
+            cwd=str(project_root),
+        )
+    assert exc.value.status_code == 409
+    assert exc.value.detail
+
+    # DB surface: the refusal is the typed HolderWriteRefused (a ValueError subclass) —
+    # this is what proves the 409 above is the holder path, not another conflict.
+    with pytest.raises(HolderWriteRefused):
+        await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, "# plan\n", updated_by="test")

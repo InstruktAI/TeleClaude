@@ -54,7 +54,7 @@ from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.todos_db import HolderWriteRefused, get_todos_db
 from teleclaude.core.todos_db._roadmap_soft_delete import ReactivateRefused
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.events.envelope import EventLevel
@@ -462,21 +462,32 @@ async def write_artifact(
     effective_updated_by = updated_by or "api.todo.write_artifact"
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    if await todos_db.is_holder(slug):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"todo '{slug}' was split into children and is now a holder; it carries no "
+                "artifacts or state — write to its children instead"
+            ),
+        )
     if name == ARTIFACT_INPUT and await todos_db.artifact_exists(slug, ARTIFACT_REQUIREMENTS):
         raise HTTPException(
             status_code=409,
             detail=f"input artifact for '{slug}' is frozen — requirements already exist",
         )
-    await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
-    _ = codebase_sha_at_write, referenced_paths
-    if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
-        await _sync_artifact_provenance_state(
-            todos_db,
-            slug,
-            name,
-            repo_root=effective_cwd,
-            artifact_body=content,
-        )
+    try:
+        await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
+        _ = codebase_sha_at_write, referenced_paths
+        if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
+            await _sync_artifact_provenance_state(
+                todos_db,
+                slug,
+                name,
+                repo_root=effective_cwd,
+                artifact_body=content,
+            )
+    except HolderWriteRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     logger.info(
         "todo artifact write route completed",
         slug=slug,
