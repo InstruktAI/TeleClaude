@@ -66,6 +66,7 @@ Findings:
 - Criterion partially delivered — some criteria sub-points addressed, others silently dropped → **Requirement-Violation**. A delivery that narrows a criterion's scope is as broken as one that omits it.
 - Criterion delivered but the named test would pass even on a broken implementation → **Requirement-Violation**. Weak verification is not verification.
 - Unrequested feature (no criterion drives it) → **Critical**.
+- For a change/bug, a behavioral delta the intent does not call for — including one introduced alongside a necessary change, or one resolving a forced decision by new behavior where established behavior or human escalation was the path → **Critical**.
 - Gold-plating (scope creep beyond the PRD) → Important.
 
 A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, or satisfaction analysis.

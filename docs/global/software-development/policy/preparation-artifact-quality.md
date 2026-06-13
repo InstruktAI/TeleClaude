@@ -143,6 +143,27 @@ against the code is defective **even when the mechanism happens to be correct**:
 the defect is the unverified adoption, because the next wrong guess rides the
 same unchecked path.
 
+### Scope is bounded — the intent is the whole horizon
+
+A `change` or `bug` draws its purpose from code that already exists. Its horizon
+is the intent its `input` carries — for a bug, sharpened by `diagnosis` —
+together with the existing documented and working behavior it touches.
+Delivering exactly that intent, and leaving the surrounding behavior as the code
+and its specs already define it, is the whole of the work.
+
+Within that horizon the author owns the implementation completely, grounding
+every choice in how the code and its surrounding behavior already work
+(`general/principle/grounding`). When a required change forces a decision, the
+author reaches first for the behavior the surrounding code and its contracts
+already establish, and follows it.
+
+When a forced decision would move the horizon itself — shifting scope or altering
+a documented spec — that decision belongs to the human. The author surfaces it
+and waits for direction. Mechanism choices that stay within scope remain the
+author's own call; a change to scope or spec is what escalates.
+
+For a `feature`, the same horizon holds with `prd` as the intent artifact.
+
 ### PRD quality
 
 The PRD states what and why, never how. Architecture and plans state how. The

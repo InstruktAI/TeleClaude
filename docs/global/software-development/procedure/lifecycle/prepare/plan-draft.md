@@ -235,7 +235,7 @@ If the todo is split instead:
 
 ### 6. Enforce boundaries
 
-- Do not invent behavior not grounded in PRD, architecture snippets, or codebase patterns.
+- Deliver exactly the intent of the approved artifact (`prd` for a feature; `input`, sharpened by `diagnosis`, for a change/bug) and preserve the existing documented and working behavior the change touches — see "Scope is bounded" in `preparation-artifact-quality`. A forced decision that stays within scope follows established behavior; one that would shift scope or spec is surfaced to the human.
 - Do not rewrite approved or reviewer-approved upstream artifacts unless the plan is blocked by a genuine
   contradiction in those artifacts.
 - Do not change todo status beyond the child dependency links needed for a split.
