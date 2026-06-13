@@ -218,8 +218,8 @@ def handle_code_commit(args: list[str]) -> None:
     1. Orchestrator restriction.
     2. main-branch lock serialises all ``_commit_under_lock`` bodies.
     3. ``telec code commit`` runs format + lint in-process before git commit.
-    4. ``--approved`` is the Path A/B/C strategy gate; bare invocation prints
-       the classification card and exits.
+    4. ``--approved`` is the commit gate; bare invocation prints the
+       review-routing guidance (exit 0) and never commits.
     5. The pathspec itself bounds the commit — no separate scope-enforcement
        gate is needed.
 
@@ -263,7 +263,7 @@ def handle_code_commit(args: list[str]) -> None:
             print(
                 f"ERROR: unknown flag: {token}\n"
                 "Accepted flags: --approved, --include <path> [<path> ...].\n"
-                "  telec code commit                                              # show A/B/C\n"
+                "  telec code commit                                              # show the gate\n"
                 '  telec code commit --approved "<message>"                       # commit scope\n'
                 '  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras',
                 file=sys.stderr,
@@ -300,21 +300,24 @@ def handle_code_commit(args: list[str]) -> None:
     project_root = resolve_git_root(resolve_invocation_cwd())
 
     # The absence of --approved is the trigger: surface guidance, never commit.
-    # On main + non-integrator → Path A/B/C. Off main / integrator → short help.
-    # An already-drafted message is fine to pass; it's just ignored until the
-    # --approved re-run.
+    # On main + non-integrator → review-routing gate. Off main / integrator → short help.
+    # Bare invocation (no message) is discovery — serving the menu is the
+    # successful outcome, so exit 0. A message without --approved means the agent
+    # meant to commit and skipped the gate: a real miss, so exit non-zero to stop
+    # a wrapper from reading the no-op as success.
     if not approved:
+        forgot_gate = message is not None
         current_branch = _current_branch(project_root)
         if current_branch == "main" and system_role != "integrator":
             _print_commit_review_guidance()
-            raise SystemExit(1)
+            raise SystemExit(1 if forgot_gate else 0)
         print(
             "telec code commit is the sealed canonical commit interface.\n"
             "Get human approval, then commit with:\n"
             '  telec code commit --approved "type(scope): subject"',
             file=sys.stderr,
         )
-        raise SystemExit(2)
+        raise SystemExit(2 if forgot_gate else 0)
 
     # --approved → commit. Message required.
     if message is None:
@@ -539,9 +542,9 @@ def _print_commit_review_guidance() -> None:
     """Print the post-commit review-routing guidance for a shared-main commit.
 
     The sealed contract makes ``--approved`` the single gate for any commit on
-    main; the bare ``telec code commit`` invocation surfaces this guidance and
-    exits — the agent commits with ``--approved`` and then routes the review by
-    what the diff touched.
+    main; the bare ``telec code commit`` invocation surfaces this guidance — the
+    agent commits with ``--approved`` and then routes the review by what the diff
+    touched. The caller owns the exit code (serving the menu is a success).
     """
     print(
         "Commit gate on main.\n"
@@ -572,7 +575,6 @@ def _print_commit_review_guidance() -> None:
         "   Wait for REVIEW COMPLETE before reporting done.",
         file=sys.stderr,
     )
-    raise SystemExit(1)
 
 
 def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
