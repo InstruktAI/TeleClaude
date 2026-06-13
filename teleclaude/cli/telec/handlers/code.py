@@ -306,7 +306,7 @@ def handle_code_commit(args: list[str]) -> None:
     if not approved:
         current_branch = _current_branch(project_root)
         if current_branch == "main" and system_role != "integrator":
-            _print_abc_classification()
+            _print_commit_review_guidance()
             raise SystemExit(1)
         print(
             "telec code commit is the sealed canonical commit interface.\n"
@@ -535,13 +535,13 @@ def _file_matches_commit_category(path: str, category: FileCategory) -> bool:
     return any(fnmatch(path, pattern) for pattern in category.include_patterns)
 
 
-def _print_abc_classification() -> None:
-    """Print the Path A/B/C classification guidance for a shared-main commit.
+def _print_commit_review_guidance() -> None:
+    """Print the post-commit review-routing guidance for a shared-main commit.
 
     The sealed contract makes ``--approved`` the single gate for any commit on
     main; the bare ``telec code commit`` invocation surfaces this guidance and
-    exits — the agent picks A, B, or C and re-runs with ``--approved`` and a
-    message.
+    exits — the agent commits with ``--approved`` and then routes the review by
+    what the diff touched.
     """
     print(
         "Commit gate on main.\n"
@@ -555,17 +555,20 @@ def _print_abc_classification() -> None:
         "\n"
         "Foreign staged files are excluded by pathspec. Do not unstage them.\n"
         "\n"
-        "Pick A, B, or C, then commit with --approved '<msg>':\n"
-        "A) Docs/config/state only.\n"
-        "B) Small functional change.\n"
-        "C) Functional change needing review.\n"
+        "Commit it yourself with --approved '<msg>'. Never ask the human before committing.\n"
         "\n"
-        "Then review the commit(s):\n"
-        "   A: required for doc-snippet (docs/**) commits; config/state/README-only need none.\n"
-        "   B/C: ask the human first; for C, recommend it.\n"
-        "   Reuse the reviewer already open for this series — never spawn a second; else start one:\n"
-        "     open: telec sessions send <reviewer-session-id> 'review commits <sha1,sha2,...>'\n"
-        "     none: telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --agent <agent>\n"
+        "After committing, route the review by what the diff touched:\n"
+        "   Functional code / tests -> judge whether review is warranted and say why; if you\n"
+        "       recommend it, say so once, then dispatch the code review yourself if the\n"
+        "       human stays silent 5 min.\n"
+        "   Governed contract — doc snippets (docs/**) or agent artifacts (agents/**) -> required:\n"
+        "       dispatch an independent doc-hygiene review (you may not review your own).\n"
+        "   Neither functional code nor a governed contract -> no review.\n"
+        "\n"
+        "   Reuse the reviewer already open for this series — never spawn a second; else start one\n"
+        "   (--mode fast for doc-hygiene, --mode med for code review):\n"
+        "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --agent <agent> --mode <fast|med>\n"
+        "     reuse open: telec sessions send <reviewer-session-id> 'review commits <sha1,sha2,...>'\n"
         "   Wait for REVIEW COMPLETE before reporting done.",
         file=sys.stderr,
     )
