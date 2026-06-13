@@ -113,7 +113,7 @@ def _write_blueprint(root: Path, *, baseline_sha: str, status: str = "ok") -> No
 
 def _run_command(tmp_path: Path, changed: list[str], *, main_sha: str | None) -> None:
     with (
-        patch("teleclaude.cli.telec.handlers.context.resolve_invocation_cwd", return_value=tmp_path),
+        patch("teleclaude.cli.telec.handlers.context.resolve_invocation_project_root", return_value=tmp_path),
         patch("teleclaude.cli.telec.handlers.context._resolve_main_sha", return_value=main_sha),
     ):
         _handle_blueprint_affected(changed)
