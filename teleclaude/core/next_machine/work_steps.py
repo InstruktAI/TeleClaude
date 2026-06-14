@@ -39,6 +39,7 @@ from teleclaude.core.next_machine.git_ops import (
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE, PLAN_ONLY_PREPARE_KINDS
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, is_ready_for_work
 from teleclaude.core.next_machine.output_formatting import (
+    HEARTBEAT_RESET_INSTRUCTION,
     ToolCallRequest,
     format_error,
     format_finalize_handoff_complete,
@@ -177,11 +178,7 @@ async def _handle_build_complete_claim(
             f"BUILD GATE FAILED: {slug}\n\n"
             f"Execute in order:\n\n"
             f"{format_send_command(builder_id, message)}\n\n"
-            f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-            f"Start a new non-blocking backup heartbeat timer via "
-            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
-            f"The timer is a bare sleep — a check-in to re-engage your judgment, never a "
-            f"condition test, never a tighter interval.\n"
+            f"{HEARTBEAT_RESET_INSTRUCTION}\n"
             f"When the builder reports idle after re-stamping, call telec todo work {slug}."
         )
 
@@ -352,11 +349,7 @@ async def _work_step_build_complete(
             f"REVIEW RE-DISPATCH: {slug}\n\n"
             f"Execute in order:\n\n"
             f"{format_send_command(reviewer_id, message)}\n\n"
-            f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-            f"Start a new non-blocking backup heartbeat timer via "
-            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
-            f"The timer is a bare sleep — a check-in to re-engage your judgment, never a "
-            f"condition test, never a tighter interval.\n"
+            f"{HEARTBEAT_RESET_INSTRUCTION}\n"
             f"When the reviewer reports idle, call telec todo work {slug}."
         )
 
@@ -475,11 +468,7 @@ async def _work_step_review_changes_requested(
         f"Execute in order:\n\n"
         f"Tell the reviewer to start a direct conversation with the fixer:\n"
         f"telec sessions send {reviewer_id} {quoted_reviewer_message} (you will use regular send, NOT --direct)\n\n"
-        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f"Start a new non-blocking backup heartbeat timer via "
-        f'Bash(command="sleep 300", run_in_background=true) and save the new task_id. '
-        f"The timer is a bare sleep — a check-in to re-engage your judgment, never a "
-        f"condition test, never a tighter interval.\n"
+        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
         f"Wait passively for fixer to complete (the timer re-engages you; never poll).\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call telec todo work {slug}."

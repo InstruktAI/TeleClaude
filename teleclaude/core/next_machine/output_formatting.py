@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from teleclaude.core.next_machine.git_ops import ArtifactDriftStatus
 
 __all__ = [
+    "HEARTBEAT_RESET_INSTRUCTION",
+    "HEARTBEAT_START_INSTRUCTION",
     "ORCHESTRATOR_IDLE_INVARIANT",
     "PENDING_DRIFT_CONTEXT_PREFIX",
     "REVIEW_DIFF_NOTE",
@@ -42,6 +44,18 @@ ORCHESTRATOR_IDLE_INVARIANT = (
     "Always wait for the named worker(s) to emit agent_stop first."
 )
 PENDING_DRIFT_CONTEXT_PREFIX = "PENDING_DRIFT"
+HEARTBEAT_START_INSTRUCTION = (
+    "Start a 300-second backup heartbeat timer using your runtime's own non-blocking "
+    "timer mechanism — per the non-blocking Heartbeat policy, it must never hold a tool "
+    "call open or block you from user input. Note its handle so you can cancel it later."
+)
+HEARTBEAT_RESET_INSTRUCTION = (
+    "Cancel your existing backup heartbeat timer, then start a fresh 300-second one the "
+    "same way — your runtime's own non-blocking timer mechanism, per the non-blocking "
+    "Heartbeat policy (never hold a tool call open, never block user input). The timer is "
+    "a bare, fire-once delay that re-engages your judgment — never a condition test, never "
+    "a tighter interval."
+)
 _PENDING_DRIFT_STATUS = "pending"
 _DRIFT_CLASS_ORDER = {
     "code": 0,
@@ -221,13 +235,8 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 
 {mode_selection_line}
 
-PARALLELIZATION (pick the one matching your agent choice; append to --additional-context):
-- claude:
-    "Independent sub-tasks MUST be parallelized via TeamCreate — one team, multiple workers in a single call. Sequential dispatch of independent work is a failure mode; default to TeamCreate whenever two or more sub-tasks have no data dependency."
-- codex:
-    "When work decomposes into independent subtasks, immediately spawn bounded explorer/worker sub-agents for them and keep the critical path moving locally. Do not serialize non-blocking discovery, implementation, or verification; wait only when a result blocks integration, then merge/close agents."
-- gemini:
-    "Mandate: Identify independent sub-tasks and concurrently delegate them to sub-agents using `invoke_agent` in a single turn. Ensure parallel sub-agents do not mutate the same files; otherwise, execute them simultaneously without setting `wait_for_previous`."
+PARALLELIZATION (append to --additional-context):
+"When the work decomposes into independent sub-tasks with no data dependency, dispatch them concurrently using your runtime's own native parallel mechanism instead of serializing them; ensure parallel workers never mutate the same files."
 
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
@@ -236,15 +245,14 @@ telec sessions run --command "{formatted_command}" --args "{args}" --project "{p
 Save the returned session_id.
 
 STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:
-Bash(command="sleep 300", run_in_background=true)
-Save the returned task_id.
+{HEARTBEAT_START_INSTRUCTION}
 Save the current time as <marker_timestamp> for the tailing discipline.
 INTENT — read this before continuing: the notification is the completion signal; you will be told.
 This timer is a backup check-in only — its sole purpose is to re-engage YOUR judgment when you have
 heard nothing. It is not a control loop and it does not watch the worker; you do.
-- The timer is always a bare sleep. It never tests conditions, never invokes telec, never loops.
-  (A shell test deciding "done/not done" is assessment smuggled into automation — forbidden.)
-- Exactly one timer exists at a time. Kill the old (KillShell) before starting a new one.
+- The timer is always a bare, fire-once delay. It never tests conditions, never invokes telec, never loops.
+  (A test deciding "done/not done" is assessment smuggled into automation — forbidden.)
+- Exactly one timer exists at a time. Cancel the existing one before starting a new one.
 - 300 seconds is the floor. NEVER set a tighter heartbeat.
 
 STEP 3 - WAIT PASSIVELY:
@@ -276,7 +284,7 @@ HEARTBEAT RULE:
   extra watchers or shorter intervals.
 
 FEEDBACK MESSAGES:
-- When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new backup heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+- When sending a message to the worker because it needs feedback: {HEARTBEAT_RESET_INSTRUCTION}
 - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
 
 {post_block}

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS
-from teleclaude.core.next_machine.output_formatting import format_send_command
+from teleclaude.core.next_machine.output_formatting import HEARTBEAT_RESET_INSTRUCTION, format_send_command
 
 
 def format_fix_findings_message(
@@ -104,10 +104,7 @@ def format_review_needs_work_script(
         f"Execute in order:\n\n"
         f"Hand findings off to the reviewer:\n"
         f"{format_send_command(reviewer_session_id, reviewer_message)}\n\n"
-        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f'Start a new non-blocking backup heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-        f"and save the new task_id. The timer is a bare sleep — a check-in to re-engage your "
-        f"judgment, never a condition test, never a tighter interval.\n"
+        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
         f"Wait for the fixer to address findings and advance the state machine; "
         f"the state machine will re-dispatch the reviewer when the artifact is updated.\n"
         f"Wait for reviewer session {reviewer_session_id} to report idle.\n"
@@ -145,9 +142,7 @@ def format_review_in_progress_script(slug: str, reviewer_id: str, *, next_step: 
         f"REVIEW IN PROGRESS: {slug}\n\n"
         f"Execute in order:\n\n"
         f"Do not dispatch a new reviewer. Reuse live reviewer session {reviewer_id}.\n"
-        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-        f"and save the new task_id.\n"
+        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call {next_step}."
     )
@@ -182,10 +177,7 @@ def format_review_ground_shift_script(
         f"REVIEW GROUND SHIFTED: {slug}\n\n"
         f"Execute in order:\n\n"
         f"{format_send_command(reviewer_id, message)}\n\n"
-        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f'Start a new non-blocking backup heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-        f"and save the new task_id. The timer is a bare sleep — a check-in to re-engage your "
-        f"judgment, never a condition test, never a tighter interval.\n"
+        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call {next_step}."
     )

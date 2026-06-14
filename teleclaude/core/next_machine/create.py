@@ -15,7 +15,12 @@ from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT, SlashComm
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
-from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_send_command, format_tool_call
+from teleclaude.core.next_machine.output_formatting import (
+    HEARTBEAT_RESET_INSTRUCTION,
+    ToolCallRequest,
+    format_send_command,
+    format_tool_call,
+)
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 
 if TYPE_CHECKING:
@@ -124,10 +129,7 @@ def _format_creative_iteration_script(
         f"{phase_label.upper()} ITERATION REQUIRED: {slug}\n\n"
         f"Execute in order:\n\n"
         f"{format_send_command(worker_session_id, message)}\n\n"
-        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f'Start a new non-blocking backup heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-        f"and save the new task_id. The timer is a bare sleep — a check-in to re-engage your "
-        f"judgment, never a condition test, never a tighter interval.\n"
+        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
         f"Wait passively for the worker to idle.\n"
         f"When the worker idles, call telec todo design {slug}."
     )
