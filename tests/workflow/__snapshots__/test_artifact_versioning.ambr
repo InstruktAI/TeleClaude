@@ -9,7 +9,7 @@
   dict({
     'stderr': '''
       Artifact kind 'bug' is retired (read-only).
-      Writable kinds: architecture, architecture-review-findings, deferrals, design-spec, diagnosis, implementation-plan, input, plan-review-findings, prd, quality-checklist, requirements, requirements-review-findings, review-findings, task-plan
+      Writable kinds: architecture, architecture-review-findings, deferrals, design-spec, diagnosis, implementation-plan, input, investigation, plan-review-findings, prd, quality-checklist, requirements, requirements-review-findings, review-findings, task-plan
   
     ''',
     'stdout': '',
