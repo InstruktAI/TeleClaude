@@ -91,8 +91,11 @@ visibility: 'public'
     **non-empty guard** at boundaries where accidental erasure is the failure mode (asserts that
     something was produced, never what); and a **named-constant identity** comparison when behavior
     turns on identity (production and test import the same constant). Assert exceptions by type, not
-    message text; assert states by typed/enum fields. Rendered prose is snapshot-covered at the
-    renderer's boundary.
+    message text; assert states by typed/enum fields. Rendered prose that realizes a spec scenario is
+    snapshot-covered at the renderer's boundary. Agent-facing advisory output — formatter
+    instructions, prompts, guidance strings — is its own declaration: a snapshot of it is permitted
+    but never mandated, and it is never asserted by content. A change to such prose is not a coverage
+    gap; the only forbidden outcome is a content-grading assert.
 13. **Rejected as primary assertions:** logger/metric/trace calls and log text; native
     struct/model/config shapes that are not an external wire contract; private helpers; constructor
     or dependency-injection wiring; mock-call echoes where the mocked thing is not an architectural
@@ -104,6 +107,14 @@ visibility: 'public'
 14. **One behavioral path per test.** A case is a code path, not an input row. Tests are
     deterministic, independent, and named so the name is a behavioral specification. Every test
     answers: _what real bug in our code would this catch?_
+15. **Snapshot approval is a conscious act.** A snapshot's regression value is realized only when its
+    diff is read at update time — CI never updates snapshots, so a person or agent does, and a blind
+    `--snapshot-update` converts the test into theater and forfeits the guarantee. The approval is
+    cheap and bounded: confirm the diff is the delta you intended, then sniff for anomalies — empty or
+    missing blocks, unfilled placeholders, stale interpolations, garbled content. It does not require
+    re-deriving the value from the producing code or re-reading the rules that shaped it; intent-match
+    plus anomaly-sniff is the whole act. When a snapshot changes, state in the report what changed and
+    why it is intended — an unexplained snapshot delta is an unreviewed one.
 
 ## Rationale
 
