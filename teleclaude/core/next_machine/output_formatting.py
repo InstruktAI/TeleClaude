@@ -388,8 +388,10 @@ def format_prepared(
         "AUTO-CONTINUE dispatched dependent prepare work."
         if auto_continue_operations
         else (
-            f"DECISION REQUIRED: Continue preparation work, or start the build/review cycle "
-            f"with telec todo work {slug}."
+            f"{slug} is prepared; any drift is reconciled. If you reached this as a terminal "
+            f"prepare, run the cleanup above and self-end. If you bounced here in-line from "
+            f"telec todo work {slug} to reconcile drift, skip the self-end and resume that "
+            f"work — you know your own lineage."
         )
     )
     if auto_continue_operations:

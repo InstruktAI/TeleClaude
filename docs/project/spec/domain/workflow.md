@@ -103,13 +103,6 @@ kind mutation is refused.
 **State machine**
 : The engine that advances a todo's phase based on artifact production, review verdicts, and orchestrator decisions. Per-stage: prepare state machine, work state machine, integrate state machine.
 
-<!-- planned:orchestrator-terminal-self-end -->
-
-**Terminal output**
-: The instruction a state machine returns at a successful terminal state. It states the objective outcome (e.g., prepared and drift reconciled; work-stage responsibility complete) and emits the cleanup commands — end each live slug worker, then the orchestrator self-end — through one shared session-cleanup formatter. It carries no speculative next-step prompt for an action the terminal does not own. The PREPARED terminal adds a lineage-conditioned reminder: an orchestrator that reached it as a terminal prepare run self-ends, while one that bounced in-line from `telec todo work {slug}` to reconcile drift resumes work; the machine states the condition and the orchestrator applies it from its own lineage, with no runtime-state marker and no worktree-presence inference. The work `finalize_ready` terminal states completion and routes its cleanup through the same shared formatter, with no negative re-call phrasing.
-
-<!-- /planned:orchestrator-terminal-self-end -->
-
 **Verdict**
 : A reviewer's output on a workflow artifact: `approve`, `needs_work`, `needs_decision`. Drives state machine transitions.
 
@@ -1019,11 +1012,8 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 
 ## See Also
 
-<!-- planned:orchestrator-terminal-self-end -->
-
-- docs/project/adr/0034-orchestrator-terminal-resumes-via-lineage-awareness.md
-  <!-- /planned:orchestrator-terminal-self-end -->
   <!-- planned:runner-dispatch -->
+
 - docs/project/adr/0035-active-runner-driver-ownership.md
 - docs/project/adr/0036-manual-close-is-an-explicit-halt.md
 <!-- /planned:runner-dispatch -->
