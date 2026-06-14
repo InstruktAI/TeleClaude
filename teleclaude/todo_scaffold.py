@@ -4,20 +4,17 @@ from __future__ import annotations
 
 import uuid as _uuid
 from datetime import UTC, datetime
-from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql - narrow sync lookup must tolerate pre-migration local DBs
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SqlSession
 
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, discover_current_codex_transcript_path
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.receiver._session import _create_sync_engine
 from teleclaude.session_identity import get_session_id as _get_session_id
 from teleclaude.session_scoping import resolve_scoped_paths
@@ -39,36 +36,6 @@ class NoSessionTouchedFiles(ValueError):
 
 
 _scaffold_logger = get_logger(__name__)
-
-
-def remove_todo(project_root: Path, slug: str) -> None:
-    """Remove a todo and all its references. Best-effort: removes whatever exists.
-
-    Removes worktree and local branch for the given slug. DB cleanup
-    (roadmap, icebox, state, artifacts) is handled by the /todos/remove API route.
-
-    Args:
-        project_root: Project root directory
-        slug: Todo slug to remove
-
-    Raises:
-        ValueError: If slug format is invalid
-    """
-    validate_slug(slug)
-    slug = slug.strip()
-
-    worktree_path = project_root / WORKTREE_DIR / slug
-    repo = Repo(str(project_root))
-    if worktree_path.exists():
-        try:
-            repo.git.worktree("remove", "--force", str(worktree_path))
-        except GitCommandError:
-            pass
-
-    try:
-        repo.git.branch("-D", slug)
-    except GitCommandError:
-        pass
 
 
 def create_draft_skeleton(

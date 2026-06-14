@@ -5,12 +5,14 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -21,15 +23,18 @@ from teleclaude.paths import STORAGE_DIR
 logger = get_logger(__name__)
 
 
-def _run_git_cmd(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+def _run_git_cmd(args: list[str], *, cwd: str, timeout: float | None = 30) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
     try:
         repo = Repo(cwd, search_parent_directories=True)
         execute = cast(Callable[..., object], repo.git.execute)
-        output = str(execute([GIT_EXECUTABLE, *args], kill_after_timeout=timeout))
+        if timeout is None:
+            output = str(execute([GIT_EXECUTABLE, *args]))
+        else:
+            output = str(execute([GIT_EXECUTABLE, *args], kill_after_timeout=timeout))
         return 0, output, ""
     except GitCommandError as exc:
-        if "timeout" in str(exc).lower():
+        if timeout is not None and "timeout" in str(exc).lower():
             logger.warning("git %s timed out after %.0fs", " ".join(args[:2]), timeout)
             return 1, "", f"timeout after {timeout}s"
         rc = exc.status if isinstance(exc.status, int) else 1
@@ -190,6 +195,29 @@ def _archive_binary_artifacts(project_root: Path, slug: str) -> None:
             logger.warning("Failed to archive %s/%s: %s", slug, dirname, exc)
 
 
+def reclaim_worktree_trash(cwd: str) -> list[str]:
+    """Best-effort reclaim of deferred worktree trash entries."""
+    trash_dir = Path(cwd) / WORKTREE_DIR / ".trash"
+    if not trash_dir.is_dir():
+        return []
+
+    failures: list[str] = []
+    for entry in sorted(trash_dir.iterdir()):
+        try:
+            if entry.is_symlink():
+                os.unlink(entry)
+            elif entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                os.unlink(entry)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("worktree trash reclaim failed for %s: %s", entry, exc)
+            failures.append(str(entry))
+    return failures
+
+
 def cleanup_delivered_slug(
     cwd: str,
     slug: str,
@@ -207,12 +235,20 @@ def cleanup_delivered_slug(
     # 0. Archive binary artifacts (art/, html/) from workspace/ before cleanup
     _archive_binary_artifacts(project_root, slug)
 
-    # 1. Remove worktree
+    # 1. Detach worktree from git bookkeeping, deferring bulk deletion
     worktree_path = project_root / WORKTREE_DIR / slug
     if worktree_path.exists():
-        rc, _, stderr = _run_git_cmd(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd, timeout=10)
-        if rc != 0:
-            logger.warning("worktree remove failed for %s: %s", slug, stderr.strip())
+        _run_git_cmd(["worktree", "unlock", str(worktree_path)], cwd=cwd, timeout=None)
+        trash_dir = project_root / WORKTREE_DIR / ".trash"
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        trash_path = trash_dir / f"{slug}-{uuid4().hex}"
+        try:
+            os.rename(worktree_path, trash_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            logger.warning("worktree trash rename failed for %s: %s", slug, exc)
+        _run_git_cmd(["worktree", "prune", "--expire=now"], cwd=cwd, timeout=None)
 
     # 2. Delete local branch
     _run_git_cmd(["branch", "-D", branch], cwd=cwd)

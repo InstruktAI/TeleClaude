@@ -17,6 +17,7 @@ from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.models import SessionSnapshot
+from teleclaude.core.next_machine.delivery import reclaim_worktree_trash
 from teleclaude.core.operations import OperationsService, set_operations_service
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
@@ -31,6 +32,8 @@ from teleclaude.core import command_handlers
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
+
+_WORKTREE_TRASH_RECLAIM_TASK = "worktree-trash-reclaim"
 
 
 class DaemonLifecycle:
@@ -120,6 +123,7 @@ class DaemonLifecycle:
         await self.api_server.start()
         self.api_server.set_on_server_exit(self.handle_api_server_exit)
         logger.info("API server started and cache wired in %.3fs", time.perf_counter() - api_started_at)
+        self._schedule_worktree_trash_reclaim()
 
         project_warm_started_at = time.perf_counter()
         logger.info("[STARTUP] Warming local project cache (usually 2-5s)")
@@ -160,6 +164,37 @@ class DaemonLifecycle:
         )
         if repaired_conversation_count:
             logger.info("Repaired conversation delivery for %d mirrored segment(s)", repaired_conversation_count)
+
+    def _schedule_worktree_trash_reclaim(self) -> None:
+        """Schedule deferred worktree trash reclamation outside the startup path."""
+        self.task_registry.spawn(
+            self._reclaim_worktree_trash_for_local_projects(),
+            name=_WORKTREE_TRASH_RECLAIM_TASK,
+        )
+        logger.info("Scheduled worktree trash reclaim")
+
+    async def _reclaim_worktree_trash_for_local_projects(self) -> None:
+        try:
+            projects = await command_handlers.list_projects_with_todos()
+        except Exception as exc:
+            logger.warning("Failed to list projects for worktree trash reclaim: %s", exc, exc_info=True)
+            return
+
+        for project in projects:
+            if not project.path:
+                continue
+            try:
+                failures = await asyncio.to_thread(reclaim_worktree_trash, project.path)
+            except Exception as exc:
+                logger.warning("Worktree trash reclaim failed for project %s: %s", project.path, exc, exc_info=True)
+                continue
+            if failures:
+                logger.warning(
+                    "Worktree trash reclaim failed for %d entries in project %s: %s",
+                    len(failures),
+                    project.path,
+                    failures,
+                )
 
     async def _warm_local_sessions_cache(self) -> None:
         """Seed cache with current local sessions for initial UI state."""

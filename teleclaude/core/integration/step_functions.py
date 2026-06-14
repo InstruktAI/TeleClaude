@@ -29,7 +29,7 @@ from teleclaude.core.integration.formatters import (
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
-from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
@@ -423,6 +423,9 @@ def _step_idle(
     """IDLE: sweep stale artifacts, scan for finalize-ready candidates, acquire lease, proceed to merge."""
     # Sweep worktrees for already-delivered slugs left by crashed integrations
     _sweep_stale_artifacts(cwd)
+    trash_failures = reclaim_worktree_trash(cwd)
+    if trash_failures:
+        logger.warning("Worktree trash reclaim failed for %d entries: %s", len(trash_failures), trash_failures)
 
     exclude = checkpoint.candidate_slug
 
