@@ -1,2 +1,0 @@
-# stub for old updaters
-Release 84
