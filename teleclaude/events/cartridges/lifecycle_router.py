@@ -132,6 +132,7 @@ class LifecycleRouterCartridge:
                 "command": "/next-work",
                 "project_path": project_path,
                 "args": slug,
+                "thinking_mode": "med",
                 "detach": True,
             }
         else:
@@ -139,6 +140,7 @@ class LifecycleRouterCartridge:
                 "command": "/next-prepare",
                 "project_path": project_path,
                 "args": slug,
+                "thinking_mode": "slow",
                 "detach": True,
                 "additional_context": "human_in_loop: false\n",
             }
