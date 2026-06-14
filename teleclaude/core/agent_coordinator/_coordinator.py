@@ -288,6 +288,7 @@ class AgentCoordinator(
 
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
+        await self._activate_initializing_session(context.session_id)
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.handle_session_start(context)
         elif context.event_type == AgentHookEvents.AGENT_STOP:
@@ -296,6 +297,12 @@ class AgentCoordinator(
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
+
+    async def _activate_initializing_session(self, session_id: str) -> None:
+        """Persist agent liveness proved by any handled activity hook."""
+        session = await db.get_session(session_id)
+        if session and session.lifecycle_status == "initializing":
+            await db.update_session(session_id, lifecycle_status="active")
 
     async def handle_session_start(self, context: AgentEventContext) -> None:
         """Handle session_start event - store native session details and update title if needed."""

@@ -135,8 +135,6 @@ And the snapshot reports `agent_status="idle"` even when `last_agent_stop_at` is
 And the snapshot still preserves the lifecycle `status` field as `closing` or `closed`
 ```
 
-<!-- planned:work-reviewer-not-alive-with-existing-session -->
-
 #### UC-SL23: An activity hook activates an initializing session
 
 ```
@@ -148,8 +146,6 @@ And `native_session_id` and `native_log_file` are stored when the session_start 
 And normal live-session listing returns the session without requiring `include_initializing`
 And headless or closed lifecycle rows are not reactivated by any activity hook
 ```
-
-<!-- /planned:work-reviewer-not-alive-with-existing-session -->
 
 #### Ending a session — happy path
 

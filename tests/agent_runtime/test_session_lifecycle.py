@@ -18,16 +18,20 @@ import pytest
 from fastapi import HTTPException
 from httpx import AsyncClient
 
+import teleclaude.core.agent_coordinator._coordinator as coordinator_mod
 from teleclaude.api import auth as auth_mod
 from teleclaude.api import sessions_routes
 from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_remote import dispatch_session_close_to_peer
-from teleclaude.constants import EVENT_END_SESSION
+from teleclaude.constants import EVENT_END_SESSION, WORKTREE_DIR
 from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
+from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.command_handlers import _session as session_handler_mod
+from teleclaude.core.events import AgentEventContext, AgentHookEvents, build_agent_payload
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import MessageMetadata, SessionSnapshot
 from teleclaude.core.models._session import Session
+from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CloseSessionCommand
 
@@ -798,6 +802,130 @@ async def test_closed_session_snapshots_report_idle_agent_status(snapshot) -> No
     }
 
     assert projections == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-SL23")
+@pytest.mark.parametrize(
+    ("event_type", "payload_data"),
+    [
+        (
+            AgentHookEvents.AGENT_SESSION_START,
+            {
+                "session_id": "native-reviewer",
+                "transcript_path": "/tmp/reviewer-transcript.jsonl",
+            },
+        ),
+        (AgentHookEvents.AGENT_STOP, {"prompt": "review complete"}),
+        (AgentHookEvents.TOOL_USE, {"tool_name": "Read"}),
+        (AgentHookEvents.USER_PROMPT_SUBMIT, {"prompt": "please continue"}),
+    ],
+)
+async def test_activity_hook_activates_initializing_session_for_live_lookup(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cluster_event_bus: None,
+    event_type: str,
+    payload_data: dict[str, object],
+) -> None:
+    del cluster_event_bus
+    slug = "reviewer-not-alive-regression"
+    subdir = f"{WORKTREE_DIR}/{slug}"
+    title = "/next-review-build reviewer-not-alive-regression"
+
+    monkeypatch.setattr(coordinator_mod, "db", api.db)
+    monkeypatch.setattr(coordinator_mod, "schedule_slow_work", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        coordinator_mod.polling_coordinator,
+        "schedule_session_projection",
+        AsyncMock(return_value=None),
+    )
+
+    coordinator = AgentCoordinator(
+        client=AsyncMock(),
+        tts_manager=AsyncMock(),
+    )
+    monkeypatch.setattr(coordinator, "_extract_agent_output", AsyncMock(return_value=None))
+    monkeypatch.setattr(coordinator, "_notify_session_listener", AsyncMock(return_value=None))
+    monkeypatch.setattr(coordinator, "_forward_stop_to_initiator", AsyncMock(return_value=None))
+    monkeypatch.setattr(coordinator, "_signal_projection_activity", AsyncMock(return_value=None))
+
+    target = await api.db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name="tc-target",
+        last_input_origin=InputOrigin.TERMINAL.value,
+        title=title,
+        subdir=subdir,
+        lifecycle_status="initializing",
+        active_agent="claude",
+        emit_session_started=False,
+    )
+    protected_statuses = {
+        "headless": await api.db.create_session(
+            computer_name="TestComputer",
+            tmux_session_name="tc-headless",
+            last_input_origin=InputOrigin.TERMINAL.value,
+            title=title,
+            subdir=subdir,
+            lifecycle_status="headless",
+            active_agent="claude",
+            emit_session_started=False,
+        ),
+        "closing": await api.db.create_session(
+            computer_name="TestComputer",
+            tmux_session_name="tc-closing",
+            last_input_origin=InputOrigin.TERMINAL.value,
+            title=title,
+            subdir=subdir,
+            lifecycle_status="closing",
+            active_agent="claude",
+            emit_session_started=False,
+        ),
+        "closed": await api.db.create_session(
+            computer_name="TestComputer",
+            tmux_session_name="tc-closed",
+            last_input_origin=InputOrigin.TERMINAL.value,
+            title=title,
+            subdir=subdir,
+            lifecycle_status="closed",
+            active_agent="claude",
+            emit_session_started=False,
+        ),
+    }
+
+    assert await find_live_session_for_slug(api.db, slug, "/next-review-build") is None
+
+    for session in [target, *protected_statuses.values()]:
+        await coordinator.handle_event(
+            AgentEventContext(
+                session_id=session.session_id,
+                event_type=event_type,
+                data=build_agent_payload(event_type, payload_data),
+            )
+        )
+
+    repaired = await api.db.get_session(target.session_id)
+    assert repaired is not None
+    expected_native_fields = {}
+    if event_type == AgentHookEvents.AGENT_SESSION_START:
+        expected_native_fields = {
+            "native_session_id": "native-reviewer",
+            "native_log_file": "/tmp/reviewer-transcript.jsonl",
+        }
+    assert {
+        "lifecycle_status": repaired.lifecycle_status,
+        "native_session_id": repaired.native_session_id,
+        "native_log_file": repaired.native_log_file,
+    } == {
+        "lifecycle_status": "active",
+        "native_session_id": expected_native_fields.get("native_session_id"),
+        "native_log_file": expected_native_fields.get("native_log_file"),
+    }
+    assert await find_live_session_for_slug(api.db, slug, "/next-review-build") == target.session_id
+
+    for expected_status, session in protected_statuses.items():
+        current = await api.db.get_session(session.session_id)
+        assert current is not None
+        assert current.lifecycle_status == expected_status
 
 
 # ---------------------------------------------------------------------------
