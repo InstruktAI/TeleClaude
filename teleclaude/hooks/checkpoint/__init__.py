@@ -190,13 +190,6 @@ def run_heuristics(
     if code_categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
         append_required_action("Run targeted tests for only YOUR changed behavior")
 
-    # Test quality review gate: point to policy, not inline rules
-    if any(c.name == "tests" for c in file_categories):
-        append_required_action(
-            "Test files were modified — review against test policy before committing: "
-            "`telec docs get software-development/policy/testing`. Remove tests that violate policy."
-        )
-
     # Changed-line: raw turn-local category set — every category whose files were touched
     # this turn, regardless of whether any action was surfaced or deferred.
     result.categories = [c.name for c in sorted(categories, key=lambda c: c.precedence)]
