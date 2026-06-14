@@ -42,9 +42,9 @@ work input.
 
 When the state machine instructs a dispatch, select `--mode`:
 
-- **Reviewers**: always `slow`.
-- **Builders and fixers**: `med`.
-- **Finalizers**: always `fast`.
+- **Builders and fixers**: `med` (well specced out plan should not require slow mode).
+- **Reviewers**: `med` (we used slow in the past but have well specced out process to follow so `med` is sufficient).
+- **Finalizers**: `fast`.
 
 ### 2. Build
 
