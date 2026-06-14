@@ -17,15 +17,19 @@ from ._inbound import DbInboundMixin
 from ._links import DbLinksMixin
 from ._listeners import DbListenersMixin
 from ._operations import DbOperationsMixin
+from ._process_lifecycle import DbProcessLifecycleMixin
 from ._rows import HookOutboxRow, InboundQueueRow, OperationRow
 from ._sessions import DbSessionsMixin
 from ._settings import DbSettingsMixin
 from ._sync import (
     SessionIdentityError,
+    delete_process_spawn_registry_entry_sync,
+    get_process_spawn_registry_entry_sync,
     get_session_field_sync,
     get_session_id_by_field_sync,
     get_session_id_by_tmux_name_sync,
     read_agent_availability_sync,
+    replace_process_spawn_registry_entry_sync,
     resolve_session_principal,
 )
 from ._tokens import DbTokensMixin
@@ -42,6 +46,7 @@ class Db(
     DbOperationsMixin,
     DbInboundMixin,
     DbHooksMixin,
+    DbProcessLifecycleMixin,
     DbSettingsMixin,
     DbVoiceTranscriptionsMixin,
     DbSessionsMixin,
@@ -83,10 +88,13 @@ __all__ = [
     "OperationRow",
     "SessionIdentityError",
     "db",
+    "delete_process_spawn_registry_entry_sync",
     "get_db",
+    "get_process_spawn_registry_entry_sync",
     "get_session_field_sync",
     "get_session_id_by_field_sync",
     "get_session_id_by_tmux_name_sync",
     "read_agent_availability_sync",
+    "replace_process_spawn_registry_entry_sync",
     "resolve_session_principal",
 ]

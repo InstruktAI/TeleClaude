@@ -106,6 +106,12 @@ from teleclaude.core.db import db
 _record_import_timing("teleclaude.core.db", _t)
 
 _t = time.perf_counter()
+from teleclaude.services.process_janitor import ProcessJanitorService
+from teleclaude.services.process_janitor.service import ProcessJanitorSettings
+
+_record_import_timing("teleclaude.services.process_janitor", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.event_bus import event_bus
 
 _record_import_timing("teleclaude.core.event_bus", _t)
@@ -338,7 +344,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             else project_root / "assets" / "audio" / "C64Music"
         )
         chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 1.0
-        self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
+        self.chiptunes_manager = ChiptunesManager(
+            chiptunes_music_dir,
+            volume=chiptunes_volume,
+            worker_lease_ttl_seconds=config.process_janitor.lease_ttl_seconds,
+        )
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
         self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change
         self.chiptunes_manager.on_command_done = self._on_chiptunes_command_done
@@ -397,6 +407,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._hook_outbox_last_lag_warn_at: dict[str, float] = {}
         self._hook_outbox_claim_paused_sessions: set[str] = set()
         self.resource_monitor_task: asyncio.Task[object] | None = None
+        self.process_janitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self.config_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
@@ -439,6 +450,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             resource_snapshot_interval_s=RESOURCE_SNAPSHOT_INTERVAL_S,
             launchd_watch_interval_s=LAUNCHD_WATCH_INTERVAL_S,
             db_path=str(MAIN_DB_PATH),
+        )
+        self.process_janitor_service = ProcessJanitorService(
+            db,
+            ProcessJanitorSettings(
+                scan_interval_seconds=config.process_janitor.scan_interval_seconds,
+                default_signature_ttl_seconds=config.process_janitor.default_signature_ttl_seconds,
+                dry_run_default=config.process_janitor.dry_run_default,
+            ),
+            self.shutdown_event,
         )
 
     def _on_chiptunes_track_start(self, track_label: str, sid_path: str) -> None:
@@ -790,6 +810,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
 
+            self.process_janitor_task = asyncio.create_task(
+                self.process_janitor_service.scan_loop(), name="process-janitor"
+            )
+            self.process_janitor_task.add_done_callback(self._log_background_task_exception("process_janitor"))
+            logger.info("Process janitor started (interval=%ss)", config.process_janitor.scan_interval_seconds)
+
             self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop(), name="wal-checkpoint")
             self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
             logger.info("WAL checkpoint task started (interval=300s)")
@@ -856,6 +882,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         for attr_name, log_message in (
             ("config_watch_task", "Config watcher stopped"),
             ("resource_monitor_task", "Resource monitor stopped"),
+            ("process_janitor_task", "Process janitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
             ("launchd_watch_task", "Launchd watch task stopped"),
             ("_contract_sweep_task", "Contract sweep stopped"),

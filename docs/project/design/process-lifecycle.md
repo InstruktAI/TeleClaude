@@ -1,8 +1,9 @@
 ---
-description: 'Daemon-owned process lifecycle: a janitor that reaps leaked processes against a signature+TTL policy and a spawn registry that gives platform-detached children an expiring lease. Every reap is observable; the matcher can never kill the daemon, a live agent session, or an out-of-policy process.'
-visibility: 'public'
-delivered_by:
-  - process-janitor
+description: 'Daemon-owned process lifecycle: a janitor that reaps leaked processes
+  against a signature+TTL policy and a spawn registry that gives platform-detached
+  children an expiring lease. Every reap is observable; the matcher can never kill
+  the daemon, a live agent session, or an out-of-policy process.'
+visibility: public
 ---
 
 # Process Lifecycle — Design

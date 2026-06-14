@@ -286,6 +286,32 @@ CREATE TABLE IF NOT EXISTS agent_availability (
     degraded_until TEXT
 );
 
+-- Daemon-owned process lifecycle policy and detached spawn registry
+CREATE TABLE IF NOT EXISTS process_janitor_policies (
+    signature_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    matcher_kind TEXT NOT NULL,
+    matcher_params_json TEXT NOT NULL DEFAULT '{}',
+    ttl_seconds INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    dry_run INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_process_janitor_policies_enabled
+ON process_janitor_policies(enabled);
+
+CREATE TABLE IF NOT EXISTS process_spawn_registry (
+    owner TEXT PRIMARY KEY,
+    pid INTEGER NOT NULL,
+    lease_expires_at TEXT NOT NULL,
+    registered_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_process_spawn_registry_lease
+ON process_spawn_registry(lease_expires_at);
+
 -- Voice assignments
 CREATE TABLE IF NOT EXISTS voice_assignments (
     id TEXT PRIMARY KEY,

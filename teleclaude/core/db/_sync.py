@@ -159,6 +159,78 @@ def read_agent_availability_sync(db_path: str, agent: str, *, timeout_s: float =
     return bool(available_raw)
 
 
+def get_process_spawn_registry_entry_sync(
+    db_path: str, owner: str, *, timeout_s: float = 1.0
+) -> db_models.ProcessSpawnRegistryEntry | None:
+    """Return one spawn registry entry from a synchronous spawn path."""
+    if not Path(db_path).exists():
+        return None
+    with sqlite3.connect(db_path, timeout=timeout_s) as conn:
+        row = conn.execute(
+            "SELECT owner, pid, lease_expires_at, registered_at "  # guard: raw-sql
+            "FROM process_spawn_registry WHERE owner = ?",
+            (owner,),
+        ).fetchone()
+    if row is None:
+        return None
+    return db_models.ProcessSpawnRegistryEntry(
+        owner=str(row[0]),
+        pid=int(row[1]),
+        lease_expires_at=str(row[2]),
+        registered_at=str(row[3]),
+    )
+
+
+def replace_process_spawn_registry_entry_sync(
+    db_path: str,
+    *,
+    owner: str,
+    pid: int,
+    lease_expires_at: str,
+    registered_at: str | None = None,
+    timeout_s: float = 1.0,
+) -> db_models.ProcessSpawnRegistryEntry | None:
+    """Atomically replace the owner row and return the previous registrant."""
+    registered = registered_at or datetime.now(UTC).isoformat()
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path, timeout=timeout_s) as conn:
+        row = conn.execute(
+            "SELECT owner, pid, lease_expires_at, registered_at "  # guard: raw-sql
+            "FROM process_spawn_registry WHERE owner = ?",
+            (owner,),
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO process_spawn_registry(owner, pid, lease_expires_at, registered_at) "  # guard: raw-sql
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(owner) DO UPDATE SET "
+            "pid = excluded.pid, "
+            "lease_expires_at = excluded.lease_expires_at, "
+            "registered_at = excluded.registered_at",
+            (owner, pid, lease_expires_at, registered),
+        )
+        conn.commit()
+    if row is None:
+        return None
+    return db_models.ProcessSpawnRegistryEntry(
+        owner=str(row[0]),
+        pid=int(row[1]),
+        lease_expires_at=str(row[2]),
+        registered_at=str(row[3]),
+    )
+
+
+def delete_process_spawn_registry_entry_sync(db_path: str, owner: str, *, timeout_s: float = 1.0) -> None:
+    """Delete a spawn registry entry from a synchronous spawn path."""
+    if not Path(db_path).exists():
+        return
+    with sqlite3.connect(db_path, timeout=timeout_s) as conn:
+        conn.execute(
+            "DELETE FROM process_spawn_registry WHERE owner = ?",  # guard: raw-sql
+            (owner,),
+        )
+        conn.commit()
+
+
 class SessionIdentityError(ValueError):
     """Raised when a session has no resolvable identity."""
 

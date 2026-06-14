@@ -22,7 +22,9 @@ from teleclaude.chiptunes import manager as manager_mod
 from teleclaude.chiptunes import worker as worker_mod
 from teleclaude.chiptunes.manager import ChiptunesManager
 from teleclaude.chiptunes.worker import _IDLE_LEASE_SECONDS, _WorkerProcess
+from teleclaude.core.db import Db
 from teleclaude.paths import CHIPTUNES_PID_PATH, CHIPTUNES_SOCKET_PATH, TELECLAUDE_HOME
+from teleclaude.services.process_janitor.registry import ProcessSpawnRegistry, RegistryResolution
 
 pytestmark = pytest.mark.functional
 
@@ -47,6 +49,38 @@ class _FakeProc:
         return SimpleNamespace(real=self._uid, effective=self._uid, saved=self._uid)
 
 
+class _FakeRegistry:
+    def __init__(self) -> None:
+        self.registered: list[int] = []
+        self.cleared = 0
+
+    def resolve_chiptunes(self, *, live_pids: list[int], socket_reachable: bool) -> RegistryResolution:
+        if socket_reachable and live_pids:
+            return RegistryResolution(adopted_pid=live_pids[0], stale_pid=None)
+        if live_pids:
+            return RegistryResolution(adopted_pid=None, stale_pid=live_pids[0])
+        return RegistryResolution(adopted_pid=None, stale_pid=None)
+
+    def register_chiptunes(self, pid: int, *, lease_ttl_seconds: int) -> None:
+        del lease_ttl_seconds
+        self.registered.append(pid)
+
+    def clear_chiptunes(self) -> None:
+        self.cleared += 1
+
+
+def _manager(tmp_path: Path) -> ChiptunesManager:
+    return ChiptunesManager(tmp_path, registry=_FakeRegistry())
+
+
+async def _initialized_db_path(tmp_path: Path) -> Path:
+    db_path = tmp_path / "teleclaude.db"
+    db = Db(str(db_path))
+    await db.initialize()
+    await db.close()
+    return db_path
+
+
 @pytest.mark.spec(_SPEC, "UC-CW1")
 def test_registry_resolves_under_home_root_not_tmp() -> None:
     """The socket and pidfile live flat at the never-purged home root, not /tmp."""
@@ -60,6 +94,29 @@ def test_registry_resolves_under_home_root_not_tmp() -> None:
     assert worker_mod.CHIPTUNES_PID_PATH == CHIPTUNES_PID_PATH
 
 
+@pytest.mark.asyncio
+async def test_real_registry_reports_dead_prior_registrant_as_stale(tmp_path: Path) -> None:
+    """A prior registry row with no reachable owner is surfaced as stale for termination."""
+    db_path = await _initialized_db_path(tmp_path)
+    registry = ProcessSpawnRegistry(db_path)
+    registry.register_chiptunes(987654, lease_ttl_seconds=60)
+
+    resolution = registry.resolve_chiptunes(live_pids=[], socket_reachable=False)
+
+    assert resolution == RegistryResolution(adopted_pid=None, stale_pid=987654)
+
+
+@pytest.mark.asyncio
+async def test_real_registry_adopts_reachable_live_chiptunes_worker(tmp_path: Path) -> None:
+    """A reachable live worker wins over spawn replacement."""
+    db_path = await _initialized_db_path(tmp_path)
+    registry = ProcessSpawnRegistry(db_path)
+
+    resolution = registry.resolve_chiptunes(live_pids=[4242], socket_reachable=True)
+
+    assert resolution == RegistryResolution(adopted_pid=4242, stale_pid=None)
+
+
 @pytest.mark.spec(_SPEC, "UC-CW2")
 def test_scan_matches_only_exact_same_user_worker_invocation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Liveness comes from the process table: only this user's exact -m invocation counts."""
@@ -70,7 +127,7 @@ def test_scan_matches_only_exact_same_user_worker_invocation(monkeypatch: pytest
         _FakeProc(303, [sys.executable, "-m", "teleclaude.chiptunes.worker"], own_uid + 1),
     ]
     monkeypatch.setattr(manager_mod.psutil, "process_iter", lambda _attrs=None: iter(procs))
-    manager = ChiptunesManager(tmp_path)
+    manager = _manager(tmp_path)
     # 202 merely mentions the module string; 303 is another user — neither is a worker.
     assert manager._find_live_workers() == [101]
 
@@ -78,7 +135,7 @@ def test_scan_matches_only_exact_same_user_worker_invocation(monkeypatch: pytest
 @pytest.mark.spec(_SPEC, "UC-CW3")
 def test_reachable_worker_is_adopted_without_spawning(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A live worker with a reachable socket is adopted — no duplicate is spawned."""
-    manager = ChiptunesManager(tmp_path)
+    manager = _manager(tmp_path)
     monkeypatch.setattr(manager, "_find_live_workers", lambda: [4242])
     monkeypatch.setattr(manager, "_worker_socket_reachable", lambda: True)
     events: list[object] = []
@@ -91,7 +148,7 @@ def test_reachable_worker_is_adopted_without_spawning(monkeypatch: pytest.Monkey
 @pytest.mark.spec(_SPEC, "UC-CW4")
 def test_unreachable_orphan_is_terminated_before_single_spawn(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A live-but-unreachable worker (purged socket) is killed before exactly one replacement."""
-    manager = ChiptunesManager(tmp_path)
+    manager = _manager(tmp_path)
     monkeypatch.setattr(manager, "_find_live_workers", lambda: [4242])
     monkeypatch.setattr(manager, "_worker_socket_reachable", lambda: False)
     events: list[object] = []
@@ -106,7 +163,7 @@ def test_unreachable_orphan_is_terminated_before_single_spawn(monkeypatch: pytes
 @pytest.mark.spec(_SPEC, "UC-CW5")
 def test_reattach_reconnects_to_reachable_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Reattach to a reachable worker reconnects and pulls a state snapshot."""
-    manager = ChiptunesManager(tmp_path)
+    manager = _manager(tmp_path)
     monkeypatch.setattr(manager, "_find_live_workers", lambda: [4242])
     monkeypatch.setattr(manager, "_worker_socket_reachable", lambda: True)
     events: list[object] = []
@@ -124,7 +181,7 @@ def test_reattach_terminates_unreachable_orphan_without_reconnecting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Reattach never reconnects to a purged socket — it terminates the orphan instead."""
-    manager = ChiptunesManager(tmp_path)
+    manager = _manager(tmp_path)
     monkeypatch.setattr(manager, "_find_live_workers", lambda: [4242])
     monkeypatch.setattr(manager, "_worker_socket_reachable", lambda: False)
     events: list[object] = []

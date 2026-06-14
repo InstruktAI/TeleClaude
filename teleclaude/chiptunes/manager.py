@@ -23,6 +23,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.chiptunes.types import ChiptunesState, coerce_chiptunes_state
 from teleclaude.paths import CHIPTUNES_PID_PATH, CHIPTUNES_SOCKET_PATH, CHIPTUNES_WORKER_LOG_PATH
+from teleclaude.services.process_janitor.registry import ProcessSpawnRegistry
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -37,6 +38,7 @@ _TERMINATION_POLL_COUNT = 20
 _TERMINATION_POLL_INTERVAL_SECONDS = 0.1
 _SOCKET_WAIT_POLL_COUNT = 50
 _SOCKET_WAIT_POLL_INTERVAL_SECONDS = 0.1
+_WORKER_LEASE_TTL_SECONDS = 1800
 
 
 def _is_worker_cmdline(cmdline: list[str]) -> bool:
@@ -57,9 +59,18 @@ class ChiptunesManager:
     the sole authority on playback state.
     """
 
-    def __init__(self, music_dir: Path, volume: float = 1.0) -> None:
+    def __init__(
+        self,
+        music_dir: Path,
+        volume: float = 1.0,
+        *,
+        registry: ProcessSpawnRegistry | None = None,
+        worker_lease_ttl_seconds: int = _WORKER_LEASE_TTL_SECONDS,
+    ) -> None:
         self._music_dir = music_dir
         self._volume = volume
+        self._registry = registry or ProcessSpawnRegistry()
+        self._worker_lease_ttl_seconds = worker_lease_ttl_seconds
         self._enabled = False
         self._sock: socket.socket | None = None
         self._reader_thread: threading.Thread | None = None
@@ -133,6 +144,8 @@ class ChiptunesManager:
         """
         pids, reachable = self._classify_worker()
         if reachable:
+            if pids:
+                self._registry.register_chiptunes(pids[0], lease_ttl_seconds=self._worker_lease_ttl_seconds)
             self._enabled = True
             self._connect()
             self._send_cmd({"cmd": "capture_state"})
@@ -140,6 +153,7 @@ class ChiptunesManager:
         if pids:
             self._terminate_workers(pids)
             self._clear_registry()
+            self._registry.clear_chiptunes()
 
     def enqueue_command(self, command_id: str, action: CommandAction) -> None:
         """Enqueue a user command for asynchronous execution."""
@@ -163,12 +177,23 @@ class ChiptunesManager:
         duplicate worker.
         """
         pids, reachable = self._classify_worker()
-        if reachable:
+        resolution = self._registry.resolve_chiptunes(live_pids=pids, socket_reachable=reachable)
+        if resolution.adopted_pid is not None:
+            self._registry.register_chiptunes(
+                resolution.adopted_pid,
+                lease_ttl_seconds=self._worker_lease_ttl_seconds,
+            )
             return
-        if pids:
-            self._terminate_workers(pids)
+        stale_pids = set(pids)
+        if resolution.stale_pid is not None:
+            stale_pids.add(resolution.stale_pid)
+        if stale_pids:
+            self._terminate_workers(sorted(stale_pids))
         self._clear_registry()
-        self._spawn_worker()
+        self._registry.clear_chiptunes()
+        pid = self._spawn_worker()
+        if pid is not None:
+            self._registry.register_chiptunes(pid, lease_ttl_seconds=self._worker_lease_ttl_seconds)
         self._await_socket()
 
     # ------------------------------------------------------------------ #
@@ -363,10 +388,10 @@ class ChiptunesManager:
             except OSError:
                 pass
 
-    def _spawn_worker(self) -> None:
+    def _spawn_worker(self) -> int | None:
         """Launch a fresh worker subprocess."""
         with open(CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8") as log_file:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 [
                     sys.executable,
                     "-m",
@@ -381,6 +406,7 @@ class ChiptunesManager:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
+            return proc.pid
 
     @staticmethod
     def _await_socket() -> None:
@@ -397,3 +423,4 @@ class ChiptunesManager:
         if pids:
             self._terminate_workers(pids)
         self._clear_registry()
+        self._registry.clear_chiptunes()

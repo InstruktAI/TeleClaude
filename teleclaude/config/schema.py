@@ -157,6 +157,16 @@ class IntegratorConfig(BaseModel):
     cutover: IntegratorCutoverConfig = IntegratorCutoverConfig()
 
 
+class ProcessJanitorConfig(BaseModel):
+    """Process janitor timing and safety defaults."""
+
+    model_config = ConfigDict(extra="allow")
+    scan_interval_seconds: int = Field(default=300, ge=60)
+    default_signature_ttl_seconds: int = Field(default=3600, ge=60)
+    lease_ttl_seconds: int = Field(default=1800, ge=60)
+    dry_run_default: bool = True
+
+
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
 OUTPUT_VISIBILITY_MOBILE: Final = "mobile"
 OUTPUT_VISIBILITY_WEB: Final = "web"
@@ -364,6 +374,7 @@ class ProjectConfig(BaseModel):
     jobs: dict[str, JobScheduleConfig] = {}
     git: GitConfig = GitConfig()
     integrator: IntegratorConfig = IntegratorConfig()
+    process_janitor: ProcessJanitorConfig = ProcessJanitorConfig()
     channel_subscriptions: list[ChannelSubscription] = []
     deployment: DeploymentConfig = DeploymentConfig()
 

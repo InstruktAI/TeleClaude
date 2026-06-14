@@ -36,6 +36,28 @@ def register_system(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="system.process.reaped",
+            description="Process janitor reaped or observed a reapable process",
+            default_level=EventLevel.OPERATIONAL,
+            domain="system",
+            default_visibility=EventVisibility.LOCAL,
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                meaningful_fields=[
+                    "pid",
+                    "signature_id",
+                    "signature_name",
+                    "reason",
+                    "observe_only",
+                    "owner",
+                    "lease_expires_at",
+                ],
+            ),
+            actionable=False,
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="system.event.dead_lettered",
             description="An event exhausted its retry ceiling and transitioned to the dead-letter destination",
             default_level=EventLevel.OPERATIONAL,

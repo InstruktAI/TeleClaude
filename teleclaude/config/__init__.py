@@ -339,6 +339,16 @@ class ChiptunesConfig:
 
 
 @dataclass
+class ProcessJanitorConfig:
+    """Process janitor timing and safety defaults."""
+
+    scan_interval_seconds: int = 300
+    default_signature_ttl_seconds: int = 3600
+    lease_ttl_seconds: int = 1800
+    dry_run_default: bool = True
+
+
+@dataclass
 class TerminalConfig:
     """Terminal display settings."""
 
@@ -404,6 +414,7 @@ class Config:
     tts: TTSConfig | None = None
     stt: STTConfig | None = None
     chiptunes: ChiptunesConfig | None = None
+    process_janitor: ProcessJanitorConfig = field(default_factory=ProcessJanitorConfig)
     summarizer: SummarizerConfig | None = None
     experiments: list[ExperimentConfig] = field(default_factory=list)
     remote_computers: list[RemoteComputerConfig] = field(default_factory=list)
@@ -620,6 +631,34 @@ def _parse_chiptunes_config(raw: dict[str, object] | None) -> ChiptunesConfig | 
     )
 
 
+def _parse_process_janitor_config(raw: dict[str, object] | None) -> ProcessJanitorConfig:  # guard: loose-dict
+    """Parse process janitor config from raw dict."""
+    if not raw:
+        return ProcessJanitorConfig()
+    return ProcessJanitorConfig(
+        scan_interval_seconds=_parse_process_janitor_seconds(raw, "scan_interval_seconds", 300),
+        default_signature_ttl_seconds=_parse_process_janitor_seconds(raw, "default_signature_ttl_seconds", 3600),
+        lease_ttl_seconds=_parse_process_janitor_seconds(raw, "lease_ttl_seconds", 1800),
+        dry_run_default=_as_bool(raw.get("dry_run_default", True)),
+    )
+
+
+def _parse_process_janitor_seconds(raw: dict[str, object], key: str, default: int) -> int:  # guard: loose-dict
+    """Parse a process janitor duration and enforce the schema floor."""
+    value = raw.get(key)
+    if value is None:
+        return default
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+    else:
+        raise ValueError(f"process_janitor.{key} must be an integer")
+    if parsed < 60:
+        raise ValueError(f"process_janitor.{key} must be greater than or equal to 60")
+    return parsed
+
+
 def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
     """Parse STT config from raw dict."""
     if not raw_stt:
@@ -674,6 +713,7 @@ def _build_config(
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
     chiptunes_raw = raw.get("chiptunes", None)
+    process_janitor_raw = raw.get("process_janitor", None)
     summarizer_raw = raw.get("summarizer", None)
     experiments_raw = raw.get("experiments", [])
     agents_raw = dict(_require_agents_section(raw))
@@ -890,6 +930,7 @@ def _build_config(
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
+        process_janitor=_parse_process_janitor_config(process_janitor_raw),  # type: ignore[arg-type]
         summarizer=_parse_summarizer_config(summarizer_raw),  # type: ignore[arg-type]
         experiments=experiments,
         remote_computers=remote_computers,

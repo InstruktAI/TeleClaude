@@ -133,6 +133,35 @@ class AgentAvailability(SQLModel, table=True):
     reason: str | None = None
 
 
+class ProcessJanitorPolicy(SQLModel, table=True):
+    """process_janitor_policies table."""
+
+    __tablename__ = "process_janitor_policies"
+    __table_args__ = {"extend_existing": True}
+
+    signature_id: str = Field(primary_key=True)
+    name: str
+    matcher_kind: str
+    matcher_params_json: str = "{}"
+    ttl_seconds: int
+    enabled: int = 1
+    dry_run: int = 0
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ProcessSpawnRegistryEntry(SQLModel, table=True):
+    """process_spawn_registry table."""
+
+    __tablename__ = "process_spawn_registry"
+    __table_args__ = {"extend_existing": True}
+
+    owner: str = Field(primary_key=True)
+    pid: int
+    lease_expires_at: str
+    registered_at: str
+
+
 class HookOutbox(SQLModel, table=True):
     """hook_outbox table."""
 
