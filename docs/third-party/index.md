@@ -47,7 +47,6 @@
 @docs/third-party/playwright/config.md
 @docs/third-party/playwright/install.md
 @docs/third-party/playwright/selectors-and-assertions.md
-@docs/third-party/py7zr/overview.md
 @docs/third-party/redis/streams-consumer-groups.md
 @docs/third-party/tmux/session-output-observation.md
 @docs/third-party/whatsapp/cloud-api.md
