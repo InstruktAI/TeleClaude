@@ -43,9 +43,10 @@ shared derivation function before its `prepared → build_started` handoff,
 and on `pending` or `substantive` collapsed status returns a script telling
 the orchestrator to call `telec todo prepare {slug}` to resolve drift.
 Autonomous continuation is the existing orchestrator-script contract — the
-PREPARED terminal script line tells the orchestrator to call
-`telec todo work {slug}` next, closing the loop without a human gate on
-either cosmetic or substantive verdicts.
+PREPARED terminal's lineage-conditioned resume reminder has the bounced work
+orchestrator resume `telec todo work {slug}`, closing the loop without a human
+gate on either cosmetic or substantive verdicts (a fresh prepare that never
+bounced self-ends at the same terminal).
 
 ## Canonical fields
 
@@ -271,7 +272,8 @@ the analyzer to establish fresh evidence anchors.
 Continuation across the bounce is the existing orchestrator-script
 contract. The prepare BLOCKED branch's drift-analyze dispatch, the
 analyzer's stamp, the next prepare call's PREPARED derivation, and the
-PREPARED terminal script's `telec todo work {slug}` tail combine into a
+PREPARED terminal's lineage-conditioned resume — the bounced work orchestrator
+resumes `telec todo work {slug}` — combine into a
 single loop: work bounces to prepare, prepare resolves drift, prepare
 bounces back to work, work re-derives drift, and the second derivation
 either proceeds (cosmetic anchor now valid) or re-pends (genuinely
@@ -550,7 +552,7 @@ Scenario: work entry bounces to prepare on pending drift, then resumes autonomou
   And the analyzer stamps "--drift-reviewed implementation-plan cosmetic '<reason>'"
   And the cosmetic stamp records the current evidence anchor
   And the next "telec todo prepare my-feature" call derives PREPARED
-  And the PREPARED terminal script tells the orchestrator to call "telec todo work my-feature"
+  And the PREPARED terminal's lineage-conditioned reminder resumes the bounced work orchestrator at "telec todo work my-feature"
   And the orchestrator follows that script
   And work re-runs drift derivation, observes fresh/valid-anchor status
   And proceeds with worktree creation and next-build dispatch
@@ -572,7 +574,7 @@ Scenario: work entry bounces on substantive drift, re-derivation re-converges
   And the plan review verdict is cleared
   And the prepare machine routes back to architecture_drafting
   And the existing prepare chain re-derives architecture and plan, re-reviews each, reaches PREPARED
-  And the PREPARED terminal script bounces the orchestrator back to "telec todo work my-feature"
+  And the PREPARED terminal's lineage-conditioned reminder resumes the bounced work orchestrator at "telec todo work my-feature"
   And work re-runs drift derivation, observes fresh status, and proceeds
   And no human gate fires in the substantive round-trip (intent-level PRD refinement is the only human-gated path and is orthogonal)
 ```
