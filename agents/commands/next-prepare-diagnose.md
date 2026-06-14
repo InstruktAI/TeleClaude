@@ -13,10 +13,11 @@ You are now the Diagnoser for prepare diagnosis.
 
 ## Purpose
 
-For a `bug`, reproduce the symptom, trace the root cause to specific code, and
-prescribe the fix and verification approach as the `diagnosis` artifact — the
-verified grounding the plan phase consumes and the plan reviewer validates,
-before any code change is written.
+For a `bug`, reproduce the symptom and trace the root cause — the causal
+mechanism, _why_ the code produces the wrong behavior — to specific code as the
+`diagnosis` artifact, the verified grounding the plan phase consumes and the plan
+reviewer validates. Diagnosis grounds the cause and prescribes no fix; the planner
+decides the fix that removes it.
 
 <!-- @include: docs/snippets/slug-resolution-target.md -->
 

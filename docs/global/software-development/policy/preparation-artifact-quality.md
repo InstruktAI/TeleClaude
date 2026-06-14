@@ -151,6 +151,11 @@ together with the existing documented and working behavior it touches.
 Delivering exactly that intent, and leaving the surrounding behavior as the code
 and its specs already define it, is the whole of the work.
 
+For a `bug`, the diagnosed root cause sets that horizon: the fix **removes** the
+cause. A change that leaves the cause in place and only handles its consequences —
+a fallback, a default substitution, or any workaround that masks the symptom — is
+not a fix but a scope violation, and is rejected as one.
+
 Within that horizon the author owns the implementation completely, grounding
 every choice in how the code and its surrounding behavior already work
 (`general/principle/grounding`). When a required change forces a decision, the
