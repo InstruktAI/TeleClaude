@@ -22,8 +22,11 @@ from teleclaude.quality.scope import (
 def handle_lint(args: list[str]) -> None:
     """Handle the ``telec code lint`` command.
 
-    Runs the project-native make lint leg first, then the TeleClaude
-    guardrails lane over the same scope. ``--step`` is retired.
+    A scoped interactive run formats first (best-effort), then runs the
+    project-native make lint check leg and the TeleClaude guardrails lane.
+    The full/CI run (``--all``, ``CI``, or a no-session shared branch) never
+    formats: a rewrite CI discards is indistinguishable from a pass and would
+    mask drift, so it stays check-only. ``--step`` is retired.
     """
     run_all = "--all" in args
     files = _positionals(args, allowed_flags={"--all"}, usage="telec code lint [--all] [<files> ...]")
@@ -32,6 +35,12 @@ def handle_lint(args: list[str]) -> None:
     scoped_files = _resolve_quality_scope(project_root, files=files, run_all=run_all)
     if scoped_files == []:
         return
+
+    if scoped_files is not None:
+        # Best-effort fix+format over the scoped paths; the developer sees and
+        # commits the result. The check leg below stays the authoritative gate,
+        # so a non-zero format exit is not surfaced here.
+        _run_make("format", project_root, files=scoped_files)
 
     make_exit = _run_make("lint", project_root, files=scoped_files)
     guardrails_exit = 0

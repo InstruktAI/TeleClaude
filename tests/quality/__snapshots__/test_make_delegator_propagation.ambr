@@ -24,6 +24,18 @@
         'make',
         list([
           'make',
+          'format',
+        ]),
+        '<project-root>',
+        list([
+          b'teleclaude/core.py',
+          b'',
+        ]),
+      ),
+      tuple(
+        'make',
+        list([
+          'make',
           'lint',
         ]),
         '<project-root>',

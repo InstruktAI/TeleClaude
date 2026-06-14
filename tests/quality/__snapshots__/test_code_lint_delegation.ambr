@@ -5,6 +5,18 @@
       dict({
         'cmd': list([
           'make',
+          'format',
+        ]),
+        'cwd': '<project-root>',
+        'files': list([
+          b'a b.py',
+          b'c;d.py',
+          b'',
+        ]),
+      }),
+      dict({
+        'cmd': list([
+          'make',
           'lint',
         ]),
         'cwd': '<project-root>',
@@ -29,6 +41,18 @@
 # name: test_lint_propagates_make_failure_after_guardrails_run
   dict({
     'records': list([
+      tuple(
+        'make',
+        list([
+          'make',
+          'format',
+        ]),
+        '<project-root>',
+        list([
+          b'teleclaude/core.py',
+          b'',
+        ]),
+      ),
       tuple(
         'make',
         list([
