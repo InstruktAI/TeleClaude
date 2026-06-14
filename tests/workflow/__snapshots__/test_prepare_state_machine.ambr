@@ -71,7 +71,7 @@
   
   PREPARED: matching-drift-bug is ready for work.
   
-  DECISION REQUIRED: Continue preparation work, or start the build/review cycle with telec todo work matching-drift-bug.
+  matching-drift-bug is prepared; any drift is reconciled. If you reached this as a terminal prepare, run the cleanup above and self-end. If you bounced here in-line from telec todo work matching-drift-bug to reconcile drift, skip the self-end and resume that work — you know your own lineage.
   '''
 # ---
 # name: test_prepared_cleanup_is_unchanged_without_unblocked_children
@@ -81,7 +81,7 @@
   
   PREPARED: parent is ready for work.
   
-  DECISION REQUIRED: Continue preparation work, or start the build/review cycle with telec todo work parent.
+  parent is prepared; any drift is reconciled. If you reached this as a terminal prepare, run the cleanup above and self-end. If you bounced here in-line from telec todo work parent to reconcile drift, skip the self-end and resume that work — you know your own lineage.
   '''
 # ---
 # name: test_work_entry_with_matching_diagnosis_upstream_dispatches_build_started
