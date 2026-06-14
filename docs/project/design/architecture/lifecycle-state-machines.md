@@ -36,7 +36,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 **Inputs:**
 
-`telec todo artifacts list {slug}` shows the following artifacts: 
+`telec todo artifacts list {slug}` shows the following artifacts:
 
 - `input` — human idea or requirement (Phase A entry)
 - `prd` — product contract (Phase A output, Phase B input)

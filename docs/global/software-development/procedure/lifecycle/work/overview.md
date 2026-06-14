@@ -43,7 +43,7 @@ work input.
 When the state machine instructs a dispatch, select `--mode`:
 
 - **Reviewers**: always `slow`.
-- **Builders and fixers**: `med` for straightforward work (few tasks, well-defined scope, no architectural decisions); `slow` for complex work (many tasks, cross-cutting changes, architectural decisions).
+- **Builders and fixers**: `med`.
 - **Finalizers**: always `fast`.
 
 ### 2. Build
