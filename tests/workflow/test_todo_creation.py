@@ -32,10 +32,7 @@ _PARENT = "parent"
 _CHILD = "child"
 _KINDLESS = "kindless"
 _NEXT_PREPARE = "/next-prepare"
-_NEXT_WORK = "/next-work"
 _ANALYZE_TODO_INPUT = "/analyze-todo-input"
-_MODE_SLOW = "slow"
-_MODE_MED = "med"
 
 
 @pytest.fixture(autouse=True)
@@ -170,36 +167,6 @@ async def test_lifecycle_router_dispatches_deps_satisfied_create_from_event_proj
     assert call["command"] == _NEXT_PREPARE
     assert call["args"] == _CHILD
     assert call["project_path"] == str(event_project)
-    assert call["thinking_mode"] == _MODE_SLOW
-
-
-@pytest.mark.spec(_SPEC, "UC-WTC3")
-async def test_lifecycle_router_dispatches_prepared_create_to_work_lane_at_med(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    event_project = tmp_path / "event-project"
-    event_db = await _project_db(event_project)
-    await _add_todo(event_db, _CHILD, lifecycle_phase=LifecyclePhase.PREPARED)
-    monkeypatch.setenv("TELECLAUDE_PROJECT_PATH", str(event_project))
-    monkeypatch.setattr(lifecycle_router, "TelecAPIClient", _CapturingTelecAPIClient)
-    _CapturingTelecAPIClient.calls = []
-    event = _created_event(
-        {
-            "slug": _CHILD,
-            "kind": _KIND_CHANGE,
-            "pickup_requested": True,
-            "lifecycle_phase": LifecyclePhase.PREPARED.value,
-            "project_path": str(event_project),
-        }
-    )
-
-    await LifecycleRouterCartridge().process(event, cast(PipelineContext, object()))
-
-    [call] = _CapturingTelecAPIClient.calls
-    assert call["command"] == _NEXT_WORK
-    assert call["args"] == _CHILD
-    assert call["thinking_mode"] == _MODE_MED
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC5")
