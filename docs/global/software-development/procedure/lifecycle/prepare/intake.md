@@ -194,6 +194,18 @@ the durable concept it concerns, not from path strings in the input. Input
 authors must not prescribe doc paths — see `preparation-artifact-quality` for
 the rule.
 
+**Strip prescriptions; carry only intent.** The input's HOW (file paths,
+mechanisms, edit/step instructions) and any doc-layer deliverable it names —
+which snippets to author, and especially "author an ADR" — are not directives.
+Re-home implementation HOW into the plan as hypotheses to verify (recording the
+divergence per `preparation-artifact-quality`), strip doc-layer prescriptions,
+and make the doc-routing call from the work's shape. Never carry an "author an
+ADR" instruction: ADRs are governed by `general/policy/adr-discipline` (default
+none, never by process step) and are assessed by the plan reviewer, not scheduled
+by an input. An input that is a work order rather than intent — pervasive HOW, no
+discernible WHAT/WHY — fails the viability gate; escalate rather than mine scope
+from it.
+
 ### 2. Interview the Product Owner to fill the PRD template
 
 The BA fills a structured **PRD template** through elicitation. The template sections are:

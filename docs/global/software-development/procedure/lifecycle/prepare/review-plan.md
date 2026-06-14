@@ -177,6 +177,16 @@ to pre-satisfy:
   `doc_impact_none: <reason>` is a Requirement-Violation (blocking), not a soft
   finding. The reviewer does not approve the plan until the delta is reflected
   or justified.
+- **ADR discipline (hard gate)**: any ADR the plan schedules, or that prepare
+  authored on `main`, is held to `general/policy/adr-discipline` and
+  `general/procedure/adr-authoring`. It must record one real, contestable
+  architectural fork — reject design or current-state cast as an ADR, a
+  non-decision (cleanup or alignment that carries no fork — the default is none),
+  work/slugs in the body, or an ADR pre-authored for undelivered work. A
+  scheduled or authored ADR that fails this bar is a Requirement-Violation
+  (blocking); the reviewer does not approve until it is dropped or corrected.
+  This bar is the plan reviewer's: the build reviewer never assesses ADRs, because
+  the doc layer is authored on `main` during prepare, never in the worktree.
 - **Config surface**: name the config key, the wizard entry, the sample line,
   and the spec section — each with the task that delivers it.
 - **Browser-based frontend or web UI**: name the Playwright smoke path and

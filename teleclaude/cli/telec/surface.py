@@ -490,6 +490,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
+                    "Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, "
+                    "affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT "
+                    "prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — "
+                    "in particular never instruct authoring an ADR or which snippets to write. Per "
+                    "software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is "
+                    "the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed "
+                    "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
+                    "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
+                    "deliberate exception: its content is a complete implementation-plan, not an input.)",
                     "By default this emits workflow.todo.created so a prepare orchestrator auto-picks-up the "
                     "todo. The hidden --silent flag suppresses that event (no auto-pickup) and must be passed "
                     "ONLY when the human explicitly asks to file a todo without starting work.",
