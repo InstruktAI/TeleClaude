@@ -470,7 +470,11 @@ Some platform concerns are inherently cross-cutting — analytics, mining, obser
 
 Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 
+<!-- planned:v2-scheduler-bridge -->
+
 **Scheduler loop.** The `scheduler` infrastructure crate provides a tick loop mounted on the `telec-daemon` service-loop seam. It emits a `scheduler.tick.minute` Redis event every minute and derives `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries, re-anchoring each iteration to the next wall-clock minute (`sleep_until` from the current UTC time). It is a daemon-mounted loop, not a service and not an OS cron entry; no host cron entry installs or supervises it. Consumers subscribe to the `scheduler.tick.*` events; the emitter is an implementation detail behind that contract.
+
+<!-- /planned:v2-scheduler-bridge -->
 
 **Per-pillar listeners** subscribe to ticks. Each listener:
 
