@@ -185,7 +185,7 @@ def run_heuristics(
     # Collective code actions (logs, tests). Doc/artifact sources (is_code=False) deploy
     # via sync and have no runtime to inspect or behavior to test.
     code_categories = [c for c in file_categories if c.is_code]
-    if any(c.name != "tests only" for c in code_categories) and not _has_evidence(
+    if any(c.name != "tests" for c in code_categories) and not _has_evidence(
         timeline, CHECKPOINT_LOG_CHECK_EVIDENCE
     ):
         append_required_action(f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window}`")
@@ -193,7 +193,7 @@ def run_heuristics(
         append_required_action("Run targeted tests for only YOUR changed behavior")
 
     # Test quality review gate: point to policy, not inline rules
-    if any(c.name == "tests only" for c in file_categories):
+    if any(c.name == "tests" for c in file_categories):
         append_required_action(
             "Test files were modified — review against test policy before committing: "
             "`telec docs get software-development/policy/testing`. Remove tests that violate policy."

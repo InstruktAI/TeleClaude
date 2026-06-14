@@ -478,7 +478,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         precedence=100,
     ),
     FileCategory(
-        name="tests only",
+        name="tests",
         include_patterns=["tests/**/*.py"],
         instruction="Run targeted tests for changed test files",
         evidence_substrings=CHECKPOINT_TEST_EVIDENCE,

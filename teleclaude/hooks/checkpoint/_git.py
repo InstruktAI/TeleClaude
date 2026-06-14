@@ -415,7 +415,7 @@ def _categorize_files(git_files: list[str]) -> list[FileCategory]:
     """Map changed files to matching file categories."""
     matched: list[FileCategory] = []
     seen_names: set[str] = set()
-    tests_only_category = next((c for c in CHECKPOINT_FILE_CATEGORIES if c.name == "tests only"), None)
+    tests_only_category = next((c for c in CHECKPOINT_FILE_CATEGORIES if c.name == "tests"), None)
     meaningful_files = [filepath for filepath in git_files if not _is_docs_only([filepath])]
     tests_only_diff = bool(meaningful_files) and (
         tests_only_category is not None
@@ -423,7 +423,7 @@ def _categorize_files(git_files: list[str]) -> list[FileCategory]:
     )
 
     for category in CHECKPOINT_FILE_CATEGORIES:
-        if category.name == "tests only" and not tests_only_diff:
+        if category.name == "tests" and not tests_only_diff:
             continue
         for filepath in git_files:
             if _file_matches_category(filepath, category):
