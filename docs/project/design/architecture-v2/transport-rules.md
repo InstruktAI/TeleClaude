@@ -466,11 +466,11 @@ Some platform concerns are inherently cross-cutting — analytics, mining, obser
 - A "mining service" or "observability service" with knowledge of multiple domain schemas. Mining is a behavior, not a service.
 - Bypassing CLI for "performance" — the CLI's read APIs ARE the right surface; if performance is an issue, optimize the CLI's underlying query, not the access pattern.
 
-### Recurring jobs via scheduler bridge + source-owned cursors
+### Recurring jobs via daemon scheduler loop + source-owned cursors
 
 Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 
-**Scheduler bridge.** One OS cron entry fires `telec cron tick` every minute. The `scheduler` infrastructure crate emits `scheduler.tick.minute` Redis events (and derived `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries). NOT a service; one-line infrastructure that bridges OS cron into in-platform events. Per-platform install adds one OS cron entry; uninstall removes it.
+**Scheduler loop.** The `scheduler` infrastructure crate provides a tick loop mounted on the `telec-daemon` service-loop seam. It emits `scheduler.tick.minute` Redis events every minute and derives `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries, re-anchoring each iteration to the next wall-clock minute (`sleep_until` from the current UTC time) so cadence tracks the OS clock without drift. It is a daemon loop, not a service and not an OS cron entry: the always-on daemon is already a hard precondition for what ticks trigger — nearly all scheduled work is agent sessions the runtime drives — so the emitter shares the daemon's liveness and KeepAlive supervision instead of standing up a second supervised unit. There is no host cron entry to install or remove, and the `scheduler.tick.*` events stay the stable contract regardless of emitter.
 
 **Per-pillar listeners** subscribe to ticks. Each listener:
 
@@ -507,16 +507,15 @@ Per-pillar. If `memory` has a "weekly cleanup" job, its last-run state lives in 
 **Net architecture:**
 
 ```
-OS cron (every minute)
-  → telec cron tick
-    → scheduler.tick.minute event
-      → per-pillar listeners react (consult own cadence + cursor)
-        → intelligence (agent worker) wakes
-          → reads via SOURCE's extract-window CLI
-            → processes (pattern detection, transformation, etc.)
-              → writes via DESTINATION's CRUD CLI
-                → SOURCE's ack CLI advances cursor
-                  → optional: emit system.jobs.completed
+telec-daemon scheduler loop (every wall-clock minute)
+  → scheduler.tick.minute event
+    → per-pillar listeners react (consult own cadence + cursor)
+      → intelligence (agent worker) wakes
+        → reads via SOURCE's extract-window CLI
+          → processes (pattern detection, transformation, etc.)
+            → writes via DESTINATION's CRUD CLI
+              → SOURCE's ack CLI advances cursor
+                → optional: emit system.jobs.completed
 ```
 
 No central jobs service. No cross-pillar reads. No shared state. CLI bridges everything; intelligence does the reasoning.
