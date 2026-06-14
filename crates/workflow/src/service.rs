@@ -38,7 +38,7 @@
 //!
 //! ## Project resolution
 //!
-//! v1 had no explicit projects table — context was implicit per `todos.db`
+//! v1 had no explicit projects table — context was implicit per `.teleclaude/todos.db`
 //! path. v2 makes projects first-class. [`WorkflowService::find_or_create_project`]
 //! upserts on `(name)` and is the single entry point CLI callers use to
 //! resolve a [`ProjectId`] before any todo/roadmap/artifact call.

@@ -13,7 +13,7 @@ The software development lifecycle follows a three-stage model, each driven by i
 
 Sequential artifact production with review gates:
 
-- **Human refinement / handoff** — human edits preparation artifacts directly; the next `telec todo prepare [slug]` dispatch re-derives the lifecycle phase from the updated evidence
+- **Human refinement / handoff** — human edits preparation artifacts directly; the next `telec todo prepare {slug}` dispatch re-derives the lifecycle phase from the updated evidence
 - **Intake** — derive and approve `prd` from `input` or live conversation
 - **Architecture** — derive and approve the code-grounded technical brief, or skip with reason when it does not earn its place
 - **Plan drafting** — produce `implementation-plan` (or split the todo); plan tasks reference PRD criteria, architecture constraints, and feature-spec scenarios
@@ -52,14 +52,13 @@ Merge candidates to canonical main:
 
 ## Preconditions
 
-- `telec todo list` shows items.
-- On the first DB-backed access to an old project, TeleClaude auto-imports legacy markdown todo indexes into an empty `todos.db`. Detection requires an empty database plus at least one legacy index file (`roadmap.md`, `icebox.md`, `delivered.md`, or `bugs.md`).
+- `telec todo show {slug}` shows item.
 
 ## Steps
 
-1. Run `telec todo prepare [slug]` to produce and validate preparation artifacts.
-2. Run `telec todo work [slug]` to build, review, fix, and finalize.
-3. Run `telec todo integrate [slug]` to merge to canonical main.
+1. Run `telec todo prepare {slug}` to produce and validate preparation artifacts.
+2. Run `telec todo work {slug}` to build, review, fix, and finalize.
+3. Run `telec todo integrate {slug}` to merge to canonical main.
 
 ## Outputs
 

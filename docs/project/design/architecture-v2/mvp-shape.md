@@ -279,7 +279,7 @@ The MVP is done when ALL of these hold:
    workflow schema; emits `workflow.todo.created` to Redis.
 6. v1 TUI (running unchanged) displays the new todo after the daemon
    receives the Redis event.
-7. `telec migrate-workflow-v1` migrates a real v1 `todos.db` for a
+7. `telec migrate-workflow-v1` migrates a real v1 `.teleclaude/todos.db` for a
    project; all rows visible via `telec todo list`.
 8. After cutover PR merges: v1's `telec todo`
    commands route to v2; all behaviors preserved; v1 TUI continues

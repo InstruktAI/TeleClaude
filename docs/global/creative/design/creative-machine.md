@@ -34,7 +34,6 @@ compositional intent into code).
 **Inputs:**
 
 - `telec todo artifacts read {slug} input` — human thinking and project context.
-- `todos.db` state — creative phase tracking.
 - `workspace/{slug}/input/` — user-provided reference images, screenshots, visual input.
 - `telec todo artifacts read {slug} design-spec` — produced during the design discovery phase.
 - `workspace/{slug}/art/` — produced during the art generation phase.
@@ -63,8 +62,7 @@ compositional intent into code).
 - **Artifact immutability**: the machine never modifies artifacts directly. It
   dispatches workers or returns instructions for the orchestrator.
 - **Creative phase is optional**: not every todo requires creative work. The machine
-  activates only when the todo's input indicates visual work (explicitly stated or
-  flagged in the todo list (`todos.db`)).
+  activates only when the todo's input indicates creative artifacts (`telec todo artifacts list`).
 
 ## Primary flows
 

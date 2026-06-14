@@ -1,7 +1,7 @@
 """Canonical filesystem locations for the codebase Blueprint cache.
 
 The Blueprint lives at the main project root under ``.teleclaude/blueprint/``,
-gitignored and shared across worktrees like ``todos.db`` — so every worktree
+gitignored and shared across worktrees like ``.teleclaude/todos.db`` — so every worktree
 reads the one baseline the integrator generated.
 """
 

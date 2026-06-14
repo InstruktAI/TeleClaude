@@ -7,7 +7,6 @@ visibility: 'public'
 
 ## Required reads
 
-@~/.teleclaude/docs/creative/design/creative-machine.md
 @~/.teleclaude/docs/creative/procedure/design-discovery.md
 @~/.teleclaude/docs/creative/procedure/visual-drafting.md
 
@@ -25,10 +24,9 @@ machine and the interactive creative process.
 
 ## Preconditions
 
-1. `todos.db` todo list exists.
-2. Target slug is active and flagged for creative work.
-3. `telec todo artifacts read {slug} input` exists with human thinking.
-4. The human is available for interactive participation (design spec
+1. `telec todo show {slug}` exists.
+2. `telec todo artifacts read {slug} input` exists with human thinking.
+3. The human is available for interactive participation (design spec
    confirmation, art review, and visual review require human presence).
 
 ## Steps

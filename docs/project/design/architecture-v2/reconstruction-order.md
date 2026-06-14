@@ -190,7 +190,7 @@ sessions doing migration work re-derive architecture from priors and drift.
    - `telec todo list/show/create/update/remove/freeze/unfreeze/deliver`
    - Embeds workflow + identity + observability
 9. Postgres setup: `docker-compose.yml`, `make pg-up`/`make pg-down` when not using native Postgres.
-10. Data migration tool: read v1 SQLite `todos.db` → write to v2 Postgres
+10. Data migration tool: read v1 SQLite `.teleclaude/todos.db` → write to v2 Postgres
     `workflow` schema. Run once.
 11. Cutover: `telec todo` routes to v2 binary; v1 todo
     code paths deprecated.

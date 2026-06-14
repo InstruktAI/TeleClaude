@@ -36,13 +36,12 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 **Inputs:**
 
-- `todos.db` todo list — work item registry with priorities and dependency graph
-- `telec todo artifacts read {slug} input` — human idea or requirement (Phase A entry)
-- `telec todo artifacts read {slug} prd` — product contract (Phase A output, Phase B input)
-- `telec todo artifacts read {slug} architecture` — optional thin index/log of the architecture doc-snippet edits (Phase A output, Phase B input)
-- `telec todo artifacts read {slug} implementation-plan` — technical design (Phase A output, Phase B input)
-- `todos.db` state — phase tracking, review verdicts, grounding metadata, finalize state
-- `config.yml` (via `app_config.agents`) — agent availability and strengths
+`telec todo artifacts list {slug}` shows the following artifacts: 
+
+- `input` — human idea or requirement (Phase A entry)
+- `prd` — product contract (Phase A output, Phase B input)
+- `architecture` — optional thin index/log of the architecture doc-snippet edits (Phase A output, Phase B input)
+- `implementation-plan` — technical design (Phase A output, Phase B input)
 
 **Outputs:**
 

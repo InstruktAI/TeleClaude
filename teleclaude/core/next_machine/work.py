@@ -65,6 +65,7 @@ from teleclaude.snippet_validation import snippet_body_digest
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.todos_db import get_todos_db
 
@@ -130,7 +131,7 @@ def _format_no_current_work_slug() -> str:
 async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     """Phase B state machine for deterministic builder work.
 
-    Reads durable state from ``todos.db``, dispatches the current stored work
+    Reads durable state from ``.teleclaude/todos.db``, dispatches the current stored work
     phase via :func:`_work_dispatch`, and loops only when a handler performs an
     explicit state mutation that still requires another local dispatch.
 

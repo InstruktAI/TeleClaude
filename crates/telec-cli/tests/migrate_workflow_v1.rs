@@ -5,7 +5,7 @@
 //! 1. Acquires a fresh Postgres database via `sqlx::test`, with the v2
 //!    `workflow` migrations applied. `DATABASE_URL` must be set in the
 //!    test environment.
-//! 2. Builds a v1 `todos.db` SQLite file in a tempdir using the same
+//! 2. Builds a v1 `.teleclaude/todos.db` SQLite file in a tempdir using the same
 //!    schema strings v1 ships in production (mirrored verbatim from
 //!    `teleclaude/core/todos_db/schema.sql`).
 //! 3. Invokes [`telec_cli::migrate::run`] against the fresh pool and

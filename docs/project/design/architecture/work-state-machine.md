@@ -40,21 +40,19 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 **Inputs:**
 
-- `telec todo artifacts read {slug} prd` — product intent and success criteria (from Phase A)
-- `telec todo artifacts read {slug} architecture` — optional technical context and constraints (from Phase A)
-- `telec todo artifacts read {slug} implementation-plan` — execution plan with task checkboxes (from Phase A)
-- `todos.db` state — build/review status, finalize state, review rounds
-- `telec todo artifacts read {slug} quality-checklist` — build and review gate checkboxes
-- `todos.db` todo list — slug resolution and dependency graph
+`telec todo show {slug}` outputting:
+
+- `prd` — product intent and success criteria (from Phase A)
+- `architecture` — optional technical context and constraints (from Phase A)
+- `implementation-plan` — execution plan with task checkboxes (from Phase A)
+- `quality-checklist` — build and review gate checkboxes
 - Worktree at `trees/{slug}/` — isolated git branch for implementation
 
 **Outputs:**
 
 - Code changes, tests, and commits (build)
-- `telec todo artifacts read {slug} review-findings` — structured findings with severity and verdict (review)
-- `telec todo artifacts read {slug} deferrals` — out-of-scope work identified during build (optional)
-- Integration handoff events (`branch.pushed`, `deployment.started`)
-- Updated `todo state (todos.db)` with phase progression
+- `review-findings` artifact — structured findings with severity and verdict (review)
+- `deferrals` artifact — out-of-scope work identified during build (optional)
 
 ### State YAML structure
 

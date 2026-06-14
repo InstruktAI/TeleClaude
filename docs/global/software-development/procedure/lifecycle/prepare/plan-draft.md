@@ -263,8 +263,7 @@ implementation-plan to resolve each finding, then advance again.
 ## Outputs
 
 1. Atomic case:
-   `telec todo artifacts read {slug} implementation-plan` and updated
-   `todos.db` state.
+   `telec todo artifacts read {slug} implementation-plan`.
 2. Split case:
    child todos, dependency links, and a stateless holder row with frozen input only.
 

@@ -23,19 +23,20 @@ from sustained collaboration, not configurable preferences. They inform two deci
 - Weak at: frontend/UI coding, creative visual work.
 - Register: analytical, structured, converges toward coherence.
 
-**Codex** (OpenAI — GPT-5.3-Codex)
+**Codex** (OpenAI — GPT-5.5-Codex)
 
 - Backend, thorough coverage, meticulous implementation.
 - Strong at: exhaustive analysis, contract integrity, alternative viewpoints, edge case discovery.
 - Weak at: may over-engineer, can be rigid about structure.
 - Register: methodical, skeptical, surfaces what others miss.
 
-**Gemini** (Google — Gemini 3 Pro / Flash)
+**Gemini** (Google — Gemini 3.5 Pro / Flash)
 
+- Backend: modern, greenfield
 - Frontend, UI, creative, greenfield, modern patterns.
-- Strong at: visual thinking, rapid prototyping, exploring novel approaches.
+- Strong at: analysis, building, visual thinking, rapid prototyping, exploring novel approaches.
 - Weak at: may skip rigor under time pressure, needs explicit think-only mode for planning.
-- Register: creative, expansive, moves fast.
+- Register: smart, creative, expansive, moves fast.
 
 ### Thinking modes
 

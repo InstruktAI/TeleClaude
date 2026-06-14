@@ -78,7 +78,7 @@ TeleClaude is not a bot. It is a high-integrity operating system for the agentic
 
 ### The Lifecycle Engine
 
-- **Next Machine Paradigm:** A stateless workflow engine that orchestrates complex multi-phase transitions (Prepare → Build → Review → Fix → Finalize) with deterministic precision. Work state lives in `todos.db` and the machine drives it forward.
+- **Next Machine Paradigm:** A stateless workflow engine that orchestrates complex multi-phase transitions (Prepare → Build → Review → Fix → Finalize) with deterministic precision. Work state lives in `.teleclaude/todos.db` and the machine drives it forward.
 - **Deterministic SDLC (DoR/DoD):** Hardened quality gates — Definition of Ready (8 gates before build) and Definition of Done (verification before delivery) — that enforce rigorous architectural alignment before any work enters the pipeline.
 - **Autonomous Maintenance Jobs:** Background agent sessions (Log Bug Hunter, Memory Review) that proactively scan for errors, synthesize insights, and extract patterns while you sleep.
 

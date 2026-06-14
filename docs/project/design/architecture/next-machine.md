@@ -17,10 +17,9 @@ visibility: 'public'
 The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix, Phase C: Integrate) without maintaining internal state.
 
 1. **Canonical phase pointer**: It reads the persisted `lifecycle_phase` pointer and routes from that state:
-   - todo list (`todos.db`) (item discovery)
+   - `telec todo show {slug}` shows the current state.
    - prepared workflow artifacts: `prd`, optional `architecture`,
      and `implementation-plan` (preparation check)
-   - `todo state (todos.db)` (build/review phase tracking)
 2. **Phases**:
    - **Phase A (Prepare)**: Sequential artifact production with PRD-only human approval and downstream review gates.
    - **Phase B (Work)**: Deterministic, autonomous implementation and verification.
@@ -49,13 +48,12 @@ stateDiagram-v2
 
 **Inputs:**
 
-- `todos.db` todo list - Work item registry with priorities
-- `telec todo artifacts read {slug} prd` - Product intent and requirements contract
-- `telec todo artifacts read {slug} architecture` - Optional technical brief
-- `telec todo artifacts read {slug} implementation-plan` - Execution plan
-- `todos.db` state - Phase tracking (build, review)
-- `telec todo artifacts read {slug} deferrals` - Identified technical debt
-- `config.yml` (via `app_config.agents`) - Agent availability and strengths
+`telec todo artifacts list {slug}` shows the following artifacts:
+
+- `prd` - Product intent and requirements contract
+- `architecture` - Optional technical brief
+- `implementation-plan` - Execution plan
+- `deferrals` - Identified technical debt
 
 **Outputs:**
 

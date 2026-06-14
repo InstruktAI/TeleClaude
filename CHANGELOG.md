@@ -157,7 +157,7 @@ Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml
 
 ### Changed
 
-- **storage:** Migrate state machine from `todos/` filesystem to `todos.db`
+- **storage:** Migrate state machine from `todos/` filesystem to `.teleclaude/todos.db`
 - **storage:** Remove `roadmap.yaml`, `icebox.yaml`, and `delivered.yaml` — all in DB now
 - **state-machine:** Per-step prerequisites and DB-native `mark_phase`
 - **edge-http:** Move internal callers to HTTP edge layer

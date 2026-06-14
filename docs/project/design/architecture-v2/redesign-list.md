@@ -128,7 +128,7 @@ reintroduces any of these patterns is rejected.
 **7. Callers mutating service-owned storage directly.**
 
 - _v1_: CLI handlers and the API reach into `TodosDb` directly to write
-  `todos.db`, with no single mutation chokepoint enforcing validation.
+  `.teleclaude/todos.db`, with no single mutation chokepoint enforcing validation.
 - _Failure_: Multiple call paths to mutation logic. No single point of
   enforcement. Bypasses any hooks or validation a service might do.
 - _v2_: Services own their Postgres schemas. Other crates call the service's

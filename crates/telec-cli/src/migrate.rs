@@ -1,5 +1,5 @@
 //! `telec-cli migrate-workflow-v1` — one-shot import of a v1 SQLite
-//! `todos.db` into the v2 Postgres `workflow` schema.
+//! `.teleclaude/todos.db` into the v2 Postgres `workflow` schema.
 //!
 //! ## v1 source schema
 //!
@@ -74,7 +74,7 @@ pub struct MigrateArgs {
     /// migration must place the rows under a v2 project row.
     pub project: String,
 
-    /// Optional explicit path to the v1 `todos.db` SQLite file. When
+    /// Optional explicit path to the v1 `.teleclaude/todos.db` SQLite file. When
     /// omitted, the migration looks for `.teleclaude/todos.db` under the
     /// current working directory.
     #[arg(long)]

@@ -39,7 +39,7 @@ the Graphify CLI, adopted as-is behind the `graph.json` data-contract seam (see
 `.teleclaude/blueprint/graph.json` plus a sidecar `.teleclaude/blueprint/manifest.json`
 carrying `baseline_sha` (the `origin/main` commit the graph was built from),
 `generated_at`, and `status`. Both live at the project root, gitignored, shared
-across worktrees (like `todos.db`). The manifest is the freshness signal: a
+across worktrees (like `.teleclaude/todos.db`). The manifest is the freshness signal: a
 consumer compares `baseline_sha` to the current main baseline and treats a
 mismatch / missing manifest / non-`ok` `status` as stale.
 

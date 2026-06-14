@@ -19,7 +19,7 @@ the todo list.
 Governing constraints:
 
 - **Human-in-the-loop**: three blocking gates where the machine parks and waits.
-- **DB-backed state**: all state and artifacts stored in `todos.db`.
+- **DB-backed state**: all state and artifacts stored in `.teleclaude/todos.db`.
 - **Artifact immutability**: the machine never modifies artifacts directly — it dispatches workers.
 - **Sequential phases**: design spec precedes art, art precedes visuals.
 
@@ -29,12 +29,11 @@ preconditions for the prepare machine: `design-spec` constrains requirements,
 
 ## Preconditions
 
-- Input artifact exists in `todos.db` (`telec todo artifacts read {slug} input`).
-- Work item exists in the `todos.db` todo list.
+- Work item and creative input exists: `telec todo show {slug}`.
 
 ## Steps
 
-1. Run `telec todo design [slug]` to derive the current creative phase.
+1. Run `telec todo design {slug}` to derive the current creative phase.
 
 2. **Design Discovery** — human and creator collaborate to produce `design-spec.md`,
    the constraint document that governs all downstream creative work. The creator
@@ -61,10 +60,9 @@ preconditions for the prepare machine: `design-spec` constrains requirements,
 
 ## Outputs
 
-- Confirmed `design-spec` artifact in `todos.db`.
+- Confirmed `design-spec` artifact in `telec todo artifacts list {slug}`.
 - Approved images in `workspace/{slug}/art/`.
 - Approved visual artifacts in `workspace/{slug}/html/`.
-- Updated state in `todos.db` with creative phase completion markers.
 
 ## Recovery
 

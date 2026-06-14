@@ -107,7 +107,6 @@ floor that lets unresolved findings pass.
 
 1. Inspect current evidence:
    - `telec todo artifacts read {slug} review-findings`
-   - `todos.db` state
    - Fix commits since `review_baseline_commit`
 2. Decide and act:
    - If any unresolved **Requirement-Violation**, **Critical**, or **Important**
