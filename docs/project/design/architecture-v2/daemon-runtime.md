@@ -136,7 +136,7 @@ flowchart LR
     M["make start/stop/restart/status"] --> DC["bin/daemon-control.sh"]
     DC --> U1["v1 python daemon unit"]
     DC --> U2["telec-daemon unit"]
-    DC --> U3["sibling units (cron, docs-watch)"]
+    DC --> U3["sibling units (docs-watch)"]
 ```
 
 `daemon-control.sh` manages a **set** of supervised units rather than a single

@@ -470,7 +470,7 @@ Some platform concerns are inherently cross-cutting — analytics, mining, obser
 
 Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 
-**Scheduler loop.** The `scheduler` infrastructure crate provides a tick loop mounted on the `telec-daemon` service-loop seam. It emits `scheduler.tick.minute` Redis events every minute and derives `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries, re-anchoring each iteration to the next wall-clock minute (`sleep_until` from the current UTC time) so cadence tracks the OS clock without drift. It is a daemon loop, not a service and not an OS cron entry: the always-on daemon is already a hard precondition for what ticks trigger — nearly all scheduled work is agent sessions the runtime drives — so the emitter shares the daemon's liveness and KeepAlive supervision instead of standing up a second supervised unit. There is no host cron entry to install or remove, and the `scheduler.tick.*` events stay the stable contract regardless of emitter.
+**Scheduler loop.** The `scheduler` infrastructure crate provides a tick loop mounted on the `telec-daemon` service-loop seam. It emits a `scheduler.tick.minute` Redis event every minute and derives `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries, re-anchoring each iteration to the next wall-clock minute (`sleep_until` from the current UTC time). It is a daemon-mounted loop, not a service and not an OS cron entry; no host cron entry installs or supervises it. Consumers subscribe to the `scheduler.tick.*` events; the emitter is an implementation detail behind that contract.
 
 **Per-pillar listeners** subscribe to ticks. Each listener:
 
@@ -530,3 +530,5 @@ No central jobs service. No cross-pillar reads. No shared state. CLI bridges eve
   transport Redis event bus.
 - docs/project/design/architecture-v2/redesign-list.md
   anti-patterns that v2 must not port.
+- docs/project/adr/0049-recurring-ticks-via-in-daemon-loop.md
+  why the scheduler emits from an in-daemon loop rather than host cron.
