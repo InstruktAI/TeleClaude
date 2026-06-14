@@ -1,4 +1,4 @@
-"""Evidence checking, error state detection, edit hygiene, and slug alignment."""
+"""Evidence checking, blast-radius, companion drift, and slug alignment."""
 
 import re
 from pathlib import Path
@@ -297,7 +297,7 @@ def _is_expected_commit_classification(record: ToolCallRecord) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Edit hygiene (R6)
+# Blast radius (R6)
 # ---------------------------------------------------------------------------
 
 

@@ -280,7 +280,7 @@ CHECKPOINT_MESSAGE = (
     "(DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 )
 
-# Max chars to capture from tool result content for error enrichment
+# Max chars to capture from each tool result snippet in the transcript timeline
 CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
 # Threshold for wide blast radius observation
 CHECKPOINT_BLAST_RADIUS_THRESHOLD = 3

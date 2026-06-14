@@ -214,7 +214,7 @@ def run_heuristics(
     for action in _check_companion_drift(git_files, context.project_path):
         append_required_action(action)
 
-    # 5. Working slug alignment
+    # 4. Working slug alignment
     result.observations.extend(_check_slug_alignment(git_files, context))
 
     # Keep observations signal-rich and non-repetitive.
