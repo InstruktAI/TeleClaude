@@ -14,13 +14,15 @@ import socket
 import subprocess
 import sys
 import threading
+from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.chiptunes.types import ChiptunesState, coerce_chiptunes_state
-from teleclaude.paths import CHIPTUNES_WORKER_LOG_PATH
+from teleclaude.paths import CHIPTUNES_PID_PATH, CHIPTUNES_SOCKET_PATH, CHIPTUNES_WORKER_LOG_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -29,8 +31,22 @@ logger = get_logger(__name__)
 
 CommandAction = Literal["resume", "pause", "next", "prev"]
 
-SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
-PID_PATH = "/tmp/teleclaude-chiptunes.pid"
+_WORKER_MODULE = "teleclaude.chiptunes.worker"
+_SOCKET_PROBE_TIMEOUT_SECONDS = 1.0
+_TERMINATION_POLL_COUNT = 20
+_TERMINATION_POLL_INTERVAL_SECONDS = 0.1
+_SOCKET_WAIT_POLL_COUNT = 50
+_SOCKET_WAIT_POLL_INTERVAL_SECONDS = 0.1
+
+
+def _is_worker_cmdline(cmdline: list[str]) -> bool:
+    """Return True only for the exact ``python -m teleclaude.chiptunes.worker`` invocation.
+
+    Matching the ``-m <module>`` argument pair — not a substring — keeps an
+    unrelated process that merely mentions the module name from being adopted or
+    terminated.
+    """
+    return any(first == "-m" and second == _WORKER_MODULE for first, second in pairwise(cmdline))
 
 
 class ChiptunesManager:
@@ -102,19 +118,28 @@ class ChiptunesManager:
         self._send_cmd({"cmd": "prev"})
 
     def reattach(self) -> None:
-        """Reconnect to an already-running worker and pull its live state.
+        """Reconnect to a live worker, or terminate an unreachable orphan.
 
         The worker is an independent process that keeps playing across daemon
         restarts. After a restart this manager starts empty and disconnected, so
         the UI would show 'nothing playing' and pause/like/next would have no
-        effect. Reattaching reconnects to the live worker and requests a state
-        snapshot so the mirrored state reflects what is actually playing.
+        effect. When a worker is alive and its control socket is reachable,
+        reattach reconnects to it and requests a state snapshot so the mirrored
+        state reflects what is actually playing. When a worker is alive but its
+        socket is missing or unreachable, the worker is an orphan that can no
+        longer be controlled and would otherwise play forever; reattach
+        terminates it and clears the stale registry so the mirrored state stays
+        truthful.
         """
-        if not self._worker_alive():
+        pids, reachable = self._classify_worker()
+        if reachable:
+            self._enabled = True
+            self._connect()
+            self._send_cmd({"cmd": "capture_state"})
             return
-        self._enabled = True
-        self._connect()
-        self._send_cmd({"cmd": "capture_state"})
+        if pids:
+            self._terminate_workers(pids)
+            self._clear_registry()
 
     def enqueue_command(self, command_id: str, action: CommandAction) -> None:
         """Enqueue a user command for asynchronous execution."""
@@ -129,35 +154,22 @@ class ChiptunesManager:
     # ------------------------------------------------------------------ #
 
     def _ensure_worker(self) -> None:
-        """Launch the worker subprocess if not already running."""
-        if self._worker_alive():
+        """Ensure exactly one reachable worker exists, adopting or replacing as needed.
+
+        A worker whose control socket is reachable is adopted as-is — no second
+        worker is spawned. A worker that is alive but unreachable (its socket was
+        purged out from under it) is an orphan: it is terminated before a single
+        replacement is spawned, so a missing or stale pidfile can never leak a
+        duplicate worker.
+        """
+        pids, reachable = self._classify_worker()
+        if reachable:
             return
-        for path in (SOCKET_PATH, PID_PATH):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-        with open(CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8") as log_file:
-            subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "teleclaude.chiptunes.worker",
-                    "--music-dir",
-                    str(self._music_dir),
-                    "--volume",
-                    str(self._volume),
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-        for _ in range(50):
-            if os.path.exists(SOCKET_PATH):
-                return
-            threading.Event().wait(0.1)
-        logger.warning("ChipTunes worker did not start in time")
+        if pids:
+            self._terminate_workers(pids)
+        self._clear_registry()
+        self._spawn_worker()
+        self._await_socket()
 
     # ------------------------------------------------------------------ #
     # Socket IPC                                                           #
@@ -168,7 +180,7 @@ class ChiptunesManager:
         self._disconnect()
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.connect(SOCKET_PATH)
+            sock.connect(str(CHIPTUNES_SOCKET_PATH))
             with self._lock:
                 self._sock = sock
             self._reader_thread = threading.Thread(
@@ -282,21 +294,106 @@ class ChiptunesManager:
     # Worker process management                                            #
     # ------------------------------------------------------------------ #
 
-    @staticmethod
-    def _worker_alive() -> bool:
-        """Check if the worker process is running."""
-        try:
-            pid = int(Path(PID_PATH).read_text(encoding="utf-8").strip())
-            os.kill(pid, 0)
-            return True
-        except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
-            return False
+    def _classify_worker(self) -> tuple[list[int], bool]:
+        """Return live worker PIDs and whether the control socket is reachable.
+
+        The pidfile is a hint, not proof: the process table is the source of
+        truth for liveness, and socket reachability distinguishes a worker to
+        adopt (reachable) from an orphan to terminate (unreachable).
+        """
+        pids = self._find_live_workers()
+        reachable = bool(pids) and self._worker_socket_reachable()
+        return pids, reachable
 
     @staticmethod
-    def _kill_worker() -> None:
-        """Terminate the worker process."""
+    def _find_live_workers() -> list[int]:
+        """Return PIDs of this user's running chiptunes worker processes."""
+        own_uid = os.getuid()
+        pids: list[int] = []
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                if not _is_worker_cmdline(proc.info["cmdline"] or []):
+                    continue
+                if proc.uids().real != own_uid:
+                    continue
+                pids.append(proc.info["pid"])
+            except psutil.Error:
+                continue
+        return pids
+
+    @staticmethod
+    def _worker_socket_reachable() -> bool:
+        """Return True if the worker's control socket accepts a connection."""
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        probe.settimeout(_SOCKET_PROBE_TIMEOUT_SECONDS)
         try:
-            pid = int(Path(PID_PATH).read_text(encoding="utf-8").strip())
-            os.kill(pid, signal.SIGTERM)
-        except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
-            pass
+            probe.connect(str(CHIPTUNES_SOCKET_PATH))
+            return True
+        except OSError:
+            return False
+        finally:
+            probe.close()
+
+    def _terminate_workers(self, pids: list[int]) -> None:
+        """SIGTERM the given workers and wait a bounded interval for them to exit."""
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+        for _ in range(_TERMINATION_POLL_COUNT):
+            if not any(self._pid_alive(pid) for pid in pids):
+                return
+            threading.Event().wait(_TERMINATION_POLL_INTERVAL_SECONDS)
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return True
+
+    @staticmethod
+    def _clear_registry() -> None:
+        """Unlink the worker socket and pidfile, ignoring missing entries."""
+        for path in (CHIPTUNES_SOCKET_PATH, CHIPTUNES_PID_PATH):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def _spawn_worker(self) -> None:
+        """Launch a fresh worker subprocess."""
+        with open(CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8") as log_file:
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "teleclaude.chiptunes.worker",
+                    "--music-dir",
+                    str(self._music_dir),
+                    "--volume",
+                    str(self._volume),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+
+    @staticmethod
+    def _await_socket() -> None:
+        """Wait a bounded interval for the freshly spawned worker to bind its socket."""
+        for _ in range(_SOCKET_WAIT_POLL_COUNT):
+            if CHIPTUNES_SOCKET_PATH.exists():
+                return
+            threading.Event().wait(_SOCKET_WAIT_POLL_INTERVAL_SECONDS)
+        logger.warning("ChipTunes worker did not start in time")
+
+    def _kill_worker(self) -> None:
+        """Terminate any live worker process and clear the registry."""
+        pids = self._find_live_workers()
+        if pids:
+            self._terminate_workers(pids)
+        self._clear_registry()

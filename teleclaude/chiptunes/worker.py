@@ -1,7 +1,8 @@
 """Chiptunes subprocess worker — runs SID playback in an isolated process.
 
-Communicates via a Unix domain socket at /tmp/teleclaude-chiptunes.sock.
-The daemon connects as a client; the worker accepts one connection at a time.
+Communicates via a Unix domain socket under TELECLAUDE_HOME (see
+``CHIPTUNES_SOCKET_PATH``). The daemon connects as a client; the worker accepts
+one connection at a time.
 When the daemon restarts, the old connection closes and the new daemon reconnects.
 Music continues playing through reconnections.
 
@@ -43,15 +44,17 @@ from teleclaude.chiptunes.sid_parser import parse_sid_file
 from teleclaude.chiptunes.songlengths import load_songlengths, lookup_duration
 from teleclaude.chiptunes.types import ChiptunesPlayback, ChiptunesState, coerce_chiptunes_state
 from teleclaude.logging_config import setup_logging
-from teleclaude.paths import CHIPTUNES_STATE_PATH
+from teleclaude.paths import CHIPTUNES_PID_PATH, CHIPTUNES_SOCKET_PATH, CHIPTUNES_STATE_PATH
 
 logger = get_logger(__name__)
 
-SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
-PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 _RSID_MAGIC = b"RSID"
 STATE_PATH = CHIPTUNES_STATE_PATH
 _PERSIST_INTERVAL_SECONDS = 2.0
+# A worker only needs to outlive its daemon's restart gap. No client reconnecting
+# for this long means the worker is orphaned — its registry was purged or its
+# owning service is gone — so it releases itself rather than play on forever.
+_IDLE_LEASE_SECONDS = 6 * 3600
 
 
 def _is_unplayable(path: Path) -> bool:
@@ -98,6 +101,8 @@ class _WorkerProcess:
         # State persistence
         self._state_dirty = False
         self._last_persist_time: float = 0.0
+        # Idle-lease tracking: monotonic time a daemon client was last connected
+        self._last_client_activity: float = 0.0
 
     # ------------------------------------------------------------------ #
     # Socket server                                                        #
@@ -105,15 +110,15 @@ class _WorkerProcess:
 
     def run(self) -> None:
         """Main loop: accept connections and process commands."""
-        Path(PID_PATH).write_text(str(os.getpid()), encoding="utf-8")
+        CHIPTUNES_PID_PATH.write_text(str(os.getpid()), encoding="utf-8")
 
         self._songlengths = load_songlengths(self._music_dir / "DOCUMENTS" / "Songlengths.md5")
 
-        if os.path.exists(SOCKET_PATH):
-            os.unlink(SOCKET_PATH)
+        if CHIPTUNES_SOCKET_PATH.exists():
+            os.unlink(CHIPTUNES_SOCKET_PATH)
 
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        server.bind(SOCKET_PATH)
+        server.bind(str(CHIPTUNES_SOCKET_PATH))
         server.listen(1)
         server.settimeout(1.0)
 
@@ -124,14 +129,17 @@ class _WorkerProcess:
 
         self._self_resume()
 
+        self._last_client_activity = self._now()
         while self._running:
             try:
                 conn, _ = server.accept()
             except TimeoutError:
+                self._check_idle_lease()
                 continue
             except OSError:
                 break
 
+            self._last_client_activity = self._now()
             with self._conn_lock:
                 self._conn = conn
 
@@ -139,12 +147,13 @@ class _WorkerProcess:
 
             with self._conn_lock:
                 self._conn = None
+            self._last_client_activity = self._now()
 
         # Cleanup
         if self._player is not None:
             self._player.stop()
         server.close()
-        for path in (SOCKET_PATH, PID_PATH):
+        for path in (CHIPTUNES_SOCKET_PATH, CHIPTUNES_PID_PATH):
             try:
                 os.unlink(path)
             except OSError:
@@ -152,6 +161,21 @@ class _WorkerProcess:
 
     def _request_stop(self) -> None:
         self._running = False
+
+    def _now(self) -> float:
+        return time.monotonic()
+
+    def _check_idle_lease(self) -> None:
+        """Self-terminate when no daemon client has connected for the lease window.
+
+        Evaluated only while idle (no client connected). When the window elapses
+        with no reconnection, the worker is orphaned and requests a clean stop so
+        its ``run`` cleanup releases the registry and the player.
+        """
+        with self._conn_lock:
+            connected = self._conn is not None
+        if not connected and (self._now() - self._last_client_activity) >= _IDLE_LEASE_SECONDS:
+            self._request_stop()
 
     def _handle_connection(self, conn: socket.socket) -> None:
         """Read commands from a connected daemon until it disconnects."""

@@ -137,16 +137,16 @@ And the snapshot still preserves the lifecycle `status` field as `closing` or `c
 
 <!-- planned:work-reviewer-not-alive-with-existing-session -->
 
-#### UC-SL23: Session start hook activates an initializing session
+#### UC-SL23: An activity hook activates an initializing session
 
 ```
 Given a non-headless session row exists with `lifecycle_status="initializing"`
-And the agent CLI process emits a `session_start` hook carrying its native session id and transcript path
+And the agent CLI process emits any activity hook for it (session_start, agent_stop, tool_use, or user_prompt_submit)
 When agent_runtime handles the hook
 Then the session row is updated with `lifecycle_status="active"`
-And `native_session_id` and `native_log_file` are stored when present
+And `native_session_id` and `native_log_file` are stored when the session_start hook carries them
 And normal live-session listing returns the session without requiring `include_initializing`
-And headless or closed lifecycle rows are not reactivated by the hook
+And headless or closed lifecycle rows are not reactivated by any activity hook
 ```
 
 <!-- /planned:work-reviewer-not-alive-with-existing-session -->

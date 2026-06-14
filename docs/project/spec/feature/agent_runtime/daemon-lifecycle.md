@@ -164,6 +164,88 @@ And on failure logs the exception and returns failure
 And the service does NOT exit when the restart limit is reached — the surface stays down, the service stays up, and an external watchdog (supervisor) is expected to react
 ```
 
+#### UC-CW1: Chiptunes registry paths are durable home-root control files
+
+```
+Given the chiptunes worker has a pidfile and control socket
+When the paths are resolved
+Then both registry paths live flat at the TeleClaude home root
+And neither registry path lives under `/tmp`
+And the manager and worker import the same path constants
+```
+
+#### UC-CW2: Chiptunes worker scan uses exact same-user process identity
+
+```
+Given multiple local processes mention the chiptunes worker module
+When the manager scans the process table for a live worker
+Then only a same-user process launched as `-m teleclaude.chiptunes.worker` counts as the worker
+And processes that merely mention the module string are ignored
+And processes owned by another user are ignored
+```
+
+#### UC-CW3: Reachable chiptunes worker is adopted
+
+```
+Given a chiptunes worker process is alive
+And its control socket is reachable
+When the manager ensures a worker is available
+Then it adopts the existing worker
+And it does not spawn a replacement
+And it does not terminate the reachable worker
+```
+
+#### UC-CW4: Unreachable chiptunes worker is replaced once
+
+```
+Given a chiptunes worker process is alive
+And its control socket is missing or unreachable
+When the manager ensures a worker is available
+Then it terminates the unreachable orphan
+And it clears the stale registry
+And it starts at most one replacement worker
+```
+
+#### UC-CW5: Reattach reconnects to reachable chiptunes worker
+
+```
+Given a chiptunes worker process survived service restart
+And its control socket is reachable
+When the manager reattaches during service boot
+Then it reconnects to the worker
+And it requests the worker state snapshot
+And it keeps music continuity without spawning a duplicate
+```
+
+#### UC-CW6: Reattach terminates unreachable chiptunes orphan
+
+```
+Given a chiptunes worker process survived service restart
+And its control socket is missing or unreachable
+When the manager reattaches during service boot
+Then it does not reconnect to the orphan
+And it terminates the orphan
+And it clears the stale registry
+```
+
+#### UC-CW7: Idle chiptunes worker exits after lease window
+
+```
+Given no daemon client has connected to the chiptunes worker for longer than the idle-lease window
+When the worker checks its lease
+Then it requests a clean stop
+And its registry is released as part of shutdown
+```
+
+#### UC-CW8: Idle chiptunes worker stays alive within lease window
+
+```
+Given the chiptunes worker has recent daemon client activity within the idle-lease window
+When the worker checks its lease
+Then it keeps running
+And daemon restart gaps inside the lease window are tolerated
+```
+
 ### Cross-context references
 
 - **identity**: tokens are revalidated lazily at request time; lifecycle does not pre-validate. The startup-time token cache is empty — population happens on first auth check after the request surface is up.
@@ -180,5 +262,5 @@ And the service does NOT exit when the restart limit is reached — the surface 
 - **The should-exit flag is the only clean-exit signal.** A request-surface task that exited because should-exit was set is treated as intentional and does NOT trigger restart. Anything else (raised exception, task done without should-exit) is treated as a crash.
 - **Slow startup is a warning, not a failure.** Startup elapsed time at or beyond the slow-startup threshold (30s) emits a warning; the warm cache also emits a per-stage breakdown when warm takes 5s or more. Neither aborts the boot.
 - **Background workers are started outside the lifecycle.** Lifecycle startup does NOT launch periodic cleanup, poller watch, the hook-outbox worker, the mirror worker, or the v2 bridges — those are launched by the service's start sequence after lifecycle startup returns. The split is deliberate: lifecycle owns the deterministic boot prefix; the service owns the steady-state worker set.
-- **Chiptunes worker survives service restart.** Disconnecting from the chiptunes manager on shutdown does NOT stop the worker process; the service reattaches on next boot. This is intentional — music continuity is decoupled from service lifecycle.
+- **Chiptunes worker survives service restart, within bounds.** Disconnecting from the chiptunes manager on shutdown does NOT stop the worker process; on next boot the service reattaches when the worker's control socket is reachable, treats an alive-but-unreachable worker as an orphan and terminates it, and a worker with no daemon client past the idle-lease window exits on its own. Music continuity is decoupled from service lifecycle, bounded by control-socket reachability and the idle lease.
 - **Shutdown is best-effort throughout.** Every shutdown step is wrapped so a single failure (e.g., an adapter stop that raises) does not prevent later steps (e.g., storage close) from running. The single-instance lock is released last regardless of upstream errors.

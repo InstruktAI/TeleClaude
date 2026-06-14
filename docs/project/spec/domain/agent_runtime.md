@@ -439,7 +439,7 @@ And the corpus is the binding parity test against v1's Python parser behavior
 
 ## Known caveats
 
-- **Tmux sessions survive daemon restart.** Long-running music, builds, and active conversations don't die when the daemon does. Reconciliation rebuilds SessionRuntime actors on daemon restart.
+- **Tmux sessions survive daemon restart.** Long-running builds and active conversations don't die when the daemon does; reconciliation rebuilds SessionRuntime actors on daemon restart. Chiptunes music runs in a separate persistent worker the service reattaches to when its control socket is reachable, terminates as an orphan when it is not, and which exits on its own after the idle-lease window with no daemon client.
 - **Pipe-pane is wake signal ONLY.** It's not a substitute for `capture-pane` output. Pipe-pane is corrupted by command echo, prompt redraws, bracketed-paste toggles, and CR-in-place updates. The semantic parser needs rendered-screen snapshots.
 - **`capture-pane` budget vs lookback are different concepts.** v1 regression conflated them. v2 keeps `CAPTURE_PANE_LOOKBACK_LINES` (default 500) separate from char-budget constants.
 - **Codex emits no native hooks** — the render lane is its primary live source. Other agents (Claude with hooks) get hook-lane authority and use the render lane for cross-agent unified behavior only.

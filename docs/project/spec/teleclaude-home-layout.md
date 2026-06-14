@@ -53,7 +53,7 @@ every startup**. The daemon's own API and MCP sockets (`/tmp/teleclaude-api.sock
 `/tmp/teleclaude.sock`) live there because each daemon start remakes them, so a
 periodic tmp-cleaner purge between starts is harmless.
 
-Any file that must **survive a process restart** lives at the home root: every
+Any file that must **survive a process restart** must live at the home root: every
 pidfile, every lockfile, and the control socket of any **long-lived worker** — a
 process designed to outlive daemon restarts. The macOS tmp-cleaner purges `/tmp`
 entries untouched for ~3 days; a long-lived process's registry file placed there
@@ -68,11 +68,11 @@ across boots belongs at the home root beside the pidfile.
   `teleclaude.runtime.config`, frozen into `RuntimeConfig.home`; every path
   constant derives from it. Relocation moves the entire tree transparently.
 - The home tree is never tmp-purged — it is the durable location by definition.
-- Runtime control files are flat at the home root, one file per
-  `<service>.<ext>`. There is no `run/`, `pids/`, `sockets/`, or any per-feature
-  control-file subdirectory.
-- Each path is defined once, in `teleclaude/paths.py`. Modules import the
-  constant; they never re-declare the literal.
+- Per-service runtime control files are placed flat at the home root, one file
+  per `<service>.<ext>`. There is no `run/`, `pids/`, `sockets/`, or any
+  per-feature control-file subdirectory.
+- Each path under `$TELECLAUDE_HOME` is defined once, in `teleclaude/paths.py`.
+  Modules import the constant; they never re-declare the literal.
 
 ### v2 trajectory
 
@@ -85,6 +85,9 @@ the v2 target.
 
 ## Known caveats
 
+- **Current deviation.** The daemon's single-instance pidfile
+  (`teleclaude/daemon.py` → `teleclaude.pid`) lives at the install root, not
+  under `$TELECLAUDE_HOME`; it is the one sanctioned exception.
 - **No `run/` (or `pids/`, `sockets/`) subdirectory.** Pidfiles, lockfiles, and
   long-lived sockets are flat at the home root. A control-file subdirectory is the
   most common sprawl this spec exists to prevent.
