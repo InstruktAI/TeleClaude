@@ -120,6 +120,24 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the machine's runtime configuration.
 - **Lifecycle:** authored with the machine configuration consumed by the daemon. The daemon reads it before service-loop registration; changes take effect on the next daemon configuration reload or restart.
 
+<!-- planned:chiptunes-corpus-detrack-fetch -->
+
+#### Chiptunes Configuration (value object)
+
+- **Root:** `ChiptunesConfig`
+- **Contains:** `enabled` (bool, default false), `music_dir` (filesystem path to the SID corpus; defaults to the bundled `assets/audio/C64Music` location under the project root when unset), and `volume` (float).
+- **Invariants:**
+  - Chiptunes configuration is per-machine configuration read by the daemon.
+  - `enabled=false` means the daemon plays no background music and provisions no corpus; the chiptunes worker is never spawned.
+  - The HVSC SID corpus is a vendored external artifact, never tracked in version control; it is provisioned on demand into `music_dir` and is absent until provisioned.
+  - Corpus provisioning is idempotent: a populated `music_dir` is left untouched, and turning `enabled` off leaves the on-disk corpus in place.
+  - The corpus is provisioned from a committed manifest that pins the archive URL and its sha256; an archive whose checksum does not match the manifest is rejected rather than installed.
+  - A missing or empty `music_dir` never blocks daemon startup or crashes the daemon — chiptunes degrades to silent.
+  - The configuration gate `enabled` is distinct from the chiptunes manager's runtime playback state; the gate drives the runtime state, never the reverse.
+- **Identifier:** the machine's runtime configuration.
+- **Lifecycle:** `chiptunes` is a hot-reloadable configuration section. Toggling `enabled` is applied live by the daemon's config watcher without a restart: enabling it provisions the corpus on demand — asynchronously, so the reload never blocks — and activates playback; disabling it stops playback. The daemon never fetches the corpus synchronously at startup; when `enabled` is set and the corpus is absent, startup triggers the same idempotent asynchronous provisioning.
+<!-- /planned:chiptunes-corpus-detrack-fetch -->
+
 ### Domain events emitted
 
 #### `config.effective.updated`
