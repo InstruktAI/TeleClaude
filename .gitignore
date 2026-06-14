@@ -19,6 +19,9 @@ uv.*
 venv/
 env/
 
+# Vendored chiptune corpus (HVSC) — fetched on demand, never tracked
+assets/audio/C64Music/
+
 # IDE
 .idea/
 *.swp
