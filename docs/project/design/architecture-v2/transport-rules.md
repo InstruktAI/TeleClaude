@@ -466,15 +466,13 @@ Some platform concerns are inherently cross-cutting — analytics, mining, obser
 - A "mining service" or "observability service" with knowledge of multiple domain schemas. Mining is a behavior, not a service.
 - Bypassing CLI for "performance" — the CLI's read APIs ARE the right surface; if performance is an issue, optimize the CLI's underlying query, not the access pattern.
 
+<!-- planned:v2-scheduler-bridge -->
+
 ### Recurring jobs via daemon scheduler loop + source-owned cursors
 
 Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 
-<!-- planned:v2-scheduler-bridge -->
-
 **Scheduler loop.** The `scheduler` infrastructure crate provides a tick loop mounted on the `telec-daemon` service-loop seam. It emits a `scheduler.tick.minute` Redis event every minute and derives `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries, re-anchoring each iteration to the next wall-clock minute (`sleep_until` from the current UTC time). It is a daemon-mounted loop, not a service and not an OS cron entry; no host cron entry installs or supervises it. Consumers subscribe to the `scheduler.tick.*` events; the emitter is an implementation detail behind that contract.
-
-<!-- /planned:v2-scheduler-bridge -->
 
 **Per-pillar listeners** subscribe to ticks. Each listener:
 
@@ -523,6 +521,8 @@ telec-daemon scheduler loop (every wall-clock minute)
 ```
 
 No central jobs service. No cross-pillar reads. No shared state. CLI bridges everything; intelligence does the reasoning.
+
+<!-- /planned:v2-scheduler-bridge -->
 
 ## See Also
 
