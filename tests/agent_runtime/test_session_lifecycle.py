@@ -825,7 +825,7 @@ async def test_activity_hook_activates_initializing_session_for_live_lookup(
     monkeypatch: pytest.MonkeyPatch,
     cluster_event_bus: None,
     event_type: str,
-    payload_data: dict[str, object],
+    payload_data: dict[str, str],
 ) -> None:
     del cluster_event_bus
     slug = "reviewer-not-alive-regression"
