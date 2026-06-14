@@ -6,6 +6,7 @@
 @~/.teleclaude/docs/software-development/policy/ai-agent-security.md
 @~/.teleclaude/docs/software-development/policy/commits.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
+@~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
 @~/.teleclaude/docs/general/spec/agent-artifacts.md
 @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md

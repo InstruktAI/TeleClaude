@@ -13,8 +13,6 @@ Domain specs are documentation snippets and follow the snippet schema (`general/
 
 Each spec is authored once per bounded context and evolves with the context. New intended state is added by updating the spec and adding the delivering slug to `delivered_by`. Implementation changes that change behavior MUST update the spec.
 
-During a declared migration window, a domain spec describes the platform contract across implementation tracks. If the successor track will diverge from the current track for some aspect of the context, do NOT fork the spec; author a sibling diff companion of `type: spec-diff` capturing only the delta. TeleClaude names that successor track `v2`; other projects must declare their own migration vocabulary before using a successor-track diff. See `software-development/principle/documentation-first-development` section 10 for the spec-diff companion infrastructure and the sections schema.
-
 ## Canonical fields
 
 ### Frontmatter

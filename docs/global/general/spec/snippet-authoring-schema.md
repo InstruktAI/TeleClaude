@@ -57,7 +57,6 @@ Document structure:
 | procedure | Goal, Preconditions, Steps, Outputs, Recovery                          |
 | design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes      |
 | spec      | What it is, Canonical fields (optional: Allowed values, Known caveats) |
-| spec-diff | Replaces, Adds, Removes, Why                                           |
 | adr       | Context, Decision, Consequences (optional: Alternatives Considered)    |
 
 Procedure sections may also include optional: `Pre-completion checklist`, `Report format`, `Required tools`, `Discipline`.
@@ -99,7 +98,7 @@ Apply this convention whenever a group of related snippets would otherwise produ
 
 ## Allowed values
 
-- `type`: principle, concept, policy, procedure, design, spec, spec-diff, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
+- `type`: principle, concept, policy, procedure, design, spec, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, project.
 - `visibility`: public, internal. Default: `internal`.
 

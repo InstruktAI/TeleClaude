@@ -43,15 +43,6 @@ below) for the hard gate that decides.
   require domain spec updates (new aggregates, new events, refined
   invariants), note them in the PRD scope. The architecture phase authors
   those updates.
-- **Spec-diff companion (migration-window only).** During the v1 → v2
-  migration window, if the feature spec exists and v2 will diverge from
-  the parent for this delivery, author a sibling
-  `<concept-name>-v2-diff.md` companion of `type: spec-diff` capturing
-  only the delta (Replaces / Adds / Removes / Why). Do NOT fork the
-  parent spec. The diff is deleted (merged into the parent) when the
-  relevant v2 cutover delivers. See
-  `software-development/principle/documentation-first-development` section
-  10 for the spec-diff infrastructure.
 
 The PRD is scaffolding. The feature spec snippet — when warranted — is the
 durable behavioral contract that survives delivery.
