@@ -118,6 +118,37 @@ def test_lint_propagates_make_failure_after_guardrails_run(
 
 
 @pytest.mark.functional
+@pytest.mark.spec(_SPEC, "code-quality-delegation")
+def test_full_run_skips_format_and_stays_check_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    records: list[object] = []
+
+    monkeypatch.setattr(quality, "resolve_invocation_cwd", lambda: tmp_path)
+    monkeypatch.setattr(quality, "resolve_git_root", lambda _cwd: tmp_path)
+
+    def fake_run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
+        records.append({"cmd": cmd[:2]})
+        return SimpleNamespace(returncode=0)
+
+    class FakeLintRunner:
+        def __init__(self, project_root: Path) -> None:
+            self.project_root = project_root
+
+        def run(self, *, files: list[str] | None = None, run_all: bool = False) -> None:
+            records.append({"guardrails_files": files, "guardrails_run_all": run_all})
+
+    monkeypatch.setattr(quality.subprocess, "run", fake_run)
+    monkeypatch.setattr(quality, "LintRunner", FakeLintRunner)
+
+    quality.handle_lint(["--all"])
+
+    assert {"records": records} == snapshot
+
+
+@pytest.mark.functional
 @pytest.mark.spec(_SPEC, "rust-scope")
 def test_rust_scope_uses_package_when_changed_path_belongs_to_one_crate(tmp_path: Path, snapshot: object) -> None:
     package_manifest = tmp_path / "crates" / "telec-core" / "Cargo.toml"

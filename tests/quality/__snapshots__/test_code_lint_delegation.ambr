@@ -1,4 +1,20 @@
 # serializer version: 1
+# name: test_full_run_skips_format_and_stays_check_only
+  dict({
+    'records': list([
+      dict({
+        'cmd': list([
+          'make',
+          'lint',
+        ]),
+      }),
+      dict({
+        'guardrails_files': None,
+        'guardrails_run_all': True,
+      }),
+    ]),
+  })
+# ---
 # name: test_lint_passes_adversarial_paths_through_nul_files_from
   dict({
     'records': list([
