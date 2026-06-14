@@ -14,6 +14,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TypedDict
 
 import pytest
 
@@ -28,11 +29,18 @@ pytestmark = pytest.mark.functional
 _SPEC = "docs/project/spec/feature/agent_runtime/daemon-lifecycle.md"
 
 
+class _ProcInfo(TypedDict):
+    """The ``pid``/``cmdline`` attrs requested from ``process_iter``."""
+
+    pid: int
+    cmdline: list[str]
+
+
 class _FakeProc:
     """Stand-in for a ``psutil.Process`` row yielded by ``process_iter``."""
 
     def __init__(self, pid: int, cmdline: list[str], uid: int) -> None:
-        self.info: dict[str, object] = {"pid": pid, "cmdline": cmdline}
+        self.info: _ProcInfo = {"pid": pid, "cmdline": cmdline}
         self._uid = uid
 
     def uids(self) -> SimpleNamespace:
