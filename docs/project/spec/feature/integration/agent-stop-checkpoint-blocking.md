@@ -247,17 +247,9 @@ Given the session is on a worktree branch (not main)
 And the turn-local changes touch docs/** or agents/commands/** (syncable sources, a main_only category) alongside agents/** (agent artifacts)
 When the heuristic engine evaluates the turn window
 Then the telec-sync validation action is omitted, because main_only work is deferred to integration on main
-<!-- planned-change:checkpoint-categorizer-visibility-repair -->
-And syncable sources is omitted from the changed-category summary
-<!-- change:checkpoint-categorizer-visibility-repair -->
 And syncable sources still appears in the changed-category summary, because the turn touched it
-<!-- /planned-change:checkpoint-categorizer-visibility-repair -->
 And the agent-artifacts restart-self action still surfaces
-<!-- planned-change:checkpoint-categorizer-visibility-repair -->
-(The changed-category summary lists only categories with an outstanding consideration this turn: a category whose action is deferred off-main, or already satisfied by observed evidence, is omitted from both the required actions and the summary.)
-<!-- change:checkpoint-categorizer-visibility-repair -->
 (The changed-category summary is a raw report of every category the turn touched; it never implies an action. A category whose action is deferred off-main or already satisfied still appears in the summary but drives no required action.)
-<!-- /planned-change:checkpoint-categorizer-visibility-repair -->
 
 Given the turn-local changes touch a code category with no per-category action (e.g. teleclaude/hooks/**, which auto-applies on next invocation) and no `telec sync`/restart obligation
 And no log-check or test evidence appears in the timeline yet
@@ -267,16 +259,8 @@ Then the category appears in the changed-category summary and the log-check and 
 Given the same code category change
 And the log-check and test evidence both appear in the timeline
 When the heuristic engine evaluates the turn window
-<!-- planned-change:checkpoint-categorizer-visibility-repair -->
-Then the category is omitted from the summary and no action is surfaced for it
-<!-- change:checkpoint-categorizer-visibility-repair -->
 Then the category still appears in the changed-category summary and no action is surfaced for it, because its evidence was observed
-<!-- /planned-change:checkpoint-categorizer-visibility-repair -->
-<!-- planned-change:checkpoint-categorizer-visibility-repair -->
-(A category never appears in the summary without a corresponding surfaced action: the summary is attributed from surfaced actions, including the collective log-check and test actions, not from the raw changed-file set.)
-<!-- change:checkpoint-categorizer-visibility-repair -->
 (The changed-category summary reports the raw turn-local category set, independent of whether any action is surfaced. Actions are attributed separately, so a category may appear in the summary with no corresponding action when its action is satisfied or deferred.)
-<!-- /planned-change:checkpoint-categorizer-visibility-repair -->
 ```
 
 #### UC-CP11: Integrator post-merge maintenance force-fire
@@ -362,8 +346,6 @@ companion is a correct mirror of the parent is the reviewer's judgment, not the
 checkpoint's.)
 ```
 
-<!-- planned:checkpoint-categorizer-visibility-repair -->
-
 #### UC-CP14: Daemon-code categorization covers top-level and daemon-imported modules
 
 ```gherkin
@@ -385,8 +367,6 @@ Then the file is not categorized as daemon code
 And no `make restart` obligation is surfaced for it
 (The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
 ```
-
-<!-- /planned:checkpoint-categorizer-visibility-repair -->
 
 ### Cross-context references
 

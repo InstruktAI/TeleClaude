@@ -3,6 +3,8 @@
 This module defines shared constants to ensure consistency.
 """
 
+import functools
+import re
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 
@@ -293,6 +295,49 @@ TUI_RELOAD_COMMAND = f"Run `pkill -SIGUSR2 -f -- '{TUI_RELOAD_PROCESS_PATTERN}'`
 RESTART_CONTINUATION_STIMULUS = "Session restarted. Continue pending work or remain idle."
 
 
+@functools.lru_cache(maxsize=512)
+def _compile_glob(pattern: str) -> re.Pattern[str]:
+    """Compile a glob pattern with ** support to a compiled regex.
+
+    Semantics:
+    - **/  → zero or more path segments (including their trailing /)
+    - **   at end → zero or more chars including /
+    - *    → within a single path segment (no /)
+    - ?    → a single non-separator char
+    """
+    regex: list[str] = []
+    i = 0
+    n = len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            if i + 1 < n and pattern[i + 1] == "*":
+                if i + 2 < n and pattern[i + 2] == "/":
+                    # **/ → zero or more path segments
+                    regex.append("(?:.*/)?")
+                    i += 3
+                else:
+                    # ** at end of pattern → any chars including /
+                    regex.append(".*")
+                    i += 2
+            else:
+                # * → within-segment wildcard
+                regex.append("[^/]*")
+                i += 1
+        elif c == "?":
+            regex.append("[^/]")
+            i += 1
+        else:
+            regex.append(re.escape(c))
+            i += 1
+    return re.compile("".join(regex) + r"\Z")
+
+
+def _glob_matches(path: str, pattern: str) -> bool:  # pyright: ignore[reportUnusedFunction]
+    """Return True if path matches the glob pattern (** support, * within segment)."""
+    return bool(_compile_glob(pattern).match(path))
+
+
 @dataclass(frozen=True)
 class FileCategory:
     """Maps file patterns to checkpoint action instructions."""
@@ -300,6 +345,7 @@ class FileCategory:
     name: str
     include_patterns: list[str] = field(default_factory=list)
     exclude_patterns: list[str] = field(default_factory=list)
+    override_patterns: list[str] = field(default_factory=list)
     instruction: str = ""
     evidence_substrings: list[str] = field(default_factory=list)
     evidence_must_follow_last_mutation: bool = False
@@ -358,6 +404,26 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
             "teleclaude/entrypoints/**",
             "teleclaude/tagging/**",
             "teleclaude/helpers/**",
+        ],
+        # CLI modules the daemon imports at startup — editing them changes daemon
+        # runtime behavior and requires a restart despite the general cli/** exclusion.
+        #
+        # Load chain: teleclaude/core/tool_access.py imports from teleclaude.cli.telec,
+        # which executes teleclaude/cli/telec/__init__.py and its transitive imports:
+        #   __init__.py → _run_tui, _shared, auth, help (→ surface_types), surface, tool_client,
+        #                  session_auth
+        # teleclaude/daemon_hook_outbox.py additionally imports session_auth directly.
+        override_patterns=[
+            "teleclaude/cli/__init__.py",
+            "teleclaude/cli/telec/__init__.py",
+            "teleclaude/cli/telec/surface.py",
+            "teleclaude/cli/telec/surface_types.py",
+            "teleclaude/cli/telec/auth.py",
+            "teleclaude/cli/telec/help.py",
+            "teleclaude/cli/telec/_shared.py",
+            "teleclaude/cli/telec/_run_tui.py",
+            "teleclaude/cli/tool_client.py",
+            "teleclaude/cli/session_auth.py",
         ],
         instruction="Run `make restart`",
         evidence_substrings=CHECKPOINT_RESTART_EVIDENCE,

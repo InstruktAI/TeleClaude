@@ -152,11 +152,9 @@ def run_heuristics(
     categories = _dedupe_categories([*file_categories, *obligation_categories])
     obligation_names = {category.name for category in obligation_categories}
 
-    # 2. Build required actions and the "Changed:" summary together. A category appears
-    # in the summary only when it drives a surfaced action this turn. A category whose
-    # action is irrelevant here (main_only off a worktree), already satisfied (its
-    # evidence was observed), or auto-applying with no outstanding work is omitted from both.
-    shown: set[str] = set()
+    # 2. Build required actions. The "Changed:" summary (result.categories) is the raw
+    # turn-local category set — every category whose files were touched this turn —
+    # independent of whether any action was surfaced. Actions are attributed separately.
     for category in sorted(categories, key=lambda c: c.precedence):
         # Main-only categories (telec setup, dependencies, daemon code, config,
         # syncable sources) are irrelevant in worktrees — the running system is
@@ -180,24 +178,19 @@ def run_heuristics(
         if category.evidence_substrings and evidence_seen:
             if category.name in obligation_names and discharge_obligation is not None:
                 discharge_obligation(category.name)
-            continue  # Satisfied this turn — no action, and omitted from the summary
+            continue  # Satisfied this turn — no per-category action surfaced
 
         append_required_action(category.instruction)
-        shown.add(category.name)
 
-    # Collective code actions (logs, tests) — attributed in the summary to the is_code
-    # categories that drive them, so a code change with no per-category action (e.g. hook
-    # runtime) appears while outstanding and drops out once satisfied. Doc/artifact sources
-    # (is_code=False) deploy via sync and have no runtime to inspect or behavior to test.
+    # Collective code actions (logs, tests). Doc/artifact sources (is_code=False) deploy
+    # via sync and have no runtime to inspect or behavior to test.
     code_categories = [c for c in file_categories if c.is_code]
     if any(c.name != "tests only" for c in code_categories) and not _has_evidence(
         timeline, CHECKPOINT_LOG_CHECK_EVIDENCE
     ):
         append_required_action(f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window}`")
-        shown.update(c.name for c in code_categories if c.name != "tests only")
     if code_categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
         append_required_action("Run targeted tests for only YOUR changed behavior")
-        shown.update(c.name for c in code_categories)
 
     # Test quality review gate: point to policy, not inline rules
     if any(c.name == "tests only" for c in file_categories):
@@ -205,9 +198,10 @@ def run_heuristics(
             "Test files were modified — review against test policy before committing: "
             "`telec docs get software-development/policy/testing`. Remove tests that violate policy."
         )
-        shown.add("tests only")
 
-    result.categories = [c.name for c in sorted(categories, key=lambda c: c.precedence) if c.name in shown]
+    # Changed-line: raw turn-local category set — every category whose files were touched
+    # this turn, regardless of whether any action was surfaced or deferred.
+    result.categories = [c.name for c in sorted(categories, key=lambda c: c.precedence)]
 
     # 3. Blast-radius observation
     result.observations.extend(_check_blast_radius(git_files))

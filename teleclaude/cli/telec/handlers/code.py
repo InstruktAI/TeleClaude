@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
-from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES, FileCategory
+from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES, FileCategory, _glob_matches
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
@@ -533,9 +533,13 @@ def _commit_obligations_for_files(files: list[str]) -> list[str]:
 
 def _file_matches_commit_category(path: str, category: FileCategory) -> bool:
     """Return True when a committed path matches a checkpoint category."""
-    if category.exclude_patterns and any(fnmatch(path, pattern) for pattern in category.exclude_patterns):
+    if not any(_glob_matches(path, pattern) for pattern in category.include_patterns):
         return False
-    return any(fnmatch(path, pattern) for pattern in category.include_patterns)
+    if category.override_patterns and any(_glob_matches(path, pattern) for pattern in category.override_patterns):
+        return True
+    return not (
+        category.exclude_patterns and any(_glob_matches(path, pattern) for pattern in category.exclude_patterns)
+    )
 
 
 def _print_commit_review_guidance() -> None:

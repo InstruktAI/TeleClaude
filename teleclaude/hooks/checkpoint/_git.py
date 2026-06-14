@@ -8,7 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES, CHECKPOINT_NO_ACTION_PATTERNS, FileCategory
+from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES, CHECKPOINT_NO_ACTION_PATTERNS, FileCategory, _glob_matches
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
 from teleclaude.utils.transcript import TurnTimeline
@@ -437,10 +437,12 @@ def _categorize_files(git_files: list[str]) -> list[FileCategory]:
 
 def _file_matches_category(filepath: str, category: FileCategory) -> bool:
     """Check if a file path matches a category's include/exclude patterns."""
-    included = any(fnmatch(filepath, pat) for pat in category.include_patterns)
+    included = any(_glob_matches(filepath, pat) for pat in category.include_patterns)
     if not included:
         return False
-    excluded = any(fnmatch(filepath, pat) for pat in category.exclude_patterns)
+    if category.override_patterns and any(_glob_matches(filepath, pat) for pat in category.override_patterns):
+        return True
+    excluded = any(_glob_matches(filepath, pat) for pat in category.exclude_patterns)
     return not excluded
 
 

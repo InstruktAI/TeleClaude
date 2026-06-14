@@ -32,6 +32,7 @@ _SPEC = "project/spec/feature/integration/agent-stop-checkpoint-blocking"
 # Named constants for instruction identity checks — shared with production code
 # (sourced from constants.py FileCategory instruction strings).
 _TELEC_SYNC_INSTR = "Run `telec sync`"
+_MAKE_RESTART_INSTR = "Run `make restart`"
 
 
 def _init_supported_repo(repo_path: Path) -> Repo:
@@ -645,7 +646,7 @@ def test_code_change_with_outstanding_actions_shown_in_summary(
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP10")
-def test_code_change_without_outstanding_actions_omitted_from_summary(
+def test_code_change_all_evidence_still_appears_in_changed_summary(
     tmp_path: Path,
 ) -> None:
     repo_path = tmp_path / "repo"
@@ -653,11 +654,12 @@ def test_code_change_without_outstanding_actions_omitted_from_summary(
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
     timeline = _timeline_with_bash_commands(["uv run pytest tests/foo.py", "instrukt-ai-logs teleclaude --since 5m"])
 
-    # hook runtime auto-applies; once its log/test actions are satisfied it has nothing
-    # outstanding, so it is omitted from both the summary and the required actions.
+    # hook runtime auto-applies; once its log/test actions are satisfied no action is
+    # surfaced — but the category still appears in the Changed summary because the
+    # Changed line is the raw turn-local category set, independent of actions.
     result = run_heuristics(["teleclaude/hooks/checkpoint/_evidence.py"], timeline, context)
 
-    assert not result.categories
+    assert result.categories == ["hook runtime"]
     assert not result.required_actions
 
 
@@ -807,3 +809,142 @@ def test_pyproject_toml_routes_to_uv_sync_not_make_install(
 
     assert result.required_actions != []
     assert {"pyproject_result": result.required_actions} == snapshot
+
+
+# ---------------------------------------------------------------------------
+# UC-CP14 — glob fix + daemon-imported CLI reclassification
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP14")
+def test_toplevel_daemon_file_categorized_as_daemon_code(
+    tmp_path: Path,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    # teleclaude/constants.py sits at exactly one directory depth — the old fnmatch-based
+    # matcher required at least one sub-directory inside teleclaude/ (due to the explicit
+    # "/" after "**"), so this file was silently uncategorized.
+    result = run_heuristics(["teleclaude/constants.py"], _empty_timeline(), context)
+
+    assert result.categories == ["daemon code"]
+    assert _MAKE_RESTART_INSTR in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP14")
+def test_daemon_imported_cli_module_categorized_as_daemon_code(
+    tmp_path: Path,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    # teleclaude/cli/telec/surface.py is imported by the daemon at startup and must
+    # trigger a restart. It lives under the general teleclaude/cli/** exclusion but is
+    # explicitly whitelisted in override_patterns.
+    result = run_heuristics(["teleclaude/cli/telec/surface.py"], _empty_timeline(), context)
+
+    assert result.categories == ["daemon code"]
+    assert _MAKE_RESTART_INSTR in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP14")
+def test_pure_subprocess_cli_module_not_daemon_code(
+    tmp_path: Path,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    # teleclaude/cli/telec/handlers/code.py is invoked as a subprocess, not imported by
+    # the daemon — it stays excluded from daemon code and does not require make restart.
+    result = run_heuristics(["teleclaude/cli/telec/handlers/code.py"], _empty_timeline(), context)
+
+    assert result.categories == []
+    assert _MAKE_RESTART_INSTR not in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP14")
+def test_transitively_loaded_cli_module_categorized_as_daemon_code(
+    tmp_path: Path,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    # teleclaude/cli/telec/auth.py is loaded transitively when tool_access.py imports
+    # teleclaude.cli.telec (__init__.py imports auth). Previously omitted from
+    # override_patterns; editing it would have been silently uncategorized.
+    result = run_heuristics(["teleclaude/cli/telec/auth.py"], _empty_timeline(), context)
+
+    assert result.categories == ["daemon code"]
+    assert _MAKE_RESTART_INSTR in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP14")
+def test_cli_package_init_categorized_as_daemon_code(
+    tmp_path: Path,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    # teleclaude/cli/__init__.py is loaded as the parent package when the daemon
+    # imports teleclaude.cli.telec; editing it changes the daemon's loaded module set.
+    result = run_heuristics(["teleclaude/cli/__init__.py"], _empty_timeline(), context)
+
+    assert result.categories == ["daemon code"]
+    assert _MAKE_RESTART_INSTR in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP14")
+def test_committed_toplevel_daemon_code_surfaces_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    session_id = "checkpoint-toplevel-daemon-commit-session"
+    repo_path = tmp_path / "repo"
+    repo = _init_supported_repo(repo_path)
+
+    # Pre-create constants.py as a tracked file so _commit_under_lock can commit it.
+    constants_path = repo_path / "teleclaude" / "constants.py"
+    constants_path.write_text("# original\n", encoding="utf-8")
+    repo.git.add("teleclaude/constants.py")
+    repo.git.commit("-m", "chore: add constants fixture")
+
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    monkeypatch.setattr(code, "get_session_id", lambda: session_id)
+    _disable_commit_quality_gates(monkeypatch)
+    _patch_checkpoint_timeline(
+        monkeypatch,
+        _timeline_with_bash("telec code commit --approved 'test: update toplevel daemon file'"),
+    )
+
+    anchor_sha = repo.git.rev_parse("HEAD").strip()
+    constants_path.write_text("# modified\n", encoding="utf-8")
+    code._commit_under_lock(
+        message="test: update toplevel daemon file",
+        includes=["teleclaude/constants.py"],
+        project_root=repo_path,
+        system_role=None,
+    )
+
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=anchor_sha,
+    )
+
+    assert read_commit_obligations(session_id) == ["daemon code"]
+    assert {"toplevel_daemon_payload": payload} == snapshot
