@@ -105,6 +105,7 @@ ARTIFACT_PRD = "prd"
 ARTIFACT_REQUIREMENTS = "requirements"
 ARTIFACT_ARCHITECTURE = "architecture"
 ARTIFACT_DIAGNOSIS = "diagnosis"
+ARTIFACT_INVESTIGATION = "investigation"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 ARTIFACT_TASK_PLAN = "task-plan"
 # DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is
@@ -141,6 +142,7 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_REQUIREMENTS,
         ARTIFACT_ARCHITECTURE,
         ARTIFACT_DIAGNOSIS,
+        ARTIFACT_INVESTIGATION,
         ARTIFACT_IMPLEMENTATION_PLAN,
         ARTIFACT_TASK_PLAN,
         ARTIFACT_BUG,

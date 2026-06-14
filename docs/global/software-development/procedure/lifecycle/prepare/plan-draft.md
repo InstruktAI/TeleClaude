@@ -59,6 +59,10 @@ Read the full context before writing anything:
   the code — reference the diagnosis's root-cause section as the grounding rather
   than re-deriving the cause. Consume it exactly as `architecture` is consumed when
   present; no kind-specific branching beyond reading the artifact.
+- `telec todo artifacts read {slug} investigation` — when present (a `bug` carries
+  this). The evidence substrate behind the diagnosis: reproduction, avenues walked,
+  observations. Read it for grounding context; the plan consumes the `diagnosis` root
+  cause, not the investigation.
 - The codebase: files that will be affected, adjacent patterns, existing implementations
   of similar functionality. Use a filtered `telec docs index --areas policy,spec` (add
   `--domains <domain>` to narrow) to surface relevant policies and specs.

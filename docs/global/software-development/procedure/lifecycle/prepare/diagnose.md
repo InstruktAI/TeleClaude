@@ -1,6 +1,6 @@
 ---
 activation_trigger: 'A bug todo is at the DIAGNOSE prepare phase and needs its root cause verified before planning the fix.'
-description: 'Bug diagnosis phase. Reproduce and trace the root cause — the causal mechanism — to specific code, written as a diagnosis artifact before any fix is planned. Diagnosis grounds the cause and prescribes no fix.'
+description: 'Bug diagnosis phase. Record the investigation, then trace the root cause — the causal mechanism — to specific code as a thin diagnosis grounded in that investigation, before any fix is planned. Diagnosis grounds the cause and prescribes no fix.'
 needs_domain_baseline: 'True'
 visibility: 'public'
 ---
@@ -13,11 +13,20 @@ visibility: 'public'
 
 ## Goal
 
-For a `bug`, produce a **verified root cause** before any fix is planned or written:
-the causal mechanism — _why_ the code produces the wrong behavior — traced backward to
-the specific code where the bad value or state originates, with the evidence that ties
-the symptom to it. The output is the `diagnosis` artifact, which the plan phase consumes
-as grounded input and the plan reviewer validates.
+For a `bug`, produce a **verified root cause** before any fix is planned or written, in
+two artifacts:
+
+- **`investigation`** — the evidence substrate: the reproduction, the avenues walked,
+  and the observations gathered, each recorded as a re-verifiable fact. Written whether
+  or not the cause grounds; it is the pre-work a conclusion is built on and points to.
+- **`diagnosis`** — the thin conclusion: the causal mechanism (_why_ the code produces
+  the wrong behavior) traced to the specific code where the bad value or state
+  originates, grounded in and referencing the `investigation`. Written only once the
+  cause grounds.
+
+The plan phase consumes the `diagnosis` and the plan reviewer validates that its root
+cause is a genuine causal mechanism traceable to the investigation's evidence. The split
+mirrors the `architecture` shape: a thin conclusion over a substantive substrate.
 
 Diagnosis grounds the cause and stops there. It opens no worktree, writes no production
 code, commits nothing, and **prescribes no fix or verification approach** — the planner
@@ -40,44 +49,49 @@ that makes the plan groundable.
 
 1. **Read the symptom.** `telec todo artifacts read {slug} input`. Treat it as a real,
    reproducible defect until investigation proves otherwise (refuse bug-denial).
-2. **Follow the systematic debugging procedure** — reproduce first, then bisect and
-   isolate. Read the actual code paths; do not pattern-match a likely cause.
-3. **Trace the cause, not the location.** A root cause is the causal mechanism: _why_ the
-   code produces the wrong behavior. Trace backward from where the symptom surfaces to
-   where the bad value or state **originates** — the first violated invariant, the first
-   wrong value, the line that produces it. Naming where the error is _thrown_ or
-   _observed_ is a restatement of the symptom located in code, not a diagnosis. The bar
-   the artifact must clear: a reader can follow the mechanism and the evidence chain, not
-   just a file and a line.
-4. **If the cause will not ground, escalate — do not write.** A plausible or "likely"
-   cause is not a root cause. If systematic investigation does not yield a grounded
-   causal mechanism, do **not** write a diagnosis and do **not** advance. Escalate per
+2. **Investigate.** Follow the systematic debugging procedure — reproduce first, then
+   bisect and isolate. Read the actual code paths; do not pattern-match a likely cause.
+   **Trace the cause, not the location:** trace backward from where the symptom surfaces
+   to where the bad value or state **originates** — the first violated invariant, the
+   first wrong value, the line that produces it. Naming where the error is _thrown_ or
+   _observed_ is a restatement of the symptom located in code, not a cause.
+3. **Record the `investigation`.** Write the evidence substrate — the reproduction (or,
+   where reproduction is not stable, what was observed and why), the avenues walked, and
+   the observations gathered, each as a **re-verifiable fact, not a verdict** ("the value
+   at `f():120` is already null", not "the cache is not the cause"). This persists the
+   pre-work whether or not the cause grounds, and does not advance the phase.
+   `telec todo artifacts write {slug} investigation <content>`.
+4. **Conclude — or escalate.** If a causal root cause grounds, write the thin
+   `diagnosis`: `## Symptom` (referencing `input`) and `## Root Cause` (the causal
+   mechanism, **referencing the `investigation`'s evidence** for each claim). A reader
+   can follow the mechanism from symptom to origin through cited evidence — not just a
+   file and a line. `telec todo artifacts write {slug} diagnosis <content>`. If the cause
+   will **not** ground, do not write a `diagnosis` and do not advance — escalate per
    Recovery.
-5. **Write the `diagnosis` artifact** with these sections: `## Symptom` (referencing the
-   `input` artifact) and `## Root Cause` (the causal mechanism traced to specific code,
-   with the reproduction and evidence chain that grounds it). Use these stable headers so
-   the plan and the plan reviewer reference the root-cause section as upstream.
-   `telec todo artifacts write {slug} diagnosis <content>`.
-6. **Advance.** Call `telec todo prepare {slug}`. The state machine derives
-   `PLAN_DRAFTING` next; the planner consumes the root cause and derives the fix, and the
-   plan reviewer validates that the root cause is a genuine causal mechanism.
+5. **Advance.** Once the `diagnosis` is written, call `telec todo prepare {slug}`. The
+   state machine derives `PLAN_DRAFTING` next; the planner consumes the root cause and
+   derives the fix, and the plan reviewer validates that the root cause is a genuine
+   causal mechanism grounded in the investigation.
 
 ## Outputs
 
-- A `diagnosis` artifact carrying the verified root cause (causal mechanism traced to
-  code + the evidence that grounds it), referenced by the implementation-plan and
+- An `investigation` artifact (reproduction, avenues walked, observations as
+  re-verifiable facts) — the durable evidence substrate.
+- A `diagnosis` artifact (thin conclusion: causal mechanism referencing the
+  investigation), written only when the cause grounds, consumed by the plan and
   validated at plan-review.
 - No fix or verification prescription, no code changes, no worktree commits — the cause
   is grounded; the planner owns the fix.
 
 ## Pre-completion checklist
 
-- The root cause names the causal mechanism — where the bad value or state originates —
-  not where the symptom surfaces, with the evidence chain that ties symptom to cause.
-- The reproduction (or, where reproduction is not yet stable, the investigation that
-  grounds the mechanism) is recorded as evidence.
-- The `diagnosis` artifact carries only `## Symptom` and `## Root Cause`; it prescribes no
-  fix and no verification.
+- The `investigation` records the reproduction (or why it is unstable) and the avenues
+  walked, each observation a re-verifiable fact rather than a verdict.
+- The `diagnosis` root cause names the causal mechanism — where the bad value or state
+  originates, not where the symptom surfaces — and references the investigation's
+  evidence for its claims.
+- The `diagnosis` carries only `## Symptom` and `## Root Cause`; it prescribes no fix and
+  no verification.
 
 ## Discipline
 
@@ -85,32 +99,39 @@ The failure this phase exists to prevent is the diagnosis that restates the symp
 calls it done — naming where the error surfaces instead of why it originates — and the
 diagnosis that reaches past its job to prescribe a fix. Both let an unverified or
 symptom-shaped premise flow into planning, producing "delivered yet ineffective" fixes
-and fallback-shaped workarounds. Three slides to refuse: (1) accepting a located symptom
-as a root cause; (2) prescribing a fix or verification approach here — diagnosis grounds
-the cause, the planner decides the fix; (3) writing a "likely" cause to keep moving when
-the mechanism will not ground — escalate instead. The diagnosis is judged by the
-cross-model plan reviewer; write it to be refuted, not to look right.
+and fallback-shaped workarounds. Slides to refuse: (1) accepting a located symptom as a
+root cause; (2) prescribing a fix or verification approach here — diagnosis grounds the
+cause, the planner decides the fix; (3) writing a conclusion not grounded in the recorded
+investigation; (4) writing a "likely" cause to keep moving when the mechanism will not
+ground — escalate instead. Escalation is the strong, honest move: a "likely" cause is
+imagined confidence, and dressing it as a finding to keep the pipeline moving is the
+cardinal sin this phase stops. The diagnosis is judged by the cross-model plan reviewer;
+write it to be refuted, not to look right.
 
 ## Recovery
 
 A root cause that will not ground is the trigger to escalate, never to proceed. No path
-advances an ungrounded or symptom-shaped diagnosis.
+advances an ungrounded or symptom-shaped diagnosis. The `investigation` (Step 3) is
+already written, so the trail is durable — escalation hands it forward, it is not lost.
 
 1. **Dispatch one independent diagnoser.** Start a single cross-model peer session on a
    different model (`telec sessions start --agent <other> --project <path> --message
-"<brief>"`) with a **blind** brief: the `input` symptom and the codebase only — never
-   your failed hypothesis. It investigates from scratch and **returns its assessment as
-   session output; it writes no artifact.** Independence is the point — a peer anchored to
-   your reasoning debugs your debugging, not the bug.
-2. **Reconcile both trails.** Read the peer's assessment against your own, treating your
-   prior hypothesis as the **prime suspect**, not the baseline. Take one more
-   investigation pass with the combined awareness.
+"<brief>"`), pointed at `telec todo artifacts read {slug} investigation` and the
+   `input` symptom. Brief it to **re-verify the recorded observations rather than trust
+   them** (they are leads, not verdicts — the upstream-is-a-hypothesis stance in
+   `preparation-artifact-quality`), reach its **own** root cause, and **report its
+   assessment as session output — write no artifact.** The peer sees the evidence but no
+   conclusion (none is grounded), so its conclusion stays independent while redundant
+   search is avoided.
+2. **Reconcile.** Fold the peer's new evidence into the `investigation`. Read its
+   assessment against your own, treating your prior thinking as the **prime suspect**,
+   not the baseline. Take one more investigation pass with the combined awareness.
 3. **Ground and proceed, or escalate and stop.** If the cause now grounds, write the
-   `diagnosis` and advance. If it still will not ground, **escalate to the human and
-   stop** — surface the union of both investigation trails (the evidence and the ruled-out
-   space) so the human starts at the frontier. Do not fabricate a cause and do not advance
-   an ungrounded diagnosis.
+   `diagnosis` (referencing the investigation) and advance. If it still will not ground,
+   **escalate to the human and stop** — the `investigation` is the union-of-trails
+   artifact they open; no separate hand-off is needed. Do not fabricate a cause and do
+   not advance an ungrounded diagnosis.
 
 - If investigation shows the reported behavior is correct (not a defect), record that in
-  the `diagnosis` and surface it; the bug may need reclassification or closure rather than
-  a fix.
+  the `investigation` and surface it; the bug may need reclassification or closure rather
+  than a fix.

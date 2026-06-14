@@ -124,7 +124,8 @@ section entirely otherwise** — it does not apply to a `feature` or `change`. T
 is the gate that substitutes for a separate diagnosis review: the diagnosis is
 scrutinized here, in the same cross-model pass, against the code.
 
-Read `telec todo artifacts read {slug} diagnosis` and validate:
+Read `telec todo artifacts read {slug} investigation` and
+`telec todo artifacts read {slug} diagnosis` and validate:
 
 - **The root cause is a causal mechanism, not a located symptom.** The root-cause
   section must explain _why_ the code produces the wrong behavior, traced to where
@@ -134,6 +135,12 @@ Read `telec todo artifacts read {slug} diagnosis` and validate:
   names where the error surfaces or is thrown, not where it originates. A relocated
   symptom is not a root cause; approving it builds the fix on an unverified premise
   (the exact "delivered yet ineffective" failure this lane exists to stop).
+- **The root cause is grounded in the investigation.** The `diagnosis` is a thin
+  conclusion over the `investigation` substrate; each root-cause claim must trace to
+  a recorded observation there. A root cause that asserts a mechanism the
+  investigation does not evidence — or a `diagnosis` written with no investigation to
+  cite — is Critical: an unsubstantiated conclusion, regardless of how plausible it
+  reads.
 - **The plan's fix removes the cause, not the symptom.** The plan's fix tasks must
   trace to the diagnosed root cause and eliminate it. A fix that leaves the cause in
   place and handles its consequences — a fallback, default substitution, or
