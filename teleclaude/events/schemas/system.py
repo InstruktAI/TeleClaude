@@ -25,6 +25,18 @@ def register_system(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="agent_runtime.session.ended",
+            description="A session was closed and may require lifecycle-runner re-evaluation of its todo",
+            default_level=EventLevel.WORKFLOW,
+            domain="agent_runtime",
+            default_visibility=EventVisibility.LOCAL,
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="session_id", meaningful_fields=["session_id", "project_path"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="system.daemon.restarted",
             description="Daemon process restarted on a computer",
             default_level=EventLevel.INFRASTRUCTURE,

@@ -43,6 +43,23 @@ async def _emit_todo_updated(*, slug: str, project_path: str, source: str) -> No
         logger.info("workflow.todo.updated not emitted: event producer unavailable", slug=slug)
 
 
+async def _emit_session_ended(*, session_id: str, project_path: str) -> None:
+    try:
+        await emit_event(
+            event="agent_runtime.session.ended",
+            source="agent_runtime",
+            level=EventLevel.WORKFLOW,
+            domain="agent_runtime",
+            payload={
+                "session_id": session_id,
+                "project_path": project_path,
+                "ended_at": datetime.now(UTC).isoformat(),
+            },
+        )
+    except RuntimeError:
+        logger.info("agent_runtime.session.ended not emitted: event producer unavailable", session_id=session_id)
+
+
 async def _active_runner_slug(db: Db, session_id: str) -> tuple[str | None, str | None, str]:
     session = await db.get_session(session_id)
     if session is None:
@@ -88,6 +105,8 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
 
 async def clear_active_runner_for_session_end(db: Db, session_id: str) -> ActiveRunnerMutationResult:
     slug, project_path, reason = await _active_runner_slug(db, session_id)
+    if project_path is not None:
+        await _emit_session_ended(session_id=session_id, project_path=project_path)
     if slug is None or project_path is None:
         return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason=reason)
 
@@ -98,7 +117,6 @@ async def clear_active_runner_for_session_end(db: Db, session_id: str) -> Active
     writer = StateWriter(state)
     writer.state.active_runner = None
     await writer.commit(todos_db, slug)
-    await _emit_todo_updated(slug=slug, project_path=project_path, source="workflow.session_ended")
     return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=True, reason="cleared")
 
 

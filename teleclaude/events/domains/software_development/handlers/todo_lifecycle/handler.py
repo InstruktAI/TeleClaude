@@ -12,16 +12,13 @@ if TYPE_CHECKING:
 async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
     """Observe planning events and pass them through.
 
-    Notifies on DOR assessment and todo activation; silently passes other planning events.
+    Notifies on DOR assessment; silently passes other planning events.
     """
     et = event.event
 
-    if et in (
-        "domain.software-development.planning.dor_assessed",
-        "domain.software-development.planning.todo_activated",
-    ):
-        # These events are already marked actionable/notifiable in the catalog.
-        # The domain pipeline's autonomy matrix controls whether to surface them.
+    if et == "domain.software-development.planning.dor_assessed":
+        # This event is already marked actionable/notifiable in the catalog.
+        # The domain pipeline's autonomy matrix controls whether to surface it.
         pass
 
     return event

@@ -43,6 +43,14 @@ def _default_on_phase_transition(
     """Default no-op phase transition callback."""
 
 
+def _default_on_delivered(
+    _slug: str,
+    _delivery_commit: str | None,
+    _delivered_at: str,
+) -> None:
+    """Default no-op delivery callback."""
+
+
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     """Return whether a table exists."""
     row = conn.execute(
@@ -419,6 +427,7 @@ class TodosDbBase:
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
         self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
         self._on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None] = _default_on_phase_transition
+        self._on_delivered: Callable[[str, str | None, str], None] = _default_on_delivered
 
     def on_committed(self, event_hint: str = "todo_updated", event_data: Mapping[str, object] | None = None) -> None:
         """Signal that a caller-managed transaction has committed.

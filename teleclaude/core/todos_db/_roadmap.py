@@ -110,6 +110,7 @@ class TodosDbRoadmapMixin:
     """Roadmap CRUD, ordering, deps, delivery, icebox (replaces roadmap.yaml)."""
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
+    _on_delivered: Callable[[str, str | None, str], None]
 
     async def _active_entry(self, session: SqlAsyncSession, slug: str) -> TodoRoadmap | None:
         """Return the live (active or icebox) roadmap entry for a slug.
@@ -349,6 +350,7 @@ class TodosDbRoadmapMixin:
             if owns_session:
                 await db_session.commit()
                 self._on_mutation("todo_updated", None)
+                self._on_delivered(slug, commit, now)
             return True
         finally:
             if owns_session:
@@ -774,4 +776,5 @@ class TodosDbRoadmapMixin:
             session.commit()
 
         self._on_mutation("todo_updated", None)
+        self._on_delivered(slug, commit, now)
         return True

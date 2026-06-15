@@ -591,6 +591,23 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     },
                 )
 
+            async def _emit_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
+                await emit_event(
+                    event="workflow.todo.delivered",
+                    source="workflow",
+                    level=EventLevel.WORKFLOW,
+                    domain="software-development",
+                    visibility=EventVisibility.LOCAL,
+                    entity=slug,
+                    description=f"Delivered {slug}",
+                    payload={
+                        "slug": slug,
+                        "project_path": project_root,
+                        "delivery_commit": delivery_commit,
+                        "delivered_at": delivered_at,
+                    },
+                )
+
             def _on_mutation(event_hint: str = "todo_updated", event_data: object | None = None) -> None:
                 if loop is not None and loop.is_running():
                     hint = event_hint  # capture for lambda closure
@@ -617,8 +634,16 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     )
                 )
 
+            def _on_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
+                if loop is None or not loop.is_running():
+                    return
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(_emit_delivered(slug, delivery_commit, delivered_at))
+                )
+
             instance._on_mutation = _on_mutation
             instance._on_phase_transition = _on_phase_transition
+            instance._on_delivered = _on_delivered
 
         set_todos_mutation_hook(_hook)
         logger.info("Todos mutation hook registered (computer=%s)", computer)

@@ -16,6 +16,7 @@ from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.core import db as db_mod
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import lifecycle_runner as runner_mod
+from teleclaude.core.next_machine import session_hold
 from teleclaude.core.next_machine.dispatch_claims import list_dispatch_claims
 from teleclaude.core.next_machine.lifecycle import HumanControl, pending_human_control
 from teleclaude.core.next_machine.lifecycle_runner import (
@@ -32,8 +33,10 @@ from teleclaude.core.next_machine.session_hold import (
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
+from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.schemas import register_all
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
 
@@ -57,6 +60,8 @@ _NEXT_WORK = "/next-work"
 _HOLD_SOURCE_SESSION_CLOSE = "session_close"
 _DOMAIN = "software-development"
 _SOURCE = "test"
+_DELIVERY_COMMIT = "abc123def456789"
+_SYNC_DELIVERY_COMMIT = "789def456abc123"
 _WAKE_EVENTS = (
     "workflow.todo.created",
     "workflow.todo.delivered",
@@ -64,6 +69,13 @@ _WAKE_EVENTS = (
     "workflow.todo.updated",
     "workflow.roadmap.entry_moved",
     "config.effective.updated",
+    "agent_runtime.session.ended",
+)
+_REMOVED_PLANNING_TRIGGERS = (
+    "domain.software-development.planning.artifact_changed",
+    "domain.software-development.planning.todo_created",
+    "domain.software-development.planning.todo_activated",
+    "domain.software-development.planning.dependency_resolved",
 )
 
 
@@ -486,6 +498,70 @@ async def test_lifecycle_router_delegates_named_wakeups_to_runner(
     assert calls == [(project_root, event_name) for event_name in _WAKE_EVENTS]
 
 
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_lifecycle_router_skips_wakeup_when_project_identity_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    async def _capture_runner(project_path: str, *, trigger: str, client_factory: object) -> object:
+        _ = client_factory
+        calls.append((project_path, trigger))
+        return object()
+
+    monkeypatch.setattr(lifecycle_router, "run_lifecycle_runner", _capture_runner)
+
+    for event_name in _WAKE_EVENTS:
+        payload: _WakePayload = {}
+        if event_name == "workflow.todo.created":
+            payload["slug"] = _WORK_SLUG
+            payload["pickup_requested"] = True
+        event = EventEnvelope(
+            event=event_name,
+            source=_SOURCE,
+            level=EventLevel.WORKFLOW,
+            domain=_DOMAIN,
+            payload=payload,
+        )
+        await LifecycleRouterCartridge().process(event, cast(PipelineContext, object()))
+
+    assert calls == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_lifecycle_router_passes_through_removed_planning_triggers(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    async def _capture_runner(project_path: str, *, trigger: str, client_factory: object) -> object:
+        _ = (project_path, client_factory)
+        calls.append(trigger)
+        return object()
+
+    monkeypatch.setattr(lifecycle_router, "run_lifecycle_runner", _capture_runner)
+
+    for event_name in _REMOVED_PLANNING_TRIGGERS:
+        assert event_name not in lifecycle_router._TRIGGER_EVENTS
+        event = EventEnvelope(
+            event=event_name,
+            source=_SOURCE,
+            level=EventLevel.WORKFLOW,
+            domain=_DOMAIN,
+            payload=_WakePayload(project_path="/tmp/project"),
+        )
+        result = await LifecycleRouterCartridge().process(event, cast(PipelineContext, object()))
+        assert result is event
+
+    assert calls == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_removed_planning_events_are_not_registered() -> None:
+    catalog = EventCatalog()
+    register_all(catalog)
+
+    for event_name in _REMOVED_PLANNING_TRIGGERS:
+        assert catalog.get(event_name) is None
+    assert catalog.get("domain.software-development.planning.todo_finalize_ready") is not None
+
+
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
 async def test_manual_session_close_sets_hold_on_active_runner_todo(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
@@ -537,3 +613,74 @@ async def test_session_end_clears_active_runner_link(tmp_path: Path) -> None:
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
     assert "active_runner" not in state
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_session_end_emits_session_ended_wakeup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    session_id = "session-ended-wakeup"
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=session_id)
+    runtime_db = await db_mod.get_db()
+    await runtime_db.create_session(
+        computer_name="local",
+        tmux_session_name="tmux-ended-wakeup",
+        last_input_origin="terminal",
+        title="runner",
+        project_path=str(project_root),
+        session_id=session_id,
+        human_role="member",
+        emit_session_started=False,
+    )
+
+    ended: list[tuple[object, object]] = []
+
+    async def _capture_emit(event: str, source: str, level: object, **kwargs: object) -> str:
+        _ = (source, level)
+        payload = kwargs.get("payload")
+        if event == "agent_runtime.session.ended" and isinstance(payload, dict):
+            ended.append((payload.get("session_id"), payload.get("project_path")))
+        return "captured"
+
+    monkeypatch.setattr(session_hold, "emit_event", _capture_emit)
+
+    await clear_active_runner_for_session_end(runtime_db, session_id)
+
+    assert ended == [(session_id, str(project_root.resolve()))]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_delivery_fires_delivered_hook_with_commit(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+
+    delivered: list[tuple[str, str | None, str]] = []
+    todos_db._on_delivered = lambda slug, commit, delivered_at: delivered.append((slug, commit, delivered_at))
+
+    ok = await todos_db.deliver(_WORK_SLUG, commit=_DELIVERY_COMMIT)
+
+    assert ok is True
+    assert len(delivered) == 1
+    seen_slug, seen_commit, seen_delivered_at = delivered[0]
+    assert seen_slug == _WORK_SLUG
+    assert seen_commit == _DELIVERY_COMMIT
+    assert seen_delivered_at
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_sync_delivery_fires_delivered_hook_with_commit(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+
+    delivered: list[tuple[str, str | None, str]] = []
+    todos_db._on_delivered = lambda slug, commit, delivered_at: delivered.append((slug, commit, delivered_at))
+
+    ok = todos_db.deliver_sync(_WORK_SLUG, commit=_SYNC_DELIVERY_COMMIT)
+
+    assert ok is True
+    assert len(delivered) == 1
+    seen_slug, seen_commit, _ = delivered[0]
+    assert seen_slug == _WORK_SLUG
+    assert seen_commit == _SYNC_DELIVERY_COMMIT

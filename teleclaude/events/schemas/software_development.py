@@ -15,15 +15,6 @@ def register_software_development(catalog: EventCatalog) -> None:
     """Register software-development domain event schemas."""
     catalog.register(
         EventSchema(
-            event_type="domain.software-development.planning.todo_created",
-            description="A new work item was created",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "title"]),
-        )
-    )
-    catalog.register(
-        EventSchema(
             event_type="workflow.todo.created",
             description="A workflow todo was created and may require lifecycle-runner evaluation",
             default_level=EventLevel.WORKFLOW,
@@ -73,15 +64,6 @@ def register_software_development(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
-            event_type="domain.software-development.planning.todo_activated",
-            description="A work item moved to active state",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug"]),
-        )
-    )
-    catalog.register(
-        EventSchema(
             event_type="domain.software-development.planning.todo_finalize_ready",
             description="Finalize-ready worker claim is ready for integration handoff",
             default_level=EventLevel.WORKFLOW,
@@ -90,26 +72,6 @@ def register_software_development(catalog: EventCatalog) -> None:
                 creates=True,
                 group_key="slug",
                 meaningful_fields=["slug", "branch", "sha", "worker_session_id", "ready_at"],
-            ),
-        )
-    )
-    catalog.register(
-        EventSchema(
-            event_type="domain.software-development.planning.artifact_changed",
-            description="A planning artifact was modified",
-            default_level=EventLevel.OPERATIONAL,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", silent_fields=["artifact", "changed_at"]),
-        )
-    )
-    catalog.register(
-        EventSchema(
-            event_type="domain.software-development.planning.dependency_resolved",
-            description="A work item dependency was resolved",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(
-                updates=True, group_key="slug", meaningful_fields=["dependency", "resolved_at"]
             ),
         )
     )
