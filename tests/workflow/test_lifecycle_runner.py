@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +15,8 @@ from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.core import db as db_mod
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine import lifecycle_runner as runner_mod
+from teleclaude.core.next_machine.dispatch_claims import list_dispatch_claims
 from teleclaude.core.next_machine.lifecycle import HumanControl, pending_human_control
 from teleclaude.core.next_machine.lifecycle_runner import (
     RunnerLane,
@@ -135,6 +138,141 @@ async def _add_todo(
             active_runner=active_runner,
         ).model_dump(exclude_none=True),
     )
+
+
+async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
+    """Add a roadmap entry whose state carries no kind (kind-discovery pending)."""
+    await todos_db.add_to_roadmap(slug, after=None)
+    await todos_db.write_state(
+        slug,
+        TodoState(schema_version=4).model_dump(exclude_none=True),
+    )
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_decide_skips_kindless_analyze_when_autostart_all_off() -> None:
+    decision = decide_dispatches(
+        {
+            _WORK_SLUG: RunnerTodo(
+                slug=_WORK_SLUG,
+                status="active",
+                kind=None,
+                lifecycle_phase=None,
+                hold=False,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_FEATURE: False, _CHANGE: False, "bug": False, _TASK: False},
+        live_session_ids=set(),
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.POLICY_DISABLED] == [_WORK_SLUG]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_decide_skips_at_capacity() -> None:
+    decision = decide_dispatches(
+        {
+            _WORK_SLUG: RunnerTodo(
+                slug=_WORK_SLUG,
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_FEATURE: True, _CHANGE: True, "bug": True, _TASK: False},
+        live_session_ids=set(),
+        max_dispatch=2,
+        live_driver_count=2,
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.AT_CAPACITY] == [_WORK_SLUG]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_claim_held_across_spawn(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert [intent.slug for intent in result.dispatched] == [_WORK_SLUG]
+    claims = await list_dispatch_claims(todos_db)
+    assert [(claim.slug, claim.lane) for claim in claims] == [(_WORK_SLUG, RunnerLane.WORK.value)]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_load_todos_does_not_clear_active_runner_under_outstanding_claim(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_SPAWN_SESSION)
+    await runner_mod.acquire_dispatch_claim(todos_db, slug=_WORK_SLUG, lane=RunnerLane.WORK.value, owner="test-owner")
+
+    # _SPAWN_SESSION is not live in _FakeDb; without the guard it would be cleared.
+    loaded, reconciled = await runner_mod._load_todos(todos_db, cast(Db, _FakeDb()), claimed_slugs={_WORK_SLUG})
+
+    assert reconciled == []
+    assert loaded[_WORK_SLUG].active_runner == _SPAWN_SESSION
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == _SPAWN_SESSION
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_concurrent_passes_dispatch_once(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_kindless_todo(todos_db, _WORK_SLUG)
+
+    gate = asyncio.Event()
+    run_count = 0
+
+    class _BlockingClient:
+        async def connect(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+        async def run_session(self, **kwargs: RunSessionArgs) -> CreateSessionResponseDTO:
+            nonlocal run_count
+            run_count += 1
+            await gate.wait()
+            return CreateSessionResponseDTO(
+                status="success",
+                session_id=_SPAWN_SESSION,
+                tmux_session_name="tmux-spawn-1",
+            )
+
+    async def _pass() -> object:
+        return await run_lifecycle_runner(
+            project_root,
+            trigger="test",
+            db=cast(Db, _FakeDb()),
+            client_factory=lambda: _BlockingClient(),
+        )
+
+    task = asyncio.gather(_pass(), _pass())
+    await asyncio.sleep(0)
+    gate.set()
+    await task
+
+    assert run_count == 1
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

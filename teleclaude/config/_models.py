@@ -260,6 +260,24 @@ class ProcessJanitorConfig:
 
 
 @dataclass
+class WorkflowAutostartConfig:
+    """Per-kind automatic lifecycle-runner dispatch policy (off by default)."""
+
+    feature: bool = False
+    change: bool = False
+    bug: bool = False
+    task: bool = False
+
+
+@dataclass
+class WorkflowConfig:
+    """Daemon-runtime lifecycle-runner control plane."""
+
+    autostart: WorkflowAutostartConfig = field(default_factory=WorkflowAutostartConfig)
+    max_todo_dispatch: int = 5
+
+
+@dataclass
 class TerminalConfig:
     """Terminal display settings."""
 
@@ -326,6 +344,7 @@ class Config:
     stt: STTConfig | None = None
     chiptunes: ChiptunesConfig | None = None
     process_janitor: ProcessJanitorConfig = field(default_factory=ProcessJanitorConfig)
+    workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
     summarizer: SummarizerConfig | None = None
     experiments: list[ExperimentConfig] = field(default_factory=list)
     remote_computers: list[RemoteComputerConfig] = field(default_factory=list)

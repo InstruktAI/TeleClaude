@@ -82,6 +82,18 @@ email:
   # Credentials live in .env: SMTP_USERNAME, SMTP_KEY, EMAIL_FROM (+ optional SMTP_RELAY, EMAIL_REPLYTO).
   enabled: false
 
+# Lifecycle-runner control plane (per-machine daemon runtime config).
+# Autostart governs whether the lifecycle runner self-dispatches workflow todos.
+# All kinds default to OFF — nothing self-dispatches until explicitly enabled here.
+# max_todo_dispatch caps the number of concurrently live driver sessions.
+workflow:
+  autostart:
+    feature: false
+    change: false
+    bug: false
+    task: false
+  max_todo_dispatch: 5
+
 agents:
   default: claude
   claude:

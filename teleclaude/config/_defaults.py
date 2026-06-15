@@ -88,5 +88,14 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "music_dir": None,
         "volume": 1.0,
     },
+    "workflow": {
+        "autostart": {
+            "feature": False,
+            "change": False,
+            "bug": False,
+            "task": False,
+        },
+        "max_todo_dispatch": 5,
+    },
     "experiments": [],
 }

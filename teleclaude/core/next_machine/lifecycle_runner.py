@@ -12,9 +12,13 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
-from teleclaude.config.loader import load_project_config
+from teleclaude.config import config
 from teleclaude.core.db import Db, get_db
-from teleclaude.core.next_machine.dispatch_claims import acquire_dispatch_claim, release_dispatch_claim
+from teleclaude.core.next_machine.dispatch_claims import (
+    acquire_dispatch_claim,
+    list_dispatch_claims,
+    release_dispatch_claim,
+)
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle import (
     HumanControl,
@@ -47,6 +51,7 @@ class RunnerLane(StrEnum):
 class RunnerSkipReason(StrEnum):
     ALREADY_DRIVEN = "already-driven"
     APPROVAL_PENDING = "approval-pending"
+    AT_CAPACITY = "at-capacity"
     CLAIMED = "claim-conflict"
     DELIVERED = "delivered"
     DEPENDENCY_BLOCKED = "dependency-blocked"
@@ -170,6 +175,39 @@ def _pending_human_control_for_runner(todo: RunnerTodo) -> HumanControl | None:
     )
 
 
+def _resolve_kinded_dispatch(
+    todo: RunnerTodo,
+    kind: str,
+    *,
+    prepared_slugs: set[str],
+    delivered_slugs: set[str],
+    autostart: Mapping[str, bool],
+) -> tuple[RunnerLane | None, RunnerSkipReason | None]:
+    """Resolve the dispatch lane (or skip reason) for a kinded todo."""
+    if kind == KIND_TASK:
+        if not _autostart_enabled(kind, autostart):
+            return None, RunnerSkipReason.POLICY_DISABLED
+        return None, RunnerSkipReason.TASK_AUTHORIZATION_MISSING
+    if kind not in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
+        return None, RunnerSkipReason.INVALID_KIND
+    if not _autostart_enabled(kind, autostart):
+        return None, RunnerSkipReason.POLICY_DISABLED
+    phase = coerce_lifecycle_phase(todo.lifecycle_phase)
+    if phase is None:
+        return None, RunnerSkipReason.UNKNOWN_PHASE
+    if phase == LifecyclePhase.FINALIZE_READY:
+        return None, RunnerSkipReason.FINALIZE_READY
+    if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED):
+        unmet = [dep for dep in todo.after if dep not in delivered_slugs]
+        lane = RunnerLane.WORK
+    else:
+        unmet = [dep for dep in todo.after if dep not in prepared_slugs]
+        lane = RunnerLane.PREPARE
+    if unmet:
+        return None, RunnerSkipReason.DEPENDENCY_BLOCKED
+    return lane, None
+
+
 def decide_dispatches(
     todos: Mapping[str, RunnerTodo],
     *,
@@ -178,9 +216,21 @@ def decide_dispatches(
     autostart: Mapping[str, bool],
     live_session_ids: set[str],
     claimed: set[tuple[str, RunnerLane]] | None = None,
+    max_dispatch: int = 5,
+    live_driver_count: int = 0,
 ) -> RunnerDecision:
     decision = RunnerDecision(evaluated=len(todos))
     active_claims = claimed or set()
+    any_autostart = any(autostart.values())
+    # Concurrency budget: how many more drivers may go live this pass. Each
+    # dispatched intent consumes one slot on top of the already-live drivers.
+    # TODO: exclude manually_started drivers from the live count — that exclusion
+    # lands in a later track; for now all live drivers count toward the cap.
+    remaining_budget = max(0, max_dispatch - live_driver_count)
+
+    def _at_capacity() -> bool:
+        return remaining_budget - len(decision.intents) <= 0
+
     for slug in _dependency_first_order(todos):
         todo = todos[slug]
         if todo.status == "removed":
@@ -204,8 +254,14 @@ def decide_dispatches(
             continue
         if todo.kind is None:
             lane = RunnerLane.ANALYZE
+            if not any_autostart:
+                decision.skip(RunnerSkipReason.POLICY_DISABLED, slug)
+                continue
             if (slug, lane) in active_claims:
                 decision.skip(RunnerSkipReason.CLAIMED, slug)
+                continue
+            if _at_capacity():
+                decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
                 continue
             decision.intents.append(_intent(slug, lane))
             continue
@@ -214,37 +270,21 @@ def decide_dispatches(
         except ValueError:
             decision.skip(RunnerSkipReason.INVALID_KIND, slug)
             continue
-        if kind == KIND_TASK:
-            if not _autostart_enabled(kind, autostart):
-                decision.skip(RunnerSkipReason.POLICY_DISABLED, slug)
-            else:
-                decision.skip(RunnerSkipReason.TASK_AUTHORIZATION_MISSING, slug)
-            continue
-        if kind not in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
-            decision.skip(RunnerSkipReason.INVALID_KIND, slug)
-            continue
-        if not _autostart_enabled(kind, autostart):
-            decision.skip(RunnerSkipReason.POLICY_DISABLED, slug)
-            continue
-
-        phase = coerce_lifecycle_phase(todo.lifecycle_phase)
-        if phase is None:
-            decision.skip(RunnerSkipReason.UNKNOWN_PHASE, slug)
-            continue
-        if phase == LifecyclePhase.FINALIZE_READY:
-            decision.skip(RunnerSkipReason.FINALIZE_READY, slug)
-            continue
-        if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED):
-            unmet = [dep for dep in todo.after if dep not in delivered_slugs]
-            lane = RunnerLane.WORK
-        else:
-            unmet = [dep for dep in todo.after if dep not in prepared_slugs]
-            lane = RunnerLane.PREPARE
-        if unmet:
-            decision.skip(RunnerSkipReason.DEPENDENCY_BLOCKED, slug)
+        lane, skip_reason = _resolve_kinded_dispatch(
+            todo,
+            kind,
+            prepared_slugs=prepared_slugs,
+            delivered_slugs=delivered_slugs,
+            autostart=autostart,
+        )
+        if lane is None:
+            decision.skip(skip_reason or RunnerSkipReason.INVALID_KIND, slug)
             continue
         if (slug, lane) in active_claims:
             decision.skip(RunnerSkipReason.CLAIMED, slug)
+            continue
+        if _at_capacity():
+            decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
             continue
         decision.intents.append(_intent(slug, lane))
     return decision
@@ -304,9 +344,12 @@ async def _set_active_runner(todos_db: TodosDb, slug: str, session_id: str) -> N
     await writer.commit(todos_db, slug)
 
 
-async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
+async def _load_todos(
+    todos_db: TodosDb, db: Db, *, claimed_slugs: set[str] | None = None
+) -> tuple[dict[str, RunnerTodo], list[str]]:
     rows = await todos_db.list_roadmap(include_icebox=True, include_delivered=True, include_removed=True)
     deps = await todos_db.load_deps()
+    outstanding = claimed_slugs or set()
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
@@ -330,7 +373,11 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
             active_runner=todo.active_runner,
             after=tuple(deps.get(todo.slug, [])),
         )
-        if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
+        # Do not reconcile-clear a slug whose dispatch claim is still outstanding:
+        # the spawn->live boot window is bridged by the claim lease, and the
+        # session row may not yet read as live. Clearing here would race the next
+        # pass into a duplicate dispatch (the storm this guard prevents).
+        if todo.active_runner and todo.slug not in outstanding and not await _is_live_runner(db, todo.active_runner):
             await _clear_active_runner(todos_db, todo.slug)
             reconciled.append(todo.slug)
             todo = RunnerTodo(
@@ -377,10 +424,14 @@ async def _run_intent(
         if intent.additional_context:
             kwargs["additional_context"] = intent.additional_context
         response = await client.run_session(**kwargs)
-        await _set_active_runner(todos_db, intent.slug, response.session_id)
-        return response.session_id
-    finally:
+    except BaseException:
+        # Spawn failed: drop the claim so a later pass can retry. On success the
+        # claim is intentionally retained — its lease bridges the spawn->live gap
+        # so the next pass sees the live active_runner and skips ALREADY_DRIVEN.
         await release_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
+        raise
+    await _set_active_runner(todos_db, intent.slug, response.session_id)
+    return response.session_id
 
 
 async def run_lifecycle_runner(
@@ -393,11 +444,19 @@ async def run_lifecycle_runner(
     project_root = Path(project_path).resolve()
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
-    todos, reconciled = await _load_todos(todos_db, runtime_db)
+    claims = await list_dispatch_claims(todos_db)
+    claimed_pairs = {(claim.slug, RunnerLane(claim.lane)) for claim in claims}
+    claimed_slugs = {claim.slug for claim in claims}
+    todos, reconciled = await _load_todos(todos_db, runtime_db, claimed_slugs=claimed_slugs)
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
-    project_config = load_project_config(project_root / "teleclaude.yml")
-    autostart = project_config.workflow.autostart.model_dump()
+    workflow = config.workflow
+    autostart = {
+        KIND_FEATURE: workflow.autostart.feature,
+        KIND_CHANGE: workflow.autostart.change,
+        KIND_BUG: workflow.autostart.bug,
+        KIND_TASK: workflow.autostart.task,
+    }
     live_session_ids = await _live_active_runners(runtime_db, todos)
     decision = decide_dispatches(
         todos,
@@ -405,6 +464,9 @@ async def run_lifecycle_runner(
         delivered_slugs=delivered_slugs,
         autostart=autostart,
         live_session_ids=live_session_ids,
+        claimed=claimed_pairs,
+        max_dispatch=workflow.max_todo_dispatch,
+        live_driver_count=len(live_session_ids),
     )
 
     dispatched: list[DispatchIntent] = []

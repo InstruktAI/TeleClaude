@@ -60,6 +60,24 @@ def _reset_event_bus():
     reset_command_service()
 
 
+@pytest.fixture(autouse=True)
+def _restore_config_singleton():
+    """Restore the global config singleton after each test.
+
+    ``reload_config()`` mutates ``teleclaude.config.config`` in place, and tests
+    that exercise reload paths leave the singleton pointed at a fixture config.
+    Snapshot the singleton's attributes before the test and restore them after so
+    that pollution (e.g. an all-off ``workflow`` section) never leaks to later
+    tests that read the live config.
+    """
+    from teleclaude.config import config as tc_config  # startup boundary
+
+    snapshot = dict(tc_config.__dict__)
+    yield
+    tc_config.__dict__.clear()
+    tc_config.__dict__.update(snapshot)
+
+
 @pytest.fixture
 def cluster_event_bus(monkeypatch: pytest.MonkeyPatch) -> None:
     """Configure EventBus Redis only for tests that exercise CLUSTER emit paths."""

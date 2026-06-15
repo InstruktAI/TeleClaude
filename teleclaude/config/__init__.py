@@ -45,6 +45,8 @@ from teleclaude.config._models import TTSServiceVoiceConfig as TTSServiceVoiceCo
 from teleclaude.config._models import WhatsAppConfig as WhatsAppConfig
 from teleclaude.config._models import WhatsAppCredsConfig as WhatsAppCredsConfig
 from teleclaude.config._models import WhatsAppQoSConfig as WhatsAppQoSConfig
+from teleclaude.config._models import WorkflowAutostartConfig as WorkflowAutostartConfig
+from teleclaude.config._models import WorkflowConfig as WorkflowConfig
 from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
 from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
@@ -320,6 +322,32 @@ def _parse_process_janitor_seconds(raw: dict[str, object], key: str, default: in
     return parsed
 
 
+def _parse_workflow_config(raw: dict[str, object] | None) -> WorkflowConfig:  # guard: loose-dict
+    """Parse the daemon-runtime workflow control-plane config from raw dict."""
+    if not raw:
+        return WorkflowConfig()
+    autostart_raw = raw.get("autostart")
+    autostart = WorkflowAutostartConfig()
+    if isinstance(autostart_raw, dict):
+        autostart = WorkflowAutostartConfig(
+            feature=_as_bool(autostart_raw.get("feature", False)),
+            change=_as_bool(autostart_raw.get("change", False)),
+            bug=_as_bool(autostart_raw.get("bug", False)),
+            task=_as_bool(autostart_raw.get("task", False)),
+        )
+    max_dispatch_raw = raw.get("max_todo_dispatch", 5)
+    if isinstance(max_dispatch_raw, bool) or not isinstance(max_dispatch_raw, int):
+        if isinstance(max_dispatch_raw, str) and max_dispatch_raw.strip().isdigit():
+            max_todo_dispatch = int(max_dispatch_raw.strip())
+        else:
+            raise ValueError("workflow.max_todo_dispatch must be an integer")
+    else:
+        max_todo_dispatch = max_dispatch_raw
+    if max_todo_dispatch < 1:
+        raise ValueError("workflow.max_todo_dispatch must be greater than or equal to 1")
+    return WorkflowConfig(autostart=autostart, max_todo_dispatch=max_todo_dispatch)
+
+
 def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
     """Parse STT config from raw dict."""
     if not raw_stt:
@@ -375,6 +403,7 @@ def _build_config(
     stt_raw = raw.get("stt", None)
     chiptunes_raw = raw.get("chiptunes", None)
     process_janitor_raw = raw.get("process_janitor", None)
+    workflow_raw = raw.get("workflow", None)
     summarizer_raw = raw.get("summarizer", None)
     experiments_raw = raw.get("experiments", [])
     agents_raw = dict(_require_agents_section(raw))
@@ -592,6 +621,7 @@ def _build_config(
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
         process_janitor=_parse_process_janitor_config(process_janitor_raw),  # type: ignore[arg-type]
+        workflow=_parse_workflow_config(workflow_raw),  # type: ignore[arg-type]
         summarizer=_parse_summarizer_config(summarizer_raw),  # type: ignore[arg-type]
         experiments=experiments,
         remote_computers=remote_computers,
