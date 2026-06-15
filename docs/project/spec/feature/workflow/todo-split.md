@@ -133,6 +133,21 @@ And the request fails with a not-found error
 And no child entries are written
 ```
 
+<!-- planned:fix-holder-to-not-be-dep-on-children -->
+
+#### UC-WTS12: A group member cannot depend on its own holder
+
+```
+Given child-a is in the todo list with group_slug="parent-slug" (so "parent-slug" is a holder)
+When a caller runs "telec todo update child-a --after parent-slug"
+Then the request is refused with a conflict error stating that group membership and an "after" dependency on the same holder are mutually exclusive
+And child-a's existing dependencies are left unchanged
+And the same refusal applies when the requested dependency is any ancestor holder of child-a reached by walking group_slug transitively
+And a dependency from a non-member todo onto the holder is still allowed (UC-WTS9 group-as-unit gating is unaffected)
+```
+
+<!-- /planned:fix-holder-to-not-be-dep-on-children -->
+
 ## Known caveats
 
 - An entry is recognised as a holder **only** when at least one live child entry group-references it. There is no `kind="holder"` enum value, no holder lifecycle phase, no holder lifecycle state, and slug-prefix or `after` relationships are never used to infer parentage.
@@ -144,3 +159,6 @@ And no child entries are written
 - The retained holder input is immutable after the entry becomes a holder. Later edits to the holder's input do not exist as a valid operation; child seeding happens exactly once, at split time.
 - Holder status is a projection from child entries. A holder dependency is satisfied when every direct child has delivered; this is computed for dependency gating without mutating the holder entry.
 - A holder with no runnable direct child (all delivered, all blocked, or all not-yet-ready) is **skipped** by the work resolver, ensuring it cannot starve later ready work in the todo list.
+<!-- planned:fix-holder-to-not-be-dep-on-children -->
+- Group membership (`group_slug`) and an `after` dependency on the same holder are **mutually exclusive** for a holder and its own members. A member already belongs to its holder through grouping; letting it also declare an `after` dependency on that holder produces an unsatisfiable item, because the holder is treated as delivered/prepared only once every member reaches that state — the member would gate on a target gated on itself. The dependency-write path rejects any requested dependency that is the slug's own `group_slug` or any ancestor holder reached by walking `group_slug` transitively. This is enforced in addition to ordinary `roadmap_deps` cycle detection, which alone cannot see the holder→member edge because that relationship lives in `group_slug`, not in `roadmap_deps`. A dependency from a non-member todo onto the holder (depending on the group as a unit) stays valid.
+<!-- /planned:fix-holder-to-not-be-dep-on-children -->
