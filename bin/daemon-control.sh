@@ -32,6 +32,8 @@ API_SOCKET="/tmp/teleclaude-api.sock"
 # Startup soft warning threshold in seconds. Startup keeps waiting past this
 # threshold and emits warnings instead of failing hard.
 STARTUP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STARTUP_WAIT_S:-15}"
+STOP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_WAIT_S:-25}"
+STOP_KILL_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_KILL_WAIT_S:-5}"
 STARTUP_STREAM_PID=""
 
 # Platform-specific config
@@ -88,10 +90,8 @@ launchd_plist_path() {
 }
 
 managed_launchd_labels() {
-    # TELEC_DAEMON_LABEL (v2 Rust) is deliberately absent pre-cutover: the v2
-    # unit is opt-in via `install-telec-daemon` and joins the managed set at
-    # the v2 cutover. Status treats it as required-if-present.
     printf '%s\n' "$V1_DAEMON_LABEL"
+    printf '%s\n' "$TELEC_DAEMON_LABEL"
     printf '%s\n' "$DOCS_WATCH_LABEL"
 }
 
@@ -534,9 +534,130 @@ is_launchd_unit_loaded() {
     launchctl print "$(launchd_domain)/$label" >/dev/null 2>&1
 }
 
+launchd_unit_pid() {
+    local label="$1"
+    launchctl print "$(launchd_domain)/$label" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true
+}
+
+systemd_main_pid() {
+    systemctl show "$SERVICE_LABEL" --property=MainPID --value 2>/dev/null | awk '$1 != "0" { print $1; exit }' || true
+}
+
+is_pid_alive() {
+    local pid="$1"
+    [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1
+}
+
+pid_label() {
+    local entry="$1"
+    printf '%s\n' "${entry%%:*}"
+}
+
+pid_value() {
+    local entry="$1"
+    printf '%s\n' "${entry#*:}"
+}
+
+wait_for_daemon_death() {
+    local timeout_seconds="$1"
+    shift
+    local entries=("$@")
+    local deadline=$((SECONDS + timeout_seconds))
+    local alive_entries=()
+    local entry
+    local label
+    local pid
+
+    while true; do
+        alive_entries=()
+        for entry in "${entries[@]}"; do
+            label="$(pid_label "$entry")"
+            pid="$(pid_value "$entry")"
+            if [ -n "$pid" ] && is_pid_alive "$pid"; then
+                alive_entries+=("$(unit_name "$label") pid $pid")
+            fi
+        done
+
+        if [ "${#alive_entries[@]}" -eq 0 ]; then
+            return 0
+        fi
+
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            log_warn "Still alive after ${timeout_seconds}s: ${alive_entries[*]}"
+            return 1
+        fi
+
+        sleep 1
+    done
+}
+
+kill_managed_pid() {
+    local label="$1"
+    local pid="$2"
+
+    if [ -z "$pid" ] || ! is_pid_alive "$pid"; then
+        return 0
+    fi
+
+    log_warn "$(unit_name "$label"): force killing pid $pid"
+    if [ "$PLATFORM" = "macos" ]; then
+        if is_launchd_unit_loaded "$label"; then
+            launchctl kill SIGKILL "$(launchd_domain)/$label" 2>/dev/null || true
+        fi
+        if is_pid_alive "$pid"; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    else
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+}
+
+is_managed_launchd_label() {
+    local candidate="$1"
+    local label
+    while IFS= read -r label; do
+        if [ "$candidate" = "$label" ]; then
+            return 0
+        fi
+    done < <(managed_launchd_labels)
+    return 1
+}
+
+installed_teleclaude_launchd_labels() {
+    find \
+        "$HOME/Library/LaunchAgents" \
+        "/Library/LaunchAgents" \
+        "/Library/LaunchDaemons" \
+        -maxdepth 1 \
+        -name 'ai.instrukt.teleclaude.*.plist' \
+        -exec basename {} .plist \; 2>/dev/null | sort -u
+}
+
+check_managed_launchd_units_complete() {
+    local unknown=0
+    local label
+
+    if [ "$PLATFORM" != "macos" ]; then
+        return 0
+    fi
+
+    while IFS= read -r label; do
+        [ -n "$label" ] || continue
+        if ! is_managed_launchd_label "$label"; then
+            log_warn "Unmanaged TeleClaude launchd unit installed: $label"
+            unknown=1
+        fi
+    done < <(installed_teleclaude_launchd_labels)
+
+    return "$unknown"
+}
+
 ensure_launchd_managed_plists() {
     local label
     while IFS= read -r label; do
+        if [ "$label" = "$TELEC_DAEMON_LABEL" ]; then
+            continue
+        fi
         if [ ! -f "$(launchd_plist_path "$label")" ]; then
             install_service
             return 0
@@ -641,6 +762,7 @@ start_daemon() {
 
     if [ "$PLATFORM" = "macos" ]; then
         ensure_launchd_managed_plists
+        check_managed_launchd_units_complete || return 1
     elif [ ! -f "$SERVICE_PATH" ]; then
         install_service
     fi
@@ -702,16 +824,39 @@ start_daemon() {
 # Stop daemon via service manager
 stop_daemon() {
     log_info "Stopping TeleClaude daemon..."
+    local pid_entries=()
+    local label
+    local pid
+    local entry
 
     if [ "$PLATFORM" = "macos" ]; then
-        stop_launchd_unit "$DOCS_WATCH_LABEL"
-        stop_launchd_unit "$TELEC_DAEMON_LABEL"
-        stop_launchd_unit "$SERVICE_LABEL"
-        sleep 1
+        while IFS= read -r label; do
+            pid="$(launchd_unit_pid "$label")"
+            pid_entries+=("$label:$pid")
+        done < <(managed_launchd_labels)
+
+        while IFS= read -r label; do
+            stop_launchd_unit "$label"
+        done < <(managed_launchd_labels)
+
+        if ! wait_for_daemon_death "$STOP_WAIT_SECONDS" "${pid_entries[@]}"; then
+            for entry in "${pid_entries[@]}"; do
+                kill_managed_pid "$(pid_label "$entry")" "$(pid_value "$entry")"
+            done
+            wait_for_daemon_death "$STOP_KILL_WAIT_SECONDS" "${pid_entries[@]}"
+        fi
+
+        while IFS= read -r label; do
+            if is_launchd_unit_loaded "$label"; then
+                log_error "$(unit_name "$label"): still loaded after stop"
+                return 1
+            fi
+        done < <(managed_launchd_labels)
+
         if [ -f "$PID_FILE" ]; then
             rm -f "$PID_FILE"
         fi
-        log_info "Managed launchd units stopped"
+        log_info "Managed launchd units stopped and verified"
         return 0
     fi
 
@@ -720,19 +865,20 @@ stop_daemon() {
         return 0
     fi
 
+    pid="$(systemd_main_pid)"
+    if [ -z "$pid" ] && [ -f "$PID_FILE" ]; then
+        pid="$(cat "$PID_FILE")"
+    fi
+    pid_entries=("$SERVICE_LABEL:$pid")
+
     # Linux: stop and disable systemd service
     log_info "Stopping and disabling systemd service..."
     sudo systemctl stop "$SERVICE_LABEL"
     sudo systemctl disable "$SERVICE_LABEL"
-    sleep 1
 
-    # Clean up any remaining processes (Linux only; macOS process enumeration may be restricted)
-    if [ "$PLATFORM" != "macos" ]; then
-        if pgrep -f "teleclaude.daemon" > /dev/null; then
-            log_warn "Daemon still running, force killing..."
-            pkill -9 -f "teleclaude.daemon" 2>/dev/null || true
-            sleep 1
-        fi
+    if ! wait_for_daemon_death "$STOP_WAIT_SECONDS" "${pid_entries[@]}"; then
+        kill_managed_pid "$SERVICE_LABEL" "$pid"
+        wait_for_daemon_death "$STOP_KILL_WAIT_SECONDS" "${pid_entries[@]}"
     fi
 
     # Clean up PID file
@@ -740,7 +886,7 @@ stop_daemon() {
         rm -f "$PID_FILE"
     fi
 
-    log_info "Daemon stopped (service unloaded)"
+    log_info "Daemon stopped and verified (service unloaded)"
 }
 
 # Check daemon status
@@ -763,6 +909,7 @@ status_daemon() {
     fi
 
     if [ "$PLATFORM" = "macos" ]; then
+        check_managed_launchd_units_complete || overall_ok=1
         # telec-daemon (v2 Rust) is required-if-present until the v2 cutover:
         # an installed unit must be healthy; an absent unit is informational.
         if [ -f "$HOME/Library/LaunchAgents/$TELEC_DAEMON_LABEL.plist" ]; then

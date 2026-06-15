@@ -22,9 +22,7 @@ Restart the daemon with minimal downtime and verify it is healthy.
 1. Run `make restart`.
 2. Verify the service is running with `make status`.
 3. Check recent logs with `instrukt-ai-logs teleclaude --since 10m`.
-4. If the daemon is restarting repeatedly, review:
-   - `/var/log/instrukt-ai/teleclaude/monitoring/api-unlink.log`
-   - `/var/log/instrukt-ai/teleclaude/monitoring/sigterm-watch.log`
+4. If the daemon is restarting repeatedly, review the `system.process.reaped` event stream (`telec events`) and the structured SIGTERM/shutdown logs before taking action.
 
 ## Outputs
 
