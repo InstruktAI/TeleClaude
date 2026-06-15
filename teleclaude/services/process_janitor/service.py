@@ -171,7 +171,7 @@ class ProcessJanitorService:
         return _ReapResult(event_emitted=True, process_terminated=not observe_only)
 
     async def _emit_reap_event(self, match: ProcessMatch, *, observe_only: bool) -> None:
-        payload: dict[str, Any] = {
+        payload: dict[str, Any] = {  # guard: loose-dict - reap event payload serialized to the event bus
             "pid": match.pid,
             "signature_id": match.policy.signature_id,
             "signature_name": match.policy.name,

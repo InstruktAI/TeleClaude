@@ -51,7 +51,7 @@ class ProcessJanitorPolicy:
     signature_id: str
     name: str
     matcher_kind: MatcherKind
-    matcher_params: dict[str, object]
+    matcher_params: dict[str, object]  # guard: loose-dict - JSON matcher params; shape varies per matcher kind
     ttl_seconds: int
     dry_run: bool
 
@@ -87,6 +87,7 @@ class ProcessMatch:
         return self.process.pid
 
 
+# guard: loose-dict-func - seed policy specs map to heterogeneous DB row kwargs
 def default_policy_specs(default_ttl_seconds: int, *, dry_run_default: bool) -> list[dict[str, object]]:
     """Return seed policies for known TeleClaude leak classes."""
     return [
@@ -221,10 +222,12 @@ def _string_list(value: object) -> list[str]:
     return [str(item) for item in value]
 
 
+# guard: loose-dict-func - reads a value from JSON-parsed matcher params
 def _int_param(params: dict[str, object], key: str) -> int | None:
     value = params.get(key)
     return int(value) if isinstance(value, int) else None
 
 
+# guard: loose-dict-func - reads a value from JSON-parsed matcher params
 def _bool_param(params: dict[str, object], key: str) -> bool:
     return bool(params.get(key))

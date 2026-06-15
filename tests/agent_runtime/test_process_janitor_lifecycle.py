@@ -326,7 +326,7 @@ async def test_dry_run_scan_emits_observe_event_without_sigterm(monkeypatch: pyt
     )
     process = _descriptor(333, age_seconds=120, cmdline=("python", "-m", "custom.leak"))
     killed: list[int] = []
-    emitted: list[dict[str, object]] = []
+    emitted: list[dict[str, object]] = []  # guard: loose-dict - captures heterogeneous emitted event payloads
 
     async def _capture_emit_event(event: str, source: str, **kwargs: object) -> str:
         emitted.append({"event": event, "source": source, **kwargs})
@@ -367,7 +367,7 @@ async def test_expired_live_owned_chiptunes_worker_is_not_reaped(monkeypatch: py
     db = _ServiceDb(expired_entries=[entry])
     process = _descriptor(444, age_seconds=3600, cmdline=("python", "-m", "teleclaude.chiptunes.worker"))
     killed: list[int] = []
-    emitted: list[dict[str, object]] = []
+    emitted: list[dict[str, object]] = []  # guard: loose-dict - captures heterogeneous emitted event payloads
 
     async def _capture_emit_event(event: str, source: str, **kwargs: object) -> str:
         emitted.append({"event": event, "source": source, **kwargs})
