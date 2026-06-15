@@ -250,8 +250,16 @@ def _parse_tts_events(raw_events: object) -> dict[str, TTSEventConfig]:
             events[event_name] = TTSEventConfig(
                 enabled=_as_bool(event_data.get("enabled", False)),
                 message=str(event_data.get("message", "")) if event_data.get("message") else None,
+                messages=_parse_tts_event_messages(event_data.get("messages")),
             )
     return events
+
+
+def _parse_tts_event_messages(raw_messages: object) -> list[str] | None:
+    if not isinstance(raw_messages, list):
+        return None
+    messages = [str(item) for item in raw_messages if item]
+    return messages or None
 
 
 def _parse_tts_voices(raw_voices: object) -> list[TTSServiceVoiceConfig]:

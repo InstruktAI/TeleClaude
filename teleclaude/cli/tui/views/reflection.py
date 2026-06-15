@@ -71,105 +71,152 @@ def _resolve_type_and_choices(ann: Any) -> tuple[Any, list[str] | None]:
     return real_type, None
 
 
+def _struct_type_from_annotation(ann: Any) -> Any | None:
+    """Return the nested BaseModel/dataclass type within an annotation, or None."""
+    for candidate in _unpack_union(ann):
+        if candidate is type(None):
+            continue
+        if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+            return candidate
+        if isinstance(candidate, type) and dataclasses.is_dataclass(candidate):
+            return candidate
+    return None
+
+
+def _reflect_field(
+    full_key: str,
+    label: str,
+    section: str,
+    owning_source: str,
+    annotation: Any,
+    value: Any,
+    description: str | None,
+) -> list[ReflectedField]:
+    """Recurse into a nested struct/dict, or emit a single leaf field.
+
+    Recursion is driven by the value when one is present (a model, dataclass, or
+    dict of those), and by the declared type when the value is an unset
+    ``Optional`` nested struct — so a structure renders to its leaves regardless of
+    whether it is currently populated.
+    """
+    if isinstance(value, BaseModel) or (dataclasses.is_dataclass(value) and not isinstance(value, type)):
+        return reflect_schema(value, prefix=full_key, section=label, owning_source=owning_source)
+    if isinstance(value, dict):
+        return reflect_schema(value, prefix=full_key, section=label, owning_source=owning_source)
+
+    if value is None and annotation is not None:
+        nested = _struct_type_from_annotation(annotation)
+        if nested is not None:
+            return _reflect_type(nested, full_key, label, owning_source)
+
+    if annotation is not None:
+        ftype, choices = _resolve_type_and_choices(annotation)
+    else:
+        ftype, choices = type(value), None
+
+    return [
+        ReflectedField(
+            key=full_key,
+            name=label,
+            field_type=ftype,
+            value=value,
+            choices=choices,
+            description=description,
+            section=section,
+            owning_source=owning_source,
+        )
+    ]
+
+
+def _reflect_type(struct_type: Any, prefix: str, section: str, owning_source: str) -> list[ReflectedField]:
+    """Reflect an unset nested struct *type* into value-None leaf fields."""
+    fields: list[ReflectedField] = []
+    if isinstance(struct_type, type) and issubclass(struct_type, BaseModel):
+        for name, field_info in struct_type.model_fields.items():
+            extra = field_info.json_schema_extra
+            if isinstance(extra, dict) and extra.get("exclude_from_tui"):
+                continue
+            fields.extend(
+                _reflect_field(
+                    f"{prefix}.{name}" if prefix else name,
+                    name.replace("_", " ").title(),
+                    section,
+                    owning_source,
+                    field_info.annotation,
+                    None,
+                    field_info.description or "",
+                )
+            )
+    elif isinstance(struct_type, type) and dataclasses.is_dataclass(struct_type):
+        type_hints = get_type_hints(struct_type)
+        for f in dataclasses.fields(struct_type):
+            if f.metadata and f.metadata.get("exclude_from_tui"):
+                continue
+            fields.extend(
+                _reflect_field(
+                    f"{prefix}.{f.name}" if prefix else f.name,
+                    f.name.replace("_", " ").title(),
+                    section,
+                    owning_source,
+                    type_hints.get(f.name, f.type),
+                    None,
+                    f.metadata.get("description") if f.metadata else None,
+                )
+            )
+    return fields
+
+
 def reflect_schema(
     obj: Any, prefix: str = "", section: str = "General", owning_source: str = "global"
 ) -> list[ReflectedField]:
-    """Inspect a Pydantic model or a dataclass instance and return its ReflectedFields."""
+    """Inspect a Pydantic model, dataclass instance, or dict and return its ReflectedFields."""
     fields: list[ReflectedField] = []
 
-    # 1. Pydantic BaseModel
     if isinstance(obj, BaseModel):
         for name, field_info in type(obj).model_fields.items():
             extra = field_info.json_schema_extra
             if isinstance(extra, dict) and extra.get("exclude_from_tui"):
                 continue
-
-            full_key = f"{prefix}.{name}" if prefix else name
-            val = getattr(obj, name)
-
-            # Recurse into nested BaseModels
-            if isinstance(val, BaseModel):
-                sec_name = name.replace("_", " ").title()
-                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name, owning_source=owning_source))
-                continue
-
-            ann = field_info.annotation
-            ftype, choices = _resolve_type_and_choices(ann)
-            desc = field_info.description or ""
-
-            label = name.replace("_", " ").title()
-
-            fields.append(
-                ReflectedField(
-                    key=full_key,
-                    name=label,
-                    field_type=ftype,
-                    value=val,
-                    choices=choices,
-                    description=desc,
-                    section=section,
-                    owning_source=owning_source,
+            fields.extend(
+                _reflect_field(
+                    f"{prefix}.{name}" if prefix else name,
+                    name.replace("_", " ").title(),
+                    section,
+                    owning_source,
+                    field_info.annotation,
+                    getattr(obj, name),
+                    field_info.description or "",
                 )
             )
 
-    # 2. Dataclass instance
     elif dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         type_hints = get_type_hints(type(obj))
         for f in dataclasses.fields(obj):
-            name = f.name
             if f.metadata and f.metadata.get("exclude_from_tui"):
                 continue
-
-            full_key = f"{prefix}.{name}" if prefix else name
-            val = getattr(obj, name)
-
-            if dataclasses.is_dataclass(val) and not isinstance(val, type):
-                sec_name = name.replace("_", " ").title()
-                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name, owning_source=owning_source))
-                continue
-
-            ann = type_hints.get(name, f.type)
-            ftype, choices = _resolve_type_and_choices(ann)
-            desc = f.metadata.get("description") if f.metadata else ""
-
-            label = name.replace("_", " ").title()
-
-            fields.append(
-                ReflectedField(
-                    key=full_key,
-                    name=label,
-                    field_type=ftype,
-                    value=val,
-                    choices=choices,
-                    description=desc,
-                    section=section,
-                    owning_source=owning_source,
+            fields.extend(
+                _reflect_field(
+                    f"{prefix}.{f.name}" if prefix else f.name,
+                    f.name.replace("_", " ").title(),
+                    section,
+                    owning_source,
+                    type_hints.get(f.name, f.type),
+                    getattr(obj, f.name),
+                    f.metadata.get("description") if f.metadata else None,
                 )
             )
 
-    # 3. Dict fallback (e.g. nested unstructured dicts)
     elif isinstance(obj, dict):
         for name, val in obj.items():
-            full_key = f"{prefix}.{name}" if prefix else name
-            if isinstance(val, dict):
-                sec_name = name.replace("_", " ").title()
-                fields.extend(reflect_schema(val, prefix=full_key, section=sec_name, owning_source=owning_source))
-                continue
-
-            ftype = type(val)
-            choices = None
-            label = name.replace("_", " ").title()
-
-            fields.append(
-                ReflectedField(
-                    key=full_key,
-                    name=label,
-                    field_type=ftype,
-                    value=val,
-                    choices=choices,
-                    description=None,
-                    section=section,
-                    owning_source=owning_source,
+            fields.extend(
+                _reflect_field(
+                    f"{prefix}.{name}" if prefix else str(name),
+                    str(name).replace("_", " ").title(),
+                    section,
+                    owning_source,
+                    None,
+                    val,
+                    None,
                 )
             )
 

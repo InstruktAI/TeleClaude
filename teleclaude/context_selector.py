@@ -12,12 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import AppConfig
-from teleclaude.constants import (
-    DOMAIN_SCOPES,
-    HUMAN_ROLE_ADMIN,
-    SNIPPET_VISIBILITY_INTERNAL,
-    TAXONOMY_TYPES,
-)
+from teleclaude.constants import DOMAIN_SCOPES, HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.doc_body import (
     INLINE_REF_RE,
     apply_planned_change_sections,
@@ -914,7 +909,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         f"# Requested: {', '.join(selected_ids)}",
     ]
     if dep_ids:
-        parts.append(f"# Required reads (not loaded): {', '.join(dep_ids)}")
+        parts.append(f"# Required reads (not loaded) that MUST have been read AT LEAST ONCE: {', '.join(dep_ids)}")
     parts.append("")
 
     for snippet in resolved:
