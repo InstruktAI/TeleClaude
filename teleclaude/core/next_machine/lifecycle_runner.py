@@ -47,6 +47,22 @@ class RunnerLane(StrEnum):
     WORK = "work"
 
 
+class DispatchOrigin(StrEnum):
+    """Who initiated a driver dispatch through the single dispatch primitive.
+
+    The origin decides the durable ``manually_started`` marker: the autonomous
+    runner loop is the only non-manual origin; an operator START and a headless
+    adoption are both manual and excluded from the concurrency cap.
+    """
+
+    RUNNER = "runner"
+    MANUAL = "manual"
+
+    @property
+    def manually_started(self) -> bool:
+        return self is DispatchOrigin.MANUAL
+
+
 class RunnerSkipReason(StrEnum):
     ALREADY_DRIVEN = "already-driven"
     APPROVAL_PENDING = "approval-pending"
@@ -73,6 +89,7 @@ class RunnerTodo:
     lifecycle_phase: str | None
     hold: bool
     active_runner: str | None
+    manually_started: bool = False
     after: tuple[str, ...] = ()
 
 
@@ -224,8 +241,9 @@ def decide_dispatches(
     any_autostart = any(autostart.values())
     # Concurrency budget: how many more drivers may go live this pass. Each
     # dispatched intent consumes one slot on top of the already-live drivers.
-    # TODO: exclude manually_started drivers from the live count — that exclusion
-    # lands in a later track; for now all live drivers count toward the cap.
+    # Only non-manually_started drivers count: a human START or a headless
+    # adoption is never charged against the auto-dispatch cap (the caller passes
+    # the non-manual live count here).
     remaining_budget = max(0, max_dispatch - live_driver_count)
 
     def _at_capacity() -> bool:
@@ -322,6 +340,7 @@ def _todo_from_state(row: RoadmapRow, state: Mapping[str, StateValue]) -> Runner
         lifecycle_phase=phase if isinstance(phase, str) else None,
         hold=state.get("hold") is True,
         active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
+        manually_started=state.get("manually_started") is True,
         after=(),
     )
 
@@ -332,15 +351,22 @@ async def _clear_active_runner(todos_db: TodosDb, slug: str) -> None:
         return
     writer = StateWriter(state)
     writer.state.active_runner = None
+    writer.state.manually_started = False
     await writer.commit(todos_db, slug)
 
 
-async def _set_active_runner(todos_db: TodosDb, slug: str, session_id: str) -> None:
+async def _set_active_runner(todos_db: TodosDb, slug: str, session_id: str, *, manually_started: bool) -> None:
+    """Write the driver link and its manual marker as one guarded mutation.
+
+    ``active_runner`` and ``manually_started`` are always written together so a
+    todo never carries a driver link without its origin marker.
+    """
     state = await todos_db.read_state(slug)
     if state is None:
         return
     writer = StateWriter(state)
     writer.state.active_runner = session_id
+    writer.state.manually_started = manually_started
     await writer.commit(todos_db, slug)
 
 
@@ -371,6 +397,7 @@ async def _load_todos(
             lifecycle_phase=todo.lifecycle_phase,
             hold=todo.hold,
             active_runner=todo.active_runner,
+            manually_started=todo.manually_started,
             after=tuple(deps.get(todo.slug, [])),
         )
         # Do not reconcile-clear a slug whose dispatch claim is still outstanding:
@@ -387,27 +414,52 @@ async def _load_todos(
                 lifecycle_phase=todo.lifecycle_phase,
                 hold=todo.hold,
                 active_runner=None,
+                manually_started=False,
                 after=todo.after,
             )
         loaded[todo.slug] = todo
     return loaded, reconciled
 
 
-async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> set[str]:
+async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> tuple[set[str], int]:
+    """Resolve live driver session ids and the non-manual live-driver count.
+
+    The full id set drives ALREADY_DRIVEN suppression (a manually-started todo is
+    still driven and must never be auto-duplicated). The count excludes
+    `manually_started` drivers because a human START or a headless adoption is
+    never charged against the auto-dispatch concurrency cap.
+    """
     live: set[str] = set()
+    auto_count = 0
     for todo in todos.values():
         if todo.active_runner and await _is_live_runner(db, todo.active_runner):
             live.add(todo.active_runner)
-    return live
+            if not todo.manually_started:
+                auto_count += 1
+    return live, auto_count
 
 
-async def _run_intent(
+async def dispatch_lifecycle_session(
     *,
     client: SessionRunner,
     todos_db: TodosDb,
     project_path: str,
     intent: DispatchIntent,
+    origin: DispatchOrigin,
 ) -> str | None:
+    """The single claim-guarded spawn primitive — the sole `active_runner` writer.
+
+    The runner loop, an operator START, and headless adoption all flow through
+    here so there is exactly one critical section and one writer of the driver
+    link. The sequence is: acquire the `(slug, lane)` dispatch claim that bridges
+    the boot gap, spawn the lifecycle session, then write `active_runner` paired
+    with `manually_started` (derived from ``origin``) as one mutation.
+
+    Returns the spawned session id, or ``None`` when the claim is already held by
+    a concurrent pass (the caller treats this as a benign skip). On spawn failure
+    the claim is released so a later pass can retry; on success it is retained,
+    its lease covering the spawn->live window.
+    """
     owner = f"lifecycle-runner:{intent.command}:{intent.slug}"
     acquired = await acquire_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
     if not acquired:
@@ -430,8 +482,39 @@ async def _run_intent(
         # so the next pass sees the live active_runner and skips ALREADY_DRIVEN.
         await release_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
         raise
-    await _set_active_runner(todos_db, intent.slug, response.session_id)
+    await _set_active_runner(todos_db, intent.slug, response.session_id, manually_started=origin.manually_started)
     return response.session_id
+
+
+async def adopt_headless_session(
+    *,
+    todos_db: TodosDb,
+    slug: str,
+    session_id: str,
+    lane: RunnerLane = RunnerLane.WORK,
+) -> bool:
+    """Adopt a running headless session as a todo's manually-started driver.
+
+    A headless session carries no claim while it runs — the runner never
+    auto-claims a session it did not spawn. Adoption is the explicit manual act
+    that links it: it acquires the same `(slug, lane)` dispatch claim the spawn
+    primitive uses, then writes `active_runner` paired with
+    ``manually_started=True`` so the driver is tracked and excluded from the cap.
+
+    Returns ``True`` on success, ``False`` when the claim is already held (an
+    in-flight dispatch already owns this slug/lane) or no state exists for the
+    slug.
+    """
+    owner = f"headless-adoption:{slug}"
+    acquired = await acquire_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
+    if not acquired:
+        return False
+    state = await todos_db.read_state(slug)
+    if state is None:
+        await release_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
+        return False
+    await _set_active_runner(todos_db, slug, session_id, manually_started=True)
+    return True
 
 
 async def run_lifecycle_runner(
@@ -457,7 +540,7 @@ async def run_lifecycle_runner(
         KIND_BUG: workflow.autostart.bug,
         KIND_TASK: workflow.autostart.task,
     }
-    live_session_ids = await _live_active_runners(runtime_db, todos)
+    live_session_ids, auto_driver_count = await _live_active_runners(runtime_db, todos)
     decision = decide_dispatches(
         todos,
         prepared_slugs=prepared_slugs,
@@ -466,7 +549,7 @@ async def run_lifecycle_runner(
         live_session_ids=live_session_ids,
         claimed=claimed_pairs,
         max_dispatch=workflow.max_todo_dispatch,
-        live_driver_count=len(live_session_ids),
+        live_driver_count=auto_driver_count,
     )
 
     dispatched: list[DispatchIntent] = []
@@ -474,8 +557,12 @@ async def run_lifecycle_runner(
     await client.connect()
     try:
         for intent in decision.intents:
-            session_id = await _run_intent(
-                client=client, todos_db=todos_db, project_path=str(project_root), intent=intent
+            session_id = await dispatch_lifecycle_session(
+                client=client,
+                todos_db=todos_db,
+                project_path=str(project_root),
+                intent=intent,
+                origin=DispatchOrigin.RUNNER,
             )
             if session_id is None:
                 decision.skip(RunnerSkipReason.CLAIMED, intent.slug)
@@ -513,13 +600,16 @@ def project_path_from_event_payload(payload: Mapping[str, object]) -> str | None
 
 __all__ = [
     "DispatchIntent",
+    "DispatchOrigin",
     "RunnerDecision",
     "RunnerLane",
     "RunnerResult",
     "RunnerSkipReason",
     "RunnerTodo",
+    "adopt_headless_session",
     "decide_dispatches",
     "default_session_runner",
+    "dispatch_lifecycle_session",
     "project_path_from_event_payload",
     "run_lifecycle_runner",
 ]

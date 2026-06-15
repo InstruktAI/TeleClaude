@@ -116,6 +116,7 @@ async def clear_active_runner_for_session_end(db: Db, session_id: str) -> Active
         return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason="state-not-found")
     writer = StateWriter(state)
     writer.state.active_runner = None
+    writer.state.manually_started = False
     await writer.commit(todos_db, slug)
     return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=True, reason="cleared")
 

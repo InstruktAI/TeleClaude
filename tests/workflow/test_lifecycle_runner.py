@@ -13,6 +13,7 @@ import pytest
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs
+from teleclaude.config import config as tc_config
 from teleclaude.core import db as db_mod
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import lifecycle_runner as runner_mod
@@ -20,10 +21,14 @@ from teleclaude.core.next_machine import session_hold
 from teleclaude.core.next_machine.dispatch_claims import list_dispatch_claims
 from teleclaude.core.next_machine.lifecycle import ApprovalGate, HumanControl, hold_state, pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
+    DispatchIntent,
+    DispatchOrigin,
     RunnerLane,
     RunnerSkipReason,
     RunnerTodo,
+    adopt_headless_session,
     decide_dispatches,
+    dispatch_lifecycle_session,
     run_lifecycle_runner,
 )
 from teleclaude.core.next_machine.session_hold import (
@@ -139,6 +144,7 @@ async def _add_todo(
     lifecycle_phase: str = LifecyclePhase.PREPARED.value,
     after: list[str] | None = None,
     active_runner: str | None = None,
+    manually_started: bool = False,
 ) -> None:
     await todos_db.add_to_roadmap(slug, after=after)
     await todos_db.write_state(
@@ -148,6 +154,7 @@ async def _add_todo(
             kind=kind,
             lifecycle_phase=lifecycle_phase,
             active_runner=active_runner,
+            manually_started=manually_started,
         ).model_dump(exclude_none=True),
     )
 
@@ -669,3 +676,181 @@ async def test_sync_delivery_fires_delivered_hook_with_commit(tmp_path: Path) ->
     seen_slug, seen_commit, _ = delivered[0]
     assert seen_slug == _WORK_SLUG
     assert seen_commit == _SYNC_DELIVERY_COMMIT
+
+
+def _work_intent(slug: str) -> DispatchIntent:
+    return DispatchIntent(
+        slug=slug,
+        lane=RunnerLane.WORK,
+        command=_NEXT_WORK,
+        thinking_mode="med",
+        additional_context="",
+    )
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_primitive_runner_origin_writes_active_runner_not_manual(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    client = _RunnerClient()
+
+    session_id = await dispatch_lifecycle_session(
+        client=client,
+        todos_db=todos_db,
+        project_path=str(project_root),
+        intent=_work_intent(_WORK_SLUG),
+        origin=DispatchOrigin.RUNNER,
+    )
+
+    assert session_id == _SPAWN_SESSION
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == _SPAWN_SESSION
+    assert state["manually_started"] is False
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_primitive_manual_origin_marks_manually_started(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    client = _RunnerClient()
+
+    session_id = await dispatch_lifecycle_session(
+        client=client,
+        todos_db=todos_db,
+        project_path=str(project_root),
+        intent=_work_intent(_WORK_SLUG),
+        origin=DispatchOrigin.MANUAL,
+    )
+
+    assert session_id == _SPAWN_SESSION
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == _SPAWN_SESSION
+    assert state["manually_started"] is True
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_cap_excludes_manual_drivers_from_count() -> None:
+    # Cap == 2 with two MANUAL drivers already live: the runner still has full
+    # budget because manual drivers are not counted.
+    decision = decide_dispatches(
+        {
+            _WORK_SLUG: RunnerTodo(
+                slug=_WORK_SLUG,
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_FEATURE: True, _CHANGE: True, "bug": True, _TASK: False},
+        live_session_ids=set(),
+        max_dispatch=2,
+        live_driver_count=0,
+    )
+
+    assert [intent.slug for intent in decision.intents] == [_WORK_SLUG]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_cap_counts_auto_drivers_and_skips_at_capacity() -> None:
+    # Cap == 2 with two AUTO drivers live: the new eligible candidate is skipped.
+    decision = decide_dispatches(
+        {
+            _WORK_SLUG: RunnerTodo(
+                slug=_WORK_SLUG,
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_FEATURE: True, _CHANGE: True, "bug": True, _TASK: False},
+        live_session_ids=set(),
+        max_dispatch=2,
+        live_driver_count=2,
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.AT_CAPACITY] == [_WORK_SLUG]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_runner_pass_excludes_manual_driver_from_cap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # One manual driver live + a fresh candidate; cap == 1. The manual driver is
+    # not counted, so the fresh candidate still auto-dispatches.
+    monkeypatch.setattr(tc_config.workflow, "max_todo_dispatch", 1)
+
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _LIVE_SLUG, active_runner=_LIVE_SESSION, manually_started=True)
+    await _add_todo(todos_db, _OTHER_SLUG)
+    client = _RunnerClient()
+    live_session = _Session(session_id=_LIVE_SESSION)
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb({_LIVE_SESSION: live_session})),
+        client_factory=lambda: client,
+    )
+
+    assert result.skips.get(RunnerSkipReason.ALREADY_DRIVEN) == [_LIVE_SLUG]
+    assert [intent.slug for intent in result.dispatched] == [_OTHER_SLUG]
+    assert RunnerSkipReason.AT_CAPACITY not in result.skips
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_adoption_writes_active_runner_and_manual_marker(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+
+    # Before adoption: the headless session holds no claim on the todo.
+    pre = await todos_db.read_state(_WORK_SLUG)
+    assert pre is not None
+    assert "active_runner" not in pre
+
+    adopted = await adopt_headless_session(todos_db=todos_db, slug=_WORK_SLUG, session_id=_LIVE_SESSION)
+
+    assert adopted is True
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == _LIVE_SESSION
+    assert state["manually_started"] is True
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_session_end_clears_manually_started(tmp_path: Path) -> None:
+    manual_end_session = "close-end-manual-session"
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=manual_end_session, manually_started=True)
+    runtime_db = await db_mod.get_db()
+    await runtime_db.create_session(
+        computer_name="local",
+        tmux_session_name="tmux-ended-manual-session",
+        last_input_origin="terminal",
+        title="runner",
+        project_path=str(project_root),
+        session_id=manual_end_session,
+        human_role="member",
+        emit_session_started=False,
+    )
+
+    result = await clear_active_runner_for_session_end(runtime_db, manual_end_session)
+
+    assert result.mutated is True
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert "active_runner" not in state
+    assert state.get("manually_started") in (False, None)

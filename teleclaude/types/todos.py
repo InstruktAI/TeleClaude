@@ -251,6 +251,7 @@ class TodoState(BaseModel):
     hold: bool = False
     hold_audit: HoldAuditState = Field(default_factory=HoldAuditState)
     active_runner: str | None = None
+    manually_started: bool = False
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
