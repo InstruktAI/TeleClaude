@@ -83,5 +83,10 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
             },
         },
     },
+    "chiptunes": {
+        "enabled": False,
+        "music_dir": None,
+        "volume": 1.0,
+    },
     "experiments": [],
 }

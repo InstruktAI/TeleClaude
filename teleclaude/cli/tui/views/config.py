@@ -41,6 +41,7 @@ from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
 from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema, resolve_env_placeholders
 from teleclaude.config import (
     DEFAULT_CONFIG,
+    ChiptunesConfig,
     ComputerConfig,
     DiscordConfig,
     RedisConfig,
@@ -403,6 +404,15 @@ class ConfigContent(
             filtered_redis = {k: v for k, v in merged_redis.items() if k in redis_fields}
             redis_obj = RedisConfig(**filtered_redis)
             fields.extend(reflect_schema(redis_obj, prefix="redis", section="Redis", owning_source="machine"))
+
+            chiptunes_data = self._raw_config.get("chiptunes", {})
+            merged_chiptunes = {**_default_section("chiptunes"), **chiptunes_data}
+            chiptunes_fields = {f.name for f in dataclasses.fields(ChiptunesConfig)}
+            filtered_chiptunes = {k: v for k, v in merged_chiptunes.items() if k in chiptunes_fields}
+            chiptunes_obj = ChiptunesConfig(**filtered_chiptunes)
+            fields.extend(
+                reflect_schema(chiptunes_obj, prefix="chiptunes", section="Chiptunes", owning_source="machine")
+            )
             return fields
 
         if tab == Subtab.ADAPTERS:

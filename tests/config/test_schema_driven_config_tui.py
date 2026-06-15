@@ -25,6 +25,10 @@ COMPUTER_TRUSTED_DIRS = "computer.trusted_dirs"
 COMPUTER_TMUX_BINARY = "computer.tmux_binary"
 COMPUTER_NAME_KEY = "computer.name"
 COMPUTER_ROLE_KEY = "computer.role"
+CHIPTUNES_ENABLED = "chiptunes.enabled"
+CHIPTUNES_MUSIC_DIR = "chiptunes.music_dir"
+CHIPTUNES_SECTION = "Chiptunes"
+MACHINE_SOURCE = "machine"
 
 DISCORD_ANNOUNCEMENTS_CHANNEL_ID = "discord.announcements_channel_id"
 DISCORD_GENERAL_CHANNEL_ID = "discord.general_channel_id"
@@ -181,6 +185,10 @@ def test_tui_source_aware_persistence(tmp_path, monkeypatch):
 
         # 1. Edit machine config field (owning_source="machine")
         content.active_subtab = 0  # Subtab.INFRA
+        fields_by_key = {field.key: field for field in content.reflected_fields}
+        assert fields_by_key[CHIPTUNES_ENABLED].section == CHIPTUNES_SECTION
+        assert fields_by_key[CHIPTUNES_ENABLED].owning_source == MACHINE_SOURCE
+        assert fields_by_key[CHIPTUNES_MUSIC_DIR].section == CHIPTUNES_SECTION
         content._save_reflected_field("computer.name", "NewMac")
 
         # Reload and verify machine config changed
@@ -216,6 +224,13 @@ def test_tui_source_aware_persistence(tmp_path, monkeypatch):
         content._save_reflected_field("firecrawl.api_key", "fc-new")
         env_content = env_file_path.read_text(encoding="utf-8")
         assert FC_NEW_ENV in env_content
+
+        # 5. Edit machine-backed chiptunes gate from the Infra tab.
+        content.active_subtab = 0  # Subtab.INFRA
+        content._save_reflected_field(CHIPTUNES_ENABLED, True)
+        reload_config()
+        assert _tc_config_module.config.chiptunes is not None
+        assert _tc_config_module.config.chiptunes.enabled is True
     finally:
         set_runtime_config(old_rc)
 

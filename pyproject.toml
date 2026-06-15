@@ -35,6 +35,7 @@
     "pathspec>=0.12.0",
     "phonemizer-fork>=3.3.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "psutil>=5.9.0",
+    "py7zr>=1.0.0",
     "py65emu>=0.1.0",
     "pyresidfp>=0.17.0",
     "python-dotenv>=1.2.1",

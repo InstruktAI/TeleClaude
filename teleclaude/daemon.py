@@ -347,6 +347,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.chiptunes_manager = ChiptunesManager(
             chiptunes_music_dir,
             volume=chiptunes_volume,
+            default_music_dir=project_root / "assets" / "audio" / "C64Music",
             worker_lease_ttl_seconds=config.process_janitor.lease_ttl_seconds,
         )
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
@@ -743,10 +744,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             if startup_elapsed >= SLOW_STARTUP_WARNING_S:
                 logger.warning("Daemon startup was slow: %.3fs", startup_elapsed)
 
-            # Reattach to a chiptunes worker that survived this daemon restart so
-            # the mirrored playback state (and the UI) reflects what is playing.
-            if hasattr(self, "chiptunes_manager"):
-                self.chiptunes_manager.reattach()
+            self._apply_chiptunes_startup_state()
 
             # Start periodic cleanup task (runs every hour)
             self.cleanup_task = asyncio.create_task(
@@ -835,6 +833,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             # Release lock on startup failure to avoid stale lock ownership.
             self._release_lock()
             raise
+
+    def _apply_chiptunes_startup_state(self) -> None:
+        """Apply chiptunes config after the event loop is running."""
+        if not hasattr(self, "chiptunes_manager"):
+            return
+        self.chiptunes_manager.reload()
+        if self.chiptunes_manager.enabled:
+            self.chiptunes_manager.reattach()
 
     async def stop(self) -> None:
         """Stop the daemon."""
@@ -1010,6 +1016,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             return
         if "tts" in changed:
             self.tts_manager.reload()
+        if "chiptunes" in changed:
+            self.chiptunes_manager.reload()
         restart = restart_required_sections(changed)
         if restart:
             logger.info("Config change in restart-required section(s) %s; restarting to apply", sorted(restart))

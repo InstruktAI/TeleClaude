@@ -7,6 +7,7 @@ schema definitions only.
 
 from dataclasses import dataclass, field
 
+from teleclaude.config._chiptunes import ChiptunesConfig
 from teleclaude.config._remote_computers import RemoteComputerConfig
 from teleclaude.config._summarizer import SummarizerConfig
 
@@ -246,14 +247,6 @@ class STTConfig:
     enabled: bool
     service_priority: list[str] | None = None
     services: dict[str, STTServiceConfig] | None = None
-
-
-@dataclass
-class ChiptunesConfig:
-    """ChipTunes background music configuration."""
-
-    music_dir: str | None = None  # default: assets/audio/C64Music
-    volume: float = 1.0
 
 
 @dataclass

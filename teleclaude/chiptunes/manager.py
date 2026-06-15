@@ -7,6 +7,7 @@ The manager relays commands and mirrors state; it owns no playback logic.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import signal
@@ -21,7 +22,9 @@ from typing import TYPE_CHECKING, Literal
 import psutil
 from instrukt_ai_logging import get_logger
 
+from teleclaude.chiptunes.provision import ChiptunesProvisionError, provision_hvsc_corpus_async
 from teleclaude.chiptunes.types import ChiptunesState, coerce_chiptunes_state
+from teleclaude.config import ChiptunesConfig, config
 from teleclaude.paths import CHIPTUNES_PID_PATH, CHIPTUNES_SOCKET_PATH, CHIPTUNES_WORKER_LOG_PATH
 from teleclaude.services.process_janitor.registry import ProcessSpawnRegistry
 
@@ -39,6 +42,11 @@ _TERMINATION_POLL_INTERVAL_SECONDS = 0.1
 _SOCKET_WAIT_POLL_COUNT = 50
 _SOCKET_WAIT_POLL_INTERVAL_SECONDS = 0.1
 _WORKER_LEASE_TTL_SECONDS = 1800
+CHIPTUNES_PROVISION_FAILED_EVENT = "chiptunes_provision_failed"
+
+
+def _current_chiptunes_config() -> ChiptunesConfig | None:
+    return config.chiptunes
 
 
 def _is_worker_cmdline(cmdline: list[str]) -> bool:
@@ -64,14 +72,17 @@ class ChiptunesManager:
         music_dir: Path,
         volume: float = 1.0,
         *,
+        default_music_dir: Path | None = None,
         registry: ProcessSpawnRegistry | None = None,
         worker_lease_ttl_seconds: int = _WORKER_LEASE_TTL_SECONDS,
     ) -> None:
         self._music_dir = music_dir
+        self._default_music_dir = default_music_dir or music_dir
         self._volume = volume
         self._registry = registry or ProcessSpawnRegistry()
         self._worker_lease_ttl_seconds = worker_lease_ttl_seconds
         self._enabled = False
+        self._provision_task: asyncio.Task[None] | None = None
         self._sock: socket.socket | None = None
         self._reader_thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -155,6 +166,19 @@ class ChiptunesManager:
             self._clear_registry()
             self._registry.clear_chiptunes()
 
+    def reload(self) -> asyncio.Task[None] | None:
+        """Re-read chiptunes config and apply the gate without blocking."""
+        chiptunes_cfg = _current_chiptunes_config()
+        self._apply_config(chiptunes_cfg)
+        config_gate_enabled = bool(chiptunes_cfg and chiptunes_cfg.enabled)
+        if not config_gate_enabled:
+            self.stop()
+            return None
+        if self._music_dir_populated():
+            self._activate()
+            return None
+        return self._schedule_provision_then_activate()
+
     def enqueue_command(self, command_id: str, action: CommandAction) -> None:
         """Enqueue a user command for asynchronous execution."""
         self._enabled = True
@@ -166,6 +190,45 @@ class ChiptunesManager:
     # ------------------------------------------------------------------ #
     # Worker lifecycle                                                     #
     # ------------------------------------------------------------------ #
+
+    def _apply_config(self, chiptunes_cfg: ChiptunesConfig | None) -> None:
+        self._music_dir = (
+            Path(chiptunes_cfg.music_dir)
+            if chiptunes_cfg is not None and chiptunes_cfg.music_dir
+            else self._default_music_dir
+        )
+        self._volume = chiptunes_cfg.volume if chiptunes_cfg is not None else 1.0
+
+    def _music_dir_populated(self) -> bool:
+        return self._music_dir.is_dir() and any(self._music_dir.iterdir())
+
+    def _activate(self) -> None:
+        self._enabled = True
+        self._fire_state_change()
+
+    def _schedule_provision_then_activate(self) -> asyncio.Task[None] | None:
+        if self._provision_task is not None and not self._provision_task.done():
+            return self._provision_task
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning("chiptunes_provision_no_running_loop", music_dir=str(self._music_dir))
+            return None
+        self._provision_task = loop.create_task(
+            self._provision_then_activate(self._music_dir),
+            name="chiptunes-provision",
+        )
+        return self._provision_task
+
+    async def _provision_then_activate(self, music_dir: Path) -> None:
+        try:
+            await provision_hvsc_corpus_async(music_dir)
+        except ChiptunesProvisionError as exc:
+            logger.warning(CHIPTUNES_PROVISION_FAILED_EVENT, music_dir=str(music_dir), error=str(exc))
+            return
+        if not bool((cfg := _current_chiptunes_config()) and cfg.enabled):
+            return
+        self._activate()
 
     def _ensure_worker(self) -> None:
         """Ensure exactly one reachable worker exists, adopting or replacing as needed.

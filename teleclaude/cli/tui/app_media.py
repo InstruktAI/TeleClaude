@@ -9,6 +9,7 @@ from instrukt_ai_logging import get_logger
 from textual import work
 from textual.css.query import NoMatches
 
+from teleclaude import config as config_mod
 from teleclaude.api_models import ChiptunesStatusDTO, SettingsPatchDTO, TTSSettingsPatchDTO
 from teleclaude.chiptunes.dislikes import is_disliked, remove_dislike, save_dislike
 from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite
@@ -25,6 +26,11 @@ from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 logger = get_logger(__name__)
+
+
+def _chiptunes_gate_enabled() -> bool:
+    chiptunes_config = config_mod.config.chiptunes
+    return bool(chiptunes_config and chiptunes_config.enabled)
 
 
 class TelecAppMediaMixin:
@@ -176,6 +182,7 @@ class TelecAppMediaMixin:
             self._chiptunes_state_version = state_version  # type: ignore[attr-defined]
 
         footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
+        footer.chiptunes_enabled = _chiptunes_gate_enabled()
         footer.chiptunes_loaded = loaded
         footer.chiptunes_playback = playback
         footer.chiptunes_playing = playing

@@ -15,10 +15,11 @@ import yaml
 from dotenv import dotenv_values
 
 from teleclaude.config._bootstrap import resolve_runtime_config_path
+from teleclaude.config._chiptunes import ChiptunesConfig as ChiptunesConfig
+from teleclaude.config._chiptunes import parse_chiptunes_config as _parse_chiptunes_config
 from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
 from teleclaude.config._models import AgentConfig as AgentConfig
-from teleclaude.config._models import ChiptunesConfig as ChiptunesConfig
 from teleclaude.config._models import ComputerConfig as ComputerConfig
 from teleclaude.config._models import Config as Config
 from teleclaude.config._models import CredsConfig as CredsConfig
@@ -289,16 +290,6 @@ def _parse_tts_services(raw_services: object) -> dict[str, TTSServiceConfig]:
         if parsed is not None:
             services[service_name] = parsed
     return services
-
-
-def _parse_chiptunes_config(raw: dict[str, object] | None) -> ChiptunesConfig | None:  # guard: loose-dict
-    """Parse chiptunes config from raw dict."""
-    if not raw:
-        return None
-    return ChiptunesConfig(
-        music_dir=str(raw["music_dir"]) if raw.get("music_dir") else None,
-        volume=float(raw.get("volume", 0.5)),  # type: ignore[arg-type]
-    )
 
 
 def _parse_process_janitor_config(raw: dict[str, object] | None) -> ProcessJanitorConfig:  # guard: loose-dict
@@ -611,7 +602,7 @@ def _build_config(
 # in-place singleton mutation (tts additionally needs TTSManager.reload()). This is a
 # safe allowlist: any changed section NOT listed requires a daemon restart, because its
 # consumers captured the value at startup and would otherwise silently ignore the change.
-HOT_RELOADABLE_SECTIONS = frozenset({"summarizer", "stt", "tts"})
+HOT_RELOADABLE_SECTIONS = frozenset({"chiptunes", "summarizer", "stt", "tts"})
 
 
 def restart_required_sections(changed: list[str]) -> list[str]:

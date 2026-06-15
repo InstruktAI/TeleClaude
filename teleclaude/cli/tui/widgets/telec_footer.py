@@ -166,6 +166,7 @@ class TelecFooter(Widget):
     """
 
     tts_enabled = reactive(False)
+    chiptunes_enabled = reactive(False)
     chiptunes_loaded = reactive(False)
     chiptunes_playback = reactive("cold")
     chiptunes_playing = reactive(False)
@@ -188,8 +189,8 @@ class TelecFooter(Widget):
         self._agent_availability: dict[str, AgentAvailabilityDTO] = agent_availability or {}
 
     def _show_transport_controls(self) -> bool:
-        """Transport controls are always visible."""
-        return True
+        """Return whether the ChipTunes config gate permits transport controls."""
+        return bool(self.chiptunes_enabled)
 
     def compose(self) -> ComposeResult:
         yield Static(id="footer-context-row")
@@ -217,6 +218,7 @@ class TelecFooter(Widget):
         self.screen.bindings_updated_signal.subscribe(self, self._on_bindings_changed)
         self._refresh_hint_rows()
         self._refresh_controls()
+        self.call_after_refresh(self._refresh_controls)
 
     def on_unmount(self) -> None:
         self.screen.bindings_updated_signal.unsubscribe(self)
@@ -337,6 +339,7 @@ class TelecFooter(Widget):
         next_button = self.query_one("#footer-next", FooterActionButton)
         fav_button = self.query_one("#footer-fav", FooterActionButton)
         dislike_button = self.query_one("#footer-dislike", FooterActionButton)
+        controls_visible = self._show_transport_controls()
 
         prev_button.icon = "\u23ee"
         play_button.icon = "\u23f8" if self.chiptunes_playing else "\u25b6"
@@ -347,12 +350,14 @@ class TelecFooter(Widget):
 
         controls_loaded = self.chiptunes_loaded
         pending = bool(self.chiptunes_pending_command_id)
-        prev_button.disabled = (not controls_loaded) or pending
-        stop_button.disabled = not controls_loaded
-        next_button.disabled = (not controls_loaded) or pending
-        play_button.disabled = pending
-        fav_button.disabled = (not controls_loaded) or pending
-        dislike_button.disabled = (not controls_loaded) or pending
+        for button in (prev_button, play_button, stop_button, next_button, fav_button, dislike_button):
+            button.display = controls_visible
+        prev_button.disabled = (not controls_visible) or (not controls_loaded) or pending
+        stop_button.disabled = (not controls_visible) or (not controls_loaded)
+        next_button.disabled = (not controls_visible) or (not controls_loaded) or pending
+        play_button.disabled = (not controls_visible) or pending
+        fav_button.disabled = (not controls_visible) or (not controls_loaded) or pending
+        dislike_button.disabled = (not controls_visible) or (not controls_loaded) or pending
 
     def on_click(self, event: Click) -> None:
         widget = event.widget
@@ -411,6 +416,9 @@ class TelecFooter(Widget):
             self.post_message(SettingsChanged("chiptunes_dislike", None))
 
     def watch_tts_enabled(self, _value: bool) -> None:
+        self._refresh_controls()
+
+    def watch_chiptunes_enabled(self, _value: bool) -> None:
         self._refresh_controls()
 
     def watch_chiptunes_loaded(self, _value: bool) -> None:
