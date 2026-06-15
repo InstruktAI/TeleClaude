@@ -520,7 +520,7 @@ class TodoRow(TelecMixin, Widget):
             return self._finish_columns(result)
 
         # 4. Ready/pending state — no phase/work columns
-        return _pad(result, target)
+        return self._finish_columns(result)
 
     def render(self) -> Text:
         """Render the tree prefix, slug, and aligned property columns."""
