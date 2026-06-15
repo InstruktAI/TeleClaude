@@ -1,9 +1,9 @@
 datasketch==1.10.0 \
     --hash=sha256:303dd90cda0948a21abba3aaefc9f8528fa12b8204edc5e1ae8b1d7b750234e7 \
     --hash=sha256:d23aea80ce4c40790ca7a40795659848be92ecc43db80942be26f21e81d24714
-graphifyy==0.8.33 \
-    --hash=sha256:ef2f8fcc210db789df4cbc1512fef34e7b71b8df6bc892f8611a4759efb82965 \
-    --hash=sha256:f4c3775d007726e96569ed1419da58b765ffe5ba9db388a49d0f147584ee7a46
+graphifyy==0.8.39 \
+    --hash=sha256:79e206fd21de090bf7155f0ac461345795295edc837e90e9bcc82c961a6313a7 \
+    --hash=sha256:f7fcb2b24e05067c27723fffd205acb286dca46124fe9efc6af1a14ecb2ebe3d
 networkx==3.6.1 \
     --hash=sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509 \
     --hash=sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762
