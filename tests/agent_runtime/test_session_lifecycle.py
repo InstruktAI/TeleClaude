@@ -569,12 +569,60 @@ async def test_delete_local_session_continues_when_manual_hold_interlock_fails(
     monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", hold)
     monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
 
+    # No x-session-token / x-caller-session-id → human principal (empty
+    # identity.session_id), so this manual close holds the driven todo (ADR-0036).
     response = await api.delete(f"/sessions/{session_id}")
 
     assert response.status_code == 202
     body = response.json()
     assert body["completion_event"] == CloseSessionCommand(session_id=session_id).completion_event
     hold.assert_awaited_once_with(api.db, session_id)
+    close.assert_awaited_once_with(CloseSessionCommand(session_id=session_id))
+
+
+async def test_delete_human_close_sets_hold(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0036: a human-initiated close (empty identity.session_id) holds the todo."""
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    hold = AsyncMock()
+    close = AsyncMock()
+    service = SimpleNamespace(close_session=close)
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", hold)
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+
+    # No session token → human principal.
+    response = await api.delete(f"/sessions/{session_id}")
+
+    assert response.status_code == 202
+    hold.assert_awaited_once_with(api.db, session_id)
+    close.assert_awaited_once_with(CloseSessionCommand(session_id=session_id))
+
+
+async def test_delete_self_close_by_agent_does_not_hold(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0036: an agent self-end (token-auth, non-empty identity.session_id) does not hold."""
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    token = await api.db.issue_session_token(session_id, f"system:{session_id}", "admin")
+    hold = AsyncMock()
+    close = AsyncMock()
+    service = SimpleNamespace(close_session=close)
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", hold)
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+
+    # Agent identity via session token → non-empty identity.session_id.
+    response = await api.delete(
+        f"/sessions/{session_id}",
+        headers={"x-session-token": token},
+    )
+
+    assert response.status_code == 202
+    hold.assert_not_awaited()
     close.assert_awaited_once_with(CloseSessionCommand(session_id=session_id))
 
 

@@ -625,7 +625,7 @@ async def end_session(
     request: Request,
     session_id: str,
     computer: str | None = Query(None),
-    _identity: CallerIdentity = Depends(clearance_sessions_end),
+    identity: CallerIdentity = Depends(clearance_sessions_end),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """End session via CloseSessionCommand through the command system."""
     user_agent = request.headers.get("user-agent", "no-ua")
@@ -651,15 +651,21 @@ async def end_session(
             target_computer = computer
 
         if target_computer is not None:
+            # ADR-0036: cross-host close carries no human-origin signal, so it does not hold (scoped out).
             cmd = CloseSessionCommand(session_id=session_id)
             await dispatch_session_close_to_peer(_STATE.client, target_computer, session_id)
             return _close_accepted(cmd, location_label=target_computer)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     await check_session_access(request, session_id, require_owner=True)
-    try:
-        await hold_todo_for_manual_session_close(db, session_id)
-    except Exception:
-        logger.error("Manual session close hold interlock failed for %s", session_id, exc_info=True)
+    # ADR-0036: only a human-initiated close holds the driven todo. A human
+    # terminal/TUI/web caller has an empty identity.session_id; an agent
+    # self-end / orchestrator child-end is token-authed (non-empty session_id)
+    # and must not hold — the runner self-heals the stale active_runner link.
+    if not identity.session_id:
+        try:
+            await hold_todo_for_manual_session_close(db, session_id)
+        except Exception:
+            logger.error("Manual session close hold interlock failed for %s", session_id, exc_info=True)
 
     try:
         cmd = CloseSessionCommand(session_id=session_id)
