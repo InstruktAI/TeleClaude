@@ -69,13 +69,13 @@
 # ---
 # name: test_todo_row_renders_hold_distinct_from_icebox
   list([
-    '  ├─■ held-work····chng··H:hold·····',
-    '  ├─■ frozen-work··chng··P:icebox···',
+    '  ├─■ held-work····chng··P:plan draft··· 🔒',
+    '  ├─■ frozen-work··chng··P:icebox·······',
   ])
 # ---
 # name: test_todo_row_renders_pending_approval_distinct_from_hold
   list([
-    '  ├─■ approval-work··feat··A:approve···',
-    '  ├─■ held-work······feat··H:hold······',
+    '  ├─■ approval-work··feat··A:approve······ 🔒',
+    '  ├─■ held-work······feat··P:plan draft··· 🔒',
   ])
 # ---

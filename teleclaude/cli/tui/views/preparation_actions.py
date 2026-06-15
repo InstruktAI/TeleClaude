@@ -25,8 +25,13 @@ from teleclaude.cli.tui.widgets.modals import (
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
+from teleclaude.config import config
 from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
-from teleclaude.core.next_machine.lifecycle import HumanControl, is_ready_for_work, pending_human_control
+from teleclaude.core.next_machine.lifecycle import (
+    hold_control_available,
+    is_ready_for_work,
+    pending_approval_gate,
+)
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_FEATURE, TodoDumpKind
 
 if TYPE_CHECKING:
@@ -35,23 +40,34 @@ if TYPE_CHECKING:
 from teleclaude.cli.tui.messages import StateChanged
 
 
-class _HumanControlState(TypedDict, total=False):
+class _ApprovalGateState(TypedDict, total=False):
     kind: str | None
     lifecycle_phase: str | None
-    hold: bool
-    active_runner: str | None
 
 
-def _human_control_for_row(row: TodoRow) -> HumanControl | None:
+def _autostart_enabled_for_kind(kind: str | None) -> bool:
+    if kind is None:
+        return False
+    return bool(getattr(config.workflow.autostart, kind, False))
+
+
+def _approval_gate_pending(row: TodoRow) -> bool:
     if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
-        return None
-    state: _HumanControlState = {
+        return False
+    state: _ApprovalGateState = {
         "kind": row.todo.kind,
         "lifecycle_phase": row.todo.lifecycle_phase,
-        "hold": row.todo.hold,
-        "active_runner": row.todo.active_runner,
     }
-    return pending_human_control(state)
+    return pending_approval_gate(state) is not None
+
+
+def _hold_control_available(row: TodoRow) -> bool:
+    if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
+        return False
+    return hold_control_available(
+        {"lifecycle_phase": row.todo.lifecycle_phase, "hold": row.todo.hold},
+        autostart_enabled=_autostart_enabled_for_kind(row.todo.kind),
+    )
 
 
 class PreparationViewActionsMixin:
@@ -102,7 +118,7 @@ class PreparationViewActionsMixin:
             "freeze",
             "unfreeze",
             "approve_gate",
-            "toggle_hold",
+            "hold",
             "toggle_trashed",
             "reactivate_selected",
         }
@@ -116,7 +132,7 @@ class PreparationViewActionsMixin:
             "freeze",
             "unfreeze",
             "approve_gate",
-            "toggle_hold",
+            "hold",
         }
         file_disallowed = {
             "new_todo",
@@ -125,7 +141,7 @@ class PreparationViewActionsMixin:
             "freeze",
             "unfreeze",
             "approve_gate",
-            "toggle_hold",
+            "hold",
         }
 
         if isinstance(item, ComputerHeader):
@@ -150,10 +166,10 @@ class PreparationViewActionsMixin:
             return item.todo.status == TodoStatus.ICEBOX
         if action == "freeze":
             return item.todo.status != TodoStatus.ICEBOX
-        if action == "toggle_hold":
-            return _human_control_for_row(item) in {HumanControl.HOLD, HumanControl.RELEASE_HOLD}
+        if action == "hold":
+            return _hold_control_available(item)
         if action == "approve_gate":
-            return _human_control_for_row(item) is HumanControl.APPROVE
+            return _approval_gate_pending(item)
         if action == "reactivate_selected":
             return item.todo.status == TodoStatus.REMOVED
         return True
@@ -660,14 +676,13 @@ class PreparationViewActionsMixin:
         except Exception as exc:
             self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
 
-    def action_toggle_hold(self) -> None:
-        """h: toggle the automatic-dispatch hold brake."""
+    def action_hold(self) -> None:
+        """h: engage the automatic-dispatch hold brake (one-way; START proceeds)."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if not row:
             return
 
-        control = _human_control_for_row(row)
-        if control not in {HumanControl.HOLD, HumanControl.RELEASE_HOLD}:
+        if not _hold_control_available(row):
             self.app.notify("No hold control is available for this todo", severity="warning")  # type: ignore[attr-defined]
             return
 
@@ -675,17 +690,16 @@ class PreparationViewActionsMixin:
         project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
         if not project_path:
             return
-        flag = "release" if control is HumanControl.RELEASE_HOLD else "hold"
 
         try:
             result = tool_api_request(
                 "POST",
                 "/todos/update",
-                json_body={"slug": slug, "cwd": project_path, flag: True},
+                json_body={"slug": slug, "cwd": project_path, "hold": True},
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(("Released" if flag == "release" else "Held") + f" '{slug}'")  # type: ignore[attr-defined]
+                self.app.notify(f"Held '{slug}'")  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
@@ -699,7 +713,7 @@ class PreparationViewActionsMixin:
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if not row:
             return
-        if _human_control_for_row(row) is not HumanControl.APPROVE:
+        if not _approval_gate_pending(row):
             self.app.notify("No approval gate is pending for this todo", severity="warning")  # type: ignore[attr-defined]
             return
 

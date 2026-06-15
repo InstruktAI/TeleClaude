@@ -198,6 +198,43 @@ async def test_approve_current_gate_resolves_prd_gate_and_refuses_without_gate(t
         )
 
 
+@pytest.mark.spec(_SPEC, "UC-WSS5")
+async def test_approve_current_gate_routes_creative_design_spec_gate(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_roadmap(_SLUG)
+    # A creative design-spec gate is observable from state: the section exists
+    # but its ``confirmed`` flag is not yet set. The lifecycle phase is a regular
+    # prepare phase, so this approval is routed solely by the creative section —
+    # not by PRD phase.
+    await todos_db.write_state(
+        _SLUG,
+        {
+            "schema_version": 4,
+            "kind": TODO_KIND_CHANGE,
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value,
+            "creative": {"design_spec": {"confirmed": False}},
+        },
+    )
+
+    await apply_todo_stamp(
+        cwd=str(project_root),
+        slug=_SLUG,
+        stamp_type="approve_current_gate",
+        caller_session_id=_HUMAN_SESSION,
+    )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    creative = writer.state.creative
+    assert isinstance(creative, dict)
+    design_spec = creative.get("design_spec")
+    assert isinstance(design_spec, dict)
+    assert design_spec.get("confirmed") is True
+
+
 @pytest.mark.spec(_SPEC, "UC-WSS1")
 async def test_kind_assign_task_writes_task_plan_and_prepared_phase(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"

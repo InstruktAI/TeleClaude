@@ -63,6 +63,7 @@ __all__ = [
     "PREPARE_LIFECYCLE_PHASES",
     "READY_BAND_PHASES",
     "WORK_LIFECYCLE_PHASES",
+    "ApprovalGate",
     "HumanControl",
     "LifecyclePhase",
     "adopt_prepare_handoff_phase",
@@ -70,6 +71,8 @@ __all__ = [
     "coerce_lifecycle_phase",
     "collapse_drift",
     "derive_lifecycle_drift",
+    "hold_control_available",
+    "hold_state",
     "is_in_prepare_lane",
     "is_prepare_lifecycle_phase",
     "is_ready_band_eligible",
@@ -77,7 +80,7 @@ __all__ = [
     "is_settled_ok_phase",
     "is_work_lifecycle_phase",
     "lifecycle_phase_index",
-    "pending_human_control",
+    "pending_approval_gate",
     "phase_is_complete",
     "prepare_blockers",
     "require_lifecycle_phase",
@@ -101,7 +104,27 @@ class HumanControl(StrEnum):
 
     APPROVE = "approve"
     HOLD = "hold"
-    RELEASE_HOLD = "release_hold"
+
+
+class ApprovalGate(StrEnum):
+    """A pending human-approval gate within the prepare lane.
+
+    Each member identifies which underlying approval the ``A`` control routes
+    to. Membership is derived from current todo state and never stored.
+    """
+
+    PRD = "prd"
+    CREATIVE_DESIGN_SPEC = "creative_design_spec"
+    CREATIVE_ART = "creative_art"
+    CREATIVE_VISUALS = "creative_visuals"
+
+
+# Creative section key -> (gate, flag that, when set, clears the gate).
+_CREATIVE_APPROVAL_GATES: tuple[tuple[str, ApprovalGate, str], ...] = (
+    ("design_spec", ApprovalGate.CREATIVE_DESIGN_SPEC, "confirmed"),
+    ("art", ApprovalGate.CREATIVE_ART, "approved"),
+    ("visuals", ApprovalGate.CREATIVE_VISUALS, "approved"),
+)
 
 
 _DRIFT_CLASS_CODE = "code"
@@ -220,34 +243,65 @@ def is_settled_ok_phase(lifecycle_phase: str | None) -> bool:
     return phase in (LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED)
 
 
-def pending_human_control(todo_state: TodoState | Mapping[str, object]) -> HumanControl | None:
-    """Return the single human control available for a todo state.
+def _read_creative_state(todo_state: TodoState | Mapping[str, object]) -> Mapping[str, object]:
+    raw: object = todo_state.creative if isinstance(todo_state, TodoState) else todo_state.get("creative")
+    return raw if isinstance(raw, Mapping) else {}
 
-    Approval gates outrank hold state so a parked approval row offers the action
-    that advances the gate instead of a hold toggle.
+
+def pending_approval_gate(todo_state: TodoState | Mapping[str, object]) -> ApprovalGate | None:
+    """Return the pending human-approval gate for a todo, if any.
+
+    Consults only the gate-bearing state — the lifecycle phase (PRD human
+    approval) and the creative sections (design-spec / art / visuals awaiting
+    their flag). It never reads ``hold`` or ``active_runner``: approval and
+    hold are independent controls with no precedence between them.
     """
     if isinstance(todo_state, TodoState):
         phase = coerce_lifecycle_phase(todo_state.lifecycle_phase)
-        hold = todo_state.hold
-        active_runner = todo_state.active_runner
-        kind = todo_state.kind
     else:
         phase = coerce_lifecycle_phase(todo_state.get("lifecycle_phase"))
-        hold = todo_state.get("hold") is True
-        raw_active_runner = todo_state.get("active_runner")
-        active_runner = raw_active_runner if isinstance(raw_active_runner, str) and raw_active_runner else None
-        raw_kind = todo_state.get("kind")
-        kind = raw_kind if isinstance(raw_kind, str) else None
 
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
-        return HumanControl.APPROVE
-    if hold:
-        return HumanControl.RELEASE_HOLD
-    if active_runner or kind is None or phase is None:
-        return None
-    if phase in READY_BAND_PHASES or phase in WORK_LIFECYCLE_PHASES:
-        return None
-    return HumanControl.HOLD
+        return ApprovalGate.PRD
+
+    creative = _read_creative_state(todo_state)
+    for section, gate, flag in _CREATIVE_APPROVAL_GATES:
+        section_state = creative.get(section)
+        if isinstance(section_state, Mapping) and section_state.get(flag) is not True:
+            return gate
+    return None
+
+
+def hold_state(todo_state: TodoState | Mapping[str, object]) -> HumanControl | None:
+    """Return :data:`HumanControl.HOLD` when the operator brake is engaged.
+
+    Reads only the ``hold`` flag. It never consults the approval phase: a held
+    todo and a todo with a pending approval gate are orthogonal conditions.
+    """
+    if isinstance(todo_state, TodoState):
+        hold = todo_state.hold
+    else:
+        hold = todo_state.get("hold") is True
+    return HumanControl.HOLD if hold else None
+
+
+def hold_control_available(todo_state: TodoState | Mapping[str, object], *, autostart_enabled: bool) -> bool:
+    """Whether the operator *hold control* should be offered for a todo.
+
+    The hold control is the ``prepared -> work`` brake: offered only when the
+    todo is in the ``prepared`` phase, its kind is autostart-enabled, and it is
+    not already held. This is narrower than the hold flag itself, which the
+    runner honors in every lane regardless of this control.
+    """
+    if not autostart_enabled:
+        return False
+    if isinstance(todo_state, TodoState):
+        phase = coerce_lifecycle_phase(todo_state.lifecycle_phase)
+        held = todo_state.hold
+    else:
+        phase = coerce_lifecycle_phase(todo_state.get("lifecycle_phase"))
+        held = todo_state.get("hold") is True
+    return phase == LifecyclePhase.PREPARED and not held
 
 
 def derive_build_status(

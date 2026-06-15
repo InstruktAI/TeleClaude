@@ -111,14 +111,21 @@ def _todo_row(
     return TodoRow(item, slug_width=len(item.slug), col_widths=TodoRow.compute_col_widths([item]))
 
 
-def test_toggle_hold_action_posts_hold_or_release(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def _enable_autostart(monkeypatch: pytest.MonkeyPatch, kind: str, *, enabled: bool = True) -> None:
+    monkeypatch.setattr(preparation_actions.config.workflow.autostart, kind, enabled)
+
+
+def test_hold_action_posts_hold_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tool_api_request = MagicMock(return_value={"status": "ok"})
     monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+    _enable_autostart(monkeypatch, "change")
     harness = _Harness(tmp_path)
 
-    harness._current = _todo_row(hold=False)
-    assert harness.check_action("toggle_hold", ()) is True
-    harness.action_toggle_hold()
+    # Hold control is the prepared -> work brake: only on a prepared, unheld,
+    # autostart-enabled todo.
+    harness._current = _todo_row(hold=False, lifecycle_phase="prepared")
+    assert harness.check_action("hold", ()) is True
+    harness.action_hold()
 
     assert tool_api_request.call_args.args[:2] == (_METHOD_POST, "/todos/update")
     assert tool_api_request.call_args.kwargs["json_body"] == {
@@ -127,45 +134,71 @@ def test_toggle_hold_action_posts_hold_or_release(monkeypatch: pytest.MonkeyPatc
         "hold": True,
     }
 
-    harness._current = _todo_row(hold=True)
-    harness.action_toggle_hold()
+    # No release control: an already-held todo offers no hold affordance.
+    harness._current = _todo_row(hold=True, lifecycle_phase="prepared")
+    assert harness.check_action("hold", ()) is False
 
-    assert tool_api_request.call_args.kwargs["json_body"] == {
-        "slug": "selected",
-        "cwd": str(tmp_path),
-        "release": True,
-    }
-    assert harness.check_action("toggle_hold", ()) is True
+    # Not prepared -> no hold control even when autostart-enabled.
+    harness._current = _todo_row(hold=False, lifecycle_phase="plan_drafting")
+    assert harness.check_action("hold", ()) is False
+
     harness._current = _todo_row(status=TodoStatus.ICEBOX)
-    assert harness.check_action("toggle_hold", ()) is False
+    assert harness.check_action("hold", ()) is False
 
 
-def test_approve_gate_action_posts_approve_and_excludes_hold(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    tool_api_request = MagicMock(return_value={"status": "ok"})
-    monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+def test_hold_control_requires_autostart_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _enable_autostart(monkeypatch, "change", enabled=False)
     harness = _Harness(tmp_path)
 
+    harness._current = _todo_row(hold=False, lifecycle_phase="prepared")
+    assert harness.check_action("hold", ()) is False
+
+
+def test_release_action_does_not_exist(tmp_path: Path) -> None:
+    harness = _Harness(tmp_path)
+    assert not hasattr(harness, "action_release")
+    assert not hasattr(harness, "action_release_hold")
+
+
+def test_approve_and_hold_are_independent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    tool_api_request = MagicMock(return_value={"status": "ok"})
+    monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+    _enable_autostart(monkeypatch, "change")
+    harness = _Harness(tmp_path)
+
+    # A prepared row that is BOTH held and (hypothetically) approval-pending would
+    # show both predicates; approval and hold no longer exclude one another. The
+    # approval gate is observed independently of the hold flag.
     harness._current = _todo_row(hold=True, lifecycle_phase="prd_human_approval")
-
     assert harness.check_action("approve_gate", ()) is True
-    assert harness.check_action("toggle_hold", ()) is False
-    harness.action_approve_gate()
 
+    # Held does not suppress an approval gate, and a pending approval gate does
+    # not suppress the hold predicate: a prepared, unheld, autostart-enabled row
+    # exposes the hold control regardless of approval state.
+    harness._current = _todo_row(hold=False, lifecycle_phase="prepared")
+    assert harness.check_action("hold", ()) is True
+
+    harness.action_approve_gate()  # no-op here (not approval-pending) but exercises path
+    harness._current = _todo_row(hold=True, lifecycle_phase="prd_human_approval")
+    harness.action_approve_gate()
     assert tool_api_request.call_args.args[:2] == (_METHOD_POST, "/todos/approve")
     assert tool_api_request.call_args.kwargs["json_body"] == {
         "slug": "selected",
         "cwd": str(tmp_path),
     }
-    harness.app._refresh_data.assert_called_once()
 
 
-def test_no_human_gate_controls_for_running_or_work_ready_todos(tmp_path: Path) -> None:
+def test_no_human_gate_controls_for_running_or_work_ready_todos(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _enable_autostart(monkeypatch, "change")
     harness = _Harness(tmp_path)
 
-    harness._current = _todo_row(lifecycle_phase="prepared")
+    # Prepared + held: approval not pending, hold control suppressed (already held).
+    harness._current = _todo_row(lifecycle_phase="prepared", hold=True)
     assert harness.check_action("approve_gate", ()) is False
-    assert harness.check_action("toggle_hold", ()) is False
+    assert harness.check_action("hold", ()) is False
 
-    harness._current = _todo_row(active_runner="runner-session")
+    harness._current = _todo_row(active_runner="runner-session", lifecycle_phase="plan_drafting")
     assert harness.check_action("approve_gate", ()) is False
-    assert harness.check_action("toggle_hold", ()) is False
+    assert harness.check_action("hold", ()) is False

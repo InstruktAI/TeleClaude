@@ -21,10 +21,9 @@ from teleclaude.core.next_machine.dispatch_claims import (
 )
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle import (
-    HumanControl,
     coerce_lifecycle_phase,
     lifecycle_phase_index,
-    pending_human_control,
+    pending_approval_gate,
 )
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.slug_resolution import (
@@ -164,14 +163,15 @@ def _autostart_enabled(kind: str, autostart: Mapping[str, bool]) -> bool:
     return bool(autostart.get(kind, False))
 
 
-def _pending_human_control_for_runner(todo: RunnerTodo) -> HumanControl | None:
-    return pending_human_control(
-        {
-            "kind": todo.kind,
-            "lifecycle_phase": todo.lifecycle_phase,
-            "hold": todo.hold,
-            "active_runner": todo.active_runner,
-        }
+def _pending_approval_gate_for_runner(todo: RunnerTodo) -> bool:
+    return (
+        pending_approval_gate(
+            {
+                "kind": todo.kind,
+                "lifecycle_phase": todo.lifecycle_phase,
+            }
+        )
+        is not None
     )
 
 
@@ -242,11 +242,11 @@ def decide_dispatches(
         if todo.status == "icebox":
             decision.skip(RunnerSkipReason.ICEBOX, slug)
             continue
-        control = _pending_human_control_for_runner(todo)
-        if control is HumanControl.APPROVE:
+        # Approval-pending and held are independent skips with no precedence.
+        if _pending_approval_gate_for_runner(todo):
             decision.skip(RunnerSkipReason.APPROVAL_PENDING, slug)
             continue
-        if control is HumanControl.RELEASE_HOLD:
+        if todo.hold:
             decision.skip(RunnerSkipReason.HELD, slug)
             continue
         if todo.active_runner and todo.active_runner in live_session_ids:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
-
 from rich.style import Style
 from rich.text import Text
 from textual.events import Click
@@ -16,11 +14,11 @@ from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import format_relative_time
 from teleclaude.core.next_machine.lifecycle import (
-    HumanControl,
     LifecyclePhase,
     coerce_lifecycle_phase,
+    hold_state,
     is_settled_ok_phase,
-    pending_human_control,
+    pending_approval_gate,
 )
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
@@ -69,23 +67,20 @@ _REVIEW_STATUS_DISPLAY: dict[str, str] = {
 }
 
 
-class _HumanControlState(TypedDict, total=False):
-    kind: str | None
-    lifecycle_phase: str | None
-    hold: bool
-    active_runner: str | None
+# Gate/lock glyph for a held todo, rendered in the row's last column.
+_HOLD_ICON = "\U0001f512"
 
 
-def _human_control(todo: TodoItem) -> HumanControl | None:
+def _approval_pending(todo: TodoItem) -> bool:
     if todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
-        return None
-    state: _HumanControlState = {
-        "kind": todo.kind,
-        "lifecycle_phase": todo.lifecycle_phase,
-        "hold": todo.hold,
-        "active_runner": todo.active_runner,
-    }
-    return pending_human_control(state)
+        return False
+    return pending_approval_gate({"kind": todo.kind, "lifecycle_phase": todo.lifecycle_phase}) is not None
+
+
+def _is_held(todo: TodoItem) -> bool:
+    if todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
+        return False
+    return hold_state({"hold": todo.hold}) is not None
 
 
 def _display_kind(kind: str | None) -> str:
@@ -335,12 +330,8 @@ class TodoRow(TelecMixin, Widget):
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
-            control = _human_control(t)
-            if control is HumanControl.APPROVE:
+            if _approval_pending(t):
                 maxes["P"] = max(maxes["P"], len("A:approve"))
-                continue
-            if control is HumanControl.RELEASE_HOLD:
-                maxes["P"] = max(maxes["P"], len("H:hold"))
                 continue
             if t.kind is None:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:classify"))
@@ -430,13 +421,8 @@ class TodoRow(TelecMixin, Widget):
             )
             return _pad(result, target)
 
-        control = _human_control(self.todo)
-        if control is HumanControl.APPROVE:
+        if _approval_pending(self.todo):
             result.append_text(self._build_col("A", "approve", w.get("P", 0), Style(color=_gold_color(), bold=True)))
-            return _pad(result, target)
-
-        if control is HumanControl.RELEASE_HOLD:
-            result.append_text(self._build_col("H", "hold", w.get("P", 0), Style(color=_gold_color(), bold=True)))
             return _pad(result, target)
 
         # Trashed items show T:age only
@@ -542,15 +528,25 @@ class TodoRow(TelecMixin, Widget):
         # Property columns
         line.append_text(self._build_columns())
 
+        # A held todo carries a gate/lock glyph in the last column, distinct from
+        # the icebox/task-auth markers and independent of any approval marker.
+        held = _is_held(self.todo)
+
         # Fill to the current window width, reserving exactly 2 trailing spaces
         # (not dots) as the right gutter. Responsive to the live pane width.
         if outer_w > 0:
-            fill_to = max(0, available - 2)
+            reserve = 3 if held else 2
+            fill_to = max(0, available - reserve)
             gap = fill_to - len(line)
             if gap > 0:
                 line.append("·" * gap, style=Style(color=_muted_color()))
             line.truncate(fill_to)
+            if held:
+                line.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
             line.append("  ")
+        elif held:
+            line.append(" ")
+            line.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
 
         return line
 

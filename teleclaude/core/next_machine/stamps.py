@@ -41,7 +41,7 @@ from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
-from teleclaude.core.next_machine.lifecycle import HumanControl, LifecyclePhase, pending_human_control
+from teleclaude.core.next_machine.lifecycle import ApprovalGate, LifecyclePhase, pending_approval_gate
 from teleclaude.core.next_machine.provenance import (
     read_dependency_set,
     read_owned_snippet_digests,
@@ -214,6 +214,14 @@ async def apply_todo_stamp(
     return await writer.commit(todos_db, slug)
 
 
+# Maps a derived approval gate to the creative section + flag its ``A`` approval sets.
+_CREATIVE_GATE_APPROVAL: dict[ApprovalGate, tuple[str, str]] = {
+    ApprovalGate.CREATIVE_DESIGN_SPEC: ("design_spec", "confirmed"),
+    ApprovalGate.CREATIVE_ART: ("art", "approved"),
+    ApprovalGate.CREATIVE_VISUALS: ("visuals", "approved"),
+}
+
+
 async def _apply_current_gate_approval(
     todos_db: TodosDb,
     writer: StateWriter,
@@ -223,10 +231,10 @@ async def _apply_current_gate_approval(
     repo_root: str,
     snippet_digest_fn: Callable[[str], str],
 ) -> None:
-    control = pending_human_control(writer.state)
-    if control is not HumanControl.APPROVE:
+    gate = pending_approval_gate(writer.state)
+    if gate is None:
         raise StateMutationError("no pending approval gate")
-    if writer.state.lifecycle_phase == LifecyclePhase.PRD_HUMAN_APPROVAL.value:
+    if gate is ApprovalGate.PRD:
         await _apply_approval_stamp(
             todos_db,
             writer,
@@ -238,7 +246,11 @@ async def _apply_current_gate_approval(
             snippet_digest_fn=snippet_digest_fn,
         )
         return
-    raise StateMutationError(f"unsupported approval gate: {writer.state.lifecycle_phase}")
+    creative_target = _CREATIVE_GATE_APPROVAL.get(gate)
+    if creative_target is None:
+        raise StateMutationError(f"unsupported approval gate: {gate.value}")
+    section, flag = creative_target
+    _apply_creative_gate_stamp(writer, section=section, flag=flag)
 
 
 async def _apply_kind_assign_stamp(

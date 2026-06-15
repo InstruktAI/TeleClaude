@@ -75,7 +75,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("f", "freeze", "Frz"),
         Binding("u", "unfreeze", "Unfr"),
         Binding("A", "approve_gate", "Appr"),
-        Binding("h", "toggle_hold", "Hold"),
+        Binding("h", "hold", "Hold"),
         Binding("d", "toggle_delivered", "Deliv"),
         Binding("i", "toggle_icebox", "Ice"),
         Binding("x", "toggle_trashed", "Trsh"),

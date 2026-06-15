@@ -18,7 +18,7 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine import lifecycle_runner as runner_mod
 from teleclaude.core.next_machine import session_hold
 from teleclaude.core.next_machine.dispatch_claims import list_dispatch_claims
-from teleclaude.core.next_machine.lifecycle import HumanControl, pending_human_control
+from teleclaude.core.next_machine.lifecycle import ApprovalGate, HumanControl, hold_state, pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
     RunnerLane,
     RunnerSkipReason,
@@ -407,7 +407,7 @@ def test_decision_treats_closed_active_runner_as_not_driven() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-def test_pending_approval_gate_parks_runner_and_controls_precede_hold() -> None:
+def test_pending_approval_gate_parks_runner_independently_of_hold() -> None:
     todo = RunnerTodo(
         slug=_FEATURE,
         status="active",
@@ -417,17 +417,7 @@ def test_pending_approval_gate_parks_runner_and_controls_precede_hold() -> None:
         active_runner=None,
     )
 
-    assert (
-        pending_human_control(
-            {
-                "kind": todo.kind,
-                "lifecycle_phase": todo.lifecycle_phase,
-                "hold": todo.hold,
-                "active_runner": todo.active_runner,
-            }
-        )
-        is HumanControl.APPROVE
-    )
+    assert pending_approval_gate({"kind": todo.kind, "lifecycle_phase": todo.lifecycle_phase}) is ApprovalGate.PRD
 
     decision = decide_dispatches(
         {_FEATURE: todo},
@@ -438,33 +428,28 @@ def test_pending_approval_gate_parks_runner_and_controls_precede_hold() -> None:
     )
 
     assert decision.intents == []
+    # Approval-pending is checked before hold; both would skip this todo, but the
+    # checks are independent — neither suppresses the other.
     assert decision.skips[RunnerSkipReason.APPROVAL_PENDING] == [_FEATURE]
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-def test_pending_human_control_returns_none_for_running_or_work_ready_todos() -> None:
-    assert (
-        pending_human_control(
-            {
-                "kind": _CHANGE,
-                "lifecycle_phase": LifecyclePhase.PREPARED.value,
-                "hold": False,
-                "active_runner": None,
-            }
-        )
-        is None
-    )
-    assert (
-        pending_human_control(
-            {
-                "kind": _CHANGE,
-                "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value,
-                "hold": False,
-                "active_runner": _LIVE_SESSION,
-            }
-        )
-        is None
-    )
+def test_approval_gate_and_hold_state_are_independent() -> None:
+    # Changing hold never changes the approval result.
+    base = {"kind": _CHANGE, "lifecycle_phase": LifecyclePhase.PRD_HUMAN_APPROVAL.value}
+    assert pending_approval_gate({**base, "hold": False}) is ApprovalGate.PRD
+    assert pending_approval_gate({**base, "hold": True}) is ApprovalGate.PRD
+
+    # Changing the approval phase never changes the hold result.
+    assert hold_state({"hold": True, "lifecycle_phase": LifecyclePhase.PRD_HUMAN_APPROVAL.value}) is HumanControl.HOLD
+    assert hold_state({"hold": True, "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value}) is HumanControl.HOLD
+    assert hold_state({"hold": False, "lifecycle_phase": LifecyclePhase.PRD_HUMAN_APPROVAL.value}) is None
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_pending_approval_gate_returns_none_for_running_or_work_ready_todos() -> None:
+    assert pending_approval_gate({"kind": _CHANGE, "lifecycle_phase": LifecyclePhase.PREPARED.value}) is None
+    assert pending_approval_gate({"kind": _CHANGE, "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value}) is None
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
