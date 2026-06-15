@@ -15,6 +15,7 @@ from typing import cast
 from teleclaude.constants import (
     ARTIFACT_DIAGNOSIS,
     ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_PRD,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
@@ -31,6 +32,7 @@ from teleclaude.core.next_machine.git_ops import (
     DRIFT_SUBSTANTIVE,
     ArtifactDriftStatus,
     DependencyStatusReader,
+    _parse_iso_datetime,
     derive_age_drift,
     derive_artifact_drift,
     derive_dependency_graph_drift,
@@ -318,14 +320,40 @@ def _approval_is_human(stamp: ApprovalStamp) -> bool:
     return _session_principal(stamp.caller_session_id).startswith("human:")
 
 
-def _approval_current(stamp: ApprovalStamp, current_digest: str) -> bool:
+def _pending_substantive_prd_drift(model: TodoState) -> bool:
+    """Return True when an unresolved substantive upstream PRD drift supersedes the approval.
+
+    Scoped to the **upstream-artifact** (input) drift class: only an intent-level
+    input change re-opens the human gate. A substantive verdict driven by the PRD's
+    downstream evidence (code/snippets/deps) leaves the input digest unchanged, so
+    ``derive_upstream_artifact_drift`` derives fresh and the gate stays advanced. The
+    drift wins over a legacy approval that carries no ``approved_at`` or no drift
+    timestamp; otherwise it wins only when stamped after the approval — a re-approval
+    that post-dates the drift resolves it.
+    """
+    if derive_upstream_artifact_drift(model, ARTIFACT_PRD) != DRIFT_SUBSTANTIVE:
+        return False
+    approved_at = model.approvals.prd_approved.approved_at
+    if not approved_at:
+        return True
+    drift = model.approvals.drift_reviewed.get(ARTIFACT_PRD)
+    if drift is None or not drift.stamped_at:
+        return True
+    return _parse_iso_datetime(drift.stamped_at) > _parse_iso_datetime(approved_at)
+
+
+def _approval_current(stamp: ApprovalStamp, current_digest: str, *, pending_substantive_drift: bool = False) -> bool:
     """Return True when a human approval still matches the approved PRD content.
 
     The digest binds the human approval to the PRD content that was approved.
     Divergence re-opens the approval gate; an empty digest preserves legacy
-    approval state written before the digest field existed.
+    approval state written before the digest field existed. A pending substantive
+    upstream drift re-opens the gate regardless of digest, so an intent-level
+    change re-derives and re-approves the PRD rather than skipping ahead.
     """
     if not _approval_is_human(stamp):
+        return False
+    if pending_substantive_drift:
         return False
     if not stamp.approved_digest:
         return True
@@ -531,7 +559,11 @@ def _feature_phase(
     has_legacy_requirements = _artifact_present(model, STATE_KEY_REQUIREMENTS, artifact_presence=artifact_presence)
     if not (has_prd or has_legacy_requirements):
         return LifecyclePhase.PRD_DRAFTING
-    if has_prd and not _approval_current(model.approvals.prd_approved, _artifact_digest(model, STATE_KEY_PRD)):
+    if has_prd and not _approval_current(
+        model.approvals.prd_approved,
+        _artifact_digest(model, STATE_KEY_PRD),
+        pending_substantive_drift=_pending_substantive_prd_drift(model),
+    ):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
     if (
         not has_prd
@@ -641,7 +673,11 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.PRD_DRAFTING:
         return _intent_artifact_exists(model)
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
-        return _approval_current(model.approvals.prd_approved, _artifact_digest(model, STATE_KEY_PRD)) or (
+        return _approval_current(
+            model.approvals.prd_approved,
+            _artifact_digest(model, STATE_KEY_PRD),
+            pending_substantive_drift=_pending_substantive_prd_drift(model),
+        ) or (
             _artifact_exists(model, STATE_KEY_REQUIREMENTS)
             and _review_current(model.requirements_review, _artifact_digest(model, STATE_KEY_REQUIREMENTS))
         )

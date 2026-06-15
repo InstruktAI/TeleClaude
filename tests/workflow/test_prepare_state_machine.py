@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 
@@ -39,6 +39,7 @@ from teleclaude.core.next_machine.lifecycle import (
     collapse_drift,
     derive_lifecycle_drift,
     is_ready_for_work,
+    phase_is_complete,
 )
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.prepare_step_support import prepare_step_prepared
@@ -377,6 +378,133 @@ def test_review_approval_is_invalidated_when_its_artifact_is_rewritten() -> None
     assert adopt_prepare_handoff_phase(req) == LifecyclePhase.ARCHITECTURE_DRAFTING
     req.artifacts.requirements.digest = "req-rewritten"
     assert adopt_prepare_handoff_phase(req) == LifecyclePhase.PRD_HUMAN_APPROVAL
+
+
+_PRD_DIGEST = "prd-approved"
+_INPUT_AT_WRITE = "input-v1"
+_INPUT_DRIFTED = "input-v2"
+_APPROVAL_TS = "2026-06-14T10:00:00+00:00"
+_DRIFT_AFTER_APPROVAL = "2026-06-14T12:00:00+00:00"
+
+
+def _feature_with_prd_drift(
+    *,
+    caller_session_id: str,
+    approved_at: str,
+    input_drifted: bool,
+    drift_verdict: Literal["substantive", "cosmetic"] | None,
+    drift_stamped_at: str = _DRIFT_AFTER_APPROVAL,
+) -> TodoState:
+    """Build a feature whose PRD is human-approved at its current digest, with the
+    input either drifted (upstream-artifact drift) or unchanged, and an optional
+    drift_reviewed["prd"] stamp."""
+    current_input = _INPUT_DRIFTED if input_drifted else _INPUT_AT_WRITE
+    model = TodoState(kind=KIND_FEATURE, schema_version=4)
+    model.artifacts.prd.digest = _PRD_DIGEST
+    model.artifacts.prd.upstream_digests = {STATE_KEY_INPUT: _INPUT_AT_WRITE}
+    model.artifacts.input.digest = current_input
+    model.approvals.prd_approved.approved = True
+    model.approvals.prd_approved.caller_session_id = caller_session_id
+    model.approvals.prd_approved.approved_digest = _PRD_DIGEST
+    model.approvals.prd_approved.approved_at = approved_at
+    if drift_verdict is not None:
+        model.approvals.drift_reviewed[ARTIFACT_PRD] = DriftReviewedStamp(
+            verdict=drift_verdict,
+            stamped_at=drift_stamped_at,
+            upstream_digests_at_review={STATE_KEY_INPUT: current_input},
+        )
+    return model
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS9")
+async def test_substantive_upstream_prd_drift_reopens_human_approval_gate(tmp_path: Path) -> None:
+    """A pending substantive UPSTREAM-artifact (input) drift re-opens prd_human_approval
+    so an intent-level input change re-derives and re-approves the PRD. A substantive
+    verdict driven by downstream evidence (input unchanged) does NOT re-open; a cosmetic
+    drift does not re-open; a legacy (no approved_at) approval and a drift with no
+    stamped_at yield to the drift; a re-approval that post-dates the drift advances."""
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+    caller_session_id = await _create_human_runtime_session(
+        project_root,
+        session_id=f"{tmp_path.name}-prd-drift-human",
+    )
+
+    upstream_drift_supersedes = _feature_with_prd_drift(
+        caller_session_id=caller_session_id,
+        approved_at=_APPROVAL_TS,
+        input_drifted=True,
+        drift_verdict="substantive",
+    )
+    assert adopt_prepare_handoff_phase(upstream_drift_supersedes) == LifecyclePhase.PRD_HUMAN_APPROVAL
+    assert phase_is_complete(upstream_drift_supersedes, LifecyclePhase.PRD_HUMAN_APPROVAL) is False
+
+    downstream_only_drift = _feature_with_prd_drift(
+        caller_session_id=caller_session_id,
+        approved_at=_APPROVAL_TS,
+        input_drifted=False,
+        drift_verdict="substantive",
+    )
+    assert adopt_prepare_handoff_phase(downstream_only_drift) == LifecyclePhase.ARCHITECTURE_DRAFTING
+
+    legacy_untimestamped_approval = _feature_with_prd_drift(
+        caller_session_id=caller_session_id,
+        approved_at="",
+        input_drifted=True,
+        drift_verdict="substantive",
+    )
+    assert adopt_prepare_handoff_phase(legacy_untimestamped_approval) == LifecyclePhase.PRD_HUMAN_APPROVAL
+
+    untimestamped_drift = _feature_with_prd_drift(
+        caller_session_id=caller_session_id,
+        approved_at=_APPROVAL_TS,
+        input_drifted=True,
+        drift_verdict="substantive",
+        drift_stamped_at="",
+    )
+    assert adopt_prepare_handoff_phase(untimestamped_drift) == LifecyclePhase.PRD_HUMAN_APPROVAL
+
+    reapproved_after_drift = _feature_with_prd_drift(
+        caller_session_id=caller_session_id,
+        approved_at=_DRIFT_AFTER_APPROVAL,
+        input_drifted=True,
+        drift_verdict="substantive",
+        drift_stamped_at=_APPROVAL_TS,
+    )
+    assert adopt_prepare_handoff_phase(reapproved_after_drift) == LifecyclePhase.ARCHITECTURE_DRAFTING
+    assert phase_is_complete(reapproved_after_drift, LifecyclePhase.PRD_HUMAN_APPROVAL) is True
+
+    cosmetic_drift = _feature_with_prd_drift(
+        caller_session_id=caller_session_id,
+        approved_at=_APPROVAL_TS,
+        input_drifted=True,
+        drift_verdict="cosmetic",
+    )
+    assert adopt_prepare_handoff_phase(cosmetic_drift) == LifecyclePhase.ARCHITECTURE_DRAFTING
+
+    legacy_no_drift = _feature_with_prd_drift(
+        caller_session_id=caller_session_id,
+        approved_at="",
+        input_drifted=False,
+        drift_verdict=None,
+    )
+    legacy_no_drift.approvals.prd_approved.approved_digest = ""
+    assert adopt_prepare_handoff_phase(legacy_no_drift) == LifecyclePhase.ARCHITECTURE_DRAFTING
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS9")
+def test_stray_substantive_prd_drift_is_inert_for_plan_only_kind() -> None:
+    """The prd_human_approval re-open is feature-gate only; a change todo that never
+    gates on prd_approved is unaffected by a stray substantive prd drift stamp."""
+    model = TodoState(kind=KIND_CHANGE, schema_version=4)
+    model.artifacts.implementation_plan.digest = "plan-approved"
+    model.plan_review.verdict = "approve"
+    model.plan_review.approved_digest = "plan-approved"
+    model.approvals.drift_reviewed[ARTIFACT_PRD] = DriftReviewedStamp(
+        verdict="substantive",
+        stamped_at=_DRIFT_AFTER_APPROVAL,
+    )
+    assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PREPARED
 
 
 def test_bug_is_not_work_ready_before_prepared() -> None:

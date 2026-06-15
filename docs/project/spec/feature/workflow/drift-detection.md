@@ -288,10 +288,15 @@ When the drift analyzer stamps `substantive` for artifact X on any class:
 - Every downstream artifact's review verdict is cleared (a substantive
   PRD drift invalidates architecture and plan; substantive architecture
   drift invalidates plan).
-- The PRD-approved stamp is **not** cleared by drift on the PRD's
-  downstream evidence (code/snippets/deps). It IS cleared when the PRD
-  itself is rewritten or when the human re-engages with intent-level
-  refinement (see `prepare-flow#refinement`).
+- The PRD-approved gate is **not** re-opened by drift on the PRD's
+  downstream evidence (code/snippets/deps). It IS re-opened when the PRD
+  artifact itself is rewritten (its live digest diverges from
+  `approved_digest`) or when a substantive **upstream-artifact** drift —
+  the human re-engaging with intent-level `input` refinement — is stamped
+  for the PRD (see `prepare-flow#refinement`). The upstream-drift re-open
+  supersedes a legacy approval that bound no `approved_digest` and one that
+  recorded no `approved_at`; a re-approval whose `approved_at` is at or
+  after the drift stamp resolves it.
 - The drift-reviewed stamps for X are cleared (so re-derived X earns a
   fresh evidence anchor on its next analyze pass).
 - Routing returns to X's **drafting** phase, not its review phase, even

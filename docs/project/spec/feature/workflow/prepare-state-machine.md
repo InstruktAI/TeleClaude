@@ -82,6 +82,20 @@ And only a human approval whose approved_digest equals the current prd digest ad
 And an approval with no bound approved_digest keeps satisfying the PRD gate for legacy state
 ```
 
+#### UC-WPS9: A pending substantive upstream drift re-opens the PRD gate even for a legacy approval
+
+```gherkin
+Given a feature Todo whose prd_approved Stamp is human-approved
+And the prd Artifact's live digest still equals the approved content, including the legacy case where the approval bound no approved_digest
+And a substantive upstream-artifact drift on the prd — its recorded input digest no longer equals the current input — supersedes the approval, because the approval carries no approved_at or the drift was stamped after approved_at
+When the orchestrator calls "telec todo prepare my-feature"
+Then the machine does not advance past the PRD gate
+And it derives lifecycle_phase=prd_human_approval so the intent-level input change re-derives and re-approves the prd
+And a substantive verdict driven only by the prd's downstream evidence, with the input digest unchanged, does not re-open the gate
+And a cosmetic drift verdict does not re-open the gate
+And a human re-approval whose approved_at is at or after the drift stamp advances past the gate
+```
+
 <!-- planned:task-lane -->
 
 #### UC-WPS6: Task todos bypass the prepare machine
