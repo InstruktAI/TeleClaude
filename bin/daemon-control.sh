@@ -13,7 +13,17 @@ set -e
 
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+if [ -n "${PROJECT_ROOT:-}" ]; then
+    PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
+else
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    # Linked worktrees live at <main>/trees/<name>; the daemon must always home
+    # to the main checkout (only it carries the runtime .env). When this copy of
+    # the script runs from a worktree, climb back out to the main root.
+    if [ "$(basename "$(dirname "$PROJECT_ROOT")")" = "trees" ]; then
+        PROJECT_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
+    fi
+fi
 
 # Configuration
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"

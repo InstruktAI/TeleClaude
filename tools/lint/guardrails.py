@@ -44,8 +44,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("paths", nargs="*", help="Optional repo-relative files to scope the checks to.")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    # tools/lint/guardrails.py -> go up 2 levels to repo root
-    repo_root = Path(__file__).resolve().parents[2]
+    # Root at the project being linted (the caller runs this script with cwd set
+    # to that project), not at this script's install location — the guardrails
+    # binary is shared across worktrees and downstream projects.
+    repo_root = Path.cwd().resolve()
     selected_paths = _normalize_selected_paths(repo_root, args.paths)
 
     # Module size gate
