@@ -267,6 +267,29 @@ And PersonEntry edits write the global config
 And PersonConfig edits write that person's per-person overlay file
 ```
 
+<!-- planned:fix-silent-swallow-no-redis-conn -->
+
+#### UC-WIZ-14: `make start` fails fast when the configured Redis is unreachable
+
+Redis is a hard runtime dependency. The daemon stays resilient to transient Redis
+loss at runtime through its reconnect loop, but `make start` does not report a
+healthy runtime when Redis has never connected — an unreachable Redis surfaces at
+startup instead of being swallowed.
+
+```
+Given a machine where REDIS_URL is configured but the Redis server is unreachable
+When a human runs `make start`
+Then `make start` does not report the runtime as started successfully
+And it exits non-zero within a bounded startup readiness window
+And it surfaces that Redis is unreachable and how to remediate it
+  (verify REDIS_URL and that the Redis server is reachable)
+And the daemon reports itself not ready while Redis has never connected
+When the configured Redis later becomes reachable
+Then the daemon reports itself ready without requiring a restart
+```
+
+<!-- /planned:fix-silent-swallow-no-redis-conn -->
+
 ### Persistence surfaces and writers
 
 The wizard writes through five distinct persistence surfaces. The
