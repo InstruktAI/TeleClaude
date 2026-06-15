@@ -31,6 +31,24 @@ After both phases, the documentation tree is atomically symlinked from
 source into `~/.teleclaude/docs/`, with the deployed `index.yaml`
 rewritten so consumers see deployment-relative paths.
 
+<!-- planned:restore-whole-domain-symlink -->
+
+The deployed `~/.teleclaude/docs/` is a real directory holding the rewritten
+`index.yaml`, the `third-party/` tree, and one **whole-folder symlink per
+domain** (`~/.teleclaude/docs/<domain>` → `docs/global/<domain>`). The deploy
+root stays a real directory because the deployed `index.yaml` is rewritten in
+place; a symlinked root is refused. A per-domain symlink is a live view —
+every current and later source child resolves through it, so a domain can
+never be partially deployed. For each source `docs/global/<domain>/baseline.md`
+the deploy inflates the domain baseline and writes it as a generated artifact
+in the deployed root at `~/.teleclaude/docs/_baselines/<domain>.md` — never
+into the docs Source tree, so "Source lives in git only" holds. The
+SessionStart hook reads that generated file to inject the domain's
+process-enforcement baseline; the source `baseline.md` manifest exposed
+through the symlink is dormant and never consumed as the baseline.
+
+<!-- /planned:restore-whole-domain-symlink -->
+
 When the distribution step is invoked directly in no-deploy mode, agent
 artifacts are emitted to `project_root/dist/global` and
 `project_root/dist/local` (not transient dirs), no copies are made to
@@ -93,6 +111,20 @@ Scenario: Distribution invoked directly in no-deploy mode
   And documentation deployment is NOT performed
   And the dist/ output is left in place for inspection
 ```
+
+<!-- planned:restore-whole-domain-symlink -->
+
+```
+Scenario: A domain folder deploys as a live whole-folder symlink with a generated baseline
+  Given a source domain docs/global/<domain>/ with a baseline.md and one or more subfolders
+  When the documentation deployment step runs
+  Then ~/.teleclaude/docs/<domain> is a whole-folder symlink to docs/global/<domain>
+  And the inflated domain baseline is written to ~/.teleclaude/docs/_baselines/<domain>.md
+  And no file is written under the docs source tree
+  And a subfolder added to the source domain afterward resolves through the deployed symlink without a re-deploy
+```
+
+<!-- /planned:restore-whole-domain-symlink -->
 
 ### Cross-context references
 
