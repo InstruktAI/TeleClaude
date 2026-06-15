@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 from rich.style import Style
 from rich.text import Text
@@ -7,6 +9,7 @@ from ruamel.yaml import YAML
 
 import teleclaude.cli.config_handlers as handlers
 import teleclaude.config as _tc_config_module
+from teleclaude.cli.tui.views._config_constants import _SUBTABS, Subtab
 from teleclaude.cli.tui.views.config import ConfigContent
 from teleclaude.cli.tui.views.config_render import _MASKED_VALUE
 from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema
@@ -45,6 +48,7 @@ IDENTITY_PREFIX = "identity."
 OVERLAY_PREFIX = "overlay."
 OVERLAY_NOTIFICATIONS = "overlay.settings.output_visibility.notifications"
 OVERLAY_DISCORD_USER_ID = "overlay.creds.discord.user_id"
+OVERLAY_TELEGRAM_USER_NAME = "overlay.creds.telegram.user_name"
 GLOBAL_IDENTITY_SECTION = "Global Identity"
 GLOBAL_SOURCE = "global"
 PER_PERSON_SOURCE = "per-person"
@@ -64,7 +68,15 @@ TTS_SESSION_START_MESSAGE = "tts.events.session_start.message"
 TTS_SESSION_START_MESSAGES = "tts.events.session_start.messages"
 TTS_AGENT_STOP_MESSAGE = "tts.events.agent_stop.message"
 TTS_OPENAI_ENABLED = "tts.services.openai.enabled"
+TTS_OPENAI_VOICE_NAME = "tts.services.openai.voices.0.name"
 TTS_SESSION_START_GREETINGS = ["Hello", "Hey there"]
+TTS_STT_SUBTAB_INDEX = _SUBTABS.index(Subtab.TTS_STT)
+
+
+def _is_struct_list(value: object) -> bool:
+    return isinstance(value, list) and any(dataclasses.is_dataclass(item) for item in value)
+
+
 FIRECRAWL_API_KEY_FIELD = "firecrawl.api_key"
 FIRECRAWL_API_KEY_VAR = "FIRECRAWL_API_KEY"
 SECRET_TOKEN = "super-secret-token-value"
@@ -80,7 +92,7 @@ def test_nested_dict_structures_render_recursively_to_leaves():
             "agent_stop": {"enabled": False, "message": "Done"},
         },
         "services": {
-            "openai": {"enabled": True, "model": "tts-1"},
+            "openai": {"enabled": True, "model": "tts-1", "voices": [{"name": "alloy", "voice_id": "v-1"}]},
         },
     }
     tts_obj = parse_tts_config(raw_tts)
@@ -95,8 +107,10 @@ def test_nested_dict_structures_render_recursively_to_leaves():
     assert TTS_AGENT_STOP_MESSAGE in keys_to_values
     assert TTS_OPENAI_ENABLED in keys_to_values
 
-    # No nested structure leaks as a raw dict/JSON blob.
+    # A list of structs expands to indexed leaves, never a single struct-list blob.
+    assert TTS_OPENAI_VOICE_NAME in keys_to_values
     assert all(not isinstance(value, dict) for value in keys_to_values.values())
+    assert all(not _is_struct_list(value) for value in keys_to_values.values())
 
     # The loader round-trips the event messages list through to its leaf.
     assert keys_to_values[TTS_SESSION_START_MESSAGES] == TTS_SESSION_START_GREETINGS
@@ -126,6 +140,66 @@ def test_env_sourced_value_masked_unless_editing(monkeypatch):
     editing = Text()
     content._render_reflected_field(editing, field, selected=False, prefix=" ", row_style=Style())
     assert SECRET_TOKEN in editing.plain
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-10")
+def test_nested_leaf_persists_to_its_dotted_path(tmp_path, monkeypatch):
+    machine_config_path = tmp_path / "config.yml"
+    global_config_path = tmp_path / "teleclaude.yml"
+    people_dir = tmp_path / "people"
+    people_dir.mkdir()
+    env_file_path = tmp_path / ".env"
+    env_file_path.write_text("", encoding="utf-8")
+
+    yaml = YAML()
+    yaml.dump(
+        {
+            "computer": {"name": "PC", "role": "development", "timezone": "Europe/Amsterdam", "is_master": True},
+            "agents": {"default": "claude", "claude": {"system_prompt": "hi"}},
+            "tts": {
+                "enabled": True,
+                "events": {"session_start": {"enabled": True, "messages": TTS_SESSION_START_GREETINGS}},
+            },
+        },
+        machine_config_path,
+    )
+    yaml.dump({"people": []}, global_config_path)
+
+    monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
+    monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
+    monkeypatch.setattr(handlers, "_DEFAULT_ENV_PATH", env_file_path)
+    monkeypatch.setattr(handlers, "list_person_dirs", lambda: [])
+    monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
+    monkeypatch.setattr(_tc_config_module, "config_path", machine_config_path)
+
+    old_rc = get_runtime_config()
+    new_rc = RuntimeConfig(
+        home=old_rc.home,
+        config_path=machine_config_path,
+        env_path=env_file_path,
+        project_config_path=old_rc.project_config_path,
+        tmpdir_base=old_rc.tmpdir_base,
+    )
+    set_runtime_config(new_rc)
+
+    try:
+        reload_config()
+        content = ConfigContent()
+        monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+        content.refresh_data()
+
+        content.active_subtab = TTS_STT_SUBTAB_INDEX
+        fields_by_key = {field.key: field for field in content.reflected_fields}
+        # The nested event leaf is reachable through the schema-driven renderer.
+        assert TTS_SESSION_START_ENABLED in fields_by_key
+
+        content._save_reflected_field(TTS_SESSION_START_ENABLED, False)
+
+        with open(machine_config_path, encoding="utf-8") as f:
+            data = yaml.load(f)
+        assert data["tts"]["events"]["session_start"]["enabled"] is False
+    finally:
+        set_runtime_config(old_rc)
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-9")
@@ -417,5 +491,22 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
         assert bob_data["settings"]["output_visibility"]["notifications"] == BOTH
         assert saved_config.creds.discord is not None
         assert saved_config.creds.discord.user_id == BOB_DISCORD_USER_ID
+
+        # Editing one required credential leaf must not persist a partial, invalid
+        # submodel: telegram requires both user_name and user_id, so saving only
+        # user_name is refused and nothing is written.
+        content._person_field_cursor = next(
+            index
+            for index, field in enumerate(content.person_reflected_fields)
+            if field.key == OVERLAY_TELEGRAM_USER_NAME
+        )
+        content.activate_current()
+        content._edit_buffer = ALICE
+        content.activate_current()
+
+        assert content._status_is_error
+        with open(bob_config_path, encoding="utf-8") as f:
+            bob_after = yaml.load(f)
+        assert "telegram" not in (bob_after.get("creds") or {})
     finally:
         set_runtime_config(old_rc)

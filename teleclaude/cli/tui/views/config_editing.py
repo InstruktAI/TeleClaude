@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any, get_args
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from teleclaude.cli.config_handlers import (
     EnvVarStatus,
@@ -45,14 +45,28 @@ def _apply_field_to_global_config(key: str, deserialized: Any) -> None:
             config.summarizer.models[provider] = deserialized
         return
 
-    # Standard traversal, descending dict members and object attributes alike.
+    # Standard traversal, descending list indices, dict members, and attributes alike.
     obj = config
     for part in parts[:-1]:
-        obj = obj[part] if isinstance(obj, dict) else getattr(obj, part)
-    if isinstance(obj, dict):
-        obj[parts[-1]] = deserialized
+        obj = _descend(obj, part)
+    _assign(obj, parts[-1], deserialized)
+
+
+def _descend(node: Any, part: str) -> Any:
+    if isinstance(node, list):
+        return node[int(part)]
+    if isinstance(node, dict):
+        return node[part]
+    return getattr(node, part)
+
+
+def _assign(node: Any, part: str, value: Any) -> None:
+    if isinstance(node, list):
+        node[int(part)] = value
+    elif isinstance(node, dict):
+        node[part] = value
     else:
-        setattr(obj, parts[-1], deserialized)
+        setattr(node, part, value)
 
 
 def _instantiate_nested_config_model(annotation: Any) -> BaseModel:
@@ -333,12 +347,15 @@ class ConfigContentEditingMixin:
         path = key.split(".")
         node = self._raw_config  # type: ignore[attr-defined]
         for part in path[:-1]:
+            if isinstance(node, list):
+                node = node[int(part)]
+                continue
             child = node.get(part)
-            if not isinstance(child, dict):
+            if not isinstance(child, (dict, list)):
                 child = {}
                 node[part] = child
             node = child
-        node[path[-1]] = deserialized
+        _assign(node, path[-1], deserialized)
 
     def _section_write_block_reason(self, key: str, deserialized: object) -> str | None:
         """Reason to refuse persisting this edit, or None if it may be written.
@@ -428,6 +445,19 @@ class ConfigContentEditingMixin:
                     obj = val
 
                 setattr(obj, parts[-1], deserialized)
+
+                # A nested optional submodel (e.g. a credential block) is instantiated
+                # on demand above; refuse to persist it while a required sibling is
+                # still unset, rather than writing a structurally invalid overlay.
+                try:
+                    type(person_config).model_validate(person_config.model_dump())
+                except ValidationError as exc:
+                    self._status_message = (
+                        f"Cannot save {f.name} yet: {exc.error_count()} required field(s) still missing."  # type: ignore[attr-defined]
+                    )
+                    self._status_is_error = True  # type: ignore[attr-defined]
+                    return
+
                 save_person_config(person_name, person_config)
 
             self._editing_var_name = None  # type: ignore[attr-defined]

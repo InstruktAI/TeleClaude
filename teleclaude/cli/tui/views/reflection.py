@@ -83,6 +83,11 @@ def _struct_type_from_annotation(ann: Any) -> Any | None:
     return None
 
 
+def _is_struct_value(value: Any) -> bool:
+    """Whether a value is a nested structure the walker descends into."""
+    return isinstance(value, (BaseModel, dict)) or (dataclasses.is_dataclass(value) and not isinstance(value, type))
+
+
 def _reflect_field(
     full_key: str,
     label: str,
@@ -92,17 +97,24 @@ def _reflect_field(
     value: Any,
     description: str | None,
 ) -> list[ReflectedField]:
-    """Recurse into a nested struct/dict, or emit a single leaf field.
+    """Recurse into a nested struct/dict/list, or emit a single leaf field.
 
-    Recursion is driven by the value when one is present (a model, dataclass, or
-    dict of those), and by the declared type when the value is an unset
+    Recursion is driven by the value when one is present (a model, dataclass,
+    dict, or list of those), and by the declared type when the value is an unset
     ``Optional`` nested struct — so a structure renders to its leaves regardless of
-    whether it is currently populated.
+    whether it is currently populated. A list of scalars stays a single editable
+    leaf; a list of structs expands to one indexed subtree per element.
     """
-    if isinstance(value, BaseModel) or (dataclasses.is_dataclass(value) and not isinstance(value, type)):
+    if _is_struct_value(value):
         return reflect_schema(value, prefix=full_key, section=label, owning_source=owning_source)
-    if isinstance(value, dict):
-        return reflect_schema(value, prefix=full_key, section=label, owning_source=owning_source)
+
+    if isinstance(value, list) and any(_is_struct_value(item) for item in value):
+        items: list[ReflectedField] = []
+        for index, item in enumerate(value):
+            items.extend(
+                _reflect_field(f"{full_key}.{index}", f"{label} {index}", label, owning_source, None, item, None)
+            )
+        return items
 
     if value is None and annotation is not None:
         nested = _struct_type_from_annotation(annotation)
