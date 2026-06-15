@@ -67,8 +67,13 @@ _REVIEW_STATUS_DISPLAY: dict[str, str] = {
 }
 
 
-# Gate/lock glyph for a held todo, rendered in the row's last column.
+# Gate/lock glyph for a held todo, rendered in the row's dedicated last column.
 _HOLD_ICON = "\U0001f512"
+
+# Display (cell) width of the hold glyph. `🔒` is an emoji: len("🔒") == 1 but it
+# occupies 2 terminal cells. The module's width math is len()-based, so the held
+# column is sized and padded in cells explicitly to avoid a 1-cell drift.
+_HOLD_ICON_CELLS = 2
 
 
 def _approval_pending(todo: TodoItem) -> bool:
@@ -198,6 +203,11 @@ _GOLD_LIGHT = "color(136)"
 # Column gap between aligned properties
 _COL_GAP = 2
 
+# Cell width reserved for the dedicated held column: a two-dot gap (like every
+# other column) plus the 2-cell glyph slot. Held and not-held rows both occupy
+# this exact cell width so the right edge aligns.
+_HELD_COL_WIDTH = _COL_GAP + _HOLD_ICON_CELLS
+
 # Horizontal padding from CSS `padding: 0 1` (1 left + 1 right)
 _WIDGET_PADDING_HORZ = 2
 
@@ -275,8 +285,13 @@ def _muted_color() -> str:
 
 
 def _pad(text: Text, width: int) -> Text:
-    """Pad a Text to a fixed width with dot leaders."""
-    gap = max(0, width - len(text))
+    """Pad a Text to a fixed width with dot leaders.
+
+    Width is measured in display cells (Rich `cell_len`), not `len`, so a column
+    containing a wide glyph (the hold icon) reserves the same right edge as an
+    ASCII-only column.
+    """
+    gap = max(0, width - text.cell_len)
     if gap > 0:
         text.append("\u00b7" * gap, style=Style(color=_muted_color()))
     return text
@@ -358,7 +373,10 @@ class TodoRow(TelecMixin, Widget):
         path_prepare = k + sized["P"]
         path_integration = k + sized["P"]  # I renders in P slot
         path_work = k + sized["B"] + sized["R"] + sized["D"]
-        sized["_max"] = max(path_prepare, path_integration, path_work) + 1  # +1 trailing dot
+        # The held glyph occupies its own dedicated last column, reserved on every
+        # row (blank when not held) so the right edge aligns. It is grouped with
+        # the property columns, so its cell width is part of the canonical block.
+        sized["_max"] = max(path_prepare, path_integration, path_work) + 1 + _HELD_COL_WIDTH  # +1 trailing dot
         return sized
 
     @property
@@ -392,6 +410,25 @@ class TodoRow(TelecMixin, Widget):
         """Max rendered column width across all paths — the target for uniform padding."""
         return self._col_widths.get("_max", 0)
 
+    def _finish_columns(self, result: Text) -> Text:
+        """Dot-pad the property columns, then render the dedicated held column last.
+
+        The held glyph is the block's last column, sitting after the property
+        columns and the inter-column slack, separated by the standard two-dot gap.
+        The property block is first padded to ``_max - _HELD_COL_WIDTH`` so the held
+        column always occupies the trailing ``_HELD_COL_WIDTH`` cells. When the todo
+        is not held the slot renders blank (dot-filled). Width is measured in display
+        cells, so the held row (two-dot gap + 2-cell glyph) and the not-held row
+        (four dots) align to the same right edge.
+        """
+        result = _pad(result, self._total_col_width() - _HELD_COL_WIDTH)
+        if _is_held(self.todo):
+            result.append("·" * _COL_GAP, style=Style(color=_muted_color()))
+            result.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
+        else:
+            result.append("·" * _HELD_COL_WIDTH, style=Style(color=_muted_color()))
+        return result
+
     def _build_columns(self) -> Text:
         """Build aligned columns. K:<kind> renders first, then phase (P/I) or work (B/R/D)."""
         target = self._total_col_width()
@@ -419,17 +456,17 @@ class TodoRow(TelecMixin, Widget):
                     _PHASE_PREFIX_LIFECYCLE, "icebox", w.get("P", 0), Style(color=_icebox_color(), bold=True)
                 )
             )
-            return _pad(result, target)
+            return self._finish_columns(result)
 
         if _approval_pending(self.todo):
             result.append_text(self._build_col("A", "approve", w.get("P", 0), Style(color=_gold_color(), bold=True)))
-            return _pad(result, target)
+            return self._finish_columns(result)
 
         # Trashed items show T:age only
         if self.todo.status == TodoStatus.REMOVED:
             age = format_relative_time(self.todo.removed_at) if self.todo.removed_at else ""
             result.append_text(self._build_col("T", age, w.get("P", 0), Style(color=_trashed_color(), bold=True)))
-            return _pad(result, target)
+            return self._finish_columns(result)
 
         if self.todo.kind is None:
             result.append_text(
@@ -437,7 +474,7 @@ class TodoRow(TelecMixin, Widget):
                     _PHASE_PREFIX_LIFECYCLE, "classify", w.get("P", 0), Style(color=_gold_color(), bold=True)
                 )
             )
-            return _pad(result, target)
+            return self._finish_columns(result)
 
         ok = _ok_color()
         gold = _gold_color()
@@ -452,14 +489,14 @@ class TodoRow(TelecMixin, Widget):
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))
-            return _pad(result, target)
+            return self._finish_columns(result)
 
         # 2. Active or queued integration phase — render in the P column slot for alignment
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
             i_label, i_value, i_color = i_result
             result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color, bold=True)))
-            return _pad(result, target)
+            return self._finish_columns(result)
 
         # 3. Work phase (build != pending) — existing B/R/D path
         if bs is not None and bs != _TODO_STATUS_PENDING:
@@ -480,7 +517,7 @@ class TodoRow(TelecMixin, Widget):
             ds = self.todo.deferrals_status
             result.append_text(self._build_col("D", ds or "", w.get("D", 0), _DIM))
 
-            return _pad(result, target)
+            return self._finish_columns(result)
 
         # 4. Ready/pending state — no phase/work columns
         return _pad(result, target)
@@ -525,28 +562,20 @@ class TodoRow(TelecMixin, Widget):
 
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
 
-        # Property columns
+        # Property columns, including the dedicated held column as the block's last
+        # column (the hold glyph or its reserved blank slot).
         line.append_text(self._build_columns())
 
-        # A held todo carries a gate/lock glyph in the last column, distinct from
-        # the icebox/task-auth markers and independent of any approval marker.
-        held = _is_held(self.todo)
-
         # Fill to the current window width, reserving exactly 2 trailing spaces
-        # (not dots) as the right gutter. Responsive to the live pane width.
+        # (not dots) as the right gutter. Responsive to the live pane width. Cell
+        # width (not len) drives the gap so the wide hold glyph does not drift.
         if outer_w > 0:
-            reserve = 3 if held else 2
-            fill_to = max(0, available - reserve)
-            gap = fill_to - len(line)
+            fill_to = max(0, available - 2)
+            gap = fill_to - line.cell_len
             if gap > 0:
                 line.append("·" * gap, style=Style(color=_muted_color()))
             line.truncate(fill_to)
-            if held:
-                line.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
             line.append("  ")
-        elif held:
-            line.append(" ")
-            line.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
 
         return line
 
