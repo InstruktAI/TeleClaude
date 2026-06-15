@@ -38,33 +38,6 @@
   NEXT: telec todo create unknown-prepare <content> [--kind feature|change|bug|task]
   '''
 # ---
-# name: test_prepared_auto_continue_reuses_parent_prepare_worker
-  '''
-  PREPARED: parent is ready for work.
-  
-  AUTO-CONTINUE:
-  Execute in order:
-  telec sessions send sess-parent-worker 'parent is PREPARED and frozen in your context; drive prepare for unblocked child child: telec todo prepare child'
-  
-  telec sessions end sess-parent-reviewer
-  
-  AUTO-CONTINUE dispatched dependent prepare work.
-  '''
-# ---
-# name: test_prepared_auto_continue_spawns_fresh_when_parent_worker_is_absent
-  '''
-  PREPARED: parent is ready for work.
-  
-  AUTO-CONTINUE:
-  Execute in order:
-  telec sessions run --command /next-prepare --args child --project /repo
-  
-  telec sessions end sess-parent-reviewer
-  telec sessions end self
-  
-  AUTO-CONTINUE dispatched dependent prepare work.
-  '''
-# ---
 # name: test_prepared_bug_with_matching_diagnosis_upstream_does_not_redispatch_drift_analyzer
   '''
   telec sessions end self

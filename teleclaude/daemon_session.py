@@ -30,6 +30,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
 )
 from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_utils import resolve_working_dir
@@ -145,6 +146,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             except asyncio.CancelledError:
                 pass
         polling_coordinator._cleanup_codex_input_state(ctx.session_id)
+        try:
+            await clear_active_runner_for_session_end(db, ctx.session_id)
+        except Exception as exc:
+            logger.error("Workflow active_runner clear failed for session %s: %s", ctx.session_id, exc, exc_info=True)
         try:
             await handle_mirror_session_closed(ctx)
         except Exception as exc:

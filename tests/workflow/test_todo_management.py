@@ -35,6 +35,8 @@ _ARTIFACT_CONTENT_KEY = "artifact_content"
 _CURRENT_KEY = "current"
 _STATE_KEY = "state"
 _CHILDREN_KEY = "children"
+_HOLD_SOURCE_MANUAL = "manual"
+_ACTIVE_RUNNER = "session-123"
 _HOLDER_STRUCTURAL_KEYS = frozenset(
     {
         _SLUG_KEY,
@@ -191,6 +193,37 @@ async def test_roadmap_projection_includes_kindless_todo_without_lifecycle_phase
         "build_status": todo.build_status,
         "review_status": todo.review_status,
     } == snapshot
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")
+async def test_roadmap_projection_and_show_payload_include_hold_and_active_runner(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_roadmap("held-work")
+    await todos_db.write_state(
+        "held-work",
+        {
+            "schema_version": 4,
+            "kind": "change",
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value,
+            "hold": True,
+            "hold_audit": {"source": _HOLD_SOURCE_MANUAL, "set_at": "2026-06-15T00:00:00+00:00"},
+            "active_runner": _ACTIVE_RUNNER,
+        },
+    )
+
+    [todo] = assemble_roadmap_from_db(str(project_root))
+    assert todo.hold is True
+    assert todo.hold_source == _HOLD_SOURCE_MANUAL
+    assert todo.active_runner == _ACTIVE_RUNNER
+
+    payload = await assemble_show_payload(todos_db, "held-work")
+    assert payload is not None
+    assert _is_todo_show_payload(payload)
+    assert payload["state"]["hold"] is True
+    assert payload["state"]["active_runner"] == _ACTIVE_RUNNER
 
 
 @pytest.mark.spec(_SPEC, "UC-WM6")

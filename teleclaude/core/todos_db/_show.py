@@ -251,6 +251,9 @@ def _derive_state_block(state_model: TodoState) -> dict[str, StateValue]:
         "phase": state_model.phase,
         "lifecycle_phase": state_model.lifecycle_phase,
         "integration_phase": state_model.integration_phase,
+        "hold": state_model.hold,
+        "hold_audit": state_model.hold_audit.model_dump(),
+        "active_runner": state_model.active_runner,
         "deferrals_processed": state_model.deferrals_processed,
     }
 

@@ -72,8 +72,6 @@ Pending drift contract update:
 | **code**             | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
 | **dependency-graph** | The Todo's immediate `after` set and each direct dep's normalized status at write time vs current. Shallow -- not transitive.            | The immediate dep set changed (added/removed) OR a direct dep crossed the active/icebox boundary. `active` -> `delivered` is normalized and stays fresh.   |
 
-<!-- planned:runner-dispatch -->
-
 Prepare dependency ground may be satisfied by a
 direct dependency's human-approved PRD before that dependency reaches
 `prepared`. This adds a parent-ground drift class so the relaxation is safe:
@@ -88,8 +86,6 @@ before `prepared -> build_started`. A pending or substantive
 `parent-prd-ground` result blocks the dependent exactly like existing drift
 classes. If every direct dependency is delivered, the class derives fresh
 because delivered ground supersedes PRD-only prepare ground.
-
-<!-- /planned:runner-dispatch -->
 
 ### Provenance recorded per artifact
 

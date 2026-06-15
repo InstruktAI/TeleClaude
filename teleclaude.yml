@@ -7,6 +7,13 @@ business:
     software-development: docs
     creative: docs
 
+# workflow:
+#   autostart:
+#     feature: true
+#     change: true
+#     bug: true
+#     task: false
+
 jobs:
   help_desk_intelligence:
     category: system

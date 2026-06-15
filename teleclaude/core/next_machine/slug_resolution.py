@@ -206,6 +206,11 @@ def _state_counts_as_dependency_prepared(state: dict[str, StateValue] | None) ->
     """Return True when a todo has crossed the prepare dependency gate."""
     if state is None:
         return False
+    approvals = state.get("approvals")
+    if isinstance(approvals, dict):
+        prd_approval = approvals.get("prd_approved")
+        if isinstance(prd_approval, dict) and prd_approval.get("approved") is True:
+            return True
     phase = coerce_lifecycle_phase(state.get("lifecycle_phase"))
     return phase == LifecyclePhase.PREPARED or (phase is not None and is_work_lifecycle_phase(phase))
 

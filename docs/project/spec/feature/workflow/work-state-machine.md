@@ -184,16 +184,13 @@ And the machine does NOT select a ready todo from the roadmap
   work orchestrator session. The Phase B orchestrator remains per-slug and
   terminal after finalize-ready cleanup.
 
-<!-- planned:runner-dispatch -->
-
 - `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector
-for ready work. It evaluates the project todo set, acquires a
-`(canonical_project_root, slug, work)` dispatch claim, verifies no live
-`/next-work` session already owns that project/slug/lane, and then starts
-`/next-work --args <slug>`. The work state machine remains per-slug: a bare
-`telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG`
-and never scans the roadmap opportunistically.
-<!-- /planned:runner-dispatch -->
+  for ready work. It evaluates the project todo set, acquires a
+  `(canonical_project_root, slug, work)` dispatch claim, verifies no live
+  `/next-work` session already owns that project/slug/lane, and then starts
+  `/next-work --args <slug>`. The work state machine remains per-slug: a bare
+  `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG`
+  and never scans the roadmap opportunistically.
 
 ## Known caveats
 

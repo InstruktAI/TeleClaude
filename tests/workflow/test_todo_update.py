@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -42,6 +42,15 @@ _ARTIFACT_FIRST = "first"
 _ARTIFACT_SECOND = "second"
 _ORIGINAL_INPUT = "original input"
 _SEEDED_PLAN_BODY = "seeded plan body"
+_WORKFLOW_TODO_UPDATED = "workflow.todo.updated"
+_HUMAN_EMAIL = "human@example.com"
+_HUMAN_PRINCIPAL = f"human:{_HUMAN_EMAIL}"
+_STATUS_OK = "ok"
+
+
+class _EmittedEvent(TypedDict, total=False):
+    event: str
+    payload: object
 
 
 @pytest.fixture(autouse=True)
@@ -83,6 +92,26 @@ def _identity() -> CallerIdentity:
         system_role="worker",
         human_role=None,
         tmux_session_name=None,
+    )
+
+
+def _human_identity() -> CallerIdentity:
+    return CallerIdentity(
+        session_id="",
+        system_role=None,
+        human_role="member",
+        tmux_session_name=None,
+        email=_HUMAN_EMAIL,
+    )
+
+
+def _untagged_session_with_human_email_identity() -> CallerIdentity:
+    return CallerIdentity(
+        session_id="untagged-session",
+        system_role=None,
+        human_role="member",
+        tmux_session_name=None,
+        email=_HUMAN_EMAIL,
     )
 
 
@@ -140,6 +169,46 @@ def test_todo_update_cli_sends_each_leg(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert isinstance(body["client_request_id"], str)
 
 
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")
+def test_todo_update_cli_sends_hold_and_release(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": "ok"})
+
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_update([_MY_TODO, "--hold"])
+
+    body = tool_api_call.call_args.kwargs["json_body"]
+    assert body["slug"] == _MY_TODO
+    assert body["hold"] is True
+    assert "release" not in body
+
+    with pytest.raises(SystemExit):
+        todo_handlers._handle_todo_update([_MY_TODO, "--hold", "--release"])
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+def test_todo_approve_cli_posts_current_gate_approval(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": _STATUS_OK, "slug": _MY_TODO})
+
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_approve([_MY_TODO])
+
+    assert tool_api_call.call_args.args[:2] == ("POST", "/todos/approve")
+    assert tool_api_call.call_args.kwargs["json_body"] == {
+        "slug": _MY_TODO,
+        "cwd": str(project_root),
+    }
+    captured = capsys.readouterr()
+    assert captured.out == f"Approved {_MY_TODO}\n"
+
+
 @pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
 def test_retired_todo_mutation_verbs_are_rejected() -> None:
     with pytest.raises(SystemExit):
@@ -176,6 +245,39 @@ async def test_todo_update_slug_leg_returns_rename_receipt(monkeypatch: pytest.M
             "client_request_id": "request-1",
         }
     ]
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_todo_approve_route_requires_human_and_stamps_current_gate(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _MY_TODO, kind=TODO_KIND_FEATURE, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL)
+    await todos_db.write_artifact(_MY_TODO, ARTIFACT_PRD, "# PRD\n\nApprove this.", updated_by="test")
+
+    with pytest.raises(HTTPException) as agent_error:
+        await todo_routes.todo_approve(slug=_MY_TODO, cwd=str(project_root), identity=_identity())
+
+    assert agent_error.value.status_code == 403
+    with pytest.raises(HTTPException) as untagged_error:
+        await todo_routes.todo_approve(
+            slug=_MY_TODO,
+            cwd=str(project_root),
+            identity=_untagged_session_with_human_email_identity(),
+        )
+
+    assert untagged_error.value.status_code == 403
+
+    response = await todo_routes.todo_approve(slug=_MY_TODO, cwd=str(project_root), identity=_human_identity())
+
+    assert response.status == _STATUS_OK
+    state = await todos_db.read_state(_MY_TODO)
+    assert state is not None
+    approvals = state["approvals"]
+    assert isinstance(approvals, dict)
+    prd_approved = approvals["prd_approved"]
+    assert isinstance(prd_approved, dict)
+    assert prd_approved["approved"] is True
+    assert prd_approved["caller_session_id"] == _HUMAN_PRINCIPAL
 
 
 @pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
@@ -233,6 +335,66 @@ async def test_todo_update_after_replaces_dependencies_and_validates_cycles(tmp_
         )
     assert cycle.value.status_code == 409
     assert cycle.value.detail == snapshot
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")
+async def test_todo_update_hold_release_composes_with_dependencies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "feature-a")
+    await _add_todo(todos_db, "feature-b")
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> str:
+        emitted.append(cast(_EmittedEvent, kwargs))
+        return "event-id"
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    hold_response = await todo_routes.todo_update(
+        slug="feature-a",
+        after=["feature-b"],
+        hold=True,
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    hold_sync = cast(todo_routes._TodoUpdateResponse, hold_response)
+    assert hold_sync.after == ["feature-b"]
+    assert hold_sync.hold is True
+    held_state = await todos_db.read_state("feature-a")
+    assert held_state is not None
+    assert held_state["hold"] is True
+
+    release_response = await todo_routes.todo_update(
+        slug="feature-a",
+        release=True,
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    release_sync = cast(todo_routes._TodoUpdateResponse, release_response)
+    assert release_sync.hold is False
+    released_state = await todos_db.read_state("feature-a")
+    assert released_state is not None
+    assert released_state["hold"] is False
+    assert [event["event"] for event in emitted] == [_WORKFLOW_TODO_UPDATED, _WORKFLOW_TODO_UPDATED]
+    for event in emitted:
+        payload = event["payload"]
+        assert isinstance(payload, dict)
+        assert payload["project_path"] == str(project_root)
+
+    with pytest.raises(HTTPException) as conflict:
+        await todo_routes.todo_update(
+            slug="feature-a",
+            hold=True,
+            release=True,
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+    assert conflict.value.status_code == 400
 
 
 @pytest.mark.spec(_TODO_LIFECYCLE_PHASE_SPEC, "UC-TLP1")

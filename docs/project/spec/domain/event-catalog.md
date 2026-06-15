@@ -96,8 +96,6 @@ consumers (prepare / work dispatch routers) dispatch only when
 process every creation event regardless of mode. See
 `project/spec/domain/workflow` for the full entry.
 
-<!-- planned:runner-dispatch -->
-
 Autonomous pickup is driven by the workflow lifecycle runner. The canonical target wake-up vocabulary is
 `workflow.todo.created`, `workflow.todo.updated`,
 `workflow.todo.phase_advanced`, `workflow.todo.delivered`,
@@ -126,8 +124,6 @@ autostart policy. Legacy operator-requested silent creation is translated to
 `hold=true` at the workflow boundary; the v1 task `force_silent` default is
 translated to `hold=false` plus task autostart disabled. Event consumers do not
 treat silent wording as a separate dispatch state.
-
-<!-- /planned:runner-dispatch -->
 
 #### context
 
@@ -236,8 +232,6 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 | `scheduler.tick.minute` | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.) |
 | `config.effective.updated` | every service that caches config (re-read on next access) |
 
-<!-- planned:runner-dispatch -->
-
 Additional runner subscriptions:
 
 | Event                          | Consumers                                                                                                                                                                                                                    |
@@ -249,8 +243,6 @@ Additional runner subscriptions:
 | `workflow.roadmap.entry_moved` | `workflow.lifecycle_runner` (re-evaluate after dependency, icebox, unfreeze, or delivery movement; v1 mutation emissions/bridges are part of this delivery)                                                                  |
 | `config.effective.updated`     | `workflow.lifecycle_runner` (invalidate autostart policy and re-evaluate affected project/global scope; v1 config watcher is the seam)                                                                                       |
 | `agent_runtime.session.ended`  | `workflow.lifecycle_runner` (wake-up: re-evaluate the closed session's todo and clear the now-stale `active_runner` link; a manual close's hold is set at the close command, not inferred here; v1 `SESSION_CLOSED` bridged) |
-
-<!-- /planned:runner-dispatch -->
 
 <!-- planned:task-lane -->
 

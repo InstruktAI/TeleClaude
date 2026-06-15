@@ -222,14 +222,10 @@ The runtime can coalesce reads when multiple consumers want overlapping windows 
 - **Idempotency key:** `(session_id, closed_at)`.
 - **Posture:** `commit-then-emit`.
 
-<!-- planned:runner-dispatch -->
-
 `workflow`'s lifecycle runner consumes this close as a wake-up and re-evaluates
 the todo the closed session was driving, clearing a now-stale `active_runner`
 link. The close carries no runner-specific payload fields beyond those above;
 the manner of close is not classified on the event.
-
-<!-- /planned:runner-dispatch -->
 
 #### `agent_runtime.operation.completed`
 
@@ -453,8 +449,5 @@ And the corpus is the binding parity test against v1's Python parser behavior
 
 ## See Also
 
-<!-- planned:runner-dispatch -->
-
 - docs/project/adr/0035-active-runner-driver-ownership.md
 - docs/project/adr/0036-manual-close-is-an-explicit-halt.md
-<!-- /planned:runner-dispatch -->

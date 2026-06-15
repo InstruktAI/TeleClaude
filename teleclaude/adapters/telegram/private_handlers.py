@@ -23,8 +23,9 @@ from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind, TelegramAdapterMetadata
+from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import CommandType, CreateSessionCommand, ProcessMessageCommand
+from teleclaude.types.commands import CloseSessionCommand, CommandType, CreateSessionCommand, ProcessMessageCommand
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -286,13 +287,24 @@ class PrivateHandlersMixin:
             return
 
         if cmd.command_type == CommandType.CLOSE_SESSION:
+            close_cmd = cast("CloseSessionCommand", cmd)
+
+            async def _close_with_manual_hold() -> object:
+                try:
+                    await hold_todo_for_manual_session_close(db, close_cmd.session_id)
+                except Exception:
+                    logger.error(
+                        "Telegram session close hold interlock failed for %s", close_cmd.session_id, exc_info=True
+                    )
+                return await cmds.close_session(close_cmd)
+
             await host._dispatch_command(
                 session,
                 str(update.effective_message.message_id),
                 metadata,
                 "close_session",
                 cmd.to_payload(),
-                lambda: cmds.close_session(cmd),  # type: ignore[arg-type]
+                _close_with_manual_hold,
             )
             return
 

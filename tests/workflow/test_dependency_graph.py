@@ -30,6 +30,7 @@ _CHILD_A = "child-a"
 _CHILD_B = "child-b"
 _BLOCKED_CHILD = "blocked-child"
 _OPEN_CHILD = "open-child"
+_APPROVED_DIGEST = "approved-prd-digest"
 
 
 @pytest.fixture(autouse=True)
@@ -114,6 +115,31 @@ async def test_prepared_clears_prepare_gate_but_not_work_gate(tmp_path: Path) ->
     )
 
     assert resolution.reason is HolderResolutionReason.NOT_HOLDER
+
+
+@pytest.mark.spec(_SPEC, "UC-WDG2")
+async def test_prd_approval_clears_prepare_gate_but_not_work_gate(tmp_path: Path) -> None:
+    todos_db = await _project_db(tmp_path / "project")
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL)
+    await _add_todo(todos_db, _CHILD, lifecycle_phase=LifecyclePhase.DRAFT, after=[_PARENT])
+    parent_state = await todos_db.read_state(_PARENT)
+    assert parent_state is not None
+    parent_state["approvals"] = {
+        "prd_approved": {
+            "approved": True,
+            "approved_digest": _APPROVED_DIGEST,
+        }
+    }
+    await todos_db.write_state(_PARENT, parent_state)
+    dependencies = {_CHILD: [_PARENT]}
+
+    prepared = await effective_prepared_slugs_for_dependencies(todos_db)
+    delivered = await effective_delivered_slugs_for_dependencies(todos_db)
+
+    assert _PARENT in prepared
+    assert deps_satisfied(dependencies, prepared, _CHILD)
+    assert _PARENT not in delivered
+    assert not deps_satisfied(dependencies, delivered, _CHILD)
 
 
 @pytest.mark.spec(_SPEC, "UC-WDG2")

@@ -470,7 +470,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--plan]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--hold] [--release] [--plan]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
@@ -483,6 +483,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ),
                     ),
                     Flag("--silent", desc="Suppress autonomous pickup — explicit human request only", hidden=True),
+                    Flag("--hold", desc="Create the todo with automatic dispatch held"),
+                    Flag("--release", desc="Create the todo unheld; explicit counterpart for legacy parking aliases"),
                     Flag(
                         "--plan",
                         desc="Content is a complete implementation-plan; skip prepare to build (--kind change only).",
@@ -499,9 +501,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
                     "deliberate exception: its content is a complete implementation-plan, not an input.)",
-                    "By default this emits workflow.todo.created so a prepare orchestrator auto-picks-up the "
-                    "todo. The hidden --silent flag suppresses that event (no auto-pickup) and must be passed "
-                    "ONLY when the human explicitly asks to file a todo without starting work.",
+                    "By default todos are unheld; the lifecycle runner applies the kind's autostart policy. "
+                    "--hold is the visible parking brake. The hidden --silent flag remains a legacy alias for "
+                    "non-task hold only.",
                     "ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. "
                     "Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where "
                     "human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI "
@@ -583,6 +585,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "approve": CommandDef(
+                desc="Approve the todo's current pending human gate",
+                args="<slug>",
+                flags=[_H],
+                notes=[
+                    "Routes through the unified human gate-control surface.",
+                    "Refuses when the selected todo has no pending approval gate.",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "deliver": CommandDef(
                 desc="Move todo to delivered",
                 args="<slug> [--commit <hash>]",
@@ -593,7 +605,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "update": CommandDef(
                 desc="Update a todo slug, dependencies, or kind",
-                args=f"<slug> [--slug <new>] [--after <dep>]... [--kind <{TODO_KIND_USAGE}>] [--force]",
+                args=f"<slug> [--slug <new>] [--after <dep>]... [--kind <{TODO_KIND_USAGE}>] [--hold] [--release] [--force]",
                 flags=[
                     _H,
                     Flag("--slug", desc="New todo slug; delegates to the durable rename engine"),
@@ -607,11 +619,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ),
                     ),
                     Flag("--kind", desc=f"New todo kind: {TODO_KIND_USAGE}"),
+                    Flag("--hold", desc="Set the per-todo automatic dispatch brake"),
+                    Flag("--release", desc="Release the per-todo automatic dispatch brake"),
                     Flag("--force", desc="Allow permanent orphan-artifact handling for kind migrations"),
                 ],
                 notes=[
-                    "Only mutates slug, deps, or kind; --after replaces the full dependency set.",
+                    "Mutates slug, deps, kind, or hold; --after replaces the full dependency set.",
                     "Kind and slug changes are refused after build starts; --after remains allowed.",
+                    "--hold and --release are mutually exclusive and compose with dependency updates.",
                     "--force only applies to kind orphan handling.",
                     "Combining --slug with other legs is staged, not a single atomic patch.",
                 ],

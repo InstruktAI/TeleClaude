@@ -720,6 +720,9 @@ class DaemonCache:
                             todo.lifecycle_phase or "",
                             todo.integration_phase or "",
                             todo.finalize_status or "",
+                            "1" if todo.hold else "0",
+                            todo.hold_source or "",
+                            todo.active_runner or "",
                         ]
                     )
                 )

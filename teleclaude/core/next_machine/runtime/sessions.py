@@ -100,6 +100,16 @@ async def find_all_live_sessions_for_slug(
     return [session.session_id for session in sessions if session.subdir == expected_subdir]
 
 
+async def is_live_session_id(db: Db, session_id: str) -> bool:
+    """Return whether a concrete TeleClaude session id still names a live session."""
+    session = await db.get_session(session_id)
+    if session is None:
+        return False
+    if session.closed_at is not None:
+        return False
+    return session.lifecycle_status != "closed"
+
+
 _TITLE_SLUG_BOUNDARIES = (" ", "\t", "\n")
 
 

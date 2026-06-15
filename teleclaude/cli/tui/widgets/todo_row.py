@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 from rich.style import Style
 from rich.text import Text
 from textual.events import Click
@@ -13,7 +15,13 @@ from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import format_relative_time
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, is_settled_ok_phase
+from teleclaude.core.next_machine.lifecycle import (
+    HumanControl,
+    LifecyclePhase,
+    coerce_lifecycle_phase,
+    is_settled_ok_phase,
+    pending_human_control,
+)
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
@@ -59,6 +67,25 @@ _KIND_DISPLAY: dict[str, str] = {
 _REVIEW_STATUS_DISPLAY: dict[str, str] = {
     "changes_requested": "disapp",
 }
+
+
+class _HumanControlState(TypedDict, total=False):
+    kind: str | None
+    lifecycle_phase: str | None
+    hold: bool
+    active_runner: str | None
+
+
+def _human_control(todo: TodoItem) -> HumanControl | None:
+    if todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
+        return None
+    state: _HumanControlState = {
+        "kind": todo.kind,
+        "lifecycle_phase": todo.lifecycle_phase,
+        "hold": todo.hold,
+        "active_runner": todo.active_runner,
+    }
+    return pending_human_control(state)
 
 
 def _display_kind(kind: str | None) -> str:
@@ -308,6 +335,13 @@ class TodoRow(TelecMixin, Widget):
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
+            control = _human_control(t)
+            if control is HumanControl.APPROVE:
+                maxes["P"] = max(maxes["P"], len("A:approve"))
+                continue
+            if control is HumanControl.RELEASE_HOLD:
+                maxes["P"] = max(maxes["P"], len("H:hold"))
+                continue
             if t.kind is None:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:classify"))
                 continue
@@ -394,6 +428,15 @@ class TodoRow(TelecMixin, Widget):
                     _PHASE_PREFIX_LIFECYCLE, "icebox", w.get("P", 0), Style(color=_icebox_color(), bold=True)
                 )
             )
+            return _pad(result, target)
+
+        control = _human_control(self.todo)
+        if control is HumanControl.APPROVE:
+            result.append_text(self._build_col("A", "approve", w.get("P", 0), Style(color=_gold_color(), bold=True)))
+            return _pad(result, target)
+
+        if control is HumanControl.RELEASE_HOLD:
+            result.append_text(self._build_col("H", "hold", w.get("P", 0), Style(color=_gold_color(), bold=True)))
             return _pad(result, target)
 
         # Trashed items show T:age only

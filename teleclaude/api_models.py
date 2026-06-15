@@ -233,6 +233,9 @@ class TodoDTO(BaseModel):
     lifecycle_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
+    hold: bool = False
+    hold_source: str | None = None
+    active_runner: str | None = None
     roadmap_id: str | None = None
     removed_at: str | None = None
 
@@ -344,12 +347,13 @@ class TodoDumpRequest(BaseModel):
       - "feature": content is the "input" artifact; enters intake (authors a PRD).
       - "change":  content is the "input" artifact; enters plan drafting (no PRD).
       - "bug":     content is the "input" artifact; skips prepare and enters the fix lane.
-      - "task":    content is the "input" artifact; created silent and tracked by task-plan.
+      - "task":    content is the "input" artifact; created unheld and tracked by task-plan.
 
     Omitted ``kind`` creates a kind-less todo: content is stored as immutable
     ``input`` with no lifecycle_phase and routed to /analyze-todo-input for assignment.
 
-    ``silent`` creates the todo without dispatching an orchestrator (parking).
+    ``hold`` creates the todo with the automatic-dispatch brake set. ``silent``
+    is a legacy alias for non-task operator parking.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -360,6 +364,8 @@ class TodoDumpRequest(BaseModel):
     after: list[str] | None = None
     cwd: str | None = None
     silent: bool = False
+    hold: bool = False
+    release: bool = False
     plan: bool = False
 
 

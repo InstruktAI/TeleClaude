@@ -7,11 +7,12 @@ import json as _json
 import sys
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
 from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list
+from teleclaude.cli.telec.handlers.todo_update_args import _parse_todo_update_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
 from teleclaude.cli.tool_commands import (
@@ -34,9 +35,6 @@ from teleclaude.session_identity import get_session_id
 from teleclaude.slug import validate_slug
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
 
-if TYPE_CHECKING:
-    pass
-
 
 class _TodoUpdateBody(TypedDict):
     slug: str
@@ -46,10 +44,18 @@ class _TodoUpdateBody(TypedDict):
     after: NotRequired[list[str]]
     kind: NotRequired[str]
     force: NotRequired[bool]
+    hold: NotRequired[bool]
+    release: NotRequired[bool]
+
+
+class _TodoApproveBody(TypedDict):
+    slug: str
+    cwd: str
 
 
 __all__ = [
     "_handle_todo",
+    "_handle_todo_approve",
     "_handle_todo_artifacts",
     "_handle_todo_create",
     "_handle_todo_deliver",
@@ -74,6 +80,7 @@ def _handle_todo(args: list[str]) -> None:
     subcommand = args[0]
     handlers = {
         "artifacts": _handle_todo_artifacts,
+        "approve": _handle_todo_approve,
         "co-create": _handle_todo_design,
         "create": _handle_todo_create,
         "deliver": _handle_todo_deliver,
@@ -235,11 +242,12 @@ def _handle_todo_deliver(args: list[str]) -> None:
 
 
 def _handle_todo_create(args: list[str]) -> None:
-    """Handle telec todo create <slug> <content> [--kind <kind>] [--after <deps>] [--silent]."""
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
     silent = False
+    hold = False
+    release = False
     plan = False
     kind_value: str | None = None
 
@@ -253,6 +261,12 @@ def _handle_todo_create(args: list[str]) -> None:
             i += 2
         elif arg == "--silent":
             silent = True
+            i += 1
+        elif arg == "--hold":
+            hold = True
+            i += 1
+        elif arg == "--release":
+            release = True
             i += 1
         elif arg == "--plan":
             plan = True
@@ -292,6 +306,10 @@ def _handle_todo_create(args: list[str]) -> None:
         print(f"Error: invalid --kind '{kind_value}'. Valid values: {_VALID_KINDS_STR}")
         print(_usage("todo", "create"))
         raise SystemExit(1)
+    if hold and release:
+        print("Error: --hold and --release are mutually exclusive")
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
 
     dump_kind = cast(TodoDumpKind, kind_value) if kind_value is not None else None
 
@@ -302,6 +320,8 @@ def _handle_todo_create(args: list[str]) -> None:
         kind=dump_kind,
         cwd=str(resolve_invocation_cwd()),
         silent=silent,
+        hold=hold,
+        release=release,
         plan=plan,
     )
     result = tool_api_request(
@@ -504,56 +524,27 @@ def _normalize_after_values(raw_values: list[str]) -> list[str]:
 
 
 def _handle_todo_update(args: list[str]) -> None:
-    """Handle telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <kind>] [--force]."""
     if "--help" in args or "-h" in args:
         print(_usage("todo", "update"))
         return
 
-    slug: str | None = None
-    new_slug: str | None = None
-    raw_after: list[str] = []
-    after_present = False
-    kind: str | None = None
-    force = False
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--slug" and i + 1 < len(args):
-            new_slug = args[i + 1]
-            i += 2
-        elif arg == "--after" and i + 1 < len(args):
-            raw_after.append(args[i + 1])
-            after_present = True
-            i += 2
-        elif arg == "--kind" and i + 1 < len(args):
-            kind = args[i + 1]
-            i += 2
-        elif arg == "--force":
-            force = True
-            i += 1
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "update"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if slug is None:
-        print("Missing required slug.")
-        print(_usage("todo", "update"))
-        raise SystemExit(1)
-
-    after = _normalize_after_values(raw_after) if after_present else []
+    parsed = _parse_todo_update_args(args)
+    slug = parsed["slug"]
+    new_slug = parsed["new_slug"]
+    after_present = parsed["after_present"]
+    kind = parsed["kind"]
+    force = parsed["force"]
+    hold = parsed["hold"]
+    release = parsed["release"]
+    after = _normalize_after_values(parsed["raw_after"]) if after_present else []
 
     _validate_slugs(slug, new_slug, *after)
     if kind is not None and kind not in ALL_DUMP_KINDS:
         print(f"unknown todo kind: {kind!r}")
         print(f"Valid kinds: {TODO_KIND_USAGE}")
+        raise SystemExit(1)
+    if hold and release:
+        print("--hold and --release are mutually exclusive")
         raise SystemExit(1)
 
     body: _TodoUpdateBody = {
@@ -569,6 +560,10 @@ def _handle_todo_update(args: list[str]) -> None:
         body["kind"] = kind
     if force:
         body["force"] = True
+    if hold:
+        body["hold"] = True
+    if release:
+        body["release"] = True
 
     receipt: object = tool_api_call("POST", "/todos/update", json_body=body)
     if not isinstance(receipt, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -592,6 +587,40 @@ def _handle_todo_update(args: list[str]) -> None:
     else:
         print_json(status)
         raise SystemExit(1)
+
+
+def _handle_todo_approve(args: list[str]) -> None:
+    """Handle telec todo approve <slug>."""
+    if not args or "--help" in args or "-h" in args:
+        print(_usage("todo", "approve"))
+        return
+
+    slug: str | None = None
+    for arg in args:
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "approve"))
+            raise SystemExit(1)
+        if slug is not None:
+            print("Only one slug is allowed.")
+            raise SystemExit(1)
+        slug = arg
+
+    if not slug:
+        print("Missing required slug.")
+        print(_usage("todo", "approve"))
+        raise SystemExit(1)
+
+    _validate_slugs(slug)
+    body: _TodoApproveBody = {
+        "slug": slug,
+        "cwd": str(resolve_invocation_cwd()),
+    }
+    response: object = tool_api_call("POST", "/todos/approve", json_body=body)
+    if isinstance(response, dict) and response.get("status") == "ok":
+        print(f"Approved {slug}")
+        return
+    print_json(response)
 
 
 # Artifact and stamp handlers (consolidated back from _todo_extra.py)

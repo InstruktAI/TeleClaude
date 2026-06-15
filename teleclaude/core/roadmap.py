@@ -456,6 +456,7 @@ def assemble_roadmap_from_db(
             # --- Derive display values from canonical lifecycle state ---
 
             projection = _derive_projection_fields(slug, raw_status, state)
+            hold_audit = state.get("hold_audit") if isinstance(state, dict) else None
 
             todos.append(
                 TodoDTO(
@@ -476,6 +477,17 @@ def assemble_roadmap_from_db(
                     lifecycle_phase=projection.lifecycle_phase,
                     integration_phase=projection.integration_phase,
                     finalize_status=projection.finalize_status,
+                    hold=bool(state.get("hold")) if isinstance(state, dict) else False,
+                    hold_source=(
+                        str(hold_audit.get("source"))
+                        if isinstance(hold_audit, dict) and isinstance(hold_audit.get("source"), str)
+                        else None
+                    ),
+                    active_runner=(
+                        str(state.get("active_runner"))
+                        if isinstance(state, dict) and isinstance(state.get("active_runner"), str)
+                        else None
+                    ),
                     files=[ar[0] for ar in artifact_rows],
                     version_total=version_total,
                     roadmap_id=str(row_id),

@@ -50,12 +50,8 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 **Person output visibility settings**
 : Per-person preferences that control which non-conversational session output categories are eligible for projection on mobile/chat adapters and web/API surfaces. The settings live in the per-person overlay, not in the global `people` identity list.
 
-<!-- planned:runner-dispatch -->
-
 **Workflow autostart policy**
 : Effective-configuration value read by workflow's lifecycle runner to decide which todo kinds may be auto-dispatched. It is policy, not todo state: changing it affects future runner evaluations without rewriting existing todo rows. Defaults are `feature=true`, `change=true`, `bug=true`, and `task=false`.
-
-<!-- /planned:runner-dispatch -->
 
 ### Aggregates
 
@@ -69,10 +65,8 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - Overlay precedence is strict: person overrides project overrides global. No interleaving.
   - When `release_channel = stable`, `pinned_minor` MUST be non-empty.
   - The schema is the only source of which keys are valid. Unknown keys in YAML are a validation warning (not silently ignored, not a hard error in v1; v2 may tighten).
-  <!-- planned:runner-dispatch -->
   - Workflow autostart policy is schema-owned config. The workflow runner may read it, but workflow may not invent undeclared fallback keys or silently treat missing schema fields as enabled. Defaults are provided by the config schema itself.
   - Project/person overlays can narrow or widen autostart policy only through declared keys. A config update emits `config.effective.updated`; workflow re-evaluates affected projects on the next runner wake-up.
-  <!-- /planned:runner-dispatch -->
 - **Identifier:** the combined (`project_path`, `person_name`) tuple. Global-only computation when both are absent.
 - **Lifecycle:** computed on demand; cached in-memory by consumers per their own caching policy. Recomputed when any overlay file changes (`config.effective.updated` event fires).
 
@@ -153,16 +147,12 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Idempotency key:** `(scope, version)`. Consumers track the latest version they've applied; older versions are silently dropped.
 - **Posture:** `commit-then-emit` — the YAML file change is the commit; the event fires after read confirms a new effective config.
 
-<!-- planned:runner-dispatch -->
-
 The v1 Python runtime does not currently emit this canonical event. Pending
 `runner-dispatch`, the existing v1 config watcher/effective-config reload seam
 publishes or directly bridges an equivalent wake-up for workflow's lifecycle
 runner whenever an autostart-relevant key changes. The target event payload
 still uses `scope`/`changed_keys`/`version`; v1 project scopes must resolve to
 one canonical project path or the runner skips dispatch fail-closed.
-
-<!-- /planned:runner-dispatch -->
 
 ### Domain events consumed
 

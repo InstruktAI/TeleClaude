@@ -15,6 +15,16 @@ def register_system(catalog: EventCatalog) -> None:
     """Register core system event schemas."""
     catalog.register(
         EventSchema(
+            event_type="config.effective.updated",
+            description="Effective project configuration changed and may affect workflow runner eligibility",
+            default_level=EventLevel.WORKFLOW,
+            domain="config",
+            default_visibility=EventVisibility.CLUSTER,
+            lifecycle=NotificationLifecycle(updates=True, group_key="project_path", meaningful_fields=["project_path"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="system.daemon.restarted",
             description="Daemon process restarted on a computer",
             default_level=EventLevel.INFRASTRUCTURE,

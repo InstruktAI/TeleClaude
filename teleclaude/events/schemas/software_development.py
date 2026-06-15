@@ -24,6 +24,55 @@ def register_software_development(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="workflow.todo.created",
+            description="A workflow todo was created and may require lifecycle-runner evaluation",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["slug", "kind"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.todo.phase_advanced",
+            description="A workflow todo advanced lifecycle phase and may unblock runner work",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                meaningful_fields=["slug", "prior_lifecycle_phase", "lifecycle_phase"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.todo.updated",
+            description="A workflow todo control-plane field changed and may affect runner eligibility",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.todo.delivered",
+            description="A workflow todo was delivered and may unblock dependents",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.roadmap.entry_moved",
+            description="A roadmap entry moved between queues or dependency positions",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="domain.software-development.planning.todo_activated",
             description="A work item moved to active state",
             default_level=EventLevel.WORKFLOW,

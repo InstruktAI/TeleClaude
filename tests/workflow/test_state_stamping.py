@@ -32,6 +32,7 @@ _SPEC = "project/spec/feature/workflow/state-stamping"
 _SLUG = "stamp-target"
 _NO_BUILD_GATE_CLAIM = ""
 _ISO_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T[0-9:.+-]+")
+_HUMAN_SESSION = "human-session"
 
 
 @pytest.fixture(autouse=True)
@@ -157,6 +158,44 @@ async def test_prd_approval_records_current_artifact_digest(tmp_path: Path) -> N
     assert _ISO_TIMESTAMP_RE.fullmatch(writer.state.approvals.prd_approved.approved_at)
     assert writer.state.approvals.prd_approved.approved_digest == current_digest
     assert writer.state.artifacts.prd.digest == current_digest
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS5")
+async def test_approve_current_gate_resolves_prd_gate_and_refuses_without_gate(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_feature_todo_with_prd(todos_db, _SLUG)
+
+    await apply_todo_stamp(
+        cwd=str(project_root),
+        slug=_SLUG,
+        stamp_type="approve_current_gate",
+        caller_session_id=_HUMAN_SESSION,
+    )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.approvals.prd_approved.approved is True
+    assert writer.state.approvals.prd_approved.caller_session_id == _HUMAN_SESSION
+
+    await todos_db.add_to_roadmap("no-gate")
+    await todos_db.write_state(
+        "no-gate",
+        {
+            "schema_version": 4,
+            "kind": TODO_KIND_CHANGE,
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value,
+        },
+    )
+    with pytest.raises(StateMutationError, match="no pending approval gate"):
+        await apply_todo_stamp(
+            cwd=str(project_root),
+            slug="no-gate",
+            stamp_type="approve_current_gate",
+            caller_session_id=_HUMAN_SESSION,
+        )
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS1")

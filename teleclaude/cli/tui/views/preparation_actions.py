@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 from urllib.parse import quote
 
 from teleclaude.api_models import TodoDumpRequest
@@ -26,13 +26,32 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
-from teleclaude.core.next_machine.lifecycle import is_ready_for_work
+from teleclaude.core.next_machine.lifecycle import HumanControl, is_ready_for_work, pending_human_control
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_FEATURE, TodoDumpKind
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
 
 from teleclaude.cli.tui.messages import StateChanged
+
+
+class _HumanControlState(TypedDict, total=False):
+    kind: str | None
+    lifecycle_phase: str | None
+    hold: bool
+    active_runner: str | None
+
+
+def _human_control_for_row(row: TodoRow) -> HumanControl | None:
+    if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
+        return None
+    state: _HumanControlState = {
+        "kind": row.todo.kind,
+        "lifecycle_phase": row.todo.lifecycle_phase,
+        "hold": row.todo.hold,
+        "active_runner": row.todo.active_runner,
+    }
+    return pending_human_control(state)
 
 
 class PreparationViewActionsMixin:
@@ -82,6 +101,8 @@ class PreparationViewActionsMixin:
             "start_work",
             "freeze",
             "unfreeze",
+            "approve_gate",
+            "toggle_hold",
             "toggle_trashed",
             "reactivate_selected",
         }
@@ -94,6 +115,8 @@ class PreparationViewActionsMixin:
             "start_work",
             "freeze",
             "unfreeze",
+            "approve_gate",
+            "toggle_hold",
         }
         file_disallowed = {
             "new_todo",
@@ -101,6 +124,8 @@ class PreparationViewActionsMixin:
             "new_project",
             "freeze",
             "unfreeze",
+            "approve_gate",
+            "toggle_hold",
         }
 
         if isinstance(item, ComputerHeader):
@@ -125,6 +150,10 @@ class PreparationViewActionsMixin:
             return item.todo.status == TodoStatus.ICEBOX
         if action == "freeze":
             return item.todo.status != TodoStatus.ICEBOX
+        if action == "toggle_hold":
+            return _human_control_for_row(item) in {HumanControl.HOLD, HumanControl.RELEASE_HOLD}
+        if action == "approve_gate":
+            return _human_control_for_row(item) is HumanControl.APPROVE
         if action == "reactivate_selected":
             return item.todo.status == TodoStatus.REMOVED
         return True
@@ -628,6 +657,71 @@ class PreparationViewActionsMixin:
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+        except Exception as exc:
+            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+
+    def action_toggle_hold(self) -> None:
+        """h: toggle the automatic-dispatch hold brake."""
+        row = self._current_todo_row()  # type: ignore[attr-defined]
+        if not row:
+            return
+
+        control = _human_control_for_row(row)
+        if control not in {HumanControl.HOLD, HumanControl.RELEASE_HOLD}:
+            self.app.notify("No hold control is available for this todo", severity="warning")  # type: ignore[attr-defined]
+            return
+
+        slug = row.slug
+        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        if not project_path:
+            return
+        flag = "release" if control is HumanControl.RELEASE_HOLD else "hold"
+
+        try:
+            result = tool_api_request(
+                "POST",
+                "/todos/update",
+                json_body={"slug": slug, "cwd": project_path, flag: True},
+                timeout=10.0,
+            )
+            if isinstance(result, dict) and result.get("status") == "ok":
+                self.app.notify(("Released" if flag == "release" else "Held") + f" '{slug}'")  # type: ignore[attr-defined]
+                self.app._refresh_data()  # type: ignore[attr-defined]
+            elif isinstance(result, dict) and result.get("detail"):
+                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+            else:
+                self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+        except Exception as exc:
+            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+
+    def action_approve_gate(self) -> None:
+        """A: approve the selected todo's current human gate."""
+        row = self._current_todo_row()  # type: ignore[attr-defined]
+        if not row:
+            return
+        if _human_control_for_row(row) is not HumanControl.APPROVE:
+            self.app.notify("No approval gate is pending for this todo", severity="warning")  # type: ignore[attr-defined]
+            return
+
+        slug = row.slug
+        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        if not project_path:
+            return
+
+        try:
+            result = tool_api_request(
+                "POST",
+                "/todos/approve",
+                json_body={"slug": slug, "cwd": project_path},
+                timeout=10.0,
+            )
+            if isinstance(result, dict) and result.get("status") == "ok":
+                self.app.notify(f"Approved '{slug}'")  # type: ignore[attr-defined]
+                self.app._refresh_data()  # type: ignore[attr-defined]
+            elif isinstance(result, dict) and result.get("detail"):
+                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+            else:
+                self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
         except Exception as exc:
             self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
 

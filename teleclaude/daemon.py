@@ -575,6 +575,22 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     },
                 )
 
+            async def _emit_phase_advanced(slug: str, prior_phase: str, new_phase: str) -> None:
+                await emit_event(
+                    event="workflow.todo.phase_advanced",
+                    source="workflow",
+                    level=EventLevel.WORKFLOW,
+                    domain="software-development",
+                    entity=slug,
+                    description=f"Lifecycle phase advanced for {slug}: {prior_phase} -> {new_phase}",
+                    payload={
+                        "slug": slug,
+                        "prior_lifecycle_phase": prior_phase,
+                        "lifecycle_phase": new_phase,
+                        "project_path": project_root,
+                    },
+                )
+
             def _on_mutation(event_hint: str = "todo_updated", event_data: object | None = None) -> None:
                 if loop is not None and loop.is_running():
                     hint = event_hint  # capture for lambda closure
@@ -585,15 +601,21 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
             def _on_phase_transition(
                 slug: str,
-                _prior_lifecycle_phase: str,
+                prior_lifecycle_phase: str,
                 new_lifecycle_phase: str,
                 state_payload: Mapping[str, object],
             ) -> None:
-                if new_lifecycle_phase != "finalize_ready":
+                if loop is None or not loop.is_running():
                     return
-                if loop is not None and loop.is_running():
+                if new_lifecycle_phase == "finalize_ready":
                     payload = dict(state_payload)
                     loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_emit_finalize_ready(slug, payload)))
+                    return
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(
+                        _emit_phase_advanced(slug, prior_lifecycle_phase, new_lifecycle_phase)
+                    )
+                )
 
             instance._on_mutation = _on_mutation
             instance._on_phase_transition = _on_phase_transition
@@ -1014,6 +1036,20 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         changed = reload_config()
         if not changed:
             return
+        try:
+            await emit_event(
+                event="config.effective.updated",
+                source="daemon.config_watcher",
+                level=EventLevel.WORKFLOW,
+                domain="config",
+                payload={
+                    "project_path": str(WORKING_DIR),
+                    "changed_sections": sorted(changed),
+                    "updated_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        except RuntimeError:
+            logger.info("config.effective.updated not emitted: event producer unavailable")
         if "tts" in changed:
             self.tts_manager.reload()
         if "chiptunes" in changed:

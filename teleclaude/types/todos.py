@@ -146,6 +146,15 @@ class BuildReviewState(BaseModel):
     dispatch_head: str = ""
 
 
+class HoldAuditState(BaseModel):
+    """Diagnostic metadata for the current hold brake."""
+
+    source: Literal["", "creation", "manual", "session_close"] = ""
+    set_at: str = ""
+    set_by_session_id: str = ""
+    reason: str = ""
+
+
 class Event(BaseModel):
     """Audit log entry for a state transition or stamp side-effect."""
 
@@ -239,6 +248,9 @@ class TodoState(BaseModel):
     build_completed_at: str = ""
     build_gate_claim_at: str = ""
     kind: str | None = TODO_KIND_DEFAULT  # canonical values: see teleclaude.types.todo_kind.ALL_DUMP_KINDS
+    hold: bool = False
+    hold_audit: HoldAuditState = Field(default_factory=HoldAuditState)
+    active_runner: str | None = None
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)

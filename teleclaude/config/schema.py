@@ -167,6 +167,23 @@ class ProcessJanitorConfig(BaseModel):
     dry_run_default: bool = True
 
 
+class WorkflowAutostartConfig(BaseModel):
+    """Per-kind automatic workflow dispatch policy."""
+
+    model_config = ConfigDict(extra="forbid")
+    feature: bool = True
+    change: bool = True
+    bug: bool = True
+    task: bool = False
+
+
+class WorkflowConfig(BaseModel):
+    """Workflow control-plane project policy."""
+
+    model_config = ConfigDict(extra="forbid")
+    autostart: WorkflowAutostartConfig = WorkflowAutostartConfig()
+
+
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
 OUTPUT_VISIBILITY_MOBILE: Final = "mobile"
 OUTPUT_VISIBILITY_WEB: Final = "web"
@@ -375,6 +392,7 @@ class ProjectConfig(BaseModel):
     git: GitConfig = GitConfig()
     integrator: IntegratorConfig = IntegratorConfig()
     process_janitor: ProcessJanitorConfig = ProcessJanitorConfig()
+    workflow: WorkflowConfig = WorkflowConfig()
     channel_subscriptions: list[ChannelSubscription] = []
     deployment: DeploymentConfig = DeploymentConfig()
 

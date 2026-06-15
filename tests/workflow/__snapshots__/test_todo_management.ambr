@@ -26,7 +26,15 @@
     }),
     'stage': 'prepare',
     'state': dict({
+      'active_runner': None,
       'deferrals_processed': False,
+      'hold': False,
+      'hold_audit': dict({
+        'reason': '',
+        'set_at': '',
+        'set_by_session_id': '',
+        'source': '',
+      }),
       'integration_phase': None,
       'kind': None,
       'lifecycle_phase': None,

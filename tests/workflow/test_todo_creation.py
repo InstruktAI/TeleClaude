@@ -10,10 +10,11 @@ from typing import TypedDict, Unpack, cast
 import pytest
 
 from teleclaude.api import todo_routes
-from teleclaude.api_models import TodoDumpRequest
+from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
@@ -32,7 +33,10 @@ _PARENT = "parent"
 _CHILD = "child"
 _KINDLESS = "kindless"
 _NEXT_PREPARE = "/next-prepare"
+_NEXT_WORK = "/next-work"
 _ANALYZE_TODO_INPUT = "/analyze-todo-input"
+_HOLD_SOURCE_CREATION = "creation"
+_CAPTURED_SESSION = "captured-session"
 
 
 @pytest.fixture(autouse=True)
@@ -82,8 +86,13 @@ class _CapturingTelecAPIClient:
     async def connect(self) -> None:
         return None
 
-    async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> None:
+    async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
         self.calls.append(kwargs)
+        return CreateSessionResponseDTO(
+            status="success",
+            session_id=_CAPTURED_SESSION,
+            tmux_session_name="tmux-captured-session",
+        )
 
     async def close(self) -> None:
         return None
@@ -108,7 +117,7 @@ def test_create_help_exposes_canonical_kind_choices(
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC2")
-async def test_lifecycle_router_consumes_dep_blocked_create_without_dispatch(
+async def test_lifecycle_router_wake_up_evaluates_full_project_set(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -132,7 +141,10 @@ async def test_lifecycle_router_consumes_dep_blocked_create_without_dispatch(
 
     await LifecycleRouterCartridge().process(event, cast(PipelineContext, object()))
 
-    assert not _CapturingTelecAPIClient.calls
+    [call] = _CapturingTelecAPIClient.calls
+    assert call["command"] == _NEXT_PREPARE
+    assert call["args"] == _PARENT
+    assert call["project_path"] == str(event_project)
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC3")
@@ -163,10 +175,11 @@ async def test_lifecycle_router_dispatches_deps_satisfied_create_from_event_proj
 
     await LifecycleRouterCartridge().process(event, cast(PipelineContext, object()))
 
-    [call] = _CapturingTelecAPIClient.calls
-    assert call["command"] == _NEXT_PREPARE
-    assert call["args"] == _CHILD
-    assert call["project_path"] == str(event_project)
+    assert [(call["command"], call["args"]) for call in _CapturingTelecAPIClient.calls] == [
+        (_NEXT_WORK, _PARENT),
+        (_NEXT_PREPARE, _CHILD),
+    ]
+    assert {call["project_path"] for call in _CapturingTelecAPIClient.calls} == {str(event_project)}
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC5")
@@ -206,6 +219,92 @@ async def test_kindless_create_persists_no_phase_and_dispatches_analyzer(
     assert call["command"] == _ANALYZE_TODO_INPUT
     assert call["args"] == _KINDLESS
     assert call["project_path"] == str(project_root)
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")
+async def test_create_with_hold_persists_visible_brake_and_suppresses_pickup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="held-change",
+            content="Park this until released.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            hold=True,
+        )
+    )
+
+    todos_db = await get_todos_db(project_root)
+    state = await todos_db.read_state("held-change")
+    assert state is not None
+    assert state["hold"] is True
+    hold_audit = state["hold_audit"]
+    assert isinstance(hold_audit, dict)
+    assert hold_audit["source"] == _HOLD_SOURCE_CREATION
+    [event_kwargs] = emitted
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["pickup_requested"] is False
+    [todo] = assemble_roadmap_from_db(str(project_root))
+    assert todo.hold is True
+    assert todo.hold_source == _HOLD_SOURCE_CREATION
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-19")
+async def test_legacy_silent_is_hold_for_non_task_but_not_for_task(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="silent-change",
+            content="Legacy parked change.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            silent=True,
+        )
+    )
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="task-default",
+            content="Task stays gated by policy.",
+            kind="task",
+            cwd=str(project_root),
+            silent=True,
+        )
+    )
+
+    todos_db = await get_todos_db(project_root)
+    change_state = await todos_db.read_state("silent-change")
+    task_state = await todos_db.read_state("task-default")
+    assert change_state is not None
+    assert task_state is not None
+    assert change_state["hold"] is True
+    assert task_state["hold"] is False
+    pickup_requested: list[object] = []
+    for event in emitted:
+        payload = event["payload"]
+        assert isinstance(payload, Mapping)
+        pickup_requested.append(payload["pickup_requested"])
+    assert pickup_requested == [False, False]
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC4")

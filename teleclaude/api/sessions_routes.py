@@ -62,6 +62,7 @@ from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
+from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
     close_link_for_member,
@@ -655,6 +656,10 @@ async def end_session(
             return _close_accepted(cmd, location_label=target_computer)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     await check_session_access(request, session_id, require_owner=True)
+    try:
+        await hold_todo_for_manual_session_close(db, session_id)
+    except Exception:
+        logger.error("Manual session close hold interlock failed for %s", session_id, exc_info=True)
 
     try:
         cmd = CloseSessionCommand(session_id=session_id)

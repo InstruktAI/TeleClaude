@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, TypedDict
 from unittest.mock import AsyncMock
 
@@ -554,6 +555,27 @@ async def test_delete_remote_session_rejects_non_owner_web_identity(
     )
 
     assert response.status_code == 403
+
+
+async def test_delete_local_session_continues_when_manual_hold_interlock_fails(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    hold = AsyncMock(side_effect=RuntimeError("hold failed"))
+    close = AsyncMock()
+    service = SimpleNamespace(close_session=close)
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", hold)
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+
+    response = await api.delete(f"/sessions/{session_id}")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["completion_event"] == CloseSessionCommand(session_id=session_id).completion_event
+    hold.assert_awaited_once_with(api.db, session_id)
+    close.assert_awaited_once_with(CloseSessionCommand(session_id=session_id))
 
 
 async def test_delete_remote_session_rejects_requested_computer_mismatch(

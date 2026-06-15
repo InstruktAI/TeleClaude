@@ -109,8 +109,6 @@ kind mutation is refused.
 **Operation**
 : A long-running task tied to a todo (e.g., a worker session doing build). Tracked as `agent_runtime.operations` from workflow's perspective via the `operation.completed` event.
 
-<!-- planned:runner-dispatch -->
-
 **Lifecycle runner**
 : The project-scoped autonomous dispatcher for workflow lifecycle work. It is woken by workflow/config/session events, reloads the current todo list for the affected project, evaluates the full eligible set, acquires a dispatch claim for each selected `(project, slug, lane)`, and then starts the relevant `/analyze-todo-input`, `/next-prepare`, or `/next-work` session. It is stateless between events except for durable claims/leases used to prevent duplicate dispatch.
 
@@ -128,8 +126,6 @@ kind mutation is refused.
 
 **Human gate control**
 : The single human-actionable control a parked todo exposes, derived from the same durable state the lifecycle runner reads to skip it (pending approval gate, hold). A todo blocked on a human brake exposes exactly one control: approve its pending approval gate — PRD human approval, task authorization, or a creative gate — or release/place a hold. The derivation is shared by the runner's skip evaluation and the operator-facing row, so "why is this parked" and "what the human can do here" never diverge; it is computed from current state, never stored. Approval and the hold toggle are mutually exclusive in the surface, and a pending approval gate takes precedence when both could apply. Approval routes to the underlying approval stamp the gate requires and is a human-authenticated control-plane action — an agent or unauthenticated caller cannot satisfy a human gate.
-
-<!-- /planned:runner-dispatch -->
 
 **Delivery commit**
 : The git commit SHA on `main` that materialized the todo's outcome. Non-empty when stage is `delivered`. The audit trail anchor.
@@ -183,7 +179,6 @@ kind mutation is refused.
     `workflow.todo.renamed` event. Slug mutation is refused after build starts.
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
-  <!-- planned:runner-dispatch -->
   - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
   - **Hold is the only persisted manual-dispatch brake.** A held todo is skipped by the lifecycle runner until released. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
   - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.
@@ -194,7 +189,6 @@ kind mutation is refused.
   - **PRD-grounded dependents carry parent-ground drift.** When a dependent prepares against a parent's PRD-approved ground before the parent is delivered, the dependent's drift provenance records the parent ground it relied on. Later parent architecture/plan or parent PRD-approval changes that can materially affect that ground force drift review before the dependent may reach or remain `prepared`.
   - **Icebox and removed entries are never runner candidates.** Icebox remains an independent operator parking state; removing/re-activating entries follows the existing soft-delete contract and does not imply hold.
   - **The human gate-control surface is single-valued and state-derived.** The control a todo row offers is computed from current todo state — its pending approval gate and hold — and never stored. At most one control is offered per todo; approval and hold/release are mutually exclusive, with a pending approval gate taking display precedence over the hold toggle. The same derivation that decides the lifecycle runner's auto-dispatch skip decides the operator surface, and a human-authenticated caller is required to satisfy any approval gate.
-  <!-- /planned:runner-dispatch -->
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
 - **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo split` (child of a container). Kind-less creation starts with `kind=None` and no `lifecycle_phase` and routes to `/analyze-todo-input`, which assigns the kind autonomously through the `--kind-assign` stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
 
@@ -276,8 +270,6 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   preserves the state-change contract and lets autonomous dispatch consumers
   gate themselves explicitly.
 
-<!-- planned:runner-dispatch -->
-
 Autonomous pickup is not controlled by
 creation-time `creation_mode` / `pickup_requested`. The target dispatch
 contract is:
@@ -293,8 +285,7 @@ contract is:
   task-autostart disabled; existing tasks are not converted into held todos.
   Target consumers do not branch on legacy pickup fields.
 - The runner reads effective autostart policy at evaluation time, so config
-changes can alter future dispatch without rewriting existing todo rows.
-<!-- /planned:runner-dispatch -->
+  changes can alter future dispatch without rewriting existing todo rows.
 
 ##### v1 partial-shape (transitional)
 
@@ -428,8 +419,6 @@ new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
 - **Reaction:** invalidate cached effective configuration values used by workflow handlers (operator role mappings, default dispatch agents, etc.).
 - **Failure handling:** stale configuration is tolerated for one request; the next read after the event flushes the cache.
 
-<!-- planned:runner-dispatch -->
-
 #### `agent_runtime.session.ended`
 
 - **Producer:** `agent_runtime`
@@ -442,7 +431,6 @@ new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
 - **Consumed events:** target vocabulary `workflow.todo.created`, `workflow.todo.updated`, `workflow.todo.phase_advanced`, `workflow.todo.delivered`, and `workflow.roadmap.entry_moved`. In the v1 Python pipeline, `workflow.todo.created` already fires with `project_path`; the phase-transition seam currently emits only the legacy finalize-ready event and is generalized by this delivery for PREPARED/work transitions; delivery and roadmap/dependency/hold mutations get explicit v1 emissions or bridges instead of relying on Rust-only v2 events.
 - **Reaction:** the lifecycle runner resolves the affected project, reloads the full active todo set, and dispatches every eligible unheld candidate whose lane is not already claimed or live.
 - **Failure handling:** missing/ambiguous project identity, invalid todo state, unmet dependencies, icebox/removed status, hold, disabled autostart policy, and existing claim/session all result in a skip with structured observability; they do not throw away the event for other eligible todos in the same project.
-<!-- /planned:runner-dispatch -->
 
 ### Use cases
 
@@ -893,8 +881,6 @@ Then the task is created with `hold=false` and no `creation_mode = silent` state
 And it is left undispatched by task autostart policy (no-autostart), not by hold
 ```
 
-<!-- planned:runner-dispatch -->
-
 #### UC-WFL-20: Event-driven lifecycle runner dispatches the full eligible set
 
 ```gherkin
@@ -955,8 +941,6 @@ Then no hold is set
 And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
 
-<!-- /planned:runner-dispatch -->
-
 ### v1 inventory
 
 The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is v1-grounded inventory of current v1 source. These feature specs are the v1 parity record; forward/target design for Category-B contract refinements lives in the domain spec, policies, and CLI-surface spec — NOT in these feature specs (per `documentation-first-development` §8a). A v1 inventory entry is corrected in place when current behavior is mis-stated; it is not made a delivery-owned target by a contract-refinement todo. They are the parity contract future v2 cutover work must satisfy or intentionally retire.
@@ -1016,8 +1000,5 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 
 ## See Also
 
-  <!-- planned:runner-dispatch -->
-
 - docs/project/adr/0035-active-runner-driver-ownership.md
 - docs/project/adr/0036-manual-close-is-an-explicit-halt.md
-<!-- /planned:runner-dispatch -->

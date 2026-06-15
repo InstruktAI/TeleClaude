@@ -63,6 +63,10 @@ _PARENT_REVIEWER = "sess-parent-reviewer"
 _UNRELATED = "sess-unrelated"
 _PREFIX_COLLISION = "sess-prefix-collision"
 _WORKTREE_SESSION = "sess-worktree"
+_AUTO_CONTINUE_LABEL = "AUTO-CONTINUE"
+_CHILD_SESSION_RUN = "telec sessions run --command /next-prepare"
+_CHILD_SESSION_SEND = "telec sessions send"
+_SELF_END = "telec sessions end self"
 _DRIFT_SPEC = "project/spec/feature/workflow/drift-detection"
 _DRIFT_SLUG = "matching-drift-bug"
 _INPUT_DIGEST = "input-v1"
@@ -196,8 +200,8 @@ async def test_prepare_unknown_slug_does_not_create_roadmap_row(tmp_path: Path, 
     assert output == snapshot
 
 
-@pytest.mark.spec(_SPEC, "UC-WPS1")
-async def test_prepared_auto_continue_reuses_parent_prepare_worker(tmp_path: Path, snapshot: object) -> None:
+@pytest.mark.spec(_SPEC, "UC-WPS5")
+async def test_prepared_terminal_does_not_continue_into_child_slug(tmp_path: Path) -> None:
     todos_db = await _project_db(tmp_path / "project")
     await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PREPARED)
     await _add_todo(todos_db, _CHILD, lifecycle_phase=LifecyclePhase.DRAFT, after=[_PARENT])
@@ -213,26 +217,19 @@ async def test_prepared_auto_continue_reuses_parent_prepare_worker(tmp_path: Pat
 
     _, output = await prepare_step_prepared(cast(Db, db), todos_db, _PARENT, project_root=_PROJECT_ROOT)
 
-    assert output == snapshot
+    assert _AUTO_CONTINUE_LABEL not in output
+    assert _CHILD_SESSION_RUN not in output
+    assert _CHILD_SESSION_SEND not in output
+    assert _PARENT_REVIEWER in output
+    assert _SELF_END in output
 
 
-@pytest.mark.spec(_SPEC, "UC-WPS1")
-async def test_prepared_auto_continue_spawns_fresh_when_parent_worker_is_absent(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: object,
-) -> None:
+@pytest.mark.spec(_SPEC, "UC-WPS5")
+async def test_prepared_terminal_cleanup_without_parent_worker_reuse(tmp_path: Path) -> None:
     todos_db = await _project_db(tmp_path / "project")
     await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PREPARED)
     await _add_todo(todos_db, _CHILD, lifecycle_phase=LifecyclePhase.DRAFT, after=[_PARENT])
 
-    async def _missing_prepare_worker(_db: Db, _slug: str, _command_value: str) -> str | None:
-        return None
-
-    monkeypatch.setattr(
-        "teleclaude.core.next_machine.prepare_step_support.find_live_prepare_worker_for_slug",
-        _missing_prepare_worker,
-    )
     db = _CapturingDb(
         [
             _Session(_PARENT_WORKER, f"/next-prepare {_PARENT}"),
@@ -242,7 +239,11 @@ async def test_prepared_auto_continue_spawns_fresh_when_parent_worker_is_absent(
 
     _, output = await prepare_step_prepared(cast(Db, db), todos_db, _PARENT, project_root=_PROJECT_ROOT)
 
-    assert output == snapshot
+    assert _AUTO_CONTINUE_LABEL not in output
+    assert _CHILD_SESSION_RUN not in output
+    assert _CHILD_SESSION_SEND not in output
+    assert _PARENT_REVIEWER in output
+    assert _SELF_END in output
 
 
 def _bug_model() -> TodoState:

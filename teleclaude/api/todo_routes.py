@@ -50,6 +50,7 @@ from teleclaude.core.next_machine.kind_migration import (
 )
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
+from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
@@ -158,8 +159,66 @@ class _TodoUpdateResponse(BaseModel):
     kind: str | None = None
     lifecycle_phase: str | None = None
     after: list[str] | None = None
+    hold: bool | None = None
     warnings: list[str]
     folded_artifact: str | None = None
+
+
+def _human_gate_caller_stamp_id(identity: CallerIdentity) -> str:
+    if identity.principal and identity.principal.startswith("human:"):
+        return identity.principal
+    if not identity.session_id and identity.email:
+        return f"human:{identity.email}"
+    if not identity.session_id and identity.human_role:
+        return "human:terminal"
+    raise HTTPException(status_code=403, detail="human principal required to approve todo gate")
+
+
+def _validate_update_request(
+    *,
+    new_slug: str | None,
+    after: list[str] | None,
+    kind: str | None,
+    hold: bool,
+    release: bool,
+) -> None:
+    """Validate the todo update facade's patch shape."""
+    if new_slug is None and after is None and kind is None and not hold and not release:
+        raise HTTPException(
+            status_code=400, detail="at least one of new_slug, after, kind, hold, or release is required"
+        )
+    if hold and release:
+        raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
+
+
+async def _apply_hold_update(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    hold: bool,
+    release: bool,
+    caller_session_id: str | None,
+) -> bool | None:
+    """Apply a hold/release update and return the resulting hold value."""
+    if not hold and not release:
+        return None
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    writer = StateWriter(raw_state)
+    writer.state.hold = hold
+    if hold:
+        writer.state.hold_audit.source = "manual"
+        writer.state.hold_audit.set_at = datetime.now(UTC).isoformat()
+        writer.state.hold_audit.set_by_session_id = caller_session_id or ""
+        writer.state.hold_audit.reason = "todo update"
+    else:
+        writer.state.hold_audit.source = ""
+        writer.state.hold_audit.set_at = ""
+        writer.state.hold_audit.set_by_session_id = ""
+        writer.state.hold_audit.reason = ""
+    await writer.commit(todos_db, slug)
+    return writer.state.hold
 
 
 def _default_cwd() -> str:
@@ -259,12 +318,37 @@ async def todo_integrate(  # pyright: ignore
     )
 
 
+@router.post("/approve", response_model=_SlugStatusResponse)
+async def todo_approve(
+    slug: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_update),
+) -> _SlugStatusResponse:
+    """Approve the todo's current pending human gate."""
+    if not cwd:
+        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+    caller_stamp_id = _human_gate_caller_stamp_id(identity)
+    _validate_slug_for_update(slug, field_name="slug")
+    try:
+        await apply_todo_stamp(
+            cwd=cwd,
+            slug=slug,
+            stamp_type="approve_current_gate",
+            caller_session_id=caller_stamp_id,
+        )
+    except (StateMutationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _SlugStatusResponse(status="ok", slug=slug)
+
+
 @router.post("/update", response_model=None)
 async def todo_update(  # pyright: ignore
     slug: Annotated[str, Body()],
     new_slug: Annotated[str | None, Body()] = None,
     after: Annotated[list[str] | None, Body()] = None,
     kind: Annotated[str | None, Body()] = None,
+    hold: Annotated[bool, Body()] = False,
+    release: Annotated[bool, Body()] = False,
     force: Annotated[bool, Body()] = False,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
@@ -273,8 +357,7 @@ async def todo_update(  # pyright: ignore
     """Update a todo slug, dependencies, or kind through one mutation facade."""
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    if new_slug is None and after is None and kind is None:
-        raise HTTPException(status_code=400, detail="at least one of new_slug, after, or kind is required")
+    _validate_update_request(new_slug=new_slug, after=after, kind=kind, hold=hold, release=release)
 
     _validate_slug_for_update(slug, field_name="slug")
     if new_slug is not None:
@@ -323,6 +406,14 @@ async def todo_update(  # pyright: ignore
 
         await todos_db.set_deps(slug, after=requested_after)
 
+    hold_value = await _apply_hold_update(
+        todos_db,
+        slug,
+        hold=hold,
+        release=release,
+        caller_session_id=identity.session_id,
+    )
+
     if new_slug is not None:
         operations = get_operations_service()
         logger.info(
@@ -341,6 +432,8 @@ async def todo_update(  # pyright: ignore
             client_request_id=client_request_id,
         )
 
+    await _emit_todo_updated(slug=slug, cwd=cwd)
+
     logger.info(
         "todo update route completed",
         slug=slug,
@@ -356,9 +449,28 @@ async def todo_update(  # pyright: ignore
         kind=migration_result["kind"] if migration_result else None,
         lifecycle_phase=migration_result["lifecycle_phase"] if migration_result else None,
         after=requested_after,
+        hold=hold_value,
         warnings=warnings,
         folded_artifact=migration_result.get("folded_artifact") if migration_result else None,
     )
+
+
+async def _emit_todo_updated(*, slug: str, cwd: str) -> None:
+    project_root = str(resolve_state_root(cwd))
+    try:
+        await emit_event(
+            event="workflow.todo.updated",
+            source="api.todo.update",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            payload={
+                "slug": slug,
+                "updated_at": datetime.now(UTC).isoformat(),
+                "project_path": project_root,
+            },
+        )
+    except RuntimeError:
+        logger.info("workflow.todo.updated not emitted: event producer unavailable", slug=slug)
 
 
 def _validate_slug_for_update(slug: str, *, field_name: str) -> None:
@@ -596,8 +708,9 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         (feature authors a PRD, change drafts a plan directly).
       - "bug": content is the "input" artifact; apply_prepared_state stamps the
         canonical lifecycle `prepared` so it enters the fix lane directly.
-      - "task": content is the "input" artifact; enters prepared and is forced silent.
-    ``silent`` suppresses dispatch (parking).
+      - "task": content is the "input" artifact; enters prepared and is unheld.
+    ``hold`` sets the per-todo dispatch brake. ``silent`` is a legacy alias for
+    non-task operator parking only.
     """
     slug = request.slug
     try:
@@ -616,10 +729,23 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 status_code=400,
                 detail="--plan supplies a complete implementation-plan and is only valid with --kind change",
             )
+        if request.hold and request.release:
+            raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
 
         state = _initial_todo_state_for_kind(request.kind)
+        hold_requested = bool(
+            request.hold or (request.silent and not request.release and request.kind != TODO_KIND_TASK)
+        )
+        state["hold"] = hold_requested
+        if hold_requested:
+            state["hold_audit"] = {
+                "source": "creation",
+                "set_at": datetime.now(UTC).isoformat(),
+                "set_by_session_id": "",
+                "reason": "create",
+            }
         force_silent = request.kind == TODO_KIND_TASK
-        pickup_requested = not (request.silent or force_silent)
+        pickup_requested = not (hold_requested or force_silent)
 
         written_artifact_name = ""
         written_artifact_body = ""

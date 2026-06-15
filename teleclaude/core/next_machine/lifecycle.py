@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import cast
 
 from teleclaude.constants import (
@@ -62,6 +63,7 @@ __all__ = [
     "PREPARE_LIFECYCLE_PHASES",
     "READY_BAND_PHASES",
     "WORK_LIFECYCLE_PHASES",
+    "HumanControl",
     "LifecyclePhase",
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
@@ -75,6 +77,7 @@ __all__ = [
     "is_settled_ok_phase",
     "is_work_lifecycle_phase",
     "lifecycle_phase_index",
+    "pending_human_control",
     "phase_is_complete",
     "prepare_blockers",
     "require_lifecycle_phase",
@@ -91,6 +94,16 @@ READY_BAND_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.REVIEW_APPROVED,
     }
 )
+
+
+class HumanControl(StrEnum):
+    """Human-actionable control currently available for a todo."""
+
+    APPROVE = "approve"
+    HOLD = "hold"
+    RELEASE_HOLD = "release_hold"
+
+
 _DRIFT_CLASS_CODE = "code"
 _DRIFT_CLASS_UPSTREAM_ARTIFACT = "upstream-artifact"
 _DRIFT_CLASS_OWNED_SNIPPET = "owned-snippet"
@@ -207,6 +220,36 @@ def is_settled_ok_phase(lifecycle_phase: str | None) -> bool:
     return phase in (LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED)
 
 
+def pending_human_control(todo_state: TodoState | Mapping[str, object]) -> HumanControl | None:
+    """Return the single human control available for a todo state.
+
+    Approval gates outrank hold state so a parked approval row offers the action
+    that advances the gate instead of a hold toggle.
+    """
+    if isinstance(todo_state, TodoState):
+        phase = coerce_lifecycle_phase(todo_state.lifecycle_phase)
+        hold = todo_state.hold
+        active_runner = todo_state.active_runner
+        kind = todo_state.kind
+    else:
+        phase = coerce_lifecycle_phase(todo_state.get("lifecycle_phase"))
+        hold = todo_state.get("hold") is True
+        raw_active_runner = todo_state.get("active_runner")
+        active_runner = raw_active_runner if isinstance(raw_active_runner, str) and raw_active_runner else None
+        raw_kind = todo_state.get("kind")
+        kind = raw_kind if isinstance(raw_kind, str) else None
+
+    if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
+        return HumanControl.APPROVE
+    if hold:
+        return HumanControl.RELEASE_HOLD
+    if active_runner or kind is None or phase is None:
+        return None
+    if phase in READY_BAND_PHASES or phase in WORK_LIFECYCLE_PHASES:
+        return None
+    return HumanControl.HOLD
+
+
 def derive_build_status(
     lifecycle_phase: str | None,
     *,
@@ -290,6 +333,8 @@ def _intent_artifact_present(
 
 
 def _session_principal(session_id: str) -> str:
+    if session_id.startswith("human:"):
+        return session_id
     session = Session(
         session_id=session_id,
         computer_name="",

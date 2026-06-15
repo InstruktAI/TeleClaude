@@ -96,6 +96,66 @@ def test_todo_row_renders_disapproved_review_status(snapshot: object) -> None:
     assert row.render().plain == snapshot
 
 
+def test_todo_row_renders_hold_distinct_from_icebox(snapshot: object) -> None:
+    items = [
+        TodoItem(
+            slug="held-work",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="change",
+            lifecycle_phase="plan_drafting",
+            hold=True,
+            hold_source="manual",
+        ),
+        TodoItem(
+            slug="frozen-work",
+            status=TodoStatus.ICEBOX,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="change",
+            lifecycle_phase="plan_drafting",
+        ),
+    ]
+    slug_width = max(len(i.slug) for i in items)
+    col_widths = TodoRow.compute_col_widths(items)
+    rows = [TodoRow(item, slug_width=slug_width, col_widths=col_widths) for item in items]
+
+    assert [row.render().plain for row in rows] == snapshot
+
+
+def test_todo_row_renders_pending_approval_distinct_from_hold(snapshot: object) -> None:
+    items = [
+        TodoItem(
+            slug="approval-work",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="feature",
+            lifecycle_phase="prd_human_approval",
+            hold=True,
+        ),
+        TodoItem(
+            slug="held-work",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="feature",
+            lifecycle_phase="plan_drafting",
+            hold=True,
+        ),
+    ]
+    slug_width = max(len(i.slug) for i in items)
+    col_widths = TodoRow.compute_col_widths(items)
+    rows = [TodoRow(item, slug_width=slug_width, col_widths=col_widths) for item in items]
+
+    assert [row.render().plain for row in rows] == snapshot
+
+
 def test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode(
     monkeypatch: pytest.MonkeyPatch, snapshot: object
 ) -> None:

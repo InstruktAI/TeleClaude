@@ -41,7 +41,7 @@ from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.lifecycle import HumanControl, LifecyclePhase, pending_human_control
 from teleclaude.core.next_machine.provenance import (
     read_dependency_set,
     read_owned_snippet_digests,
@@ -159,6 +159,15 @@ async def apply_todo_stamp(
             repo_root=cwd,
             snippet_digest_fn=snippet_body_digest,
         )
+    elif stamp_type == "approve_current_gate":
+        await _apply_current_gate_approval(
+            todos_db,
+            writer,
+            slug,
+            caller_session_id,
+            repo_root=cwd,
+            snippet_digest_fn=snippet_body_digest,
+        )
     elif stamp_type == "prd_approved":
         await _apply_approval_stamp(
             todos_db,
@@ -203,6 +212,33 @@ async def apply_todo_stamp(
         raise ValueError(f"unknown stamp type: {stamp_type}")
 
     return await writer.commit(todos_db, slug)
+
+
+async def _apply_current_gate_approval(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    caller_session_id: str | None,
+    *,
+    repo_root: str,
+    snippet_digest_fn: Callable[[str], str],
+) -> None:
+    control = pending_human_control(writer.state)
+    if control is not HumanControl.APPROVE:
+        raise StateMutationError("no pending approval gate")
+    if writer.state.lifecycle_phase == LifecyclePhase.PRD_HUMAN_APPROVAL.value:
+        await _apply_approval_stamp(
+            todos_db,
+            writer,
+            slug,
+            ARTIFACT_PRD,
+            "prd_approved",
+            caller_session_id,
+            repo_root=repo_root,
+            snippet_digest_fn=snippet_digest_fn,
+        )
+        return
+    raise StateMutationError(f"unsupported approval gate: {writer.state.lifecycle_phase}")
 
 
 async def _apply_kind_assign_stamp(

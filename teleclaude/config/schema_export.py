@@ -60,7 +60,8 @@ def export_config_markdown() -> str:
     # Append raw JSON schema as reference
     sections.append("## Raw JSON Schema\n")
     sections.append("```json")
-    sections.append(json.dumps(GlobalConfig.model_json_schema(), indent=2))
+    raw_schema = {label: model.model_json_schema() for label, model in _MODELS}
+    sections.append(json.dumps(raw_schema, indent=2))
     sections.append("```\n")
 
     return "\n".join(sections)

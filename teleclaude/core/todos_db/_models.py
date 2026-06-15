@@ -108,6 +108,19 @@ class RoadmapDep(SQLModel, table=True):
     depends_on: str = Field(primary_key=True)
 
 
+class TodoDispatchClaim(SQLModel, table=True):
+    """Short-lived lifecycle runner dispatch claim."""
+
+    __tablename__ = "todo_dispatch_claims"  # pyright: ignore[reportAssignmentType]
+    __table_args__ = {"extend_existing": True}
+
+    slug: str = Field(primary_key=True)
+    lane: str = Field(primary_key=True)
+    owner: str
+    claimed_at: str
+    expires_at: str
+
+
 Index(
     "idx_roadmap_slug_active",
     TodoRoadmap.slug,
@@ -121,6 +134,7 @@ TODO_STATE_TABLE = SQLModel.metadata.tables["todo_state"]
 TODO_ARTIFACT_TABLE = SQLModel.metadata.tables["todo_artifacts"]
 TODO_ARTIFACT_VERSION_TABLE = SQLModel.metadata.tables["todo_artifact_versions"]
 ROADMAP_DEPS_TABLE = SQLModel.metadata.tables["roadmap_deps"]
+TODO_DISPATCH_CLAIMS_TABLE = SQLModel.metadata.tables["todo_dispatch_claims"]
 
 TODOS_DB_TABLES = [
     ROADMAP_TABLE,
@@ -128,6 +142,7 @@ TODOS_DB_TABLES = [
     TODO_ARTIFACT_TABLE,
     TODO_ARTIFACT_VERSION_TABLE,
     ROADMAP_DEPS_TABLE,
+    TODO_DISPATCH_CLAIMS_TABLE,
 ]
 
 
@@ -137,10 +152,12 @@ __all__ = [
     "TODOS_DB_TABLES",
     "TODO_ARTIFACT_TABLE",
     "TODO_ARTIFACT_VERSION_TABLE",
+    "TODO_DISPATCH_CLAIMS_TABLE",
     "TODO_STATE_TABLE",
     "RoadmapDep",
     "TodoArtifact",
     "TodoArtifactVersion",
+    "TodoDispatchClaim",
     "TodoRoadmap",
     "TodoStateModel",
 ]
