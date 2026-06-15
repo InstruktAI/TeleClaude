@@ -71,6 +71,13 @@ TTS_OPENAI_ENABLED = "tts.services.openai.enabled"
 TTS_OPENAI_VOICE_NAME = "tts.services.openai.voices.0.name"
 TTS_SESSION_START_GREETINGS = ["Hello", "Hey there"]
 TTS_STT_SUBTAB_INDEX = _SUBTABS.index(Subtab.TTS_STT)
+STT_OPENAI_ENABLED = "stt.services.openai.enabled"
+TTS_VOXCPM_ENABLED = "tts.services.voxcpm.enabled"
+DEFAULT_TTS_SERVICES = ("pyttsx3", "macos", "openai", "elevenlabs")
+EXPANDED_TTS_HEADER = "▼ TTS"
+COLLAPSED_STT_HEADER = "▶ STT"
+SERVICES_BRANCH_LABEL = "Services"
+NESTED_BRANCH_INDENT = "    "
 
 
 def _is_struct_list(value: object) -> bool:
@@ -200,6 +207,48 @@ def test_nested_leaf_persists_to_its_dotted_path(tmp_path, monkeypatch):
         assert data["tts"]["events"]["session_start"]["enabled"] is False
     finally:
         set_runtime_config(old_rc)
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-13")
+def test_default_nested_entries_shown_when_user_omits_them(monkeypatch):
+    content = ConfigContent()
+    monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+    content._raw_config = {"tts": {"enabled": True, "services": {"voxcpm": {"enabled": True}}}}
+    content.active_subtab = TTS_STT_SUBTAB_INDEX
+
+    keys = {f.key for f in content.reflected_fields}
+    # The user's own service is present alongside the default-only services.
+    assert TTS_VOXCPM_ENABLED in keys
+    for service in DEFAULT_TTS_SERVICES:
+        assert f"tts.services.{service}.enabled" in keys
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-12")
+def test_nested_tree_renders_indented_without_collision(monkeypatch):
+    content = ConfigContent()
+    monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+    content._raw_config = {
+        "stt": {"enabled": True, "services": {"openai": {"enabled": True}}},
+        "tts": {"enabled": True, "services": {"openai": {"enabled": True}}},
+    }
+    content.active_subtab = TTS_STT_SUBTAB_INDEX
+
+    fields = content.reflected_fields
+    keys = {f.key for f in fields}
+    # Same-named leaves under different roots stay distinct (no collision).
+    assert STT_OPENAI_ENABLED in keys
+    assert TTS_OPENAI_ENABLED in keys
+
+    tts_index = next(i for i, f in enumerate(fields) if f.key.split(".", 1)[0] == "tts")
+    content._cursor_by_context[content._current_context_key()] = tts_index
+    lines = content.render().plain.splitlines()
+
+    # The active root expands, the other collapses — they never merge.
+    assert any(line.strip() == EXPANDED_TTS_HEADER for line in lines)
+    assert any(line.strip().startswith(COLLAPSED_STT_HEADER) for line in lines)
+    # The nested branch renders indented beneath its root.
+    services_line = next(line for line in lines if line.strip() == SERVICES_BRANCH_LABEL)
+    assert services_line.startswith(NESTED_BRANCH_INDENT)
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-9")

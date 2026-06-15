@@ -50,6 +50,7 @@ from teleclaude.config import (
     TelegramConfig,
     TTSConfig,
     WhatsAppConfig,
+    deep_merge,
     parse_stt_config,
     parse_tts_config,
 )
@@ -396,14 +397,14 @@ class ConfigContent(
             fields = reflect_schema(computer_obj, prefix="computer", section="Computer", owning_source="machine")
 
             redis_data = self._raw_config.get("redis", {})
-            merged_redis = {**_default_section("redis"), **redis_data}
+            merged_redis = deep_merge(_default_section("redis"), redis_data)
             redis_fields = {f.name for f in dataclasses.fields(RedisConfig)}
             filtered_redis = {k: v for k, v in merged_redis.items() if k in redis_fields}
             redis_obj = RedisConfig(**filtered_redis)
             fields.extend(reflect_schema(redis_obj, prefix="redis", section="Redis", owning_source="machine"))
 
             chiptunes_data = self._raw_config.get("chiptunes", {})
-            merged_chiptunes = {**_default_section("chiptunes"), **chiptunes_data}
+            merged_chiptunes = deep_merge(_default_section("chiptunes"), chiptunes_data)
             chiptunes_fields = {f.name for f in dataclasses.fields(ChiptunesConfig)}
             filtered_chiptunes = {k: v for k, v in merged_chiptunes.items() if k in chiptunes_fields}
             chiptunes_obj = ChiptunesConfig(**filtered_chiptunes)
@@ -414,7 +415,7 @@ class ConfigContent(
 
         if tab == Subtab.ADAPTERS:
             telegram_data = self._raw_config.get("telegram", {})
-            merged_telegram = {**_default_section("telegram"), **telegram_data}
+            merged_telegram = deep_merge(_default_section("telegram"), telegram_data)
             telegram_fields = {f.name for f in dataclasses.fields(TelegramConfig)}
             filtered_telegram = {k: v for k, v in merged_telegram.items() if k in telegram_fields}
             telegram_obj = TelegramConfig(**filtered_telegram)
@@ -434,14 +435,14 @@ class ConfigContent(
             )
 
             discord_data = self._raw_config.get("discord", {})
-            merged_discord = {**_default_section("discord"), **discord_data}
+            merged_discord = deep_merge(_default_section("discord"), discord_data)
             discord_fields = {f.name for f in dataclasses.fields(DiscordConfig)}
             filtered_discord = {k: v for k, v in merged_discord.items() if k in discord_fields}
             discord_obj = DiscordConfig(**filtered_discord)
             fields.extend(reflect_schema(discord_obj, prefix="discord", section="Discord", owning_source="machine"))
 
             whatsapp_data = self._raw_config.get("whatsapp", {})
-            merged_whatsapp = {**_default_section("whatsapp"), **whatsapp_data}
+            merged_whatsapp = deep_merge(_default_section("whatsapp"), whatsapp_data)
             whatsapp_fields = {f.name for f in dataclasses.fields(WhatsAppConfig)}
             filtered_whatsapp = {k: v for k, v in merged_whatsapp.items() if k in whatsapp_fields}
             whatsapp_obj = WhatsAppConfig(**filtered_whatsapp)
@@ -486,8 +487,8 @@ class ConfigContent(
             return fields
 
         if tab == Subtab.TTS_STT:
-            merged_stt = {**_default_section("stt"), **self._raw_config.get("stt", {})}
-            merged_tts = {**_default_section("tts"), **self._raw_config.get("tts", {})}
+            merged_stt = deep_merge(_default_section("stt"), self._raw_config.get("stt", {}))
+            merged_tts = deep_merge(_default_section("tts"), self._raw_config.get("tts", {}))
             stt_obj = parse_stt_config(merged_stt) or STTConfig(enabled=False)
             tts_obj = parse_tts_config(merged_tts) or TTSConfig(enabled=False)
 

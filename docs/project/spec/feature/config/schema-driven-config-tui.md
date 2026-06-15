@@ -178,6 +178,25 @@ Then the actual value is revealed in the edit buffer
 And masking is a rendering rule only, leaving the persistence target and editability unchanged
 ```
 
+#### UC-CFG-TUI-SCHEMA-12: Nested structures render as an indented tree
+
+```
+Given reflected fields whose dotted keys describe a nested structure
+When the config TUI renders the owning subtab or person overlay
+Then each level renders indented beneath its parent as a labelled branch header
+And leaves render beneath their branch at a depth matching their key
+And two leaves that share a name under different parents (e.g. stt.services.openai and tts.services.openai) render under their own branches without merging
+```
+
+#### UC-CFG-TUI-SCHEMA-13: Default values are shown even when the user config omits them
+
+```
+Given a configuration section whose defaults include nested entries the user config does not set
+When the config TUI renders that section
+Then the effective value (user value over default) is shown for every field
+And default-only nested entries (e.g. TTS services present only in the defaults) are still rendered
+```
+
 ### Current hand-patched surfaces to retire
 
 The current TUI config surface contains dynamic reflection machinery, but the

@@ -31,6 +31,18 @@ if TYPE_CHECKING:
 _MASKED_VALUE = "••••••"
 
 
+def _segment_label(segment: str) -> str:
+    """Human label for one dotted-key segment; list indices render as ``[n]``."""
+    return f"[{segment}]" if segment.isdigit() else segment.replace("_", " ").title()
+
+
+def _root_label(fields: list[ReflectedField], root: str) -> str:
+    """Label for a top-level group, taken from the shallowest field's section."""
+    members = [f for f in fields if f.key.split(".", 1)[0] == root]
+    shallowest = min(members, key=lambda f: f.key.count("."))
+    return shallowest.section
+
+
 class ConfigContentRenderMixin:
     """Rendering, on_click, and watch_* methods for ConfigContent."""
 
@@ -122,24 +134,25 @@ class ConfigContentRenderMixin:
             if selected and self._expanded_person == person.name:  # type: ignore[attr-defined]
                 person_fields = self.person_reflected_fields  # type: ignore[attr-defined]
 
-                # Group fields by section preserving order
-                sections: dict[str, list[ReflectedField]] = {}
+                # Render the overlay as an indented tree (root groups + branch
+                # headers), matching the subtab renderer.
+                printed: set[str] = set()
+                current_root: str | None = None
                 for f in person_fields:
-                    sections.setdefault(f.section, []).append(f)
-
-                for sec_name, sec_fields in sections.items():
-                    result.append(f"      ▼ {sec_name}\n", style=Style(bold=True))
-                    for f in sec_fields:
-                        f_idx = person_fields.index(f)
-                        field_selected = f_idx == self._person_field_cursor  # type: ignore[attr-defined]
-                        field_prefix = "▶" if field_selected else " "
-                        field_row_style = Style(reverse=True) if field_selected else _normal_style()
-
-                        field_row = result.plain.count("\n")
-                        self._row_click_map[field_row] = ("person_reflected_row", f.key)  # type: ignore[attr-defined]
-                        self._render_reflected_field(
-                            result, f, selected=field_selected, prefix=field_prefix, row_style=field_row_style
-                        )
+                    root = f.key.split(".", 1)[0]
+                    if root != current_root:
+                        current_root = root
+                        result.append(f"  ▼ {_root_label(person_fields, root)}\n", style=Style(bold=True))
+                    self._emit_branch_headers(result, f.key, printed)
+                    f_idx = person_fields.index(f)
+                    field_selected = f_idx == self._person_field_cursor  # type: ignore[attr-defined]
+                    field_prefix = "▶" if field_selected else " "
+                    field_row_style = Style(reverse=True) if field_selected else _normal_style()
+                    field_row = result.plain.count("\n")
+                    self._row_click_map[field_row] = ("person_reflected_row", f.key)  # type: ignore[attr-defined]
+                    self._render_reflected_field(
+                        result, f, selected=field_selected, prefix=field_prefix, row_style=field_row_style
+                    )
 
     def _render_environment(self, result: Text) -> None:
         """Render the global environment variable section."""
@@ -178,15 +191,22 @@ class ConfigContentRenderMixin:
     def _render_reflected_field(
         self, result: Text, f: ReflectedField, *, selected: bool, prefix: str, row_style: Style
     ) -> None:
-        """Render one reflected field row: bool toggle, list, enum, or text."""
+        """Render one reflected field row: bool toggle, list, enum, or text.
+
+        Leaf rows are indented to their depth in the dotted key so they sit beneath
+        the branch headers emitted by the caller.
+        """
+        depth = max(0, f.key.count(".") - 1)
+        pad = "  " * (2 + depth)
+        subpad = pad + "    "
         if self._editing_var_name == f.key:  # type: ignore[attr-defined]
-            result.append(f"    {prefix} {f.name} = {self._edit_buffer}█\n", style=row_style)  # type: ignore[attr-defined]
-            result.append("        Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
+            result.append(f"{pad}{prefix} {f.name} = {self._edit_buffer}█\n", style=row_style)  # type: ignore[attr-defined]
+            result.append(f"{subpad}Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
             return
 
         if f.field_type is bool:
             # A boolean is always a valid state (true or false), so it is always "set".
-            result.append(f"    {prefix} ✔ ", style=_OK)
+            result.append(f"{pad}{prefix} ✔ ", style=_OK)
             result.append(f"{f.name}: ", style=_DIM)
             result.append(" TRUE ", style=Style(bold=True, reverse=True) if f.value else _DIM)
             result.append(" ", style=row_style)
@@ -195,7 +215,7 @@ class ConfigContentRenderMixin:
 
         elif f.field_type in (list[str], list):
             items = f.value or []
-            result.append(f"    {prefix} {'✔' if items else '○'} ", style=_OK if items else _DIM)
+            result.append(f"{pad}{prefix} {'✔' if items else '○'} ", style=_OK if items else _DIM)
             result.append(f"{f.name}:", style=_DIM)
             if selected and items:
                 self._list_element_idx = max(0, min(self._list_element_idx, len(items) - 1))  # type: ignore[attr-defined]
@@ -204,7 +224,7 @@ class ConfigContentRenderMixin:
                     active = item_idx == self._list_element_idx  # type: ignore[attr-defined]
                     marker = "▶" if active else " "
                     result.append(
-                        f"        {marker} {item}\n", style=Style(bold=True, reverse=True) if active else row_style
+                        f"{subpad}{marker} {item}\n", style=Style(bold=True, reverse=True) if active else row_style
                     )
             elif items:
                 result.append(f" {', '.join(items)}\n", style=row_style)
@@ -212,7 +232,7 @@ class ConfigContentRenderMixin:
                 result.append(" (empty)\n", style=_DIM)
 
         elif f.choices:
-            result.append(f"    {prefix} {'✔' if f.value else '○'} ", style=_OK if f.value else _DIM)
+            result.append(f"{pad}{prefix} {'✔' if f.value else '○'} ", style=_OK if f.value else _DIM)
             result.append(f"{f.name}: ", style=_DIM)
             result.append(f"{f.value or '(not set)'}", style=row_style)
             result.append("  (← → cycle)\n" if selected else "\n", style=_DIM)
@@ -221,12 +241,12 @@ class ConfigContentRenderMixin:
             value = str(f.value if f.value is not None else "")
             # An env-sourced value is sensitive; reveal it only while editing (handled above).
             display = _MASKED_VALUE if (f.env_var and value) else (value or "(not set)")
-            result.append(f"    {prefix} {'✔' if value else '○'} ", style=_OK if value else _DIM)
+            result.append(f"{pad}{prefix} {'✔' if value else '○'} ", style=_OK if value else _DIM)
             result.append(f"{f.name}: ", style=_DIM)
             result.append(f"{display}\n", style=row_style)
 
         if f.description:
-            result.append(f"        {f.description}\n", style=_DIM)
+            result.append(f"{subpad}{f.description}\n", style=_DIM)
         if selected:
             # Env-backed ${VAR} fields carry guidance keyed by the env var, not the field key.
             guidance = guidance_registry.get_for_env(f.env_var) if f.env_var else None
@@ -234,8 +254,35 @@ class ConfigContentRenderMixin:
                 guidance = guidance_registry.get_for_field_key(f.key)
             self._render_guidance_block(result, guidance)
 
+    def _emit_branch_headers(self, result: Text, key: str, printed: set[str]) -> None:
+        """Emit indented headers for any intermediate path segments not yet shown."""
+        segments = key.split(".")
+        for depth in range(1, len(segments) - 1):
+            path = ".".join(segments[: depth + 1])
+            if path not in printed:
+                printed.add(path)
+                result.append("  " * (1 + depth) + _segment_label(segments[depth]) + "\n", style=Style(bold=True))
+
+    def _group_summary(self, group_fields: list[ReflectedField]) -> str:
+        """One-line collapsed summary of a group's leaf values."""
+        parts: list[str] = []
+        for f in group_fields:
+            if f.field_type is bool:
+                val_str = "yes" if f.value else "no"
+            elif f.field_type in (list[str], list):
+                val_str = f"[{len(f.value or [])}]"
+            elif f.env_var and f.value:
+                val_str = _MASKED_VALUE
+            else:
+                val_str = str(f.value if f.value is not None else "")
+                if len(val_str) > 15:
+                    val_str = val_str[:12] + "..."
+            parts.append(f"{f.name}={val_str}")
+        summary = ", ".join(parts)
+        return summary[:47] + "..." if len(summary) > 50 else summary
+
     def _render_reflected_fields(self, result: Text) -> None:
-        """Render the dynamically reflected fields for the active subtab."""
+        """Render the active subtab's reflected fields as an indented tree."""
         fields = self.reflected_fields  # type: ignore[attr-defined]
         if not fields:
             result.append("\n  No properties found for this subtab\n", style=_DIM)
@@ -243,46 +290,32 @@ class ConfigContentRenderMixin:
 
         cursor = self._current_cursor()  # type: ignore[attr-defined]
         active_field = fields[max(0, min(cursor, len(fields) - 1))]
-        active_section = active_field.section
+        active_root = active_field.key.split(".", 1)[0]
 
-        # Group fields by section preserving order
-        sections: dict[str, list[ReflectedField]] = {}
+        # Group fields by top-level key segment, preserving order, so nested
+        # structures render as a tree rather than colliding into flat sections.
+        groups: dict[str, list[ReflectedField]] = {}
         for f in fields:
-            sections.setdefault(f.section, []).append(f)
+            groups.setdefault(f.key.split(".", 1)[0], []).append(f)
 
-        for sec_name, sec_fields in sections.items():
+        for root, group_fields in groups.items():
             result.append("\n")
-            is_active = sec_name == active_section
+            label = _root_label(fields, root)
+            if root != active_root:
+                result.append(f"  ▶ {label} ({self._group_summary(group_fields)})\n", style=_DIM)
+                continue
 
-            if is_active:
-                result.append(f"  ▼ {sec_name}\n", style=Style(bold=True))
-
-                for f in sec_fields:
-                    f_idx = fields.index(f)
-                    selected = f_idx == cursor
-                    prefix = "▶" if selected else " "
-                    row_style = Style(reverse=True) if selected else _normal_style()
-                    row = result.plain.count("\n")
-                    self._row_click_map[row] = ("reflected_row", f.key)  # type: ignore[attr-defined]
-                    self._render_reflected_field(result, f, selected=selected, prefix=prefix, row_style=row_style)
-            else:
-                summary_parts = []
-                for f in sec_fields:
-                    if f.field_type is bool:
-                        val_str = "yes" if f.value else "no"
-                    elif f.field_type in (list[str], list):
-                        val_str = f"[{len(f.value or [])}]"
-                    elif f.env_var and f.value:
-                        val_str = _MASKED_VALUE
-                    else:
-                        val_str = str(f.value if f.value is not None else "")
-                        if len(val_str) > 15:
-                            val_str = val_str[:12] + "..."
-                    summary_parts.append(f"{f.name}={val_str}")
-                summary_str = ", ".join(summary_parts)
-                if len(summary_str) > 50:
-                    summary_str = summary_str[:47] + "..."
-                result.append(f"  ▶ {sec_name} ({summary_str})\n", style=_DIM)
+            result.append(f"  ▼ {label}\n", style=Style(bold=True))
+            printed: set[str] = set()
+            for f in group_fields:
+                self._emit_branch_headers(result, f.key, printed)
+                f_idx = fields.index(f)
+                selected = f_idx == cursor
+                prefix = "▶" if selected else " "
+                row_style = Style(reverse=True) if selected else _normal_style()
+                row = result.plain.count("\n")
+                self._row_click_map[row] = ("reflected_row", f.key)  # type: ignore[attr-defined]
+                self._render_reflected_field(result, f, selected=selected, prefix=prefix, row_style=row_style)
 
     def render(self) -> Text:
         """Render the current config content for the active subtab."""

@@ -124,7 +124,7 @@ def detect_lan_ip() -> str:
 
 
 # Default configuration values (single source of truth for user-configurable keys)
-def _deep_merge(
+def deep_merge(
     base: dict[str, object],  # guard: loose-dict - YAML config merge
     override: dict[str, object],  # guard: loose-dict - YAML config merge
 ) -> dict[str, object]:  # guard: loose-dict - YAML config merge
@@ -140,10 +140,32 @@ def _deep_merge(
     result = base.copy()
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)  # type: ignore[arg-type]
+            result[key] = deep_merge(result[key], value)  # type: ignore[arg-type]
         else:
             result[key] = value
     return result
+
+
+def prune_defaults(
+    data: dict[str, object],  # guard: loose-dict - YAML config tree
+    defaults: dict[str, object],  # guard: loose-dict - YAML config tree
+) -> dict[str, object]:  # guard: loose-dict - YAML config tree
+    """Return ``data`` with every leaf equal to its default removed.
+
+    The inverse of :func:`deep_merge` against ``DEFAULT_CONFIG``: values matching
+    the default are dropped so the persisted config carries only deviations. The
+    loader re-fills defaults on read, so a pruned file loads identically.
+    """
+    pruned: dict[str, object] = {}  # guard: loose-dict - YAML config tree
+    for key, value in data.items():
+        default = defaults.get(key)
+        if isinstance(value, dict) and isinstance(default, dict):
+            nested = prune_defaults(value, default)
+            if nested:
+                pruned[key] = nested
+        elif value != default:
+            pruned[key] = value
+    return pruned
 
 
 def _require_agents_section(raw_config: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
@@ -671,12 +693,12 @@ def _load_config_from_disk(path: Path) -> Config:
     if isinstance(user_config, dict):
         pass
 
-    merged = _deep_merge(DEFAULT_CONFIG, user_config)  # type: ignore[arg-type]
+    merged = deep_merge(DEFAULT_CONFIG, user_config)  # type: ignore[arg-type]
     return _build_config(merged)
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.
-_config_path = resolve_runtime_config_path(_project_root / "templates" / "config.yml", _deep_merge)
+_config_path = resolve_runtime_config_path(_project_root / "templates" / "config.yml", deep_merge)
 
 if not _config_path.exists():
     raise FileNotFoundError(
