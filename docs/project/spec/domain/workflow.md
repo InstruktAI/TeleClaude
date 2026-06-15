@@ -132,7 +132,7 @@ kind mutation is refused.
 
 <!-- change:runner-dispatch-followup -->
 
-: Daemon runtime configuration read by the lifecycle runner at evaluation time, living in the per-machine `config.yml` runtime config — not a project or person overlay. It is a global operator safety switch: strictly per-machine, off by default for every kind (`feature=false`, `change=false`, `bug=false`, `task=false`). Under the default no todo self-dispatches, and the runner skips kind-discovery (`/analyze-todo-input`) while every kind is disabled, so an unconfigured machine never self-drives. A todo whose kind is not autostart-enabled remains available for explicit `telec todo work <slug>` / `telec todo prepare <slug>`.
+: Daemon runtime configuration read by the lifecycle runner at evaluation time, living in the per-machine `config.yml` runtime config — not a project or person overlay. It is a global operator safety switch: strictly per-machine, off by default for every kind (`feature=false`, `change=false`, `bug=false`, `task=false`). It gates **only the work lane** — the `prepared → build_started` entry into the execution runtime. Preparation always runs regardless of autostart: kind-discovery (`/analyze-todo-input`) and the whole prepare lane up to `prepared` auto-dispatch unconditionally (deduped, capped, parking at the human approval gates), because preparation is always needed. Under the default a machine prepares its work but auto-starts none of it; a kind whose autostart is off still reaches `prepared`, then waits for an operator to enable it or start it manually.
 
 <!-- /planned-change:runner-dispatch-followup -->
 

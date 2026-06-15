@@ -169,17 +169,36 @@ async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-def test_decide_skips_kindless_analyze_when_autostart_all_off() -> None:
+def test_preparation_runs_regardless_of_autostart_only_work_is_gated() -> None:
+    """Preparation always auto-dispatches: kind-discovery (analyze) and the
+    prepare lane run even with every autostart kind off; only the work lane
+    (prepared -> build) is gated by autostart."""
     decision = decide_dispatches(
         {
-            _WORK_SLUG: RunnerTodo(
-                slug=_WORK_SLUG,
+            "kindless-a": RunnerTodo(
+                slug="kindless-a",
                 status="active",
                 kind=None,
                 lifecycle_phase=None,
                 hold=False,
                 active_runner=None,
-            )
+            ),
+            "prepare-a": RunnerTodo(
+                slug="prepare-a",
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PRD_DRAFTING.value,
+                hold=False,
+                active_runner=None,
+            ),
+            "work-a": RunnerTodo(
+                slug="work-a",
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+            ),
         },
         prepared_slugs=set(),
         delivered_slugs=set(),
@@ -187,8 +206,11 @@ def test_decide_skips_kindless_analyze_when_autostart_all_off() -> None:
         live_session_ids=set(),
     )
 
-    assert decision.intents == []
-    assert decision.skips[RunnerSkipReason.POLICY_DISABLED] == [_WORK_SLUG]
+    lanes = {intent.slug: intent.lane for intent in decision.intents}
+    assert lanes["kindless-a"] == RunnerLane.ANALYZE
+    assert lanes["prepare-a"] == RunnerLane.PREPARE
+    assert "work-a" not in lanes
+    assert decision.skips[RunnerSkipReason.POLICY_DISABLED] == ["work-a"]
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

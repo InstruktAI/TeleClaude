@@ -207,17 +207,20 @@ def _resolve_kinded_dispatch(
         return None, RunnerSkipReason.TASK_AUTHORIZATION_MISSING
     if kind not in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
         return None, RunnerSkipReason.INVALID_KIND
-    if not _autostart_enabled(kind, autostart):
-        return None, RunnerSkipReason.POLICY_DISABLED
     phase = coerce_lifecycle_phase(todo.lifecycle_phase)
     if phase is None:
         return None, RunnerSkipReason.UNKNOWN_PHASE
     if phase == LifecyclePhase.FINALIZE_READY:
         return None, RunnerSkipReason.FINALIZE_READY
     if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED):
+        # Work lane — entering the execution runtime. Autostart gates this only.
+        if not _autostart_enabled(kind, autostart):
+            return None, RunnerSkipReason.POLICY_DISABLED
         unmet = [dep for dep in todo.after if dep not in delivered_slugs]
         lane = RunnerLane.WORK
     else:
+        # Prepare lane — preparation always runs regardless of autostart; agents
+        # park at the human approval gates (PRD) at the right moments anyway.
         unmet = [dep for dep in todo.after if dep not in prepared_slugs]
         lane = RunnerLane.PREPARE
     if unmet:
@@ -238,7 +241,6 @@ def decide_dispatches(
 ) -> RunnerDecision:
     decision = RunnerDecision(evaluated=len(todos))
     active_claims = claimed or set()
-    any_autostart = any(autostart.values())
     # Concurrency budget: how many more drivers may go live this pass. Each
     # dispatched intent consumes one slot on top of the already-live drivers.
     # Only non-manually_started drivers count: a human START or a headless
@@ -271,10 +273,10 @@ def decide_dispatches(
             decision.skip(RunnerSkipReason.ALREADY_DRIVEN, slug)
             continue
         if todo.kind is None:
+            # Kind-discovery is preparation — it always runs (capped/deduped),
+            # never gated by autostart, so kindless todos get classified and
+            # prepared regardless of the work-lane autostart policy.
             lane = RunnerLane.ANALYZE
-            if not any_autostart:
-                decision.skip(RunnerSkipReason.POLICY_DISABLED, slug)
-                continue
             if (slug, lane) in active_claims:
                 decision.skip(RunnerSkipReason.CLAIMED, slug)
                 continue

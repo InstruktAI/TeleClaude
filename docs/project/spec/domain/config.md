@@ -67,7 +67,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 
 <!-- change:runner-dispatch-followup -->
 
-: Per-machine daemon runtime-config value (in `config.yml` / `RuntimeConfig`, see the Runtime Configuration aggregate) read by workflow's lifecycle runner to decide which todo kinds may be auto-dispatched. It is a global operator safety switch — not a layered overlay value and not todo state — strictly per-machine, with no project or per-person override. Changing it affects future runner evaluations without rewriting existing todo rows. Defaults are off for every kind (`feature=false`, `change=false`, `bug=false`, `task=false`): an unconfigured machine never self-drives until an operator enables a kind.
+: Per-machine daemon runtime-config value (in `config.yml` / `RuntimeConfig`, see the Runtime Configuration aggregate) read by workflow's lifecycle runner to decide which todo kinds may auto-enter the **work lane** — the execution runtime, at the `prepared → build_started` transition. It is a global operator safety switch — not a layered overlay value and not todo state — strictly per-machine, with no project or per-person override. It gates only work-start: **preparation** (kind-discovery and the prepare lane up to `prepared`) always auto-dispatches regardless of autostart, because prep is always needed and agents park at the human approval gates. Changing it affects future runner evaluations without rewriting existing todo rows. Defaults are off for every kind (`feature=false`, `change=false`, `bug=false`, `task=false`): an unconfigured machine still prepares work, but never auto-starts it until an operator enables a kind.
 
 <!-- /planned-change:runner-dispatch-followup -->
 
