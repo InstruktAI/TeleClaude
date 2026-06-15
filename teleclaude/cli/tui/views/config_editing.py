@@ -69,12 +69,47 @@ def _assign(node: Any, part: str, value: Any) -> None:
         setattr(node, part, value)
 
 
+def _zero_value(annotation: Any) -> Any:
+    """A schema-valid placeholder for a required field, by declared type."""
+    for candidate in get_args(annotation) or (annotation,):
+        if candidate is type(None):
+            continue
+        if candidate is str:
+            return ""
+        if candidate is bool:
+            return False
+        if candidate is int:
+            return 0
+        if candidate is float:
+            return 0.0
+        if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+            return _blank_model(candidate)
+        return None
+    return None
+
+
+def _blank_model(model_type: type[BaseModel]) -> BaseModel:
+    """Build a schema-valid instance with placeholders for every required field.
+
+    Editing a multi-field credential submodel one leaf at a time would otherwise
+    deadlock: the first single-leaf save is always partial. Seeding required
+    siblings with type-zero placeholders keeps the submodel valid from the first
+    save, leaving the placeholders visible for the human to complete.
+    """
+    values = {
+        name: _zero_value(field_info.annotation)
+        for name, field_info in model_type.model_fields.items()
+        if field_info.is_required()
+    }
+    return model_type.model_validate(values)
+
+
 def _instantiate_nested_config_model(annotation: Any) -> BaseModel:
     for candidate in get_args(annotation) or (annotation,):
         if candidate is type(None):
             continue
         if isinstance(candidate, type) and issubclass(candidate, BaseModel):
-            return candidate.model_construct()
+            return _blank_model(candidate)
     raise TypeError(f"Cannot instantiate nested config field for {annotation!r}")
 
 

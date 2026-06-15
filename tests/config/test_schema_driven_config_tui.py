@@ -492,9 +492,10 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
         assert saved_config.creds.discord is not None
         assert saved_config.creds.discord.user_id == BOB_DISCORD_USER_ID
 
-        # Editing one required credential leaf must not persist a partial, invalid
-        # submodel: telegram requires both user_name and user_id, so saving only
-        # user_name is refused and nothing is written.
+        # Editing one required credential leaf on a fresh submodel must persist a
+        # schema-valid overlay: telegram requires both user_name and user_id, so
+        # the missing sibling is seeded with a placeholder rather than deadlocking
+        # or writing an invalid file.
         content._person_field_cursor = next(
             index
             for index, field in enumerate(content.person_reflected_fields)
@@ -504,9 +505,12 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
         content._edit_buffer = ALICE
         content.activate_current()
 
-        assert content._status_is_error
+        assert not content._status_is_error
         with open(bob_config_path, encoding="utf-8") as f:
             bob_after = yaml.load(f)
-        assert "telegram" not in (bob_after.get("creds") or {})
+        saved_after = PersonConfig.model_validate(bob_after)
+        assert saved_after.creds.telegram is not None
+        assert saved_after.creds.telegram.user_name == ALICE
+        assert saved_after.creds.telegram.user_id == 0
     finally:
         set_runtime_config(old_rc)
