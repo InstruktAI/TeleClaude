@@ -84,6 +84,49 @@ def _is_struct_list(value: object) -> bool:
     return isinstance(value, list) and any(dataclasses.is_dataclass(item) for item in value)
 
 
+@pytest.fixture
+def machine_tui(tmp_path, monkeypatch):
+    """Build a ConfigContent over an isolated machine config; restore runtime config on teardown."""
+    old_rc = get_runtime_config()
+
+    def _build(machine_config):
+        machine_config_path = tmp_path / "config.yml"
+        global_config_path = tmp_path / "teleclaude.yml"
+        people_dir = tmp_path / "people"
+        people_dir.mkdir(exist_ok=True)
+        env_file_path = tmp_path / ".env"
+        env_file_path.write_text("", encoding="utf-8")
+
+        yaml = YAML()
+        yaml.dump(machine_config, machine_config_path)
+        yaml.dump({"people": []}, global_config_path)
+
+        monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
+        monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
+        monkeypatch.setattr(handlers, "_DEFAULT_ENV_PATH", env_file_path)
+        monkeypatch.setattr(handlers, "list_person_dirs", lambda: [])
+        monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
+        monkeypatch.setattr(_tc_config_module, "config_path", machine_config_path)
+
+        set_runtime_config(
+            RuntimeConfig(
+                home=old_rc.home,
+                config_path=machine_config_path,
+                env_path=env_file_path,
+                project_config_path=old_rc.project_config_path,
+                tmpdir_base=old_rc.tmpdir_base,
+            )
+        )
+        reload_config()
+        content = ConfigContent()
+        monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+        content.refresh_data()
+        return content, machine_config_path
+
+    yield _build
+    set_runtime_config(old_rc)
+
+
 FIRECRAWL_API_KEY_FIELD = "firecrawl.api_key"
 FIRECRAWL_API_KEY_VAR = "FIRECRAWL_API_KEY"
 SECRET_TOKEN = "super-secret-token-value"
@@ -150,63 +193,25 @@ def test_env_sourced_value_masked_unless_editing(monkeypatch):
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-10")
-def test_nested_leaf_persists_to_its_dotted_path(tmp_path, monkeypatch):
-    machine_config_path = tmp_path / "config.yml"
-    global_config_path = tmp_path / "teleclaude.yml"
-    people_dir = tmp_path / "people"
-    people_dir.mkdir()
-    env_file_path = tmp_path / ".env"
-    env_file_path.write_text("", encoding="utf-8")
-
-    yaml = YAML()
-    yaml.dump(
+def test_nested_leaf_persists_to_its_dotted_path(machine_tui):
+    content, machine_config_path = machine_tui(
         {
             "computer": {"name": "PC", "role": "development", "timezone": "Europe/Amsterdam", "is_master": True},
             "agents": {"default": "claude", "claude": {"system_prompt": "hi"}},
-            "tts": {
-                "enabled": True,
-                "events": {"session_start": {"enabled": True, "messages": TTS_SESSION_START_GREETINGS}},
-            },
-        },
-        machine_config_path,
+            "tts": {"enabled": True, "events": {"session_start": {"messages": TTS_SESSION_START_GREETINGS}}},
+        }
     )
-    yaml.dump({"people": []}, global_config_path)
 
-    monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
-    monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
-    monkeypatch.setattr(handlers, "_DEFAULT_ENV_PATH", env_file_path)
-    monkeypatch.setattr(handlers, "list_person_dirs", lambda: [])
-    monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
-    monkeypatch.setattr(_tc_config_module, "config_path", machine_config_path)
+    content.active_subtab = TTS_STT_SUBTAB_INDEX
+    # The nested event leaf is reachable through the schema-driven renderer.
+    assert TTS_SESSION_START_ENABLED in {field.key for field in content.reflected_fields}
 
-    old_rc = get_runtime_config()
-    new_rc = RuntimeConfig(
-        home=old_rc.home,
-        config_path=machine_config_path,
-        env_path=env_file_path,
-        project_config_path=old_rc.project_config_path,
-        tmpdir_base=old_rc.tmpdir_base,
-    )
-    set_runtime_config(new_rc)
+    # Saving a non-default value persists it to the leaf's dotted path.
+    content._save_reflected_field(TTS_SESSION_START_ENABLED, True)
 
-    try:
-        reload_config()
-        content = ConfigContent()
-        monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
-        content.refresh_data()
-
-        content.active_subtab = TTS_STT_SUBTAB_INDEX
-        fields_by_key = {field.key: field for field in content.reflected_fields}
-        # The nested event leaf is reachable through the schema-driven renderer.
-        assert TTS_SESSION_START_ENABLED in fields_by_key
-
-        content._save_reflected_field(TTS_SESSION_START_ENABLED, False)
-
-        with open(machine_config_path, encoding="utf-8") as f:
-            data = yaml.load(f)
-        assert data["tts"]["events"]["session_start"]["enabled"] is False
-    finally:
-        set_runtime_config(old_rc)
+    with open(machine_config_path, encoding="utf-8") as f:
+        data = YAML().load(f)
+    assert data["tts"]["events"]["session_start"]["enabled"] is True
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-13")
@@ -249,6 +254,32 @@ def test_nested_tree_renders_indented_without_collision(monkeypatch):
     # The nested branch renders indented beneath its root.
     services_line = next(line for line in lines if line.strip() == SERVICES_BRANCH_LABEL)
     assert services_line.startswith(NESTED_BRANCH_INDENT)
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-14")
+def test_value_reset_to_default_is_pruned_from_config(machine_tui):
+    # session_start.enabled defaults to False; store a non-default True to start.
+    content, machine_config_path = machine_tui(
+        {
+            "computer": {"name": "PC", "role": "development", "timezone": "Europe/Amsterdam", "is_master": True},
+            "agents": {"default": "claude", "claude": {"system_prompt": "hi"}},
+            "tts": {"enabled": True, "events": {"session_start": {"enabled": True}}},
+        }
+    )
+    content.active_subtab = TTS_STT_SUBTAB_INDEX
+
+    # Reset the field to its default (False): it should be pruned from the file.
+    content._save_reflected_field(TTS_SESSION_START_ENABLED, False)
+
+    with open(machine_config_path, encoding="utf-8") as f:
+        data = YAML().load(f)
+    events = (data.get("tts") or {}).get("events") or {}
+    assert "session_start" not in events
+
+    # But it still renders (via the default) on the next build.
+    content.refresh_data()
+    content.active_subtab = TTS_STT_SUBTAB_INDEX
+    assert TTS_SESSION_START_ENABLED in {field.key for field in content.reflected_fields}
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-9")

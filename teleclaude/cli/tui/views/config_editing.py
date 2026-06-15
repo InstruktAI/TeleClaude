@@ -13,8 +13,8 @@ from teleclaude.cli.config_handlers import (
     get_person_config,
     rename_person,
     save_global_config,
-    save_machine_config,
     save_person_config,
+    save_raw_machine_config,
     set_env_var,
 )
 from teleclaude.cli.tui.views._config_constants import (
@@ -25,7 +25,7 @@ from teleclaude.cli.tui.views._config_constants import (
     Subtab,
 )
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
-from teleclaude.config import config
+from teleclaude.config import DEFAULT_CONFIG, config
 from teleclaude.config._coerce import as_bool
 from teleclaude.config.schema import PersonEntry
 from teleclaude.config.validation import missing_required_fields, validated_sections
@@ -67,6 +67,20 @@ def _assign(node: Any, part: str, value: Any) -> None:
         node[part] = value
     else:
         setattr(node, part, value)
+
+
+_NO_DEFAULT = object()
+
+
+def _default_for_key(key: str) -> Any:
+    """The DEFAULT_CONFIG value for a dotted key, or a sentinel when none exists."""
+    node: Any = DEFAULT_CONFIG
+    for part in key.split("."):
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        else:
+            return _NO_DEFAULT
+    return node
 
 
 def _zero_value(annotation: Any) -> Any:
@@ -378,8 +392,14 @@ class ConfigContentEditingMixin:
                 self._save_reflected_field(f.key, items)
 
     def _apply_field_to_raw_config(self, key: str, deserialized: object) -> None:
-        """Write a non-env field value into its config.yml path (any nesting depth)."""
+        """Write a non-env field into config.yml, dropping it when it equals its default.
+
+        Persisting only deviations keeps config.yml sparse; the loader re-fills
+        defaults on read, so the dropped value still renders via the default.
+        """
         path = key.split(".")
+        if deserialized == _default_for_key(key) and self._prune_raw_key(path):
+            return
         node = self._raw_config  # type: ignore[attr-defined]
         for part in path[:-1]:
             if isinstance(node, list):
@@ -391,6 +411,31 @@ class ConfigContentEditingMixin:
                 node[part] = child
             node = child
         _assign(node, path[-1], deserialized)
+
+    def _prune_raw_key(self, path: list[str]) -> bool:
+        """Remove a dotted dict key from the raw config, pruning emptied parents.
+
+        Returns True when the key is handled (absent or removed); False when the
+        path crosses a non-dict node, in which case the caller writes it normally.
+        """
+        node = self._raw_config  # type: ignore[attr-defined]
+        chain: list[tuple[dict[str, Any], str]] = []  # guard: loose-dict - raw YAML config tree
+        for part in path[:-1]:
+            if not isinstance(node, dict):
+                return False
+            if part not in node:
+                return True  # ancestor absent: default was never stored
+            chain.append((node, part))
+            node = node[part]
+        if not isinstance(node, dict):
+            return False
+        node.pop(path[-1], None)
+        for container, part in reversed(chain):
+            if isinstance(container[part], dict) and not container[part]:
+                container.pop(part)
+            else:
+                break
+        return True
 
     def _section_write_block_reason(self, key: str, deserialized: object) -> str | None:
         """Reason to refuse persisting this edit, or None if it may be written.
@@ -437,12 +482,12 @@ class ConfigContentEditingMixin:
                     self._status_message = block_reason  # type: ignore[attr-defined]
                     self._status_is_error = True  # type: ignore[attr-defined]
                     return
-                # Update self._raw_config
+                # Update the sparse raw tree (drops values equal to their default).
                 self._apply_field_to_raw_config(key, deserialized)
-                # Update global config singleton
+                # Update global config singleton for live consistency.
                 _apply_field_to_global_config(key, deserialized)
-                # Atomic save to config.yml
-                save_machine_config(config)
+                # Persist the sparse raw tree; the loader re-fills defaults on read.
+                save_raw_machine_config(self._raw_config)  # type: ignore[attr-defined]
             elif f.owning_source == "global":
                 global_config = get_global_config()
                 person_name = self._expanded_person  # type: ignore[attr-defined]

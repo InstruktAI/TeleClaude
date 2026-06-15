@@ -197,6 +197,18 @@ Then the effective value (user value over default) is shown for every field
 And default-only nested entries (e.g. TTS services present only in the defaults) are still rendered
 ```
 
+#### UC-CFG-TUI-SCHEMA-14: Persistence is sparse — defaults are not stored
+
+```
+Given a machine-config field is edited through the config TUI
+When the saved value equals that field's default
+Then the field is removed from config.yml rather than written
+And emptied parent tables are removed with it
+And the field still renders via the default on the next load
+When the saved value differs from the default
+Then only that deviation is written to config.yml
+```
+
 ### Current hand-patched surfaces to retire
 
 The current TUI config surface contains dynamic reflection machinery, but the

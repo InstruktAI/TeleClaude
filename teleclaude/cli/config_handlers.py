@@ -361,6 +361,16 @@ def save_machine_config(config: _tc_config_module.Config, path: Path | None = No
     logger.info("Saved machine config to %s", target)
 
 
+def save_raw_machine_config(
+    raw_config: dict[str, Any],  # guard: loose-dict - on-disk YAML config tree
+    path: Path | None = None,
+) -> None:
+    """Atomic write of the raw config.yml tree as-is (sparse; defaults not materialized)."""
+    target = path or _tc_config_module.config_path
+    _atomic_yaml_write(target, raw_config)
+    logger.info("Saved machine config to %s", target)
+
+
 def add_person(entry: PersonEntry) -> None:
     """Add person to global people list and create per-person directory."""
     config = get_global_config()
