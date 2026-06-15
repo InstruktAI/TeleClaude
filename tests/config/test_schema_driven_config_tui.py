@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import pytest
+from rich.style import Style
+from rich.text import Text
 from ruamel.yaml import YAML
 
 import teleclaude.cli.config_handlers as handlers
 import teleclaude.config as _tc_config_module
 from teleclaude.cli.tui.views.config import ConfigContent
-from teleclaude.cli.tui.views.reflection import reflect_schema
+from teleclaude.cli.tui.views.config_render import _MASKED_VALUE
+from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema
 from teleclaude.config import (
     ComputerConfig,
     DiscordConfig,
+    parse_tts_config,
     reload_config,
 )
 from teleclaude.config.schema import (
@@ -54,6 +58,74 @@ PRESERVE_ME = "preserve_me"
 FC_NEW_ENV = "FIRECRAWL_API_KEY=fc-new"
 BOTH = "both"
 BOB_DISCORD_USER_ID = "123456789012345678"
+
+TTS_SESSION_START_ENABLED = "tts.events.session_start.enabled"
+TTS_SESSION_START_MESSAGE = "tts.events.session_start.message"
+TTS_SESSION_START_MESSAGES = "tts.events.session_start.messages"
+TTS_AGENT_STOP_MESSAGE = "tts.events.agent_stop.message"
+TTS_OPENAI_ENABLED = "tts.services.openai.enabled"
+TTS_SESSION_START_GREETINGS = ["Hello", "Hey there"]
+FIRECRAWL_API_KEY_FIELD = "firecrawl.api_key"
+FIRECRAWL_API_KEY_VAR = "FIRECRAWL_API_KEY"
+SECRET_TOKEN = "super-secret-token-value"
+API_KEY_LABEL = "Api Key"
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-10")
+def test_nested_dict_structures_render_recursively_to_leaves():
+    raw_tts = {
+        "enabled": True,
+        "events": {
+            "session_start": {"enabled": True, "messages": TTS_SESSION_START_GREETINGS},
+            "agent_stop": {"enabled": False, "message": "Done"},
+        },
+        "services": {
+            "openai": {"enabled": True, "model": "tts-1"},
+        },
+    }
+    tts_obj = parse_tts_config(raw_tts)
+    assert tts_obj is not None
+
+    fields = reflect_schema(tts_obj, prefix="tts", section="TTS", owning_source=MACHINE_SOURCE)
+    keys_to_values = {f.key: f.value for f in fields}
+
+    # Every nested leaf is reachable by its full dotted path.
+    assert TTS_SESSION_START_ENABLED in keys_to_values
+    assert TTS_SESSION_START_MESSAGES in keys_to_values
+    assert TTS_AGENT_STOP_MESSAGE in keys_to_values
+    assert TTS_OPENAI_ENABLED in keys_to_values
+
+    # No nested structure leaks as a raw dict/JSON blob.
+    assert all(not isinstance(value, dict) for value in keys_to_values.values())
+
+    # The loader round-trips the event messages list through to its leaf.
+    assert keys_to_values[TTS_SESSION_START_MESSAGES] == TTS_SESSION_START_GREETINGS
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-11")
+def test_env_sourced_value_masked_unless_editing(monkeypatch):
+    content = ConfigContent()
+    monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+
+    field = ReflectedField(
+        key=FIRECRAWL_API_KEY_FIELD,
+        name=API_KEY_LABEL,
+        field_type=str,
+        value=SECRET_TOKEN,
+        env_var=FIRECRAWL_API_KEY_VAR,
+        owning_source=MACHINE_SOURCE,
+    )
+
+    not_editing = Text()
+    content._render_reflected_field(not_editing, field, selected=False, prefix=" ", row_style=Style())
+    assert _MASKED_VALUE in not_editing.plain
+    assert SECRET_TOKEN not in not_editing.plain
+
+    content._editing_var_name = field.key
+    content._edit_buffer = SECRET_TOKEN
+    editing = Text()
+    content._render_reflected_field(editing, field, selected=False, prefix=" ", row_style=Style())
+    assert SECRET_TOKEN in editing.plain
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-9")

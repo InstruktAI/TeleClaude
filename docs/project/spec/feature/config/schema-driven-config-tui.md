@@ -156,6 +156,28 @@ Then it renders in the same Infra section that already exposes the Redis URL and
 And no separate advanced section is introduced to hold it
 ```
 
+#### UC-CFG-TUI-SCHEMA-10: Nested structures render recursively to their leaves
+
+```
+Given a configuration field holds a nested structure — a nested model, a dataclass, or a dict whose values are models or dataclasses
+When the config TUI renders the owning section
+Then each leaf of the nested structure renders as its own editable field keyed by its full dotted path
+And no nested structure renders as a serialized dict or JSON blob
+And an unset optional nested structure still renders its leaf fields, derived from the declared type
+And editing a nested leaf persists to that leaf's dotted path in the owning config file
+```
+
+#### UC-CFG-TUI-SCHEMA-11: Env-sourced values are masked unless the field is being edited
+
+```
+Given a rendered field whose value is sourced from an environment variable
+When the field is displayed and is not being edited
+Then its value is shown masked
+When the human edits the field
+Then the actual value is revealed in the edit buffer
+And masking is a rendering rule only, leaving the persistence target and editability unchanged
+```
+
 ### Current hand-patched surfaces to retire
 
 The current TUI config surface contains dynamic reflection machinery, but the
@@ -212,9 +234,10 @@ blacklist is retired as the authority.
 - `PersonConfig` and other overlay models accept unknown extra keys. The TUI
   should preserve unknown keys when writing known fields, but it does not need
   to invent editors for arbitrary unknown subtrees in this delivery.
-- Masked display for sensitive-looking fields is intentionally not required for
-  the first delivery. Fields must be reachable; display masking can be added
-  later without changing the persistence contract.
+- Masking is keyed on value provenance, not on field-name heuristics: a value
+  resolved from an environment variable (`${VAR}` reference) is masked unless the
+  field is being edited (UC-CFG-TUI-SCHEMA-11). Masking is a rendering rule layered
+  over the same editable field and does not change the persistence contract.
 - `invite_token` is relocated out of `PersonConfig` into an ephemeral
   invitations store under `~/.teleclaude/state/` by this delivery. The config
   delta is the field's removal from the `PersonConfig` overlay; the invitation

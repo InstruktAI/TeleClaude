@@ -45,11 +45,14 @@ def _apply_field_to_global_config(key: str, deserialized: Any) -> None:
             config.summarizer.models[provider] = deserialized
         return
 
-    # Standard traversal
+    # Standard traversal, descending dict members and object attributes alike.
     obj = config
     for part in parts[:-1]:
-        obj = getattr(obj, part)
-    setattr(obj, parts[-1], deserialized)
+        obj = obj[part] if isinstance(obj, dict) else getattr(obj, part)
+    if isinstance(obj, dict):
+        obj[parts[-1]] = deserialized
+    else:
+        setattr(obj, parts[-1], deserialized)
 
 
 def _instantiate_nested_config_model(annotation: Any) -> BaseModel:

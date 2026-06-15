@@ -213,7 +213,7 @@ def _parse_trusted_dirs(
     return trusted_dirs
 
 
-def _parse_tts_config(
+def parse_tts_config(
     raw_tts: dict[str, object] | None,  # guard: loose-dict - YAML config value
 ) -> TTSConfig | None:  # guard: loose-dict
     """Parse TTS config from raw dict.
@@ -356,7 +356,7 @@ def _parse_workflow_config(raw: dict[str, object] | None) -> WorkflowConfig:  # 
     return WorkflowConfig(autostart=autostart, max_todo_dispatch=max_todo_dispatch)
 
 
-def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
+def parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
     """Parse STT config from raw dict."""
     if not raw_stt:
         return None
@@ -625,8 +625,8 @@ def _build_config(
             qos=WhatsAppQoSConfig(),
         ),
         email=EmailConfig(enabled=email_enabled),
-        tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
-        stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
+        tts=parse_tts_config(tts_raw),  # type: ignore[arg-type]
+        stt=parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
         process_janitor=_parse_process_janitor_config(process_janitor_raw),  # type: ignore[arg-type]
         workflow=_parse_workflow_config(workflow_raw),  # type: ignore[arg-type]

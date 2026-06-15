@@ -50,14 +50,11 @@ from teleclaude.config import (
     TelegramConfig,
     TTSConfig,
     WhatsAppConfig,
+    parse_stt_config,
+    parse_tts_config,
 )
 from teleclaude.config._summarizer import parse_summarizer_config
-from teleclaude.config.schema import (
-    DiscordCreds,
-    PersonEntry,
-    TelegramCreds,
-    WhatsAppCreds,
-)
+from teleclaude.config.schema import PersonEntry
 
 __all__ = ["ConfigContent", "ConfigView"]
 
@@ -489,17 +486,10 @@ class ConfigContent(
             return fields
 
         if tab == Subtab.TTS_STT:
-            stt_data = self._raw_config.get("stt", {})
-            merged_stt = {**_default_section("stt"), **stt_data}
-            stt_fields = {f.name for f in dataclasses.fields(STTConfig)}
-            filtered_stt = {k: v for k, v in merged_stt.items() if k in stt_fields}
-            stt_obj = STTConfig(**filtered_stt)
-
-            tts_data = self._raw_config.get("tts", {})
-            merged_tts = {**_default_section("tts"), **tts_data}
-            tts_fields = {f.name for f in dataclasses.fields(TTSConfig)}
-            filtered_tts = {k: v for k, v in merged_tts.items() if k in tts_fields}
-            tts_obj = TTSConfig(**filtered_tts)
+            merged_stt = {**_default_section("stt"), **self._raw_config.get("stt", {})}
+            merged_tts = {**_default_section("tts"), **self._raw_config.get("tts", {})}
+            stt_obj = parse_stt_config(merged_stt) or STTConfig(enabled=False)
+            tts_obj = parse_tts_config(merged_tts) or TTSConfig(enabled=False)
 
             return reflect_schema(stt_obj, prefix="stt", section="STT", owning_source="machine") + reflect_schema(
                 tts_obj, prefix="tts", section="TTS", owning_source="machine"
@@ -538,14 +528,6 @@ class ConfigContent(
             return []
 
         person_config = get_person_config(self._expanded_person)
-
-        # Instantiate optional creds sub-fields if they are None
-        if person_config.creds.telegram is None:
-            person_config.creds.telegram = TelegramCreds(user_name="", user_id=0)
-        if person_config.creds.discord is None:
-            person_config.creds.discord = DiscordCreds(user_id="", nick=None)
-        if person_config.creds.whatsapp is None:
-            person_config.creds.whatsapp = WhatsAppCreds(phone_number="")
 
         entry_fields = reflect_schema(
             person_entry, prefix="identity", section="Global Identity", owning_source="global"

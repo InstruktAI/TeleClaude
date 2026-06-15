@@ -27,6 +27,9 @@ from teleclaude.cli.tui.views.reflection import ReflectedField
 if TYPE_CHECKING:
     from teleclaude.config.schema import PersonEntry
 
+# Placeholder shown in place of an env-sourced (sensitive) value when not editing.
+_MASKED_VALUE = "••••••"
+
 
 class ConfigContentRenderMixin:
     """Rendering, on_click, and watch_* methods for ConfigContent."""
@@ -216,9 +219,11 @@ class ConfigContentRenderMixin:
 
         else:
             value = str(f.value if f.value is not None else "")
+            # An env-sourced value is sensitive; reveal it only while editing (handled above).
+            display = _MASKED_VALUE if (f.env_var and value) else (value or "(not set)")
             result.append(f"    {prefix} {'✔' if value else '○'} ", style=_OK if value else _DIM)
             result.append(f"{f.name}: ", style=_DIM)
-            result.append(f"{value or '(not set)'}\n", style=row_style)
+            result.append(f"{display}\n", style=row_style)
 
         if f.description:
             result.append(f"        {f.description}\n", style=_DIM)
@@ -267,6 +272,8 @@ class ConfigContentRenderMixin:
                         val_str = "yes" if f.value else "no"
                     elif f.field_type in (list[str], list):
                         val_str = f"[{len(f.value or [])}]"
+                    elif f.env_var and f.value:
+                        val_str = _MASKED_VALUE
                     else:
                         val_str = str(f.value if f.value is not None else "")
                         if len(val_str) > 15:
