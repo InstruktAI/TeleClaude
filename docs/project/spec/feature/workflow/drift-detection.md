@@ -613,6 +613,12 @@ Scenario: re-writing an artifact clears its drift stamps
 
 - **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
   `upstream-snippet`, `dependency-graph`, `age`.
+
+  Pending drift contract update: `parent-prd-ground` is added to the allowed
+  drift classes (see the parent-ground class table above), so the full set
+  becomes `code`, `upstream-artifact`, `owned-snippet`, `upstream-snippet`,
+  `dependency-graph`, `age`, `parent-prd-ground`.
+
 - **Drift status:** `fresh`, `pending`, `cosmetic`, `substantive`. Priority
   for collapse to per-artifact status: `substantive` > `pending` >
   `cosmetic` > `fresh`.
