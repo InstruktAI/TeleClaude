@@ -320,8 +320,11 @@
   max_supported_python="3.14"
 
 [tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-q"]
+  addopts=["--strict-config", "--strict-markers", "--tb=short", "-q", "-n", "auto"]
   asyncio_mode="auto"
+  timeout=5
+  timeout_method="signal"
+  session_timeout=40
   filterwarnings=[
     "ignore:.*datetime.utcnow.*:DeprecationWarning",
     "ignore::pytest.PytestUnhandledThreadExceptionWarning",

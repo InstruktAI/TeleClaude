@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.lint import LintRunner
@@ -160,10 +164,113 @@ def _run_make(
     if variables:
         cmd.extend(f"{key}={value}" for key, value in variables.items())
     if files is None:
-        return subprocess.run(cmd, cwd=str(project_root), check=False).returncode
+        return _run_in_process_group(cmd, cwd=str(project_root))
     with _nul_file(files) as files_from:
         cmd.append(f"FILES_FROM={files_from}")
-        return subprocess.run(cmd, cwd=str(project_root), check=False).returncode
+        return _run_in_process_group(cmd, cwd=str(project_root))
+
+
+def _run_in_process_group(cmd: list[str], *, cwd: str) -> int:
+    """Run ``cmd`` as its own session/process-group leader and guarantee the
+    whole group dies with this runner.
+
+    ``start_new_session=True`` makes the child a process-group/session leader, so
+    its descendants (``make`` → ``bash`` → ``pytest`` → ``execnet`` workers) share
+    one group. On abnormal exit — a catchable ``SIGINT``/``SIGTERM`` to this
+    runner, a ``KeyboardInterrupt``, or any propagating exception — the group is
+    torn down so no worker reparents to PID 1.
+
+    Explicit signal forwarding is required because ``start_new_session=True``
+    detaches the child from the parent's controlling-terminal signal delivery: a
+    bare Ctrl-C or ``SIGTERM`` reaches only this runner, not the detached group.
+    A ``SIGKILL`` to this runner itself cannot be defended in userspace and is out
+    of scope. Return code and ``FILES_FROM``/``variables`` plumbing are unchanged
+    from a plain run.
+    """
+    proc = subprocess.Popen(cmd, cwd=cwd, start_new_session=True)
+    previous: dict[int, Any] = {}
+
+    def _forward(signum: int, _frame: object) -> None:
+        # Only unwind here; teardown runs in the except block below, outside the
+        # interrupted ``proc.wait()`` so it does not contend for Popen's waitpid
+        # lock. Raising propagates out of the blocked wait (PEP 475 suppresses the
+        # EINTR retry), releasing that lock on the way out.
+        raise _SignalReceived(signum)
+
+    installable = threading.current_thread() is threading.main_thread()
+    try:
+        if installable:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                previous[sig] = signal.signal(sig, _forward)
+        try:
+            return proc.wait()
+        except _SignalReceived as received:
+            _kill_process_group(proc)
+            # Signal transparency: reset to the OS default and re-send, so this
+            # runner dies with the correct WIFSIGNALED status and no traceback.
+            # The os.kill terminates the process; the SystemExit is only a
+            # fall-through guard (conventional 128+signum, no traceback).
+            signal.signal(received.signum, signal.SIG_DFL)
+            os.kill(os.getpid(), received.signum)
+            raise SystemExit(128 + received.signum) from None
+        except BaseException:
+            _kill_process_group(proc)
+            raise
+    finally:
+        for stored_signum, handler in previous.items():
+            signal.signal(stored_signum, handler)
+
+
+class _SignalReceived(BaseException):
+    """Raised inside the termination handler to unwind a blocked ``proc.wait()``."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+
+def _kill_process_group(proc: subprocess.Popen[bytes]) -> None:
+    """Tear down the child's process group: ``SIGTERM``, a brief grace, then
+    ``SIGKILL``. Idempotent and safe after the child has already exited."""
+    pgid = proc.pid
+    try:
+        pgid = os.getpgid(proc.pid)
+    except OSError:
+        pass
+    if not _process_group_exists(pgid):
+        return
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except OSError:
+        return
+    if not _wait_process_group(proc, pgid, timeout=2):
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
+            pass
+        _wait_process_group(proc, pgid, timeout=2)
+
+
+def _process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _wait_process_group(proc: subprocess.Popen[bytes], pgid: int, *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        proc.poll()
+        if not _process_group_exists(pgid):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.05, remaining))
 
 
 @contextmanager

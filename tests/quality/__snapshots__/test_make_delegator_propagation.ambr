@@ -17,45 +17,6 @@
     ]),
   })
 # ---
-# name: test_lint_runs_make_then_guardrails_and_propagates_native_failure
-  dict({
-    'records': list([
-      tuple(
-        'make',
-        list([
-          'make',
-          'format',
-        ]),
-        '<project-root>',
-        list([
-          b'teleclaude/core.py',
-          b'',
-        ]),
-      ),
-      tuple(
-        'make',
-        list([
-          'make',
-          'lint',
-        ]),
-        '<project-root>',
-        list([
-          b'teleclaude/core.py',
-          b'',
-        ]),
-      ),
-      tuple(
-        'guardrails',
-        '<project-root>',
-        True,
-        list([
-          'teleclaude/core.py',
-        ]),
-        False,
-      ),
-    ]),
-  })
-# ---
 # name: test_test_update_snapshots_forwards_make_variable
   dict({
     'records': list([

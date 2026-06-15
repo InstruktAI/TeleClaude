@@ -50,7 +50,7 @@ def test_lint_passes_adversarial_paths_through_nul_files_from(
     monkeypatch.setattr(quality, "resolve_invocation_cwd", lambda: tmp_path)
     monkeypatch.setattr(quality, "resolve_git_root", lambda _cwd: tmp_path)
 
-    def fake_run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
+    def fake_popen(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         files_from = next(part.removeprefix(_FILES_FROM_PREFIX) for part in cmd if part.startswith(_FILES_FROM_PREFIX))
         records.append(
             {
@@ -59,7 +59,7 @@ def test_lint_passes_adversarial_paths_through_nul_files_from(
                 "files": Path(files_from).read_bytes().split(b"\0"),
             }
         )
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(wait=lambda: 0)
 
     class FakeLintRunner:
         def __init__(self, project_root: Path) -> None:
@@ -75,7 +75,7 @@ def test_lint_passes_adversarial_paths_through_nul_files_from(
                 }
             )
 
-    monkeypatch.setattr(quality.subprocess, "run", fake_run)
+    monkeypatch.setattr(quality.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(quality, "LintRunner", FakeLintRunner)
 
     quality.handle_lint(["a b.py", "c;d.py"])
@@ -95,10 +95,10 @@ def test_lint_propagates_make_failure_after_guardrails_run(
     monkeypatch.setattr(quality, "resolve_invocation_cwd", lambda: tmp_path)
     monkeypatch.setattr(quality, "resolve_git_root", lambda _cwd: tmp_path)
 
-    def fake_run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
+    def fake_popen(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         files_from = next(part.removeprefix(_FILES_FROM_PREFIX) for part in cmd if part.startswith(_FILES_FROM_PREFIX))
         records.append(("make", cmd[:2], _PROJECT_ROOT_SENTINEL, Path(files_from).read_bytes().split(b"\0")))
-        return SimpleNamespace(returncode=7)
+        return SimpleNamespace(wait=lambda: 7)
 
     class FakeLintRunner:
         def __init__(self, project_root: Path) -> None:
@@ -107,7 +107,7 @@ def test_lint_propagates_make_failure_after_guardrails_run(
         def run(self, *, files: list[str] | None = None, run_all: bool = False) -> None:
             records.append(("guardrails", _PROJECT_ROOT_SENTINEL, self.project_root == tmp_path, files, run_all))
 
-    monkeypatch.setattr(quality.subprocess, "run", fake_run)
+    monkeypatch.setattr(quality.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(quality, "LintRunner", FakeLintRunner)
 
     with pytest.raises(SystemExit) as exc:
@@ -129,9 +129,9 @@ def test_full_run_skips_format_and_stays_check_only(
     monkeypatch.setattr(quality, "resolve_invocation_cwd", lambda: tmp_path)
     monkeypatch.setattr(quality, "resolve_git_root", lambda _cwd: tmp_path)
 
-    def fake_run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
+    def fake_popen(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         records.append({"cmd": cmd[:2]})
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(wait=lambda: 0)
 
     class FakeLintRunner:
         def __init__(self, project_root: Path) -> None:
@@ -140,7 +140,7 @@ def test_full_run_skips_format_and_stays_check_only(
         def run(self, *, files: list[str] | None = None, run_all: bool = False) -> None:
             records.append({"guardrails_files": files, "guardrails_run_all": run_all})
 
-    monkeypatch.setattr(quality.subprocess, "run", fake_run)
+    monkeypatch.setattr(quality.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(quality, "LintRunner", FakeLintRunner)
 
     quality.handle_lint(["--all"])
