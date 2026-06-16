@@ -80,8 +80,22 @@ case (first time only). Every dispatch carries a `Dispatch reason: <reason>`
 header. Pick your behavior from the reason:
 
 - **`fresh`** — no prior implementation plan exists. Produce one from human-approved
-  PRD and the optional reviewer-approved architecture. This is the only path that uses the full atomicity
-  decision (step 2) and full draft (step 3).
+PRD and the optional reviewer-approved architecture. This is the only path that uses the full atomicity
+decision (step 2) and full draft (step 3).
+<!-- planned:plan-flag-enters-plan-draft -->
+- **`seeded`** — a complete implementation plan was supplied at creation (the
+`--plan` create path) and is present as the `implementation-plan` artifact at
+first entry, with no prior review. Treat the supplied plan as the **draft
+basis, not an oracle**: run the full grounding (step 1), the atomicity decision
+(step 2), and the blast-radius derivation (step 2c), and verify every supplied
+task as a hypothesis against the code and the domain specs rather than trusting
+it verbatim — record divergences per `preparation-artifact-quality`. Reflect
+the affected doc snippets (step 4b) and enrich the supplied plan with their
+references and blast-radius-informed verification, refining it in step 3
+instead of authoring from scratch. The supplied plan accelerates drafting; it
+does not skip grounding, blast radius, doc reflection, or the downstream plan
+review.
+<!-- /planned:plan-flag-enters-plan-draft -->
 - **`findings-fix`** — a `needs_work` verdict was issued. Read
   `telec todo artifacts read {slug} plan-review-findings` alongside the existing
   plan. Apply targeted fixes to address each finding. Preserve every task not

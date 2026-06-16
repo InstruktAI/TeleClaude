@@ -21,8 +21,12 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   <!-- planned:task-lane -->
   - `--datetime <iso-instant>` — valid only for `--kind task`. It records the task's one-shot execution eligibility instant — the one-shot shape of the task `schedule`, whose general form is a recurring rule that re-fires the task against its durable `task-plan`. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
-  <!-- /planned:task-lane -->
+    <!-- /planned:task-lane -->
+    <!-- planned-change:plan-flag-enters-plan-draft -->
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
+  <!-- change:plan-flag-enters-plan-draft -->
+  - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes it as the `implementation-plan` artifact and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
+  <!-- /planned-change:plan-flag-enters-plan-draft -->
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
@@ -38,10 +42,14 @@ The workflow service emits the event with this payload:
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
 - `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
+<!-- planned-change:plan-flag-enters-plan-draft -->
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
-  <!-- planned:task-lane -->
+<!-- change:plan-flag-enters-plan-draft -->
+- `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task`, `"plan_drafting"` for `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
+  <!-- /planned-change:plan-flag-enters-plan-draft -->
+    <!-- planned:task-lane -->
   Task creation emits `"task_plan_drafting"`.
-  <!-- /planned:task-lane -->
+    <!-- /planned:task-lane -->
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 <!-- planned:task-lane -->
@@ -71,6 +79,8 @@ And the lifecycle router observes pickup_requested=false and logs "skipped: pick
 And the todo waits silently until a human invokes the next action
 ```
 
+<!-- planned-change:plan-flag-enters-plan-draft -->
+
 ```
 Given a human or agent already has a complete implementation plan
 When they run `telec todo create my-feature "<content>" --kind change --plan`
@@ -81,6 +91,21 @@ And the route emits workflow.todo.created with canonical kind="change" and picku
 And the lifecycle router dispatches /next-work (build), bypassing prepare
 And the CLI prints "Created todo: my-feature (kind=change)"
 ```
+
+<!-- change:plan-flag-enters-plan-draft -->
+
+```
+Given a human or agent already has a complete implementation plan
+When they run `telec todo create my-feature "<content>" --kind change --plan`
+Then the request carries kind="change" and plan=true
+And the route writes the content as the `implementation-plan` artifact (body prefixed "# my-feature — Implementation Plan")
+And the route seeds the prepare lifecycle at plan-drafting so lifecycle_phase becomes "plan_drafting"
+And the route emits workflow.todo.created with canonical kind="change" and pickup_requested=true
+And the lifecycle router dispatches /next-prepare, where the planner grounds the supplied plan, reflects affected doc snippets, and the plan is reviewed before prepared
+And the CLI prints "Created todo: my-feature (kind=change)"
+```
+
+<!-- /planned-change:plan-flag-enters-plan-draft -->
 
 ```
 Given an operator runs `telec todo create existing-slug "<content>" --kind feature`

@@ -309,7 +309,11 @@ The default roadmap order is derived, not manually positioned. The dependency tr
 - **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
   row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
   initially for ordinary feature/change creates; `null` for kind-less
+  <!-- planned-change:plan-flag-enters-plan-draft -->
   creates; `prepared` for fast-track bug/task/plan creates), `kind`, `created_at`, `created_by_principal` — and adds two
+  <!-- change:plan-flag-enters-plan-draft -->
+  creates; `prepared` for fast-track bug/task creates, `plan_drafting` for `--plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
+  <!-- /planned-change:plan-flag-enters-plan-draft -->
   new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
   and `pickup_requested` (boolean). The v1 daemon bridge derives the
   consumer-facing `project_path` from `project_id` via its existing
@@ -1023,7 +1027,11 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.
 - [`todo-management`](../feature/workflow/todo-management.md) — Per-project ordered todo-list access through todo-scoped commands; derived section ordering; delivery transition.
 - [`todo-icebox`](../feature/workflow/todo-icebox.md) — Frozen-but-recoverable state for Todo entries; iceboxed entries do not participate in dependency resolution.
+<!-- planned-change:plan-flag-enters-plan-draft -->
 - [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` skips prepare; bug-kind helpers route to `/next-work`.
+<!-- change:plan-flag-enters-plan-draft -->
+- [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` seeds the plan and enters plan-drafting; bug-kind helpers route to `/next-work`.
+<!-- /planned-change:plan-flag-enters-plan-draft -->
 - [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; children inherit the parent's canonical kind, split stays non-auto-routing, and the command output instructs the agent to tend child kinds. The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
 - [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
 
@@ -1060,7 +1068,11 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - Todo rename is target behavior delivered by `telec-todo-rename`. Its rollback-tested atomic unit excludes terminal/audit and closed-but-revivable daemon reference reconciliation for `operations.slug`, `sessions.working_slug`, and `sessions.subdir`; those rows are repaired after commit on a best-effort, idempotent basis.
 - The state machine is a Rust crate (`crates/state_machine`) embedded by workflow. State machine state lives in `workflow.state_transitions`; transitions are persisted as the source of truth for phase advances.
 - Per-project isolation: each project has its own `.teleclaude/todos.db` (v1 SQLite) or its own Postgres schema (v2, possibly `<project>_workflow`). No cross-project queries.
+<!-- planned-change:plan-flag-enters-plan-draft -->
 - `--plan` on `telec todo create ... --kind change` supplies a complete implementation plan and marks the todo prepared, so the lifecycle router dispatches `/next-work`. It is explicit creation evidence, not a kind.
+<!-- change:plan-flag-enters-plan-draft -->
+- `--plan` on `telec todo create ... --kind change` supplies a complete implementation plan and seeds it as the `implementation-plan` artifact, entering prepare at plan-drafting, so the lifecycle router dispatches `/next-prepare`. The planner grounds the supplied plan against the blast radius and reflects the affected doc snippets before plan-review. It is explicit creation evidence, not a kind.
+<!-- /planned-change:plan-flag-enters-plan-draft -->
 - `bug` kind todos skip the demo phase during finalize and require the orchestrator to manually mark `build complete` before advancing (per agent memory gotcha).
 - The orchestrator (`teleclaude/core/next_machine/` in v1) is a CONSUMER of workflow, not part of it. The orchestrator dispatches sessions, reads workflow state, calls workflow mutations. Workflow itself has no opinion about WHO advances todos — it enforces invariants on transitions and exposes events.
 - Reviewer findings artifacts are workflow artifacts (per the canonical list) even though they're produced by review sessions. The state machine treats `review-findings` artifact presence + verdict as the trigger for advance.
