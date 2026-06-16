@@ -10,7 +10,7 @@ from enum import Enum, StrEnum
 
 # Domain scopes (single source of truth)
 # Used for snippet validation — every docs/global/<domain>/ must be listed here
-DOMAIN_SCOPES = ["software-development", "creative", "marketing", "customer-relations"]
+DOMAIN_SCOPES = ["software-development", "creative", "marketing", "customer-relations", "erp"]
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
