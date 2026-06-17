@@ -61,7 +61,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "events": {
             "session_start": {
                 "enabled": False,
-                "message": None,
             },
         },
         "services": {

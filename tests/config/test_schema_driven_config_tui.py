@@ -24,6 +24,7 @@ from teleclaude.config import (
 from teleclaude.config.schema import (
     PersonConfig,
 )
+from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.runtime.config import RuntimeConfig, get_runtime_config, set_runtime_config
 
 # Named constants for assertion strings to satisfy snapshot-testing linter
@@ -76,6 +77,13 @@ TTS_OPENAI_ENABLED = "tts.services.openai.enabled"
 TTS_OPENAI_VOICE_NAME = "tts.services.openai.voices.0.name"
 TTS_SESSION_START_GREETINGS = ["Hello", "Hey there"]
 TTS_AGENT_STOP_LEGACY = "Done"
+TTS_MACOS_PREFIX = "tts.services.macos"
+TTS_MACOS_MODEL = "tts.services.macos.model"
+TTS_MACOS_PARAMS = "tts.services.macos.params"
+TTS_ELEVENLABS_PREFIX = "tts.services.elevenlabs"
+TTS_PYTTSX3_VOICES = "tts.services.pyttsx3.voices"
+TTS_VOXCPM_MODEL = "tts.services.voxcpm.model"
+VOICE_ID_SUFFIX = "voice_id"
 TTS_STT_SUBTAB_INDEX = _SUBTABS.index(Subtab.TTS_STT)
 STT_OPENAI_ENABLED = "stt.services.openai.enabled"
 TTS_VOXCPM_ENABLED = "tts.services.voxcpm.enabled"
@@ -234,6 +242,39 @@ def test_default_nested_entries_shown_when_user_omits_them(monkeypatch):
     assert TTS_VOXCPM_ENABLED in keys
     for service in DEFAULT_TTS_SERVICES:
         assert f"tts.services.{service}.enabled" in keys
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-13")
+def test_tts_engine_inapplicable_fields_hidden_and_defaults_surface(monkeypatch):
+    content = ConfigContent()
+    monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+    content._raw_config = {
+        "tts": {
+            "enabled": True,
+            "events": {"session_start": {"enabled": True}},
+            "services": {
+                "macos": {"enabled": True, "voices": [{"name": "Samantha"}]},
+                "elevenlabs": {"enabled": True, "voices": [{"name": "Rachel", "voice_id": "abc"}]},
+                "pyttsx3": {"enabled": True},
+                "voxcpm": {"enabled": True, "model": "m"},
+            },
+        }
+    }
+    content.active_subtab = TTS_STT_SUBTAB_INDEX
+    keys = {f.key: f.value for f in content.reflected_fields}
+
+    # Name-based engine: voice_id and model/params do not apply, so they are not shown.
+    assert not any(k.startswith(TTS_MACOS_PREFIX) and k.endswith(VOICE_ID_SUFFIX) for k in keys)
+    assert TTS_MACOS_MODEL not in keys
+    assert TTS_MACOS_PARAMS not in keys
+    # Id-based engine keeps voice_id.
+    assert any(k.startswith(TTS_ELEVENLABS_PREFIX) and k.endswith(VOICE_ID_SUFFIX) for k in keys)
+    # Engine without a voice list shows no voices leaf.
+    assert TTS_PYTTSX3_VOICES not in keys
+    # Model-bearing (MLX) engine keeps its model.
+    assert TTS_VOXCPM_MODEL in keys
+    # The built-in greeting pool surfaces as the editable session_start default.
+    assert keys[TTS_SESSION_START_MESSAGES] == list(SESSION_START_MESSAGES)
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-12")

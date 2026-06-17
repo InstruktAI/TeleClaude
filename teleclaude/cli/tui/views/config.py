@@ -56,6 +56,7 @@ from teleclaude.config import (
 )
 from teleclaude.config._summarizer import parse_summarizer_config
 from teleclaude.config.schema import PersonEntry
+from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
 __all__ = ["ConfigContent", "ConfigView"]
 
@@ -64,6 +65,33 @@ def _default_section(name: str) -> dict[str, Any]:  # guard: loose-dict - DEFAUL
     """Return a DEFAULT_CONFIG section as a plain dict for safe merge/unpack."""
     section = DEFAULT_CONFIG.get(name, {})
     return section if isinstance(section, dict) else {}
+
+
+def _apply_tts_applicability(tts: TTSConfig, fields: list[ReflectedField]) -> list[ReflectedField]:
+    """Drop engine-inapplicable TTS leaves and surface the built-in session_start default.
+
+    Engine capabilities are derived from the data, not a fixed registry (MLX engines
+    are any service with a ``model``): name-based engines never use ``voice_id``,
+    static engines never consume ``model``/``params``, and an engine without a voice
+    list has no ``voices`` leaf.
+    """
+    drop: set[str] = set()
+    for name, svc in (tts.services or {}).items():
+        base = f"tts.services.{name}"
+        if not svc.model:
+            drop.add(f"{base}.model")
+            drop.add(f"{base}.params")
+        voices = svc.voices
+        if not voices:
+            drop.add(f"{base}.voices")
+        elif not any(voice.voice_id for voice in voices):
+            drop.update(f"{base}.voices.{index}.voice_id" for index in range(len(voices)))
+
+    kept = [f for f in fields if f.key not in drop]
+    for field in kept:
+        if field.key == "tts.events.session_start.messages" and not field.value:
+            field.value = list(SESSION_START_MESSAGES)
+    return kept
 
 
 class ConfigView(Widget, can_focus=True):
@@ -492,9 +520,10 @@ class ConfigContent(
             stt_obj = parse_stt_config(merged_stt) or STTConfig(enabled=False)
             tts_obj = parse_tts_config(merged_tts) or TTSConfig(enabled=False)
 
-            return reflect_schema(stt_obj, prefix="stt", section="STT", owning_source="machine") + reflect_schema(
-                tts_obj, prefix="tts", section="TTS", owning_source="machine"
-            )
+            fields = reflect_schema(stt_obj, prefix="stt", section="STT", owning_source="machine")
+            tts_fields = reflect_schema(tts_obj, prefix="tts", section="TTS", owning_source="machine")
+            fields.extend(_apply_tts_applicability(tts_obj, tts_fields))
+            return fields
 
         return []
 
