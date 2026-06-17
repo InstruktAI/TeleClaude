@@ -30,6 +30,7 @@ Core rules:
 - Reproduce consistently before changing any code.
 - Read full error messages and stack traces; preserve exact details.
 - If reproduction is unstable, add instrumentation and gather more evidence before proceeding.
+- Reproduction scaffolding is ephemeral: tear down every process, background load, server, or container the reproduction spawns the instant its evidence is captured. Spawn it in a tracked group and reap it in a guaranteed-cleanup path (`trap` / `finally` / process-group kill) — never as detached children that outlive the session. Load generators (CPU saturation, concurrency, `-n auto` contention) leak compute indefinitely once orphaned.
 
 **Multi-component systems:** When the system has multiple components (CI → build → signing, API → service → database), add diagnostic instrumentation at each component boundary before proposing fixes:
 
@@ -113,14 +114,15 @@ Each layer catches what the others miss. A single validation point feels suffici
 
 Anti-patterns to reject:
 
-| Anti-pattern                                   | Why it fails                             | Correct behavior                                   |
-| ---------------------------------------------- | ---------------------------------------- | -------------------------------------------------- |
-| "Quick fix now, investigate later"             | Locks in symptom hacks                   | Investigate first, then fix                        |
-| "Looks right" validation                       | Surface checks miss bad states           | Trace concrete values end to end                   |
-| Multiple fixes at once                         | No causal signal, higher regression risk | One hypothesis, one change                         |
-| Trusting comments over behavior                | Comments drift from reality              | Verify comments against execution                  |
-| "Probably" under pressure                      | Confidence without evidence              | Require reproduced evidence                        |
-| "Just try changing X"                          | Guess-driven; no understanding           | Form hypothesis, test minimally                    |
-| Proposing fixes before tracing data flow       | Treats symptoms, not cause               | Complete Steps 1-3 before Step 4                   |
-| "One more fix attempt" after 2+ failures       | Diminishing returns, wrong premise       | Stop at 3, question architecture                   |
-| "I don't fully understand but this might work" | Partial understanding guarantees rework  | Say "I don't understand X" and investigate further |
+| Anti-pattern                                   | Why it fails                                      | Correct behavior                                            |
+| ---------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------- |
+| "Quick fix now, investigate later"             | Locks in symptom hacks                            | Investigate first, then fix                                 |
+| "Looks right" validation                       | Surface checks miss bad states                    | Trace concrete values end to end                            |
+| Multiple fixes at once                         | No causal signal, higher regression risk          | One hypothesis, one change                                  |
+| Trusting comments over behavior                | Comments drift from reality                       | Verify comments against execution                           |
+| "Probably" under pressure                      | Confidence without evidence                       | Require reproduced evidence                                 |
+| "Just try changing X"                          | Guess-driven; no understanding                    | Form hypothesis, test minimally                             |
+| Proposing fixes before tracing data flow       | Treats symptoms, not cause                        | Complete Steps 1-3 before Step 4                            |
+| "One more fix attempt" after 2+ failures       | Diminishing returns, wrong premise                | Stop at 3, question architecture                            |
+| "I don't fully understand but this might work" | Partial understanding guarantees rework           | Say "I don't understand X" and investigate further          |
+| Leaving reproduction scaffolding running       | Orphaned load/processes leak compute indefinitely | Spawn in a tracked group; reap in a guaranteed-cleanup path |
