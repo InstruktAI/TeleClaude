@@ -459,19 +459,27 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
     """
     session = await db.get_session(target_session_id)
     if session is None or session.closed_at or session.lifecycle_status in {"closed", "closing"}:
-        logger.info("No open runner session %s to notify of approval for %s", target_session_id, slug)
+        logger.info(
+            "runner approval notify skipped", session_id=target_session_id, slug=slug, reason="session-unavailable"
+        )
         return False
     body = f"The human approved the pending gate for '{slug}'. Proceed with the lifecycle from where you parked."
     message = format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
-    await get_command_service().process_message(
-        ProcessMessageCommand(
-            session_id=target_session_id,
-            text=message,
-            origin=InputOrigin.TERMINAL.value,
-            actor_name="system",
+    # Best-effort: the approval stamp is already committed by the caller. A delivery
+    # failure must not surface as approval failure — log and report not-delivered.
+    try:
+        await get_command_service().process_message(
+            ProcessMessageCommand(
+                session_id=target_session_id,
+                text=message,
+                origin=InputOrigin.TERMINAL.value,
+                actor_name="system",
+            )
         )
-    )
-    logger.info("Notified runner session %s of approval for %s", target_session_id, slug)
+    except Exception as exc:
+        logger.warning("runner approval notify failed", session_id=target_session_id, slug=slug, reason=str(exc))
+        return False
+    logger.info("runner approval notify delivered", session_id=target_session_id, slug=slug)
     return True
 
 

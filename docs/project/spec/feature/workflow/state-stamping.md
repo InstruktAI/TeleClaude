@@ -94,6 +94,23 @@ And the empty-reason variant is rejected before any write
 And the prepare chain advances past the architecture phase on next dispatch
 ```
 
+#### UC-WSS10: Operator gate approval wakes the parked runner session
+
+```gherkin
+Given a Todo parked at a human-approval gate whose active_runner is a live, open session
+When the operator approves the gate from the TUI control (the approve request carries the operator marker)
+Then the gate is stamped approved through the normal state-write boundary
+And a [TeleClaude Notification] is delivered into the active_runner session telling it the human approved and to proceed
+And delivery is best-effort: a missing, closed, or undeliverable session is logged and never turns the approval into a failure
+```
+
+```gherkin
+Given an agent clears its own gate via the CLI stamp (no operator marker)
+When the gate is stamped approved
+Then no notification is delivered into any session
+And an agent never messages itself about an approval it just recorded
+```
+
 <!-- planned:task-lane -->
 
 #### UC-WSS9: Human task authorization stamps execution approval

@@ -16,8 +16,10 @@ from teleclaude.api.sessions_actions_routes import _prepare_run_session
 from teleclaude.api_models import CreateSessionResponseDTO, RunSessionRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.config import config as tc_config
-from teleclaude.constants import ROLE_ORCHESTRATOR
+from teleclaude.constants import ROLE_ORCHESTRATOR, format_system_message
 from teleclaude.core import db as db_mod
+from teleclaude.core import session_listeners as session_listeners_mod
+from teleclaude.core.conversation_messages import TeleClaudeNotificationLabel
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.next_machine import lifecycle_runner as runner_mod
@@ -52,6 +54,7 @@ from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.schemas import register_all
+from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
 
@@ -1231,3 +1234,70 @@ async def test_notify_runner_of_gate_approval_noop_without_active_runner(
 
     assert result is False
     assert calls == []
+
+
+class _RecordingCommandService:
+    """Captures ProcessMessageCommand deliveries; optionally fails to exercise best-effort."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.commands: list[ProcessMessageCommand] = []
+        self._fail = fail
+
+    async def process_message(self, cmd: ProcessMessageCommand) -> None:
+        if self._fail:
+            raise RuntimeError("delivery boom")
+        self.commands.append(cmd)
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_notify_gate_approved_injects_into_open_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real injection path delivers a [TeleClaude Notification] into a live, open session."""
+    svc = _RecordingCommandService()
+
+    async def _get_session(_sid: str) -> _Session:
+        return _Session(session_id=_LIVE_SESSION, lifecycle_status="active")
+
+    monkeypatch.setattr(session_listeners_mod.db, "get_session", _get_session)
+    monkeypatch.setattr(session_listeners_mod, "get_command_service", lambda: svc)
+
+    result = await session_listeners_mod.notify_gate_approved(_LIVE_SESSION, slug=_WORK_SLUG)
+
+    assert result is True
+    assert len(svc.commands) == 1
+    cmd = svc.commands[0]
+    assert cmd.session_id == _LIVE_SESSION
+    assert format_system_message(TeleClaudeNotificationLabel.NOTIFICATION) in cmd.text
+    assert _WORK_SLUG in cmd.text
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_notify_gate_approved_skips_closed_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A closed/closing target session is never messaged."""
+    svc = _RecordingCommandService()
+
+    async def _get_session(_sid: str) -> _Session:
+        return _Session(session_id=_LIVE_SESSION, lifecycle_status="closed")
+
+    monkeypatch.setattr(session_listeners_mod.db, "get_session", _get_session)
+    monkeypatch.setattr(session_listeners_mod, "get_command_service", lambda: svc)
+
+    result = await session_listeners_mod.notify_gate_approved(_LIVE_SESSION, slug=_WORK_SLUG)
+
+    assert result is False
+    assert svc.commands == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_notify_gate_approved_is_best_effort_on_delivery_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A delivery failure after the approval stamp returns False, never raising into the caller."""
+    svc = _RecordingCommandService(fail=True)
+
+    async def _get_session(_sid: str) -> _Session:
+        return _Session(session_id=_LIVE_SESSION, lifecycle_status="active")
+
+    monkeypatch.setattr(session_listeners_mod.db, "get_session", _get_session)
+    monkeypatch.setattr(session_listeners_mod, "get_command_service", lambda: svc)
+
+    result = await session_listeners_mod.notify_gate_approved(_LIVE_SESSION, slug=_WORK_SLUG)
+
+    assert result is False
