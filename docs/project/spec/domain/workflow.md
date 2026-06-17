@@ -114,7 +114,15 @@ kind mutation is refused.
 
 **Hold**
 
+<!-- planned-change:hold-gated-on-autostart -->
+
 : A durable manual brake on a todo. When `hold=true`, the lifecycle runner does not auto-dispatch that todo in any lane — the brake is general, so todo creation (the silent-creation alias) and the manual-close interlock can set it on a todo at any phase, and the runner honors it everywhere. The operator _control_ for hold is narrower than the flag: the hold control is offered on a todo row only when the todo is in the `prepared` phase and autostart is enabled for its kind — it is the `prepared → work` brake, the moment work could enter the execution runtime; braking automatic dispatch that policy already disables carries no value, and the prepare lane is governed by approval gates rather than an operator hold control. The hold control is one-way: there is no release control — an operator takes a held todo forward with the existing manual start, which supersedes any release affordance. A held todo is shown by a single gate/lock icon in the row's last column. Hold is distinct from autostart policy: a todo can be unheld and still not auto-dispatched because its kind is not autostart-enabled.
+
+<!-- change:hold-gated-on-autostart -->
+
+: A durable manual brake on automatic entry into the work lane, scoped to autostart-enabled kinds. Hold belongs to the work-lane execution surface that autostart policy governs: it exists only to brake the `prepared → work` handoff into the execution runtime. When a todo's kind has autostart disabled, the hold concept is dormant for that todo — no set-site writes `hold=true` (neither creation, the manual-close interlock, nor the manual engage path), no lock icon renders, and no hold control is offered; braking a lane that policy already holds shut carries no meaning. The effective brake every reader observes — the lifecycle runner's work-dispatch skip, the rendered lock glyph, and the offered control — is the raw `hold` flag conjoined with the kind's autostart being enabled, so a residual flag on an autostart-disabled kind is inert everywhere. When a kind's autostart is enabled, `hold=true` makes the lifecycle runner skip that todo and a single gate/lock icon renders in the row's last column. The hold control is one-way: there is no release control — an operator takes a held todo forward with the existing manual start, which supersedes any release affordance. Enabling a kind's autostart leaves no lingering holds, because none are set while it is off. A todo with no assigned kind is pre-classification and outside the autostart-governed surface; its creation-time parking hold is honored by the runner until a kind is assigned.
+
+<!-- /planned-change:hold-gated-on-autostart -->
 
 **Autostart policy**
 
@@ -149,7 +157,7 @@ kind mutation is refused.
 
 **Human gate control**
 
-: Two independent human controls a parked todo can expose, each derived from current todo state and never stored: an approval control and a hold control. They are orthogonal and carry no relationship — neither suppresses nor takes precedence over the other; their non-overlap across the lifecycle is incidental, not encoded. The approval control approves a pending human-approval gate — PRD human approval, task authorization, or a creative gate — governs progression within the prepare lane, routes to the underlying approval stamp the gate requires, and is a human-authenticated control-plane action an agent or unauthenticated caller cannot satisfy. The hold control is the `prepared → work` brake (see Hold): offered only on a prepared todo whose kind is autostart-enabled, one-way with no release affordance. The same derivations the operator surface reads also decide the lifecycle runner's auto-dispatch skips, so "why is this parked" and "what the human can do here" never diverge. On a todo row a held todo is shown by a single gate/lock icon in the last column.
+: Two independent human controls a parked todo can expose, each derived from current todo state and never stored: an approval control and a hold control. They are orthogonal and carry no relationship — neither suppresses nor takes precedence over the other; their non-overlap across the lifecycle is incidental, not encoded. The approval control approves a pending human-approval gate — PRD human approval, task authorization, or a creative gate — governs progression within the prepare lane, routes to the underlying approval stamp the gate requires, and is a human-authenticated control-plane action an agent or unauthenticated caller cannot satisfy. The hold control is the `prepared → work` brake (see Hold): offered only on a prepared todo whose kind is autostart-enabled, one-way with no release affordance. The same derivations the operator surface reads also decide the lifecycle runner's auto-dispatch skips, so "why is this parked" and "what the human can do here" never diverge.<!-- planned-change:hold-gated-on-autostart --> On a todo row a held todo is shown by a single gate/lock icon in the last column.<!-- change:hold-gated-on-autostart --> On a todo row a held todo is shown by a single gate/lock icon in the last column, rendered only when the todo's kind has autostart enabled — a residual `hold` flag on an autostart-disabled kind renders no icon.<!-- /planned-change:hold-gated-on-autostart -->
 
 **Delivery commit**
 : The git commit SHA on `main` that materialized the todo's outcome. Non-empty when stage is `delivered`. The audit trail anchor.
@@ -204,7 +212,7 @@ kind mutation is refused.
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
   - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
-  - **Hold is the only persisted manual-dispatch brake.** A held todo is skipped by the lifecycle runner until released. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
+  - <!-- planned-change:hold-gated-on-autostart -->**Hold is the only persisted manual-dispatch brake.** A held todo is skipped by the lifecycle runner until released. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.<!-- change:hold-gated-on-autostart -->**Hold is the only persisted manual-dispatch brake, and it is scoped to autostart-enabled kinds.** A held todo is skipped by the lifecycle runner only when its kind has autostart enabled; the effective brake is the `hold` flag conjoined with the kind's autostart, so a residual flag on an autostart-disabled kind is inert and no set-site writes `hold=true` for such a kind. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.<!-- /planned-change:hold-gated-on-autostart -->
   - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.
   - **The lifecycle runner is the sole spawning authority.** Every lifecycle session — autonomous dispatch, manual operator START, and headless adoption — flows through one runner-owned, claim-guarded dispatch primitive that writes `active_runner` (and `manually_started`) atomically with the spawn. There are no side spawn paths, so no concurrent pass can duplicate a driver. A headless session carries no claim until it is explicitly adopted.
   - **Automatic dispatch is kind-prioritized and load-capped; manual start is neither.** Among candidates whose dependencies are satisfied (for a `task`, including its schedule/timer gate and task authorization), the runner dispatches by kind priority `bug` > `change` > `task` > `feature`. It auto-dispatches only while the live count of driver sessions not flagged `manually_started` is below `max_todo_dispatch` (runtime config, default 5); at the cap, remaining eligible candidates are skipped and dispatch on a later wake. A manual `telec todo work/prepare` start (or a headless adoption) is not subject to the priority order or the cap, and its `manually_started` driver is never counted toward the cap.
@@ -215,7 +223,7 @@ kind mutation is refused.
   - **Dependency readiness uses PRD-approved ground for prepare and delivered ground for work.** Dependent prepare may unblock when every direct dependency has a human-approved PRD or stronger evidence; stronger evidence includes `prepared`, work-lane, or delivered states only when the dependency's PRD approval remains human-authored. Dependent work remains blocked until all `after` dependencies are delivered. The v1 dependency-prepared predicate is currently phase-only, so this delivery changes that predicate instead of treating current prepared-ground as sufficient.
   - **PRD-grounded dependents carry parent-ground drift.** When a dependent prepares against a parent's PRD-approved ground before the parent is delivered, the dependent's drift provenance records the parent ground it relied on. Later parent architecture/plan or parent PRD-approval changes that can materially affect that ground force drift review before the dependent may reach or remain `prepared`.
   - **Icebox and removed entries are never runner candidates.** Icebox remains an independent operator parking state; removing/re-activating entries follows the existing soft-delete contract and does not imply hold.
-  - **The human gate-control surface derives two independent controls.** A todo row's approval control and hold control are each computed from current todo state and never stored; they are orthogonal — no mutual exclusion and no precedence between them. The approval control governs progression within prepare and requires a human-authenticated caller; the hold control is the `prepared → work` brake, offered only on a prepared todo whose kind is autostart-enabled, one-way (manual start, not a release, takes a held todo forward), and rendered as a gate/lock icon in the row's last column. The same derivations decide the lifecycle runner's auto-dispatch skips.
+  - **The human gate-control surface derives two independent controls.** A todo row's approval control and hold control are each computed from current todo state and never stored; they are orthogonal — no mutual exclusion and no precedence between them. The approval control governs progression within prepare and requires a human-authenticated caller; the hold control is the `prepared → work` brake, offered only on a prepared todo whose kind is autostart-enabled, one-way (manual start, not a release, takes a held todo forward), and<!-- planned-change:hold-gated-on-autostart --> rendered as a gate/lock icon in the row's last column.<!-- change:hold-gated-on-autostart --> rendered as a gate/lock icon in the row's last column only when the kind has autostart enabled — a residual `hold` flag on an autostart-disabled kind renders no icon and offers no control.<!-- /planned-change:hold-gated-on-autostart --> The same derivations decide the lifecycle runner's auto-dispatch skips.
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
 - **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo split` (child of a container). Kind-less creation starts with `kind=None` and no `lifecycle_phase` and routes to `/analyze-todo-input`, which assigns the kind autonomously through the `--kind-assign` stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
 
@@ -897,6 +905,8 @@ And the todo-scoped diff (UC-WFL-18 above) is implemented in terms of this primi
 
 #### UC-WFL-19: Legacy silent creation is a boundary alias for hold
 
+<!-- planned-change:hold-gated-on-autostart -->
+
 ```
 Given a legacy caller creates a non-task "<slug>" with the retired `creation_mode = silent` (or `--silent`)
 When the workflow service accepts the creation
@@ -904,6 +914,25 @@ Then the todo is created with `hold=true` and no `creation_mode = silent` state 
 And `workflow.todo.created` carries no silent or `pickup_requested` dispatch semantics
 And the lifecycle runner decides dispatch from `hold` and autostart policy alone, never from a creation-mode flag
 ```
+
+<!-- change:hold-gated-on-autostart -->
+
+```
+Given a legacy caller creates a non-task "<slug>" whose kind has autostart enabled with the retired `creation_mode = silent` (or `--silent`)
+When the workflow service accepts the creation
+Then the todo is created with `hold=true` and no `creation_mode = silent` state is persisted
+And `workflow.todo.created` carries no silent or `pickup_requested` dispatch semantics
+And the lifecycle runner decides dispatch from `hold` and autostart policy alone, never from a creation-mode flag
+```
+
+```
+Given a legacy caller creates a non-task "<slug>" whose kind has autostart disabled with the retired `creation_mode = silent` (or `--silent`)
+When the workflow service accepts the creation
+Then the todo is created with `hold=false`
+And the lifecycle runner leaves it undispatched for policy-disabled, not for hold
+```
+
+<!-- /planned-change:hold-gated-on-autostart -->
 
 ```
 Given a legacy caller creates a `task` carrying the force-silent default
@@ -929,6 +958,8 @@ And in v1 every target wake-up is backed by either an existing v1 emission or an
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
+<!-- planned-change:hold-gated-on-autostart -->
+
 ```gherkin
 Given an operator creates a todo with `--hold`
 When workflow persists the todo
@@ -936,6 +967,18 @@ Then the todo is active and visible in normal todo reads
 And `hold=true` prevents automatic lifecycle-runner dispatch
 And releasing hold makes the todo eligible on the next runner wake-up if all other gates pass
 ```
+
+<!-- change:hold-gated-on-autostart -->
+
+```gherkin
+Given an operator creates a todo with `--hold` whose kind has autostart enabled
+When workflow persists the todo
+Then the todo is active and visible in normal todo reads
+And `hold=true` prevents automatic lifecycle-runner dispatch
+And releasing hold makes the todo eligible on the next runner wake-up if all other gates pass
+```
+
+<!-- /planned-change:hold-gated-on-autostart -->
 
 ```gherkin
 Given an operator creates a task without `--hold`
@@ -956,6 +999,8 @@ And the task is skipped by the runner for policy-disabled, not for hold
 
 #### UC-WFL-22: Manual session close halts via explicit hold
 
+<!-- planned-change:hold-gated-on-autostart -->
+
 ```gherkin
 Given a live lifecycle session is driving todo "my-slug"
 When an operator manually closes that session (`telec sessions end` or a UI close affordance)
@@ -965,12 +1010,52 @@ And the lifecycle runner wakes, finds "my-slug" held, and does not re-dispatch i
 And the stale `active_runner` link is cleared
 ```
 
+<!-- change:hold-gated-on-autostart -->
+
+```gherkin
+Given a live lifecycle session is driving todo "my-slug" whose kind has autostart enabled
+When an operator manually closes that session (`telec sessions end` or a UI close affordance)
+Then the close command sets `hold=true` on "my-slug"
+And the closing session emits `agent_runtime.session.ended`
+And the lifecycle runner wakes, finds "my-slug" held, and does not re-dispatch it
+And the stale `active_runner` link is cleared
+```
+
+<!-- /planned-change:hold-gated-on-autostart -->
+
 ```gherkin
 Given a lifecycle session ends because the agent completed, self-quit, was cleaned up by normal prepared/finalize cleanup, or died
 When the lifecycle runner wakes on `agent_runtime.session.ended`
 Then no hold is set
 And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
+
+<!-- planned:hold-gated-on-autostart -->
+
+#### UC-WFL-23: Hold is dormant when the kind's autostart is disabled
+
+```gherkin
+Given a todo whose kind has autostart disabled
+When any set-site attempts to engage hold — creation (`--hold`/`--silent`), the manual-close interlock, or the manual engage path (`/todos/update --hold`, TUI hold action)
+Then `hold` stays false on the todo
+And no hold audit is recorded
+```
+
+```gherkin
+Given a todo whose kind has autostart disabled and a residual `hold=true` flag from before the kind's autostart was last toggled
+When the todo row is rendered and the lifecycle runner evaluates it
+Then no gate/lock icon renders in the row's last column
+And no hold control is offered
+And the runner does not skip the todo for hold (it is skipped for policy-disabled while the kind's autostart is off)
+```
+
+```gherkin
+Given a kind whose autostart was off and whose todos therefore carry no holds set while off
+When an operator enables autostart for that kind
+Then those todos auto-start cleanly with no lingering hold blocking them
+```
+
+<!-- /planned:hold-gated-on-autostart -->
 
 ### v1 inventory
 
