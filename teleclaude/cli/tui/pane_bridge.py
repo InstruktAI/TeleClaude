@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import subprocess
 import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -29,7 +30,15 @@ if TYPE_CHECKING:
     from teleclaude.api_models import SessionDTO
 
 _SENTINEL = object()
-PANE_WRITER_ERRORS = (AttributeError, LookupError, OSError, RuntimeError, TypeError, ValueError)
+PANE_WRITER_ERRORS = (
+    AttributeError,
+    LookupError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    subprocess.SubprocessError,
+)
 
 
 class PaneWriter:
