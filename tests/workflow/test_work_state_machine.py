@@ -62,6 +62,52 @@ async def _no_work_entry_drift(_todos_db: TodosDb, _resolved_slug: str, _cwd: st
     return None
 
 
+async def _run_merge_main_failure_with_live_builder(
+    *,
+    project_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle_phase: LifecyclePhase,
+) -> str:
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_roadmap(_SLUG)
+    await todos_db.write_state(
+        _SLUG,
+        TodoState(
+            kind="change",
+            lifecycle_phase=lifecycle_phase.value,
+            schema_version=4,
+        ).model_dump(exclude_none=True),
+    )
+    worktree_cwd = project_root / "trees" / _SLUG
+    worktree_cwd.mkdir(parents=True)
+
+    async def _ensure_ready(_cwd: str, _slug: str, _phase_slug: str) -> tuple[str, None]:
+        return str(worktree_cwd), None
+
+    monkeypatch.setattr(work_machine, "get_stash_entries", lambda _cwd: [])
+    monkeypatch.setattr(work_machine, "_check_work_entry_drift", _no_work_entry_drift)
+    monkeypatch.setattr(work_machine, "_ensure_worktree_ready", _ensure_ready)
+    monkeypatch.setattr(work_machine, "_merge_origin_main_into_worktree", lambda _cwd, _slug: "conflict details")
+    monkeypatch.setattr(work_machine, "get_head_commit", lambda _cwd: "head-sha")
+
+    return await next_work(
+        cast(
+            Db,
+            _CapturingDb(
+                [
+                    _Session(
+                        "builder-session",
+                        f"/next-build {_SLUG}",
+                        subdir=f"trees/{_SLUG}",
+                    )
+                ]
+            ),
+        ),
+        _SLUG,
+        str(project_root),
+    )
+
+
 @pytest.mark.spec(_SPEC, "UC-WSM0")
 async def test_prepared_entry_advances_to_build_started_without_removed_phase_commands(
     tmp_path: Path,
@@ -115,43 +161,26 @@ async def test_merge_main_failure_routes_recovery_to_live_builder(
     snapshot: object,
 ) -> None:
     project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_SLUG)
-    await todos_db.write_state(
-        _SLUG,
-        TodoState(
-            kind="change",
-            lifecycle_phase=LifecyclePhase.BUILD_STARTED.value,
-            schema_version=4,
-        ).model_dump(exclude_none=True),
+    output = await _run_merge_main_failure_with_live_builder(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+        lifecycle_phase=LifecyclePhase.BUILD_STARTED,
     )
-    worktree_cwd = project_root / "trees" / _SLUG
-    worktree_cwd.mkdir(parents=True)
 
-    async def _ensure_ready(_cwd: str, _slug: str, _phase_slug: str) -> tuple[str, None]:
-        return str(worktree_cwd), None
+    assert output == snapshot
 
-    monkeypatch.setattr(work_machine, "get_stash_entries", lambda _cwd: [])
-    monkeypatch.setattr(work_machine, "_check_work_entry_drift", _no_work_entry_drift)
-    monkeypatch.setattr(work_machine, "_ensure_worktree_ready", _ensure_ready)
-    monkeypatch.setattr(work_machine, "_merge_origin_main_into_worktree", lambda _cwd, _slug: "conflict details")
-    monkeypatch.setattr(work_machine, "get_head_commit", lambda _cwd: "head-sha")
 
-    output = await next_work(
-        cast(
-            Db,
-            _CapturingDb(
-                [
-                    _Session(
-                        "builder-session",
-                        f"/next-build {_SLUG}",
-                        subdir=f"trees/{_SLUG}",
-                    )
-                ]
-            ),
-        ),
-        _SLUG,
-        str(project_root),
+@pytest.mark.spec(_SPEC, "UC-WSM0")
+async def test_merge_main_failure_after_build_complete_does_not_request_invalid_restamp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    output = await _run_merge_main_failure_with_live_builder(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+        lifecycle_phase=LifecyclePhase.BUILD_COMPLETE,
     )
 
     assert output == snapshot

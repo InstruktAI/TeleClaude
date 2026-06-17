@@ -174,7 +174,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
     if merge_err:
         _log_next_work_phase(phase_slug, "merge_main", merge_started, "error", "merge_main_failed")
-        return await _format_merge_main_recovery(db, resolved_slug, merge_err)
+        state = await todos_db.read_state(resolved_slug)
+        phase_raw = state.get("lifecycle_phase") if state is not None else ""
+        lifecycle_phase = phase_raw if isinstance(phase_raw, str) else ""
+        return await _format_merge_main_recovery(db, resolved_slug, merge_err, lifecycle_phase=lifecycle_phase)
     head_after_merge = await asyncio.to_thread(get_head_commit, worktree_cwd)
     _log_next_work_phase(phase_slug, "merge_main", merge_started, "run", "merge_main_applied")
 
@@ -263,7 +266,7 @@ async def _advance_prepared_to_build_started(
     await writer.commit(todos_db, slug)
 
 
-async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str) -> str:
+async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, lifecycle_phase: str) -> str:
     """Format orchestrator recovery instructions for machine-owned main-sync conflicts."""
     builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
     if builder_id is None:
@@ -277,13 +280,14 @@ async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str) -> st
             next_call=f"telec todo work {slug}",
         )
 
+    completion_clause = _merge_main_recovery_completion_clause(slug, lifecycle_phase)
+    wait_clause = _merge_main_recovery_wait_clause(slug, lifecycle_phase)
     message = (
         f"The work state machine failed while merging origin/main into your worktree for {slug}. "
         "You did not encounter this directly; the orchestrator is routing the machine-owned failure back to you.\n\n"
         "Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo's "
         "prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused "
-        "tests plus telec code test and telec code lint, commit the resolution, then run "
-        f"`telec todo stamp {slug} --build-complete` and report completion.\n\n"
+        f"tests plus telec code test and telec code lint, commit the resolution, then {completion_clause}\n\n"
         f"State-machine merge failure:\n{merge_error}"
     )
     return (
@@ -292,8 +296,40 @@ async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str) -> st
         "Execute in order:\n\n"
         f"{format_send_command(builder_id, message)}\n\n"
         f"{HEARTBEAT_RESET_INSTRUCTION}\n"
-        f"When the builder reports idle after re-stamping, call telec todo work {slug}."
+        f"{wait_clause}"
     )
+
+
+def _merge_main_recovery_completion_clause(slug: str, lifecycle_phase: str) -> str:
+    """Return phase-appropriate worker completion guidance for main-sync recovery."""
+    if lifecycle_phase in (LifecyclePhase.BUILD_STARTED.value, LifecyclePhase.REVIEW_CHANGES_REQUESTED.value):
+        return f"run `telec todo stamp {slug} --build-complete` and report completion."
+    if lifecycle_phase == LifecyclePhase.BUILD_COMPLETE.value:
+        return (
+            "do not stamp build-complete again; report MERGE RECOVERY COMPLETE. "
+            "The orchestrator will re-enter `telec todo work` to dispatch review from the recovered HEAD."
+        )
+    if lifecycle_phase == LifecyclePhase.REVIEW_APPROVED.value:
+        return (
+            "do not stamp build-complete; report MERGE RECOVERY COMPLETE. "
+            "The orchestrator will re-enter `telec todo work` to continue finalize from the recovered HEAD."
+        )
+    if lifecycle_phase == LifecyclePhase.FINALIZE_READY.value:
+        return (
+            "do not stamp build-complete; report MERGE RECOVERY COMPLETE. "
+            "The orchestrator will re-enter `telec todo work` to validate the finalize-ready handoff."
+        )
+    return (
+        "report MERGE RECOVERY COMPLETE and name the lifecycle phase you observed. "
+        "The orchestrator will re-enter `telec todo work` to choose the next lifecycle action."
+    )
+
+
+def _merge_main_recovery_wait_clause(slug: str, lifecycle_phase: str) -> str:
+    """Return the orchestrator wait instruction after sending merge recovery guidance."""
+    if lifecycle_phase in (LifecyclePhase.BUILD_STARTED.value, LifecyclePhase.REVIEW_CHANGES_REQUESTED.value):
+        return f"When the builder reports idle after re-stamping, call telec todo work {slug}."
+    return f"When the builder reports idle after MERGE RECOVERY COMPLETE, call telec todo work {slug}."
 
 
 async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: str, phase_slug: str) -> str | None:

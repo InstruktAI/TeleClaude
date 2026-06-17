@@ -59,6 +59,16 @@ And the recovery message asks the builder to reapply the prepared todo intent on
 And the machine does not leave the orchestrator to treat the recoverable merge failure as a passive human blocker
 ```
 
+```gherkin
+Given a Todo is already at lifecycle_phase=build_complete
+And the work state machine merges origin/main into that worktree before dispatching review
+When the merge fails with conflicts
+Then the machine returns a recovery script that sends the merge failure to the live builder
+And the recovery message does not ask the builder to stamp build-complete again
+And the recovery message asks the builder to report MERGE RECOVERY COMPLETE after resolving, verifying, and committing the conflict resolution
+And the orchestrator re-enters work after the builder idles so review can proceed from the recovered HEAD
+```
+
 ```
 Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
 When the orchestrator calls "telec todo work my-feature"
