@@ -22,6 +22,7 @@ from teleclaude.constants import LOCAL_COMPUTER, format_system_message
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import TeleClaudeNotificationLabel
 from teleclaude.core.db import db
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.tmux_delivery import deliver_listener_message
 from teleclaude.types.commands import ProcessMessageCommand
@@ -29,6 +30,9 @@ from teleclaude.types.commands import ProcessMessageCommand
 logger = get_logger(__name__)
 _PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 _PAIR_LOCKS_GUARD = asyncio.Lock()
+
+# Actor name stamped on daemon-injected runner notifications.
+NOTIFY_ACTOR_NAME = "system"
 
 
 @dataclass
@@ -465,19 +469,21 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
         return False
     body = f"The human approved the pending gate for '{slug}'. Proceed with the lifecycle from where you parked."
     message = format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
-    # Best-effort: the approval stamp is already committed by the caller. A delivery
-    # failure must not surface as approval failure — log and report not-delivered.
+    # Best-effort: the approval stamp is already committed by the caller. The session
+    # can vanish between the open-check above and delivery (closed/unavailable race);
+    # that typed rejection must not surface as approval failure. Unexpected errors are
+    # not swallowed — they propagate so a real defect is not masked as a delivery miss.
     try:
         await get_command_service().process_message(
             ProcessMessageCommand(
                 session_id=target_session_id,
                 text=message,
                 origin=InputOrigin.TERMINAL.value,
-                actor_name="system",
+                actor_name=NOTIFY_ACTOR_NAME,
             )
         )
-    except Exception as exc:
-        logger.warning("runner approval notify failed", session_id=target_session_id, slug=slug, reason=str(exc))
+    except SessionMessageRejectedError as exc:
+        logger.warning("runner approval notify rejected", session_id=target_session_id, slug=slug, reason=exc.reason)
         return False
     logger.info("runner approval notify delivered", session_id=target_session_id, slug=slug)
     return True

@@ -1,0 +1,8 @@
+# serializer version: 1
+# name: test_notify_gate_approved_injects_into_open_session
+  '''
+  [TeleClaude Notification]
+  
+  The human approved the pending gate for 'work-a'. Proceed with the lifecycle from where you parked.
+  '''
+# ---

@@ -16,12 +16,12 @@ from teleclaude.api.sessions_actions_routes import _prepare_run_session
 from teleclaude.api_models import CreateSessionResponseDTO, RunSessionRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.config import config as tc_config
-from teleclaude.constants import ROLE_ORCHESTRATOR, format_system_message
+from teleclaude.constants import ROLE_ORCHESTRATOR
 from teleclaude.core import db as db_mod
 from teleclaude.core import session_listeners as session_listeners_mod
-from teleclaude.core.conversation_messages import TeleClaudeNotificationLabel
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.next_machine import lifecycle_runner as runner_mod
 from teleclaude.core.next_machine import session_hold
 from teleclaude.core.next_machine.dispatch_claims import list_dispatch_claims
@@ -46,6 +46,7 @@ from teleclaude.core.next_machine.session_hold import (
     notify_runner_of_gate_approval,
 )
 from teleclaude.core.operations.service import OperationsService
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.events.cartridges import lifecycle_router
@@ -1245,12 +1246,14 @@ class _RecordingCommandService:
 
     async def process_message(self, cmd: ProcessMessageCommand) -> None:
         if self._fail:
-            raise RuntimeError("delivery boom")
+            raise SessionMessageRejectedError(session_id=cmd.session_id, reason="closed")
         self.commands.append(cmd)
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_notify_gate_approved_injects_into_open_session(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_notify_gate_approved_injects_into_open_session(
+    monkeypatch: pytest.MonkeyPatch, snapshot: object
+) -> None:
     """The real injection path delivers a [TeleClaude Notification] into a live, open session."""
     svc = _RecordingCommandService()
 
@@ -1266,8 +1269,9 @@ async def test_notify_gate_approved_injects_into_open_session(monkeypatch: pytes
     assert len(svc.commands) == 1
     cmd = svc.commands[0]
     assert cmd.session_id == _LIVE_SESSION
-    assert format_system_message(TeleClaudeNotificationLabel.NOTIFICATION) in cmd.text
-    assert _WORK_SLUG in cmd.text
+    assert cmd.origin == InputOrigin.TERMINAL.value
+    assert cmd.actor_name == session_listeners_mod.NOTIFY_ACTOR_NAME
+    assert cmd.text == snapshot
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
