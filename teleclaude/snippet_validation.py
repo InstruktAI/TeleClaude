@@ -264,7 +264,7 @@ def _expected_from_global(
     # Domain-level baseline: docs/global/<domain>/baseline.md (e.g.
     # software-development, creative). Treated as a manifest — no frontmatter
     # required. The deploy pipeline inflates it into a real file at
-    # ~/.teleclaude/docs/<domain>/baseline.md for codex-readable consumption.
+    # ~/.teleclaude/docs/_baselines/<domain>.md for codex-readable consumption.
     if path.name in {"baseline.md", "baseline-progressive.md"} and path.parent.name == scope_segment:
         return None, None
     if scope_segment == "baseline":

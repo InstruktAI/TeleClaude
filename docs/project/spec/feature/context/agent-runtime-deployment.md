@@ -31,8 +31,6 @@ After both phases, the documentation tree is atomically symlinked from
 source into `~/.teleclaude/docs/`, with the deployed `index.yaml`
 rewritten so consumers see deployment-relative paths.
 
-<!-- planned:restore-whole-domain-symlink -->
-
 The deployed `~/.teleclaude/docs/` is a real directory holding the rewritten
 `index.yaml`, the `third-party/` tree, and one **whole-folder symlink per
 domain** (`~/.teleclaude/docs/<domain>` → `docs/global/<domain>`). The deploy
@@ -46,8 +44,6 @@ into the docs Source tree, so "Source lives in git only" holds. The
 SessionStart hook reads that generated file to inject the domain's
 process-enforcement baseline; the source `baseline.md` manifest exposed
 through the symlink is dormant and never consumed as the baseline.
-
-<!-- /planned:restore-whole-domain-symlink -->
 
 When the distribution step is invoked directly in no-deploy mode, agent
 artifacts are emitted to `project_root/dist/global` and
@@ -112,8 +108,6 @@ Scenario: Distribution invoked directly in no-deploy mode
   And the dist/ output is left in place for inspection
 ```
 
-<!-- planned:restore-whole-domain-symlink -->
-
 ```
 Scenario: A domain folder deploys as a live whole-folder symlink with a generated baseline
   Given a source domain docs/global/<domain>/ with a baseline.md and one or more subfolders
@@ -123,8 +117,6 @@ Scenario: A domain folder deploys as a live whole-folder symlink with a generate
   And no file is written under the docs source tree
   And a subfolder added to the source domain afterward resolves through the deployed symlink without a re-deploy
 ```
-
-<!-- /planned:restore-whole-domain-symlink -->
 
 ### Cross-context references
 

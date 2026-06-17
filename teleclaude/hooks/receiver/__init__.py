@@ -378,8 +378,8 @@ class DomainBaselineUnavailable(RuntimeError):
 def _load_domain_baseline_content(domain: str) -> str:
     """Return the inflated content of the named domain baseline.
 
-    The deploy pipeline writes a single fully-expanded baseline file at
-    ``~/.teleclaude/docs/<domain>/baseline.md`` per source manifest. This
+    The deploy pipeline writes one fully-expanded baseline file per source
+    domain manifest under ``~/.teleclaude/docs/_baselines/<domain>.md``. This
     helper reads it for injection at SessionStart so the agent — including
     runtimes that do not auto-follow ``@`` refs — has the full domain
     process-enforcement baseline loaded before the first user message.
@@ -392,7 +392,7 @@ def _load_domain_baseline_content(domain: str) -> str:
     failure rather than silently dropping mandatory context.
     """
     docs_root = tc_paths.GLOBAL_SNIPPETS_DIR.resolve()
-    candidate = (docs_root / domain / "baseline.md").resolve()
+    candidate = (docs_root / "_baselines" / f"{domain}.md").resolve()
     if docs_root not in candidate.parents:
         raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")
     if not candidate.is_file():
@@ -444,7 +444,7 @@ def _print_additional_context(
                 )
                 domain_baseline = (
                     f"WARNING: mandatory '{domain}' domain baseline could not be loaded "
-                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/{domain}/baseline.md`, "
+                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/_baselines/{domain}.md`, "
                     "then continue."
                 )
 

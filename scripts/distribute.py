@@ -443,12 +443,32 @@ def _index_entry_for_path(
     project_root: Path,
     entries_by_id: dict[str, SnippetIndexEntry],
 ) -> SnippetIndexEntry | None:
+    logical_path = _logical_snippet_path(path, project_root=project_root)
     classification, _ = derive_snippet_classification(
-        path, project_root=project_root, domains=load_domains(project_root)
+        logical_path, project_root=project_root, domains=load_domains(project_root)
     )
     if classification is None:
         return None
     return entries_by_id.get(classification.id)
+
+
+def _logical_snippet_path(path: Path, *, project_root: Path) -> Path:
+    """Return a project-local logical snippet path for deployed global refs."""
+    try:
+        path.resolve().relative_to(project_root.resolve())
+        return path
+    except ValueError:
+        pass
+
+    parts = path.resolve().parts
+    for scope in ("global", "project"):
+        marker = ("docs", scope)
+        for index in range(len(parts) - 1):
+            if parts[index : index + 2] != marker:
+                continue
+            tail = Path(*parts[index + 2 :])
+            return project_root / "docs" / scope / tail
+    return path
 
 
 def _needs_domain_baseline_domain(content: str, *, project_root: Path, current_path: Path) -> str | None:
@@ -860,6 +880,74 @@ def _inflate_domain_baseline(baseline_src: Path, domain_src: Path, *, project_ro
         if progressive_index:
             inflated = f"{inflated.rstrip()}\n\n---\n\n{progressive_index}\n"
     return inflated
+
+
+def deploy_domain_documentation(source_docs_root: Path, deploy_docs_root: Path, project_root: Path) -> None:
+    """Deploy source docs domains as whole-folder symlinks and generated baselines.
+
+    The deployed root stays a real directory because sync rewrites its
+    ``index.yaml`` in place. Each domain folder below it is a symlink to the
+    source folder, while inflated domain baselines live in a generated
+    ``_baselines`` directory under the deployed root.
+    """
+    header_template = "# {name} — Platform Baseline\n\n"
+    baselines_root = deploy_docs_root / "_baselines"
+    if os.path.lexists(baselines_root):
+        if baselines_root.is_dir() and not baselines_root.is_symlink():
+            shutil.rmtree(baselines_root)
+        else:
+            baselines_root.unlink(missing_ok=True)
+    baselines_root.mkdir(parents=True, exist_ok=True)
+
+    for entry in os.listdir(source_docs_root):
+        if entry.startswith("."):
+            continue
+
+        src_path = source_docs_root / entry
+        dst_path = deploy_docs_root / entry
+
+        if entry == "third-party":
+            continue
+
+        if entry == "index.yaml":
+            if os.path.lexists(dst_path):
+                if dst_path.is_dir() and not dst_path.is_symlink():
+                    shutil.rmtree(dst_path)
+                else:
+                    dst_path.unlink(missing_ok=True)
+            shutil.copy2(src_path, dst_path)
+            print(f"  Copied: {dst_path}")
+            continue
+
+        if not src_path.is_dir():
+            continue
+
+        if os.path.lexists(dst_path):
+            if dst_path.is_dir() and not dst_path.is_symlink():
+                shutil.rmtree(dst_path)
+            else:
+                dst_path.unlink(missing_ok=True)
+
+        try:
+            dst_path.symlink_to(src_path)
+            print(f"  Synced: {dst_path} -> {src_path}")
+        except Exception as e:
+            print(f"  Error syncing {entry}: {e}")
+            continue
+
+        if not src_path.is_dir() or entry in {"third-party"}:
+            continue
+        baseline_src = src_path / "baseline.md"
+        if not baseline_src.exists():
+            continue
+        try:
+            inflated = _inflate_domain_baseline(baseline_src, src_path, project_root=project_root)
+        except Exception as e:
+            print(f"  Error inflating {entry}/baseline.md: {e}")
+            continue
+        baseline_dst = baselines_root / f"{entry}.md"
+        baseline_dst.write_text(header_template.format(name=entry) + inflated, encoding="utf-8")
+        print(f"  Inflated baseline: {baseline_dst}")
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -1397,66 +1485,6 @@ def main() -> None:  # noqa: C901
 
             print("Deployment complete.")
 
-    def _replace_domain_folder_with_real_dir(domain_src: Path, domain_dst: Path) -> None:
-        """Break the whole-folder symlink and rebuild with per-child symlinks.
-
-        Required so a real `baseline.md` file can override what would otherwise
-        be a symlink to the source manifest. Per-child symlinks preserve normal
-        access to every other file in the domain folder.
-        """
-        if os.path.lexists(domain_dst):
-            if domain_dst.is_symlink() or not domain_dst.is_dir():
-                domain_dst.unlink(missing_ok=True)
-            else:
-                shutil.rmtree(domain_dst)
-        domain_dst.mkdir(parents=True, exist_ok=True)
-        for child in os.listdir(domain_src):
-            # baseline.md is written as the real inflated artifact; baseline-progressive.md
-            # is folded into that artifact and must never deploy as a standalone file.
-            if child.startswith(".") or child in {"baseline.md", "baseline-progressive.md"}:
-                continue
-            child_src = domain_src / child
-            child_dst = domain_dst / child
-            if os.path.lexists(child_dst):
-                child_dst.unlink(missing_ok=True)
-            child_dst.symlink_to(child_src)
-
-    def _deploy_domain_baselines(
-        source_dir: str,
-        source_docs_root: Path,
-        deploy_docs_root: Path,
-        project_root: str,
-    ) -> None:
-        """Emit fully-inflated `baseline.md` per source `docs/global/<domain>/baseline.md`.
-
-        Any source `docs/global/<domain>/baseline.md` produces a fully-expanded
-        deployed artifact at `~/.teleclaude/docs/<domain>/baseline.md`. The
-        domain folder switches from whole-folder symlink to per-child symlinks
-        so the inflated file can override the source manifest at the deployed
-        path. Cross-file deduplication is handled at the source by curating
-        each snippet's `## Required reads` list so no snippet auto-pulls
-        content the global baseline already inflates into CLAUDE.md.
-        """
-        header_template = "# {name} — Platform Baseline\n\n"
-        for entry in os.listdir(source_dir):
-            if entry.startswith(".") or entry in {"index.yaml", "baseline.md", "third-party"}:
-                continue
-            domain_src = source_docs_root / entry
-            if not domain_src.is_dir():
-                continue
-            baseline_src = domain_src / "baseline.md"
-            if not baseline_src.exists():
-                continue
-            domain_dst = deploy_docs_root / entry
-            _replace_domain_folder_with_real_dir(domain_src, domain_dst)
-            try:
-                inflated = _inflate_domain_baseline(baseline_src, domain_src, project_root=Path(project_root))
-            except Exception as e:
-                print(f"  Error inflating {entry}/baseline.md: {e}")
-                continue
-            (domain_dst / "baseline.md").write_text(header_template.format(name=entry) + inflated, encoding="utf-8")
-            print(f"  Inflated baseline: {domain_dst / 'baseline.md'}")
-
     def _deploy_documentation(source_dir: str) -> None:
         """Robustly deploy documentation using atomic symlink replacement."""
         if not os.path.isdir(source_dir):
@@ -1477,42 +1505,15 @@ def main() -> None:  # noqa: C901
         deploy_docs_root.mkdir(parents=True, exist_ok=True)
 
         # Remove any previously-deployed raw baseline manifest at the global root.
-        # Domain baselines are inflated and deployed separately by
-        # `_deploy_domain_baselines`; the global root manifest is a build-time
-        # input only and must not be exposed at the deploy path because agents
-        # that read it directly mistake the @-ref list for missing inflation.
+        # Domain baselines are inflated into `_baselines/`; the global root
+        # manifest is a build-time input only and must not be exposed at the
+        # deploy path because agents that read it directly mistake the @-ref
+        # list for missing inflation.
         legacy_global_baseline = deploy_docs_root / "baseline.md"
         if os.path.lexists(legacy_global_baseline):
             legacy_global_baseline.unlink(missing_ok=True)
 
-        for entry in os.listdir(source_dir):
-            if entry.startswith("."):
-                continue
-
-            src_path = source_docs_root / entry
-            dst_path = deploy_docs_root / entry
-
-            # Skip creating links for things that shouldn't be linked (only dirs and selected files).
-            # baseline.md is deliberately excluded: domain baselines are deployed
-            # inflated by `_deploy_domain_baselines`, and the global root manifest
-            # is build-time-only.
-            if not src_path.is_dir() and entry not in {"index.yaml"}:
-                continue
-
-            # Robust cleanup using lexists (detects broken symlinks)
-            if os.path.lexists(dst_path):
-                if dst_path.is_dir() and not dst_path.is_symlink():
-                    if entry == "third-party":
-                        continue
-                    shutil.rmtree(dst_path)
-                else:
-                    dst_path.unlink(missing_ok=True)
-
-            try:
-                dst_path.symlink_to(src_path)
-                print(f"  Synced: {dst_path} -> {src_path}")
-            except Exception as e:
-                print(f"  Error syncing {entry}: {e}")
+        deploy_domain_documentation(source_docs_root, deploy_docs_root, Path(project_root))
 
         # Generate index.yaml for global third-party docs
         global_third_party = deploy_docs_root / "third-party"
@@ -1523,9 +1524,6 @@ def main() -> None:  # noqa: C901
 
         # Rewrite global index to match deployed path (~/.teleclaude/docs)
         rewrite_global_index(str(deploy_docs_root / "index.yaml"), str(deploy_docs_root.parent))
-
-        # Domain baseline inflation: emit fully-expanded artifacts per domain.
-        _deploy_domain_baselines(source_dir, source_docs_root, deploy_docs_root, project_root)
 
     if args.deploy:
         with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
