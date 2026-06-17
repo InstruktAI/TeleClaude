@@ -62,6 +62,7 @@ from teleclaude.types.todos import TodoState
 pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/domain/workflow"
+_STAMPING_SPEC = "project/spec/feature/workflow/state-stamping"
 _FEATURE = "feature"
 _CHANGE = "change"
 _TASK = "task"
@@ -1171,7 +1172,7 @@ async def test_session_end_clears_manually_started(tmp_path: Path) -> None:
     assert state.get("manually_started") in (False, None)
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_STAMPING_SPEC, "UC-WSS10")
 async def test_notify_runner_of_gate_approval_messages_linked_session(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1204,7 +1205,7 @@ async def test_notify_runner_of_gate_approval_messages_linked_session(
     assert calls == [(_LIVE_SESSION, _WORK_SLUG)]
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_STAMPING_SPEC, "UC-WSS10")
 async def test_notify_runner_of_gate_approval_noop_without_active_runner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1250,7 +1251,7 @@ class _RecordingCommandService:
         self.commands.append(cmd)
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_STAMPING_SPEC, "UC-WSS10")
 async def test_notify_gate_approved_injects_into_open_session(
     monkeypatch: pytest.MonkeyPatch, snapshot: object
 ) -> None:
@@ -1274,7 +1275,7 @@ async def test_notify_gate_approved_injects_into_open_session(
     assert cmd.text == snapshot
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_STAMPING_SPEC, "UC-WSS10")
 async def test_notify_gate_approved_skips_closed_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """A closed/closing target session is never messaged."""
     svc = _RecordingCommandService()
@@ -1291,7 +1292,7 @@ async def test_notify_gate_approved_skips_closed_session(monkeypatch: pytest.Mon
     assert svc.commands == []
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_STAMPING_SPEC, "UC-WSS10")
 async def test_notify_gate_approved_is_best_effort_on_delivery_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """A delivery failure after the approval stamp returns False, never raising into the caller."""
     svc = _RecordingCommandService(fail=True)
