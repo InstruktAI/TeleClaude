@@ -34,6 +34,7 @@ COMPUTER_TRUSTED_DIRS = "computer.trusted_dirs"
 COMPUTER_TMUX_BINARY = "computer.tmux_binary"
 COMPUTER_NAME_KEY = "computer.name"
 COMPUTER_ROLE_KEY = "computer.role"
+COMPUTER_HOST = "computer.host"
 TELEGRAM_QOS_PREFIX = "telegram.qos"
 WHATSAPP_QOS_PREFIX = "whatsapp.qos"
 WHATSAPP_API_VERSION = "whatsapp.api_version"
@@ -314,6 +315,8 @@ def test_tui_field_exclusions():
     # Assert non-excluded fields are present
     assert COMPUTER_NAME_KEY in field_keys
     assert COMPUTER_ROLE_KEY in field_keys
+    # host is loader-honored (override of the auto-detected LAN IP), so it stays editable.
+    assert COMPUTER_HOST in field_keys
 
     # Test DiscordConfig exclusions
     discord = DiscordConfig(enabled=True, token="secret", guild_id=1234)
