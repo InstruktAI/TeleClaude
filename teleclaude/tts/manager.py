@@ -190,15 +190,16 @@ class TTSManager:
             logger.debug(f"Event {normalized_event_name} disabled or not configured")
             return False
 
-        # Use custom text, or built-in session_start messages, or config messages, or fallback message
+        # Explicit text wins; then the configured pool; then the built-in
+        # session_start pool as a default. Other events stay silent when unset.
         if text:
             text_to_speak = text
-        elif normalized_event_name == "session_start":
-            text_to_speak = random.choice(SESSION_START_MESSAGES) if SESSION_START_MESSAGES else "Session started."
         elif event_cfg.messages:
             text_to_speak = random.choice(event_cfg.messages)
+        elif normalized_event_name == "session_start" and SESSION_START_MESSAGES:
+            text_to_speak = random.choice(SESSION_START_MESSAGES)
         else:
-            text_to_speak = event_cfg.message or "Session started."
+            text_to_speak = ""
 
         if not text_to_speak:
             logger.debug(f"No message for event {event_name}")

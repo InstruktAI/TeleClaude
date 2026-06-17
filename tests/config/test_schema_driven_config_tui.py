@@ -70,12 +70,12 @@ BOTH = "both"
 BOB_DISCORD_USER_ID = "123456789012345678"
 
 TTS_SESSION_START_ENABLED = "tts.events.session_start.enabled"
-TTS_SESSION_START_MESSAGE = "tts.events.session_start.message"
 TTS_SESSION_START_MESSAGES = "tts.events.session_start.messages"
-TTS_AGENT_STOP_MESSAGE = "tts.events.agent_stop.message"
+TTS_AGENT_STOP_MESSAGES = "tts.events.agent_stop.messages"
 TTS_OPENAI_ENABLED = "tts.services.openai.enabled"
 TTS_OPENAI_VOICE_NAME = "tts.services.openai.voices.0.name"
 TTS_SESSION_START_GREETINGS = ["Hello", "Hey there"]
+TTS_AGENT_STOP_LEGACY = "Done"
 TTS_STT_SUBTAB_INDEX = _SUBTABS.index(Subtab.TTS_STT)
 STT_OPENAI_ENABLED = "stt.services.openai.enabled"
 TTS_VOXCPM_ENABLED = "tts.services.voxcpm.enabled"
@@ -145,7 +145,7 @@ def test_nested_dict_structures_render_recursively_to_leaves():
         "enabled": True,
         "events": {
             "session_start": {"enabled": True, "messages": TTS_SESSION_START_GREETINGS},
-            "agent_stop": {"enabled": False, "message": "Done"},
+            "agent_stop": {"enabled": False, "message": TTS_AGENT_STOP_LEGACY},  # legacy single message
         },
         "services": {
             "openai": {"enabled": True, "model": "tts-1", "voices": [{"name": "alloy", "voice_id": "v-1"}]},
@@ -160,7 +160,7 @@ def test_nested_dict_structures_render_recursively_to_leaves():
     # Every nested leaf is reachable by its full dotted path.
     assert TTS_SESSION_START_ENABLED in keys_to_values
     assert TTS_SESSION_START_MESSAGES in keys_to_values
-    assert TTS_AGENT_STOP_MESSAGE in keys_to_values
+    assert TTS_AGENT_STOP_MESSAGES in keys_to_values
     assert TTS_OPENAI_ENABLED in keys_to_values
 
     # A list of structs expands to indexed leaves, never a single struct-list blob.
@@ -168,8 +168,10 @@ def test_nested_dict_structures_render_recursively_to_leaves():
     assert all(not isinstance(value, dict) for value in keys_to_values.values())
     assert all(not _is_struct_list(value) for value in keys_to_values.values())
 
-    # The loader round-trips the event messages list through to its leaf.
+    # The loader round-trips the event messages list, and folds a legacy single
+    # `message` into the same list so nothing is lost.
     assert keys_to_values[TTS_SESSION_START_MESSAGES] == TTS_SESSION_START_GREETINGS
+    assert keys_to_values[TTS_AGENT_STOP_MESSAGES] == [TTS_AGENT_STOP_LEGACY]
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-11")

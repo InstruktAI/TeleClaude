@@ -271,16 +271,16 @@ def _parse_tts_events(raw_events: object) -> dict[str, TTSEventConfig]:
         if isinstance(event_data, dict):
             events[event_name] = TTSEventConfig(
                 enabled=_as_bool(event_data.get("enabled", False)),
-                message=str(event_data.get("message", "")) if event_data.get("message") else None,
-                messages=_parse_tts_event_messages(event_data.get("messages")),
+                messages=_parse_tts_event_messages(event_data.get("messages"), event_data.get("message")),
             )
     return events
 
 
-def _parse_tts_event_messages(raw_messages: object) -> list[str] | None:
-    if not isinstance(raw_messages, list):
-        return None
-    messages = [str(item) for item in raw_messages if item]
+def _parse_tts_event_messages(raw_messages: object, legacy_message: object = None) -> list[str] | None:
+    """Parse the messages pool, folding a legacy single ``message`` into the list."""
+    messages = [str(item) for item in raw_messages if item] if isinstance(raw_messages, list) else []
+    if not messages and legacy_message:
+        messages = [str(legacy_message)]
     return messages or None
 
 

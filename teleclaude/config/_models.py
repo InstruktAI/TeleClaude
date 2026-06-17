@@ -214,12 +214,12 @@ class TTSServiceConfig:
 class TTSEventConfig:
     """Configuration for a TTS event.
 
-    Supports either a single message or a list of messages (picks randomly).
+    A non-empty ``messages`` list is spoken with one entry chosen at random; an
+    empty list falls back to the built-in pool (session_start) or stays silent.
     """
 
     enabled: bool
-    message: str | None = None
-    messages: list[str] | None = None  # For random selection (e.g., startup greetings)
+    messages: list[str] | None = None  # Spoken text pool; one is picked at random
 
 
 @dataclass
