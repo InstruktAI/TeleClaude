@@ -530,14 +530,14 @@ def _render_progressive_index(
 
     Instead of inlining full snippet content, reads each referenced file's
     frontmatter to extract snippet ID and description, then renders a scannable
-    bullet list that agents can use with ``get_context``.
+    bullet list that agents can use with ```telec docs get <id>```.
     """
     entries, _ = _collect_progressive_index_entries(ref_file, project_root=project_root, warn_only=warn_only)
 
     if not entries:
         return ""
 
-    header = "## Baseline index — load via get_context when relevant\n\n"
+    header = "## Baseline index — load via `telec docs get <id>` when relevant\n\n"
     return header + "\n".join(entries)
 
 

@@ -4,7 +4,7 @@
 # ---
 # name: test_progressive_block_reads_metadata_from_index
   '''
-  ## Baseline index — load via get_context when relevant
+  ## Baseline index — load via `telec docs get <id>` when relevant
   
   - `software-development/concept/builder` — Builder role.
   
