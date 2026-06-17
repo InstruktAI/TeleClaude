@@ -16,6 +16,8 @@ from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema
 from teleclaude.config import (
     ComputerConfig,
     DiscordConfig,
+    TelegramConfig,
+    WhatsAppConfig,
     parse_tts_config,
     reload_config,
 )
@@ -32,6 +34,10 @@ COMPUTER_TRUSTED_DIRS = "computer.trusted_dirs"
 COMPUTER_TMUX_BINARY = "computer.tmux_binary"
 COMPUTER_NAME_KEY = "computer.name"
 COMPUTER_ROLE_KEY = "computer.role"
+COMPUTER_HOST = "computer.host"
+TELEGRAM_QOS_PREFIX = "telegram.qos"
+WHATSAPP_QOS_PREFIX = "whatsapp.qos"
+WHATSAPP_API_VERSION = "whatsapp.api_version"
 CHIPTUNES_ENABLED = "chiptunes.enabled"
 CHIPTUNES_MUSIC_DIR = "chiptunes.music_dir"
 CHIPTUNES_SECTION = "Chiptunes"
@@ -311,12 +317,23 @@ def test_tui_field_exclusions():
     assert COMPUTER_ROLE_KEY in field_keys
 
     # Test DiscordConfig exclusions
+    # Runtime-derived host is not operator-editable.
+    assert COMPUTER_HOST not in field_keys
+
     discord = DiscordConfig(enabled=True, token="secret", guild_id=1234)
     fields_discord = reflect_schema(discord, prefix="discord")
     discord_keys = {f.key for f in fields_discord}
     assert DISCORD_ANNOUNCEMENTS_CHANNEL_ID not in discord_keys
     assert DISCORD_GENERAL_CHANNEL_ID not in discord_keys
     assert DISCORD_CATEGORIES not in discord_keys
+
+    # QoS blocks and the pinned WhatsApp API version are not read from config, so
+    # they are not exposed for editing (consistent with Discord's qos exclusion).
+    telegram_keys = {f.key for f in reflect_schema(TelegramConfig(enabled=True), prefix="telegram")}
+    assert not any(key.startswith(TELEGRAM_QOS_PREFIX) for key in telegram_keys)
+    whatsapp_keys = {f.key for f in reflect_schema(WhatsAppConfig(enabled=True), prefix="whatsapp")}
+    assert not any(key.startswith(WHATSAPP_QOS_PREFIX) for key in whatsapp_keys)
+    assert WHATSAPP_API_VERSION not in whatsapp_keys
 
     # Test PersonConfig exclusions
     person = PersonConfig()

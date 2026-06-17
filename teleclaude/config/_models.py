@@ -46,7 +46,9 @@ class ComputerConfig:
     help_desk_dir: str = field(metadata={"exclude_from_tui": True})
     is_master: bool
     trusted_dirs: list[TrustedDir] = field(metadata={"exclude_from_tui": True})
-    host: str | None = None  # Optional hostname/IP for SSH remote execution
+    host: str | None = field(
+        default=None, metadata={"exclude_from_tui": True}
+    )  # Detected LAN IP at runtime; not operator-editable.
     tmux_binary: str = field(default="tmux", metadata={"exclude_from_tui": True})
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:
@@ -132,7 +134,7 @@ class TelegramConfig:
     """Telegram adapter configuration."""
 
     enabled: bool = False
-    qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
+    qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig, metadata={"exclude_from_tui": True})
 
 
 @dataclass
@@ -175,10 +177,10 @@ class WhatsAppConfig:
     access_token: str | None = None
     webhook_secret: str | None = None
     verify_token: str | None = None
-    api_version: str = "v21.0"
+    api_version: str = field(default="v21.0", metadata={"exclude_from_tui": True})
     template_name: str | None = None
     template_language: str = "en_US"
-    qos: WhatsAppQoSConfig = field(default_factory=WhatsAppQoSConfig)
+    qos: WhatsAppQoSConfig = field(default_factory=WhatsAppQoSConfig, metadata={"exclude_from_tui": True})
 
 
 @dataclass
