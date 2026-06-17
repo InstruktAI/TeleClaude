@@ -29,7 +29,7 @@ Task execution is a separate non-SDLC lane. The lifecycle runner starts `/next-r
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
-Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. When any tracked artifact's collapsed drift status is `pending` or `substantive`, work does NOT mutate work-state, does NOT create or touch a worktree on this call, and does NOT dispatch any worker; it returns an orchestrator script telling the caller to run `telec todo prepare {slug}` to resolve drift. The prepare flow's existing BLOCKED branch routes the drift analyzer; when prepare reaches `prepared` again, its terminal's lineage-conditioned resume reminder has the bounced work orchestrator resume `telec todo work {slug}` (a fresh prepare that never bounced self-ends instead). The continuation across the bounce is the existing script-driven contract — no new mechanism, no human gate on cosmetic verdicts, and substantive verdicts cascade through the existing re-derivation chain back into a prepared Todo.
+Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. When any tracked artifact's collapsed drift status is `pending` or `substantive`, work does NOT mutate work-state, does NOT create or touch a worktree on this call, and does NOT dispatch any worker; it returns an orchestrator script telling the caller to run `telec todo prepare {slug}` to resolve drift. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. The prepare flow's existing BLOCKED branch routes the drift analyzer; when prepare reaches `prepared` again, its terminal's lineage-conditioned resume reminder has the bounced work orchestrator resume `telec todo work {slug}` (a fresh prepare that never bounced self-ends instead). The continuation across the bounce is the existing script-driven contract — no new mechanism, no human gate on cosmetic verdicts, and substantive verdicts cascade through the existing re-derivation chain back into a prepared Todo.
 
 ## Canonical fields
 
@@ -49,6 +49,16 @@ And advances lifecycle_phase from prepared to build_started in a machine-owned t
 And on the same call dispatches the next-build worker session
 ```
 
+```gherkin
+Given a Todo has a live next-build session for its worktree
+And the work state machine merges origin/main into that worktree before dispatch/review
+When the merge fails with conflicts
+Then the machine returns a recovery script that sends the merge failure to the live builder
+And the recovery message says origin/main is the leading baseline
+And the recovery message asks the builder to reapply the prepared todo intent on top, resolve conflicts, rerun gates, commit, and restamp build-complete
+And the machine does not leave the orchestrator to treat the recoverable merge failure as a passive human blocker
+```
+
 ```
 Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
 When the orchestrator calls "telec todo work my-feature"
@@ -61,6 +71,16 @@ And the prepare BLOCKED branch dispatches the next-drift-analyze worker
 And on cosmetic verdict the prepare machine reaches PREPARED again and its terminal's lineage-conditioned reminder resumes the bounced work orchestrator at "telec todo work my-feature"
 And on substantive verdict the prepare machine clears the affected review verdicts and re-derives through draft → review → PREPARED, then the same lineage-conditioned reminder resumes work
 And work re-runs drift derivation, observes fresh / valid-anchor status, and proceeds with worktree creation and dispatch
+```
+
+```gherkin
+Given a bug-kind Todo at lifecycle_phase=prepared with an approved implementation-plan
+And the bug has input and diagnosis artifacts
+When the orchestrator calls "telec todo work my-bug"
+Then work-entry drift evaluates implementation-plan
+And work-entry drift does not evaluate input as a tracked artifact
+And work-entry drift does not evaluate diagnosis as a tracked artifact
+And the machine never returns WORK_ENTRY_DRIFT for drift.input or drift.diagnosis
 ```
 
 ```

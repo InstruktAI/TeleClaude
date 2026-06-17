@@ -12,11 +12,14 @@ visibility: 'public'
 ## What it is
 
 Drift detection is the workflow capability that decides whether a Todo's
-prepared artifacts (`prd`, `architecture` index, `implementation-plan`) and
-the doc snippets they own or reference still reflect current truth. The
-prepare state machine refuses to advance a Todo to `prepared` while drift is
-unresolved, so that downstream work always derives from a fresh PRD,
-fresh architecture, a fresh plan, and a fresh design surface.
+re-derivable prepared artifacts (`prd`, `architecture` index,
+`implementation-plan`) and the doc snippets they own or reference still reflect
+current truth. The prepare state machine refuses to advance a Todo to
+`prepared` while drift is unresolved, so that downstream work always derives
+from a fresh PRD, fresh architecture, a fresh plan, and a fresh design surface.
+The bug `input` artifact is frozen human intent, not a drift surface. The bug
+`diagnosis` artifact is root-cause evidence consumed by the plan, not a
+work-entry drift candidate.
 
 Drift is not a single class — it is a taxonomy. Truth lives in several
 places (code, sibling artifacts, doc snippets, the todo-list dependency
@@ -143,22 +146,28 @@ slug does not trigger drift).
 
 | Artifact               | code | upstream-artifact                  | owned-snippet | upstream-snippet | dependency-graph | age |
 | ---------------------- | :--: | ---------------------------------- | :-----------: | :--------------: | :--------------: | :-: |
-| `input`                |  ✓   | _(none)_                           |   _(none)_    |        ✓         |        ✓         |  ✓  |
 | `prd`                  |  ✓   | `input`                            |       ✓       |        ✓         |        ✓         |  ✓  |
 | `architecture` (index) |  ✓   | `prd`                              |       ✓       |        ✓         |        ✓         |  ✓  |
 | `implementation-plan`  |  ✓   | `architecture`, `prd`, `diagnosis` |   _(none)_    |        ✓         |        ✓         |  ✓  |
-| `diagnosis`            |  ✓   | `input`                            |       ✓       |        ✓         |        ✓         |  ✓  |
 
-The `code` column is contract-scoped. Matrix membership stays unchanged so the
-same class is evaluated for every tracked artifact, but today only the
-`implementation-plan` declares a `referenced-paths` contract block. All other
-artifacts have an empty code surface unless a future contract explicitly gives
-them one, and empty-surface code drift derives fresh.
+The `code` column is contract-scoped. Today only the `implementation-plan`
+declares a `referenced-paths` contract block. All other tracked artifacts have
+an empty code surface unless a future contract explicitly gives them one, and
+empty-surface code drift derives fresh.
 
 `owned-snippet` applies to artifacts whose authoring phase writes doc
 snippets directly (intake → feature spec; architecture → domain/design
 snippets). `implementation-plan` does not author durable snippets, so it
 has no owned-snippet class.
+
+Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is
+the frozen source of human intent; changing intent happens through PRD
+refinement, not by rewriting input and asking drift to classify it. `diagnosis`
+is re-grounded only when the diagnose phase is intentionally re-entered; plan
+freshness observes diagnosis through the implementation-plan's
+`upstream_digests[diagnosis]` evidence. A direct `input` or `diagnosis`
+drift verdict is invalid because no work-entry re-derivation phase owns that
+verdict.
 
 ### Stamp scoping — the evidence anchor
 
@@ -190,13 +199,16 @@ new phase:
 
 - On every `telec todo prepare {slug}` call, after the basic phase
   derivation, the machine computes drift status for every present tracked
-  artifact across every applicable class.
+  artifact in the coverage matrix across every applicable class.
 - If any artifact's overall drift status is `pending`, the machine routes
   to the BLOCKED branch and emits a `/next-drift-analyze` dispatch
   instruction, listing the artifacts and classes pending review.
-- If any artifact's drift status is `substantive`, the machine clears the
-  artifact's review verdict (and every downstream artifact's review
+- If any re-derivable artifact's drift status is `substantive`, the machine
+  clears the artifact's review verdict (and every downstream artifact's review
   verdict) and routes back to the artifact's drafting phase.
+- If drift evidence names an artifact outside the coverage matrix or a class
+  whose owning re-derivation path is undefined, the machine halts as an anomaly
+  instead of accepting a `substantive` verdict with nowhere coherent to route.
 - If every artifact's drift status is `fresh` or `cosmetic`, the machine
   derives `PREPARED` (subject to the other gates) and the chain proceeds.
 
@@ -265,6 +277,11 @@ forces the bounce, so first-time work entry on a PREPARED todo whose
 artifacts pre-date the extended provenance schema reliably routes through
 the analyzer to establish fresh evidence anchors.
 
+For bug-kind Todos, the work-entry drift surface is the approved
+`implementation-plan`. Bug input is frozen, and diagnosis is consumed through
+the plan's upstream diagnosis digest. Work entry must not bounce directly on
+`input` or `diagnosis` drift.
+
 Continuation across the bounce is the existing orchestrator-script
 contract. The prepare BLOCKED branch's drift-analyze dispatch, the
 analyzer's stamp, the next prepare call's PREPARED derivation, and the
@@ -277,7 +294,13 @@ unresolvable drift, exposed as a hard blocker the human can inspect).
 
 ### Re-derivation contract
 
-When the drift analyzer stamps `substantive` for artifact X on any class:
+When the drift analyzer stamps `substantive` for artifact X on any class, X
+must be a re-derivable artifact in the coverage matrix and the class must have
+an owning drafting route. A `substantive` stamp for any other artifact or class
+combination is an anomaly: the lifecycle halts for operator inspection rather
+than fabricating a route.
+
+For a valid substantive stamp:
 
 - X's review verdict is cleared (architecture-review or plan-review, as
   applicable).
@@ -286,13 +309,11 @@ When the drift analyzer stamps `substantive` for artifact X on any class:
   drift invalidates plan).
 - The PRD-approved gate is **not** re-opened by drift on the PRD's
   downstream evidence (code/snippets/deps). It IS re-opened when the PRD
-  artifact itself is rewritten (its live digest diverges from
-  `approved_digest`) or when a substantive **upstream-artifact** drift —
-  the human re-engaging with intent-level `input` refinement — is stamped
-  for the PRD (see `prepare-flow#refinement`). The upstream-drift re-open
-  supersedes a legacy approval that bound no `approved_digest` and one that
-  recorded no `approved_at`; a re-approval whose `approved_at` is at or
-  after the drift stamp resolves it.
+  artifact itself is rewritten through intent-level refinement (its live
+  digest diverges from `approved_digest`; see `prepare-flow#refinement`).
+  This supersedes a legacy approval that bound no `approved_digest` and one
+  that recorded no `approved_at`; a re-approval whose `approved_at` is at or
+  after the PRD rewrite resolves it.
 - The drift-reviewed stamps for X are cleared (so re-derived X earns a
   fresh evidence anchor on its next analyze pass).
 - Routing returns to X's **drafting** phase, not its review phase, even
@@ -398,24 +419,26 @@ Scenario: prepared bug with matching diagnosis upstream stays terminal
   And no drift-analyzer worker is re-dispatched for implementation-plan
 ```
 
-#### UC-WDD4: Diagnosis upstream derivation detects input rewrites
+#### UC-WDD4: Bug input is frozen and not drift-reviewed
 
 ```gherkin
-Scenario: diagnosis upstream derivation detects input rewrites
-  Given a bug Todo whose diagnosis recorded upstream_digests[input] = "<old-input-digest>"
-  When the input artifact is rewritten and its current digest becomes "<new-input-digest>"
-  Then drift derivation reports drift.diagnosis = pending
-  And the pending class is upstream-artifact
+Scenario: bug input is frozen and not drift-reviewed
+  Given a bug Todo with an input artifact and an approved implementation-plan
+  When drift derivation runs during prepare or work entry
+  Then drift derivation does not evaluate input as a tracked artifact
+  And it never reports drift.input
+  And it never dispatches a drift analyzer for input
 ```
 
-#### UC-WDD5: Upstream topology is shared by provenance, stamps, and drift derivation
+#### UC-WDD5: Diagnosis is plan evidence, not a drift candidate
 
 ```gherkin
-Scenario: upstream topology is shared by provenance, stamps, and drift derivation
+Scenario: diagnosis is plan evidence, not a drift candidate
   Given a bug Todo with input, diagnosis, and implementation-plan artifacts
   When provenance is recorded, a drift-reviewed stamp is anchored, and upstream-artifact drift is derived
   Then all three surfaces evaluate implementation-plan against prd, architecture, and diagnosis
-  And all three surfaces evaluate diagnosis against input
+  And none of the three surfaces evaluates diagnosis as a tracked artifact
+  And drift derivation never reports drift.diagnosis
 ```
 
 #### UC-WDD6: Work entry accepts a prepared bug when diagnosis upstream evidence matches
@@ -630,8 +653,8 @@ Scenario: re-writing an artifact clears its drift stamps
   configure an age window for an artifact kind pay no age cost on their
   prepare/work cycles. When a project opts in, the recommended starting
   values are `30 days` for `implementation-plan` and `architecture`,
-  `60 days` for `prd`, `90 days` for `input`; the project owner chooses
-  the actual values. `0` or unset is the disabled state. This avoids
+  `60 days` for `prd`; the project owner chooses the actual values.
+  `0` or unset is the disabled state. This avoids
   surprising all in-flight todos with an age-pending sweep on first
   prepare/work after this delivery merges; teams enable the class
   deliberately when they want freshness pressure.
@@ -650,6 +673,11 @@ Scenario: re-writing an artifact clears its drift stamps
   When substantive drift forces re-derivation, the rewrite clears the
   drift stamps. The next analyze pass establishes a fresh anchor against
   current evidence.
+- **Only re-derivable artifacts are drift-reviewed.** `input` and
+  `diagnosis` are not drift-reviewed artifacts. Input changes through PRD
+  refinement, and diagnosis is consumed as plan upstream evidence. If either
+  appears as a direct drift target, the lifecycle treats it as an anomaly
+  rather than a substantive verdict.
 - **Snippet digests exclude `delivered_by` frontmatter churn.** When a
   sibling delivery flips a snippet's `delivered_by` (`target` → `actual`
   bookkeeping), the body digest is unchanged and no drift fires. This
