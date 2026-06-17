@@ -19,7 +19,13 @@ from teleclaude.core.next_machine.git_ops import (
     ArtifactDriftStatus,
     compose_agent_guidance,
 )
-from teleclaude.core.next_machine.lifecycle import collapse_drift, derive_lifecycle_drift, prepare_blockers
+from teleclaude.core.next_machine.lifecycle import (
+    _DRIFT_MATRIX_ARTIFACTS,
+    _DRIFT_REROUTABLE_CLASSES_BY_ARTIFACT,
+    collapse_drift,
+    derive_lifecycle_drift,
+    prepare_blockers,
+)
 from teleclaude.core.next_machine.output_formatting import (
     HEARTBEAT_RESET_INSTRUCTION,
     ToolCallRequest,
@@ -70,6 +76,36 @@ def _drift_reprepare_instruction(slug: str, drift: dict[str, ArtifactDriftStatus
     instruction = (
         "Substantive drift has already invalidated the affected prepared artifact path. "
         f"Call `telec todo prepare {slug}` to re-derive the next prepare phase."
+    )
+    return False, format_blocker_resolution(slug, instruction, blockers=blockers, context=_drift_context(drift))
+
+
+def _drift_anomaly_blockers(
+    state: dict[str, StateValue],
+    drift_result: dict[str, dict[str, ArtifactDriftStatus]],
+) -> list[str]:
+    model = StateWriter(state).state
+    blockers = [
+        f"substantive drift_reviewed stamp targets non-matrix artifact: {artifact}"
+        for artifact, stamp in sorted(model.approvals.drift_reviewed.items())
+        if stamp.verdict == DRIFT_SUBSTANTIVE and artifact not in _DRIFT_MATRIX_ARTIFACTS
+    ]
+    for artifact, class_statuses in sorted(drift_result.items()):
+        reroutable_classes = _DRIFT_REROUTABLE_CLASSES_BY_ARTIFACT.get(artifact, frozenset())
+        for class_name, status in sorted(class_statuses.items()):
+            if status == DRIFT_SUBSTANTIVE and class_name not in reroutable_classes:
+                blockers.append(f"substantive drift route is undefined for {artifact}/{class_name}")
+    return blockers
+
+
+def _drift_anomaly_halt_instruction(
+    slug: str,
+    blockers: list[str],
+    drift: dict[str, ArtifactDriftStatus],
+) -> tuple[bool, str]:
+    instruction = (
+        "Drift review anomaly requires operator inspection. "
+        "Inspect and correct the invalid substantive drift target before advancing this todo."
     )
     return False, format_blocker_resolution(slug, instruction, blockers=blockers, context=_drift_context(drift))
 
@@ -297,6 +333,9 @@ async def _prepare_dispatch(
         project_root = _derive_project_root(cwd, slug)
         drift_result = await _derive_and_commit_drift(todos_db=todos_db, slug=slug, cwd=project_root, state=state)
         drift = collapse_drift(drift_result)
+        drift_anomaly_blockers = _drift_anomaly_blockers(state, drift_result)
+        if drift_anomaly_blockers:
+            return _drift_anomaly_halt_instruction(slug, drift_anomaly_blockers, drift)
         if _has_status(drift, DRIFT_SUBSTANTIVE):
             return _drift_reprepare_instruction(slug, drift)
         if _has_status(drift, DRIFT_PENDING):
@@ -319,6 +358,9 @@ async def _prepare_dispatch(
         drift_result = await _derive_and_commit_drift(todos_db=todos_db, slug=slug, cwd=project_root, state=state)
         drift = collapse_drift(drift_result)
         blockers = _blockers_from_state(state, cwd=project_root)
+        drift_anomaly_blockers = _drift_anomaly_blockers(state, drift_result)
+        if drift_anomaly_blockers:
+            return _drift_anomaly_halt_instruction(slug, drift_anomaly_blockers, drift)
         if _has_status(drift, DRIFT_SUBSTANTIVE):
             return _drift_reprepare_instruction(slug, drift)
         if _has_status(drift, DRIFT_PENDING):

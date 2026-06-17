@@ -12,7 +12,7 @@ from teleclaude.constants import (
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
 )
-from teleclaude.core.next_machine import git_ops, provenance, stamps
+from teleclaude.core.next_machine import git_ops
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_COSMETIC,
     DRIFT_FRESH,
@@ -201,43 +201,48 @@ def test_diagnosis_rewrite_drifts_bug_implementation_plan() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WDD4")
-def test_diagnosis_upstream_drift_detects_input_rewrites() -> None:
+async def test_input_and_diagnosis_are_not_lifecycle_drift_targets() -> None:
     model = _prepared_bug_model()
     model.artifacts.diagnosis.upstream_digests = {STATE_KEY_INPUT: _INPUT_DIGEST}
-
-    assert derive_upstream_artifact_drift(model, STATE_KEY_DIAGNOSIS) == DRIFT_FRESH
-
     model.artifacts.input.digest = "input-v2"
+    model.artifacts.diagnosis.digest = _REWRITTEN_DIGEST
 
-    assert derive_upstream_artifact_drift(model, STATE_KEY_DIAGNOSIS) == DRIFT_PENDING
+    drift = await derive_lifecycle_drift(
+        "my-bug",
+        model,
+        repo_root="",
+        todos_db=_DependencyReader(),
+        snippet_digest_fn=_empty_snippet_digest,
+        writer=StateWriter(model.model_dump(exclude_none=True)),
+    )
+
+    assert STATE_KEY_INPUT not in drift
+    assert STATE_KEY_DIAGNOSIS not in drift
+    assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] == DRIFT_PENDING
 
 
 @pytest.mark.spec(_SPEC, "UC-WDD5")
-def test_artifact_upstream_topology_is_shared_by_all_consumers() -> None:
+async def test_lifecycle_drift_tracks_plan_diagnosis_evidence_without_tracking_diagnosis() -> None:
     model = _prepared_bug_model()
-    writer = StateWriter(model.model_dump(exclude_none=True))
 
     assert not hasattr(git_ops, "_ARTIFACT_UPSTREAMS")
-    assert not hasattr(provenance, "_ARTIFACT_UPSTREAMS")
-    assert not hasattr(stamps, "_ARTIFACT_UPSTREAMS")
-
-    assert git_ops.ARTIFACT_UPSTREAMS is provenance.ARTIFACT_UPSTREAMS
-    assert git_ops.ARTIFACT_UPSTREAMS is stamps.ARTIFACT_UPSTREAMS
-
-    for current_upstreams in (git_ops.ARTIFACT_UPSTREAMS, provenance.ARTIFACT_UPSTREAMS, stamps.ARTIFACT_UPSTREAMS):
-        assert current_upstreams[STATE_KEY_IMPLEMENTATION_PLAN] == (
-            STATE_KEY_PRD,
-            STATE_KEY_ARCHITECTURE,
-            STATE_KEY_DIAGNOSIS,
-        )
-        assert current_upstreams[STATE_KEY_DIAGNOSIS] == (STATE_KEY_INPUT,)
-
-    assert provenance._current_upstream_digests(writer, STATE_KEY_IMPLEMENTATION_PLAN) == {
-        STATE_KEY_PRD: "",
-        STATE_KEY_ARCHITECTURE: "",
-        STATE_KEY_DIAGNOSIS: _DIAGNOSIS_DIGEST,
-    }
-    assert stamps._current_upstream_digests(writer, STATE_KEY_DIAGNOSIS) == {
-        STATE_KEY_INPUT: _INPUT_DIGEST,
-    }
+    assert git_ops.ARTIFACT_UPSTREAMS[STATE_KEY_IMPLEMENTATION_PLAN] == (
+        STATE_KEY_PRD,
+        STATE_KEY_ARCHITECTURE,
+        STATE_KEY_DIAGNOSIS,
+    )
+    assert git_ops.ARTIFACT_UPSTREAMS[STATE_KEY_DIAGNOSIS] == (STATE_KEY_INPUT,)
     assert derive_upstream_artifact_drift(model, ARTIFACT_IMPLEMENTATION_PLAN) == DRIFT_FRESH
+
+    drift = await derive_lifecycle_drift(
+        "my-bug",
+        model,
+        repo_root="",
+        todos_db=_DependencyReader(),
+        snippet_digest_fn=_empty_snippet_digest,
+        writer=StateWriter(model.model_dump(exclude_none=True)),
+    )
+
+    assert STATE_KEY_INPUT not in drift
+    assert STATE_KEY_DIAGNOSIS not in drift
+    assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] != DRIFT_PENDING

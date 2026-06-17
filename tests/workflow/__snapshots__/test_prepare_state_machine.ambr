@@ -2,6 +2,52 @@
 # name: test_bug_work_mandate_names_plan_and_diagnosis
   'Bug artifact contract for my-bug: the reviewed implementation-plan is the execution spine; the diagnosis is the verified root-cause context the plan grounds on; input is the reported symptom. Write the reproduction test the diagnosis prescribes and drive it red→green.'
 # ---
+# name: test_out_of_matrix_substantive_drift_stamps_halt_for_operator_inspection
+  dict({
+    'blocked_diagnosis': '''
+      IMPORTANT: This output is an execution script. Follow it verbatim.
+      
+      SLUG: anomalous-blocked-diagnosis
+      
+      DRIFT STATUS:
+      - implementation-plan: fresh
+      
+      BLOCKERS:
+      - substantive drift_reviewed stamp targets non-matrix artifact: diagnosis
+      
+      NEXT ACTION:
+      Drift review anomaly requires operator inspection. Inspect and correct the invalid substantive drift target before advancing this todo.
+    ''',
+    'prepared_input': '''
+      IMPORTANT: This output is an execution script. Follow it verbatim.
+      
+      SLUG: anomalous-prepared-input
+      
+      DRIFT STATUS:
+      - implementation-plan: fresh
+      
+      BLOCKERS:
+      - substantive drift_reviewed stamp targets non-matrix artifact: input
+      
+      NEXT ACTION:
+      Drift review anomaly requires operator inspection. Inspect and correct the invalid substantive drift target before advancing this todo.
+    ''',
+    'prepared_unknown': '''
+      IMPORTANT: This output is an execution script. Follow it verbatim.
+      
+      SLUG: anomalous-prepared-operator-note
+      
+      DRIFT STATUS:
+      - implementation-plan: fresh
+      
+      BLOCKERS:
+      - substantive drift_reviewed stamp targets non-matrix artifact: operator-note
+      
+      NEXT ACTION:
+      Drift review anomaly requires operator inspection. Inspect and correct the invalid substantive drift target before advancing this todo.
+    ''',
+  })
+# ---
 # name: test_prepare_selector_skips_kindless_todos_without_lifecycle_phase
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.

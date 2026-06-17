@@ -276,6 +276,36 @@ def _prepared_bug_model() -> TodoState:
     return model
 
 
+async def _prepare_dispatch_for_substantive_drift_stamp(
+    tmp_path: Path,
+    *,
+    phase: PreparePhase,
+    artifact: str,
+) -> str:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    slug = f"anomalous-{phase.value}-{artifact.replace('_', '-')}"
+    await todos_db.add_to_roadmap(slug)
+    model = _prepared_bug_model()
+    model.lifecycle_phase = phase.value
+    model.approvals.drift_reviewed[artifact] = DriftReviewedStamp(
+        verdict="substantive",
+        reason="mis-targeted substantive drift",
+    )
+    state = model.model_dump(exclude_none=True)
+    await todos_db.write_state(slug, state)
+
+    _, output = await _prepare_dispatch(
+        db=cast(Db, _CapturingDb([])),
+        todos_db=todos_db,
+        slug=slug,
+        cwd=str(project_root),
+        phase=phase,
+        state=state,
+    )
+    return output
+
+
 def test_bug_kind_routes_through_diagnose_not_fast_track() -> None:
     assert KIND_BUG in BUG_DIAGNOSE_KINDS
     assert KIND_BUG not in FAST_TRACK_PREPARED_KINDS
@@ -562,6 +592,43 @@ async def test_prepared_bug_with_matching_diagnosis_upstream_does_not_redispatch
     )
 
     assert output == snapshot
+
+
+@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD4")
+async def test_out_of_matrix_substantive_drift_stamps_halt_for_operator_inspection(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    outputs = {
+        "prepared_input": await _prepare_dispatch_for_substantive_drift_stamp(
+            tmp_path,
+            phase=PreparePhase.PREPARED,
+            artifact=STATE_KEY_INPUT,
+        ),
+        "blocked_diagnosis": await _prepare_dispatch_for_substantive_drift_stamp(
+            tmp_path,
+            phase=PreparePhase.BLOCKED,
+            artifact=STATE_KEY_DIAGNOSIS,
+        ),
+        "prepared_unknown": await _prepare_dispatch_for_substantive_drift_stamp(
+            tmp_path,
+            phase=PreparePhase.PREPARED,
+            artifact="operator-note",
+        ),
+    }
+
+    assert outputs == snapshot
+
+
+@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD4")
+async def test_out_of_matrix_substantive_drift_halt_does_not_recall_prepare(tmp_path: Path) -> None:
+    output = await _prepare_dispatch_for_substantive_drift_stamp(
+        tmp_path,
+        phase=PreparePhase.PREPARED,
+        artifact=STATE_KEY_INPUT,
+    )
+
+    assert f"telec todo prepare anomalous-prepared-{STATE_KEY_INPUT}" not in output
 
 
 @pytest.mark.spec(_DRIFT_SPEC, "UC-WDD9")
