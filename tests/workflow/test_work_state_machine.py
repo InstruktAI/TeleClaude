@@ -171,7 +171,7 @@ async def test_merge_main_failure_routes_recovery_to_live_builder(
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM0")
-async def test_merge_main_failure_after_build_complete_does_not_request_invalid_restamp(
+async def test_merge_main_failure_after_build_complete_routes_recovery_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     snapshot: object,

@@ -260,22 +260,22 @@ async def _advance_prepared_to_build_started(
     state: dict[str, StateValue],
     worktree_cwd: str,
 ) -> None:
-    """Persist the machine-owned work entry transition."""
+    """Persist the work-entry transition."""
     writer = StateWriter(state)
     apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
     await writer.commit(todos_db, slug)
 
 
 async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, lifecycle_phase: str) -> str:
-    """Format orchestrator recovery instructions for machine-owned main-sync conflicts."""
+    """Format orchestrator recovery instructions for work-entry main-sync conflicts."""
     builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
     if builder_id is None:
         return format_error(
             "MERGE_MAIN_FAILED",
             (
                 f"{merge_error}\n\n"
-                f"No live builder session exists for {slug}. The work state machine owns awareness of this "
-                "pre-dispatch merge failure, but it has no child session to route recovery to."
+                f"`telec todo work {slug}` hit a pre-dispatch merge failure, but no live builder "
+                "session exists for the orchestrator to route recovery to."
             ),
             next_call=f"telec todo work {slug}",
         )
@@ -283,16 +283,16 @@ async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, li
     completion_clause = _merge_main_recovery_completion_clause(slug, lifecycle_phase)
     wait_clause = _merge_main_recovery_wait_clause(slug, lifecycle_phase)
     message = (
-        f"The work state machine failed while merging origin/main into your worktree for {slug}. "
-        "You did not encounter this directly; the orchestrator is routing the machine-owned failure back to you.\n\n"
+        f"The orchestrator hit a merge failure while running `telec todo work {slug}` against your worktree. "
+        "You did not encounter this directly; the orchestrator is routing the work-entry failure back to you.\n\n"
         "Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo's "
         "prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused "
         f"tests plus telec code test and telec code lint, commit the resolution, then {completion_clause}\n\n"
-        f"State-machine merge failure:\n{merge_error}"
+        f"Work-entry merge failure:\n{merge_error}"
     )
     return (
         f"MERGE MAIN RECOVERY REQUIRED: {slug}\n\n"
-        "The work state machine hit a recoverable worktree merge failure before it could continue.\n\n"
+        "Work entry hit a recoverable worktree merge failure before it could continue.\n\n"
         "Execute in order:\n\n"
         f"{format_send_command(builder_id, message)}\n\n"
         f"{HEARTBEAT_RESET_INSTRUCTION}\n"
@@ -306,17 +306,17 @@ def _merge_main_recovery_completion_clause(slug: str, lifecycle_phase: str) -> s
         return f"run `telec todo stamp {slug} --build-complete` and report completion."
     if lifecycle_phase == LifecyclePhase.BUILD_COMPLETE.value:
         return (
-            "do not stamp build-complete again; report MERGE RECOVERY COMPLETE. "
+            "report MERGE RECOVERY COMPLETE. "
             "The orchestrator will re-enter `telec todo work` to dispatch review from the recovered HEAD."
         )
     if lifecycle_phase == LifecyclePhase.REVIEW_APPROVED.value:
         return (
-            "do not stamp build-complete; report MERGE RECOVERY COMPLETE. "
+            "report MERGE RECOVERY COMPLETE. "
             "The orchestrator will re-enter `telec todo work` to continue finalize from the recovered HEAD."
         )
     if lifecycle_phase == LifecyclePhase.FINALIZE_READY.value:
         return (
-            "do not stamp build-complete; report MERGE RECOVERY COMPLETE. "
+            "report MERGE RECOVERY COMPLETE. "
             "The orchestrator will re-enter `telec todo work` to validate the finalize-ready handoff."
         )
     return (

@@ -51,22 +51,23 @@ And on the same call dispatches the next-build worker session
 
 ```gherkin
 Given a Todo has a live next-build session for its worktree
-And the work state machine merges origin/main into that worktree before dispatch/review
+And `telec todo work` merges origin/main into that worktree before dispatch/review
 When the merge fails with conflicts
-Then the machine returns a recovery script that sends the merge failure to the live builder
+Then `telec todo work` returns a recovery handoff for the orchestrator
+And the orchestrator sends the live builder the merge-conflict recovery instructions
 And the recovery message says origin/main is the leading baseline
-And the recovery message asks the builder to reapply the prepared todo intent on top, resolve conflicts, rerun gates, commit, and restamp build-complete
-And the machine does not leave the orchestrator to treat the recoverable merge failure as a passive human blocker
+And the builder reapplies the prepared todo intent on top, resolves conflicts, verifies, commits, and stamps build-complete
+And the orchestrator re-enters `telec todo work` after the builder idles so the workflow continues from the recovered HEAD
 ```
 
 ```gherkin
 Given a Todo is already at lifecycle_phase=build_complete
-And the work state machine merges origin/main into that worktree before dispatching review
+And `telec todo work` merges origin/main into that worktree before dispatching review
 When the merge fails with conflicts
-Then the machine returns a recovery script that sends the merge failure to the live builder
-And the recovery message does not ask the builder to stamp build-complete again
-And the recovery message asks the builder to report MERGE RECOVERY COMPLETE after resolving, verifying, and committing the conflict resolution
-And the orchestrator re-enters work after the builder idles so review can proceed from the recovered HEAD
+Then `telec todo work` returns a recovery handoff for the orchestrator
+And the orchestrator sends the live builder the merge-conflict recovery instructions
+And the builder resolves conflicts, verifies, commits, and reports MERGE RECOVERY COMPLETE
+And the orchestrator re-enters `telec todo work` after the builder idles so review can proceed from the recovered HEAD
 ```
 
 ```

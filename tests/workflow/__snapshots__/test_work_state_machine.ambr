@@ -15,19 +15,19 @@
   Work-stage responsibility for finalized-work is complete. Do not call telec todo work finalized-work again.
   '''
 # ---
-# name: test_merge_main_failure_after_build_complete_does_not_request_invalid_restamp
+# name: test_merge_main_failure_after_build_complete_routes_recovery_completion
   '''
   MERGE MAIN RECOVERY REQUIRED: prepared-work
   
-  The work state machine hit a recoverable worktree merge failure before it could continue.
+  Work entry hit a recoverable worktree merge failure before it could continue.
   
   Execute in order:
   
-  telec sessions send builder-session 'The work state machine failed while merging origin/main into your worktree for prepared-work. You did not encounter this directly; the orchestrator is routing the machine-owned failure back to you.
+  telec sessions send builder-session 'The orchestrator hit a merge failure while running `telec todo work prepared-work` against your worktree. You did not encounter this directly; the orchestrator is routing the work-entry failure back to you.
   
-  Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo'"'"'s prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused tests plus telec code test and telec code lint, commit the resolution, then do not stamp build-complete again; report MERGE RECOVERY COMPLETE. The orchestrator will re-enter `telec todo work` to dispatch review from the recovered HEAD.
+  Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo'"'"'s prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused tests plus telec code test and telec code lint, commit the resolution, then report MERGE RECOVERY COMPLETE. The orchestrator will re-enter `telec todo work` to dispatch review from the recovered HEAD.
   
-  State-machine merge failure:
+  Work-entry merge failure:
   conflict details'
   
   Cancel your existing backup heartbeat timer, then start a fresh 300-second one the same way — your runtime's own non-blocking timer mechanism, per the non-blocking Heartbeat policy (never hold a tool call open, never block user input). The timer is a bare, fire-once delay that re-engages your judgment — never a condition test, never a tighter interval.
@@ -38,15 +38,15 @@
   '''
   MERGE MAIN RECOVERY REQUIRED: prepared-work
   
-  The work state machine hit a recoverable worktree merge failure before it could continue.
+  Work entry hit a recoverable worktree merge failure before it could continue.
   
   Execute in order:
   
-  telec sessions send builder-session 'The work state machine failed while merging origin/main into your worktree for prepared-work. You did not encounter this directly; the orchestrator is routing the machine-owned failure back to you.
+  telec sessions send builder-session 'The orchestrator hit a merge failure while running `telec todo work prepared-work` against your worktree. You did not encounter this directly; the orchestrator is routing the work-entry failure back to you.
   
   Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo'"'"'s prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused tests plus telec code test and telec code lint, commit the resolution, then run `telec todo stamp prepared-work --build-complete` and report completion.
   
-  State-machine merge failure:
+  Work-entry merge failure:
   conflict details'
   
   Cancel your existing backup heartbeat timer, then start a fresh 300-second one the same way — your runtime's own non-blocking timer mechanism, per the non-blocking Heartbeat policy (never hold a tool call open, never block user input). The timer is a bare, fire-once delay that re-engages your judgment — never a condition test, never a tighter interval.
