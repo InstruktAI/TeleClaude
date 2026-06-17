@@ -6,8 +6,9 @@ computer:
   role: development # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
   is_master: true # Master computer in a multi-computer mesh; exactly one. Provisions shared Discord channels (Operations, Help Desk, Team); non-masters resolve them by name.
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
-  # user, default_working_dir, help_desk_dir, and host are derived at runtime
-  # (system login, project dir, help-desk subdir, detected LAN IP) — not editable here.
+  # host: 192.168.1.50 # Optional LAN address for this computer; auto-detected when unset.
+  # user, default_working_dir, and help_desk_dir are derived at runtime
+  # (system login, project dir, help-desk subdir) — not editable here.
   # Trusted directories
   # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
   trusted_dirs:

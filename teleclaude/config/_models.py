@@ -46,9 +46,7 @@ class ComputerConfig:
     help_desk_dir: str = field(metadata={"exclude_from_tui": True})
     is_master: bool
     trusted_dirs: list[TrustedDir] = field(metadata={"exclude_from_tui": True})
-    host: str | None = field(
-        default=None, metadata={"exclude_from_tui": True}
-    )  # Detected LAN IP at runtime; not operator-editable.
+    host: str | None = None  # Optional LAN address override; auto-detected when unset
     tmux_binary: str = field(default="tmux", metadata={"exclude_from_tui": True})
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:

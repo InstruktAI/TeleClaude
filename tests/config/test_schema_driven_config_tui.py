@@ -34,7 +34,6 @@ COMPUTER_TRUSTED_DIRS = "computer.trusted_dirs"
 COMPUTER_TMUX_BINARY = "computer.tmux_binary"
 COMPUTER_NAME_KEY = "computer.name"
 COMPUTER_ROLE_KEY = "computer.role"
-COMPUTER_HOST = "computer.host"
 TELEGRAM_QOS_PREFIX = "telegram.qos"
 WHATSAPP_QOS_PREFIX = "whatsapp.qos"
 WHATSAPP_API_VERSION = "whatsapp.api_version"
@@ -317,9 +316,6 @@ def test_tui_field_exclusions():
     assert COMPUTER_ROLE_KEY in field_keys
 
     # Test DiscordConfig exclusions
-    # Runtime-derived host is not operator-editable.
-    assert COMPUTER_HOST not in field_keys
-
     discord = DiscordConfig(enabled=True, token="secret", guild_id=1234)
     fields_discord = reflect_schema(discord, prefix="discord")
     discord_keys = {f.key for f in fields_discord}
