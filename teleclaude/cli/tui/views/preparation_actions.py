@@ -121,6 +121,8 @@ class PreparationViewActionsMixin:
             "hold",
             "toggle_trashed",
             "reactivate_selected",
+            "toggle_delivered",
+            "toggle_icebox",
         }
         project_disallowed = {
             "remove_artifact",

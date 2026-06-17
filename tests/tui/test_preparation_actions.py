@@ -8,10 +8,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.api_models import ComputerDTO
 from teleclaude.cli.tui.todos import TodoItem
+from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views import preparation_actions
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
+from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.modals import ContentInputModal, CreateSlugModal
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
@@ -202,3 +205,15 @@ def test_no_human_gate_controls_for_running_or_work_ready_todos(
     harness._current = _todo_row(active_runner="runner-session", lifecycle_phase="plan_drafting")
     assert harness.check_action("approve_gate", ()) is False
     assert harness.check_action("hold", ()) is False
+
+
+def test_computer_header_action_gating(tmp_path: Path) -> None:
+    computer = ComputerDTO(name="test-comp", status="active", is_local=True)
+    header = ComputerHeader(ComputerDisplayInfo(computer=computer, session_count=0, recent_activity=False))
+    harness = _Harness(tmp_path)
+    harness._current = header
+
+    assert harness.check_action("toggle_delivered", ()) is False
+    assert harness.check_action("toggle_icebox", ()) is False
+    assert harness.check_action("toggle_trashed", ()) is False
+    assert harness.check_action("new_project", ()) is True
