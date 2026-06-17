@@ -23,10 +23,14 @@ visibility: 'public'
 - `telec sync` behavior is the model: explicit project root handling, deterministic validation, and stable execution across invocation contexts.
 - One-shot migration utilities, personal tooling, temporary debugging scripts, and AI scratch helpers must not be created in `scripts/`.
 - Internal-only utilities must live outside the symlinked runtime surface (for example under `tools/` or `devtools/`).
+- Scripts must not import the `teleclaude` package at module level. Inline any needed types, constants, or utilities directly into the script. Lazy `teleclaude` imports are acceptable only inside a `try/except` that handles the package's absence gracefully.
+- Scripts must not manipulate `sys.path` (no `sys.path.insert`, no `parents[N]` walks) to locate the `teleclaude` package — the symlinked runtime surface makes such tricks break when the script runs from `~/.teleclaude/scripts` rather than the repo checkout.
+- Importing between scripts within `scripts/` is acceptable (they share the symlinked location); importing from `teleclaude.*` is not.
+- Runnable scripts must have the executable bit set in the repository.
 
 ## Rationale
 
-- `scripts/` is deployed via `~/.teleclaude/scripts`, so callers often execute outside this repository.
+- `scripts/` is deployed via a `~/.teleclaude/scripts` symlink created by `make install`; the source file IS the deployed file (no copy step), so edits take effect immediately and callers often execute outside this repository.
 - Portable scripts reduce operational drift across local, remote, and agent-driven usage.
 - PEP 723 metadata makes dependency resolution deterministic and self-contained.
 - Preflight validation prevents brittle failures and lowers troubleshooting cost.
