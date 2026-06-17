@@ -75,7 +75,7 @@
 # ---
 # name: test_todo_row_renders_pending_approval_distinct_from_hold
   list([
-    '  ├─■ approval-work··feat··A:approve········🔒',
+    '  ├─■ approval-work··feat··P:approve········🔒',
     '  ├─■ held-work······feat··P:plan draft·····🔒',
   ])
 # ---

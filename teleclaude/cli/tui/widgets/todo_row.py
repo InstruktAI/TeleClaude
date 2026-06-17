@@ -346,7 +346,7 @@ class TodoRow(TelecMixin, Widget):
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
             if _approval_pending(t):
-                maxes["P"] = max(maxes["P"], len("A:approve"))
+                maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:approve"))
                 continue
             if t.kind is None:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:classify"))
@@ -459,7 +459,11 @@ class TodoRow(TelecMixin, Widget):
             return self._finish_columns(result)
 
         if _approval_pending(self.todo):
-            result.append_text(self._build_col("A", "approve", w.get("P", 0), Style(color=_gold_color(), bold=True)))
+            result.append_text(
+                self._build_col(
+                    _PHASE_PREFIX_LIFECYCLE, "approve", w.get("P", 0), Style(color=_gold_color(), bold=True)
+                )
+            )
             return self._finish_columns(result)
 
         # Trashed items show T:age only
