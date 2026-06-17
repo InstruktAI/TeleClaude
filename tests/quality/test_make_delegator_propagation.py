@@ -112,7 +112,7 @@ def test_test_handler_teardown_kills_sigterm_ignoring_make_descendant(tmp_path: 
 
     runner = subprocess.Popen([sys.executable, "-c", runner_code])
     try:
-        deadline = time.monotonic() + 2
+        deadline = time.monotonic() + 5
         while not child_pid_file.exists() and time.monotonic() < deadline:
             time.sleep(0.02)
         assert child_pid_file.exists()

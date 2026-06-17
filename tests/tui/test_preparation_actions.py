@@ -21,6 +21,8 @@ from teleclaude.cli.tui.widgets.todo_row import TodoRow
 pytestmark = pytest.mark.functional
 
 _DUMP_PATH = "/todos/dump"
+_PREPARE_PATH = "/todos/prepare"
+_WORK_PATH = "/todos/work"
 _METHOD_POST = "POST"
 _TODO_SLUG = "kindless-todo"
 _BUG_SLUG = "broken-thing"
@@ -41,6 +43,7 @@ class _RecordingApp:
 class _Harness(PreparationViewActionsMixin):
     def __init__(self, project_root: Path) -> None:
         self.app = _RecordingApp()
+        self._project_root = project_root
         self._slug_to_project_path = {"selected": str(project_root)}
         self._current: object | None = None
 
@@ -49,6 +52,12 @@ class _Harness(PreparationViewActionsMixin):
 
     def _current_todo_row(self) -> TodoRow | None:
         return self._current if isinstance(self._current, TodoRow) else None
+
+    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
+        return "local", str(self._project_root), "selected"
+
+    def _resolve_todo_for_cursor(self) -> TodoRow | None:
+        return self._current_todo_row()
 
 
 def _drive_action(harness: _Harness, action: Callable[[], None], slug: str) -> None:
@@ -217,3 +226,41 @@ def test_computer_header_action_gating(tmp_path: Path) -> None:
     assert harness.check_action("toggle_icebox", ()) is False
     assert harness.check_action("toggle_trashed", ()) is False
     assert harness.check_action("new_project", ()) is True
+
+
+def test_action_prepare_posts_operation_instead_of_opening_session_modal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tool_api_request = MagicMock(return_value={"operation_id": "op-prepare"})
+    monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+    harness = _Harness(tmp_path)
+    harness._current = _todo_row()
+
+    harness.action_prepare()
+
+    assert harness.app.pushed == []
+    assert tool_api_request.call_args.args[:2] == (_METHOD_POST, _PREPARE_PATH)
+    assert tool_api_request.call_args.kwargs["json_body"] == {
+        "slug": "selected",
+        "cwd": str(tmp_path),
+    }
+    harness.app._refresh_data.assert_called_once()
+
+
+def test_action_start_work_posts_operation_after_readiness_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tool_api_request = MagicMock(return_value={"operation_id": "op-work"})
+    monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+    harness = _Harness(tmp_path)
+    harness._current = _todo_row(lifecycle_phase="prepared")
+
+    harness.action_start_work()
+
+    assert harness.app.pushed == []
+    assert tool_api_request.call_args.args[:2] == (_METHOD_POST, _WORK_PATH)
+    assert tool_api_request.call_args.kwargs["json_body"] == {
+        "slug": "selected",
+        "cwd": str(tmp_path),
+    }
+    harness.app._refresh_data.assert_called_once()

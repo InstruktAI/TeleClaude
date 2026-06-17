@@ -26,7 +26,7 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.config import config
-from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
+from teleclaude.constants import ARTIFACT_INPUT
 from teleclaude.core.next_machine.lifecycle import (
     hold_control_available,
     is_ready_for_work,
@@ -511,28 +511,47 @@ class PreparationViewActionsMixin:
             _on_confirm_todo,
         )
 
+    def _submit_lifecycle_operation(self, path: str, project_path: str, slug: str | None, label: str) -> None:
+        body: dict[str, object] = {"cwd": project_path}  # guard: loose-dict - JSON request body
+        if slug:
+            body["slug"] = slug
+        try:
+            result = tool_api_request(
+                "POST",
+                path,
+                json_body=body,
+                timeout=10.0,
+            )
+        except ToolAPIError as exc:
+            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+            return
+        if isinstance(result, dict) and result.get("operation_id"):
+            target = f" {slug}" if slug else ""
+            self.app.notify(f"{label}{target}...")  # type: ignore[attr-defined]
+            self.app._refresh_data()  # type: ignore[attr-defined]
+            return
+        if isinstance(result, dict) and result.get("detail"):
+            self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+            return
+        self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+
     def action_prepare(self) -> None:
-        """p: open session modal prefilled with /next-prepare [slug]."""
+        """p: submit a prepare operation for the selected scope."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
             return
-        computer, project_path, slug = context
-        self._open_session_modal(  # type: ignore[attr-defined]
-            computer=computer,
-            project_path=project_path,
-            default_message=self._next_command(SlashCommand.NEXT_PREPARE.value, slug),
-            title=f"Prepare: {slug}" if slug else "Prepare",
-        )
+        _, project_path, slug = context
+        self._submit_lifecycle_operation("/todos/prepare", project_path, slug, "Preparing")
 
     def action_start_work(self) -> None:
-        """s: open session modal prefilled with /next-work [slug].
+        """s: submit a work operation for the selected scope.
 
         Gated on canonical lifecycle readiness when a specific todo is selected.
         """
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
             return
-        computer, project_path, slug = context
+        _, project_path, slug = context
 
         if slug:
             todo_row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
@@ -547,12 +566,7 @@ class PreparationViewActionsMixin:
                 )  # type: ignore[attr-defined]
                 return
 
-        self._open_session_modal(  # type: ignore[attr-defined]
-            computer=computer,
-            project_path=project_path,
-            default_message=self._next_command(SlashCommand.NEXT_WORK.value, slug),
-            title=f"Start Work: {slug}" if slug else "Start Work",
-        )
+        self._submit_lifecycle_operation("/todos/work", project_path, slug, "Starting work")
 
     def action_freeze(self) -> None:
         """f: freeze a todo to the icebox."""

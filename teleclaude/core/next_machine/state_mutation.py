@@ -36,6 +36,7 @@ from teleclaude.types.todos import (
     AuditState,
     DependencyEntry,
     DriftReviewedStamp,
+    ParentPrdGroundEntry,
     ReviewVerdictState,
     SkipStamp,
     TodoState,
@@ -229,6 +230,7 @@ class ApprovalsManager:
         upstream_digests_at_review: dict[str, str] | None = None,
         snippet_digests_at_review: dict[str, str] | None = None,
         dep_set_at_review: list[DependencyEntry] | None = None,
+        parent_prd_ground_at_review: list[ParentPrdGroundEntry] | None = None,
     ) -> None:
         """Record drift review for one artifact."""
         if verdict not in ("substantive", "cosmetic"):
@@ -245,6 +247,7 @@ class ApprovalsManager:
             upstream_digests_at_review=upstream_digests_at_review or {},
             snippet_digests_at_review=snippet_digests_at_review or {},
             dep_set_at_review=dep_set_at_review or [],
+            parent_prd_ground_at_review=parent_prd_ground_at_review or [],
         )
         if typed_verdict == "substantive":
             self._cascade_substantive_drift(artifact)

@@ -634,14 +634,8 @@ Scenario: re-writing an artifact clears its drift stamps
 
 ## Allowed values
 
-<!-- planned-change:runner-dispatch-followup -->
-
 - **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
-`upstream-snippet`, `dependency-graph`, `age`.
-<!-- change:runner-dispatch-followup -->
-- **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
-`upstream-snippet`, `dependency-graph`, `age`, `parent-prd-ground`.
-<!-- /planned-change:runner-dispatch-followup -->
+  `upstream-snippet`, `dependency-graph`, `age`, `parent-prd-ground`.
 
 - **Drift status:** `fresh`, `pending`, `cosmetic`, `substantive`. Priority
   for collapse to per-artifact status: `substantive` > `pending` >

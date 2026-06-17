@@ -74,7 +74,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     tmux_name = "" if cmd.headless else f"{TMUX_SESSION_PREFIX}{session_id}"
 
     subfolder = cmd.subdir
-    working_slug: str | None = None
+    working_slug: str | None = cmd.working_slug
     if subfolder and subfolder.startswith("trees/"):
         working_slug = subfolder.removeprefix("trees/")
     initiator_session_id = cmd.initiator_session_id

@@ -49,7 +49,14 @@ from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.next_machine.work_steps import _artifact_contract_note
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
-from teleclaude.types.todos import DependencyEntry, DriftReviewedStamp, RoadmapStatusLiteral, TodoState
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import (
+    DependencyEntry,
+    DriftReviewedStamp,
+    ParentPrdGroundEntry,
+    RoadmapStatusLiteral,
+    TodoState,
+)
 
 pytestmark = pytest.mark.functional
 
@@ -96,11 +103,16 @@ class _CapturingDb:
 
 
 class _DependencyReader:
-    def __init__(self, deps: list[DependencyEntry]) -> None:
+    def __init__(self, deps: list[DependencyEntry], states: dict[str, TodoState] | None = None) -> None:
         self._deps = deps
+        self._states = states or {}
 
     async def get_deps_with_status(self, _slug: str) -> list[DependencyEntry]:
         return self._deps
+
+    async def read_state(self, slug: str) -> dict[str, StateValue] | None:
+        state = self._states.get(slug)
+        return state.model_dump(exclude_none=True) if state is not None else None
 
 
 @pytest.fixture(autouse=True)
@@ -175,6 +187,44 @@ async def _add_feature_with_rewritten_approved_prd(
 
 def _dependency_entry(dep_slug: str, roadmap_status: RoadmapStatusLiteral) -> DependencyEntry:
     return DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
+
+
+def _parent_ground_entry(
+    *,
+    dep_slug: str = _PARENT,
+    prd_digest: str = "parent-prd-v1",
+    architecture_digest: str = "",
+    implementation_plan_digest: str = "",
+) -> ParentPrdGroundEntry:
+    return ParentPrdGroundEntry(
+        dep_slug=dep_slug,
+        prd_digest=prd_digest,
+        prd_approved_at="2026-06-10T00:00:00+00:00",
+        prd_approved_by_session_id="human:parent",
+        architecture_digest=architecture_digest,
+        implementation_plan_digest=implementation_plan_digest,
+    )
+
+
+def _approved_parent_model(*, prd_digest: str = "parent-prd-v1") -> TodoState:
+    model = TodoState(kind=KIND_FEATURE, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value, schema_version=4)
+    model.artifacts.prd.digest = prd_digest
+    model.approvals.prd_approved.approved = True
+    model.approvals.prd_approved.approved_at = "2026-06-10T00:00:00+00:00"
+    model.approvals.prd_approved.caller_session_id = "human:parent"
+    model.approvals.prd_approved.approved_digest = prd_digest
+    return model
+
+
+def _prepared_dependent_with_parent_ground() -> TodoState:
+    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=4)
+    model.plan_review.verdict = "approve"
+    model.plan_review.approved_digest = "plan-v1"
+    model.artifacts.implementation_plan.digest = "plan-v1"
+    model.artifacts.implementation_plan.async_provenance_complete = True
+    model.artifacts.implementation_plan.dependency_set_at_write = [_dependency_entry(_PARENT, "active")]
+    model.artifacts.implementation_plan.parent_prd_ground_at_write = [_parent_ground_entry()]
+    return model
 
 
 @pytest.mark.spec(_SPEC, "UC-WPS3")
@@ -680,6 +730,27 @@ async def test_prepare_hydration_refreshes_stale_referenced_paths_without_stamp_
     assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] == DRIFT_FRESH
 
 
+@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD5")
+async def test_prepare_dispatches_drift_analyzer_for_parent_prd_ground_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_roadmap(_PARENT)
+    await todos_db.write_state(
+        _PARENT, _approved_parent_model(prd_digest="parent-prd-v2").model_dump(exclude_none=True)
+    )
+    await todos_db.add_to_roadmap(_CHILD, after=[_PARENT])
+    await todos_db.write_state(_CHILD, _prepared_dependent_with_parent_ground().model_dump(exclude_none=True))
+    monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
+
+    output = await next_prepare(cast(Db, _CapturingDb([])), _CHILD, str(project_root))
+
+    assert output.replace(str(project_root), "<project>") == snapshot
+
+
 async def test_prepare_hydration_refreshes_declared_referenced_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -750,6 +821,27 @@ async def test_work_entry_with_matching_diagnosis_upstream_dispatches_build_star
 
     assert dispatch_phases == [WorkPhase.BUILD_STARTED]
     assert output == snapshot
+
+
+@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD5")
+async def test_work_entry_bounces_before_worktree_setup_for_parent_prd_ground_drift(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_roadmap(_PARENT)
+    await todos_db.write_state(
+        _PARENT, _approved_parent_model(prd_digest="parent-prd-v2").model_dump(exclude_none=True)
+    )
+    await todos_db.add_to_roadmap(_CHILD, after=[_PARENT])
+    await todos_db.write_state(_CHILD, _prepared_dependent_with_parent_ground().model_dump(exclude_none=True))
+
+    output = await work_machine._check_work_entry_drift(todos_db, _CHILD, str(project_root), _CHILD)
+
+    assert output is not None
+    assert output == snapshot
+    assert not (project_root / "trees" / _CHILD).exists()
 
 
 async def _test_guidance(_db: Db) -> str:

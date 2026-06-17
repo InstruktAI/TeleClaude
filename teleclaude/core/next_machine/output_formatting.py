@@ -63,7 +63,8 @@ _DRIFT_CLASS_ORDER = {
     "owned-snippet": 2,
     "upstream-snippet": 3,
     "dependency-graph": 4,
-    "age": 5,
+    "parent-prd-ground": 5,
+    "age": 6,
 }
 
 

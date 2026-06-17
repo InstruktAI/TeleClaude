@@ -28,6 +28,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_origin_main_sha
+from teleclaude.core.next_machine.parent_prd_ground import read_parent_prd_ground
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_SNIPPETS_DIR
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry
@@ -88,6 +89,7 @@ async def sync_artifact_provenance(
         snippet_digest_fn=snippet_digest_fn,
     )
     entry.dependency_set_at_write = await read_dependency_set(todos_db, slug)
+    entry.parent_prd_ground_at_write = await read_parent_prd_ground(todos_db, slug)
     entry.produced_at = datetime.now(UTC).isoformat()
     entry.async_provenance_complete = True
     _clear_rewrite_drift_state(writer, artifact_name)
@@ -117,6 +119,7 @@ def sync_artifact_provenance_sync_subset(
     entry.owned_snippet_digests = {}
     entry.referenced_snippet_digests = {}
     entry.dependency_set_at_write = []
+    entry.parent_prd_ground_at_write = []
     entry.async_provenance_complete = False
     _clear_rewrite_drift_state(writer, artifact_name)
 
@@ -147,6 +150,7 @@ def clear_artifact_provenance(writer: StateWriter, slug: str, artifact_name: str
     entry.owned_snippet_digests = {}
     entry.referenced_snippet_digests = {}
     entry.dependency_set_at_write = []
+    entry.parent_prd_ground_at_write = []
     entry.async_provenance_complete = False
     _clear_rewrite_drift_state(writer, artifact_name)
 

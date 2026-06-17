@@ -77,6 +77,11 @@ WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_FINALIZE,
 }
 
+SLUG_BOUND_LIFECYCLE_COMMANDS = {
+    command.value for command in COMMAND_ROLE_MAP if command is not SlashCommand.NEXT_INTEGRATE
+}
+SLUG_BOUND_LIFECYCLE_COMMANDS.add("analyze-todo-input")
+
 _STATE = SimpleNamespace(client=None)
 
 router = APIRouter()
@@ -302,6 +307,7 @@ class RunSessionPlan:
     origin_metadata: WebOriginMetadata | None
     system_role: str | None
     job: str | None
+    working_slug: str | None
 
 
 def _infer_role_from_message(  # pyright: ignore[reportUnusedFunction]
@@ -332,6 +338,14 @@ def _resolve_run_session_agent(request: RunSessionRequest) -> str:
         return get_default_agent()
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _infer_working_slug(normalized_cmd: str, normalized_args: str) -> str | None:
+    """Infer the todo slug owned by a lifecycle slash-command session."""
+    if normalized_cmd not in SLUG_BOUND_LIFECYCLE_COMMANDS:
+        return None
+    slug, _, _rest = normalized_args.partition(" ")
+    return slug.strip() or None
 
 
 def _build_codex_loader_message(command_name: str, args: str) -> str:
@@ -381,6 +395,9 @@ def _prepare_run_session(
     if normalized_cmd in WORKER_LIFECYCLE_COMMANDS:
         if not normalized_args:
             raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
+    working_slug = _infer_working_slug(normalized_cmd, normalized_args)
+    if normalized_cmd in SLUG_BOUND_LIFECYCLE_COMMANDS and not working_slug:
+        raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
 
     command_domain = _resolve_command_domain_field(normalized_cmd)
     origin_metadata: WebOriginMetadata | None = None
@@ -418,6 +435,7 @@ def _prepare_run_session(
         origin_metadata=origin_metadata,
         system_role=role_info[0] if role_info else None,
         job=role_info[1].value if role_info else None,
+        working_slug=working_slug,
     )
 
 
@@ -708,6 +726,8 @@ async def run_session(
         },
         metadata,
     )
+    if isinstance(cmd, CreateSessionCommand):
+        cmd.working_slug = plan.working_slug
     try:
         data = await get_command_service().create_session(cmd)
         session_id = data.get("session_id")

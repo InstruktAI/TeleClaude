@@ -51,7 +51,7 @@ async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
     await todos_db.write_state(slug, {"schema_version": 4, "kind": None, "phase": "pending"})
 
 
-async def _add_build_started_todo(todos_db: TodosDb, slug: str) -> None:
+async def _add_build_started_todo(todos_db: TodosDb, slug: str, *, active_runner: str | None = None) -> None:
     await todos_db.add_to_roadmap(slug)
     await todos_db.write_state(
         slug,
@@ -60,6 +60,7 @@ async def _add_build_started_todo(todos_db: TodosDb, slug: str) -> None:
             "kind": TODO_KIND_CHANGE,
             "phase": "in_progress",
             "lifecycle_phase": LifecyclePhase.BUILD_STARTED.value,
+            "active_runner": active_runner,
         },
     )
 
@@ -283,14 +284,15 @@ async def test_kind_assign_refuses_already_kinded_todo(tmp_path: Path) -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS4")
-async def test_build_complete_accepts_work_orchestrator_session(tmp_path: Path) -> None:
+async def test_build_complete_accepts_live_active_runner_session(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await _add_build_started_todo(todos_db, _SLUG)
+    session_id = f"{tmp_path.name}-work-orchestrator"
+    await _add_build_started_todo(todos_db, _SLUG, active_runner=session_id)
     _create_worktree_with_build_commit(project_root, _SLUG)
-    session_id = await _create_runtime_session(
+    await _create_runtime_session(
         project_root,
-        session_id=f"{tmp_path.name}-work-orchestrator",
+        session_id=session_id,
         system_role=ROLE_ORCHESTRATOR,
         working_slug=None,
         job=JobRole.WORK_ORCHESTRATOR.value,
@@ -325,12 +327,20 @@ async def test_build_complete_still_accepts_owning_worker_session(tmp_path: Path
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS4")
-async def test_build_complete_refuses_missing_session_id(tmp_path: Path) -> None:
+async def test_build_complete_refuses_unbound_caller_when_todo_has_live_claim(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await _add_build_started_todo(todos_db, _SLUG)
+    claimant_id = f"{tmp_path.name}-claimant"
+    await _add_build_started_todo(todos_db, _SLUG, active_runner=claimant_id)
+    await _create_runtime_session(
+        project_root,
+        session_id=claimant_id,
+        system_role=ROLE_WORKER,
+        working_slug=_SLUG,
+        job=JobRole.BUILDER.value,
+    )
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionError, match=claimant_id):
         await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="build_complete", caller_session_id=None)
 
     state = await todos_db.read_state(_SLUG)
@@ -339,10 +349,28 @@ async def test_build_complete_refuses_missing_session_id(tmp_path: Path) -> None
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS4")
-async def test_build_complete_refuses_plain_operator_session(tmp_path: Path) -> None:
+async def test_pre_build_manual_refusal_offers_forward_to_active_runner(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await _add_build_started_todo(todos_db, _SLUG)
+    claimant_id = f"{tmp_path.name}-claimant"
+    await todos_db.add_to_roadmap(_SLUG)
+    await todos_db.write_state(
+        _SLUG,
+        {
+            "schema_version": 4,
+            "kind": TODO_KIND_CHANGE,
+            "phase": "in_progress",
+            "lifecycle_phase": LifecyclePhase.PLAN_REVIEW.value,
+            "active_runner": claimant_id,
+        },
+    )
+    await _create_runtime_session(
+        project_root,
+        session_id=claimant_id,
+        system_role=ROLE_WORKER,
+        working_slug=_SLUG,
+        job=JobRole.PLANNER.value,
+    )
     session_id = await _create_runtime_session(
         project_root,
         session_id=f"{tmp_path.name}-plain-operator",
@@ -350,14 +378,8 @@ async def test_build_complete_refuses_plain_operator_session(tmp_path: Path) -> 
         working_slug=None,
     )
 
-    with pytest.raises(PermissionError):
-        await apply_todo_stamp(
-            cwd=str(project_root), slug=_SLUG, stamp_type="build_complete", caller_session_id=session_id
-        )
-
-    state = await todos_db.read_state(_SLUG)
-    assert state is not None
-    assert state["build_gate_claim_at"] == _NO_BUILD_GATE_CLAIM
+    with pytest.raises(PermissionError, match=rf"{claimant_id}.*Forward this proposed stamp"):
+        await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="plan_ready", caller_session_id=session_id)
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS4")
@@ -381,3 +403,23 @@ async def test_build_complete_refuses_foreign_worker_session(tmp_path: Path) -> 
     state = await todos_db.read_state(_SLUG)
     assert state is not None
     assert state["build_gate_claim_at"] == _NO_BUILD_GATE_CLAIM
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS4")
+async def test_post_build_manual_refusal_omits_forward_offer(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    claimant_id = f"{tmp_path.name}-claimant"
+    await _add_build_started_todo(todos_db, _SLUG, active_runner=claimant_id)
+    await _create_runtime_session(
+        project_root,
+        session_id=claimant_id,
+        system_role=ROLE_WORKER,
+        working_slug=_SLUG,
+        job=JobRole.BUILDER.value,
+    )
+
+    with pytest.raises(PermissionError, match=claimant_id) as exc_info:
+        await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="build_complete", caller_session_id=None)
+
+    assert "Forward this proposed stamp" not in str(exc_info.value)

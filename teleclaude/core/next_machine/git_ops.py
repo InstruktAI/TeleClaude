@@ -29,6 +29,11 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine.kinds import PLAN_WITHOUT_INTENT_UPSTREAM_KINDS
+from teleclaude.core.next_machine.parent_prd_ground import (
+    ParentPrdGroundReader,
+    read_parent_prd_ground,
+    sorted_parent_prd_ground,
+)
 from teleclaude.git import (
     GIT_EXECUTABLE,
     GitCommandError,
@@ -37,6 +42,7 @@ from teleclaude.git import (
     Repo,
     no_autostash_env,
 )
+from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
 
 logger = get_logger(__name__)
@@ -70,6 +76,10 @@ class DependencyStatusReader(Protocol):
 
     async def get_deps_with_status(self, slug: str) -> list[DependencyEntry]:
         """Return immediate dependency slugs with todo status."""
+        ...
+
+    async def read_state(self, slug: str) -> dict[str, StateValue] | None:
+        """Return persisted todo state for a dependency slug."""
         ...
 
 
@@ -395,6 +405,35 @@ async def derive_dependency_graph_drift(
     return _reviewed_verdict_or_pending(
         _drift_stamp_for_artifact(model, state_key),
         evidence_matches_review=lambda reviewed: _sorted_dependency_entries(reviewed.dep_set_at_review) == current,
+    )
+
+
+async def derive_parent_prd_ground_drift(
+    slug: str,
+    model: TodoState,
+    artifact_name: str,
+    *,
+    todos_db: ParentPrdGroundReader,
+) -> ArtifactDriftStatus:
+    """Derive drift for dependents prepared against parent PRD-approved ground."""
+    state_key = _state_key_for_artifact(artifact_name)
+    entry = getattr(model.artifacts, state_key)
+    if _artifact_is_absent(entry):
+        return DRIFT_FRESH
+    current_deps = await todos_db.get_deps_with_status(slug)
+    if current_deps and all(dependency.roadmap_status == "delivered" for dependency in current_deps):
+        return DRIFT_FRESH
+    if not entry.async_provenance_complete:
+        return DRIFT_PENDING
+    current = await read_parent_prd_ground(todos_db, slug)
+    recorded = sorted_parent_prd_ground(entry.parent_prd_ground_at_write)
+    if recorded == current:
+        return DRIFT_FRESH
+    return _reviewed_verdict_or_pending(
+        _drift_stamp_for_artifact(model, state_key),
+        evidence_matches_review=lambda reviewed: (
+            sorted_parent_prd_ground(reviewed.parent_prd_ground_at_review) == current
+        ),
     )
 
 

@@ -97,6 +97,17 @@ class DependencyEntry(BaseModel):
     roadmap_status: RoadmapStatusLiteral
 
 
+class ParentPrdGroundEntry(BaseModel):
+    """Snapshot of PRD-approved dependency ground used by a dependent artifact."""
+
+    dep_slug: str
+    prd_digest: str = ""
+    prd_approved_at: str = ""
+    prd_approved_by_session_id: str = ""
+    architecture_digest: str = ""
+    implementation_plan_digest: str = ""
+
+
 class DriftReviewedStamp(BaseModel):
     """Drift review verdict for one prepare artifact."""
 
@@ -108,6 +119,7 @@ class DriftReviewedStamp(BaseModel):
     upstream_digests_at_review: dict[str, str] = Field(default_factory=dict)
     snippet_digests_at_review: dict[str, str] = Field(default_factory=dict)
     dep_set_at_review: list[DependencyEntry] = Field(default_factory=list)
+    parent_prd_ground_at_review: list[ParentPrdGroundEntry] = Field(default_factory=list)
 
 
 class ApprovalsState(BaseModel):
@@ -179,6 +191,7 @@ class ArtifactEntry(BaseModel):
     owned_snippet_digests: dict[str, str] = Field(default_factory=dict)
     referenced_snippet_digests: dict[str, str] = Field(default_factory=dict)
     dependency_set_at_write: list[DependencyEntry] = Field(default_factory=list)
+    parent_prd_ground_at_write: list[ParentPrdGroundEntry] = Field(default_factory=list)
     async_provenance_complete: bool = False
 
 

@@ -81,6 +81,15 @@ class RunnerSkipReason(StrEnum):
     UNKNOWN_PHASE = "unknown-phase"
 
 
+class ManualLifecycleStatus(StrEnum):
+    ADOPTED = "adopted"
+    ALREADY_ACTIVE = "already-active"
+    ALREADY_DRIVEN = "already-driven"
+    DISPATCHED = "dispatched"
+    NOT_BOUND = "not-bound"
+    SKIPPED = "skipped"
+
+
 @dataclass(frozen=True)
 class RunnerTodo:
     slug: str
@@ -120,6 +129,15 @@ class RunnerResult:
     dispatched: list[DispatchIntent]
     skips: dict[RunnerSkipReason, list[str]]
     reconciled: list[str]
+
+
+@dataclass(frozen=True)
+class ManualLifecycleSessionResult:
+    slug: str
+    lane: RunnerLane
+    status: ManualLifecycleStatus
+    session_id: str | None = None
+    reason: RunnerSkipReason | str | None = None
 
 
 class SessionRunner(Protocol):
@@ -519,6 +537,208 @@ async def adopt_headless_session(
     return True
 
 
+async def _target_for_manual_start(
+    todos_db: TodosDb,
+    runtime_db: Db,
+    slug: str,
+    lane: RunnerLane,
+    *,
+    check_dependencies: bool = True,
+) -> tuple[RunnerTodo | None, RunnerSkipReason | None]:
+    todos, _ = await _load_todos(todos_db, runtime_db)
+    todo = todos.get(slug)
+    if todo is None:
+        return None, RunnerSkipReason.MISSING_STATE
+    if todo.status == "removed":
+        return todo, RunnerSkipReason.REMOVED
+    if todo.status == "delivered":
+        return todo, RunnerSkipReason.DELIVERED
+    if todo.status == "icebox":
+        return todo, RunnerSkipReason.ICEBOX
+    if _pending_approval_gate_for_runner(todo):
+        return todo, RunnerSkipReason.APPROVAL_PENDING
+    if todo.hold:
+        return todo, RunnerSkipReason.HELD
+    if todo.active_runner and await _is_live_runner(runtime_db, todo.active_runner):
+        return todo, RunnerSkipReason.ALREADY_DRIVEN
+    if not check_dependencies:
+        return todo, None
+    if lane is RunnerLane.WORK:
+        delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
+        unmet = [dep for dep in todo.after if dep not in delivered_slugs]
+        if unmet:
+            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED
+    if lane is RunnerLane.PREPARE:
+        prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
+        unmet = [dep for dep in todo.after if dep not in prepared_slugs]
+        if unmet:
+            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED
+    return todo, None
+
+
+async def manual_start_lifecycle_session(
+    project_path: str | Path,
+    slug: str,
+    *,
+    lane: RunnerLane,
+    db: Db | None = None,
+    client_factory: Callable[[], SessionRunner] = default_session_runner,
+) -> ManualLifecycleSessionResult:
+    project_root = Path(project_path).resolve()
+    runtime_db = db or await get_db()
+    todos_db = await get_todos_db(project_root)
+    todo, reason = await _target_for_manual_start(todos_db, runtime_db, slug, lane)
+    if reason is not None:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.ALREADY_DRIVEN
+            if reason is RunnerSkipReason.ALREADY_DRIVEN
+            else ManualLifecycleStatus.SKIPPED,
+            session_id=todo.active_runner if todo is not None and reason is RunnerSkipReason.ALREADY_DRIVEN else None,
+            reason=reason,
+        )
+
+    client = client_factory()
+    await client.connect()
+    try:
+        session_id = await dispatch_lifecycle_session(
+            client=client,
+            todos_db=todos_db,
+            project_path=str(project_root),
+            intent=_intent(slug, lane),
+            origin=DispatchOrigin.MANUAL,
+        )
+    finally:
+        await client.close()
+
+    if session_id is None:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.SKIPPED,
+            reason=RunnerSkipReason.CLAIMED,
+        )
+    return ManualLifecycleSessionResult(
+        slug=slug,
+        lane=lane,
+        status=ManualLifecycleStatus.DISPATCHED,
+        session_id=session_id,
+    )
+
+
+async def adopt_manual_lifecycle_session(
+    project_path: str | Path,
+    slug: str,
+    caller_session_id: str,
+    *,
+    db: Db | None = None,
+) -> ManualLifecycleSessionResult:
+    project_root = Path(project_path).resolve()
+    runtime_db = db or await get_db()
+    todos_db = await get_todos_db(project_root)
+    todo, reason = await _target_for_manual_start(
+        todos_db,
+        runtime_db,
+        slug,
+        RunnerLane.PREPARE,
+        check_dependencies=False,
+    )
+    lane = RunnerLane.WORK if todo and todo.lifecycle_phase == LifecyclePhase.PREPARED.value else RunnerLane.PREPARE
+    if todo is not None and todo.active_runner == caller_session_id:
+        await _set_active_runner(todos_db, slug, caller_session_id, manually_started=True)
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.ALREADY_ACTIVE,
+            session_id=caller_session_id,
+        )
+    if reason is RunnerSkipReason.ALREADY_DRIVEN:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.ALREADY_DRIVEN,
+            session_id=todo.active_runner if todo else None,
+            reason=reason,
+        )
+    if reason is not None:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.SKIPPED,
+            reason=reason,
+        )
+
+    session = await runtime_db.get_session(caller_session_id)
+    if session is None or session.working_slug != slug:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.NOT_BOUND,
+            reason="caller-working-slug-mismatch",
+        )
+    adopted = await adopt_headless_session(todos_db=todos_db, slug=slug, session_id=caller_session_id, lane=lane)
+    if not adopted:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.SKIPPED,
+            reason=RunnerSkipReason.CLAIMED,
+        )
+    return ManualLifecycleSessionResult(
+        slug=slug,
+        lane=lane,
+        status=ManualLifecycleStatus.ADOPTED,
+        session_id=caller_session_id,
+    )
+
+
+async def resolve_manual_dispatch_intent(
+    todos_db: TodosDb,
+    slug: str,
+) -> tuple[DispatchIntent | None, RunnerSkipReason | None]:
+    """Resolve the natural lifecycle lane for an operator-started todo."""
+    state = await todos_db.read_state(slug)
+    if state is None:
+        return None, RunnerSkipReason.MISSING_STATE
+    raw_kind = state.get("kind")
+    kind_value = raw_kind if isinstance(raw_kind, str) else None
+    try:
+        kind = canonical_kind(kind_value)
+    except ValueError:
+        return None, RunnerSkipReason.INVALID_KIND
+
+    deps = await todos_db.load_deps()
+    raw_phase = state.get("lifecycle_phase")
+    lifecycle_phase = raw_phase if isinstance(raw_phase, str) else None
+    todo = RunnerTodo(
+        slug=slug,
+        status="active",
+        kind=kind,
+        lifecycle_phase=lifecycle_phase,
+        hold=state.get("hold") is True,
+        active_runner=None,
+        after=tuple(deps.get(slug, [])),
+    )
+    prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
+    delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
+    lane, skip_reason = _resolve_kinded_dispatch(
+        todo,
+        kind,
+        prepared_slugs=prepared_slugs,
+        delivered_slugs=delivered_slugs,
+        autostart={
+            KIND_FEATURE: True,
+            KIND_CHANGE: True,
+            KIND_BUG: True,
+            KIND_TASK: True,
+        },
+    )
+    if lane is None:
+        return None, skip_reason or RunnerSkipReason.INVALID_KIND
+    return _intent(slug, lane), None
+
+
 async def run_lifecycle_runner(
     project_path: str | Path,
     *,
@@ -603,15 +823,20 @@ def project_path_from_event_payload(payload: Mapping[str, object]) -> str | None
 __all__ = [
     "DispatchIntent",
     "DispatchOrigin",
+    "ManualLifecycleSessionResult",
+    "ManualLifecycleStatus",
     "RunnerDecision",
     "RunnerLane",
     "RunnerResult",
     "RunnerSkipReason",
     "RunnerTodo",
     "adopt_headless_session",
+    "adopt_manual_lifecycle_session",
     "decide_dispatches",
     "default_session_runner",
     "dispatch_lifecycle_session",
+    "manual_start_lifecycle_session",
     "project_path_from_event_payload",
+    "resolve_manual_dispatch_intent",
     "run_lifecycle_runner",
 ]

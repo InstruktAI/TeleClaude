@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from contextvars import Token
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TypedDict, cast
 
 from fastapi import HTTPException
@@ -23,12 +24,25 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import EventType, OperationCompletedContext
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.create import next_create
+from teleclaude.core.next_machine.lifecycle_runner import (
+    DispatchOrigin,
+    ManualLifecycleSessionResult,
+    ManualLifecycleStatus,
+    RunnerLane,
+    RunnerSkipReason,
+    SessionRunner,
+    adopt_manual_lifecycle_session,
+    default_session_runner,
+    dispatch_lifecycle_session,
+    resolve_manual_dispatch_intent,
+)
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.remove import execute_todo_remove
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
 
@@ -97,6 +111,7 @@ class OperationsService:
         poll_after_ms: int = 250,
         heartbeat_interval_s: float = 2.0,
         stale_after_s: float = 30.0,
+        lifecycle_client_factory: Callable[[], SessionRunner] = default_session_runner,
     ) -> None:
         self._db = db
         self._task_registry = task_registry
@@ -107,6 +122,7 @@ class OperationsService:
         self._submit_guard = asyncio.Lock()
         self._live_tasks: dict[str, asyncio.Task[None]] = {}
         self._live_guard = asyncio.Lock()
+        self._lifecycle_client_factory = lifecycle_client_factory
 
     async def start(self) -> None:
         """Normalize any abandoned nonterminal operations from a previous daemon run."""
@@ -576,10 +592,10 @@ class OperationsService:
 
     async def _ensure_operation_task(self, operation_id: str, *, kind: str = OPERATION_KIND_TODO_WORK) -> None:
         factories: dict[str, Callable[[Operation], Awaitable[str]]] = {
-            OPERATION_KIND_TODO_WORK: lambda op: next_work(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_WORK: self._run_todo_work,
             OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
-            OPERATION_KIND_TODO_PREPARE: lambda op: next_prepare(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_PREPARE: self._run_todo_prepare,
             OPERATION_KIND_TODO_RENAME: self._run_todo_rename,
             OPERATION_KIND_TODO_REMOVE: lambda op: execute_todo_remove(self._db, op.slug, op.cwd),
         }
@@ -707,6 +723,85 @@ class OperationsService:
                 current_operation_id=operation.operation_id,
             )
         return await rename_func(self._db, payload["old_slug"], payload["new_slug"], payload["cwd"])
+
+    async def _run_todo_prepare(self, operation: Operation) -> str:
+        return await self._run_todo_lifecycle_operation(
+            operation,
+            lane=RunnerLane.PREPARE,
+            state_machine=lambda op: next_prepare(self._db, op.slug, op.cwd),
+        )
+
+    async def _run_todo_work(self, operation: Operation) -> str:
+        return await self._run_todo_lifecycle_operation(
+            operation,
+            lane=RunnerLane.WORK,
+            state_machine=lambda op: next_work(self._db, op.slug, op.cwd),
+        )
+
+    async def _run_todo_lifecycle_operation(
+        self,
+        operation: Operation,
+        *,
+        lane: RunnerLane,
+        state_machine: Callable[[Operation], Awaitable[str]],
+    ) -> str:
+        if operation.slug is None:
+            return await state_machine(operation)
+
+        slug = operation.slug
+        project_root = Path(operation.cwd).resolve()
+        todos_db = await get_todos_db(project_root)
+
+        adoption = await adopt_manual_lifecycle_session(
+            operation.cwd,
+            slug,
+            operation.caller_session_id,
+            db=self._db,
+        )
+        if adoption.status in {ManualLifecycleStatus.ADOPTED, ManualLifecycleStatus.ALREADY_ACTIVE}:
+            return await state_machine(operation)
+        if adoption.status is ManualLifecycleStatus.ALREADY_DRIVEN:
+            return self._format_manual_lifecycle_result(adoption)
+        if adoption.status is ManualLifecycleStatus.SKIPPED:
+            return self._format_manual_lifecycle_result(adoption)
+
+        intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug)
+        if intent is None:
+            reason = skip_reason.value if skip_reason is not None else "invalid-kind"
+            return f"RUNNER_NOT_DISPATCHED: {slug} {reason}"
+        client = self._lifecycle_client_factory()
+        await client.connect()
+        try:
+            session_id = await dispatch_lifecycle_session(
+                client=client,
+                todos_db=todos_db,
+                project_path=str(project_root),
+                intent=intent,
+                origin=DispatchOrigin.MANUAL,
+            )
+        finally:
+            await client.close()
+        if session_id is None:
+            return f"RUNNER_NOT_DISPATCHED: {slug} claim-conflict"
+        return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
+
+    @staticmethod
+    def _format_manual_lifecycle_result(result: ManualLifecycleSessionResult) -> str:
+        if result.status is ManualLifecycleStatus.DISPATCHED:
+            return f"RUNNER_DISPATCHED: {result.slug} {result.lane.value} {result.session_id}"
+        if result.status is ManualLifecycleStatus.ALREADY_DRIVEN:
+            return f"ALREADY_DRIVEN: {result.slug} is already driven by active runner {result.session_id}"
+        if result.status is ManualLifecycleStatus.SKIPPED:
+            reason = OperationsService._format_manual_lifecycle_reason(result.reason)
+            return f"RUNNER_NOT_DISPATCHED: {result.slug} {reason}"
+        reason = OperationsService._format_manual_lifecycle_reason(result.reason)
+        return f"RUNNER_NOT_DISPATCHED: {result.slug} {result.status.value} {reason}"
+
+    @staticmethod
+    def _format_manual_lifecycle_reason(reason: RunnerSkipReason | str | None) -> str:
+        if isinstance(reason, RunnerSkipReason):
+            return reason.value
+        return str(reason)
 
     def _ensure_rename_target_matches(self, operation: Operation, new_slug: str) -> None:
         payload = self._rename_payload(operation)

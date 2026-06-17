@@ -76,6 +76,7 @@ class CreateSessionCommand(InternalCommand):
     launch_intent: Optional["SessionLaunchIntent"] = None
     system_role: str | None = None
     job: str | None = None
+    working_slug: str | None = None
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = [self.initial_input] if self.initial_input else []

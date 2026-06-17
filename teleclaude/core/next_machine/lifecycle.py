@@ -37,6 +37,7 @@ from teleclaude.core.next_machine.git_ops import (
     derive_artifact_drift,
     derive_dependency_graph_drift,
     derive_owned_snippet_drift,
+    derive_parent_prd_ground_drift,
     derive_upstream_artifact_drift,
     derive_upstream_snippet_drift,
     get_head_commit,
@@ -133,6 +134,7 @@ _DRIFT_CLASS_UPSTREAM_ARTIFACT = "upstream-artifact"
 _DRIFT_CLASS_OWNED_SNIPPET = "owned-snippet"
 _DRIFT_CLASS_UPSTREAM_SNIPPET = "upstream-snippet"
 _DRIFT_CLASS_DEPENDENCY_GRAPH = "dependency-graph"
+_DRIFT_CLASS_PARENT_PRD_GROUND = "parent-prd-ground"
 _DRIFT_CLASS_AGE = "age"
 _ALL_DRIFT_CLASSES = (
     _DRIFT_CLASS_CODE,
@@ -142,16 +144,26 @@ _ALL_DRIFT_CLASSES = (
     _DRIFT_CLASS_DEPENDENCY_GRAPH,
     _DRIFT_CLASS_AGE,
 )
+_PARENT_PRD_GROUNDED_DRIFT_CLASSES = (
+    _DRIFT_CLASS_CODE,
+    _DRIFT_CLASS_UPSTREAM_ARTIFACT,
+    _DRIFT_CLASS_OWNED_SNIPPET,
+    _DRIFT_CLASS_UPSTREAM_SNIPPET,
+    _DRIFT_CLASS_DEPENDENCY_GRAPH,
+    _DRIFT_CLASS_PARENT_PRD_GROUND,
+    _DRIFT_CLASS_AGE,
+)
 _IMPLEMENTATION_PLAN_DRIFT_CLASSES = (
     _DRIFT_CLASS_CODE,
     _DRIFT_CLASS_UPSTREAM_ARTIFACT,
     _DRIFT_CLASS_UPSTREAM_SNIPPET,
     _DRIFT_CLASS_DEPENDENCY_GRAPH,
+    _DRIFT_CLASS_PARENT_PRD_GROUND,
     _DRIFT_CLASS_AGE,
 )
 _DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    (STATE_KEY_PRD, STATE_KEY_PRD, _ALL_DRIFT_CLASSES),
-    (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE, _ALL_DRIFT_CLASSES),
+    (STATE_KEY_PRD, STATE_KEY_PRD, _PARENT_PRD_GROUNDED_DRIFT_CLASSES),
+    (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE, _PARENT_PRD_GROUNDED_DRIFT_CLASSES),
     (ARTIFACT_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN, _IMPLEMENTATION_PLAN_DRIFT_CLASSES),
 )
 _DRIFT_MATRIX_ARTIFACTS = frozenset(name for name, _, _ in _DRIFT_TRACKED_ARTIFACTS)
@@ -526,6 +538,13 @@ async def derive_lifecycle_drift(
                 )
             elif class_name == _DRIFT_CLASS_DEPENDENCY_GRAPH:
                 class_drift[class_name] = await derive_dependency_graph_drift(
+                    slug,
+                    model,
+                    artifact_name,
+                    todos_db=todos_db,
+                )
+            elif class_name == _DRIFT_CLASS_PARENT_PRD_GROUND:
+                class_drift[class_name] = await derive_parent_prd_ground_drift(
                     slug,
                     model,
                     artifact_name,

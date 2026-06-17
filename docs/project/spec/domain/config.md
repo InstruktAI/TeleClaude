@@ -37,15 +37,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 
 **Runtime configuration**
 
-<!-- planned-change:runner-dispatch-followup -->
-
-: Per-machine settings that live in `config.yml` (separate from `teleclaude.yml`). Computer identity, agent inventory, Redis URL, daemon socket path, deployment release channel. Distinct from the YAML overlays — runtime config is one file per machine, not layered.
-
-<!-- change:runner-dispatch-followup -->
-
 : The CORE TeleClaude platform/daemon operational configuration — per-machine settings that live in `config.yml`: computer identity, agent inventory, Redis URL, daemon socket path, deployment release channel, and the workflow autostart policy. It is distinct in both file and purpose from the `teleclaude.yml` overlays (global / project / person), which carry BUSINESS configuration — people, business domains, and project/per-person settings. The boundary is operational vs. business: runtime config governs how this machine's platform runs, is one file per machine, and is not layered; the overlays govern what the business has the platform do, and are layered.
-
-<!-- /planned-change:runner-dispatch-followup -->
 
 **Release channel** (per glossary)
 : `alpha` / `beta` / `stable`. Per-machine; owned by config (lives in `config.yml`). Gates the daemon's auto-update behavior. `pinned_minor` is required when the channel is `stable`.
@@ -61,15 +53,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 
 **Workflow autostart policy**
 
-<!-- planned-change:runner-dispatch-followup -->
-
-: Effective-configuration value read by workflow's lifecycle runner to decide which todo kinds may be auto-dispatched. It is policy, not todo state: changing it affects future runner evaluations without rewriting existing todo rows. Defaults are `feature=true`, `change=true`, `bug=true`, and `task=false`.
-
-<!-- change:runner-dispatch-followup -->
-
 : Per-machine daemon runtime-config value (in `config.yml` / `RuntimeConfig`, see the Runtime Configuration aggregate) read by workflow's lifecycle runner to decide which todo kinds may auto-enter the **work lane** — the execution runtime, at the `prepared → build_started` transition. It is a global operator safety switch — not a layered overlay value and not todo state — strictly per-machine, with no project or per-person override. It gates only work-start: **preparation** (kind-discovery and the prepare lane up to `prepared`) always auto-dispatches regardless of autostart, because prep is always needed and agents park at the human approval gates. Changing it affects future runner evaluations without rewriting existing todo rows. Defaults are off for every kind (`feature=false`, `change=false`, `bug=false`, `task=false`): an unconfigured machine still prepares work, but never auto-starts it until an operator enables a kind.
-
-<!-- /planned-change:runner-dispatch-followup -->
 
 ### Aggregates
 
@@ -83,12 +67,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - Overlay precedence is strict: person overrides project overrides global. No interleaving.
   - When `release_channel = stable`, `pinned_minor` MUST be non-empty.
   - The schema is the only source of which keys are valid. Unknown keys in YAML are a validation warning (not silently ignored, not a hard error in v1; v2 may tighten).
-  <!-- planned-change:runner-dispatch-followup -->
-  - Workflow autostart policy is schema-owned config. The workflow runner may read it, but workflow may not invent undeclared fallback keys or silently treat missing schema fields as enabled. Defaults are provided by the config schema itself.
-  - Project/person overlays can narrow or widen autostart policy only through declared keys. A config update emits `config.effective.updated`; workflow re-evaluates affected projects on the next runner wake-up.
-  <!-- change:runner-dispatch-followup -->
   - Workflow autostart policy is per-machine runtime configuration owned solely by `config.yml` (the Runtime Configuration aggregate), not a layered overlay value. The workflow runner may read it, but workflow may not invent undeclared fallback keys or silently treat missing schema fields as enabled; defaults are provided by the config schema itself. Project and per-person overlays carry no autostart key and cannot narrow or widen it. A runtime-config update emits `config.effective.updated`; workflow re-evaluates affected projects on the next runner wake-up.
-  <!-- /planned-change:runner-dispatch-followup -->
 - **Identifier:** the combined (`project_path`, `person_name`) tuple. Global-only computation when both are absent.
 - **Lifecycle:** computed on demand; cached in-memory by consumers per their own caching policy. Recomputed when any overlay file changes (`config.effective.updated` event fires).
 
@@ -112,18 +91,12 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 #### Runtime Configuration (aggregate)
 
 - **Root:** `RuntimeConfig`
-<!-- planned-change:runner-dispatch-followup -->
-- **Contains:** computer identity (name, host, user, role, platform, timezone), agents inventory, Redis URL, daemon socket path, deployment release channel + pinned minor.
-<!-- change:runner-dispatch-followup -->
 - **Contains:** computer identity (name, host, user, role, platform, timezone), agents inventory, Redis URL, daemon socket path, deployment release channel + pinned minor, the workflow autostart policy (per-kind auto-dispatch toggles read by the lifecycle runner; off for every kind by default), and `max_todo_dispatch` (the per-machine cap on concurrent auto-dispatched lifecycle sessions; default 5).
-<!-- /planned-change:runner-dispatch-followup -->
 - **Invariants:**
   - Exactly one runtime configuration per machine. File at `config.yml` (location TBD by platform conventions).
   - Computer identity fields are immutable per machine; changing them requires re-running `make install` / wizard.
   - Release channel + pinned_minor obey the stable-channel rule (above).
-  <!-- planned:runner-dispatch-followup -->
   - `max_todo_dispatch` is a per-machine load limit (default 5) read by the lifecycle runner: the runner auto-dispatches only while the count of live auto-dispatched lifecycle sessions on this machine is below it. It bounds machine load only; it never gates a manual `telec todo work/prepare` start.
-  <!-- /planned:runner-dispatch-followup -->
 - **Identifier:** the machine itself (one runtime config per machine, no further sub-identity).
 - **Lifecycle:** authored and mutated through the TUI setup wizard (`telec config wizard`), which is the canonical single human-facing surface for every persisted TeleClaude setup value — initial install and idempotent re-runs alike. A non-interactive `telec config patch` surface also exists for scripted mutation; its current v1 implementation raw-merges YAML and is not part of the wizard delivery contract. Behavioural contract for the wizard surface (single setup surface, idempotent re-runs, secret hygiene, partial-resume, at-a-glance status, permissions/preflight) lives in `project/spec/feature/config/setup-wizard`.
 

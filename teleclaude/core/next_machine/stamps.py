@@ -27,7 +27,6 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
-    ROLE_ORCHESTRATOR,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
@@ -37,17 +36,26 @@ from teleclaude.constants import (
     STATE_KEY_TASK_PLAN,
     WORKTREE_DIR,
 )
+from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
-from teleclaude.core.next_machine.lifecycle import ApprovalGate, LifecyclePhase, pending_approval_gate
+from teleclaude.core.next_machine.lifecycle import (
+    ApprovalGate,
+    LifecyclePhase,
+    coerce_lifecycle_phase,
+    lifecycle_phase_index,
+    pending_approval_gate,
+)
+from teleclaude.core.next_machine.parent_prd_ground import read_parent_prd_ground
 from teleclaude.core.next_machine.provenance import (
     read_dependency_set,
     read_owned_snippet_digests,
     read_referenced_snippet_digests,
     sync_artifact_provenance,
 )
+from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.state_io import (
     _BUILD_VERDICT_PHASE,
     _BUILD_VERDICT_VALUES,
@@ -117,15 +125,11 @@ async def apply_todo_stamp(
 ) -> dict[str, StateValue]:
     """Apply one parsed todo stamp and return the updated state.
 
-    ``build_complete`` is intentionally worker- or orchestrator-owned: the caller
-    must be a trusted TeleClaude session for the stamped slug.
+    Agent-authored stamps are gated by the caller's slug binding and the todo's
+    active runner claim before any mutation is applied.
     """
     if stamp_type == "verdict":
         _validate_verdict_stamp(phase, value)
-        return await asyncio.to_thread(stamp_verdict, cwd, slug, phase or "", value)
-
-    if stamp_type == "finalize_ready":
-        return await asyncio.to_thread(stamp_finalize_ready, cwd, slug, caller_session_id or "")
 
     todos_db = await get_todos_db(cwd)
     raw_state = await todos_db.read_state(slug)
@@ -133,6 +137,19 @@ async def apply_todo_stamp(
         raise ValueError(f"no state found for slug '{slug}'")
 
     writer = StateWriter(raw_state)
+    await _validate_stamp_authority(
+        slug=slug,
+        stamp_type=stamp_type,
+        caller_session_id=caller_session_id,
+        lifecycle_phase=writer.state.lifecycle_phase,
+        active_runner=writer.state.active_runner,
+    )
+
+    if stamp_type == "verdict":
+        return await asyncio.to_thread(stamp_verdict, cwd, slug, phase or "", value)
+
+    if stamp_type == "finalize_ready":
+        return await asyncio.to_thread(stamp_finalize_ready, cwd, slug, caller_session_id or "")
 
     if stamp_type == "deferrals_processed":
         writer.state.deferrals_processed = True
@@ -206,7 +223,6 @@ async def apply_todo_stamp(
             writer,
             cwd=cwd,
             slug=slug,
-            caller_session_id=caller_session_id,
         )
     else:
         raise ValueError(f"unknown stamp type: {stamp_type}")
@@ -426,12 +442,14 @@ async def _apply_drift_reviewed_stamp(
         snippet_digest_fn=snippet_digest_fn,
     )
     dependency_set = await read_dependency_set(todos_db, slug)
+    parent_prd_ground = await read_parent_prd_ground(todos_db, slug)
     upstream_digests = _current_upstream_digests(writer, state_key)
     entry = getattr(writer.state.artifacts, state_key)
     if not entry.async_provenance_complete:
         entry.owned_snippet_digests = owned_snippets
         entry.referenced_snippet_digests = referenced_snippets
         entry.dependency_set_at_write = dependency_set
+        entry.parent_prd_ground_at_write = parent_prd_ground
         entry.async_provenance_complete = True
         bootstrap_reason = "bootstrap: established baseline anchor for sync-written artifact"
         reason = f"{reason}; {bootstrap_reason}" if reason.strip() else bootstrap_reason
@@ -444,6 +462,7 @@ async def _apply_drift_reviewed_stamp(
         upstream_digests_at_review=upstream_digests,
         snippet_digests_at_review={**owned_snippets, **referenced_snippets},
         dep_set_at_review=dependency_set,
+        parent_prd_ground_at_review=parent_prd_ground,
     )
 
 
@@ -463,7 +482,6 @@ async def _apply_build_complete_stamp(
     *,
     cwd: str,
     slug: str,
-    caller_session_id: str | None,
 ) -> None:
     """Record the worker's claim that the build is complete.
 
@@ -472,8 +490,6 @@ async def _apply_build_complete_stamp(
     minute-long stamp calls and the zombie processes the previous design
     produced when the gate runner's queue thread blocked interpreter exit.
     """
-    await _validate_build_complete_owner(slug=slug, caller_session_id=caller_session_id)
-
     current = LifecyclePhase(writer.state.lifecycle_phase)
     if current not in (LifecyclePhase.BUILD_STARTED, LifecyclePhase.REVIEW_CHANGES_REQUESTED):
         raise StateMutationError(
@@ -488,18 +504,50 @@ async def _apply_build_complete_stamp(
     writer.state.build_gate_claim_at = datetime.now(UTC).isoformat()
 
 
-async def _validate_build_complete_owner(
+async def _validate_stamp_authority(
     *,
     slug: str,
+    stamp_type: str,
     caller_session_id: str | None,
+    lifecycle_phase: str | None,
+    active_runner: str | None,
 ) -> None:
-    if not caller_session_id:
-        raise PermissionError(f"build_complete stamp for {slug} requires a TeleClaude worker session")
-    working_slug = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "working_slug")
-    system_role = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "system_role")
-    if working_slug == slug or system_role == ROLE_ORCHESTRATOR:
-        return
-    raise PermissionError(
-        f"build_complete stamp for {slug} requires caller session {caller_session_id} "
-        f"to own working_slug={slug} or have system_role={ROLE_ORCHESTRATOR}"
+    if caller_session_id and caller_session_id.startswith("human:"):
+        if stamp_type in {"approve_current_gate", "prd_approved"}:
+            return
+        raise PermissionError(f"{stamp_type} stamp for {slug} requires a TeleClaude session")
+
+    live_claimant = active_runner if active_runner and await is_live_session_id(runtime_db, active_runner) else None
+    working_slug = (
+        get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "working_slug") if caller_session_id else None
     )
+
+    if working_slug:
+        if working_slug == slug:
+            return
+        raise PermissionError(
+            f"{stamp_type} stamp for {slug} requires caller session {caller_session_id} "
+            f"to own working_slug={slug}; caller owns working_slug={working_slug}"
+        )
+
+    if caller_session_id and live_claimant == caller_session_id:
+        return
+
+    if live_claimant:
+        message = (
+            f"{stamp_type} stamp for {slug} is blocked by active runner {live_claimant}; "
+            f"caller session {caller_session_id or '<none>'} has no working_slug binding"
+        )
+        if _should_offer_forward_to_claimant(lifecycle_phase):
+            message = (
+                f"{message}. Forward this proposed stamp to active runner {live_claimant} "
+                "for human ratification before build starts."
+            )
+        raise PermissionError(message)
+
+
+def _should_offer_forward_to_claimant(lifecycle_phase: str | None) -> bool:
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    if phase is None:
+        return True
+    return lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.BUILD_STARTED)
