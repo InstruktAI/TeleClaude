@@ -83,7 +83,7 @@ The canonical derivation and invariant live in `teleclaude/cli/tui/layout_model.
 
 The TUI persists its state and restarts on two signals, both routing through the same save-then-restart path:
 
-- **SIGUSR2** — reload. After changing TUI code, send SIGUSR2 to the first pane of the `tc_tui` tmux session to apply and verify the change without restarting the daemon: `kill -USR2 "$(tmux list-panes -t tc_tui -F '#{pane_pid}' | head -1)"`. The `tc_tui` pane PID is reliable regardless of how the process was launched.
+- **SIGUSR2** — reload. After changing TUI code, send SIGUSR2 to the first pane of the `tc_tui` tmux session to apply and verify the change in the TUI: `kill -USR2 "$(tmux list-panes -t tc_tui -F '#{pane_pid}' | head -1)"`. The `tc_tui` pane PID is reliable regardless of how the process was launched. Do not restart the daemon and do not instruct the user to restart telec — the SIGUSR2 reload is sufficient.
 - **SIGUSR1** — appearance/theme refresh on OS dark/light change, sent by external appearance tooling; it follows the same save-and-restart path, so it is reserved for appearance and never used for code reloads.
 
 The tmux `bind R` key triggers agent restart via the daemon API. The appearance sync that emits SIGUSR1, the agent-CLI theme syncing, and the restart binding are owned by the dotfiles repository at `~/Sync/dotfiles/terminal/`.

@@ -56,6 +56,12 @@ each decision point until the queue is drained.
    - The pre-push hook at `.githooks/pre-push` enforces `telec code lint --all` automatically.
      If the hook blocks the push with `ERROR: Integration push blocked — telec code lint --all failed.`,
      resolve the reported lint violations and retry.
+   - The hook is deployed in three kept-in-sync copies: the tracked canonical source
+     `.githooks/pre-push` (edit this to change behavior), the active `.git/hooks/pre-push`
+     that git actually executes (deployed from the canonical source), and the per-worktree
+     mirror `trees/_integration/.githooks/pre-push` (kept in sync so a hook re-deploy from
+     the mirror does not regress). The CI `make lint` check is a redundant post-push catch
+     layer; the pre-push guard is the primary enforcement surface.
 
 The state machine returns one of the following instruction blocks at each step.
 
