@@ -312,7 +312,7 @@ The default roadmap order is derived, not manually positioned. The dependency tr
   <!-- planned-change:plan-flag-enters-plan-draft -->
   creates; `prepared` for fast-track bug/task/plan creates), `kind`, `created_at`, `created_by_principal` — and adds two
   <!-- change:plan-flag-enters-plan-draft -->
-  creates; `prepared` for fast-track bug/task creates, `plan_drafting` for `--plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
+  creates; `prepared` for task creates, `diagnose` for bug creates, `plan_drafting` for `--plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
   <!-- /planned-change:plan-flag-enters-plan-draft -->
   new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
   and `pickup_requested` (boolean). The v1 daemon bridge derives the
@@ -1030,7 +1030,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 <!-- planned-change:plan-flag-enters-plan-draft -->
 - [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` skips prepare; bug-kind helpers route to `/next-work`.
 <!-- change:plan-flag-enters-plan-draft -->
-- [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` seeds the plan and enters plan-drafting; bug-kind helpers route to `/next-work`.
+- [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` seeds the plan and enters plan-drafting; bug-kind helpers route to `/next-prepare`.
 <!-- /planned-change:plan-flag-enters-plan-draft -->
 - [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; children inherit the parent's canonical kind, split stays non-auto-routing, and the command output instructs the agent to tend child kinds. The parent becomes a stateless holder derived from live child `roadmap.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
 - [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
