@@ -31,6 +31,7 @@ pytestmark = pytest.mark.functional
 
 _TODO_MANAGEMENT_SPEC = "project/spec/feature/workflow/todo-management"
 _DEPENDENCY_GRAPH_SPEC = "project/spec/feature/workflow/dependency-graph"
+_TODO_SPLIT_SPEC = "project/spec/feature/workflow/todo-split"
 _TODO_LIFECYCLE_PHASE_SPEC = "project/spec/feature/workflow/todo-lifecycle-phase"
 _ARTIFACT_VERSIONING_SPEC = "project/spec/feature/workflow/artifact-versioning"
 _MY_TODO = "my-todo"
@@ -70,10 +71,11 @@ async def _add_todo(
     *,
     kind: str = TODO_KIND_CHANGE,
     lifecycle_phase: LifecyclePhase = LifecyclePhase.PLAN_DRAFTING,
+    group_slug: str | None = None,
     after: list[str] | None = None,
     build_started: bool = False,
 ) -> None:
-    await todos_db.add_to_roadmap(slug, after=after)
+    await todos_db.add_to_roadmap(slug, group_slug=group_slug, after=after)
     state: dict[str, StateValue] = {
         "schema_version": 4,
         "kind": kind,
@@ -335,6 +337,93 @@ async def test_todo_update_after_replaces_dependencies_and_validates_cycles(tmp_
         )
     assert cycle.value.status_code == 409
     assert cycle.value.detail == snapshot
+
+
+@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+async def test_todo_update_rejects_member_dependency_on_direct_holder(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "holder")
+    await _add_todo(todos_db, "baseline")
+    await _add_todo(todos_db, "child", group_slug="holder", after=["baseline"])
+
+    with pytest.raises(HTTPException) as conflict:
+        await todo_routes.todo_update(
+            slug="child",
+            after=["holder"],
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+
+    assert conflict.value.status_code == 409
+    assert conflict.value.detail == snapshot
+    assert (await todos_db.load_deps())["child"] == ["baseline"]
+
+
+@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+async def test_todo_update_rejects_member_dependency_on_ancestor_holder(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "grandparent")
+    await _add_todo(todos_db, "parent", group_slug="grandparent")
+    await _add_todo(todos_db, "child", group_slug="parent")
+
+    with pytest.raises(HTTPException) as conflict:
+        await todo_routes.todo_update(
+            slug="child",
+            after=["grandparent"],
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+
+    assert conflict.value.status_code == 409
+    assert conflict.value.detail == snapshot
+
+
+@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+async def test_todo_update_rejects_icebox_member_dependency_on_holder(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "holder")
+    await _add_todo(todos_db, "child", group_slug="holder")
+    await todos_db.freeze("child")
+
+    with pytest.raises(HTTPException) as conflict:
+        await todo_routes.todo_update(
+            slug="child",
+            after=["holder"],
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+
+    assert conflict.value.status_code == 409
+    assert conflict.value.detail == snapshot
+
+
+@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+async def test_todo_update_allows_non_member_dependency_on_holder(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "holder")
+    await _add_todo(todos_db, "grouped-child", group_slug="holder")
+    await _add_todo(todos_db, "other")
+
+    response = await todo_routes.todo_update(
+        slug="other",
+        after=["holder"],
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    sync_response = cast(todo_routes._TodoUpdateResponse, response)
+    assert sync_response.after == ["holder"]
+    assert (await todos_db.load_deps())["other"] == ["holder"]
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")

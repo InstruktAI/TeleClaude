@@ -28,6 +28,7 @@ from teleclaude.api.auth import (
     clearance_todos_work,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
+from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
 from teleclaude.constants import (
@@ -394,9 +395,7 @@ async def todo_update(  # pyright: ignore
         warnings.extend(migration_result["warnings"])
 
     if requested_after is not None:
-        for dep in requested_after:
-            if not await todos_db.slug_in_roadmap(dep):
-                raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in todo list")
+        await validate_requested_dependencies(todos_db, slug, requested_after)
 
         deps = await todos_db.load_deps()
         cycle = detect_circular_dependency(deps, slug, requested_after)

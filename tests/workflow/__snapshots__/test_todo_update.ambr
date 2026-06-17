@@ -20,3 +20,12 @@
 # name: test_todo_update_kind_warns_then_forces_orphan_removal[orphan_warning]
   'kind migration feature -> bug orphans prd, architecture; re-run with --force to permanently remove them.'
 # ---
+# name: test_todo_update_rejects_icebox_member_dependency_on_holder
+  "todo 'child' cannot depend on holder 'holder': group membership and an after dependency on the same holder are mutually exclusive"
+# ---
+# name: test_todo_update_rejects_member_dependency_on_ancestor_holder
+  "todo 'child' cannot depend on holder 'grandparent': group membership and an after dependency on the same holder are mutually exclusive"
+# ---
+# name: test_todo_update_rejects_member_dependency_on_direct_holder
+  "todo 'child' cannot depend on holder 'holder': group membership and an after dependency on the same holder are mutually exclusive"
+# ---

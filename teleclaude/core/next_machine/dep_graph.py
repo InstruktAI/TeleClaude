@@ -5,6 +5,22 @@ Pure logic, no filesystem or database access.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+
+def holder_ancestors(group_slugs: Mapping[str, str | None], slug: str) -> set[str]:
+    """Return the holder chain for slug, starting with its direct holder."""
+    ancestors: set[str] = set()
+    seen = {slug}
+    current = group_slugs.get(slug)
+
+    while current is not None and current not in seen:
+        ancestors.add(current)
+        seen.add(current)
+        current = group_slugs.get(current)
+
+    return ancestors
+
 
 def detect_circular_dependency(deps: dict[str, list[str]], slug: str, new_deps: list[str]) -> list[str] | None:
     """Detect if adding new_deps to slug would create a cycle.
