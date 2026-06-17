@@ -742,7 +742,7 @@ class PreparationViewActionsMixin:
             result = tool_api_request(
                 "POST",
                 "/todos/approve",
-                json_body={"slug": slug, "cwd": project_path},
+                json_body={"slug": slug, "cwd": project_path, "notify_runner": True},
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":

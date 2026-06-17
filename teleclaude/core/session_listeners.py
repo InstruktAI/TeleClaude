@@ -19,9 +19,12 @@ from typing import Literal
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import LOCAL_COMPUTER, format_system_message
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import TeleClaudeNotificationLabel
 from teleclaude.core.db import db
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.tmux_delivery import deliver_listener_message
+from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 _PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
@@ -440,6 +443,36 @@ async def notify_input_request(
     )
     message = format_system_message(TeleClaudeNotificationLabel.INPUT_REQUEST, body)
     return await _notify_listeners(target_session_id, message)
+
+
+async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
+    """Inject an operator gate-approval notification into a parked runner session.
+
+    Fires only from the operator approval control (the TUI ``A`` key), never from
+    an agent's own ``telec todo approve`` stamp — the parked agent must learn that
+    the human cleared its gate so it resumes where it parked, but an agent that
+    stamps its own approval already knows and must not message itself.
+
+    Delivers into the target session itself (not its listeners). Returns ``True``
+    when the message reached a live, open session; ``False`` when no such session
+    exists (already exited, closed, or never linked).
+    """
+    session = await db.get_session(target_session_id)
+    if session is None or session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+        logger.info("No open runner session %s to notify of approval for %s", target_session_id, slug)
+        return False
+    body = f"The human approved the pending gate for '{slug}'. Proceed with the lifecycle from where you parked."
+    message = format_system_message(TeleClaudeNotificationLabel.NOTIFICATION, body)
+    await get_command_service().process_message(
+        ProcessMessageCommand(
+            session_id=target_session_id,
+            text=message,
+            origin=InputOrigin.TERMINAL.value,
+            actor_name="system",
+        )
+    )
+    logger.info("Notified runner session %s of approval for %s", target_session_id, slug)
+    return True
 
 
 async def create_link(

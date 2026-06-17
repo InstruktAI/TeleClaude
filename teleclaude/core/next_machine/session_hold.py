@@ -10,9 +10,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
+from teleclaude.project_root import resolve_state_root
 from teleclaude.types.todos import HoldAuditState
 
 logger = get_logger(__name__)
@@ -121,8 +123,26 @@ async def clear_active_runner_for_session_end(db: Db, session_id: str) -> Active
     return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=True, reason="cleared")
 
 
+async def notify_runner_of_gate_approval(cwd: str, slug: str) -> bool:
+    """Tell a parked runner session that the operator cleared its approval gate.
+
+    Reads ``active_runner`` for the just-approved slug and delivers the operator
+    notification into that session so it resumes. A no-op when no live runner is
+    linked (the agent already exited).
+    """
+    todos_db = await get_todos_db(resolve_state_root(cwd))
+    state = await todos_db.read_state(slug)
+    if state is None:
+        return False
+    active_runner = state.get("active_runner")
+    if not isinstance(active_runner, str) or not active_runner:
+        return False
+    return await notify_gate_approved(active_runner, slug=slug)
+
+
 __all__ = [
     "ActiveRunnerMutationResult",
     "clear_active_runner_for_session_end",
     "hold_todo_for_manual_session_close",
+    "notify_runner_of_gate_approval",
 ]

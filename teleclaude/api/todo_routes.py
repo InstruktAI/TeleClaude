@@ -42,17 +42,17 @@ from teleclaude.constants import (
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
 )
-from teleclaude.core.next_machine._types import StateValue, default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
     migrate_todo_kind,
 )
-from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, canonical_kind
+from teleclaude.core.next_machine.kinds import canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
+from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_approval
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
-from teleclaude.core.next_machine.state_io import apply_prepared_state
+from teleclaude.core.next_machine.state_io import apply_prepared_state, initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
@@ -63,7 +63,7 @@ from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
-from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES, LifecyclePhase
+from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_CHANGE, TODO_KIND_TASK
 
 if TYPE_CHECKING:
@@ -84,22 +84,6 @@ _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_TASK_PLAN,
 }
-
-
-def _initial_todo_state_for_kind(kind: str | None) -> dict[str, StateValue]:
-    """Return the initial persisted state for a newly created todo kind."""
-    state = default_state()
-    if kind is None:
-        state["kind"] = None
-        state.pop("lifecycle_phase", None)
-        return state
-
-    canonical = canonical_kind(kind)
-    state["kind"] = canonical
-    entry_phase = KIND_ENTRY_PHASE[canonical]
-    if entry_phase in (LifecyclePhase.DIAGNOSE, LifecyclePhase.PREPARED):
-        state["lifecycle_phase"] = entry_phase.value
-    return state
 
 
 # ── Response models ─────────────────────────────────────────────────────────
@@ -323,9 +307,15 @@ async def todo_integrate(  # pyright: ignore
 async def todo_approve(
     slug: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
+    notify_runner: Annotated[bool, Body()] = False,
     identity: CallerIdentity = Depends(clearance_todos_update),
 ) -> _SlugStatusResponse:
-    """Approve the todo's current pending human gate."""
+    """Approve the todo's current pending human gate.
+
+    ``notify_runner`` is the operator-control marker (TUI ``A`` key): it messages
+    the parked runner session so it resumes. The agent CLI leaves it false — an
+    agent stamping its own approval already knows and must not message itself.
+    """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
     caller_stamp_id = _human_gate_caller_stamp_id(identity)
@@ -339,6 +329,8 @@ async def todo_approve(
         )
     except (StateMutationError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if notify_runner:
+        await notify_runner_of_gate_approval(cwd, slug)
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
@@ -731,7 +723,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         if request.hold and request.release:
             raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
 
-        state = _initial_todo_state_for_kind(request.kind)
+        state = initial_todo_state_for_kind(request.kind)
         hold_requested = bool(
             request.hold or (request.silent and not request.release and request.kind != TODO_KIND_TASK)
         )
@@ -853,7 +845,7 @@ async def todo_split(
         ) from exc
 
     parent_input = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
-    child_state = _initial_todo_state_for_kind(parent_kind)
+    child_state = initial_todo_state_for_kind(parent_kind)
 
     async with todos_db._session() as session:  # pylint: disable=protected-access
         async with session.begin():

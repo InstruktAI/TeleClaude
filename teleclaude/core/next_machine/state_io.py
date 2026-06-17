@@ -48,7 +48,13 @@ from teleclaude.core.next_machine.git_ops import (
     get_origin_main_sha,
     run_git_command,
 )
-from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG, KIND_FEATURE
+from teleclaude.core.next_machine.kinds import (
+    FAST_TRACK_PREPARED_KINDS,
+    KIND_BUG,
+    KIND_ENTRY_PHASE,
+    KIND_FEATURE,
+    canonical_kind,
+)
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance_sync_subset
 from teleclaude.core.next_machine.state_mutation import (
@@ -57,9 +63,27 @@ from teleclaude.core.next_machine.state_mutation import (
 )
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_state_root
+from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 
 logger = get_logger(__name__)
+
+
+def initial_todo_state_for_kind(kind: str | None) -> dict[str, StateValue]:
+    """Return the initial persisted state for a newly created todo kind."""
+    state = default_state()
+    if kind is None:
+        state["kind"] = None
+        state.pop("lifecycle_phase", None)
+        return state
+
+    canonical = canonical_kind(kind)
+    state["kind"] = canonical
+    entry_phase = KIND_ENTRY_PHASE[canonical]
+    if entry_phase in (LifecyclePhase.DIAGNOSE, LifecyclePhase.PREPARED):
+        state["lifecycle_phase"] = entry_phase.value
+    return state
+
 
 # ---------------------------------------------------------------------------
 # Project root / DB helpers

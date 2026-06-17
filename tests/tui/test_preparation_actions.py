@@ -197,6 +197,7 @@ def test_approve_and_hold_are_independent(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert tool_api_request.call_args.kwargs["json_body"] == {
         "slug": "selected",
         "cwd": str(tmp_path),
+        "notify_runner": True,
     }
 
 

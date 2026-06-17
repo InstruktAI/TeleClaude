@@ -41,6 +41,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
 from teleclaude.core.next_machine.session_hold import (
     clear_active_runner_for_session_end,
     hold_todo_for_manual_session_close,
+    notify_runner_of_gate_approval,
 )
 from teleclaude.core.operations.service import OperationsService
 from teleclaude.core.task_registry import TaskRegistry
@@ -1164,3 +1165,69 @@ async def test_session_end_clears_manually_started(tmp_path: Path) -> None:
     assert state is not None
     assert "active_runner" not in state
     assert state.get("manually_started") in (False, None)
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_notify_runner_of_gate_approval_messages_linked_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Operator approval (TUI flag) messages the parked runner session linked to the slug."""
+    project_root = tmp_path
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value,
+        kind="feature",
+        active_runner=_LIVE_SESSION,
+    )
+    calls: list[tuple[str, str]] = []
+
+    async def _fake_notify(session_id: str, *, slug: str) -> bool:
+        calls.append((session_id, slug))
+        return True
+
+    async def _fake_get_todos_db(_root: object) -> TodosDb:
+        return todos_db
+
+    monkeypatch.setattr(session_hold, "notify_gate_approved", _fake_notify)
+    monkeypatch.setattr(session_hold, "get_todos_db", _fake_get_todos_db)
+    monkeypatch.setattr(session_hold, "resolve_state_root", lambda cwd: Path(cwd))
+
+    result = await notify_runner_of_gate_approval(str(project_root), _WORK_SLUG)
+
+    assert result is True
+    assert calls == [(_LIVE_SESSION, _WORK_SLUG)]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_notify_runner_of_gate_approval_noop_without_active_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No live runner is linked (agent already exited) -> nothing is messaged."""
+    project_root = tmp_path
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _OTHER_SLUG,
+        lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value,
+        kind="feature",
+        active_runner=None,
+    )
+    calls: list[tuple[str, str]] = []
+
+    async def _fake_notify(session_id: str, *, slug: str) -> bool:
+        calls.append((session_id, slug))
+        return True
+
+    async def _fake_get_todos_db(_root: object) -> TodosDb:
+        return todos_db
+
+    monkeypatch.setattr(session_hold, "notify_gate_approved", _fake_notify)
+    monkeypatch.setattr(session_hold, "get_todos_db", _fake_get_todos_db)
+    monkeypatch.setattr(session_hold, "resolve_state_root", lambda cwd: Path(cwd))
+
+    result = await notify_runner_of_gate_approval(str(project_root), _OTHER_SLUG)
+
+    assert result is False
+    assert calls == []
