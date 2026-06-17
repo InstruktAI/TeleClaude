@@ -20,7 +20,7 @@ Configured via `.gitattributes` on all `docs/**/*.md` and `agents/docs/**/*.md` 
 - **Smudge command**: `sed "s|@~/.teleclaude|@$HOME/.teleclaude|g"`
 - **Clean command**: `sed "s|@$HOME/.teleclaude|@~/.teleclaude|g"`
 - **Required**: `true` (git will refuse to checkout if filter is missing)
-- **Setup**: `telec projects init` configures the filter in local git config
+- **Setup**: `make install` configures the filter for the mother project (TeleClaude core); `telec projects init` configures it for downstream AI-managed projects. Both write the filter into local git config.
 
 ## Allowed values
 

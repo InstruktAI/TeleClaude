@@ -79,6 +79,15 @@ The Sessions view is the single owner of layout state:
 
 The canonical derivation and invariant live in `teleclaude/cli/tui/layout_model.py` (`desired()`, `enforce_i1()`, `diff_cells()`, `orphan_panes()`); the pane bridge keeps a mirror that is re-synced from this owner on every data refresh.
 
+### Signal-driven reload and external instrumentation
+
+The TUI persists its state and restarts on two signals, both routing through the same save-then-restart path:
+
+- **SIGUSR2** — reload. After changing TUI code, send SIGUSR2 to the first pane of the `tc_tui` tmux session to apply and verify the change without restarting the daemon: `kill -USR2 "$(tmux list-panes -t tc_tui -F '#{pane_pid}' | head -1)"`. The `tc_tui` pane PID is reliable regardless of how the process was launched.
+- **SIGUSR1** — appearance/theme refresh on OS dark/light change, sent by external appearance tooling; it follows the same save-and-restart path, so it is reserved for appearance and never used for code reloads.
+
+The tmux `bind R` key triggers agent restart via the daemon API. The appearance sync that emits SIGUSR1, the agent-CLI theme syncing, and the restart binding are owned by the dotfiles repository at `~/Sync/dotfiles/terminal/`.
+
 ## Primary flows
 
 ### 1. Input to Layout

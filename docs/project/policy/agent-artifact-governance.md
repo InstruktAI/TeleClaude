@@ -12,6 +12,8 @@ visibility: 'public'
 - The global master file is `agents/AGENTS.global.md` and is only used for global artifacts.
 - Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
 - Any `AGENTS.master.md` found in the project is inflated into an adjacent `AGENTS.md`.
+- Master files (`AGENTS.master.md`, `agents/AGENTS.global.md`) are human-maintained thin wrappers. Their only authored contents are `## Purpose` and `## Required reads`; the inflated `AGENTS.md` additionally carries the `telec sync`-generated baseline index. They are never a knowledge home — all knowledge lives in doc snippets under `docs/`, and developer-experience prose lives in the README. A contract, procedure, architecture note, or operational note authored into a master file is a defect to be relocated to its rightful snippet.
+- Master files are locked to agents: an agent edits a master file only under an explicit human override; absent that override, master-file edits are made by humans. The lock is declared by a `LOCKED_FILE` sentinel at the top and bottom of each master file.
 - A `CLAUDE.md` companion is always created or replaced next to each `AGENTS.master.md` with a single line: `@./AGENTS.md`.
 - Generated outputs under `dist/` are build artifacts. Do not edit them directly.
 - Deployed runtime directories (`~/.claude/`, `~/.codex/`, `~/.gemini/`) are also build outputs — never create or edit files there directly. Always author in `agents/` or `.agents/` and run `telec sync`.
