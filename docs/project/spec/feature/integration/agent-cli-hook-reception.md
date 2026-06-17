@@ -32,6 +32,23 @@ third-party webhook subsystem.
 
 ## Canonical fields
 
+### Payload model
+
+The receiver constructs typed, frozen (immutable) internal payload models in
+`teleclaude/core/adapter_client.py`, defined in `teleclaude/core/events.py`:
+
+- `AgentSessionStartPayload`
+- `AgentStopPayload`
+- `AgentNotificationPayload`
+- `AgentSessionEndPayload` (reserved)
+
+Required fields are enforced via direct field access — no `.get` fallbacks.
+Adapters never mutate payloads; the daemon generates summaries on `stop` events
+by summarizing the transcript markdown from `teleclaude/utils/transcript.py`
+(`parse_session_transcript(...)`). The receiver writes events to the
+`hook_outbox` table as `{session_id, event_type, data}` (see `hook-event-outbox`),
+which the daemon's `_hook_outbox_worker` drains (see `hook-outbox-dispatcher`).
+
 ### Use cases
 
 #### UC-R1: Claude session_start with additional context injection
