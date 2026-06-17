@@ -84,9 +84,12 @@ Status semantics:
 ### When Worker Needs Help
 
 1. Cancel old timer.
-2. Send guidance pointing to docs, not implementation details. Do not attempt to resolve issues by modifying code or tests yourself; always provide guidance via message instead.
-3. Start new timer and continue waiting.
-4. Do not send acknowledgement-only/no-op guidance.
+2. Read the child's command instructions and role procedure before giving guidance, so the advice matches the child's actual responsibilities. If the failure was surfaced by the state machine before the child saw it, this read is what lets the orchestrator translate the state-machine failure into the child's next action.
+3. Inspect enough evidence to classify the blocker: state-machine output, latest child tail, relevant artifacts, and worktree status when the failure is about merge, lint, tests, stamps, branch publication, or a dirty tree.
+4. If the blocker is recoverable by the child, send concrete recovery guidance via `telec sessions send`: name the failed gate, explain the current context, point to the governing docs, state the expected end state, and return ownership to the child. Do not mutate code or tests yourself.
+5. Escalate to the human only when the evidence shows a human-owned decision, an architectural choice, missing intent, or repeated failed recovery attempts.
+6. Start new timer and continue waiting.
+7. Do not send acknowledgement-only/no-op guidance.
 
 ### Agent Degradation Handling (Orchestrator-Owned)
 
@@ -157,4 +160,4 @@ The loop terminates when the work state machine returns:
 
 ## Recovery
 
-- If the worker stalls, request a summary and restart with clearer instructions.
+- If the worker stalls or reports a recoverable process failure, mentor it back into motion with evidence-based guidance. Request a summary only when the current evidence is insufficient to issue useful recovery guidance.

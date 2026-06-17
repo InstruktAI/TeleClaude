@@ -80,10 +80,24 @@ on REQUEST CHANGES.
 On REQUEST CHANGES, the state machine finds the live builder session and sends the
 findings via `telec sessions send`. The builder loads the fix procedure on demand
 (`software-development/procedure/lifecycle/fix-review-findings`) and addresses the
-findings without losing context. Review/fix loops are capped by `max_review_rounds`
-(default 3). No fresh fixer session is dispatched — the original builder handles the
-fix cycle, and the next review round reuses the same reviewer session when it is still
-alive.
+findings without losing context.
+
+Recoverable process failures use the same child-recovery posture even when the
+child did not encounter the failure directly. The work state machine merges
+`origin/main` into the worktree before dispatch/review; if that machine-owned
+merge returns `MERGE_MAIN_FAILED`, the orchestrator owns the awareness. It reads
+the relevant child command instructions, inspects the state-machine output and
+worktree evidence, and sends the existing builder concrete recovery guidance:
+accepted `origin/main` is the leading baseline, the todo's prepared intent is
+reapplied on top, conflicts are resolved in the worktree, gates are rerun, and
+the correct lifecycle stamp/report is emitted. Failed lint/test gates, dirty
+worktrees, missing stamps, and stale branch publication follow the same pattern:
+the orchestrator gives timely guidance, the child mutates the worktree. The
+orchestrator escalates only when the blocker is human-owned or architectural.
+
+Review/fix loops are capped by `max_review_rounds` (default 3). No fresh fixer
+session is dispatched — the original builder handles the fix cycle, and the next
+review round reuses the same reviewer session when it is still alive.
 
 ### 5. Finalize
 
@@ -100,7 +114,9 @@ the handoff; the state machine records durable finalize state and emits the term
 cleanup script.
 Never dispatch `next-integrate`, call `telec todo integrate`, or work around permission
 denials to reach integration. Integration is a separate singleton role with its own
-lease, worktree, and dispatch path. If the machine does not advance past finalize,
+lease, worktree, and dispatch path. If the machine does not advance past finalize
+because a child needs recoverable worktree or branch-publication help, guide that
+child through recovery first. If the blocker is not recoverable inside work scope,
 record the blocker and stop — do not escalate scope.
 
 ### 6. Deferrals
@@ -130,7 +146,8 @@ stamps `telec todo stamp [slug] --build-complete`, then the orchestrator re-ente
 
 ## Recovery
 
-- If a worker stalls, open direct conversation. If stuck after two iterations, record blockers.
+- If a worker stalls, read its command instructions, inspect the evidence, and open direct conversation with concrete recovery guidance.
+- If stuck after two recovery iterations, record blockers only with evidence that the remaining decision is human-owned, architectural, or outside work scope.
 - If review/fix loops hit the cap, the orchestrator owns pragmatic closure.
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.
 

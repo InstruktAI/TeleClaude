@@ -54,15 +54,20 @@ context. Only the caller does.
   prompt that targets an action the terminal does not own; a fabricated "decide
   whether to start the next phase" instruction is a non-reality the orchestrator
   may act on.
-- **Blocked states persist as signal.** When a verdict is `needs_decision`, when review
-  rounds exceed the limit, or when any error path is reached, the state machine emits no
-  end commands. All sessions stay alive as a beacon for the human — visible in the session
-  list, tailable, waiting. The human sees the blocker, intervenes, and ends them once
-  resolved.
+- **Blocked states persist as signal after recovery is exhausted.** When a verdict is
+  `needs_decision`, when review rounds exceed the limit, or when an error path is
+  human-owned or non-recoverable, the state machine emits no end commands. Recoverable
+  failures surfaced to the orchestrator — including state-machine worktree merge
+  failures, failed gates, dirty worktrees, missing stamps, and stale branch publication
+  — go through orchestrator-guided recovery first. Sessions stay alive as a beacon for
+  the human only after the orchestrator has established that the blocker requires human
+  attention.
 - **Direct conversation before escalation.** When quality is insufficient but fixable
-  by the agents involved (`needs_work`), the state machine sends findings to the existing
-  worker session via `telec sessions send`. The worker loads the fix procedure on demand
-  and iterates. Only `needs_decision` — genuinely unresolvable blockers — reaches the human.
+  by the agents involved (`needs_work`), or when the work state machine surfaces a
+  recoverable failure that a child can resolve, the state machine or orchestrator sends
+  actionable guidance to the existing worker session via `telec sessions send`. The
+  worker loads the needed procedure on demand and iterates. Only `needs_decision` —
+  genuinely unresolvable blockers — reaches the human.
 - **Heartbeat as safety net.** After dispatching a worker, the caller sets a periodic
   check. If the notification mechanism is flaky, the heartbeat catches it by tailing the
   worker session. The heartbeat is not supervision — it is a safety net for delivery

@@ -15,6 +15,25 @@
   Work-stage responsibility for finalized-work is complete. Do not call telec todo work finalized-work again.
   '''
 # ---
+# name: test_merge_main_failure_routes_recovery_to_live_builder
+  '''
+  MERGE MAIN RECOVERY REQUIRED: prepared-work
+  
+  The work state machine hit a recoverable worktree merge failure before it could continue.
+  
+  Execute in order:
+  
+  telec sessions send builder-session 'The work state machine failed while merging origin/main into your worktree for prepared-work. You did not encounter this directly; the orchestrator is routing the machine-owned failure back to you.
+  
+  Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo'"'"'s prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused tests plus telec code test and telec code lint, commit the resolution, then run `telec todo stamp prepared-work --build-complete` and report completion.
+  
+  State-machine merge failure:
+  conflict details'
+  
+  Cancel your existing backup heartbeat timer, then start a fresh 300-second one the same way — your runtime's own non-blocking timer mechanism, per the non-blocking Heartbeat policy (never hold a tool call open, never block user input). The timer is a bare, fire-once delay that re-engages your judgment — never a condition test, never a tighter interval.
+  When the builder reports idle after re-stamping, call telec todo work prepared-work.
+  '''
+# ---
 # name: test_prepared_entry_advances_to_build_started_without_removed_phase_commands
   'BUILD_START_DISPATCH: prepared-work'
 # ---

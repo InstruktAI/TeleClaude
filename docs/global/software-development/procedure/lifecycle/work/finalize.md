@@ -34,7 +34,7 @@ workflow state reaches `finalize_ready`.
    git merge origin/main --no-edit
    ```
 
-3. Resolve conflicts in the worktree where code context is available.
+3. Resolve conflicts in the worktree where code context is available. `origin/main` is the leading baseline: preserve accepted main behavior, reapply the reviewed branch intent on top, run the relevant tests and quality gates, and commit the resolution.
 4. Publish the finalized branch:
 
    ```bash
@@ -91,6 +91,6 @@ Apply ownership: orchestrator
 
 ## Recovery
 
-- If conflicts cannot be resolved in worker prepare, report blocker and stop.
+- If conflicts arise in worker prepare, resolve them in the worktree before reporting readiness. Report blocker only when the conflict requires human product judgment, an architectural decision, or missing context that cannot be recovered from the prepared artifacts and code.
 - If the branch is not pushed or the finalize-ready marker cannot be recorded, fix
   the branch publication issue and rerun the slug-scoped handoff step.

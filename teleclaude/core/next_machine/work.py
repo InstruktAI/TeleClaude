@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import (
     _SINGLE_FLIGHT_GUARD,
@@ -45,10 +45,13 @@ from teleclaude.core.next_machine.lifecycle import (
     require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.output_formatting import (
+    HEARTBEAT_RESET_INSTRUCTION,
     format_error,
+    format_send_command,
     format_stash_debt,
     format_work_entry_drift_bounce,
 )
+from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
     HolderResolutionReason,
@@ -171,7 +174,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
     if merge_err:
         _log_next_work_phase(phase_slug, "merge_main", merge_started, "error", "merge_main_failed")
-        return format_error("MERGE_MAIN_FAILED", merge_err)
+        return await _format_merge_main_recovery(db, resolved_slug, merge_err)
     head_after_merge = await asyncio.to_thread(get_head_commit, worktree_cwd)
     _log_next_work_phase(phase_slug, "merge_main", merge_started, "run", "merge_main_applied")
 
@@ -258,6 +261,39 @@ async def _advance_prepared_to_build_started(
     writer = StateWriter(state)
     apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
     await writer.commit(todos_db, slug)
+
+
+async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str) -> str:
+    """Format orchestrator recovery instructions for machine-owned main-sync conflicts."""
+    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
+    if builder_id is None:
+        return format_error(
+            "MERGE_MAIN_FAILED",
+            (
+                f"{merge_error}\n\n"
+                f"No live builder session exists for {slug}. The work state machine owns awareness of this "
+                "pre-dispatch merge failure, but it has no child session to route recovery to."
+            ),
+            next_call=f"telec todo work {slug}",
+        )
+
+    message = (
+        f"The work state machine failed while merging origin/main into your worktree for {slug}. "
+        "You did not encounter this directly; the orchestrator is routing the machine-owned failure back to you.\n\n"
+        "Recover the worktree: preserve accepted origin/main behavior as the leading baseline, reapply this todo's "
+        "prepared intent from implementation-plan and PRD/input on top, resolve the conflicts, run relevant focused "
+        "tests plus telec code test and telec code lint, commit the resolution, then run "
+        f"`telec todo stamp {slug} --build-complete` and report completion.\n\n"
+        f"State-machine merge failure:\n{merge_error}"
+    )
+    return (
+        f"MERGE MAIN RECOVERY REQUIRED: {slug}\n\n"
+        "The work state machine hit a recoverable worktree merge failure before it could continue.\n\n"
+        "Execute in order:\n\n"
+        f"{format_send_command(builder_id, message)}\n\n"
+        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
+        f"When the builder reports idle after re-stamping, call telec todo work {slug}."
+    )
 
 
 async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: str, phase_slug: str) -> str | None:
