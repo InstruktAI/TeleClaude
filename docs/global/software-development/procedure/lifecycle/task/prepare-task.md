@@ -69,7 +69,7 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 ## Discipline
 
 You draft and request approval; you never execute the task and never authorize it
-yourself. The `task-plan` is the durable contract a memoryless run agent will
-execute repeatedly — write it so it stands on its own across many future runs, not
-as a one-time script. Sliding from "draft the plan" into "do the work" is the
-single failure mode here.
+yourself. The `task-plan` is the durable contract a long-lived run agent will
+execute repeatedly across firings (and re-read after any restart) — write it so it
+stands on its own across many future firings, not as a one-time script. Sliding from
+"draft the plan" into "do the work" is the single failure mode here.
