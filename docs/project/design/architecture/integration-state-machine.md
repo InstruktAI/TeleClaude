@@ -470,7 +470,15 @@ Only bookkeeping files are staged (`git add` by path, not `git add -A`), preserv
 
 After a successful integration brings the repo root's `main` current (delivery bookkeeping complete), the integrator regenerates the project **codebase Blueprint** — the structural map agents consult at plan time (specced in `project/spec/codebase-blueprint`; the `context` bounded context owns the contract). It runs the pinned no-LLM code refresh `graphify update <repo-root>` and writes two files at the project root (gitignored): `.teleclaude/blueprint/graph.json` and a freshness manifest `.teleclaude/blueprint/manifest.json` carrying `baseline_sha` (the `origin/main` commit it was built from), `generated_at`, and `status`. This is the single refresh point: the baseline always reflects the remote-main that worktrees branch from, so there is no per-step drift handling.
 
+<!-- planned-change:fix-blueprint-stale -->
+
 **Freshness contract.** Consumers never trust the Blueprint blindly. They compare the manifest's `baseline_sha` against the current main baseline; on mismatch, missing manifest, or `status != ok`, the Blueprint is stale and the consumer falls back to manual exploration. Regeneration is best-effort: a failure records a non-`ok` `status` (or leaves the prior manifest in place) and does NOT fail the integration — staleness is detected by consumers via the manifest, never silently consumed.
+
+<!-- change:fix-blueprint-stale -->
+
+**Freshness contract.** Consumers never trust the Blueprint blindly. They compare the manifest's `baseline_sha` against the current `origin/main` baseline; on mismatch, missing manifest, or `status != ok`, the Blueprint is stale and the consumer falls back to manual exploration. Regeneration is best-effort: a failure records a non-`ok` `status` (or leaves the prior manifest in place) and does NOT fail the integration — staleness is detected by consumers via the manifest, never silently consumed.
+
+<!-- /planned-change:fix-blueprint-stale -->
 
 **Ownership boundary (intentional cross-context write).** `context` owns the Blueprint _contract_ — its location, the `manifest.json` schema, supported languages, and the query/affected surface. `integration` is the single permitted _writer_, because the Blueprint is a generated cache (not authoritative domain state) and the integrator is the one actor that knows when `main` became current; routing the write through a context dispatch would add a round-trip for no invariant gain. This is a deliberate divergence from the single-state-owner default, justified by the cache-not-state nature of the artifact.
 
