@@ -1057,6 +1057,36 @@ Then those todos auto-start cleanly with no lingering hold blocking them
 
 <!-- /planned:hold-gated-on-autostart -->
 
+<!-- planned:tui-prepare-forces-work-lane -->
+
+#### UC-WFL-24: Operator-initiated lifecycle dispatch honors an explicit prepare request
+
+```gherkin
+Given an operator triggers a lifecycle operation on a todo whose caller session is not bound to that slug
+And the operation requests the prepare lane
+And the todo's natural lane resolves to work because its phase is prepared or later
+When the operation bridge resolves the dispatch intent
+Then it flips the resolved work lane to the prepare lane
+And it dispatches the prepare entrypoint `/next-prepare` for the todo
+And re-preparation is reachable for an already-prepared todo
+```
+
+```gherkin
+Given an operator triggers a lifecycle operation requesting the work lane on a prepared todo
+When the operation bridge resolves the dispatch intent
+Then it preserves the natural work lane
+And it dispatches the work entrypoint `/next-work` for the todo
+```
+
+```gherkin
+Given an operator triggers a lifecycle operation requesting the prepare lane on a kind-less todo
+When the operation bridge resolves the dispatch intent
+Then no lane is resolved and the operation is not dispatched
+And kind discovery is not bypassed
+```
+
+<!-- /planned:tui-prepare-forces-work-lane -->
+
 ### v1 inventory
 
 The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is v1-grounded inventory of current v1 source. These feature specs are the v1 parity record; forward/target design for Category-B contract refinements lives in the domain spec, policies, and CLI-surface spec — NOT in these feature specs (per `documentation-first-development` §8a). A v1 inventory entry is corrected in place when current behavior is mis-stated; it is not made a delivery-owned target by a contract-refinement todo. They are the parity contract future v2 cutover work must satisfy or intentionally retire.
