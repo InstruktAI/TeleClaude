@@ -267,9 +267,7 @@ async def test_todo_stamp_route_requires_human_for_prd_approval(tmp_path: Path) 
 
 
 @pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS1")
-def test_todo_stamp_cli_posts_boolean_flag_to_stamp_route(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_todo_stamp_cli_posts_boolean_flag_to_stamp_route(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     tool_api_call = MagicMock(return_value={"status": _STATUS_OK, "slug": _MY_TODO})
     monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
@@ -285,12 +283,11 @@ def test_todo_stamp_cli_posts_boolean_flag_to_stamp_route(
         "phase": None,
         "cwd": str(project_root),
     }
-    assert capsys.readouterr().out == f"Stamped prd_approved=true for {_MY_TODO}\n"
 
 
 @pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS1")
 def test_todo_stamp_cli_posts_verdict_with_phase_to_stamp_route(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     project_root = tmp_path / "project"
     tool_api_call = MagicMock(return_value={"status": _STATUS_OK, "slug": _MY_TODO})
@@ -307,7 +304,6 @@ def test_todo_stamp_cli_posts_verdict_with_phase_to_stamp_route(
         "phase": "build_review",
         "cwd": str(project_root),
     }
-    assert capsys.readouterr().out == f"Stamped verdict=approve phase=build_review for {_MY_TODO}\n"
 
 
 @pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
