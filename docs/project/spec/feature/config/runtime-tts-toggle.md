@@ -276,6 +276,25 @@ configuration flag.
 
 <!-- /planned:tts-lazy-deps -->
 
+<!-- planned:tts-deprovision -->
+
+#### UC-CFG-RUNTIME-21: Explicit deprovision reclaims TTS-only dependencies
+
+```
+Given the TTS optional dependencies have been provisioned
+And dependencies shared with STT or summarization are installed
+When an operator invokes the explicit TTS deprovision action
+Then the runtime-settings state is forced to tts.enabled = False
+And the TTS manager's enabled flag is forced to False
+And the off state is persisted before dependency removal starts
+And only TTS-exclusive optional dependencies are removed
+And dependencies shared with STT or summarization remain installed
+And muting TTS alone never triggers deprovision
+And a later TTS enable follows UC-CFG-RUNTIME-17 and provisions the optional dependencies before the flag flips
+```
+
+<!-- /planned:tts-deprovision -->
+
 ### Cross-context references
 
 - **Cross-context write into the TTS context.** The runtime-settings
