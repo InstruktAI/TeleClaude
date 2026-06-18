@@ -266,6 +266,50 @@ async def test_todo_stamp_route_requires_human_for_prd_approval(tmp_path: Path) 
     assert prd_approved["caller_session_id"] == _HUMAN_PRINCIPAL
 
 
+@pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS1")
+def test_todo_stamp_cli_posts_boolean_flag_to_stamp_route(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": _STATUS_OK, "slug": _MY_TODO})
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_stamp([_MY_TODO, "--prd-approved"])
+
+    assert tool_api_call.call_args.args[:2] == ("POST", "/todos/stamp")
+    assert tool_api_call.call_args.kwargs["json_body"] == {
+        "slug": _MY_TODO,
+        "stamp_type": "prd_approved",
+        "value": "true",
+        "phase": None,
+        "cwd": str(project_root),
+    }
+    assert capsys.readouterr().out == f"Stamped prd_approved=true for {_MY_TODO}\n"
+
+
+@pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS1")
+def test_todo_stamp_cli_posts_verdict_with_phase_to_stamp_route(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": _STATUS_OK, "slug": _MY_TODO})
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_stamp([_MY_TODO, "--verdict", "approve", "--phase", "build_review"])
+
+    assert tool_api_call.call_args.args[:2] == ("POST", "/todos/stamp")
+    assert tool_api_call.call_args.kwargs["json_body"] == {
+        "slug": _MY_TODO,
+        "stamp_type": "verdict",
+        "value": "approve",
+        "phase": "build_review",
+        "cwd": str(project_root),
+    }
+    assert capsys.readouterr().out == f"Stamped verdict=approve phase=build_review for {_MY_TODO}\n"
+
+
 @pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
 async def test_rename_engine_preserves_artifacts_versions_and_deps(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
