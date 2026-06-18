@@ -193,6 +193,9 @@ class ArtifactEntry(BaseModel):
     dependency_set_at_write: list[DependencyEntry] = Field(default_factory=list)
     parent_prd_ground_at_write: list[ParentPrdGroundEntry] = Field(default_factory=list)
     async_provenance_complete: bool = False
+    # True when this artifact was supplied at creation (e.g. `--plan`) and has not
+    # yet been processed by its drafting pass; cleared on first rewrite.
+    seeded: bool = False
 
 
 class ArtifactsState(BaseModel):

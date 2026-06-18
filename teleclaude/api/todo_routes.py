@@ -29,6 +29,7 @@ from teleclaude.api.auth import (
     clearance_todos_work,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
+from teleclaude.api.todo_create_support import seed_plan_drafting
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
@@ -51,7 +52,7 @@ from teleclaude.core.next_machine.kind_migration import (
 )
 from teleclaude.core.next_machine.kinds import canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
-from teleclaude.core.next_machine.state_io import apply_prepared_state, initial_todo_state_for_kind
+from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
@@ -655,8 +656,11 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
       - omitted kind: content is the "input" artifact; enters analyzer assignment.
       - "feature" | "change": content is the "input" artifact; enters prepare
         (feature authors a PRD, change drafts a plan directly).
-      - "bug": content is the "input" artifact; apply_prepared_state stamps the
-        canonical lifecycle `prepared` so it enters the fix lane directly.
+      - "change" with ``--plan``: content seeds the "implementation-plan"
+        artifact, marked `seeded`, and enters `plan_drafting` — a full
+        plan-draft pass grounds and reviews it before `prepared`.
+      - "bug": content is the "input" artifact; enters the diagnose-then-plan
+        prepare flow.
       - "task": content is the "input" artifact; enters prepared and is unheld.
     ``hold`` sets the per-todo dispatch brake. ``silent`` is a legacy alias for
     non-task operator parking only.
@@ -738,11 +742,10 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
             )
 
         if request.plan:
-            # Stamp DOR, grounding baseline, and review approvals so a --plan
-            # change (complete plan supplied) is immediately `prepared` and skips
-            # the prepare phase.
-            final_state = apply_prepared_state(effective_cwd, slug)
-            state["lifecycle_phase"] = str(final_state.get("lifecycle_phase", state.get("lifecycle_phase", "draft")))
+            # Seed the supplied plan as a plan-drafting basis (see
+            # seed_plan_drafting); it must run after the seeding write's
+            # provenance sync above, which would otherwise clear the seed.
+            state["lifecycle_phase"] = await seed_plan_drafting(todos_db, slug, repo_root=effective_cwd)
             todos_db.on_committed("todo_updated")
 
         lifecycle_phase = state.get("lifecycle_phase")

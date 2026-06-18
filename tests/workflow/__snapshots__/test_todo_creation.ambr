@@ -27,3 +27,11 @@
     ''',
   })
 # ---
+# name: test_create_with_plan_seeds_plan_drafting_and_dispatches_prepare
+  '''
+  # seeded-change — Implementation Plan
+  
+  Step 1: do the thing.
+  
+  '''
+# ---

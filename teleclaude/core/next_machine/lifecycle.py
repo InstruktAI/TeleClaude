@@ -633,6 +633,8 @@ def _plan_only_phase(
 ) -> LifecyclePhase:
     if not _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence):
         return LifecyclePhase.PLAN_DRAFTING
+    if model.artifacts.implementation_plan.seeded:
+        return LifecyclePhase.PLAN_DRAFTING
     if not _review_current(model.plan_review, _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN)):
         if model.plan_review.cleared_by_substantive_drift:
             return LifecyclePhase.PLAN_DRAFTING

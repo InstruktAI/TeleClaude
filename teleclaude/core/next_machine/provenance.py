@@ -232,6 +232,8 @@ def _clear_rewrite_drift_state(writer: StateWriter, artifact_name: str) -> None:
     review_field = _ARTIFACT_REVIEW_FIELDS.get(key)
     if review_field:
         getattr(writer.state, review_field).cleared_by_substantive_drift = False
+    if key == STATE_KEY_IMPLEMENTATION_PLAN:
+        writer.state.artifacts.implementation_plan.seeded = False
 
 
 def _project_ref_to_id(rel_ref: str) -> str:

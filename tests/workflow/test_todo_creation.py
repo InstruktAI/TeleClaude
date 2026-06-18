@@ -13,7 +13,9 @@ from teleclaude.api import todo_routes
 from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.events.cartridges import lifecycle_router
@@ -335,3 +337,63 @@ async def test_lifecycle_router_dispatches_prepare_for_bug_in_diagnose(
     [call] = _CapturingTelecAPIClient.calls
     assert call["command"] == _NEXT_PREPARE
     assert call["args"] == _CHILD
+
+
+async def test_create_with_plan_seeds_plan_drafting_and_dispatches_prepare(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    event_project = tmp_path / "event-project"
+    env_project = tmp_path / "env-project"
+    await _project_db(event_project)
+    await get_todos_db(env_project)
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setenv("TELECLAUDE_PROJECT_PATH", str(env_project))
+    monkeypatch.setattr(lifecycle_router, "TelecAPIClient", _CapturingTelecAPIClient)
+    _CapturingTelecAPIClient.calls = []
+
+    slug = "seeded-change"
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug=slug,
+            content="Step 1: do the thing.",
+            kind=_KIND_CHANGE,
+            cwd=str(event_project),
+            plan=True,
+        )
+    )
+
+    todos_db = await get_todos_db(event_project)
+    # The supplied content lands as the implementation-plan artifact (not input),
+    # written under the "# <slug> — Implementation Plan" header. Snapshot the
+    # exact body so a dropped header or substituted/placeholder content fails.
+    plan_body = await todos_db.read_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN)
+    assert plan_body == snapshot
+    state = await todos_db.read_state(slug)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.lifecycle_phase == LifecyclePhase.PLAN_DRAFTING.value
+    assert writer.state.artifacts.implementation_plan.seeded is True
+    # The seed is not auto-approved: plan-review stays unstamped (empty verdict).
+    assert not writer.state.plan_review.verdict
+
+    [event_kwargs] = emitted
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["kind"] == _KIND_CHANGE
+    assert payload["lifecycle_phase"] == LifecyclePhase.PLAN_DRAFTING.value
+    assert payload["pickup_requested"] is True
+    payload["project_path"] = str(event_project)
+
+    await LifecycleRouterCartridge().process(_created_event(payload), cast(PipelineContext, object()))
+
+    [call] = _CapturingTelecAPIClient.calls
+    assert call["command"] == _NEXT_PREPARE
+    assert call["args"] == slug
+    assert call["project_path"] == str(event_project)

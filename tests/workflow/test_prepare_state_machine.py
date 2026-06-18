@@ -21,6 +21,7 @@ from teleclaude.constants import (
     STATE_KEY_PRD,
 )
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine import provenance
 from teleclaude.core.next_machine import work as work_machine
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.git_ops import DRIFT_FRESH, derive_artifact_drift
@@ -124,6 +125,12 @@ async def _close_todos_db_after_test() -> AsyncGenerator[None]:
 async def _project_db(project_root: Path) -> TodosDb:
     await close_todos_db_instances()
     return await get_todos_db(project_root)
+
+
+async def _read_state(todos_db: TodosDb, slug: str) -> dict[str, StateValue]:
+    state = await todos_db.read_state(slug)
+    assert state is not None
+    return state
 
 
 async def _add_todo(
@@ -459,6 +466,91 @@ def test_review_approval_is_invalidated_when_its_artifact_is_rewritten() -> None
     assert adopt_prepare_handoff_phase(req) == LifecyclePhase.ARCHITECTURE_DRAFTING
     req.artifacts.requirements.digest = "req-rewritten"
     assert adopt_prepare_handoff_phase(req) == LifecyclePhase.PRD_HUMAN_APPROVAL
+
+
+def _empty_snippet_digest(_snippet_id: str) -> str:
+    return ""
+
+
+def test_seeded_plan_is_held_in_plan_drafting_until_the_seed_clears() -> None:
+    """A supplied --plan present at first entry must run a full plan-draft pass
+    before review: the `seeded` flag overrides the plan-present⇒review default,
+    and clearing it (same present, still-unreviewed artifact) advances to review."""
+    model = TodoState(kind=KIND_CHANGE, schema_version=4)
+    model.artifacts.implementation_plan.digest = "seed-v1"
+    model.artifacts.implementation_plan.seeded = True
+    assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PLAN_DRAFTING
+
+    model.artifacts.implementation_plan.seeded = False
+    assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PLAN_REVIEW
+
+
+async def test_plan_rewrite_clears_the_seed_and_advances_to_plan_review(tmp_path: Path) -> None:
+    """The drafting pass rewriting the implementation-plan flows through the
+    canonical provenance rewrite-clear hook, dropping the seed so the next
+    derivation hands the now-grounded plan to plan-review."""
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    slug = "seeded-rewrite"
+    body = "# Plan\n\nSeeded hypothesis.\n"
+    await todos_db.add_to_roadmap(slug)
+    await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, body, updated_by="test")
+    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=4)
+    model.artifacts.implementation_plan.digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
+    model.artifacts.implementation_plan.seeded = True
+    await todos_db.write_state(slug, model.model_dump(exclude_none=True))
+
+    held = StateWriter(await _read_state(todos_db, slug))
+    assert adopt_prepare_handoff_phase(held.state) == LifecyclePhase.PLAN_DRAFTING
+
+    enriched = "# Plan\n\nGrounded + blast-radius-informed + doc-reflected.\n"
+    await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, enriched, updated_by="test")
+    writer = StateWriter(await _read_state(todos_db, slug))
+    await provenance.sync_artifact_provenance(
+        todos_db,
+        writer,
+        slug,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        repo_root=str(project_root),
+        artifact_body=enriched,
+        snippet_digest_fn=_empty_snippet_digest,
+    )
+    await writer.commit(todos_db, slug)
+
+    cleared = StateWriter(await _read_state(todos_db, slug))
+    assert cleared.state.artifacts.implementation_plan.seeded is False
+    assert adopt_prepare_handoff_phase(cleared.state) == LifecyclePhase.PLAN_REVIEW
+
+
+async def test_non_plan_rewrite_leaves_a_seeded_plan_untouched(tmp_path: Path) -> None:
+    """The rewrite-clear hook is keyed to the rewritten artifact: syncing a
+    non-plan artifact must not drop a seeded implementation-plan."""
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    slug = "seeded-other-rewrite"
+    await todos_db.add_to_roadmap(slug)
+    await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, "# Plan\n\nSeeded.\n", updated_by="test")
+    prd_body = "# PRD\n\nUnrelated rewrite.\n"
+    await todos_db.write_artifact(slug, ARTIFACT_PRD, prd_body, updated_by="test")
+    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=4)
+    model.artifacts.implementation_plan.digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
+    model.artifacts.implementation_plan.seeded = True
+    await todos_db.write_state(slug, model.model_dump(exclude_none=True))
+
+    writer = StateWriter(await _read_state(todos_db, slug))
+    await provenance.sync_artifact_provenance(
+        todos_db,
+        writer,
+        slug,
+        ARTIFACT_PRD,
+        repo_root=str(project_root),
+        artifact_body=prd_body,
+        snippet_digest_fn=_empty_snippet_digest,
+    )
+    await writer.commit(todos_db, slug)
+
+    after = StateWriter(await _read_state(todos_db, slug))
+    assert after.state.artifacts.implementation_plan.seeded is True
 
 
 _PRD_DIGEST = "prd-approved"
