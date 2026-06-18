@@ -765,7 +765,7 @@ class OperationsService:
         if adoption.status is ManualLifecycleStatus.SKIPPED:
             return self._format_manual_lifecycle_result(adoption)
 
-        intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug)
+        intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug, requested_lane=lane)
         if intent is None:
             reason = skip_reason.value if skip_reason is not None else "invalid-kind"
             return f"RUNNER_NOT_DISPATCHED: {slug} {reason}"

@@ -696,8 +696,17 @@ async def adopt_manual_lifecycle_session(
 async def resolve_manual_dispatch_intent(
     todos_db: TodosDb,
     slug: str,
+    *,
+    requested_lane: RunnerLane | None = None,
 ) -> tuple[DispatchIntent | None, RunnerSkipReason | None]:
-    """Resolve the natural lifecycle lane for an operator-started todo."""
+    """Resolve the natural lifecycle lane for an operator-started todo.
+
+    An explicit ``requested_lane`` of PREPARE re-opens the prepare lane for a todo
+    whose natural lane has advanced to WORK (the drift re-preparation route). The
+    flip is asymmetric: it fires only on an already-resolved WORK lane, so a
+    kind-less todo remains undispatched and a naturally-PREPARE draft is
+    unaffected.
+    """
     state = await todos_db.read_state(slug)
     if state is None:
         return None, RunnerSkipReason.MISSING_STATE
@@ -736,6 +745,8 @@ async def resolve_manual_dispatch_intent(
     )
     if lane is None:
         return None, skip_reason or RunnerSkipReason.INVALID_KIND
+    if requested_lane is RunnerLane.PREPARE and lane is RunnerLane.WORK:
+        lane = RunnerLane.PREPARE
     return _intent(slug, lane), None
 
 

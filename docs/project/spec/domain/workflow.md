@@ -1077,8 +1077,6 @@ Then those todos auto-start cleanly with no lingering hold blocking them
 
 <!-- /planned:hold-gated-on-autostart -->
 
-<!-- planned:tui-prepare-forces-work-lane -->
-
 #### UC-WFL-24: Operator-initiated lifecycle dispatch honors an explicit prepare request
 
 ```gherkin
@@ -1104,8 +1102,6 @@ When the operation bridge resolves the dispatch intent
 Then no lane is resolved and the operation is not dispatched
 And kind discovery is not bypassed
 ```
-
-<!-- /planned:tui-prepare-forces-work-lane -->
 
 <!-- planned:runner-redispatches-split-holders -->
 

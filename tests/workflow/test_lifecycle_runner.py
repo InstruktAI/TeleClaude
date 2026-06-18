@@ -190,12 +190,14 @@ async def _add_todo(
 
 
 async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
-    """Add a roadmap entry whose state carries no kind (kind-discovery pending)."""
+    """Add a roadmap entry whose state carries no kind (kind-discovery pending).
+
+    The stored state omits ``kind`` so the canonicalizer normalizes it to ``None``
+    (a missing kind, not the ``TodoState`` default of ``feature``); this is the
+    genuine kind-less shape the runner routes to kind discovery.
+    """
     await todos_db.add_to_roadmap(slug, after=None)
-    await todos_db.write_state(
-        slug,
-        TodoState(schema_version=4).model_dump(exclude_none=True),
-    )
+    await todos_db.write_state(slug, {"schema_version": 4})
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -971,6 +973,82 @@ async def test_operation_bridge_dispatches_natural_prepare_lane_for_draft_operat
     assert state is not None
     assert state["active_runner"] == _SPAWN_SESSION
     assert state["manually_started"] is True
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-24")
+async def test_operation_bridge_honors_explicit_prepare_lane_on_prepared_todo(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner=None,
+    )
+    client = _RunnerClient()
+    service = OperationsService(
+        db=cast(Db, _FakeDb()),
+        task_registry=TaskRegistry(),
+        lifecycle_client_factory=lambda: client,
+    )
+
+    result = await service._run_todo_lifecycle_operation(
+        _operation(slug=_WORK_SLUG, cwd=project_root),
+        lane=RunnerLane.PREPARE,
+        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+    )
+
+    assert result == snapshot
+    assert client.requests[0]["command"] == _NEXT_PREPARE
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-24")
+async def test_operation_bridge_explicit_prepare_does_not_force_kindless(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_kindless_todo(todos_db, _WORK_SLUG)
+    client = _RunnerClient()
+    service = OperationsService(
+        db=cast(Db, _FakeDb()),
+        task_registry=TaskRegistry(),
+        lifecycle_client_factory=lambda: client,
+    )
+
+    result = await service._run_todo_lifecycle_operation(
+        _operation(slug=_WORK_SLUG, cwd=project_root),
+        lane=RunnerLane.PREPARE,
+        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+    )
+
+    assert result == snapshot
+    assert client.requests == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-24")
+async def test_operation_bridge_work_lane_on_prepared_todo_stays_work(tmp_path: Path, snapshot: object) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner=None,
+    )
+    client = _RunnerClient()
+    service = OperationsService(
+        db=cast(Db, _FakeDb()),
+        task_registry=TaskRegistry(),
+        lifecycle_client_factory=lambda: client,
+    )
+
+    result = await service._run_todo_lifecycle_operation(
+        _operation(slug=_WORK_SLUG, cwd=project_root),
+        lane=RunnerLane.WORK,
+        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+    )
+
+    assert result == snapshot
+    assert client.requests[0]["command"] == _NEXT_WORK
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
