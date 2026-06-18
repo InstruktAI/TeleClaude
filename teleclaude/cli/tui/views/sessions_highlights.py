@@ -169,14 +169,25 @@ class SessionsViewHighlightsMixin:
         Replaces the old set_active_tool/clear_active_tool pair.
         Passes the hook event type through to the widget for direct matching.
         """
+        # Out-bearing events carry the rendered out-line text. Retaining each
+        # non-empty value in memory — on the widget reactive (survives the
+        # user_prompt_submit clear within a live widget) and in _retained_out
+        # (survives tree rebuilds) — keeps the render fallback supplied so the
+        # out line never drops once a value has appeared. user_prompt_submit and
+        # empty-text events are not out-bearing and must not overwrite it.
+        out_bearing = hook_type in ("tool_use", "thinking", "agent_stop") and bool(text)
         for widget in self._nav_items:  # type: ignore[attr-defined]
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
                 widget.activity_event = hook_type
                 widget.activity_text = text
+                if out_bearing:
+                    widget.last_output_summary = text
                 break
-        # Persist agent_stop summary so output survives tree rebuilds.
-        # activity_event/activity_text are volatile widget state lost when
-        # widgets are recreated; _last_output_summary is the durable fallback.
+        if out_bearing:
+            self._retained_out[session_id] = text  # type: ignore[attr-defined]
+        # Persist only the agent_stop summary to disk so output survives a
+        # restart. Live tool_use/thinking values are retained in memory
+        # (_retained_out) only — per-event disk writes are too heavy.
         if hook_type == "agent_stop" and text:
             self._last_output_summary[session_id] = {  # type: ignore[attr-defined]
                 "text": text,

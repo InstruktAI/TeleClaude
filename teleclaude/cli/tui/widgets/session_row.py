@@ -51,7 +51,7 @@ class SessionRow(TelecMixin, Widget):
     highlight_type = reactive("")  # "" | "input" | "output"
     activity_event = reactive("")  # hook event type, not persisted
     activity_text = reactive("", layout=True)  # tool name or summary
-    last_output_summary = reactive("", layout=True)  # persisted agent_stop summary
+    last_output_summary = reactive("", layout=True)  # retained out-line text used by the render fallback
     skip_bottom_connector = reactive(False)
     is_last_child = reactive(False)
 

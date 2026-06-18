@@ -35,6 +35,8 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 
 5. **Live output highlight during active tool**: While `activity_event == "tool_use"` the output line is lit. The highlight follows the live activity state — the next `tool_use` or `agent_stop` advances it.
 
+6. **Out-line text is retained**: The rendered out-line text value is retained in memory from the first non-empty out-bearing event (`tool_use`, `thinking`, `agent_stop`) and persists across the `user_prompt_submit` clear and tree rebuilds until a newer non-empty out value replaces it. Only the `agent_stop` summary is persisted to disk; live values are retained in memory only. The row height stays stable — the out line never drops once a value has appeared. The highlight (invariant 5) follows live activity independently of the retained text.
+
 ## Primary flows
 
 ### 1. User sends message, agent responds

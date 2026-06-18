@@ -1,0 +1,22 @@
+# serializer version: 1
+# name: test_ephemeral_out_values_never_reach_disk
+  dict({
+    'text': 'done summary',
+    'ts': '<monotonic>',
+  })
+# ---
+# name: test_out_line_retained_across_activity_clear_and_rebuild
+  dict({
+    'after_clear': '''
+       [1] ▼ claude/?  "s1"
+        │ [] s1 / -
+        │ [] out: Read: foo.py
+    ''',
+    'after_rebuild': '''
+       [1] ▼ claude/?  "s1"
+        │ [] s1 / -
+        │ [] out: Read: foo.py
+        ├-----------------------------------------------------------------------------------------------
+    ''',
+  })
+# ---

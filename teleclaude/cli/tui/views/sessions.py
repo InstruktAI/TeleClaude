@@ -109,6 +109,10 @@ class SessionsView(
         self._output_highlights: set[str] = set()
         # session_id → {"text": str, "ts": float (monotonic)}
         self._last_output_summary: dict[str, dict[str, object]] = {}  # guard: loose-dict
+        # session_id → last non-empty out-line text. In-memory only, never
+        # persisted to disk: retains the live out value across the
+        # user_prompt_submit clear and tree rebuilds so the out line never drops.
+        self._retained_out: dict[str, str] = {}
         self._collapsed_sessions: set[str] = set()
         self._collapsed_computers: set[str] = set()
         self._collapsed_projects: set[tuple[str, str]] = set()
@@ -177,6 +181,10 @@ class SessionsView(
         if stale_summaries:
             for sid in stale_summaries:
                 del self._last_output_summary[sid]
+        stale_retained = self._retained_out.keys() - new_ids
+        if stale_retained:
+            for sid in stale_retained:
+                del self._retained_out[sid]
 
         if old_ids != new_ids or not self._nav_items:
             # Session list changed — full rebuild (includes _apply_pending_selection)
@@ -429,10 +437,15 @@ class SessionsView(
             container.mount(row)
             self._nav_items.append(row)
 
-            # Restore persisted output text AFTER mount so Textual
-            # recalculates layout from the reactive change.
+            # Restore the retained out-line text AFTER mount so Textual
+            # recalculates layout from the reactive change. The in-memory
+            # _retained_out value (latest live or agent_stop out value) leads;
+            # the disk-backed agent_stop summary is the restart-survival fallback.
+            retained = self._retained_out.get(session.session_id)
             stored = self._last_output_summary.get(session.session_id)
-            if stored and stored.get("text"):
+            if retained:
+                row.last_output_summary = retained
+            elif stored and stored.get("text"):
                 row.last_output_summary = str(stored["text"])
 
             # Recurse into AI-to-AI children
