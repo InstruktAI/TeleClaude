@@ -267,8 +267,6 @@ And PersonEntry edits write the global config
 And PersonConfig edits write that person's per-person overlay file
 ```
 
-<!-- planned:fix-silent-swallow-no-redis-conn -->
-
 #### UC-WIZ-14: `make start` fails fast when the configured Redis is unreachable
 
 Redis is a hard runtime dependency. The daemon stays resilient to transient Redis
@@ -287,8 +285,6 @@ And the daemon reports itself not ready while Redis has never connected
 When the configured Redis later becomes reachable
 Then the daemon reports itself ready without requiring a restart
 ```
-
-<!-- /planned:fix-silent-swallow-no-redis-conn -->
 
 ### Persistence surfaces and writers
 

@@ -32,6 +32,10 @@ API_SOCKET="/tmp/teleclaude-api.sock"
 # Startup soft warning threshold in seconds. Startup keeps waiting past this
 # threshold and emits warnings instead of failing hard.
 STARTUP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STARTUP_WAIT_S:-15}"
+# Bounded window for the configured Redis to connect at least once. A reachable
+# Redis connects sub-second; exceeding this window means REDIS_URL is misconfigured
+# or the server is unreachable, and `make start` reports failure.
+REDIS_READY_WAIT_SECONDS="${TELECLAUDE_DAEMON_REDIS_READY_WAIT_S:-15}"
 STOP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_WAIT_S:-25}"
 STOP_KILL_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_KILL_WAIT_S:-5}"
 STARTUP_STREAM_PID=""
@@ -754,6 +758,89 @@ status_launchd_unit() {
     return 0
 }
 
+# Poll an API endpoint over the unix socket; echo "ok" when the HTTP status is in
+# the accepted set, "fail" otherwise. Shared by start (readiness gate) and status.
+check_api_endpoint() {
+    local socket_path="$1"
+    local endpoint="$2"
+    local accepted_codes="${3:-200}"
+    if command -v curl >/dev/null 2>&1; then
+        local status
+        status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 --max-time 1 --unix-socket "$socket_path" "http://localhost${endpoint}") || status=""
+        case ",$accepted_codes," in
+            *",$status,"*)
+                echo "ok"
+                ;;
+            *)
+                echo "fail"
+                ;;
+        esac
+        return 0
+    fi
+    python3 - <<PY 2>/dev/null
+import socket
+path = "$socket_path"
+endpoint = "$endpoint"
+accepted = {code.strip() for code in "$accepted_codes".split(",") if code.strip()}
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(1.0)
+    s.connect(path)
+    req = f"GET {endpoint} HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n"
+    s.sendall(req.encode("utf-8"))
+    data = b""
+    while True:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    s.close()
+    first = data.split(b"\\r\\n", 1)[0].decode("utf-8", "ignore")
+    parts = first.split()
+    status_code = parts[1] if len(parts) >= 2 else ""
+    if status_code in accepted:
+        print("ok")
+    else:
+        print("fail")
+except Exception:
+    print("fail")
+PY
+}
+
+# Poll the readiness endpoint until Redis has connected at least once, or a bounded
+# window elapses. Returns 0 on ready, 1 on timeout. The daemon is left running
+# (the reconnect loop keeps retrying) — only the start invocation reports failure.
+#
+# On Linux the API socket binds well after wait_for_daemon returns (which gates on
+# PID liveness alone), so socket-appearance must be folded into the wait: the
+# readiness window only begins once the socket exists. A still-absent socket counts
+# as "not ready yet, keep waiting" — never a silent pass.
+wait_for_redis_ready() {
+    # Phase 1: wait for the API socket to bind (adapter startup is usually 10-25s).
+    local socket_deadline=$((SECONDS + STARTUP_WAIT_SECONDS * 3))
+    while [ ! -S "$API_SOCKET" ]; do
+        if ! is_service_loaded; then
+            return 1
+        fi
+        if [ "$SECONDS" -ge "$socket_deadline" ]; then
+            return 1
+        fi
+        sleep 1
+    done
+
+    # Phase 2: socket is up — poll /ready until Redis connects or the window elapses.
+    # Without curl/python3 the probe can never report ok, so the window elapses to a
+    # failure (fail-closed) rather than silently passing.
+    local ready_deadline=$((SECONDS + REDIS_READY_WAIT_SECONDS))
+    while [ "$SECONDS" -lt "$ready_deadline" ]; do
+        if [ "$(check_api_endpoint "$API_SOCKET" "/ready" "200" || true)" = "ok" ]; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
 # Start daemon via service manager
 start_daemon() {
     require_config_files
@@ -793,6 +880,12 @@ start_daemon() {
     # Wait for daemon to come up. This uses a soft warning threshold rather than
     # a hard timeout because adapter startup can legitimately exceed 15 seconds.
     if wait_for_daemon; then
+        if ! wait_for_redis_ready; then
+            stop_startup_log_stream
+            log_error "Redis is unreachable: the daemon started but never connected to Redis within ${REDIS_READY_WAIT_SECONDS}s"
+            log_error "Redis is a hard dependency. Verify REDIS_URL points to a reachable server, then re-run 'make start' (see 'telec config wizard')"
+            return 1
+        fi
         stop_startup_log_stream
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
@@ -944,53 +1037,6 @@ try:
     print("ok")
 except PermissionError:
     print("blocked")
-except Exception:
-    print("fail")
-PY
-    }
-
-    check_api_endpoint() {
-        local socket_path="$1"
-        local endpoint="$2"
-        local accepted_codes="${3:-200}"
-        if command -v curl >/dev/null 2>&1; then
-            local status
-            status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 --max-time 1 --unix-socket "$socket_path" "http://localhost${endpoint}") || status=""
-            case ",$accepted_codes," in
-                *",$status,"*)
-                    echo "ok"
-                    ;;
-                *)
-                    echo "fail"
-                    ;;
-            esac
-            return 0
-        fi
-        python3 - <<PY 2>/dev/null
-import socket
-path = "$socket_path"
-endpoint = "$endpoint"
-accepted = {code.strip() for code in "$accepted_codes".split(",") if code.strip()}
-try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(1.0)
-    s.connect(path)
-    req = f"GET {endpoint} HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n"
-    s.sendall(req.encode("utf-8"))
-    data = b""
-    while True:
-        chunk = s.recv(4096)
-        if not chunk:
-            break
-        data += chunk
-    s.close()
-    first = data.split(b"\\r\\n", 1)[0].decode("utf-8", "ignore")
-    parts = first.split()
-    status_code = parts[1] if len(parts) >= 2 else ""
-    if status_code in accepted:
-        print("ok")
-    else:
-        print("fail")
 except Exception:
     print("fail")
 PY

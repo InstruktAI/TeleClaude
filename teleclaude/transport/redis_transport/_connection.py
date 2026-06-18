@@ -112,6 +112,11 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         if exc:
             logger.error("Untracked task %s failed: %s", task.get_name(), exc, exc_info=exc)
 
+    @property
+    def is_redis_ready(self) -> bool:
+        """Whether Redis has connected at least once (non-blocking read)."""
+        return self._redis_ready.is_set()
+
     async def start(self) -> None:
         """Initialize Redis connection and start background tasks."""
         if self._running:

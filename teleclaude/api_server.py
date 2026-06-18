@@ -32,6 +32,7 @@ from teleclaude.api import (
     notifications_routes,
     people_routes,
     projects_routes,
+    readiness_routes,
     sessions_actions_routes,
     sessions_routes,
     settings_routes,
@@ -125,6 +126,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         # --- Route modules ---
         sessions_routes.configure(client=client, cache=cache)
         sessions_actions_routes.configure(client=client)
+        readiness_routes.configure(client=client)
         computers_routes.configure(cache=cache)
         projects_routes.configure(cache=cache)
         tui_routes.configure(cache=cache)
@@ -134,6 +136,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(sessions_actions_routes.router)
         self.app.include_router(computers_routes.router)
         self.app.include_router(projects_routes.router)
+        self.app.include_router(readiness_routes.router)
         self.app.include_router(agents_routes.router)
         self.app.include_router(people_routes.router)
         self.app.include_router(settings_routes.router)
