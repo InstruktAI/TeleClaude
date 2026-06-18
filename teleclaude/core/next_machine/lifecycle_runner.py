@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -390,17 +390,39 @@ async def _set_active_runner(todos_db: TodosDb, slug: str, session_id: str, *, m
     await writer.commit(todos_db, slug)
 
 
+def _holder_slugs(rows: Sequence[RoadmapRow]) -> set[str]:
+    """Structural-holder slugs derived in-memory from the loaded roadmap rows.
+
+    Mirrors ``TodosDb._is_state_holder_slug`` (``group_slug == slug``,
+    ``slug != slug``, ``status != "removed"``) over the already-fetched rows,
+    avoiding an N+1 ``is_holder`` query per state-less row. A slug is a holder
+    when a live child group-references it.
+    """
+    return {
+        group_slug
+        for row in rows
+        if (group_slug := row["group_slug"]) and row["slug"] != group_slug and row["status"] != "removed"
+    }
+
+
 async def _load_todos(
     todos_db: TodosDb, db: Db, *, claimed_slugs: set[str] | None = None
 ) -> tuple[dict[str, RunnerTodo], list[str]]:
     rows = await todos_db.list_roadmap(include_icebox=True, include_delivered=True, include_removed=True)
     deps = await todos_db.load_deps()
     outstanding = claimed_slugs or set()
+    holders = _holder_slugs(rows)
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
         todo = await _read_runner_todo(todos_db, row)
         if todo is None:
+            # A structural holder is deliberately state-less (read_state refuses
+            # holders by design); never reconstitute it into a dispatchable
+            # kind-less entry. A genuine non-holder state-less row keeps the
+            # kind-discovery fallback below.
+            if row["slug"] in holders:
+                continue
             loaded[row["slug"]] = RunnerTodo(
                 slug=row["slug"],
                 status=row["status"],

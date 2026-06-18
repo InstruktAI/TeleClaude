@@ -943,23 +943,6 @@ And it is left undispatched by task autostart policy (no-autostart), not by hold
 
 #### UC-WFL-20: Event-driven lifecycle runner dispatches the full eligible set
 
-<!-- planned-change:runner-redispatches-split-holders -->
-
-```gherkin
-Given a workflow, config, or session-close wake-up resolves to project P
-When the lifecycle runner handles the wake-up
-Then it reloads P's current active todo list from workflow storage
-And it first reconciles `active_runner`: a link naming a non-live session is cleared before eligibility filtering, so a stale link is never mistaken for an active driver
-And skips icebox, removed, delivered, held, dependency-blocked, drift-blocked, policy-disabled, and already-driven (`active_runner` names a live session) entries
-And for each remaining eligible entry it acquires a `(P, slug, lane)` dispatch claim before spawning a session
-And it starts the exact lifecycle entrypoint for the entry's state: `/analyze-todo-input`, `/next-prepare`, or `/next-work`
-And it records the spawned session id as the entry's `active_runner` and releases the dispatch claim
-And it never dispatches from a project-ambiguous event
-And in v1 every target wake-up is backed by either an existing v1 emission or an explicitly wired v1 seam, never by assuming Rust v2 events reach the Python runner
-```
-
-<!-- change:runner-redispatches-split-holders -->
-
 ```gherkin
 Given a workflow, config, or session-close wake-up resolves to project P
 When the lifecycle runner handles the wake-up
@@ -973,8 +956,6 @@ And it records the spawned session id as the entry's `active_runner` and release
 And it never dispatches from a project-ambiguous event
 And in v1 every target wake-up is backed by either an existing v1 emission or an explicitly wired v1 seam, never by assuming Rust v2 events reach the Python runner
 ```
-
-<!-- /planned-change:runner-redispatches-split-holders -->
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
@@ -1103,27 +1084,21 @@ Then no lane is resolved and the operation is not dispatched
 And kind discovery is not bypassed
 ```
 
-<!-- planned:runner-redispatches-split-holders -->
-
 #### UC-WFL-25: Split holders are never dispatched by the runner
 
 ```gherkin
 Given a todo "parent" is split into children that group-reference it
 And "parent" is therefore a structural holder with no resolvable state
-When the lifecycle runner reloads the active todo list
+When the lifecycle runner reloads the active todo list across successive passes
 Then "parent" is recognised as a structural holder and excluded from the eligible set
 And the runner does not synthesize a kind-less entry for "parent" from its absent state
 And the runner dispatches no lane (analyze, prepare, or work) for "parent"
 And no dispatch claim or runner session is created for "parent"
 And the children remain eligible and dispatch normally
-```
-
-```gherkin
-Given a todo "parent" was split and is a structural holder
-When the lifecycle runner makes several successive passes
-Then "parent" is excluded on every pass
 And the count of runner dispatches for "parent" across all passes is zero
 ```
+
+#### UC-WFL-26: State-less non-holders still enter kind discovery
 
 ```gherkin
 Given a roadmap entry is state-less but is not a structural holder
@@ -1132,8 +1107,6 @@ When the lifecycle runner reloads the active todo list
 Then the runner treats it as a kind-less entry pending classification
 And dispatches it to "/analyze-todo-input" on the analyze lane
 ```
-
-<!-- /planned:runner-redispatches-split-holders -->
 
 ### v1 inventory
 

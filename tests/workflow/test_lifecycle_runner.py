@@ -200,6 +200,24 @@ async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
     await todos_db.write_state(slug, {"schema_version": 4})
 
 
+async def _split_into_child(todos_db: TodosDb, parent: str, child: str, *, kind: str = _CHANGE) -> None:
+    """Reproduce the post-split shape: parent becomes a state-less holder, child owns state.
+
+    Mirrors ``telec todo split`` without the API handler: group-referencing the
+    child purges the parent's state row, leaving the parent an active holder with
+    no resolvable state while the child carries a runnable lifecycle state.
+    """
+    await todos_db.add_to_roadmap(child, group_slug=parent)
+    await todos_db.write_state(
+        child,
+        TodoState(
+            schema_version=4,
+            kind=kind,
+            lifecycle_phase=LifecyclePhase.DRAFT.value,
+        ).model_dump(exclude_none=True),
+    )
+
+
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
 def test_preparation_runs_regardless_of_autostart_only_work_is_gated() -> None:
     """Preparation always auto-dispatches: kind-discovery (analyze) and the
@@ -346,6 +364,59 @@ async def test_concurrent_passes_dispatch_once(tmp_path: Path) -> None:
     await task
 
     assert run_count == 1
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-25")
+async def test_split_holder_is_never_dispatched_child_prepare_preserved(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, kind=_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value)
+    await _split_into_child(todos_db, _PARENT, _CHILD)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert _PARENT not in {intent.slug for intent in result.dispatched}
+    claims = await list_dispatch_claims(todos_db)
+    assert all(claim.slug != _PARENT for claim in claims)
+    assert (_CHILD, RunnerLane.PREPARE.value) in {(claim.slug, claim.lane) for claim in claims}
+    assert any(request["command"] == _NEXT_PREPARE and request["args"] == _CHILD for request in client.requests)
+
+    # Second pass with the first pass's claims still in place: the holder must
+    # remain undispatched across passes, not merely on the first.
+    second = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+    assert _PARENT not in {intent.slug for intent in second.dispatched}
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-26")
+async def test_non_holder_stateless_row_still_dispatches_to_analyze(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    # A roadmap row with no state row and no child group-referencing it: the
+    # genuine kind-discovery case the holder guard must not swallow.
+    await todos_db.add_to_roadmap(_WORK_SLUG, after=None)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert _WORK_SLUG in {intent.slug for intent in result.dispatched}
+    claims = await list_dispatch_claims(todos_db)
+    assert (_WORK_SLUG, RunnerLane.ANALYZE.value) in {(claim.slug, claim.lane) for claim in claims}
 
 
 def _operation(
