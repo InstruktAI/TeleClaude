@@ -25,13 +25,8 @@ from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES, ARTIFACT_NAMES_RETIRED, ARTIFACT_NAMES_WRITABLE
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import get_head_commit
-from teleclaude.core.next_machine.stamps import apply_todo_stamp
-from teleclaude.core.next_machine.state_mutation import StateMutationError
-from teleclaude.core.todos_db import TodosDb, close_todos_db_instances
-from teleclaude.events.producer import ensure_event_producer
-from teleclaude.git import GitCommandError
+from teleclaude.core.todos_db import TodosDb
 from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_project_root
-from teleclaude.session_identity import get_session_id
 from teleclaude.slug import validate_slug
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
 
@@ -48,14 +43,16 @@ class _TodoUpdateBody(TypedDict):
     release: NotRequired[bool]
 
 
-class _TodoApproveBody(TypedDict):
+class _TodoStampBody(TypedDict):
     slug: str
+    stamp_type: str
+    value: str
+    phase: str | None
     cwd: str
 
 
 __all__ = [
     "_handle_todo",
-    "_handle_todo_approve",
     "_handle_todo_artifacts",
     "_handle_todo_create",
     "_handle_todo_deliver",
@@ -80,7 +77,6 @@ def _handle_todo(args: list[str]) -> None:
     subcommand = args[0]
     handlers = {
         "artifacts": _handle_todo_artifacts,
-        "approve": _handle_todo_approve,
         "co-create": _handle_todo_design,
         "create": _handle_todo_create,
         "deliver": _handle_todo_deliver,
@@ -589,40 +585,6 @@ def _handle_todo_update(args: list[str]) -> None:
         raise SystemExit(1)
 
 
-def _handle_todo_approve(args: list[str]) -> None:
-    """Handle telec todo approve <slug>."""
-    if not args or "--help" in args or "-h" in args:
-        print(_usage("todo", "approve"))
-        return
-
-    slug: str | None = None
-    for arg in args:
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "approve"))
-            raise SystemExit(1)
-        if slug is not None:
-            print("Only one slug is allowed.")
-            raise SystemExit(1)
-        slug = arg
-
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("todo", "approve"))
-        raise SystemExit(1)
-
-    _validate_slugs(slug)
-    body: _TodoApproveBody = {
-        "slug": slug,
-        "cwd": str(resolve_invocation_cwd()),
-    }
-    response: object = tool_api_call("POST", "/todos/approve", json_body=body)
-    if isinstance(response, dict) and response.get("status") == "ok":
-        print(f"Approved {slug}")
-        return
-    print_json(response)
-
-
 # Artifact and stamp handlers (consolidated back from _todo_extra.py)
 # ---------------------------------------------------------------------------
 
@@ -853,32 +815,21 @@ def _handle_todo_stamp(args: list[str]) -> None:
         print(f"--kind-assign requires <{TODO_KIND_USAGE}> [content]")
         raise SystemExit(1)
 
-    if stamp_type == "finalize_ready":
-        ensure_event_producer()
-
-    async def _apply_stamp() -> None:
-        try:
-            await apply_todo_stamp(
-                cwd=str(resolve_invocation_cwd()),
-                slug=slug,
-                stamp_type=stamp_type,
-                value=value or "",
-                phase=phase,
-                caller_session_id=get_session_id(),
-            )
-        finally:
-            await close_todos_db_instances()
-
-    try:
-        asyncio.run(_apply_stamp())
-    except (PermissionError, ValueError, RuntimeError, GitCommandError, StateMutationError) as exc:
-        print(str(exc), file=sys.stderr)
-        raise SystemExit(1) from exc
-
-    label = f"{stamp_type}={value}" if value else stamp_type
-    if phase:
-        label = f"{label} phase={phase}"
-    print(f"Stamped {label} for {slug}")
+    body: _TodoStampBody = {
+        "slug": slug,
+        "stamp_type": stamp_type,
+        "value": value or "",
+        "phase": phase,
+        "cwd": str(resolve_invocation_cwd()),
+    }
+    response = tool_api_call("POST", "/todos/stamp", json_body=body)
+    if isinstance(response, dict) and response.get("status") == "ok":
+        label = f"{stamp_type}={value}" if value else stamp_type
+        if phase:
+            label = f"{label} phase={phase}"
+        print(f"Stamped {label} for {slug}")
+        return
+    print_json(response)
 
 
 def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str | None, str | None]:

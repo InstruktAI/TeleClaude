@@ -41,13 +41,7 @@ from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
-from teleclaude.core.next_machine.lifecycle import (
-    ApprovalGate,
-    LifecyclePhase,
-    coerce_lifecycle_phase,
-    lifecycle_phase_index,
-    pending_approval_gate,
-)
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.parent_prd_ground import read_parent_prd_ground
 from teleclaude.core.next_machine.provenance import (
     read_dependency_set,
@@ -141,7 +135,6 @@ async def apply_todo_stamp(
         slug=slug,
         stamp_type=stamp_type,
         caller_session_id=caller_session_id,
-        lifecycle_phase=writer.state.lifecycle_phase,
         active_runner=writer.state.active_runner,
     )
 
@@ -173,15 +166,6 @@ async def apply_todo_stamp(
             slug,
             ARTIFACT_IMPLEMENTATION_PLAN,
             "plan_ready",
-            repo_root=cwd,
-            snippet_digest_fn=snippet_body_digest,
-        )
-    elif stamp_type == "approve_current_gate":
-        await _apply_current_gate_approval(
-            todos_db,
-            writer,
-            slug,
-            caller_session_id,
             repo_root=cwd,
             snippet_digest_fn=snippet_body_digest,
         )
@@ -228,45 +212,6 @@ async def apply_todo_stamp(
         raise ValueError(f"unknown stamp type: {stamp_type}")
 
     return await writer.commit(todos_db, slug)
-
-
-# Maps a derived approval gate to the creative section + flag its ``A`` approval sets.
-_CREATIVE_GATE_APPROVAL: dict[ApprovalGate, tuple[str, str]] = {
-    ApprovalGate.CREATIVE_DESIGN_SPEC: ("design_spec", "confirmed"),
-    ApprovalGate.CREATIVE_ART: ("art", "approved"),
-    ApprovalGate.CREATIVE_VISUALS: ("visuals", "approved"),
-}
-
-
-async def _apply_current_gate_approval(
-    todos_db: TodosDb,
-    writer: StateWriter,
-    slug: str,
-    caller_session_id: str | None,
-    *,
-    repo_root: str,
-    snippet_digest_fn: Callable[[str], str],
-) -> None:
-    gate = pending_approval_gate(writer.state)
-    if gate is None:
-        raise StateMutationError("no pending approval gate")
-    if gate is ApprovalGate.PRD:
-        await _apply_approval_stamp(
-            todos_db,
-            writer,
-            slug,
-            ARTIFACT_PRD,
-            "prd_approved",
-            caller_session_id,
-            repo_root=repo_root,
-            snippet_digest_fn=snippet_digest_fn,
-        )
-        return
-    creative_target = _CREATIVE_GATE_APPROVAL.get(gate)
-    if creative_target is None:
-        raise StateMutationError(f"unsupported approval gate: {gate.value}")
-    section, flag = creative_target
-    _apply_creative_gate_stamp(writer, section=section, flag=flag)
 
 
 async def _apply_kind_assign_stamp(
@@ -509,11 +454,15 @@ async def _validate_stamp_authority(
     slug: str,
     stamp_type: str,
     caller_session_id: str | None,
-    lifecycle_phase: str | None,
     active_runner: str | None,
 ) -> None:
     if caller_session_id and caller_session_id.startswith("human:"):
-        if stamp_type in {"approve_current_gate", "prd_approved"}:
+        if stamp_type in {
+            "prd_approved",
+            "creative_design_spec_confirmed",
+            "creative_art_approved",
+            "creative_visuals_approved",
+        }:
             return
         raise PermissionError(f"{stamp_type} stamp for {slug} requires a TeleClaude session")
 
@@ -534,20 +483,8 @@ async def _validate_stamp_authority(
         return
 
     if live_claimant:
-        message = (
-            f"{stamp_type} stamp for {slug} is blocked by active runner {live_claimant}; "
-            f"caller session {caller_session_id or '<none>'} has no working_slug binding"
+        raise PermissionError(
+            f"{stamp_type} stamp for {slug} refused: a live claim is held by session "
+            f"{live_claimant} and caller session {caller_session_id or '<none>'} has no "
+            f"working_slug binding. Give the human the claiming session id {live_claimant}."
         )
-        if _should_offer_forward_to_claimant(lifecycle_phase):
-            message = (
-                f"{message}. Forward this proposed stamp to active runner {live_claimant} "
-                "for human ratification before build starts."
-            )
-        raise PermissionError(message)
-
-
-def _should_offer_forward_to_claimant(lifecycle_phase: str | None) -> bool:
-    phase = coerce_lifecycle_phase(lifecycle_phase)
-    if phase is None:
-        return True
-    return lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.BUILD_STARTED)

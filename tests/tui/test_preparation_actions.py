@@ -193,10 +193,11 @@ def test_approve_and_hold_are_independent(monkeypatch: pytest.MonkeyPatch, tmp_p
     harness.action_approve_gate()  # no-op here (not approval-pending) but exercises path
     harness._current = _todo_row(hold=True, lifecycle_phase="prd_human_approval")
     harness.action_approve_gate()
-    assert tool_api_request.call_args.args[:2] == (_METHOD_POST, "/todos/approve")
+    assert tool_api_request.call_args.args[:2] == (_METHOD_POST, "/todos/stamp")
     assert tool_api_request.call_args.kwargs["json_body"] == {
         "slug": "selected",
         "cwd": str(tmp_path),
+        "stamp_type": "prd_approved",
         "notify_runner": True,
     }
 

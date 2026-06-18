@@ -162,52 +162,12 @@ async def test_prd_approval_records_current_artifact_digest(tmp_path: Path) -> N
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS5")
-async def test_approve_current_gate_resolves_prd_gate_and_refuses_without_gate(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_feature_todo_with_prd(todos_db, _SLUG)
-
-    await apply_todo_stamp(
-        cwd=str(project_root),
-        slug=_SLUG,
-        stamp_type="approve_current_gate",
-        caller_session_id=_HUMAN_SESSION,
-    )
-
-    state = await todos_db.read_state(_SLUG)
-    assert state is not None
-    writer = StateWriter(state)
-    assert writer.state.approvals.prd_approved.approved is True
-    assert writer.state.approvals.prd_approved.caller_session_id == _HUMAN_SESSION
-
-    await todos_db.add_to_roadmap("no-gate")
-    await todos_db.write_state(
-        "no-gate",
-        {
-            "schema_version": 4,
-            "kind": TODO_KIND_CHANGE,
-            "phase": "pending",
-            "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value,
-        },
-    )
-    with pytest.raises(StateMutationError, match="no pending approval gate"):
-        await apply_todo_stamp(
-            cwd=str(project_root),
-            slug="no-gate",
-            stamp_type="approve_current_gate",
-            caller_session_id=_HUMAN_SESSION,
-        )
-
-
-@pytest.mark.spec(_SPEC, "UC-WSS5")
-async def test_approve_current_gate_routes_creative_design_spec_gate(tmp_path: Path) -> None:
+async def test_creative_design_spec_confirmed_stamp_sets_flag(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await todos_db.add_to_roadmap(_SLUG)
     # A creative design-spec gate is observable from state: the section exists
-    # but its ``confirmed`` flag is not yet set. The lifecycle phase is a regular
-    # prepare phase, so this approval is routed solely by the creative section —
-    # not by PRD phase.
+    # but its ``confirmed`` flag is not yet set. The explicit creative stamp sets it.
     await todos_db.write_state(
         _SLUG,
         {
@@ -222,7 +182,7 @@ async def test_approve_current_gate_routes_creative_design_spec_gate(tmp_path: P
     await apply_todo_stamp(
         cwd=str(project_root),
         slug=_SLUG,
-        stamp_type="approve_current_gate",
+        stamp_type="creative_design_spec_confirmed",
         caller_session_id=_HUMAN_SESSION,
     )
 
@@ -349,7 +309,7 @@ async def test_build_complete_refuses_unbound_caller_when_todo_has_live_claim(tm
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS4")
-async def test_pre_build_manual_refusal_offers_forward_to_active_runner(tmp_path: Path) -> None:
+async def test_manual_refusal_surfaces_claimant_session_id(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     claimant_id = f"{tmp_path.name}-claimant"
@@ -378,7 +338,7 @@ async def test_pre_build_manual_refusal_offers_forward_to_active_runner(tmp_path
         working_slug=None,
     )
 
-    with pytest.raises(PermissionError, match=rf"{claimant_id}.*Forward this proposed stamp"):
+    with pytest.raises(PermissionError, match=rf"{claimant_id}.*Give the human the claiming session id"):
         await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="plan_ready", caller_session_id=session_id)
 
 
@@ -406,7 +366,7 @@ async def test_build_complete_refuses_foreign_worker_session(tmp_path: Path) -> 
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS4")
-async def test_post_build_manual_refusal_omits_forward_offer(tmp_path: Path) -> None:
+async def test_manual_refusal_with_no_caller_surfaces_claimant(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     claimant_id = f"{tmp_path.name}-claimant"
@@ -419,7 +379,5 @@ async def test_post_build_manual_refusal_omits_forward_offer(tmp_path: Path) -> 
         job=JobRole.BUILDER.value,
     )
 
-    with pytest.raises(PermissionError, match=claimant_id) as exc_info:
+    with pytest.raises(PermissionError, match=rf"{claimant_id}.*Give the human the claiming session id"):
         await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="build_complete", caller_session_id=None)
-
-    assert "Forward this proposed stamp" not in str(exc_info.value)

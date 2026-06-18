@@ -2,7 +2,8 @@
 
 Exposes the next-machine state machine functions (prepare, work) and todo
 mutation operations as REST endpoints with dual-factor caller identity
-enforcement. Local todo stamping remains a CLI-local mutation.
+enforcement. Todo stamping — worker verdicts and human gate approvals alike —
+is one daemon-side mutation via ``POST /todos/stamp``.
 """
 
 from __future__ import annotations
@@ -50,8 +51,6 @@ from teleclaude.core.next_machine.kind_migration import (
 )
 from teleclaude.core.next_machine.kinds import canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
-from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_approval
-from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import apply_prepared_state, initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
@@ -147,16 +146,6 @@ class _TodoUpdateResponse(BaseModel):
     hold: bool | None = None
     warnings: list[str]
     folded_artifact: str | None = None
-
-
-def _human_gate_caller_stamp_id(identity: CallerIdentity) -> str:
-    if identity.principal and identity.principal.startswith("human:"):
-        return identity.principal
-    if not identity.session_id and identity.email:
-        return f"human:{identity.email}"
-    if not identity.session_id and identity.human_role:
-        return "human:terminal"
-    raise HTTPException(status_code=403, detail="human principal required to approve todo gate")
 
 
 def _validate_update_request(
@@ -301,37 +290,6 @@ async def todo_integrate(  # pyright: ignore
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
     )
-
-
-@router.post("/approve", response_model=_SlugStatusResponse)
-async def todo_approve(
-    slug: Annotated[str, Body()],
-    cwd: Annotated[str | None, Body()] = None,
-    notify_runner: Annotated[bool, Body()] = False,
-    identity: CallerIdentity = Depends(clearance_todos_update),
-) -> _SlugStatusResponse:
-    """Approve the todo's current pending human gate.
-
-    ``notify_runner`` is the operator-control marker (TUI ``A`` key): it messages
-    the parked runner session so it resumes. The agent CLI leaves it false — an
-    agent stamping its own approval already knows and must not message itself.
-    """
-    if not cwd:
-        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    caller_stamp_id = _human_gate_caller_stamp_id(identity)
-    _validate_slug_for_update(slug, field_name="slug")
-    try:
-        await apply_todo_stamp(
-            cwd=cwd,
-            slug=slug,
-            stamp_type="approve_current_gate",
-            caller_session_id=caller_stamp_id,
-        )
-    except (StateMutationError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if notify_runner:
-        await notify_runner_of_gate_approval(cwd, slug)
-    return _SlugStatusResponse(status="ok", slug=slug)
 
 
 @router.post("/update", response_model=None)

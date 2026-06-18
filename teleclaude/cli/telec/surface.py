@@ -585,16 +585,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
-            "approve": CommandDef(
-                desc="Approve the todo's current pending human gate",
-                args="<slug>",
-                flags=[_H],
-                notes=[
-                    "Routes through the unified human gate-control surface.",
-                    "Refuses when the selected todo has no pending approval gate.",
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
             "deliver": CommandDef(
                 desc="Move todo to delivered",
                 args="<slug> [--commit <hash>]",

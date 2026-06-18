@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException
 from syrupy.assertion import SnapshotAssertion
 
-from teleclaude.api import todo_routes
+from teleclaude.api import todo_routes, todo_stamp_routes
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import (
@@ -190,27 +190,6 @@ def test_todo_update_cli_sends_hold_and_release(monkeypatch: pytest.MonkeyPatch,
         todo_handlers._handle_todo_update([_MY_TODO, "--hold", "--release"])
 
 
-@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
-def test_todo_approve_cli_posts_current_gate_approval(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    project_root = tmp_path / "project"
-    tool_api_call = MagicMock(return_value={"status": _STATUS_OK, "slug": _MY_TODO})
-
-    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
-    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
-
-    todo_handlers._handle_todo_approve([_MY_TODO])
-
-    assert tool_api_call.call_args.args[:2] == ("POST", "/todos/approve")
-    assert tool_api_call.call_args.kwargs["json_body"] == {
-        "slug": _MY_TODO,
-        "cwd": str(project_root),
-    }
-    captured = capsys.readouterr()
-    assert captured.out == f"Approved {_MY_TODO}\n"
-
-
 @pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")
 def test_retired_todo_mutation_verbs_are_rejected() -> None:
     with pytest.raises(SystemExit):
@@ -250,26 +229,31 @@ async def test_todo_update_slug_leg_returns_rename_receipt(monkeypatch: pytest.M
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
-async def test_todo_approve_route_requires_human_and_stamps_current_gate(tmp_path: Path) -> None:
+async def test_todo_stamp_route_requires_human_for_prd_approval(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _MY_TODO, kind=TODO_KIND_FEATURE, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL)
     await todos_db.write_artifact(_MY_TODO, ARTIFACT_PRD, "# PRD\n\nApprove this.", updated_by="test")
 
     with pytest.raises(HTTPException) as agent_error:
-        await todo_routes.todo_approve(slug=_MY_TODO, cwd=str(project_root), identity=_identity())
+        await todo_stamp_routes.todo_stamp(
+            slug=_MY_TODO, stamp_type="prd_approved", cwd=str(project_root), identity=_identity()
+        )
 
     assert agent_error.value.status_code == 403
     with pytest.raises(HTTPException) as untagged_error:
-        await todo_routes.todo_approve(
+        await todo_stamp_routes.todo_stamp(
             slug=_MY_TODO,
+            stamp_type="prd_approved",
             cwd=str(project_root),
             identity=_untagged_session_with_human_email_identity(),
         )
 
     assert untagged_error.value.status_code == 403
 
-    response = await todo_routes.todo_approve(slug=_MY_TODO, cwd=str(project_root), identity=_human_identity())
+    response = await todo_stamp_routes.todo_stamp(
+        slug=_MY_TODO, stamp_type="prd_approved", cwd=str(project_root), identity=_human_identity()
+    )
 
     assert response.status == _STATUS_OK
     state = await todos_db.read_state(_MY_TODO)

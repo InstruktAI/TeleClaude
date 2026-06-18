@@ -28,6 +28,7 @@ from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.config import config
 from teleclaude.constants import ARTIFACT_INPUT
 from teleclaude.core.next_machine.lifecycle import (
+    ApprovalGate,
     hold_control_available,
     is_ready_for_work,
     pending_approval_gate,
@@ -51,14 +52,28 @@ def _autostart_enabled_for_kind(kind: str | None) -> bool:
     return bool(getattr(config.workflow.autostart, kind, False))
 
 
-def _approval_gate_pending(row: TodoRow) -> bool:
+_APPROVAL_GATE_STAMP_TYPE: dict[ApprovalGate, str] = {
+    ApprovalGate.PRD: "prd_approved",
+    ApprovalGate.CREATIVE_DESIGN_SPEC: "creative_design_spec_confirmed",
+    ApprovalGate.CREATIVE_ART: "creative_art_approved",
+    ApprovalGate.CREATIVE_VISUALS: "creative_visuals_approved",
+}
+
+
+def _pending_gate_stamp_type(row: TodoRow) -> str | None:
+    """Return the explicit stamp type for the row's pending human gate, if any."""
     if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
-        return False
+        return None
     state: _ApprovalGateState = {
         "kind": row.todo.kind,
         "lifecycle_phase": row.todo.lifecycle_phase,
     }
-    return pending_approval_gate(state) is not None
+    gate = pending_approval_gate(state)
+    return _APPROVAL_GATE_STAMP_TYPE.get(gate) if gate is not None else None
+
+
+def _approval_gate_pending(row: TodoRow) -> bool:
+    return _pending_gate_stamp_type(row) is not None
 
 
 def _hold_control_available(row: TodoRow) -> bool:
@@ -729,7 +744,8 @@ class PreparationViewActionsMixin:
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if not row:
             return
-        if not _approval_gate_pending(row):
+        stamp_type = _pending_gate_stamp_type(row)
+        if stamp_type is None:
             self.app.notify("No approval gate is pending for this todo", severity="warning")  # type: ignore[attr-defined]
             return
 
@@ -741,8 +757,13 @@ class PreparationViewActionsMixin:
         try:
             result = tool_api_request(
                 "POST",
-                "/todos/approve",
-                json_body={"slug": slug, "cwd": project_path, "notify_runner": True},
+                "/todos/stamp",
+                json_body={
+                    "slug": slug,
+                    "cwd": project_path,
+                    "stamp_type": stamp_type,
+                    "notify_runner": True,
+                },
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
