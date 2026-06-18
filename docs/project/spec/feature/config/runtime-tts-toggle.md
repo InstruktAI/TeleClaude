@@ -262,6 +262,8 @@ Given the persisted runtime state replays tts.enabled = True into the TTS manage
 And the TTS-exclusive deps are not installed on the host
 When the daemon reconciles runtime state after the runtime-settings layer initialises
 Then the TTS manager's enabled flag is forced to False
+And the runtime-settings state is forced to tts.enabled = False before the settings API can report it
+And the off state is persisted back to the runtime settings file
 And the reason is logged
 And no dependency install runs at startup
 ```
