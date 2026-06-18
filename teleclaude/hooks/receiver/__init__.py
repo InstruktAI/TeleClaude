@@ -379,10 +379,11 @@ def _load_domain_baseline_content(domain: str) -> str:
     """Return the inflated content of the named domain baseline.
 
     The deploy pipeline writes one fully-expanded baseline file per source
-    domain manifest under ``~/.teleclaude/docs/_baselines/<domain>.md``. This
-    helper reads it for injection at SessionStart so the agent — including
-    runtimes that do not auto-follow ``@`` refs — has the full domain
-    process-enforcement baseline loaded before the first user message.
+    domain manifest at ``~/.teleclaude/docs/<domain>/domain-baseline.md`` (a
+    gitignored file generated beside the source manifest, visible through the
+    whole-tree docs symlink). This helper reads it for injection at SessionStart
+    so the agent — including runtimes that do not auto-follow ``@`` refs — has the
+    full domain process-enforcement baseline loaded before the first user message.
 
     The caller is expected to have validated ``domain`` against
     ``DOMAIN_SCOPES``. As defence-in-depth, the resolved path is verified to
@@ -392,7 +393,7 @@ def _load_domain_baseline_content(domain: str) -> str:
     failure rather than silently dropping mandatory context.
     """
     docs_root = tc_paths.GLOBAL_SNIPPETS_DIR.resolve()
-    candidate = (docs_root / "_baselines" / f"{domain}.md").resolve()
+    candidate = (docs_root / domain / "domain-baseline.md").resolve()
     if docs_root not in candidate.parents:
         raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")
     if not candidate.is_file():
@@ -444,7 +445,7 @@ def _print_additional_context(
                 )
                 domain_baseline = (
                     f"WARNING: mandatory '{domain}' domain baseline could not be loaded "
-                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/_baselines/{domain}.md`, "
+                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/{domain}/domain-baseline.md`, "
                     "then continue."
                 )
 

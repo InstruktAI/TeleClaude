@@ -38,7 +38,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.docs_index import write_third_party_index_yaml
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
@@ -882,72 +881,55 @@ def _inflate_domain_baseline(baseline_src: Path, domain_src: Path, *, project_ro
     return inflated
 
 
-def deploy_domain_documentation(source_docs_root: Path, deploy_docs_root: Path, project_root: Path) -> None:
-    """Deploy source docs domains as whole-folder symlinks and generated baselines.
+def ensure_docs_root_symlink(source_docs_root: Path, deploy_docs_root: Path) -> None:
+    """Point the deployed docs root at the source global docs via a single symlink.
 
-    The deployed root stays a real directory because sync rewrites its
-    ``index.yaml`` in place. Each domain folder below it is a symlink to the
-    source folder, while inflated domain baselines live in a generated
-    ``_baselines`` directory under the deployed root.
+    ``~/.teleclaude/docs`` is one whole-tree symlink to ``<repo>/docs/global``, so
+    every current and future source child — domains, ``index.yaml``, and the
+    generated ``<domain>/domain-baseline.md`` files — resolves through it as a live
+    view that can never be partially deployed. Any stale real directory or wrong
+    symlink left by an older deploy is replaced idempotently.
+    """
+    if deploy_docs_root.is_symlink():
+        if deploy_docs_root.resolve() == source_docs_root.resolve():
+            return
+        deploy_docs_root.unlink()
+    elif deploy_docs_root.is_dir():
+        shutil.rmtree(deploy_docs_root)
+    elif os.path.lexists(deploy_docs_root):
+        deploy_docs_root.unlink(missing_ok=True)
+    deploy_docs_root.parent.mkdir(parents=True, exist_ok=True)
+    deploy_docs_root.symlink_to(source_docs_root)
+    print(f"  Linked docs root: {deploy_docs_root} -> {source_docs_root}")
+
+
+def generate_domain_baselines(source_docs_root: Path, project_root: Path) -> None:
+    """Inflate each domain's baseline manifest into a gitignored ``domain-baseline.md``.
+
+    The fully-expanded baseline is written beside its source manifest at
+    ``<repo>/docs/global/<domain>/domain-baseline.md`` (gitignored, excluded from
+    snippet iteration and validation). Under the whole-tree docs symlink it is
+    visible at ``~/.teleclaude/docs/<domain>/domain-baseline.md`` and injected at
+    SessionStart for runtimes that do not auto-follow ``@`` refs.
     """
     header_template = "# {name} — Platform Baseline\n\n"
-    baselines_root = deploy_docs_root / "_baselines"
-    if os.path.lexists(baselines_root):
-        if baselines_root.is_dir() and not baselines_root.is_symlink():
-            shutil.rmtree(baselines_root)
-        else:
-            baselines_root.unlink(missing_ok=True)
-    baselines_root.mkdir(parents=True, exist_ok=True)
-
-    for entry in os.listdir(source_docs_root):
-        if entry.startswith("."):
+    for entry in sorted(os.listdir(source_docs_root)):
+        if entry.startswith(".") or entry == "third-party":
             continue
-
-        src_path = source_docs_root / entry
-        dst_path = deploy_docs_root / entry
-
-        if entry == "third-party":
+        domain_src = source_docs_root / entry
+        if not domain_src.is_dir():
             continue
-
-        if entry == "index.yaml":
-            if os.path.lexists(dst_path):
-                if dst_path.is_dir() and not dst_path.is_symlink():
-                    shutil.rmtree(dst_path)
-                else:
-                    dst_path.unlink(missing_ok=True)
-            shutil.copy2(src_path, dst_path)
-            print(f"  Copied: {dst_path}")
-            continue
-
-        if not src_path.is_dir():
-            continue
-
-        if os.path.lexists(dst_path):
-            if dst_path.is_dir() and not dst_path.is_symlink():
-                shutil.rmtree(dst_path)
-            else:
-                dst_path.unlink(missing_ok=True)
-
-        try:
-            dst_path.symlink_to(src_path)
-            print(f"  Synced: {dst_path} -> {src_path}")
-        except Exception as e:
-            print(f"  Error syncing {entry}: {e}")
-            continue
-
-        if not src_path.is_dir() or entry in {"third-party"}:
-            continue
-        baseline_src = src_path / "baseline.md"
+        baseline_src = domain_src / "baseline.md"
         if not baseline_src.exists():
             continue
         try:
-            inflated = _inflate_domain_baseline(baseline_src, src_path, project_root=project_root)
+            inflated = _inflate_domain_baseline(baseline_src, domain_src, project_root=project_root)
         except Exception as e:
             print(f"  Error inflating {entry}/baseline.md: {e}")
             continue
-        baseline_dst = baselines_root / f"{entry}.md"
+        baseline_dst = domain_src / "domain-baseline.md"
         baseline_dst.write_text(header_template.format(name=entry) + inflated, encoding="utf-8")
-        print(f"  Inflated baseline: {baseline_dst}")
+        print(f"  Generated domain baseline: {baseline_dst}")
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -1008,30 +990,6 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
 
 
-def rewrite_global_index(index_path: str, deploy_root: str) -> None:
-    """Rewrite global docs index to match deployed paths."""
-    index_file = Path(index_path)
-    if not index_file.exists():
-        return
-    lines = index_file.read_text(encoding="utf-8").splitlines()
-    new_lines: list[str] = []
-    for line in lines:
-        if line.startswith("project_root:"):
-            new_lines.append(f"project_root: {deploy_root}")
-            continue
-        if line.startswith("snippets_root:"):
-            new_lines.append(f"snippets_root: {os.path.join(deploy_root, 'docs')}")
-            continue
-        if "path: agents/docs/" in line:
-            new_lines.append(line.replace("path: agents/docs/", "path: docs/"))
-            continue
-        if "path: docs/global/" in line:
-            new_lines.append(line.replace("path: docs/global/", "path: docs/"))
-            continue
-        new_lines.append(line)
-    index_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-
-
 def _resolve_git_common_root(project_root: Path) -> Path:
     """Resolve canonical repo root from git common dir when available.
 
@@ -1056,22 +1014,6 @@ def _resolve_git_common_root(project_root: Path) -> Path:
     if common_path.name != ".git":
         return project_root
     return common_path.parent
-
-
-def _repair_symlinked_deploy_root(deploy_root: Path) -> bool:
-    """Unlink a deploy root that is a symlink so it can be recreated as a real dir.
-
-    A deploy root must be a real directory of per-domain symlinks. If it is itself
-    a symlink (e.g. pointing back at the repo's docs/global from a botched setup),
-    the deploy resolves onto its own source and is refused forever. Removing the
-    symlink lets the caller recreate a real directory and self-heals the checkout
-    on the next sync. Returns True if a symlink was removed.
-    """
-    if not deploy_root.is_symlink():
-        return False
-    print(f"  Repairing symlinked deploy root: {deploy_root} -> {os.readlink(deploy_root)}")
-    deploy_root.unlink()
-    return True
 
 
 def main() -> None:  # noqa: C901
@@ -1486,7 +1428,14 @@ def main() -> None:  # noqa: C901
             print("Deployment complete.")
 
     def _deploy_documentation(source_dir: str) -> None:
-        """Robustly deploy documentation using atomic symlink replacement."""
+        """Deploy global docs as one whole-tree symlink and generate domain baselines.
+
+        ``~/.teleclaude/docs`` becomes a single symlink to ``<repo>/docs/global``, so
+        the index, every domain, and the generated ``<domain>/domain-baseline.md``
+        files are a live view of source. No per-domain symlinks, no ``_baselines``
+        snapshot, and no ``index.yaml`` rewrite — the source ``index.yaml`` already
+        carries ``~/.teleclaude`` paths, and third-party docs are read from source.
+        """
         if not os.path.isdir(source_dir):
             return
 
@@ -1494,36 +1443,8 @@ def main() -> None:  # noqa: C901
         deploy_docs_root = GLOBAL_SNIPPETS_DIR
         source_docs_root = Path(source_dir).resolve()
 
-        # Self-heal a deploy root that is itself a symlink (it would resolve onto
-        # its own source below). Once removed, the mkdir recreates a real dir.
-        _repair_symlinked_deploy_root(deploy_docs_root)
-
-        if source_docs_root == deploy_docs_root.resolve():
-            print("Error: deploy docs target resolves to source docs/global. Refusing deploy.")
-            return
-
-        deploy_docs_root.mkdir(parents=True, exist_ok=True)
-
-        # Remove any previously-deployed raw baseline manifest at the global root.
-        # Domain baselines are inflated into `_baselines/`; the global root
-        # manifest is a build-time input only and must not be exposed at the
-        # deploy path because agents that read it directly mistake the @-ref
-        # list for missing inflation.
-        legacy_global_baseline = deploy_docs_root / "baseline.md"
-        if os.path.lexists(legacy_global_baseline):
-            legacy_global_baseline.unlink(missing_ok=True)
-
-        deploy_domain_documentation(source_docs_root, deploy_docs_root, Path(project_root))
-
-        # Generate index.yaml for global third-party docs
-        global_third_party = deploy_docs_root / "third-party"
-        if global_third_party.exists():
-            third_party_index = write_third_party_index_yaml(global_third_party, scope="global")
-            if third_party_index:
-                print(f"  Generated: {third_party_index}")
-
-        # Rewrite global index to match deployed path (~/.teleclaude/docs)
-        rewrite_global_index(str(deploy_docs_root / "index.yaml"), str(deploy_docs_root.parent))
+        ensure_docs_root_symlink(source_docs_root, deploy_docs_root)
+        generate_domain_baselines(source_docs_root, Path(project_root))
 
     if args.deploy:
         with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:

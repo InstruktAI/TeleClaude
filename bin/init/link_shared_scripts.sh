@@ -9,31 +9,17 @@ link_shared_scripts() {
     mkdir -p "$base_dir"
     ln -sfn "$INSTALL_DIR/scripts" "$target_dir"
 
-    # Ensure ~/.teleclaude/docs entries point at repo global docs, without
-    # deleting the docs root (preserve user-maintained third-party docs).
+    # Point ~/.teleclaude/docs at the repo's global docs via a single whole-tree
+    # symlink, so every domain, the generated index, and the per-domain
+    # domain-baseline.md files are a live view of source that can never be
+    # partially deployed. Replace any stale real directory left by older installs.
     local docs_root="$HOME/.teleclaude/docs"
     local source_docs="$INSTALL_DIR/docs/global"
-    mkdir -p "$docs_root"
     if [ -d "$source_docs" ]; then
-        local entry src_path dst_path
-        for src_path in "$source_docs"/*; do
-            entry="$(basename "$src_path")"
-            dst_path="$docs_root/$entry"
-            [ "${entry#*.}" != "$entry" ] && continue
-
-            if [ -L "$dst_path" ]; then
-                rm -f "$dst_path"
-            elif [ -d "$dst_path" ]; then
-                [ "$entry" = "third-party" ] && continue
-                rm -rf "$dst_path"
-            elif [ -f "$dst_path" ]; then
-                rm -f "$dst_path"
-            fi
-
-            if [ -d "$src_path" ] || [ "$entry" = "baseline.md" ] || [ "$entry" = "index.yaml" ]; then
-                ln -s "$src_path" "$dst_path"
-            fi
-        done
+        if [ -e "$docs_root" ] && [ ! -L "$docs_root" ]; then
+            rm -rf "$docs_root"
+        fi
+        ln -sfn "$source_docs" "$docs_root"
     fi
 
     # Deploy VS Code workspace settings (hide symlinked dirs, prevent symlink traversal)

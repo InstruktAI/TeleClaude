@@ -81,6 +81,9 @@ CLAUDE.md
 
 # Generated build artifacts (never tracked)
 **/index.yaml
+# Inflated per-domain baselines generated beside their source manifest and
+# exposed via the whole-tree docs symlink at ~/.teleclaude/docs/<domain>/.
+docs/global/*/domain-baseline.md
 
 # Blueprint engine working directory (graphify cache/output; the published
 # Blueprint lives under .teleclaude/blueprint/). Never tracked.

@@ -6,12 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from scripts.distribute import _render_progressive_index, deploy_domain_documentation
+from scripts.distribute import (
+    _render_progressive_index,
+    ensure_docs_root_symlink,
+    generate_domain_baselines,
+)
 from teleclaude.hooks import receiver
 
 pytestmark = pytest.mark.functional
-
-EMPTY_INDEX_YAML = "snippets: []\n"
 
 
 class _AdditionalContextAdapter:
@@ -26,34 +28,48 @@ def _write(path: Path, content: str) -> Path:
     return path
 
 
-def test_domain_documentation_deploys_live_domain_symlink_and_generated_baseline(tmp_path: Path) -> None:
+def test_docs_root_is_single_symlink_with_generated_domain_baselines(tmp_path: Path) -> None:
     project_root = tmp_path
     source_docs_root = project_root / "docs" / "global"
     deploy_docs_root = tmp_path / "deploy" / "docs"
     domain_src = source_docs_root / "creative"
-    _write(source_docs_root / "index.yaml", EMPTY_INDEX_YAML)
     _write(domain_src / "baseline.md", "Creative baseline body.\n")
     _write(domain_src / "policy" / "media.md", "Media policy.\n")
-    _write(domain_src / "procedure" / "drafting.md", "Drafting procedure.\n")
-    deploy_docs_root.mkdir(parents=True)
-    (deploy_docs_root / "index.yaml").symlink_to(source_docs_root / "index.yaml")
 
-    deploy_domain_documentation(source_docs_root, deploy_docs_root, project_root)
+    ensure_docs_root_symlink(source_docs_root, deploy_docs_root)
+    generate_domain_baselines(source_docs_root, project_root)
 
-    index_dst = deploy_docs_root / "index.yaml"
-    assert index_dst.is_file()
-    assert not index_dst.is_symlink()
-    assert index_dst.read_text(encoding="utf-8") == EMPTY_INDEX_YAML
-    domain_dst = deploy_docs_root / "creative"
-    assert domain_dst.is_symlink()
-    assert domain_dst.resolve() == domain_src.resolve()
+    # The deployed root is a single whole-tree symlink onto source/docs/global.
+    assert deploy_docs_root.is_symlink()
+    assert deploy_docs_root.resolve() == source_docs_root.resolve()
+
+    # The inflated baseline lives beside its source manifest, never in a
+    # `_baselines/` snapshot, and is visible through the symlink.
     expected_header = "# creative — Platform Baseline\n\n"
-    assert (deploy_docs_root / "_baselines" / "creative.md").read_text(encoding="utf-8").startswith(expected_header)
+    generated = domain_src / "domain-baseline.md"
+    assert generated.read_text(encoding="utf-8").startswith(expected_header)
     assert not (source_docs_root / "_baselines").exists()
+    assert (deploy_docs_root / "creative" / "domain-baseline.md").is_file()
 
+    # A source subfolder added after deploy resolves through the live symlink —
+    # the snapshot brittleness that caused the original partial deploy is gone.
     _write(domain_src / "concept" / "image-generation.md", "Image generation concept.\n")
+    assert (deploy_docs_root / "creative" / "concept" / "image-generation.md").is_file()
 
-    assert (domain_dst / "concept" / "image-generation.md").is_file()
+
+def test_ensure_docs_root_symlink_replaces_stale_real_directory(tmp_path: Path) -> None:
+    source_docs_root = tmp_path / "docs" / "global"
+    _write(source_docs_root / "creative" / "baseline.md", "Body.\n")
+    deploy_docs_root = tmp_path / "deploy" / "docs"
+    # Simulate the broken legacy state: a real directory of per-child symlinks.
+    (deploy_docs_root / "_baselines").mkdir(parents=True)
+    _write(deploy_docs_root / "_baselines" / "creative.md", "stale snapshot")
+
+    ensure_docs_root_symlink(source_docs_root, deploy_docs_root)
+
+    assert deploy_docs_root.is_symlink()
+    assert deploy_docs_root.resolve() == source_docs_root.resolve()
+    assert not (deploy_docs_root / "_baselines").exists()
 
 
 def test_progressive_index_maps_deployed_refs_to_current_project_index(tmp_path: Path) -> None:
@@ -100,7 +116,7 @@ def test_session_start_injects_generated_domain_baseline(
 ) -> None:
     docs_root = tmp_path / "docs"
     generated_baseline = "Generated creative baseline.\n"
-    _write(docs_root / "_baselines" / "creative.md", generated_baseline)
+    _write(docs_root / "creative" / "domain-baseline.md", generated_baseline)
     _write(docs_root / "creative" / "baseline.md", "Source manifest.\n")
     monkeypatch.setattr(receiver.tc_paths, "GLOBAL_SNIPPETS_DIR", docs_root)
     monkeypatch.setattr(receiver, "_resolve_command_domain_for_session", lambda session_id: "creative")

@@ -406,6 +406,10 @@ def validate_snippet(
     if _is_third_party_doc(path, project_root):
         validate_third_party_doc(path, content, project_root)
         return
+    if path.name == "domain-baseline.md":
+        # Generated, gitignored deploy artifact (one inflated baseline per domain),
+        # not an authored snippet — no frontmatter or taxonomy contract applies.
+        return
     if (path.name == "index.md" and "baseline" in path.parts) or (
         path.name.startswith("baseline")
         and path.name.endswith(".md")

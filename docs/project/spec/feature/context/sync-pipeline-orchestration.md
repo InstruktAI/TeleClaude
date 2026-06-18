@@ -120,9 +120,11 @@ Scenario: Delivery completes before sync
 
 ## Known caveats
 
-- Sync is idempotent at the source markdown layer: it may update generated
-  indexes and deployed artifacts, but it must not mutate authored
-  `docs/**/*.md` snippets.
+- Sync is idempotent at the source markdown layer: it may write generated,
+  gitignored artifacts that live in the source tree — derived `index.yaml`
+  indexes and the per-domain `docs/global/<domain>/domain-baseline.md` baselines
+  (excluded from snippet iteration and validation) — but it must not mutate
+  authored `docs/**/*.md` snippets.
 - Provenance recording is best-effort: back-end availability is not required
   for sync to complete. When the back-end is unavailable, provenance rows are
   skipped and a warning is emitted. Drift between sync runs and the

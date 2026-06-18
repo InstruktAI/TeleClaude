@@ -19,7 +19,7 @@ def snippet_files(snippets_root: Path, *, include_baseline: bool) -> list[Path]:
     files = [
         path
         for path in snippets_root.rglob("*.md")
-        if path.name != "index.yaml" and not is_excluded_snippet_path(path, snippets_root)
+        if path.name not in ("index.yaml", "domain-baseline.md") and not is_excluded_snippet_path(path, snippets_root)
     ]
     if include_baseline:
         return files

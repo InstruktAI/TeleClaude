@@ -1,5 +1,5 @@
 ---
-description: 'Two-phase deployment of transpiled artifacts to per-agent home dirs, with Codex commands routed to a shared TeleClaude dir and docs atomically symlinked.'
+description: 'Two-phase deployment of transpiled artifacts to per-agent home dirs, with Codex commands routed to a shared TeleClaude dir and global docs exposed as a single whole-tree symlink.'
 visibility: 'public'
 ---
 
@@ -27,23 +27,24 @@ path runs two phases:
    `~/.teleclaude/commands/` (NOT `~/.codex/commands/`) so commands are
    reusable across projects.
 
-After both phases, the documentation tree is atomically symlinked from
-source into `~/.teleclaude/docs/`, with the deployed `index.yaml`
-rewritten so consumers see deployment-relative paths.
+After both phases, the global documentation tree is exposed at
+`~/.teleclaude/docs/` as a single whole-tree symlink to the source
+`docs/global/` directory.
 
-The deployed `~/.teleclaude/docs/` is a real directory holding the rewritten
-`index.yaml`, the `third-party/` tree, and one **whole-folder symlink per
-domain** (`~/.teleclaude/docs/<domain>` → `docs/global/<domain>`). The deploy
-root stays a real directory because the deployed `index.yaml` is rewritten in
-place; a symlinked root is refused. A per-domain symlink is a live view —
-every current and later source child resolves through it, so a domain can
-never be partially deployed. For each source `docs/global/<domain>/baseline.md`
-the deploy inflates the domain baseline and writes it as a generated artifact
-in the deployed root at `~/.teleclaude/docs/_baselines/<domain>.md` — never
-into the docs Source tree, so "Source lives in git only" holds. The
-SessionStart hook reads that generated file to inject the domain's
-process-enforcement baseline; the source `baseline.md` manifest exposed
-through the symlink is dormant and never consumed as the baseline.
+`~/.teleclaude/docs` is one symlink (`~/.teleclaude/docs` → `docs/global`), so
+the index, every domain, and the generated per-domain baselines are a live view
+of source: every current and later source child resolves through it, and no
+domain can ever be partially deployed. The source `index.yaml` is already
+written with deployment-relative (`~/.teleclaude`) paths, so it needs no
+post-deploy rewrite. For each source `docs/global/<domain>/baseline.md` the
+deploy inflates the domain baseline and writes it as a generated, gitignored
+file beside its manifest at `docs/global/<domain>/domain-baseline.md`, visible
+through the symlink at `~/.teleclaude/docs/<domain>/domain-baseline.md`. These
+generated baselines are excluded from snippet iteration and validation, so they
+are never treated as authored snippets. The SessionStart hook reads that file to
+inject the domain's process-enforcement baseline. Global third-party docs are
+read from the mother repo source (`docs/third-party/`), not from under the docs
+symlink.
 
 When the distribution step is invoked directly in no-deploy mode, agent
 artifacts are emitted to `project_root/dist/global` and
@@ -57,7 +58,7 @@ no-deploy mode is for developers/CI inspecting build output, not for
 ### Use cases
 
 ```
-Scenario: Mother project full sync with deploy
+Scenario: UC-ARD1 Mother project full sync with deploy
   Given the project is the Mother project
   And sync is invoked in deploy mode
   When the distribution pipeline runs
@@ -65,11 +66,11 @@ Scenario: Mother project full sync with deploy
   And local sources from .agents/ deploy to the project root
   And Codex commands deploy to ~/.teleclaude/commands/
   And AGENTS.override.md is written to the project root for Codex override detection
-  And docs/global/ is symlinked into ~/.teleclaude/docs/
+  And docs/global/ is exposed as a single whole-tree symlink at ~/.teleclaude/docs/
 ```
 
 ```
-Scenario: Non-mother project sync skips global phase
+Scenario: UC-ARD2 Non-mother project sync skips global phase
   Given the project is not the Mother project
   And sync is invoked in deploy mode
   When the distribution pipeline runs
@@ -79,26 +80,26 @@ Scenario: Non-mother project sync skips global phase
 ```
 
 ```
-Scenario: Sync from a worktree uses worktree docs
+Scenario: UC-ARD3 Sync from a worktree uses worktree docs
   Given sync runs from a git worktree of the Mother project
   When the canonical-root resolver identifies the canonical root
   Then the docs source is the current worktree checkout
-  And docs deployed reflect the worktree's branch, not main
-  And the deployed index.yaml is rewritten with the deployment root
+  And docs deployed reflect the worktree's branch through the single symlink, not main
 ```
 
 ```
-Scenario: Sync repairs a broken docs symlink
-  Given ~/.teleclaude/docs/ contains a broken or self-pointing symlink
+Scenario: UC-ARD4 Sync establishes the single docs symlink as a live view
+  Given a source domain docs/global/<domain>/ with a baseline.md and one or more subfolders
   When the documentation deployment step runs
-  Then the broken link is unlinked
-  And a fresh atomic symlink is created to the docs source
-  And third-party/ contents are preserved across the deploy
-  And the deployed index.yaml is rewritten with the deployment-relative project and snippet roots
+  Then any stale real ~/.teleclaude/docs directory from an older deploy is removed
+  And ~/.teleclaude/docs is a single symlink to the source docs/global
+  And the inflated domain baseline is written to docs/global/<domain>/domain-baseline.md
+  And that generated baseline is gitignored and excluded from snippet iteration and validation
+  And a subfolder added to the source domain afterward resolves through the symlink without a re-deploy
 ```
 
 ```
-Scenario: Distribution invoked directly in no-deploy mode
+Scenario: UC-ARD5 Distribution invoked directly in no-deploy mode
   Given the distribution step is invoked directly (not through telec sync) in no-deploy mode
   When the distribution pipeline runs
   Then agent artifacts are emitted under project_root/dist/global and project_root/dist/local
@@ -109,13 +110,19 @@ Scenario: Distribution invoked directly in no-deploy mode
 ```
 
 ```
-Scenario: A domain folder deploys as a live whole-folder symlink with a generated baseline
-  Given a source domain docs/global/<domain>/ with a baseline.md and one or more subfolders
-  When the documentation deployment step runs
-  Then ~/.teleclaude/docs/<domain> is a whole-folder symlink to docs/global/<domain>
-  And the inflated domain baseline is written to ~/.teleclaude/docs/_baselines/<domain>.md
-  And no file is written under the docs source tree
-  And a subfolder added to the source domain afterward resolves through the deployed symlink without a re-deploy
+Scenario: UC-ARD6 SessionStart injects the generated domain baseline
+  Given a session whose command resolves to a domain with a generated baseline
+  When the SessionStart hook builds additional context
+  Then it reads ~/.teleclaude/docs/<domain>/domain-baseline.md
+  And injects the inflated domain process-enforcement baseline before the first user message
+```
+
+```
+Scenario: UC-ARD7 SessionStart surfaces a missing domain baseline
+  Given a session whose command resolves to a domain whose generated baseline is absent
+  When the SessionStart hook builds additional context
+  Then it surfaces a visible warning naming the missing ~/.teleclaude/docs/<domain>/domain-baseline.md
+  And the mandatory baseline is never silently dropped
 ```
 
 ### Cross-context references
@@ -132,16 +139,16 @@ Scenario: A domain folder deploys as a live whole-folder symlink with a generate
   `~/.codex/commands/`) is deliberate cross-project sharing. It
   surprises operators who expect symmetry with `~/.claude/` and
   `~/.gemini/`. The decision is intentional, not a bug.
-- Documentation symlinks are read-only by convention. Agents that edit
-  deployed files are scribbling in scratch that the next sync
-  overwrites.
+- Documentation symlinks are read-only by convention. The single
+  `~/.teleclaude/docs` symlink resolves onto the live source tree, so a stray
+  edit through it mutates source; agents treat deployed docs as read-only.
 - Worktree-aware docs sourcing prevents the easy bug of "synced from a
   worktree but deployed main-branch docs". A worktree whose `docs/` is
   missing, however, falls back silently rather than erroring.
 - The distribution step is always fatal: a non-zero distribution exit propagates
   and fails the sync (there is no suppress-on-warn mode). The docs watcher, which
   must not block, catches that failure at its own subprocess boundary instead.
-- The deployed `index.yaml` is rewritten in-place during deployment.
-  Consumers reading the working-tree index will see different
-  `project_root` values than the deployed one — this is expected, not
-  drift.
+- The deployed `index.yaml` is the source `index.yaml` resolved through the
+  symlink; it already carries `~/.teleclaude` paths and is not rewritten in
+  place. Consumers see identical paths from the working tree and the deployed
+  view — there is no deploy-time index divergence.

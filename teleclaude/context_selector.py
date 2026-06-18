@@ -780,9 +780,11 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
 
     manifest_projects = _load_manifest_by_name() if (projects or snippet_ids) else {}
 
-    # Third-party indexes (separate from taxonomy)
+    # Third-party indexes (separate from taxonomy). Global third-party docs live in
+    # the mother repo's source tree (``<repo>/docs/third-party``), not under the
+    # whole-tree docs symlink at ``~/.teleclaude/docs`` (which points at docs/global).
     project_third_party_index = project_root / "docs" / "third-party" / "index.yaml"
-    global_third_party_index = GLOBAL_SNIPPETS_DIR / "third-party" / "index.yaml"
+    global_third_party_index = REPO_ROOT / "docs" / "third-party" / "index.yaml"
 
     snippets = _load_selected_snippets(
         project_root=project_root,
@@ -805,7 +807,12 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     third_party_entries: list[ThirdPartyMeta] = []
     if include_third_party:
         third_party_entries.extend(_load_third_party_index(global_third_party_index))
-        third_party_entries.extend(_load_third_party_index(project_third_party_index))
+        # In the mother repo the project IS the global source, so both indexes
+        # resolve to the same file — load the project index only when it differs,
+        # otherwise every third-party entry would be listed twice (phase-1 output
+        # does not dedup).
+        if project_third_party_index.resolve() != global_third_party_index.resolve():
+            third_party_entries.extend(_load_third_party_index(project_third_party_index))
 
     # Use explicit domains if provided; else use config when available; else load from project config
     if domains:
