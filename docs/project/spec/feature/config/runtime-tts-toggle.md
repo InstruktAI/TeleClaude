@@ -217,6 +217,63 @@ And no session-start voice is spoken while the runtime layer holds TTS muted
 
 <!-- /planned:tts-reload-no-clobber -->
 
+<!-- planned:tts-lazy-deps -->
+
+#### UC-CFG-RUNTIME-17: Enabling TTS provisions the optional deps before the flag flips
+
+```
+Given the TTS manager's enabled flag is False and the TTS-exclusive deps are not installed
+And the host is a supported platform for at least one configured-and-enabled TTS service
+And an incoming patch sets tts.enabled = True
+When the patch is applied
+Then the TTS-exclusive deps are installed off the event loop before the flag changes
+And the TTS manager's enabled flag is then set to True
+And the patch returns the updated settings state with tts.enabled = True
+```
+
+#### UC-CFG-RUNTIME-18: Enabling on an unsupported platform or a failed install fails closed
+
+```
+Given the TTS manager's enabled flag is False and the TTS-exclusive deps are not installed
+And either the host supports no configured-and-enabled TTS service
+  or the dependency install does not complete
+And an incoming patch sets tts.enabled = True
+When the patch is applied
+Then no flag change occurs and the TTS manager's enabled flag stays False
+And a tts_provision_failed event is logged
+And the request fails with a clear message that TTS could not be provisioned
+And no session-start voice is spoken
+```
+
+#### UC-CFG-RUNTIME-19: Muting never provisions or uninstalls
+
+```
+Given the TTS manager's enabled flag is True and the deps are installed
+And an incoming patch sets tts.enabled = False
+When the patch is applied
+Then no provisioning runs and no dependency is uninstalled
+And the TTS manager's enabled flag is set to False synchronously
+```
+
+#### UC-CFG-RUNTIME-20: Startup with a replayed enabled=True but unprovisioned deps fails closed
+
+```
+Given the persisted runtime state replays tts.enabled = True into the TTS manager at startup
+And the TTS-exclusive deps are not installed on the host
+When the daemon reconciles runtime state after the runtime-settings layer initialises
+Then the TTS manager's enabled flag is forced to False
+And the reason is logged
+And no dependency install runs at startup
+```
+
+The YAML `config.tts.enabled` field is a boot default-intent seed for the TTS
+manager's initial enabled flag; the runtime-settings layer is the single source
+of truth for the live enable/mute. Provisioned state is determined by probing
+whether a configured-and-enabled TTS service's dependencies import, never by a
+configuration flag.
+
+<!-- /planned:tts-lazy-deps -->
+
 ### Cross-context references
 
 - **Cross-context write into the TTS context.** The runtime-settings

@@ -217,6 +217,18 @@ The `agents` config key for the Antigravity agent is `gemini`; its binary resolv
 `agy` via `resolve_agent_binary`. The installer heals any legacy `agy:` key back to
 `gemini:` so the parser (which accepts only `claude`/`gemini`/`codex`) does not reject it.
 
+<!-- planned:tts-lazy-deps -->
+
+The TTS-exclusive dependencies live in the `tts` optional extra in `pyproject.toml`,
+not in the core dependency set, so `make install` does not install them. They are
+installed on demand the first time TTS is enabled at runtime; `config.tts.enabled`
+is a boot default-intent seed, while the runtime-settings layer owns the live
+enable/mute. Dependencies shared with other features — `mlx-audio` (also the STT
+Parakeet backend), `openai` (also STT Whisper and the summarizer) — stay in the core
+dependency set.
+
+<!-- /planned:tts-lazy-deps -->
+
 These keys are loaded by the daemon runtime config parser in `teleclaude/config/__init__.py`.
 
 ```yaml
