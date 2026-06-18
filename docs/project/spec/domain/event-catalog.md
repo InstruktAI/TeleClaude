@@ -116,7 +116,7 @@ assumption that every v2 event already fires:
 | `workflow.todo.updated` / `workflow.roadmap.entry_moved` | Must be emitted or bridged from v1 mutation paths that change hold, dependency edges, icebox/unfreeze, or task authorization. Rust v2 emissions alone are insufficient while v1 remains authoritative.                                                                                                                                                         |
 | `config.effective.updated`                               | Must be wired from the v1 config watcher/effective-config reload seam, or the runner must receive an equivalent in-process wake-up carrying the same scope semantics.                                                                                                                                                                                          |
 | `agent_runtime.session.ended`                            | Must be bridged from v1 `SESSION_CLOSED` as a runner wake-up. The payload is not extended with close-intent metadata; the runner correlates the closed session to its todo (via `active_runner`) and resolves the project through the same identity path as other wake-ups.                                                                                    |
-| `scheduler.tick.minute`                                  | Pending `task-lane`; v1 must add the in-daemon minute clock emitter and lifecycle-router admission for this wake-up before workflow can subscribe to it for datetime-gated tasks.                                                                                                                                                                              |
+| `scheduler.tick.minute`                                  | Pending `task-lane`; v1 must add the in-daemon minute clock emitter and lifecycle-router admission for this wake-up before workflow can subscribe to it for schedule-gated tasks.                                                                                                                                                                              |
 
 `creation_mode` / `pickup_requested` are migration-only fields after this
 delivery. The durable target control is `workflow.Todo.hold` plus effective
@@ -250,10 +250,10 @@ Task-lane runner subscriptions:
 
 | Event                   | Consumers                                                                                                                                                                        |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workflow.todo.updated` | `workflow.lifecycle_runner` (re-evaluate when a task's `task-plan`, authorization stamp, datetime, hold, or dependency/date gate changes)                                        |
-| `scheduler.tick.minute` | `workflow.lifecycle_runner` (re-evaluate tasks whose optional datetime may now be due; the tick never carries task identity and never creates a persisted timer claim by itself) |
+| `workflow.todo.updated` | `workflow.lifecycle_runner` (re-evaluate when a task's `task-plan`, authorization stamp, schedule, hold, or dependency/schedule gate changes)                                    |
+| `scheduler.tick.minute` | `workflow.lifecycle_runner` (re-evaluate tasks whose optional schedule may now be due; the tick never carries task identity and never creates a persisted timer claim by itself) |
 
-The task datetime flow is wake-up-driven rather than timer-state-driven: the daemon scheduler clock emits the generic minute tick, workflow reloads the project todo set, and the lifecycle runner dispatches only tasks that still pass authorization, hold, live-session/claim, and datetime/dependency eligibility at evaluation time.
+The task schedule flow is wake-up-driven rather than timer-state-driven: the daemon scheduler clock emits the generic minute tick, workflow reloads the project todo set, and the lifecycle runner dispatches only tasks that still pass authorization, hold, live-session/claim, and schedule/dependency eligibility at evaluation time. For a recurring task that already has a live run session, the runner wakes that session for the next firing rather than dispatching a second one.
 
 <!-- /planned:task-lane -->
 

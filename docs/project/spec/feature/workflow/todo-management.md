@@ -167,16 +167,16 @@ replaces the todo's dependency set with the supplied parents
 
 ```gherkin
 Given an active task todo
-When the operator runs "telec todo update my-task --datetime 2026-06-12T09:00:00Z"
-Then the update leg validates the ISO-8601 datetime
-And persists it as the task execution eligibility instant
+When the operator runs "telec todo update my-task --schedule 2026-06-12T09:00:00Z"
+Then the update leg validates the schedule (a one-shot ISO-8601 instant or a recurring rule)
+And persists it as the task execution eligibility
 And emits `workflow.todo.updated` so the lifecycle runner re-evaluates the task
 ```
 
 ```gherkin
-Given an active task todo has a datetime
-When the operator runs 'telec todo update my-task --datetime ""'
-Then the update leg clears the datetime
+Given an active task todo has a schedule
+When the operator runs 'telec todo update my-task --schedule ""'
+Then the update leg clears the schedule
 And keeps the rest of the todo state unchanged
 ```
 

@@ -24,7 +24,7 @@ Dependency mutations land via `telec todo update <slug> --after <dep>...`, which
 
 <!-- planned:task-lane -->
 
-For kind=`task`, dependency edges and task datetime are mutually exclusive execution gates. A task may use `after` dependencies to wait for delivered parents, or `datetime` to wait for a clock instant, but not both. The create/update boundary refuses any live state that would persist both a non-empty `after` set and a datetime.
+For kind=`task`, dependency edges and a task `schedule` are mutually exclusive execution gates. A task may use `after` dependencies to wait for delivered parents, or a `schedule` (a one-shot instant or a recurring rule) to wait for a clock instant, but not both. The create/update boundary refuses any live state that would persist both a non-empty `after` set and a `schedule`.
 
 <!-- /planned:task-lane -->
 
@@ -149,26 +149,26 @@ And "child" waits until "parent" reaches PREPARED, which triggers auto-continue 
 
 <!-- planned:task-lane -->
 
-#### UC-WDG4: Task datetime excludes dependency edges
+#### UC-WDG4: Task schedule excludes dependency edges
 
 ```gherkin
 Given a task has a non-empty `after` dependency set
-When a caller updates the same task with `--datetime <iso-instant>` without clearing dependencies
+When a caller updates the same task with `--schedule <iso-instant>` without clearing dependencies
 Then workflow refuses the mutation before persistence
-And the task keeps its previous dependency set and datetime state
+And the task keeps its previous dependency set and schedule state
 ```
 
 ```gherkin
-Given a task has a datetime
-When a caller updates the same task with a non-empty `--after` set without clearing datetime
+Given a task has a schedule
+When a caller updates the same task with a non-empty `--after` set without clearing schedule
 Then workflow refuses the mutation before persistence
-And the task keeps its previous dependency set and datetime state
+And the task keeps its previous dependency set and schedule state
 ```
 
 ```gherkin
-Given a task has a datetime
-When the caller clears datetime and sets `--after parent` in the same accepted mutation
-Then workflow persists the dependency edge and leaves datetime empty
+Given a task has a schedule
+When the caller clears schedule and sets `--after parent` in the same accepted mutation
+Then workflow persists the dependency edge and leaves schedule empty
 ```
 
 <!-- /planned:task-lane -->

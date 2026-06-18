@@ -20,7 +20,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   - `--silent` — sets `silent=True` on the request. The route still creates the todo and still emits `workflow.todo.created`, but with `pickup_requested=false` and `creation_mode="silent"`, so the lifecycle router skips dispatch.
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   <!-- planned:task-lane -->
-  - `--datetime <iso-instant>` — valid only for `--kind task`. It records the task's one-shot execution eligibility instant — the one-shot shape of the task `schedule`, whose general form is a recurring rule that re-fires the task against its durable `task-plan`. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
+  - `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
     <!-- /planned:task-lane -->
     <!-- planned-change:plan-flag-enters-plan-draft -->
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
@@ -53,7 +53,7 @@ The workflow service emits the event with this payload:
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 <!-- planned:task-lane -->
-- `datetime` — optional ISO-8601 instant for task todos; omitted otherwise.
+- `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
 <!-- /planned:task-lane -->
 
 ### Use cases
@@ -156,20 +156,20 @@ And the lifecycle runner may dispatch `/next-prepare-task`
 And the task cannot dispatch `/next-run-task` until a `task-plan` exists and the human authorization stamp is present
 ```
 
-#### UC-WTC7: Task datetime and dependencies are mutually exclusive
+#### UC-WTC7: Task schedule and dependencies are mutually exclusive
 
 ```gherkin
 Given a caller creates a task
-When the request supplies both `--after parent` and `--datetime <iso-instant>`
+When the request supplies both `--after parent` and `--schedule <iso-instant>`
 Then workflow rejects the request before writing roadmap, state, artifact, or event rows
 And the diagnostic names the mutually exclusive fields
 ```
 
 ```gherkin
-Given a caller creates a task with `--datetime <iso-instant>`
+Given a caller creates a task with `--schedule <iso-instant>`
 When the create request is accepted
 Then the task has no dependency edges
-And the datetime is persisted as the task execution eligibility instant
+And the schedule is persisted as the task execution eligibility
 And the task still requires a prepared `task-plan` and human authorization before runner dispatch
 ```
 

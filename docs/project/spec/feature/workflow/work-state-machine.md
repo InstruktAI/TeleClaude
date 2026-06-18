@@ -107,7 +107,7 @@ And returns an instruction to wait for the builder to run "telec todo stamp my-f
 
 ```gherkin
 Given a Todo has kind="task", lifecycle_phase="prepared", a `task-plan`, and a task authorization stamp
-And the task has no datetime, or its datetime is at or before the runner evaluation instant
+And the task has no schedule, or its schedule's current due instant is at or before the runner evaluation instant
 When the lifecycle runner evaluates eligible work for the project
 Then it acquires a `(project, slug, task-run)` dispatch claim
 And starts `/next-run-task <slug>` without creating a worktree
@@ -115,7 +115,7 @@ And records or preserves lifecycle_phase="task_running" while the task session i
 ```
 
 ```gherkin
-Given a task lacks authorization, lacks a `task-plan`, has a future datetime, is held, or already has a live task-run session/claim
+Given a task lacks authorization, lacks a `task-plan`, has a future schedule, is held, or already has a live task-run session/claim
 When the lifecycle runner evaluates eligible work for the project
 Then it does not start `/next-run-task`
 And it leaves the SDLC work state machine untouched
@@ -126,6 +126,13 @@ Given `/next-run-task` reaches the end of the task-plan
 When it has recorded results in the `task-plan`
 Then the task session stays alive for human follow-up
 And it does not self-end, stamp build-complete, dispatch review, or enter finalize-ready
+```
+
+```gherkin
+Given a recurring task has a live `/next-run-task` session and its schedule reaches a new due instant
+When the lifecycle runner evaluates eligible work for the project
+Then it does not start a second `/next-run-task`
+And it signals the existing live run session to execute the next firing
 ```
 
 <!-- /planned:task-lane -->
