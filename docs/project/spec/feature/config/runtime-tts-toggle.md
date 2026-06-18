@@ -202,6 +202,21 @@ And the JSON is written to the state path (utf-8, pretty-printed, keys sorted)
 And a success log entry is emitted
 ```
 
+<!-- planned:tts-reload-no-clobber -->
+
+#### UC-CFG-RUNTIME-16: A tts-section config reload preserves the runtime-owned enabled flag
+
+```
+Given the runtime-settings layer has set tts.enabled = False on the TTS manager
+And the YAML config has tts.enabled = True
+When a tts-section config reload fires because a tts field changed (a voice, a service, or an event mapping)
+Then the TTS manager refreshes its config-derived state from YAML (services, voices, events, service priority)
+And the TTS manager's live enabled flag stays False
+And no session-start voice is spoken while the runtime layer holds TTS muted
+```
+
+<!-- /planned:tts-reload-no-clobber -->
+
 ### Cross-context references
 
 - **Cross-context write into the TTS context.** The runtime-settings

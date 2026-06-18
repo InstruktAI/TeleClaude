@@ -51,9 +51,7 @@ These gates are absolute. Load before the first edit, every time.
 
 **Functional code or tests** (write, modify, refactor, or fix):
 
-```
-telec docs get software-development/policy/testing software-development/policy/code-quality-practices software-development/policy/linting-requirements software-development/policy/definition-of-done
-```
+READ `~/.teleclaude/docs/software-development/domain-baseline.md`.
 
 Additionally, load the language-specific policy for the code you are touching:
 
