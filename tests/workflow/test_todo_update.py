@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TypedDict, cast
@@ -12,7 +13,7 @@ from fastapi import HTTPException
 from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.api import todo_routes, todo_stamp_routes
-from teleclaude.api.auth import CallerIdentity
+from teleclaude.api.auth import CallerIdentity, _is_tool_denied, clearance_todos_stamp
 from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
@@ -304,6 +305,19 @@ def test_todo_stamp_cli_posts_verdict_with_phase_to_stamp_route(
         "phase": "build_review",
         "cwd": str(project_root),
     }
+
+
+@pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS1")
+def test_stamp_route_clearance_admits_workers() -> None:
+    # The stamp route is a worker action (build_complete, verdict, drift_reviewed
+    # are run by workers per work_steps). It must be bound to the stamp clearance,
+    # not the orchestrator-only update clearance, or workers are wrongly refused.
+    dep = inspect.signature(todo_stamp_routes.todo_stamp).parameters["identity"].default
+    assert dep.dependency is clearance_todos_stamp
+
+    worker = CallerIdentity(session_id="w", system_role="worker", human_role=None, tmux_session_name=None)
+    assert _is_tool_denied("telec todo stamp", worker) is False
+    assert _is_tool_denied("telec todo update", worker) is True
 
 
 @pytest.mark.spec(_TODO_MANAGEMENT_SPEC, "UC-WM5")

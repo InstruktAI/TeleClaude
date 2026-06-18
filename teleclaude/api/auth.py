@@ -379,6 +379,7 @@ clearance_todos_integrate = require_clearance("telec todo integrate")
 clearance_todos_remove = require_clearance("telec todo remove")
 clearance_todos_reactivate = require_clearance("telec todo reactivate")
 clearance_todos_update = require_clearance("telec todo update")
+clearance_todos_stamp = require_clearance("telec todo stamp")
 clearance_todos_artifacts_diff = require_clearance("telec todo artifacts diff")
 clearance_todos_artifacts_remove = require_clearance("telec todo artifacts remove")
 clearance_operations_get = require_clearance("telec operations get")
@@ -422,6 +423,7 @@ __all__ = [
     "clearance_todos_prepare",
     "clearance_todos_reactivate",
     "clearance_todos_remove",
+    "clearance_todos_stamp",
     "clearance_todos_update",
     "clearance_todos_work",
     "invalidate_session_cache",
