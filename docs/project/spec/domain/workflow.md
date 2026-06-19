@@ -1187,20 +1187,7 @@ And dispatches it to "/analyze-todo-input" on the analyze lane
 Given the `workflow.runner` mode is `manual`
 And the active todo list holds entries eligible for the analyze, prepare, and work lanes
 When the lifecycle runner handles a wake-up
-Then it dispatches nothing on any lane — kind-discovery, prepare, and work are all frozen
-```
-
-```gherkin
-Given the `workflow.runner` mode is `autostart`
-And the active todo list holds entries eligible for the analyze, prepare, and work lanes
-When the lifecycle runner handles a wake-up
-Then it evaluates and dispatches the full eligible set exactly as UC-WFL-20 describes
-```
-
-```gherkin
-Given the `workflow.runner` mode is `manual`
-When an operator issues a manual start (`telec todo work`/`prepare`, the TUI START, or headless adoption)
-Then the manual dispatch resolves the natural lane and is not gated by the mode
+Then the runner dispatches nothing on any lane — kind-discovery, prepare, and work are all frozen
 ```
 
 <!-- /planned:workflow-runner-mode -->
