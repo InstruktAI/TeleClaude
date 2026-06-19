@@ -5,17 +5,30 @@
     'ts': '<monotonic>',
   })
 # ---
+# name: test_expanded_and_collapsed_row_rendering
+  dict({
+    'collapsed': '''
+       [1] ▶ claude/?  "s1"
+        │[10:05:00] out: hello world
+    ''',
+    'expanded': '''
+       [1] ▼ claude/?  "s1"
+        │[10:00:00-19/06] s1/nat-1
+        │[10:05:00-19/06] out: hello world
+    ''',
+  })
+# ---
 # name: test_out_line_retained_across_activity_clear_and_rebuild
   dict({
     'after_clear': '''
        [1] ▼ claude/?  "s1"
-        │ [] s1 / -
-        │ [] out: Read: foo.py
+        │[] s1/-
+        │[] out: Read: foo.py
     ''',
     'after_rebuild': '''
        [1] ▼ claude/?  "s1"
-        │ [] s1 / -
-        │ [] out: Read: foo.py
+        │[] s1/-
+        │[] out: Read: foo.py
         ├-----------------------------------------------------------------------------------------------
     ''',
   })

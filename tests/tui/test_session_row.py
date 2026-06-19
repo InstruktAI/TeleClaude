@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import time
 
 import pytest
 from textual.app import App, ComposeResult
@@ -117,7 +117,11 @@ async def test_out_line_retention_does_not_touch_highlight() -> None:
 
 
 @pytest.mark.asyncio
-async def test_date_suffix_present_only_when_expanded() -> None:
+async def test_expanded_and_collapsed_row_rendering(monkeypatch: pytest.MonkeyPatch, snapshot: object) -> None:
+    # Pin TZ so the rendered timestamps are deterministic across hosts/CI.
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+
     app = _SessionsTestApp()
     async with app.run_test(size=(120, 40)) as pilot:
         view = app.query_one(SessionsView)
@@ -138,18 +142,14 @@ async def test_date_suffix_present_only_when_expanded() -> None:
         await pilot.pause()
         row = _only_row(view, SID)
 
-        date_pat = re.compile(r"\d{2}:\d{2}:\d{2}-\d{2}/\d{2}")
-
         row.collapsed = True
         await pilot.pause()
         collapsed = row.render().plain
-        assert not date_pat.search(collapsed)
 
         row.collapsed = False
         await pilot.pause()
         expanded = row.render().plain
-        # Both the id line and the out line carry the date suffix when expanded.
-        assert len(date_pat.findall(expanded)) >= 2
-        # The id line joins the two ids with a bare slash, no surrounding spaces.
-        assert f"{SID}/nat-1" in expanded
-        assert f"{SID} / nat-1" not in expanded
+
+    # Collapsed: bare HH:MM:SS, no date. Expanded: id line + out line carry the
+    # -DD/MM suffix, ids slash-joined with no spaces, no leading pad after │.
+    assert {"collapsed": collapsed, "expanded": expanded} == snapshot

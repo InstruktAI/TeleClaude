@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import UTC, datetime
 
@@ -12,23 +11,14 @@ from rich.markup import escape as _rich_escape
 DATE_SUFFIX_WIDTH = 6
 
 
-def _day_before_month() -> bool:
-    """Return True for European ``DD/MM`` ordering, False for US-style ``MM/DD``.
-
-    Defaults to European; only US-style hosts (``LC_TIME``/``LC_ALL``/``LANG``
-    naming a ``*_US`` locale) flip to month-first. Reads the environment without
-    mutating the process locale.
-    """
-    loc = os.environ.get("LC_ALL") or os.environ.get("LC_TIME") or os.environ.get("LANG") or ""
-    return "_US" not in loc
-
-
-def format_time(iso_timestamp: str | None, *, with_date: bool = False) -> str:
+def format_time(iso_timestamp: str | None, *, with_date: bool = False, day_first: bool = True) -> str:
     """Convert ISO timestamp to ``HH:MM:SS`` local time.
 
-    With ``with_date``, append a locale-aware date suffix (``HH:MM:SS-DD/MM``,
-    or ``-MM/DD`` on US-style hosts) so the time stays left-aligned while the
-    date hangs off as a fixed-width suffix. Returns empty string if unavailable.
+    With ``with_date``, append a fixed-width date suffix (``HH:MM:SS-DD/MM``, or
+    ``-MM/DD`` when ``day_first`` is False) so the time column stays left-aligned
+    while the date hangs off the right. ``day_first`` defaults to European
+    day/month order; the order is an explicit argument, not read from the
+    environment. Returns empty string if unavailable.
     """
     if not iso_timestamp:
         return ""
@@ -40,7 +30,7 @@ def format_time(iso_timestamp: str | None, *, with_date: bool = False) -> str:
     base = local_dt.strftime("%H:%M:%S")
     if not with_date:
         return base
-    date = local_dt.strftime("%d/%m" if _day_before_month() else "%m/%d")
+    date = local_dt.strftime("%d/%m" if day_first else "%m/%d")
     return f"{base}-{date}"
 
 

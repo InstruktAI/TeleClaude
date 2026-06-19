@@ -23,7 +23,7 @@ from teleclaude.cli.tui.utils.formatters import DATE_SUFFIX_WIDTH, format_time, 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.session_utils import session_display_title
 
-_DETAIL_PREFIX_OVERHEAD = 18  # │ + space + [HH:MM:SS] + label (" in: " / "out: ")
+_DETAIL_PREFIX_OVERHEAD = 17  # │ + [HH:MM:SS] + label (" in: " / "out: ")
 
 
 class SessionRow(TelecMixin, Widget):
@@ -221,7 +221,7 @@ class SessionRow(TelecMixin, Widget):
         """Build always-visible summary lines with owner, input, and output."""
         lines: list[Text] = []
         connector_pad = " " * self._connector_col
-        detail_pad = " "
+        detail_pad = ""
         connector_style = Style(color=CONNECTOR_COLOR)
         text_limit = self._detail_text_limit
         # Date suffix on activity timestamps only while the row is expanded.
@@ -297,7 +297,7 @@ class SessionRow(TelecMixin, Widget):
     def _build_id_detail_line(self) -> Text:
         """Build the expanded technical id line."""
         connector_pad = " " * self._connector_col
-        detail_pad = " "
+        detail_pad = ""
         connector_style = Style(color=CONNECTOR_COLOR)
         id_style = resolve_style(self.agent, self._tier("normal"))
         created_time = format_time(getattr(self.session, "created_at", None), with_date=True)
