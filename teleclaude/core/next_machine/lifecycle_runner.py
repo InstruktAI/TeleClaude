@@ -25,7 +25,11 @@ from teleclaude.core.next_machine.lifecycle import (
     lifecycle_phase_index,
     pending_approval_gate,
 )
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.next_machine.runtime.sessions import (
+    is_live_session_id,
+    live_orchestrator_owned_slugs,
+    live_orchestrator_owner,
+)
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
     effective_prepared_slugs_for_dependencies,
@@ -253,12 +257,14 @@ def decide_dispatches(
     delivered_slugs: set[str],
     autostart: Mapping[str, bool],
     live_session_ids: set[str],
+    orchestrator_owned_slugs: set[str] | None = None,
     claimed: set[tuple[str, RunnerLane]] | None = None,
     max_dispatch: int = 5,
     live_driver_count: int = 0,
 ) -> RunnerDecision:
     decision = RunnerDecision(evaluated=len(todos))
     active_claims = claimed or set()
+    owned_slugs = orchestrator_owned_slugs or set()
     # Concurrency budget: how many more drivers may go live this pass. Each
     # dispatched intent consumes one slot on top of the already-live drivers.
     # Only non-manually_started drivers count: a human START or a headless
@@ -287,7 +293,12 @@ def decide_dispatches(
         if todo.hold:
             decision.skip(RunnerSkipReason.HELD, slug)
             continue
-        if todo.active_runner and todo.active_runner in live_session_ids:
+        # Orchestrator dedup is registry-authoritative: a live orchestrator bound
+        # to the slug (registry working_slug) blocks a second one regardless of
+        # how it was started. The active_runner branch remains the dedup signal
+        # for non-orchestrator (task-lane) drivers, which carry no orchestrator
+        # session_role in the registry.
+        if slug in owned_slugs or (todo.active_runner and todo.active_runner in live_session_ids):
             decision.skip(RunnerSkipReason.ALREADY_DRIVEN, slug)
             continue
         if todo.kind is None:
@@ -564,38 +575,47 @@ async def _target_for_manual_start(
     runtime_db: Db,
     slug: str,
     lane: RunnerLane,
+    project_path: str | Path,
     *,
     check_dependencies: bool = True,
-) -> tuple[RunnerTodo | None, RunnerSkipReason | None]:
+    caller_session_id: str | None = None,
+) -> tuple[RunnerTodo | None, RunnerSkipReason | None, str | None]:
     todos, _ = await _load_todos(todos_db, runtime_db)
     todo = todos.get(slug)
     if todo is None:
-        return None, RunnerSkipReason.MISSING_STATE
+        return None, RunnerSkipReason.MISSING_STATE, None
     if todo.status == "removed":
-        return todo, RunnerSkipReason.REMOVED
+        return todo, RunnerSkipReason.REMOVED, None
     if todo.status == "delivered":
-        return todo, RunnerSkipReason.DELIVERED
+        return todo, RunnerSkipReason.DELIVERED, None
     if todo.status == "icebox":
-        return todo, RunnerSkipReason.ICEBOX
+        return todo, RunnerSkipReason.ICEBOX, None
     if _pending_approval_gate_for_runner(todo):
-        return todo, RunnerSkipReason.APPROVAL_PENDING
+        return todo, RunnerSkipReason.APPROVAL_PENDING, None
     if todo.hold:
-        return todo, RunnerSkipReason.HELD
+        return todo, RunnerSkipReason.HELD, None
+    # Registry-authoritative orchestrator dedup: a live orchestrator bound to the
+    # slug blocks a second manual start regardless of active_runner. The caller's
+    # own session is exempt so an orchestrator adopting/continuing its own slug is
+    # not self-blocked.
+    owner = await live_orchestrator_owner(runtime_db, project_path, slug)
+    if owner is not None and owner != caller_session_id:
+        return todo, RunnerSkipReason.ALREADY_DRIVEN, owner
     if todo.active_runner and await _is_live_runner(runtime_db, todo.active_runner):
-        return todo, RunnerSkipReason.ALREADY_DRIVEN
+        return todo, RunnerSkipReason.ALREADY_DRIVEN, todo.active_runner
     if not check_dependencies:
-        return todo, None
+        return todo, None, None
     if lane is RunnerLane.WORK:
         delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
         unmet = [dep for dep in todo.after if dep not in delivered_slugs]
         if unmet:
-            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED
+            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED, None
     if lane is RunnerLane.PREPARE:
         prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
         unmet = [dep for dep in todo.after if dep not in prepared_slugs]
         if unmet:
-            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED
-    return todo, None
+            return todo, RunnerSkipReason.DEPENDENCY_BLOCKED, None
+    return todo, None, None
 
 
 async def manual_start_lifecycle_session(
@@ -609,7 +629,7 @@ async def manual_start_lifecycle_session(
     project_root = Path(project_path).resolve()
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
-    todo, reason = await _target_for_manual_start(todos_db, runtime_db, slug, lane)
+    _todo, reason, owner_session_id = await _target_for_manual_start(todos_db, runtime_db, slug, lane, project_root)
     if reason is not None:
         return ManualLifecycleSessionResult(
             slug=slug,
@@ -617,7 +637,7 @@ async def manual_start_lifecycle_session(
             status=ManualLifecycleStatus.ALREADY_DRIVEN
             if reason is RunnerSkipReason.ALREADY_DRIVEN
             else ManualLifecycleStatus.SKIPPED,
-            session_id=todo.active_runner if todo is not None and reason is RunnerSkipReason.ALREADY_DRIVEN else None,
+            session_id=owner_session_id if reason is RunnerSkipReason.ALREADY_DRIVEN else None,
             reason=reason,
         )
 
@@ -659,12 +679,14 @@ async def adopt_manual_lifecycle_session(
     project_root = Path(project_path).resolve()
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
-    todo, reason = await _target_for_manual_start(
+    todo, reason, owner_session_id = await _target_for_manual_start(
         todos_db,
         runtime_db,
         slug,
         RunnerLane.PREPARE,
+        project_root,
         check_dependencies=False,
+        caller_session_id=caller_session_id,
     )
     lane = RunnerLane.WORK if todo and todo.lifecycle_phase == LifecyclePhase.PREPARED.value else RunnerLane.PREPARE
     if todo is not None and todo.active_runner == caller_session_id:
@@ -680,7 +702,7 @@ async def adopt_manual_lifecycle_session(
             slug=slug,
             lane=lane,
             status=ManualLifecycleStatus.ALREADY_DRIVEN,
-            session_id=todo.active_runner if todo else None,
+            session_id=owner_session_id,
             reason=reason,
         )
     if reason is not None:
@@ -796,12 +818,14 @@ async def run_lifecycle_runner(
         KIND_TASK: workflow.autostart.task,
     }
     live_session_ids, auto_driver_count = await _live_active_runners(runtime_db, todos)
+    orchestrator_owned_slugs = await live_orchestrator_owned_slugs(runtime_db, project_root)
     decision = decide_dispatches(
         todos,
         prepared_slugs=prepared_slugs,
         delivered_slugs=delivered_slugs,
         autostart=autostart,
         live_session_ids=live_session_ids,
+        orchestrator_owned_slugs=orchestrator_owned_slugs,
         claimed=claimed_pairs,
         max_dispatch=workflow.max_todo_dispatch,
         live_driver_count=auto_driver_count,

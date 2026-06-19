@@ -40,6 +40,10 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     manual_start_lifecycle_session,
     run_lifecycle_runner,
 )
+from teleclaude.core.next_machine.runtime.sessions import (
+    live_orchestrator_owned_slugs,
+    live_orchestrator_owner,
+)
 from teleclaude.core.next_machine.session_hold import (
     clear_active_runner_for_session_end,
     hold_todo_for_manual_session_close,
@@ -73,6 +77,8 @@ _LIVE_SLUG = "live-a"
 _OTHER_SLUG = "other-a"
 _STALE_SESSION = "stale-session"
 _LIVE_SESSION = "live-session"
+_ORCH_SESSION = "orch-session"
+_CROSS_PROJECT_SESSION = "cross-project"
 _SPAWN_SESSION = "spawn-1"
 _CLOSE_HOLD_SESSION = "close-hold-session"
 _CLOSE_END_SESSION = "close-end-session"
@@ -107,6 +113,8 @@ class _Session:
     closed_at: datetime | None = None
     lifecycle_status: str = "active"
     working_slug: str | None = None
+    system_role: str | None = None
+    project_path: str | None = None
 
 
 class _FakeDb:
@@ -115,6 +123,13 @@ class _FakeDb:
 
     async def get_session(self, session_id: str) -> _Session | None:
         return self._sessions.get(session_id)
+
+    async def list_sessions(self, *, include_closed: bool = False) -> list[_Session]:
+        return [
+            session
+            for session in self._sessions.values()
+            if include_closed or (session.closed_at is None and session.lifecycle_status != "closed")
+        ]
 
 
 class _RunnerClient:
@@ -652,6 +667,218 @@ async def test_runner_suppresses_live_active_runner_and_does_not_prefix_match(tm
     assert result.skips[RunnerSkipReason.ALREADY_DRIVEN] == [_LIVE_SLUG]
     assert [intent.slug for intent in result.dispatched] == [_OTHER_SLUG]
     assert client.requests[0]["args"] == _OTHER_SLUG
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_live_orchestrator_owner_resolves_only_same_project_orchestrator(tmp_path: Path) -> None:
+    project_root = (tmp_path / "project").resolve()
+    other_root = (tmp_path / "other").resolve()
+    sessions = {
+        _ORCH_SESSION: _Session(
+            session_id=_ORCH_SESSION,
+            working_slug=_WORK_SLUG,
+            system_role=ROLE_ORCHESTRATOR,
+            project_path=str(project_root),
+        ),
+        "closed-orch": _Session(
+            session_id="closed-orch",
+            closed_at=datetime(2026, 1, 1),
+            working_slug=_WORK_SLUG,
+            system_role=ROLE_ORCHESTRATOR,
+            project_path=str(project_root),
+        ),
+        "worker-session": _Session(
+            session_id="worker-session",
+            working_slug=_WORK_SLUG,
+            system_role=None,
+            project_path=str(project_root),
+        ),
+        _CROSS_PROJECT_SESSION: _Session(
+            session_id=_CROSS_PROJECT_SESSION,
+            working_slug=_WORK_SLUG,
+            system_role=ROLE_ORCHESTRATOR,
+            project_path=str(other_root),
+        ),
+    }
+    db = cast(Db, _FakeDb(sessions))
+
+    assert await live_orchestrator_owner(db, project_root, _WORK_SLUG) == _ORCH_SESSION
+    assert await live_orchestrator_owner(db, project_root, _OTHER_SLUG) is None
+    assert await live_orchestrator_owner(db, other_root, _WORK_SLUG) == _CROSS_PROJECT_SESSION
+    assert await live_orchestrator_owned_slugs(db, project_root) == {_WORK_SLUG}
+    assert await live_orchestrator_owned_slugs(db, other_root) == {_WORK_SLUG}
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_decide_skips_registry_owned_slug_without_active_runner() -> None:
+    decision = decide_dispatches(
+        {
+            _WORK_SLUG: RunnerTodo(
+                slug=_WORK_SLUG,
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_CHANGE: True},
+        live_session_ids=set(),
+        orchestrator_owned_slugs={_WORK_SLUG},
+    )
+
+    assert decision.skips[RunnerSkipReason.ALREADY_DRIVEN] == [_WORK_SLUG]
+    assert decision.intents == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_decide_dedups_task_driver_via_active_runner_without_registry() -> None:
+    decision = decide_dispatches(
+        {
+            _WORK_SLUG: RunnerTodo(
+                slug=_WORK_SLUG,
+                status="active",
+                kind=_TASK,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=_LIVE_SESSION,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: True},
+        live_session_ids={_LIVE_SESSION},
+        orchestrator_owned_slugs=set(),
+    )
+
+    assert decision.skips[RunnerSkipReason.ALREADY_DRIVEN] == [_WORK_SLUG]
+    assert decision.intents == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_runner_skips_registry_owned_slug_without_active_runner(tmp_path: Path) -> None:
+    project_root = (tmp_path / "project").resolve()
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    client = _RunnerClient()
+    orchestrator = _Session(
+        session_id=_ORCH_SESSION,
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(project_root),
+    )
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb({_ORCH_SESSION: orchestrator})),
+        client_factory=lambda: client,
+    )
+
+    assert result.skips[RunnerSkipReason.ALREADY_DRIVEN] == [_WORK_SLUG]
+    assert result.dispatched == []
+    assert client.requests == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_runner_does_not_block_same_slug_in_other_project(tmp_path: Path) -> None:
+    project_root = (tmp_path / "project").resolve()
+    other_root = (tmp_path / "other").resolve()
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    client = _RunnerClient()
+    orchestrator = _Session(
+        session_id=_ORCH_SESSION,
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(other_root),
+    )
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb({_ORCH_SESSION: orchestrator})),
+        client_factory=lambda: client,
+    )
+
+    assert [intent.slug for intent in result.dispatched] == [_WORK_SLUG]
+    assert RunnerSkipReason.ALREADY_DRIVEN not in result.skips
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_start_refused_by_registry_owner_without_active_runner(tmp_path: Path) -> None:
+    project_root = (tmp_path / "project").resolve()
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    client = _RunnerClient()
+    orchestrator = _Session(
+        session_id=_ORCH_SESSION,
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(project_root),
+    )
+
+    result = await manual_start_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        lane=RunnerLane.WORK,
+        db=cast(Db, _FakeDb({_ORCH_SESSION: orchestrator})),
+        client_factory=lambda: client,
+    )
+
+    assert result.status is ManualLifecycleStatus.ALREADY_DRIVEN
+    assert result.session_id == _ORCH_SESSION
+    assert client.requests == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_adoption_not_self_blocked_by_own_registry_row(tmp_path: Path) -> None:
+    project_root = (tmp_path / "project").resolve()
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    caller = _Session(
+        session_id="caller-session",
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(project_root),
+    )
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        caller.session_id,
+        db=cast(Db, _FakeDb({caller.session_id: caller})),
+    )
+
+    assert result.status is ManualLifecycleStatus.ADOPTED
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == caller.session_id
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_adoption_refusal_reports_registry_owner_without_active_runner(tmp_path: Path) -> None:
+    project_root = (tmp_path / "project").resolve()
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    owner = _Session(
+        session_id=_ORCH_SESSION,
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(project_root),
+    )
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        "caller-session",
+        db=cast(Db, _FakeDb({_ORCH_SESSION: owner})),
+    )
+
+    assert result.status is ManualLifecycleStatus.ALREADY_DRIVEN
+    assert result.session_id == _ORCH_SESSION
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

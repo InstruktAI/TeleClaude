@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from pathlib import Path
+
+from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.session_status import compute_agent_status
 
@@ -159,3 +161,59 @@ async def find_live_root_prepare_lifecycle_sessions_for_slug(db: Db, slug: str) 
         for session in sessions
         if session.subdir is None and _matches_command_slug_title(session.title, slug, PREPARE_LIFECYCLE_COMMANDS)
     ]
+
+
+def _same_project_root(session_project_path: str | None, project_root: Path) -> bool:
+    """Return whether a session's stored project path resolves to ``project_root``.
+
+    A session bound to a same-named slug in a different project must not block
+    dispatch here, so ownership is scoped to the canonical project root. A session
+    with no project path (or an unresolvable one) never matches.
+    """
+    if not session_project_path:
+        return False
+    try:
+        return Path(session_project_path).resolve() == project_root
+    except (OSError, ValueError):
+        return False
+
+
+async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -> str | None:
+    """Return the id of a live orchestrator bound to ``slug`` in this project.
+
+    Authoritative orchestrator dedup signal: a session is the owner when it is a
+    live orchestrator (``system_role == ROLE_ORCHESTRATOR``), its ``working_slug``
+    matches ``slug`` exactly, and it runs in the same canonical project root. Exact
+    slug equality (not a title/worktree heuristic) and project scoping mean one
+    project's slug never blocks another's same-named slug. Returns ``None`` when no
+    such session exists.
+    """
+    project_root = Path(project_path).resolve()
+    sessions = await db.list_sessions(include_closed=False)
+    for session in sessions:
+        if session.system_role != ROLE_ORCHESTRATOR:
+            continue
+        if session.working_slug != slug:
+            continue
+        if _same_project_root(session.project_path, project_root):
+            return session.session_id
+    return None
+
+
+async def live_orchestrator_owned_slugs(db: Db, project_path: str | Path) -> set[str]:
+    """Return the slugs owned by a live orchestrator in this project, in one pass.
+
+    The set-returning sibling of :func:`live_orchestrator_owner` lets the pure
+    ``decide_dispatches`` stay synchronous — the single async registry read happens
+    once in the runner caller, and the precomputed set is the orchestrator-dedup
+    signal for the project-scoped full-set evaluation.
+    """
+    project_root = Path(project_path).resolve()
+    sessions = await db.list_sessions(include_closed=False)
+    return {
+        session.working_slug
+        for session in sessions
+        if session.system_role == ROLE_ORCHESTRATOR
+        and session.working_slug
+        and _same_project_root(session.project_path, project_root)
+    }
