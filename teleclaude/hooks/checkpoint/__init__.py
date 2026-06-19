@@ -587,21 +587,26 @@ def get_checkpoint_content(
             discharge_obligation=lambda action: discharge_commit_obligation(session_id, action),
         )
 
-        if not effective_files and commit_obligations and result.is_all_clear and not force_main_commit_checkpoint:
+        if (
+            result.is_all_clear
+            and not result.commit_action_required
+            and not force_main_commit_checkpoint
+            and (not effective_files or _is_docs_only(effective_files))
+        ):
             logger.info(
-                "Checkpoint payload skipped (commit obligations satisfied)",
+                "Checkpoint payload skipped (doc/no-action turn fully satisfied)",
                 extra={
                     **base_extra,
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
-                    "changed_files": 0,
+                    "changed_files": len(effective_files),
                     "workspace_kind": scoped_paths.workspace_kind,
                     "strategy": scoped_paths.strategy,
                     "ledger_updated": scoped_paths.ledger_updated,
                     "categories": result.categories,
                     "required_actions": 0,
                     "observations": 0,
-                    "mode": "commit_obligations_satisfied",
+                    "mode": "silent_docs_satisfied",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
                     "authored_main_commit": authored_main_commit,

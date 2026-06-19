@@ -18,6 +18,24 @@
     ]),
   })
 # ---
+# name: test_committed_and_synced_doc_only_turn_fires_no_checkpoint
+  dict({
+    'unsynced_doc_payload': '''
+      [TeleClaude Checkpoint] - Context-aware checkpoint
+      
+      Changed: syncable sources
+      
+      Required actions (BLOCKING — do not resume user-facing work until all complete):
+      1. Run `telec sync`
+      
+      Execute every required action above before responding to the user.
+      
+      Response policy: complete ALL required actions first. Do not compose the debrief until every action is done. Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. Do not mention checkpoint chores.
+      
+      Escape hatch (last resort only, and only when there is no actionable information left): run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to skip checkpoints for this turn; it clears at the next user prompt. If the same checkpoint recurs across turns, surface it as a bug instead of clearing it again.
+    ''',
+  })
+# ---
 # name: test_committed_code_persists_only_main_only_maintenance_obligations
   dict({
     'main_only_payload': '''

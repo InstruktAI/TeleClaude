@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
 
+import teleclaude.git_lock as git_lock
 import teleclaude.hooks.checkpoint as checkpoint_module
+import teleclaude.session_scoping._extractors.codex as codex_extractor
 from teleclaude.cli.telec.handlers import code
 from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.core.agents import AgentName
@@ -35,12 +39,28 @@ _TELEC_SYNC_INSTR = "Run `telec sync`"
 _MAKE_RESTART_INSTR = "Run `make restart`"
 
 
-def _init_supported_repo(repo_path: Path) -> Repo:
+@pytest.fixture(autouse=True)
+def _isolate_git_main_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate the main-branch flock per test.
+
+    `_commit_under_lock` serialises on a single global lock file
+    (`~/.teleclaude/git-main.lock`) shared across every xdist worker and the live
+    daemon. Under `-n auto` the commit-heavy tests queue behind each other on it,
+    which dominates their wall time and trips the per-test timeout. Pointing the
+    lock at a per-test path removes the cross-worker contention without changing
+    commit behavior.
+    """
+    monkeypatch.setattr(git_lock, "_LOCK_PATH", tmp_path / "git-main.lock")
+
+
+def _build_supported_repo(repo_path: Path) -> Repo:
     repo_path.mkdir(parents=True)
-    repo = Repo.init(repo_path)
-    repo.git.checkout("-B", "main")
-    repo.git.config("user.name", "Checkpoint Test")
-    repo.git.config("user.email", "checkpoint-test@example.test")
+    # Spawn as few git subprocesses as possible: `initial_branch` avoids a
+    # checkout call and the config writer sets identity in-process.
+    repo = Repo.init(repo_path, initial_branch="main")
+    with repo.config_writer() as config:
+        config.set_value("user", "name", "Checkpoint Test")
+        config.set_value("user", "email", "checkpoint-test@example.test")
     (repo_path / "teleclaude" / "hooks" / "checkpoint").mkdir(parents=True)
     (repo_path / "teleclaude" / "hooks" / "checkpoint" / "__init__.py").write_text("", encoding="utf-8")
     (repo_path / "agents" / "commands").mkdir(parents=True)
@@ -50,6 +70,31 @@ def _init_supported_repo(repo_path: Path) -> Repo:
     repo.git.add(".")
     repo.git.commit("-m", "initial")
     return repo
+
+
+_template_repo: Path | None = None
+
+
+def _supported_repo_template() -> Path:
+    """Build the base supported repo once per worker process.
+
+    Every test needs an identical freshly-initialised repo. Running `git
+    init`/`add`/`commit` per test spawns three subprocesses each; under xdist
+    parallel load those forks contend for CPU and dominate wall time. Build the
+    repo once and clone it per test by filesystem copy — no per-test git
+    subprocess for the base state.
+    """
+    global _template_repo
+    if _template_repo is None or not _template_repo.exists():
+        template = Path(tempfile.mkdtemp(prefix="ckpt-repo-tmpl-")) / "repo"
+        _build_supported_repo(template)
+        _template_repo = template
+    return _template_repo
+
+
+def _init_supported_repo(repo_path: Path) -> Repo:
+    shutil.copytree(_supported_repo_template(), repo_path)
+    return Repo(repo_path)
 
 
 def _empty_timeline() -> TurnTimeline:
@@ -510,6 +555,66 @@ def test_surfaced_commit_obligation_discharges_in_later_cycle(
     assert read_commit_obligations(session_id) == []
     assert next_payload is None
     assert {"first_payload": first_payload, "satisfied_payload": satisfied_payload} == snapshot
+
+
+def _patch_all_timelines(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeline) -> None:
+    """Surface one timeline to both the checkpoint heuristics and the path extractor.
+
+    `resolve_scoped_paths` derives turn-local files from the agent-native
+    extractor (`codex.extract_effective_tool_calls`), a binding distinct from the
+    checkpoint module's own. Patching both makes the structured mutators in
+    `timeline` land in `effective_files`, reproducing a turn whose only changes
+    are committed docs/** snippets.
+    """
+    monkeypatch.setattr(codex_extractor, "extract_effective_tool_calls", lambda *_a, **_k: timeline)
+    _patch_checkpoint_timeline(monkeypatch, timeline)
+
+
+def _docs_turn_timeline(repo_path: Path, *, synced: bool) -> TurnTimeline:
+    records = [
+        ToolCallRecord(tool_name="write", input_data={"file_path": str(repo_path / "docs" / "notes.md")}),
+        ToolCallRecord(tool_name="bash", input_data={"command": "telec code commit --approved 'docs: add notes'"}),
+    ]
+    if synced:
+        records.append(ToolCallRecord(tool_name="bash", input_data={"command": "telec sync"}))
+    return TurnTimeline(tool_calls=records, has_data=True)
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP15")
+def test_committed_and_synced_doc_only_turn_fires_no_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    session_id = "checkpoint-docs-satisfied-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
+    (repo_path / "docs").mkdir(parents=True, exist_ok=True)
+    (repo_path / "docs" / "notes.md").write_text("# Notes\n", encoding="utf-8")
+
+    _patch_all_timelines(monkeypatch, _docs_turn_timeline(repo_path, synced=True))
+    satisfied_payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    _patch_all_timelines(monkeypatch, _docs_turn_timeline(repo_path, synced=False))
+    unsynced_payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=None,
+        agent_name=AgentName.CODEX,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert satisfied_payload is None
+    assert unsynced_payload is not None
+    assert {"unsynced_doc_payload": unsynced_payload} == snapshot
 
 
 @pytest.mark.functional

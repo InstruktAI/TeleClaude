@@ -368,6 +368,23 @@ And no `make restart` obligation is surfaced for it
 (The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
 ```
 
+#### UC-CP15: Committed-and-satisfied doc/no-action turn fires no checkpoint
+
+```gherkin
+Given the only turn-local changes are docs/** files (or there are no turn-local changes at all)
+And those changes are committed this turn so nothing is left to commit
+And every category obligation they imply is satisfied (e.g. `telec sync` evidence follows the last mutation, leaving no required actions and no observations)
+And the turn did not author a code commit on main (no post-commit review gate)
+When the heuristic engine evaluates the turn window
+Then no checkpoint is produced
+(A doc/no-action turn the engine has nothing left to act on is silently skipped, rather than rendered as the misleading "No code changes detected this turn." — doc changes were in fact made, committed, and synced.)
+
+Given the only turn-local changes are docs/** files committed this turn
+And no `telec sync` evidence appears in the checkpoint-cycle tool call timeline
+When the heuristic engine evaluates the turn window
+Then a checkpoint is produced surfacing the `telec sync` validation action (per UC-CP10), because the doc turn is not yet satisfied
+```
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
