@@ -31,7 +31,7 @@ Use `/author-knowledge` to document your escalation rules, support procedures, S
 
 ## Invariants
 
-- The operator brain (`AGENTS.master.md`) is version-controlled.
+- The operator brain lives in version-controlled doc snippets (see `project/concept/operator-brain`); `AGENTS.master.md` is a thin wrapper that loads them via Required reads.
 - Runtime directories (`inbox/`, `logs/`, `outcomes/`) are gitignored.
 - Organization docs are symlinked to `~/.teleclaude/docs/organization/` for cross-project visibility.
 
