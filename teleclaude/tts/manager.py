@@ -44,13 +44,14 @@ class TTSManager:
         self._runtime_lock: asyncio.Lock | None = None
 
     def reload(self) -> None:
-        """Re-read TTS config from the (reloaded) global config singleton.
+        """Re-read config-derived TTS state from the (reloaded) global config singleton.
 
         Called when a config reload changes the ``tts`` section so the cached config
-        and enabled flag reflect the new values without a daemon restart.
+        (services, voices, events, service priority) reflects the new values without a
+        daemon restart. The live ``enabled`` flag is never touched here: the
+        runtime-settings layer owns live mute/unmute and is its single source of truth.
         """
         self.tts_config = self._load_tts_config()
-        self.enabled = self.tts_config.enabled
 
     def set_chiptunes_manager(self, manager: "ChiptunesManager") -> None:
         """Inject ChiptunesManager reference for pause/resume during TTS."""
