@@ -657,7 +657,27 @@ install_macos_casks() {
     fi
 
     _maybe_install_cask "lm-studio" "Install LM Studio (local LLM server for summarizer)?"
+    # llmster background service follows LM Studio: install non-interactively when
+    # LM Studio is present (just installed or pre-existing) and the service is absent.
+    if brew list --cask lm-studio &> /dev/null || [ -d "/Applications/LM Studio.app" ]; then
+        _ensure_llmster_installed
+    fi
     _maybe_install_cask "handy" "Install Handy (macOS speech-to-text app)?"
+}
+
+# Ensure the llmster background service (the lms CLI + daemon) is installed.
+# Detected via the lms binary; installed silently from the official script if absent.
+_ensure_llmster_installed() {
+    if command -v lms &> /dev/null || [ -x "$HOME/.cache/lm-studio/bin/lms" ]; then
+        print_info "llmster (lms) already installed"
+        return 0
+    fi
+    print_info "Installing llmster background service..."
+    if curl -fsSL https://lmstudio.ai/install.sh | bash >> "$LOG_FILE" 2>&1; then
+        print_success "llmster installed"
+    else
+        print_warning "Failed to install llmster (see $LOG_FILE)"
+    fi
 }
 
 _maybe_install_cask() {
