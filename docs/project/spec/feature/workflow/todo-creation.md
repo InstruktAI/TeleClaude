@@ -45,8 +45,12 @@ The workflow service emits the event with this payload:
 
 - `slug` — the created slug.
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
-- `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
 <!-- planned-change:revise-todo-create-flags -->
+- `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
+<!-- change:revise-todo-create-flags -->
+- `creation_mode` — `"pickup"` when the event requests pickup, otherwise `"silent"` (a `--icebox` create or a `task`); it is derived from `pickup_requested`, not from any creation-time input flag.
+  <!-- /planned-change:revise-todo-create-flags -->
+  <!-- planned-change:revise-todo-create-flags -->
 - `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
 <!-- change:revise-todo-create-flags -->
 - `pickup_requested` — boolean, false when the caller passed `--icebox` or the kind is `task`.
