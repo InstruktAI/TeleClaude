@@ -123,32 +123,20 @@ def _same_project(path_a: str | None, path_b: str | None) -> bool:
     return _base_project_path(path_a) == _base_project_path(path_b)
 
 
-def _subtree_max_created_at(
-    session: SessionDTO,
-    sessions_by_initiator: dict[str, list[SessionDTO]],
-) -> str:
-    """Return the newest ``created_at`` anywhere in a session's subtree.
+def _created_at_key(session: SessionDTO) -> str:
+    """Null-safe sort key: the session's own ``created_at``.
 
-    Compares the session's own ``created_at`` against the recursive max of its
-    AI-to-AI children, using the same ``created_at or ""`` null-safe key as the
-    flat session sort. Lets a branch rise by its newest descendant rather than
-    by the parent's own creation time.
+    Every sibling level — root sessions, AI-to-AI children, and project groups —
+    ranks by this, matching the flat ``created_at`` desc feed sort. A node's
+    position is its own creation time and nothing else; a newer descendant never
+    lifts its parent.
     """
-    best = session.created_at or ""
-    for child in sessions_by_initiator.get(session.session_id, []):
-        best = max(best, _subtree_max_created_at(child, sessions_by_initiator))
-    return best
+    return session.created_at or ""
 
 
-def _newest_in_subtrees(
-    sessions: list[SessionDTO],
-    sessions_by_initiator: dict[str, list[SessionDTO]],
-) -> str:
-    """Return the newest subtree ``created_at`` across a list of sessions."""
-    return max(
-        (_subtree_max_created_at(s, sessions_by_initiator) for s in sessions),
-        default="",
-    )
+def _newest_created_at(sessions: list[SessionDTO]) -> str:
+    """Return the newest own ``created_at`` across a list of sessions; "" when empty."""
+    return max((s.created_at or "" for s in sessions), default="")
 
 
 def build_tree(
@@ -240,12 +228,12 @@ def build_tree(
                     matched_session_ids.add(s.session_id)
                     break
 
-        # Order projects by their newest session subtree (desc) so a project
-        # with active work surfaces; projects with no sessions sort last in a
-        # stable order.
+        # Order projects by their newest session's own created_at (desc) so a
+        # project with recent work surfaces; projects with no sessions sort last
+        # in a stable order.
         comp_projects_by_recency = sorted(
             comp_projects,
-            key=lambda p: _newest_in_subtrees(project_sessions[p.path], sessions_by_initiator),
+            key=lambda p: _newest_created_at(project_sessions[p.path]),
             reverse=True,
         )
         for project in comp_projects_by_recency:
@@ -259,7 +247,7 @@ def build_tree(
 
             ordered_sessions = sorted(
                 project_sessions[project.path],
-                key=lambda s: _subtree_max_created_at(s, sessions_by_initiator),
+                key=_created_at_key,
                 reverse=True,
             )
             for idx, session in enumerate(ordered_sessions, 1):
@@ -279,10 +267,10 @@ def build_tree(
             proj_path = session.project_path or ""
             orphans_by_path.setdefault(proj_path, []).append(session)
 
-        # Create project nodes for each unique project_path, newest subtree first
+        # Create project nodes for each unique project_path, newest session first
         orphans_by_recency = sorted(
             orphans_by_path.items(),
-            key=lambda item: _newest_in_subtrees(item[1], sessions_by_initiator),
+            key=lambda item: _newest_created_at(item[1]),
             reverse=True,
         )
         for proj_path, proj_sessions in orphans_by_recency:
@@ -296,7 +284,7 @@ def build_tree(
 
             ordered_sessions = sorted(
                 proj_sessions,
-                key=lambda s: _subtree_max_created_at(s, sessions_by_initiator),
+                key=_created_at_key,
                 reverse=True,
             )
             for idx, session in enumerate(ordered_sessions, 1):
@@ -344,7 +332,7 @@ def _build_session_node(
     if child_sessions:
         ordered_children = sorted(
             child_sessions,
-            key=lambda c: _subtree_max_created_at(c, sessions_by_initiator),
+            key=_created_at_key,
             reverse=True,
         )
         for child_idx, child in enumerate(ordered_children, 1):

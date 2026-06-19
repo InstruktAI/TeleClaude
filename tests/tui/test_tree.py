@@ -1,9 +1,9 @@
 """Functional tests for session-tree ordering in ``build_tree``.
 
-Pins the contract that the branch containing the newest ``created_at`` surfaces
-first at every level — sessions, AI-to-AI children, and projects — so the latest
-session is always visible at the top, even when it is nested beneath an older
-orchestrator (the buried-newest regression).
+Pins the contract that every sibling level — root sessions, AI-to-AI children,
+and project groups — ranks by its own ``created_at`` (newest first). A node's
+position is its own creation time and nothing else; a newer descendant never
+lifts its parent above a root created after it.
 """
 
 from __future__ import annotations
@@ -60,8 +60,7 @@ def _sorted_newest_first(sessions: list[SessionDTO]) -> list[SessionDTO]:
     """Mirror the caller's flat newest-first sort (``sessions.py``) before grouping.
 
     ``build_tree`` is always handed the session feed pre-sorted by ``created_at``
-    descending; feeding the same here keeps the test faithful to the real input
-    and proves the fix removes the cause rather than leaning on that pre-sort.
+    descending; feeding the same here keeps the test faithful to the real input.
     """
     return sorted(sessions, key=lambda s: s.created_at or "", reverse=True)
 
@@ -81,17 +80,18 @@ def _flatten_session_ids(tree: list[TreeNode]) -> list[str]:
     return ids
 
 
-def test_newer_child_lifts_its_parent_branch_above_a_newer_childless_root() -> None:
-    # Orchestrator created earliest with a later non-detached child worker, versus
-    # a more-recently-created childless orchestrator. The child must lift its
-    # parent's branch above the newer childless root (buried-newest regression).
+def test_parent_ranks_by_own_created_at_not_by_a_newer_child() -> None:
+    # An orchestrator created earliest, holding a later non-detached worker, versus
+    # a childless root created after the orchestrator. The parent ranks by its OWN
+    # created_at, so the childless root sorts above it even though the orchestrator's
+    # worker is the newest session overall. (Regression guard: subtree-max ranking.)
     orchestrator = _session("orch", "2026-06-18T02:14:00", detached=True)
     worker = _session("worker", "2026-06-18T02:26:00", initiator="orch")
     childless = _session("childless", "2026-06-18T02:18:00")
 
     tree = build_tree([_computer_info()], [_project()], _sorted_newest_first([orchestrator, worker, childless]))
 
-    assert _flatten_session_ids(tree) == ["orch", "worker", "childless"]
+    assert _flatten_session_ids(tree) == ["childless", "orch", "worker"]
 
 
 def test_children_render_newest_first_within_a_parent() -> None:
