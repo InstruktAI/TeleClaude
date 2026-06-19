@@ -11,14 +11,12 @@ from rich.markup import escape as _rich_escape
 DATE_SUFFIX_WIDTH = 6
 
 
-def format_time(iso_timestamp: str | None, *, with_date: bool = False, day_first: bool = True) -> str:
+def format_time(iso_timestamp: str | None, *, with_date: bool = False) -> str:
     """Convert ISO timestamp to ``HH:MM:SS`` local time.
 
-    With ``with_date``, append a fixed-width date suffix (``HH:MM:SS-DD/MM``, or
-    ``-MM/DD`` when ``day_first`` is False) so the time column stays left-aligned
-    while the date hangs off the right. ``day_first`` defaults to European
-    day/month order; the order is an explicit argument, not read from the
-    environment. Returns empty string if unavailable.
+    With ``with_date``, append a fixed-width European ``-DD/MM`` suffix
+    (``HH:MM:SS-DD/MM``) so the time column stays left-aligned while the date
+    hangs off the right. Returns empty string if unavailable.
     """
     if not iso_timestamp:
         return ""
@@ -30,8 +28,7 @@ def format_time(iso_timestamp: str | None, *, with_date: bool = False, day_first
     base = local_dt.strftime("%H:%M:%S")
     if not with_date:
         return base
-    date = local_dt.strftime("%d/%m" if day_first else "%m/%d")
-    return f"{base}-{date}"
+    return f"{base}-{local_dt.strftime('%d/%m')}"
 
 
 def format_relative_time(iso_timestamp: str | None) -> str:

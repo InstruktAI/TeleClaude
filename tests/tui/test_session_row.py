@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import time
+from collections.abc import Iterator
 
 import pytest
 from textual.app import App, ComposeResult
@@ -16,6 +18,26 @@ pytestmark = pytest.mark.functional
 
 SID = "s1"
 OTHER_SID = "s2"
+
+
+@pytest.fixture
+def utc_timezone() -> Iterator[None]:
+    """Pin the process timezone to UTC for the test, then restore it.
+
+    ``tzset()`` mutates process-global state, so the prior ``TZ`` must be
+    restored in teardown or later tests in the same worker inherit UTC.
+    """
+    previous = os.environ.get("TZ")
+    os.environ["TZ"] = "UTC"
+    time.tzset()
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = previous
+        time.tzset()
 
 
 def _session(session_id: str, *, last_output_summary: str | None = None) -> SessionDTO:
@@ -117,11 +139,8 @@ async def test_out_line_retention_does_not_touch_highlight() -> None:
 
 
 @pytest.mark.asyncio
-async def test_expanded_and_collapsed_row_rendering(monkeypatch: pytest.MonkeyPatch, snapshot: object) -> None:
-    # Pin TZ so the rendered timestamps are deterministic across hosts/CI.
-    monkeypatch.setenv("TZ", "UTC")
-    time.tzset()
-
+async def test_expanded_and_collapsed_row_rendering(utc_timezone: None, snapshot: object) -> None:
+    # utc_timezone pins TZ so the rendered timestamps are deterministic.
     app = _SessionsTestApp()
     async with app.run_test(size=(120, 40)) as pilot:
         view = app.query_one(SessionsView)
