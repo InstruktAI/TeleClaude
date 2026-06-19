@@ -159,11 +159,7 @@ kind mutation is refused.
 #### Todo (aggregate)
 
 - **Root:** `Todo`
-<!-- planned-change:human-lineage-on-todos -->
 - **Contains:** a durable row identity (the persistent key); the Slug as its active alias; current StageState (which stage, which phase, in_progress vs awaiting); the Artifact collection (each artifact has version history); dependency edges (`after` slugs); kind; optional grouping; optional description.
-<!-- change:human-lineage-on-todos -->
-- **Contains:** a durable row identity (the persistent key); the Slug as its active alias; current StageState (which stage, which phase, in_progress vs awaiting); the Artifact collection (each artifact has version history); dependency edges (`after` slugs); kind; optional grouping; optional description; `created_by_principal` — the resolved principal (`human:<email>` or `system:<session_id>`) of the caller that created the row.
-<!-- /planned-change:human-lineage-on-todos -->
 - **Invariants:**
   - A todo has exactly one current `(stage, phase)` at any moment.
   - Stage progression is strictly forward: `draft → prepare → work → integrate → delivered`. No backwards transitions; recovery from failure happens within the current stage's machine.
@@ -207,9 +203,6 @@ kind mutation is refused.
     `workflow.todo.renamed` event. Slug mutation is refused after build starts.
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
-  <!-- planned:human-lineage-on-todos -->
-  - **Creator lineage is captured at creation and is audit-only.** The roadmap row records `created_by_principal` — the resolved principal of the creating caller — at the moment of creation, and the field is immutable thereafter. When the creator is itself an agent session, the recorded principal is that session's resolved principal: the chain-root human (`human:<email>`) whenever the chain originates at a human entry point, and `system:<session_id>` only for a chain with no human root. Lineage is attribution only — it never widens authorization, which remains governed by role × project independently of the recorded principal.
-  <!-- /planned:human-lineage-on-todos -->
   - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
   - <!-- planned-change:fix-hold-disabled-still-held -->**Hold is the only persisted manual-dispatch brake, and it is scoped to autostart-enabled kinds.** A held todo is skipped by the lifecycle runner only when its kind has autostart enabled; the effective brake is the `hold` flag conjoined with the kind's autostart, so a residual flag on an autostart-disabled kind is inert and no set-site writes `hold=true` for such a kind. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.<!-- change:fix-hold-disabled-still-held -->**Hold is the only persisted manual-dispatch brake, and it acts only on a todo that is effectively held.** A held todo is skipped by the lifecycle runner only when its `hold` flag is set, its kind's autostart is active (`workflow.runner` is `autostart` and the kind's toggle is on), and its phase is past `prepared`; the effective brake is that single derived predicate, so a stored flag is inert whenever any condition fails — autostart off, runner `manual`, or anywhere in the prepare lane through `prepared`. A residual flag is never auto-cleared; it simply does not act. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.<!-- /planned-change:fix-hold-disabled-still-held -->
   - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.
@@ -339,8 +332,6 @@ extra because the v1 runtime has no `project_id`; the canonical producer
 schema uses `project_id` from which bridge consumers derive `project_path`
 via the existing `project_id → project_path` map.
 
-<!-- planned-change:human-lineage-on-todos -->
-
 The three canonical fields absent on v1-emitted events are `todo_id`,
 `project_id`, and `created_by_principal`.
 
@@ -348,19 +339,6 @@ Consumers MUST treat those three fields as optional and apply safe defaults
 when ingesting events that may originate from a v1 emitter. The Rust v2
 `WorkflowService` handles this via serde defaults on the `TodoCreated` struct
 so v2 code can consume v1 events without panicking on missing fields.
-
-<!-- change:human-lineage-on-todos -->
-
-The two canonical fields absent on v1-emitted events are `todo_id` and
-`project_id`. `created_by_principal` is populated on v1-emitted events from the
-roadmap row's persisted owner — the resolved principal of the creating caller.
-
-Consumers MUST treat `todo_id` and `project_id` as optional and apply safe
-defaults when ingesting events that may originate from a v1 emitter. The Rust
-v2 `WorkflowService` handles this via serde defaults on the `TodoCreated`
-struct so v2 code can consume v1 events without panicking on missing fields.
-
-<!-- /planned-change:human-lineage-on-todos -->
 
 This partial shape is a transitional constraint, not the target contract. The
 `v2-workflow-cutover` delivery retires it: the v2 route emits the full
@@ -919,8 +897,6 @@ And the todo-scoped diff (UC-WFL-18 above) is implemented in terms of this primi
 
 #### UC-WFL-19: Legacy silent creation is a boundary alias for hold
 
-<!-- planned-change:revise-todo-create-flags -->
-
 ```
 Given a legacy caller creates a non-task "<slug>" whose kind has autostart enabled with the retired `creation_mode = silent` (or `--silent`)
 When the workflow service accepts the creation
@@ -935,18 +911,6 @@ When the workflow service accepts the creation
 Then the todo is created with `hold=false`
 And the lifecycle runner leaves it undispatched for policy-disabled, not for hold
 ```
-
-<!-- change:revise-todo-create-flags -->
-
-```
-Given a caller passes `--silent` (or a `silent` request field) to `telec todo create`
-When the workflow service handles the create
-Then no silent-to-hold alias applies — `--silent` is no longer part of the create surface and any residual `silent` field is ignored
-And the todo enters its kind's lifecycle normally, with no `hold` set at creation
-And the create-time parking mechanism is `--icebox` (roadmap `status="icebox"`, `pickup_requested=false`), which the runner skips as an iceboxed entry
-```
-
-<!-- /planned-change:revise-todo-create-flags -->
 
 ```
 Given a legacy caller creates a `task` carrying the force-silent default
@@ -974,8 +938,6 @@ And in v1 every target wake-up is backed by either an existing v1 emission or an
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
-<!-- planned-change:revise-todo-create-flags -->
-
 ```gherkin
 Given an operator creates a todo with `--hold` whose kind has autostart enabled
 When workflow persists the todo
@@ -993,28 +955,6 @@ And the lifecycle runner skips it for policy-disabled, not for hold
 And explicit `telec todo work <slug>` remains valid
 ```
 
-<!-- change:revise-todo-create-flags -->
-
-```gherkin
-Given an operator wants to park a new todo so it does not enter its lifecycle yet
-When they run `telec todo create <slug> "<content>" --kind <k> --icebox`
-Then the todo is created in the icebox (roadmap `status="icebox"`) and visible in icebox reads
-And the runner skips it as an iceboxed entry, so no session is dispatched
-And `telec todo unfreeze <slug>` returns it to active and makes it eligible on the next runner wake-up
-And `--hold`/`--release` are not accepted on create; hold is set only by the manual-close interlock or `telec todo update --hold`
-```
-
-```gherkin
-Given an operator creates a task
-When workflow persists the task
-Then the task has `hold=false`
-And the default autostart policy for `task` evaluates to false
-And the lifecycle runner skips it for policy-disabled, not for hold
-And explicit `telec todo work <slug>` remains valid
-```
-
-<!-- /planned-change:revise-todo-create-flags -->
-
 ```gherkin
 Given a legacy v1 task was stored with `creation_mode=silent` only because task uses the force-silent default
 When runner-dispatch migration derives hold state
@@ -1025,8 +965,6 @@ And the task is skipped by the runner for policy-disabled, not for hold
 
 #### UC-WFL-22: Manual session close halts via explicit hold
 
-<!-- planned-change:fix-hold-disabled-still-held -->
-
 ```gherkin
 Given a live lifecycle session is driving todo "my-slug" whose kind has autostart enabled
 When an operator manually closes that session (`telec sessions end` or a UI close affordance)
@@ -1036,19 +974,6 @@ And the lifecycle runner wakes, finds "my-slug" held, and does not re-dispatch i
 And the stale `active_runner` link is cleared
 ```
 
-<!-- change:fix-hold-disabled-still-held -->
-
-```gherkin
-Given a live lifecycle session is driving todo "my-slug" in the work lane (`build_started` or later) whose kind's autostart is active
-When an operator manually closes that session (`telec sessions end` or a UI close affordance)
-Then the close command sets `hold=true` on "my-slug"
-And the closing session emits `agent_runtime.session.ended`
-And the lifecycle runner wakes, finds "my-slug" effectively held, and does not re-dispatch its work
-And the stale `active_runner` link is cleared
-```
-
-<!-- /planned-change:fix-hold-disabled-still-held -->
-
 ```gherkin
 Given a lifecycle session ends because the agent completed, self-quit, was cleaned up by normal prepared/finalize cleanup, or died
 When the lifecycle runner wakes on `agent_runtime.session.ended`
@@ -1056,11 +981,7 @@ Then no hold is set
 And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
 
-<!-- planned-change:fix-hold-disabled-still-held -->
-
 #### UC-WFL-23: Hold is dormant when the kind's autostart is disabled
-
-<!-- planned-change:revise-todo-create-flags -->
 
 ```gherkin
 Given a todo whose kind has autostart disabled
@@ -1068,17 +989,6 @@ When any set-site attempts to engage hold — creation (`--hold`/`--silent`), th
 Then `hold` stays false on the todo
 And no hold audit is recorded
 ```
-
-<!-- change:revise-todo-create-flags -->
-
-```gherkin
-Given a todo whose kind has autostart disabled
-When any set-site attempts to engage hold — the manual-close interlock or the manual engage path (`/todos/update --hold`, TUI hold action); creation is no longer a hold set-site
-Then `hold` stays false on the todo
-And no hold audit is recorded
-```
-
-<!-- /planned-change:revise-todo-create-flags -->
 
 ```gherkin
 Given a todo whose kind has autostart disabled and a residual `hold=true` flag from before the kind's autostart was last toggled
@@ -1093,41 +1003,6 @@ Given a kind whose autostart was off and whose todos therefore carry no holds se
 When an operator enables autostart for that kind
 Then those todos auto-start cleanly with no lingering hold blocking them
 ```
-
-<!-- change:fix-hold-disabled-still-held -->
-
-#### UC-WFL-23: Hold is effective only in the work lane under an active-autostart kind
-
-```gherkin
-Given a todo carrying `hold=true` whose kind's autostart is inactive — the kind's autostart toggle is off, or `workflow.runner` is `manual`
-When the todo row is rendered and the lifecycle runner evaluates it
-Then the todo is not effectively held: no gate/lock icon renders, no hold control is offered, and the runner does not skip it for hold
-And the residual flag is left untouched — neither cleared nor acted upon
-```
-
-```gherkin
-Given a todo carrying `hold=true` whose kind's autostart is active but whose lifecycle phase is at or before `prepared`
-When the todo row is rendered and the lifecycle runner evaluates it
-Then the todo is not effectively held: no lock icon, no hold control, and no hold-skip
-And preparation proceeds normally, because hold has no meaning in the prepare lane
-```
-
-```gherkin
-Given a todo carrying `hold=true` whose kind's autostart is active and whose lifecycle phase is past `prepared` (`build_started` or later)
-When the todo row is rendered and the lifecycle runner evaluates it
-Then the todo is effectively held: the lifecycle runner skips its work dispatch
-And a single gate/lock icon renders in the row's last column
-And the unhold control that clears the flag is offered in the same place
-```
-
-```gherkin
-Given a kind whose autostart was off and whose todos carry residual `hold=true` flags
-When an operator turns that kind's autostart on
-Then a residual flag becomes effective again only for a todo in the work lane, and is otherwise inert
-And no flag is auto-cleared by the toggle
-```
-
-<!-- /planned-change:fix-hold-disabled-still-held -->
 
 #### UC-WFL-24: Operator-initiated lifecycle dispatch honors an explicit prepare request
 
