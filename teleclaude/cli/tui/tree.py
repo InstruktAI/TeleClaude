@@ -275,7 +275,7 @@ def build_tree(
         )
         for proj_path, proj_sessions in orphans_by_recency:
             proj_node = ProjectNode(
-                type="project",
+                type=NodeType.PROJECT,
                 data=ProjectDTO(computer=comp_name, name="", path=proj_path, description=None),
                 depth=1,
                 children=[],
