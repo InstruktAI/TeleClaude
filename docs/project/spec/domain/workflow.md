@@ -1179,6 +1179,32 @@ Then the runner treats it as a kind-less entry pending classification
 And dispatches it to "/analyze-todo-input" on the analyze lane
 ```
 
+<!-- planned:workflow-runner-mode -->
+
+#### UC-WFL-27: Manual runner mode freezes all autonomous dispatch
+
+```gherkin
+Given the `workflow.runner` mode is `manual`
+And the active todo list holds entries eligible for the analyze, prepare, and work lanes
+When the lifecycle runner handles a wake-up
+Then it dispatches nothing on any lane — kind-discovery, prepare, and work are all frozen
+```
+
+```gherkin
+Given the `workflow.runner` mode is `autostart`
+And the active todo list holds entries eligible for the analyze, prepare, and work lanes
+When the lifecycle runner handles a wake-up
+Then it evaluates and dispatches the full eligible set exactly as UC-WFL-20 describes
+```
+
+```gherkin
+Given the `workflow.runner` mode is `manual`
+When an operator issues a manual start (`telec todo work`/`prepare`, the TUI START, or headless adoption)
+Then the manual dispatch resolves the natural lane and is not gated by the mode
+```
+
+<!-- /planned:workflow-runner-mode -->
+
 ### v1 inventory
 
 The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is v1-grounded inventory of current v1 source. These feature specs are the v1 parity record; forward/target design for Category-B contract refinements lives in the domain spec, policies, and CLI-surface spec — NOT in these feature specs (per `documentation-first-development` §8a). A v1 inventory entry is corrected in place when current behavior is mis-stated; it is not made a delivery-owned target by a contract-refinement todo. They are the parity contract future v2 cutover work must satisfy or intentionally retire.
