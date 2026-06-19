@@ -13,10 +13,11 @@ from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import format_relative_time
+from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
-    hold_state,
+    hold_in_effect,
     is_settled_ok_phase,
     pending_approval_gate,
 )
@@ -85,7 +86,7 @@ def _approval_pending(todo: TodoItem) -> bool:
 def _is_held(todo: TodoItem) -> bool:
     if todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
         return False
-    return hold_state({"hold": todo.hold}) is not None
+    return hold_in_effect(todo.kind, todo.hold, autostart_enabled=autostart_enabled_for_kind(todo.kind))
 
 
 def _display_kind(kind: str | None) -> str:

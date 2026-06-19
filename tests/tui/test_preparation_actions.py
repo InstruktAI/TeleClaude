@@ -124,7 +124,11 @@ def _todo_row(
 
 
 def _enable_autostart(monkeypatch: pytest.MonkeyPatch, kind: str, *, enabled: bool = True) -> None:
-    monkeypatch.setattr(preparation_actions.config.workflow.autostart, kind, enabled)
+    monkeypatch.setattr(
+        preparation_actions,
+        "autostart_enabled_for_kind",
+        lambda candidate: enabled if candidate == kind else False,
+    )
 
 
 def test_hold_action_posts_hold_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

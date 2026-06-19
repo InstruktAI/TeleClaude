@@ -25,8 +25,8 @@ from teleclaude.cli.tui.widgets.modals import (
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
-from teleclaude.config import config
 from teleclaude.constants import ARTIFACT_INPUT
+from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.lifecycle import (
     ApprovalGate,
     hold_control_available,
@@ -44,12 +44,6 @@ from teleclaude.cli.tui.messages import StateChanged
 class _ApprovalGateState(TypedDict, total=False):
     kind: str | None
     lifecycle_phase: str | None
-
-
-def _autostart_enabled_for_kind(kind: str | None) -> bool:
-    if kind is None:
-        return False
-    return bool(getattr(config.workflow.autostart, kind, False))
 
 
 _APPROVAL_GATE_STAMP_TYPE: dict[ApprovalGate, str] = {
@@ -81,7 +75,7 @@ def _hold_control_available(row: TodoRow) -> bool:
         return False
     return hold_control_available(
         {"lifecycle_phase": row.todo.lifecycle_phase, "hold": row.todo.hold},
-        autostart_enabled=_autostart_enabled_for_kind(row.todo.kind),
+        autostart_enabled=autostart_enabled_for_kind(row.todo.kind),
     )
 
 

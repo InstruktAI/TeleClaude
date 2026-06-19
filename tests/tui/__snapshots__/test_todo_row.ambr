@@ -79,3 +79,6 @@
     '  ├─■ held-work······feat··P:plan draft·····🔒',
   ])
 # ---
+# name: test_todo_row_suppresses_hold_glyph_when_autostart_disabled
+  '  ├─■ legacy-held··chng··P:prepared·······'
+# ---

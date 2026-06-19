@@ -22,6 +22,7 @@ from teleclaude.core.next_machine.dispatch_claims import (
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle import (
     coerce_lifecycle_phase,
+    hold_in_effect,
     lifecycle_phase_index,
     pending_approval_gate,
 )
@@ -290,7 +291,14 @@ def decide_dispatches(
         if _pending_approval_gate_for_runner(todo):
             decision.skip(RunnerSkipReason.APPROVAL_PENDING, slug)
             continue
-        if todo.hold:
+        try:
+            held_kind = canonical_kind(todo.kind) if todo.kind is not None else None
+        except ValueError:
+            held_kind = todo.kind
+        held_autostart_enabled = (
+            _autostart_enabled(held_kind, autostart) if held_kind is not None and held_kind in autostart else False
+        )
+        if hold_in_effect(held_kind, todo.hold, autostart_enabled=held_autostart_enabled):
             decision.skip(RunnerSkipReason.HELD, slug)
             continue
         # Orchestrator dedup is registry-authoritative: a live orchestrator bound
@@ -592,8 +600,6 @@ async def _target_for_manual_start(
         return todo, RunnerSkipReason.ICEBOX, None
     if _pending_approval_gate_for_runner(todo):
         return todo, RunnerSkipReason.APPROVAL_PENDING, None
-    if todo.hold:
-        return todo, RunnerSkipReason.HELD, None
     # Registry-authoritative orchestrator dedup: a live orchestrator bound to the
     # slug blocks a second manual start regardless of active_runner. The caller's
     # own session is exempt so an orchestrator adopting/continuing its own slug is

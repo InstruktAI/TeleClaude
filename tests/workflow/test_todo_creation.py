@@ -235,6 +235,7 @@ async def test_create_with_hold_persists_visible_brake_and_suppresses_pickup(
         emitted.append(cast(_EmittedEvent, kwargs))
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda kind: kind == _KIND_CHANGE)
 
     await todo_routes.todo_content_create(
         TodoDumpRequest(
@@ -262,6 +263,72 @@ async def test_create_with_hold_persists_visible_brake_and_suppresses_pickup(
     assert todo.hold_source == _HOLD_SOURCE_CREATION
 
 
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
+async def test_create_with_hold_noops_for_autostart_disabled_kind(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda _kind: False)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="autostart-off-change",
+            content="No redundant parking flag.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            hold=True,
+        )
+    )
+
+    todos_db = await get_todos_db(project_root)
+    state = await todos_db.read_state("autostart-off-change")
+    assert state is not None
+    assert state["hold"] is False
+    hold_audit = state["hold_audit"]
+    assert isinstance(hold_audit, dict)
+    assert not hold_audit["source"]
+    [event_kwargs] = emitted
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["pickup_requested"] is True
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
+async def test_kindless_create_with_hold_keeps_parking_hold(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+
+    async def _capture_emit_event(**_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda _kind: False)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="held-kindless",
+            content="Park until classified.",
+            cwd=str(project_root),
+            hold=True,
+        )
+    )
+
+    todos_db = await get_todos_db(project_root)
+    state = await todos_db.read_state("held-kindless")
+    assert state is not None
+    assert state["kind"] is None
+    assert state["hold"] is True
+
+
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-19")
 async def test_legacy_silent_is_hold_for_non_task_but_not_for_task(
     monkeypatch: pytest.MonkeyPatch,
@@ -274,6 +341,7 @@ async def test_legacy_silent_is_hold_for_non_task_but_not_for_task(
         emitted.append(cast(_EmittedEvent, kwargs))
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda kind: kind == _KIND_CHANGE)
 
     await todo_routes.todo_content_create(
         TodoDumpRequest(

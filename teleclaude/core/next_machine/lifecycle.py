@@ -74,6 +74,7 @@ __all__ = [
     "collapse_drift",
     "derive_lifecycle_drift",
     "hold_control_available",
+    "hold_in_effect",
     "hold_state",
     "is_in_prepare_lane",
     "is_prepare_lifecycle_phase",
@@ -291,6 +292,15 @@ def hold_state(todo_state: TodoState | Mapping[str, object]) -> HumanControl | N
     else:
         hold = todo_state.get("hold") is True
     return HumanControl.HOLD if hold else None
+
+
+def hold_in_effect(kind: str | None, hold: bool, *, autostart_enabled: bool) -> bool:
+    """Return whether a stored hold flag currently acts as the dispatch brake."""
+    if not hold:
+        return False
+    if kind is None:
+        return True
+    return autostart_enabled
 
 
 def hold_control_available(todo_state: TodoState | Mapping[str, object], *, autostart_enabled: bool) -> bool:

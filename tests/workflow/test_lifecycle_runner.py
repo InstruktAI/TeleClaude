@@ -278,6 +278,75 @@ def test_preparation_runs_regardless_of_autostart_only_work_is_gated() -> None:
     assert decision.skips[RunnerSkipReason.POLICY_DISABLED] == ["work-a"]
 
 
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+def test_autostart_disabled_residual_hold_does_not_skip_prepare_lane() -> None:
+    decision = decide_dispatches(
+        {
+            "draft-held": RunnerTodo(
+                slug="draft-held",
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value,
+                hold=True,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_CHANGE: False},
+        live_session_ids=set(),
+    )
+
+    assert [intent.slug for intent in decision.intents] == ["draft-held"]
+    assert RunnerSkipReason.HELD not in decision.skips
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+def test_autostart_enabled_hold_skips_runner_as_held() -> None:
+    decision = decide_dispatches(
+        {
+            "prepared-held": RunnerTodo(
+                slug="prepared-held",
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=True,
+                active_runner=None,
+            )
+        },
+        prepared_slugs={"prepared-held"},
+        delivered_slugs=set(),
+        autostart={_CHANGE: True},
+        live_session_ids=set(),
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.HELD] == ["prepared-held"]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+def test_kindless_hold_still_skips_runner_as_held() -> None:
+    decision = decide_dispatches(
+        {
+            "kindless-held": RunnerTodo(
+                slug="kindless-held",
+                status="active",
+                kind=None,
+                lifecycle_phase=None,
+                hold=True,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_CHANGE: False},
+        live_session_ids=set(),
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.HELD] == ["kindless-held"]
+
+
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
 def test_decide_skips_at_capacity() -> None:
     decision = decide_dispatches(
@@ -548,6 +617,26 @@ async def test_manual_start_dispatches_dedicated_runner_and_marks_manual_owner(t
     assert state is not None
     assert state["active_runner"] == _SPAWN_SESSION
     assert state["manually_started"] is True
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+async def test_manual_start_dispatches_held_todo_as_one_way_forward_path(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, hold=True)
+    client = _RunnerClient()
+
+    result = await manual_start_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        lane=RunnerLane.WORK,
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert result.status is ManualLifecycleStatus.DISPATCHED
+    assert result.reason is None
+    assert client.requests[0]["command"] == _NEXT_WORK
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1064,10 +1153,14 @@ def test_removed_planning_events_are_not_registered() -> None:
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
-async def test_manual_session_close_sets_hold_on_active_runner_todo(tmp_path: Path) -> None:
+async def test_manual_session_close_sets_hold_on_active_runner_todo(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG, active_runner=_CLOSE_HOLD_SESSION)
+    monkeypatch.setattr(session_hold, "autostart_enabled_for_kind", lambda kind: kind == _CHANGE)
     runtime_db = await db_mod.get_db()
     await runtime_db.create_session(
         computer_name="local",
@@ -1089,6 +1182,37 @@ async def test_manual_session_close_sets_hold_on_active_runner_todo(tmp_path: Pa
     hold_audit = state["hold_audit"]
     assert isinstance(hold_audit, dict)
     assert hold_audit["source"] == _HOLD_SOURCE_SESSION_CLOSE
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
+async def test_manual_session_close_does_not_hold_autostart_disabled_kind(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    session_id = f"{tmp_path.name}-autostart-off-close"
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=session_id)
+    monkeypatch.setattr(session_hold, "autostart_enabled_for_kind", lambda _kind: False)
+    runtime_db = await db_mod.get_db()
+    await runtime_db.create_session(
+        computer_name="local",
+        tmux_session_name="tmux-close-autostart-off",
+        last_input_origin="terminal",
+        title="runner",
+        project_path=str(project_root),
+        session_id=session_id,
+        human_role="member",
+        emit_session_started=False,
+    )
+
+    result = await hold_todo_for_manual_session_close(runtime_db, session_id)
+
+    assert result.mutated is False
+    assert result.reason == session_hold.AUTOSTART_DISABLED_REASON
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["hold"] is False
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
@@ -1369,8 +1493,8 @@ async def test_operation_bridge_reports_already_driven_for_repeated_operator_sta
     assert result == f"ALREADY_DRIVEN: {_WORK_SLUG} is already driven by active runner {_LIVE_SESSION}"
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_operation_bridge_does_not_dispatch_held_todo(tmp_path: Path) -> None:
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+async def test_operation_bridge_dispatches_held_todo_as_manual_forward_path(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG, hold=True)
@@ -1387,11 +1511,11 @@ async def test_operation_bridge_does_not_dispatch_held_todo(tmp_path: Path) -> N
         state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
     )
 
-    assert result == f"RUNNER_NOT_DISPATCHED: {_WORK_SLUG} held"
-    assert client.requests == []
+    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} work {_SPAWN_SESSION}"
+    assert client.requests[0]["command"] == _NEXT_WORK
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
-    assert "active_runner" not in state
+    assert state["active_runner"] == _SPAWN_SESSION
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

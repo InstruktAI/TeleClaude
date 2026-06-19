@@ -96,7 +96,8 @@ def test_todo_row_renders_disapproved_review_status(snapshot: object) -> None:
     assert row.render().plain == snapshot
 
 
-def test_todo_row_renders_hold_distinct_from_icebox(snapshot: object) -> None:
+def test_todo_row_renders_hold_distinct_from_icebox(monkeypatch: pytest.MonkeyPatch, snapshot: object) -> None:
+    monkeypatch.setattr(todo_row_mod, "autostart_enabled_for_kind", lambda kind: kind == "change")
     items = [
         TodoItem(
             slug="held-work",
@@ -126,7 +127,10 @@ def test_todo_row_renders_hold_distinct_from_icebox(snapshot: object) -> None:
     assert [row.render().plain for row in rows] == snapshot
 
 
-def test_todo_row_renders_pending_approval_distinct_from_hold(snapshot: object) -> None:
+def test_todo_row_renders_pending_approval_distinct_from_hold(
+    monkeypatch: pytest.MonkeyPatch, snapshot: object
+) -> None:
+    monkeypatch.setattr(todo_row_mod, "autostart_enabled_for_kind", lambda kind: kind == "feature")
     items = [
         TodoItem(
             slug="approval-work",
@@ -154,6 +158,30 @@ def test_todo_row_renders_pending_approval_distinct_from_hold(snapshot: object) 
     rows = [TodoRow(item, slug_width=slug_width, col_widths=col_widths) for item in items]
 
     assert [row.render().plain for row in rows] == snapshot
+
+
+def test_todo_row_suppresses_hold_glyph_when_autostart_disabled(
+    monkeypatch: pytest.MonkeyPatch, snapshot: object
+) -> None:
+    monkeypatch.setattr(todo_row_mod, "autostart_enabled_for_kind", lambda _kind: False)
+    item = TodoItem(
+        slug="legacy-held",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=False,
+        kind="change",
+        lifecycle_phase="prepared",
+        hold=True,
+        hold_source="manual",
+    )
+    row = TodoRow(
+        item,
+        slug_width=len(item.slug),
+        col_widths=TodoRow.compute_col_widths([item]),
+    )
+
+    assert row.render().plain == snapshot
 
 
 def test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode(

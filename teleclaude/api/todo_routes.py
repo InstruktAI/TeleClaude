@@ -44,6 +44,7 @@ from teleclaude.constants import (
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
 )
+from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -181,6 +182,8 @@ async def _apply_hold_update(
     if raw_state is None:
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
     writer = StateWriter(raw_state)
+    if hold and writer.state.kind is not None and not autostart_enabled_for_kind(writer.state.kind):
+        return writer.state.hold
     writer.state.hold = hold
     if hold:
         writer.state.hold_audit.source = "manual"
@@ -689,6 +692,8 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         hold_requested = bool(
             request.hold or (request.silent and not request.release and request.kind != TODO_KIND_TASK)
         )
+        if request.kind is not None and not autostart_enabled_for_kind(map_v1_kind_to_canonical(request.kind)):
+            hold_requested = False
         state["hold"] = hold_requested
         if hold_requested:
             state["hold_audit"] = {

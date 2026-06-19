@@ -75,6 +75,7 @@ async def _add_todo(
     group_slug: str | None = None,
     after: list[str] | None = None,
     build_started: bool = False,
+    hold: bool = False,
 ) -> None:
     await todos_db.add_to_roadmap(slug, group_slug=group_slug, after=after)
     state: dict[str, StateValue] = {
@@ -82,6 +83,7 @@ async def _add_todo(
         "kind": kind,
         "phase": "pending",
         "lifecycle_phase": lifecycle_phase.value,
+        "hold": hold,
     }
     if build_started:
         state["build_start_base_sha"] = "abc123"
@@ -479,6 +481,7 @@ async def test_todo_update_hold_release_composes_with_dependencies(
         return "event-id"
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda kind: kind == TODO_KIND_CHANGE)
 
     hold_response = await todo_routes.todo_update(
         slug="feature-a",
@@ -522,6 +525,48 @@ async def test_todo_update_hold_release_composes_with_dependencies(
             identity=_identity(),
         )
     assert conflict.value.status_code == 400
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
+async def test_todo_update_hold_noops_when_autostart_disabled_release_still_clears(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "change-a")
+    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda _kind: False)
+
+    hold_response = await todo_routes.todo_update(
+        slug="change-a",
+        hold=True,
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    hold_sync = cast(todo_routes._TodoUpdateResponse, hold_response)
+    assert hold_sync.hold is False
+    hold_state = await todos_db.read_state("change-a")
+    assert hold_state is not None
+    assert hold_state["hold"] is False
+
+    residual = await todos_db.read_state("change-a")
+    assert residual is not None
+    residual["hold"] = True
+    await todos_db.write_state("change-a", residual)
+
+    release_response = await todo_routes.todo_update(
+        slug="change-a",
+        release=True,
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    release_sync = cast(todo_routes._TodoUpdateResponse, release_response)
+    assert release_sync.hold is False
+    released_state = await todos_db.read_state("change-a")
+    assert released_state is not None
+    assert released_state["hold"] is False
 
 
 @pytest.mark.spec(_TODO_LIFECYCLE_PHASE_SPEC, "UC-TLP1")
