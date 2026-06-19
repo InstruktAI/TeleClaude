@@ -22,11 +22,26 @@ where the type is derived from the path, not from frontmatter.
 `id`/`type`/`scope` are path-derived and are no longer authored or validated, so
 there is no id-to-path check.
 
+<!-- planned-change:fix-stale-in-body-planned-planned-change-mar -->
+
 Validation is shape-only for lifecycle metadata. `delivered_by`, when
 present, must be a non-empty list of slug strings; absence means the snippet
 is current. No `status` field is validated or required. Relationship
 decisions such as whether a slug exists in the todo list or all slugs have
 delivered are owned by lifecycle callers, not by the snippet validator.
+
+<!-- change:fix-stale-in-body-planned-planned-change-mar -->
+
+Frontmatter shape is always validated: `delivered_by`, when present, must be a
+non-empty list of slug strings; absence means the snippet is current. No
+`status` field is validated or required. On a full `telec sync` run with the
+todos DB reachable, relationship state is additionally validated: every
+`delivered_by` slug and every in-body planned / planned-change marker slug must
+name a live in-flight todo (active or icebox); a slug that resolves to a
+delivered, removed, or non-existent todo is reported. Scoped per-file runs and
+runs without a reachable todos DB validate shape only.
+
+<!-- /planned-change:fix-stale-in-body-planned-planned-change-mar -->
 
 ## Canonical fields
 
@@ -47,6 +62,8 @@ Scenario: delivered_by is an empty list
   Then a "snippet_delivered_by_invalid_shape" finding is reported
 ```
 
+<!-- planned-change:fix-stale-in-body-planned-planned-change-mar -->
+
 ```
 Scenario: delivered_by relationship state is not validated here
   Given a snippet with delivered_by ["future-slug"]
@@ -54,6 +71,23 @@ Scenario: delivered_by relationship state is not validated here
   Then the shape is accepted
   And lifecycle code remains responsible for delivery-time reconciliation
 ```
+
+<!-- change:fix-stale-in-body-planned-planned-change-mar -->
+
+```
+Scenario: delivered_by relationship state is validated on a full run
+  Given a snippet with delivered_by ["already-delivered-slug"]
+  And the todos DB is reachable (full run)
+  When snippet validation runs
+  Then a "snippet_delivered_by_invalid_slug" finding is reported
+Scenario: delivered_by relationship state is not checked on a scoped run
+  Given a snippet with delivered_by ["already-delivered-slug"]
+  And validation runs per-file without the todos DB
+  When snippet validation runs
+  Then the shape is accepted and no relationship finding is reported
+```
+
+<!-- /planned-change:fix-stale-in-body-planned-planned-change-mar -->
 
 #### UC-SFV1: Planned-change marker shape is validated mechanically
 
@@ -65,6 +99,28 @@ Given a snippet contains a planned-change block with a missing close marker, mis
 When snippet validation runs
 Then a planned-change marker finding is reported
 ```
+
+<!-- planned:fix-stale-in-body-planned-planned-change-mar -->
+
+#### UC-SFV1b: In-body marker slug liveness is validated on full runs
+
+```
+Given a snippet contains an in-body planned or planned-change marker whose slug resolves to a delivered, removed, or non-existent todo
+And the todos DB is reachable (full run)
+When snippet validation runs
+Then a "snippet_planned_marker_invalid_slug" finding is reported for that slug
+Given the marker slug names a live in-flight todo (active or icebox)
+When snippet validation runs
+Then no marker-liveness finding is reported
+Given the marker appears only inside an inline code span or a fenced code block (a syntax example)
+When snippet validation runs
+Then no marker-liveness finding is reported
+Given validation runs per-file or without a reachable todos DB
+When snippet validation runs
+Then marker-liveness is not checked
+```
+
+<!-- /planned:fix-stale-in-body-planned-planned-change-mar -->
 
 #### UC-SFV2: H1 type suffix is validated from the path-derived type
 
