@@ -211,14 +211,18 @@ async def spawn_integrator_session(
     caller_session_id: str,
     project_path: str,
 ) -> _SpawnResult | None:
-    """Spawn the singleton integrator session when none is already open.
+    """Spawn the per-project singleton integrator session when none is already open.
 
-    Checks if an integrator session is already running via the DB directly.
-    If one is running, leaves it undisturbed; the integrator state machine drains
-    queued candidates on its next pass.
-    If none is running, spawns a fresh integrator via the command service.
+    Checks if an integrator session is already running for this ``project_path``
+    via the DB directly. The singleton is scoped per project: an integrator
+    running in another project never blocks a spawn here.
+    If one is already running for this project, leaves it undisturbed; the
+    integrator state machine drains queued candidates on its next pass.
+    If none is running for this project, spawns a fresh integrator via the
+    command service.
 
-    Returns session info dict on spawn, or None if an integrator is already open.
+    Returns session info dict on spawn, or None if an integrator is already open
+    for this project.
     Raises on spawn failure — the caller (cartridge) is responsible for handling.
     """
     try:
@@ -228,7 +232,7 @@ async def spawn_integrator_session(
         raise
 
     integrator_session = next(
-        (s for s in sessions if s.job == JobRole.INTEGRATOR),
+        (s for s in sessions if s.job == JobRole.INTEGRATOR and s.project_path == project_path),
         None,
     )
     if integrator_session:
