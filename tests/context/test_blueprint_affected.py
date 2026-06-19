@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 import pytest
 
-from teleclaude.cli.telec.handlers.context import _handle_blueprint_affected
+from teleclaude.cli.telec.handlers.context import _FALLBACK_PREFIX, _handle_blueprint_affected, _resolve_main_sha
 from teleclaude.core.blueprint._paths import graph_path, manifest_path
+from teleclaude.git import Repo
 
 pytestmark = pytest.mark.functional
 
@@ -17,6 +18,9 @@ _BASELINE = "mainbaselinesha0001"
 
 # Leading indent on each dependent output line — used in _dependent_labels_via_command.
 _DEPENDENT_LINE_INDENT = "  "
+
+# Prefix of the blast-radius header line emitted by _format_result when dependents are found.
+_BLAST_RADIUS_PREFIX = "Blast radius"
 
 
 # guard: loose-dict-func - fixture mirroring the untrusted graph.json contract under test
@@ -153,3 +157,95 @@ def test_command_falls_back_when_blueprint_graph_is_malformed(
     graph_path(tmp_path).write_text(json.dumps({"nodes": {}, "links": []}))
     _run_command(tmp_path, ["core.py"], main_sha=_BASELINE)
     assert capsys.readouterr().out == snapshot
+
+
+# --- Real-resolver freshness regression -------------------------------------
+#
+# The mocked _run_command above patches _resolve_main_sha away, which is exactly
+# why the origin/main-vs-local-main bug was invisible. These tests drive the real
+# resolver against a git repo with a remote-tracking origin/main, the only way to
+# bind the writer/reader ref-class contract.
+
+
+def _init_repo_with_origin(root: Path) -> tuple[Repo, str]:
+    """Init a repo with an origin remote, publish C0 to origin/main, return (repo, C0 sha)."""
+    origin = Repo.init(root / "origin.git", bare=True)
+    origin.git.symbolic_ref("HEAD", "refs/heads/main")
+    work = root / "work"
+    repo = Repo.init(work)
+    repo.git.checkout("-B", "main")
+    repo.git.config("user.name", "Blueprint Test")
+    repo.git.config("user.email", "blueprint-test@example.test")
+    (work / "seed.txt").write_text("c0\n", encoding="utf-8")
+    repo.git.add(".")
+    repo.git.commit("-m", "C0")
+    repo.create_remote("origin", str(root / "origin.git"))
+    repo.git.push("origin", "main")
+    return repo, repo.head.commit.hexsha
+
+
+def _commit(repo: Repo, root: Path, name: str, message: str) -> str:
+    (root / "work" / name).write_text(f"{message}\n", encoding="utf-8")
+    repo.git.add(".")
+    repo.git.commit("-m", message)
+    return repo.head.commit.hexsha
+
+
+def _run_command_real_resolver(project_root: Path, changed: list[str]) -> None:
+    """Run the command with only the project root patched — _resolve_main_sha runs for real."""
+    with patch(
+        "teleclaude.cli.telec.handlers.context.resolve_invocation_project_root",
+        return_value=project_root,
+    ):
+        _handle_blueprint_affected(changed)
+
+
+def test_command_is_fresh_when_local_main_is_ahead_of_origin(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Local main ahead of origin/main is fresh: freshness is judged against origin/main, not local main.
+
+    This is the regression. The baseline equals origin/main (C0); a local-only commit
+    (C1) advances local main past it — the steady state for unpushed doc commits. The
+    command must print the blast radius, proving it compares against origin/main (C0).
+    """
+    repo, c0 = _init_repo_with_origin(tmp_path)
+    work = tmp_path / "work"
+    _commit(repo, tmp_path, "local.txt", "C1 local-only")
+    assert repo.commit("origin/main").hexsha == c0
+    assert repo.commit("main").hexsha != c0  # local main is genuinely ahead
+    _write_blueprint(work, baseline_sha=c0)
+    _run_command_real_resolver(work, ["core.py"])
+    out = capsys.readouterr().out
+    assert _BLAST_RADIUS_PREFIX in out
+    assert _FALLBACK_PREFIX not in out
+
+
+def test_command_falls_back_when_origin_main_actually_advances(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Origin/main advancing past the baseline is genuine staleness: the fallback still fires."""
+    repo, c0 = _init_repo_with_origin(tmp_path)
+    work = tmp_path / "work"
+    _commit(repo, tmp_path, "next.txt", "C1 published")
+    repo.git.push("origin", "main")
+    assert repo.commit("origin/main").hexsha != c0
+    _write_blueprint(work, baseline_sha=c0)
+    _run_command_real_resolver(work, ["core.py"])
+    assert _FALLBACK_PREFIX in capsys.readouterr().out
+
+
+def test_command_falls_back_when_origin_main_is_absent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A repo with no resolvable origin/main resolves to None and falls back, never crashes."""
+    work = tmp_path / "work"
+    repo = Repo.init(work)
+    repo.git.checkout("-B", "main")
+    repo.git.config("user.name", "Blueprint Test")
+    repo.git.config("user.email", "blueprint-test@example.test")
+    (work / "seed.txt").write_text("c0\n", encoding="utf-8")
+    repo.git.add(".")
+    repo.git.commit("-m", "C0")
+    assert _resolve_main_sha(str(work)) is None
+    _write_blueprint(work, baseline_sha=_BASELINE)
+    _run_command_real_resolver(work, ["core.py"])
+    assert _FALLBACK_PREFIX in capsys.readouterr().out

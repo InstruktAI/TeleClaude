@@ -11,7 +11,7 @@ from teleclaude.core.blueprint import (
     read_manifest,
 )
 from teleclaude.core.blueprint.affected import AffectedResult
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import resolve_invocation_project_root
 
 __all__ = ["_handle_context"]
@@ -45,9 +45,17 @@ def _handle_blueprint(args: list[str]) -> None:
 
 
 def _resolve_main_sha(state_root: str) -> str | None:
+    # Resolve origin/main, the ref class the integrator stamps the Blueprint
+    # baseline_sha from (see project/spec/codebase-blueprint). Comparing against
+    # local main instead would report a current Blueprint as stale whenever local
+    # main is ahead — the steady state, since doc-only commits land on local main
+    # but are not pushed synchronously. When origin/main cannot be resolved (fresh
+    # clone before fetch, or no remote), return None so the caller surfaces the
+    # manual-exploration fallback and preserves the agent workflow rather than
+    # crashing.
     try:
-        return Repo(state_root).commit("main").hexsha
-    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, ValueError):
+        return Repo(state_root).commit("origin/main").hexsha
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, BadName, ValueError):
         return None
 
 
@@ -87,6 +95,9 @@ def _handle_blueprint_affected(args: list[str]) -> None:
     manifest = read_manifest(manifest_path(state_root))
     freshness = evaluate_freshness(manifest, current_main_sha=_resolve_main_sha(str(state_root)))
     if not freshness.is_fresh:
+        # An unresolved origin/main (None) flows through evaluate_freshness as
+        # not-fresh: surface the manual-exploration fallback so the agent
+        # workflow continues rather than crashing on a missing remote-tracking ref.
         print(f"{_FALLBACK_PREFIX}: {freshness.reason}")
         return
 

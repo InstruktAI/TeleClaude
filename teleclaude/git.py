@@ -62,6 +62,7 @@ from git.cmd import Git as _Git  # noqa: E402
 from git.exc import GitCommandError as GitCommandError  # noqa: E402
 from git.exc import InvalidGitRepositoryError as InvalidGitRepositoryError  # noqa: E402
 from git.exc import NoSuchPathError as NoSuchPathError  # noqa: E402
+from gitdb.exc import BadName as BadName  # noqa: E402
 from instrukt_ai_logging import get_logger as _get_logger  # noqa: E402
 
 _exec_logger = _get_logger("teleclaude.git.exec")
@@ -134,6 +135,7 @@ _Git.execute = _logged_execute  # type: ignore[method-assign]
 
 __all__ = [
     "GIT_EXECUTABLE",
+    "BadName",
     "GitCommandError",
     "InvalidGitRepositoryError",
     "NoSuchPathError",
