@@ -1,6 +1,9 @@
 ---
 description: 'Config editability is code-led and opt-in: a per-field tier declares what reaches humans; default internal.'
 visibility: 'internal'
+delivered_by:
+  - config-public-surface-contract
+needs_domain_baseline: true
 ---
 
 # Config Public Surface — Policy
@@ -25,12 +28,10 @@ visibility: 'internal'
 
 ## Rationale
 
-- The prior signal was an opt-out (`exclude_from_tui`) with default-visible
-  polarity: every new field was implicitly human-editable until someone hid it,
-  so agents read the whole config as editable contract. Default-internal inverts
-  the polarity — a field is invisible until declared.
-- One authority (the field tier) replaces three unsynced sources: the defaults
-  blob, the hand-maintained sample, and the hand-curated TUI roster.
+- Default-internal editability prevents accidental human exposure: a field is
+  invisible until declared.
+- One authority (the field tier) keeps the defaults blob, the generated sample,
+  and the TUI render set aligned.
 
 ## Scope
 

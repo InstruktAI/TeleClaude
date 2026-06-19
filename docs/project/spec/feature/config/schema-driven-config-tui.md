@@ -222,7 +222,7 @@ And `internal` and `public` fields do not render
 And the tier declaration is the view-metadata authority, not a TUI-local field name list
 Given a new machine-config field is added without a tier declaration
 Then it is `internal` and does not render in the config TUI
-And it is editable by hand in config.yml
+And it is absent from the generated config.yml public sample
 ```
 
 The headline (`tui`) tier is the render set: the config wizard shows the
