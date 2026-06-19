@@ -144,6 +144,9 @@ Child worker sessions should be linked to parent orchestrator session identity w
 - `/sessions/run` accepts terminal/TUI callers whose identity is resolved by `verify_caller` even when `x-caller-session-id` is empty.
 - When a caller session identity is present, `initiator_session_id` is written for child-session linkage.
 - Requests without caller session identity remain valid, but they create unlinked sessions because terminal/TUI callers do not have a parent TeleClaude session.
+<!-- planned:human-lineage-on-todos -->
+- A lifecycle session the runner auto-dispatches for a todo whose `created_by_principal` is a `human:<email>` establishes that human as its root identity: the session row carries the owning human's `principal`/`human_email`, so its resolved principal is `human:<email>` rather than `system:<session_id>`, and the rest of the chain inherits it through `initiator_session_id`. The session's `system_role` is left untouched, so the attribution does not change what the session is authorized to do.
+<!-- /planned:human-lineage-on-todos -->
 
 ## Known caveats
 

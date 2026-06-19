@@ -24,6 +24,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
     <!-- planned:revise-todo-create-flags -->
   - `--icebox` — creates the todo directly in the icebox (roadmap `status="icebox"`) instead of `active`. The lifecycle runner skips iceboxed entries, so no session is dispatched; the todo's kind, state, and `input` artifact are written normally, and unfreezing it later returns it to `active` and starts its lane. It is the only flag that parks a new todo instead of letting it enter its lifecycle.
   - `--project-root <path>` (alias `-p`) — targets an explicit project root instead of the invocation cwd. The path resolves the project's workflow state root server-side, and the `workflow.todo.created` payload's `project_path` reflects it so the lifecycle runner acts against the targeted project.
+  - `--group <parent-slug>` — attaches the new todo as a child of `<parent-slug>` by setting its `group_slug`. The child is created complete (content + kind + state + `input` artifact) in one call; `<parent-slug>` becomes a structural holder purely through the existing child-derived predicate (a row is a holder when at least one live child group-references it) — no holder row is mutated, and the holder's own non-`input` payload is stripped at create time by the same holder-purge the split path uses. This makes `create --group` the atomic, fully-formed alternative to `telec todo split`, which scaffolds skeleton children.
   <!-- /planned:revise-todo-create-flags -->
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   <!-- planned:task-lane -->
@@ -64,7 +65,10 @@ The workflow service emits the event with this payload:
     <!-- /planned:task-lane -->
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
-<!-- planned:task-lane -->
+<!-- planned:human-lineage-on-todos -->
+- `created_by_principal` — the resolved principal of the creating caller (`human:<email>` or `system:<session_id>`), read from the roadmap row's persisted owner.
+  <!-- /planned:human-lineage-on-todos -->
+  <!-- planned:task-lane -->
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
 <!-- /planned:task-lane -->
 
@@ -106,6 +110,16 @@ And the route writes state + `input` artifact with the roadmap entry's status se
 And the route emits workflow.todo.created with pickup_requested=false
 And the lifecycle runner skips the iceboxed slug and spawns no session
 And the todo waits in the icebox until `telec todo unfreeze parked-idea` returns it to active
+```
+
+```
+Given an operator wants to create a child of an existing parent in one call
+When they run `telec todo create child-a "<content>" --kind change --group parent-slug`
+Then the request carries kind="change" and group="parent-slug"
+And the route writes "child-a"'s state + `input` artifact with the roadmap entry's group_slug set to "parent-slug"
+And the same write strips "parent-slug" to a structural holder (its non-input state and artifacts are purged, its frozen input retained)
+And "parent-slug" resolves as a holder via the live child group-reference, with no holder row mutated
+And the route emits workflow.todo.created for "child-a" so its own lane proceeds under the normal dependency gate
 ```
 
 <!-- /planned:revise-todo-create-flags -->
@@ -222,6 +236,32 @@ And the lifecycle router consumes the event and dispatches /next-prepare for the
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
+<!-- planned:human-lineage-on-todos -->
+
+```
+Given a human creates a todo via `telec todo create my-change "<content>" --kind change`
+When the workflow service writes the roadmap row
+Then the row's `created_by_principal` records the creating human as `human:<email>`
+And `created_by_principal` is recoverable from the todo record for later audit
+And the emitted `workflow.todo.created` payload carries the same `created_by_principal`
+```
+
+```
+Given an agent session whose own resolved principal is `human:<root-email>` creates a todo
+When the workflow service writes the roadmap row
+Then `created_by_principal` records `human:<root-email>` — the chain-root human, not the agent session id
+```
+
+```
+Given a todo whose `created_by_principal` is `human:<email>`
+When the lifecycle runner auto-dispatches work for that todo
+Then the dispatched session's resolved principal is `human:<email>`, not `system:<session_id>`
+And the orchestrator → worker → integrator chain shares that one human root
+And the dispatched session's authorization is unchanged — lineage is audit-only
+```
+
+<!-- /planned:human-lineage-on-todos -->
+
 ### Dependency gate at create-time
 
 Create-time dispatch is dependency-gated by the lane selected from the creation event. The executable scenarios are `UC-WTC2` and `UC-WTC3`.
@@ -277,7 +317,10 @@ And the router dispatches /next-prepare for "child" as usual
 - `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` after a successful create. `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
 <!-- change:revise-todo-create-flags -->
 - A created todo enters its kind's lifecycle; nothing holds it back at creation. `--icebox` is the only flag that parks it instead (`status="icebox"`, `pickup_requested=false`), and the lifecycle runner skips iceboxed entries. The route always emits `workflow.todo.created` after a successful create.
-<!-- /planned-change:revise-todo-create-flags -->
+  <!-- /planned-change:revise-todo-create-flags -->
+  <!-- planned:revise-todo-create-flags -->
+- `--group <parent-slug>` is the create-time path to a grouped child; it is the atomic counterpart to `telec todo split` (which scaffolds skeleton children). It threads `group_slug` through the create transaction's existing `add_to_roadmap` call. Holder status for the parent is **derived** from the live child reference, never stored — `create --group` mutates no holder row; the same transaction strips the parent's non-`input` payload via the holder-purge the split path already uses. `--hold` and `--release` are not accepted on create.
+<!-- /planned:revise-todo-create-flags -->
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification when dependency gates allow pickup.
 
@@ -286,4 +329,8 @@ And the router dispatches /next-prepare for "child" as usual
 - `telec todo design` (and the deprecated `co-create` alias) is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
 - The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` and the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
+<!-- planned-change:human-lineage-on-todos -->
 - The `workflow.todo.created` payload's `todo_id`, `project_id`, and `created_by_principal` may not be populated by every emitter; downstream consumers fill them via serde defaults.
+<!-- change:human-lineage-on-todos -->
+- The `workflow.todo.created` payload's `created_by_principal` is populated from the roadmap row's persisted owner. `todo_id` and `project_id` may still not be populated by every emitter; downstream consumers fill those via serde defaults.
+<!-- /planned-change:human-lineage-on-todos -->
