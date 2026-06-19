@@ -102,6 +102,8 @@ And the todo waits silently until a human invokes the next action
 
 <!-- planned:revise-todo-create-flags -->
 
+#### UC-WTC11: Icebox create parks the todo and suppresses dispatch
+
 ```
 Given an operator knows an idea is parked and should not enter the lifecycle yet
 When they run `telec todo create parked-idea "<content>" --kind change --icebox`
@@ -112,6 +114,8 @@ And the lifecycle runner skips the iceboxed slug and spawns no session
 And the todo waits in the icebox until `telec todo unfreeze parked-idea` returns it to active
 ```
 
+#### UC-WTC12: Group create attaches a child and derives the parent holder
+
 ```
 Given an operator wants to create a child of an existing parent in one call
 When they run `telec todo create child-a "<content>" --kind change --group parent-slug`
@@ -120,6 +124,27 @@ And the route writes "child-a"'s state + `input` artifact with the roadmap entry
 And the same write strips "parent-slug" to a structural holder (its non-input state and artifacts are purged, its frozen input retained)
 And "parent-slug" resolves as a holder via the live child group-reference, with no holder row mutated
 And the route emits workflow.todo.created for "child-a" so its own lane proceeds under the normal dependency gate
+```
+
+#### UC-WTC13: Project-root create targets an explicit project
+
+```
+Given an operator wants to create a todo against a project other than the invocation cwd
+When they run `telec todo create remote-task "<content>" --kind change --project-root /path/to/other-project`
+Then the CLI sends the create request with cwd resolved from the supplied project root
+And the workflow service writes the todo into that project's workflow state, not the invocation cwd's
+And the emitted workflow.todo.created payload's project_path reflects the targeted project root
+And the lifecycle runner acts against the targeted project
+```
+
+#### UC-WTC14: Removed create-time parking flags are rejected
+
+```
+Given a caller submits a create request carrying a retired parking field — `--hold`, `--release`, or the hidden `--silent` (or the corresponding `hold`/`release`/`silent` request body field)
+When the workflow service validates the request body
+Then the create is rejected at the request boundary (fail-closed) rather than silently accepted
+And no roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+And the create-time parking mechanism a caller must use instead is `--icebox`
 ```
 
 <!-- /planned:revise-todo-create-flags -->

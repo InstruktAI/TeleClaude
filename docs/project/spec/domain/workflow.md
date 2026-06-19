@@ -940,9 +940,9 @@ And the lifecycle runner leaves it undispatched for policy-disabled, not for hol
 
 ```
 Given a caller passes `--silent` (or a `silent` request field) to `telec todo create`
-When the workflow service handles the create
-Then no silent-to-hold alias applies — `--silent` is no longer part of the create surface and any residual `silent` field is ignored
-And the todo enters its kind's lifecycle normally, with no `hold` set at creation
+When the workflow service validates the request body
+Then no silent-to-hold alias applies — `--silent` is no longer part of the create surface, and a residual `silent` (or `hold`/`release`) request field is rejected at the boundary (fail-closed), not silently accepted
+And a create without any retired parking field enters its kind's lifecycle normally, with no `hold` set at creation
 And the create-time parking mechanism is `--icebox` (roadmap `status="icebox"`, `pickup_requested=false`), which the runner skips as an iceboxed entry
 ```
 
