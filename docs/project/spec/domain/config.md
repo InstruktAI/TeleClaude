@@ -55,6 +55,14 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 
 : Per-machine daemon runtime-config value (in `config.yml` / `RuntimeConfig`, see the Runtime Configuration aggregate) read by workflow's lifecycle runner to decide which todo kinds may auto-enter the **work lane** — the execution runtime, at the `prepared → build_started` transition. It is a global operator safety switch — not a layered overlay value and not todo state — strictly per-machine, with no project or per-person override. It gates only work-start: **preparation** (kind-discovery and the prepare lane up to `prepared`) always auto-dispatches regardless of autostart, because prep is always needed and agents park at the human approval gates. Changing it affects future runner evaluations without rewriting existing todo rows. Defaults are off for every kind (`feature=false`, `change=false`, `bug=false`, `task=false`): an unconfigured machine still prepares work, but never auto-starts it until an operator enables a kind.
 
+<!-- planned:workflow-runner-mode -->
+
+**Workflow runner mode**
+
+: Per-machine daemon runtime-config value (`workflow.runner` in `config.yml` / `RuntimeConfig`), the master switch sitting above the per-kind autostart toggles, with values `autostart` and `manual` (default `autostart`). It governs whether the lifecycle runner performs **any** autonomous dispatch. Under `autostart`, the runner evaluates and dispatches normally — preparation auto-dispatches for every kind and work-start is gated per kind by the autostart toggles. Under `manual`, the runner performs **no** autonomous dispatch at all — prepare, work, and kind-discovery are all frozen — and responds only to manual start events (`telec todo work/prepare`, the TUI START, headless adoption), so every todo progresses by hand. The mode gates only the autonomous path; a manual start is never gated by it. A change emits `config.effective.updated`, and the runner re-evaluates affected projects on its next wake.
+
+<!-- /planned:workflow-runner-mode -->
+
 ### Aggregates
 
 #### Configuration (aggregate)
