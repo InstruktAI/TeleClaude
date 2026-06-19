@@ -144,11 +144,20 @@ slug does not trigger drift).
 
 ### Per-artifact coverage matrix
 
-| Artifact               | code | upstream-artifact                  | owned-snippet | upstream-snippet | dependency-graph | age |
-| ---------------------- | :--: | ---------------------------------- | :-----------: | :--------------: | :--------------: | :-: |
-| `prd`                  |  ✓   | `input`                            |       ✓       |        ✓         |        ✓         |  ✓  |
-| `architecture` (index) |  ✓   | `prd`                              |       ✓       |        ✓         |        ✓         |  ✓  |
-| `implementation-plan`  |  ✓   | `architecture`, `prd`, `diagnosis` |   _(none)_    |        ✓         |        ✓         |  ✓  |
+| Artifact               | code | upstream-artifact | owned-snippet | upstream-snippet | dependency-graph | age |
+| ---------------------- | :--: | ----------------- | :-----------: | :--------------: | :--------------: | :-: |
+| `prd`                  |  ✓   | `input`           |       ✓       |        ✓         |        ✓         |  ✓  |
+| `architecture` (index) |  ✓   | `prd`             |       ✓       |        ✓         |        ✓         |  ✓  |
+
+<!-- planned-change:track-input-drift-for-plan-only-kinds -->
+
+| `implementation-plan` | ✓ | `architecture`, `prd`, `diagnosis` | _(none)_ | ✓ | ✓ | ✓ |
+
+<!-- change:track-input-drift-for-plan-only-kinds -->
+
+| `implementation-plan` | ✓ | `prd`, `architecture`, `diagnosis` (feature, bug); `input` (change) | _(none)_ | ✓ | ✓ | ✓ |
+
+<!-- /planned-change:track-input-drift-for-plan-only-kinds -->
 
 The `code` column is contract-scoped. Today only the `implementation-plan`
 declares a `referenced-paths` contract block. All other tracked artifacts have
@@ -160,6 +169,8 @@ snippets directly (intake → feature spec; architecture → domain/design
 snippets). `implementation-plan` does not author durable snippets, so it
 has no owned-snippet class.
 
+<!-- planned-change:track-input-drift-for-plan-only-kinds -->
+
 Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is
 the frozen source of human intent; changing intent happens through PRD
 refinement, not by rewriting input and asking drift to classify it. `diagnosis`
@@ -168,6 +179,24 @@ freshness observes diagnosis through the implementation-plan's
 `upstream_digests[diagnosis]` evidence. A direct `input` or `diagnosis`
 drift verdict is invalid because no work-entry re-derivation phase owns that
 verdict.
+
+<!-- change:track-input-drift-for-plan-only-kinds -->
+
+Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is
+never a direct drift target: a direct `input` drift verdict is invalid because
+no work-entry re-derivation phase owns it. How intent reaches the
+implementation-plan depends on the Todo kind. For a `feature`, intent flows
+`input → prd → implementation-plan`, so an input rewrite surfaces as PRD drift.
+For a `bug`, it flows `input → diagnosis → implementation-plan`, so an input
+rewrite surfaces through the plan's `upstream_digests[diagnosis]` evidence. A
+`change` has no PRD or diagnosis intermediary — its `input` is the approved
+intent the plan derives from directly, so the implementation-plan observes
+`input` through its `upstream_digests[input]` evidence exactly as a bug plan
+observes `diagnosis`. The plan is the tracked target in every case; `input` and
+`diagnosis` are upstream evidence, never tracked targets, and drift derivation
+never reports `drift.input` or `drift.diagnosis`.
+
+<!-- /planned-change:track-input-drift-for-plan-only-kinds -->
 
 ### Stamp scoping — the evidence anchor
 
@@ -517,6 +546,33 @@ Scenario: prepare hydration self-heals stale greedy referenced paths
   And code drift for implementation-plan derives fresh
   And a delivered direct dependency that was recorded active does not create dependency-graph drift
 ```
+
+<!-- planned:track-input-drift-for-plan-only-kinds -->
+
+#### UC-WDD10: Change input rewrite drifts the implementation-plan
+
+```gherkin
+Scenario: change input rewrite drifts the implementation-plan
+  Given a change Todo whose implementation-plan recorded upstream_digests[input] = "<old-input-digest>"
+  When the input artifact is rewritten and its current digest becomes "<new-input-digest>"
+  Then drift derivation reports drift.implementation-plan = pending
+  And the pending class is upstream-artifact
+  And drift derivation never reports drift.input
+```
+
+#### UC-WDD11: Change implementation-plan is fresh when input is unchanged
+
+```gherkin
+Scenario: change implementation-plan upstream derivation is fresh when input matches
+  Given a change Todo whose implementation-plan recorded upstream_digests[input] = "<input-digest>"
+  And the current input artifact digest is "<input-digest>"
+  When upstream-artifact drift is derived for implementation-plan
+  Then drift derivation reports implementation-plan = fresh
+  And implementation-plan has no pending upstream-artifact drift
+  And feature and bug implementation-plan upstream derivation is unchanged
+```
+
+<!-- /planned:track-input-drift-for-plan-only-kinds -->
 
 ```gherkin
 Scenario: dependency-graph drift after an upstream dep delivers
