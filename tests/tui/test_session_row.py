@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from textual.app import App, ComposeResult
 
@@ -112,3 +114,42 @@ async def test_out_line_retention_does_not_touch_highlight() -> None:
         # Retaining out-line text is independent of the highlight surface:
         # update_activity must not set or clear highlight_type on its own.
         assert row.highlight_type == baseline_highlight
+
+
+@pytest.mark.asyncio
+async def test_date_suffix_present_only_when_expanded() -> None:
+    app = _SessionsTestApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        view = app.query_one(SessionsView)
+        sess = SessionDTO(
+            session_id=SID,
+            title=SID,
+            status="idle",
+            tmux_session_name=f"tmux-{SID}",
+            active_agent="claude",
+            computer="local",
+            project_path="/proj",
+            created_at="2026-06-19T10:00:00+00:00",
+            last_activity="2026-06-19T10:05:00+00:00",
+            last_output_summary="hello world",
+            native_session_id="nat-1",
+        )
+        view.update_data(computers=[], projects=[], sessions=[sess])
+        await pilot.pause()
+        row = _only_row(view, SID)
+
+        date_pat = re.compile(r"\d{2}:\d{2}:\d{2}-\d{2}/\d{2}")
+
+        row.collapsed = True
+        await pilot.pause()
+        collapsed = row.render().plain
+        assert not date_pat.search(collapsed)
+
+        row.collapsed = False
+        await pilot.pause()
+        expanded = row.render().plain
+        # Both the id line and the out line carry the date suffix when expanded.
+        assert len(date_pat.findall(expanded)) >= 2
+        # The id line joins the two ids with a bare slash, no surrounding spaces.
+        assert f"{SID}/nat-1" in expanded
+        assert f"{SID} / nat-1" not in expanded

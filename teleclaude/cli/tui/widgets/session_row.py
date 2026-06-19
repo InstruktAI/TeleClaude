@@ -19,7 +19,7 @@ from teleclaude.cli.tui.theme import (
     resolve_selection_bg_hex,
     resolve_style,
 )
-from teleclaude.cli.tui.utils.formatters import format_time, truncate_text
+from teleclaude.cli.tui.utils.formatters import DATE_SUFFIX_WIDTH, format_time, truncate_text
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.session_utils import session_display_title
 
@@ -94,8 +94,13 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def _detail_text_limit(self) -> int:
-        """Dynamic text limit for detail lines based on available width."""
-        return min(73, max(20, self._content_width - self._connector_col - _DETAIL_PREFIX_OVERHEAD))
+        """Dynamic text limit for detail lines based on available width.
+
+        When expanded, timestamps carry the ``-DD/MM`` date suffix, so the
+        prefix grows by ``DATE_SUFFIX_WIDTH`` and the text budget shrinks to match.
+        """
+        overhead = _DETAIL_PREFIX_OVERHEAD + (0 if self.collapsed else DATE_SUFFIX_WIDTH)
+        return min(75, max(20, self._content_width - self._connector_col - overhead))
 
     @property
     def _child_indent(self) -> str:
@@ -219,6 +224,8 @@ class SessionRow(TelecMixin, Widget):
         detail_pad = " "
         connector_style = Style(color=CONNECTOR_COLOR)
         text_limit = self._detail_text_limit
+        # Date suffix on activity timestamps only while the row is expanded.
+        with_date = not self.collapsed
 
         base_style = resolve_style(self.agent, self._tier("normal"))
         highlight_style = resolve_style(self.agent, self._tier("highlight"))
@@ -240,7 +247,7 @@ class SessionRow(TelecMixin, Widget):
         last_input_at = getattr(self.session, "last_input_at", None)
         if last_input:
             input_text = last_input.replace("\n", " ")[:text_limit]
-            input_time = format_time(last_input_at)
+            input_time = format_time(last_input_at, with_date=with_date)
             line3 = Text(no_wrap=True)
             line3.append(connector_pad)
             line3.append("\u2502", style=connector_style)
@@ -248,7 +255,7 @@ class SessionRow(TelecMixin, Widget):
             lines.append(line3)
 
         if self.activity_event == "tool_use" and self.activity_text:
-            activity_time_str = format_time(self.session.last_activity)
+            activity_time_str = format_time(self.session.last_activity, with_date=with_date)
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
@@ -256,7 +263,7 @@ class SessionRow(TelecMixin, Widget):
             line4.append(truncate_text(self.activity_text, text_limit), style=output_style)
             lines.append(line4)
         elif self.activity_event == "thinking" and self.activity_text:
-            activity_time_str = format_time(self.session.last_activity)
+            activity_time_str = format_time(self.session.last_activity, with_date=with_date)
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
@@ -266,7 +273,7 @@ class SessionRow(TelecMixin, Widget):
         elif self.activity_event == "agent_stop" and self.activity_text:
             output_text = self.activity_text.replace("\n", " ")[:text_limit]
             summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
-            output_time = format_time(summary_at)
+            output_time = format_time(summary_at, with_date=with_date)
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
@@ -275,7 +282,7 @@ class SessionRow(TelecMixin, Widget):
         elif self.last_output_summary or self.session.last_output_summary:
             # Idle — persisted summary, NOT italic
             summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
-            output_time = format_time(summary_at)
+            output_time = format_time(summary_at, with_date=with_date)
             output_text = (self.last_output_summary or self.session.last_output_summary or "").replace("\n", " ")[
                 :text_limit
             ]
@@ -293,13 +300,13 @@ class SessionRow(TelecMixin, Widget):
         detail_pad = " "
         connector_style = Style(color=CONNECTOR_COLOR)
         id_style = resolve_style(self.agent, self._tier("normal"))
-        created_time = format_time(getattr(self.session, "created_at", None))
+        created_time = format_time(getattr(self.session, "created_at", None), with_date=True)
         sid = self.session.session_id
         native_id = getattr(self.session, "native_session_id", None) or "-"
         line = Text(no_wrap=True)
         line.append(connector_pad)
         line.append("\u2502", style=connector_style)
-        line.append(f"{detail_pad}[{created_time}] {sid} / {native_id}", style=id_style)
+        line.append(f"{detail_pad}[{created_time}] {sid}/{native_id}", style=id_style)
         return line
 
     def _build_connector_bottom(self) -> Text:
