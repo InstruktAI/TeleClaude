@@ -15,6 +15,12 @@ visibility: 'public'
 
 The icebox is the parking lot for todos the project does not want to lose but does not want to act on. Freezing a todo flips its status from `active` to `icebox`; its associated state, artifacts, dependency edges, and timestamps are preserved untouched.
 
+<!-- planned:revise-todo-create-flags -->
+
+A todo may also be created directly in the icebox with `telec todo create … --icebox`, which writes the roadmap entry with `status="icebox"` from the outset — the same parked band, reached without a transient active state and without spawning a prepare session.
+
+<!-- /planned:revise-todo-create-flags -->
+
 Iceboxed entries are excluded from the default `telec todo list` view and from prepare/work candidate search. They neither get dispatched nor satisfy another todo's dependencies. Unfreezing flips the entry back to `active`, returning it to the default list and to the orchestrators' attention without losing history.
 
 The icebox is distinct from soft removal. Freeze preserves the live entry in a recoverable inactive band; remove marks the entry `removed`, hides it from every default resolver, scrubs live dependency edges, and starts the retention window.
@@ -30,6 +36,19 @@ Then the entry's status changes to "icebox"
 And the entry is no longer returned by the default "telec todo list"
 And the entry's state, artifacts, and dependency edges are preserved unchanged
 ```
+
+<!-- planned:revise-todo-create-flags -->
+
+```
+Given an operator knows an idea is parked and runs "telec todo create parked-idea '<content>' --kind change --icebox"
+When the workflow service creates the entry
+Then the roadmap entry's status is "icebox"
+And the entry is absent from the default "telec todo list"
+And no prepare session is dispatched for the slug
+And unfreezing it later returns it to active and resumes its lane
+```
+
+<!-- /planned:revise-todo-create-flags -->
 
 ```
 Given an iceboxed todo "deferred-feature"

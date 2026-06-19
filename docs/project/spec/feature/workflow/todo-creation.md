@@ -17,7 +17,12 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 
 - **`telec todo create <slug> <content> [--kind <kind>]`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is optional. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
   - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo is persisted with `kind` unset and no `lifecycle_phase`, and `/analyze-todo-input` is dispatched to classify it and assign a kind autonomously via `telec todo stamp --kind-assign <kind>`. The classifier assigns the kind directly — there is no proposal and no human approval gate — then routes to that kind's entry phase. It never executes the work itself.
+  <!-- planned-change:revise-todo-create-flags -->
   - `--silent` — sets `silent=True` on the request. The route still creates the todo and still emits `workflow.todo.created`, but with `pickup_requested=false` and `creation_mode="silent"`, so the lifecycle router skips dispatch.
+  <!-- change:revise-todo-create-flags -->
+  - `--icebox` — creates the todo directly in the icebox (roadmap `status="icebox"`) instead of `active`. The route writes the todo's kind, state, and `input` artifact normally and emits `workflow.todo.created` with `pickup_requested=false`; the lifecycle runner skips iceboxed entries at its dispatch-band filter, so no prepare session is spawned. Unfreezing the todo later returns it to `active` and resumes its lane. This is the only creation-time mechanism that suppresses lifecycle pickup — every other create enters the prepare lane.
+  - `--project-root <path>` (alias `-p`) — targets an explicit project root instead of the invocation cwd. The path is sent as the request `cwd`, which the route resolves to the project's workflow state root; the `workflow.todo.created` payload's `project_path` reflects it so the lifecycle runner acts against the targeted project.
+  <!-- /planned-change:revise-todo-create-flags -->
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   <!-- planned:task-lane -->
   - `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
@@ -41,8 +46,12 @@ The workflow service emits the event with this payload:
 - `slug` — the created slug.
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
 - `creation_mode` — `"silent"` when the request had `silent=True`, otherwise `"pickup"`.
+<!-- planned-change:revise-todo-create-flags -->
 - `pickup_requested` — boolean, false when the caller passed `--silent` or the kind is `task`.
-<!-- planned-change:plan-flag-enters-plan-draft -->
+<!-- change:revise-todo-create-flags -->
+- `pickup_requested` — boolean, false when the caller passed `--icebox` or the kind is `task`.
+  <!-- /planned-change:revise-todo-create-flags -->
+  <!-- planned-change:plan-flag-enters-plan-draft -->
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
 <!-- change:plan-flag-enters-plan-draft -->
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task`, `"plan_drafting"` for `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
@@ -69,6 +78,8 @@ And the lifecycle router consumes the event and dispatches /next-prepare
 And the CLI reports "Created todo: my-feature"
 ```
 
+<!-- planned-change:revise-todo-create-flags -->
+
 ```
 Given a human is still iterating and does not want orchestrator pickup yet
 When they run `telec todo create my-feature "<content>" --kind feature --silent`
@@ -78,6 +89,20 @@ And the route emits workflow.todo.created with pickup_requested=false and creati
 And the lifecycle router observes pickup_requested=false and logs "skipped: pickup_requested=False" without dispatching
 And the todo waits silently until a human invokes the next action
 ```
+
+<!-- change:revise-todo-create-flags -->
+
+```
+Given an operator knows an idea is parked and should not enter the lifecycle yet
+When they run `telec todo create parked-idea "<content>" --kind change --icebox`
+Then the request carries kind="change" and icebox=True
+And the route writes state + `input` artifact with the roadmap entry's status set to "icebox"
+And the route emits workflow.todo.created with pickup_requested=false
+And the lifecycle runner skips the iceboxed slug at its dispatch-band filter and spawns no prepare session
+And the todo waits in the icebox until `telec todo unfreeze parked-idea` returns it to active
+```
+
+<!-- /planned-change:revise-todo-create-flags -->
 
 <!-- planned-change:plan-flag-enters-plan-draft -->
 
@@ -241,8 +266,12 @@ And the router dispatches /next-prepare for "child" as usual
 - `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal, no human approval gate — it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should skip prepare.
 <!-- change:plan-flag-enters-plan-draft -->
 - `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review.
-<!-- /planned-change:plan-flag-enters-plan-draft -->
+  <!-- /planned-change:plan-flag-enters-plan-draft -->
+  <!-- planned-change:revise-todo-create-flags -->
 - `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` after a successful create. `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
+<!-- change:revise-todo-create-flags -->
+- Creation always enters the prepare lane; there is no creation-time hold, release, or silent brake — those gate already-`prepared` todos, not creation. `--icebox` is the only creation-time suppressor: it parks the todo in the icebox (`status="icebox"`) and emits `pickup_requested=false`, and the lifecycle runner skips iceboxed entries at its dispatch-band filter. The route always emits `workflow.todo.created` after a successful create regardless.
+<!-- /planned-change:revise-todo-create-flags -->
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification when dependency gates allow pickup.
 
