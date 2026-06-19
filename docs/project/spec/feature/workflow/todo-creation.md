@@ -238,7 +238,9 @@ And the bug skips the demo phase per the kind=bug lifecycle gate
 
 <!-- planned:human-lineage-on-todos -->
 
-```
+#### UC-WTC8: Creator principal captured and emitted at creation
+
+```gherkin
 Given a human creates a todo via `telec todo create my-change "<content>" --kind change`
 When the workflow service writes the roadmap row
 Then the row's `created_by_principal` records the creating human as `human:<email>`
@@ -246,13 +248,17 @@ And `created_by_principal` is recoverable from the todo record for later audit
 And the emitted `workflow.todo.created` payload carries the same `created_by_principal`
 ```
 
-```
+#### UC-WTC9: Creator lineage resolves the chain-root human for an agent creator
+
+```gherkin
 Given an agent session whose own resolved principal is `human:<root-email>` creates a todo
 When the workflow service writes the roadmap row
 Then `created_by_principal` records `human:<root-email>` — the chain-root human, not the agent session id
 ```
 
-```
+#### UC-WTC10: Runner-dispatched session inherits the owning human
+
+```gherkin
 Given a todo whose `created_by_principal` is `human:<email>`
 When the lifecycle runner auto-dispatches work for that todo
 Then the dispatched session's resolved principal is `human:<email>`, not `system:<session_id>`
