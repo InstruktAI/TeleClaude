@@ -209,6 +209,30 @@ When the saved value differs from the default
 Then only that deviation is written to config.yml
 ```
 
+<!-- planned:config-public-surface-contract -->
+
+#### UC-CFG-TUI-SCHEMA-15: Visibility is opt-in via a per-field tier
+
+```
+Given a machine-config field carries a `tier` declaration in code
+And the tier defaults to `internal` when no declaration is present
+When the human opens `telec config wizard`
+Then only fields declared `tier=tui` render in the config TUI
+And `internal` and `public` fields do not render
+And the tier declaration is the view-metadata authority, not a TUI-local field name list
+Given a new machine-config field is added without a tier declaration
+Then it is `internal` and does not render in the config TUI
+And it is editable by hand in config.yml
+```
+
+The headline (`tui`) tier is the render set: the config wizard shows the
+highest-profile human settings and nothing else. The `tier` marker is the opt-in
+form of the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to
+show, rather than a flag to hide. The governing rule lives in
+`project/policy/config-public-surface`.
+
+<!-- /planned:config-public-surface-contract -->
+
 ### Current hand-patched surfaces to retire
 
 The current TUI config surface contains dynamic reflection machinery, but the
