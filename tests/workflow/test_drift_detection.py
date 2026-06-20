@@ -30,6 +30,7 @@ from teleclaude.core.next_machine.git_ops import (
 from teleclaude.core.next_machine.lifecycle import collapse_drift, derive_lifecycle_drift
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import (
     DependencyEntry,
@@ -194,14 +195,16 @@ def test_referenced_paths_ignore_prose_mentions_and_missing_contract_blocks() ->
 
 
 def test_dependency_snapshot_accepts_legacy_roadmap_status_field() -> None:
-    """Snapshots persisted before `roadmap_status` was renamed to `todo_status` stay readable.
+    """Persisted state from before the `roadmap_status`->`todo_status` rename stays readable.
 
-    Reproduces the deserialization failure on stored state whose
-    ``dependency_set_at_write`` entries carry only the old ``roadmap_status`` key.
+    Reproduces the production failure at the real read boundary: read paths
+    (``read_state`` and the roadmap loader) consume persisted state through
+    ``upcycle_state_dict``, which raised a ``ValidationError`` on dependency
+    snapshots carrying only the legacy ``roadmap_status`` key.
     """
     legacy_dep_slug = "project-onboarding"
     legacy_status = "active"
-    raw = {
+    persisted_raw = {
         "schema_version": 4,
         "kind": "bug",
         "lifecycle_phase": "plan_drafting",
@@ -212,8 +215,9 @@ def test_dependency_snapshot_accepts_legacy_roadmap_status_field() -> None:
         },
     }
 
-    state = TodoState.model_validate(raw)
+    payload = upcycle_state_dict(persisted_raw)
 
+    state = TodoState.model_validate(payload)
     entry = state.artifacts.implementation_plan.dependency_set_at_write[0]
     assert entry.dep_slug == legacy_dep_slug
     assert entry.todo_status == legacy_status
