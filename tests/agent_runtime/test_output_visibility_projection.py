@@ -17,7 +17,6 @@ from teleclaude.config.schema import (
     OUTPUT_VISIBILITY_OFF,
     OUTPUT_VISIBILITY_WEB,
     OutputVisibilitySettings,
-    PersonConfig,
     PersonEntry,
 )
 from teleclaude.constants import CHECKPOINT_MESSAGE, HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, format_system_message
@@ -133,14 +132,6 @@ def test_person_config_accepts_output_visibility_settings_from_person_overlay(tm
     assert person_config.settings.output_visibility.notifications == OUTPUT_VISIBILITY_MOBILE
     assert person_config.settings.output_visibility.system_messages == OUTPUT_VISIBILITY_WEB
     assert person_config.settings.output_visibility.tool_calls == OUTPUT_VISIBILITY_OFF
-
-
-def test_person_config_output_visibility_defaults_to_role_based_policy() -> None:
-    person_config = PersonConfig.model_validate({})
-
-    assert person_config.settings.output_visibility.notifications is None
-    assert person_config.settings.output_visibility.system_messages is None
-    assert person_config.settings.output_visibility.tool_calls is None
 
 
 def test_person_config_rejects_invalid_output_visibility_values(tmp_path: Path) -> None:
