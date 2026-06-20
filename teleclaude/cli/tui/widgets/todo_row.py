@@ -162,7 +162,7 @@ def integration_phase_label(phase: str | None, finalize_status: str | None) -> t
     """Return the integration-phase column tuple for a todo, if any.
 
     Only two stamped values are recognized: 'started' and 'delivered'.
-    Legacy/stale values from the old 12-phase mirror are ignored — roadmap.py
+    Legacy/stale values from the old 12-phase mirror are ignored — todo.py
     maps them to canonical values before they reach here.
     """
     if phase == "started":

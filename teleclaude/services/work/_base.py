@@ -1,6 +1,6 @@
 """Base holder for WorkService — owns the TodosDb connection.
 
-Sub-services (roadmap, state, artifacts) hold a reference to this base
+Sub-services (todo, state, artifacts) hold a reference to this base
 and call _ensure_db() to get a ready TodosDb instance. The base exists
 so sub-services don't each own their own connection lifecycle.
 """

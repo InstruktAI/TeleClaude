@@ -44,7 +44,7 @@ async def _add_todo(
     kind: str | None,
     lifecycle_phase: LifecyclePhase | None,
 ) -> None:
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     state: dict[str, StateValue] = {
         "schema_version": 4,
         "kind": kind,
@@ -64,7 +64,7 @@ async def test_split_change_parent_children_inherit_change_and_clone_input(tmp_p
 
     await todo_routes.todo_split(slug=_PARENT, children=[_CHILD_A, _CHILD_B], cwd=str(project_root))
 
-    entries = await todos_db.list_roadmap()
+    entries = await todos_db.list_todo()
     children_by_slug = {entry["slug"]: entry for entry in entries if entry["slug"] in {_CHILD_A, _CHILD_B}}
     assert children_by_slug[_CHILD_A]["group_slug"] == _PARENT
     assert children_by_slug[_CHILD_B]["group_slug"] == _PARENT
@@ -109,7 +109,7 @@ async def test_split_refuses_unresolvable_parent_kind_before_child_writes(tmp_pa
         await todo_routes.todo_split(slug=_PARENT, children=[_CHILD_A], cwd=str(project_root))
 
     assert exc.value.status_code == 409
-    assert not await todos_db.slug_in_roadmap(_CHILD_A)
+    assert not await todos_db.slug_in_todo(_CHILD_A)
     parent_state = await todos_db.read_state(_PARENT)
     assert parent_state is not None
     assert parent_state["kind"] is None

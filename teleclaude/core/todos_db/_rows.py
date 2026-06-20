@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TypedDict
 
 
-class RoadmapRow(TypedDict):
-    """A single roadmap entry as returned by list_roadmap."""
+class TodoRow(TypedDict):
+    """A single todo entry as returned by list_todo."""
 
     id: str
     slug: str

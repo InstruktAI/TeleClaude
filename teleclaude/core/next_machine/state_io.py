@@ -450,7 +450,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         conn = db._sync_conn()  # pylint: disable=protected-access
         try:
             id_row = conn.execute(
-                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
+                "SELECT id FROM todo WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
                 (slug,),
             ).fetchone()
             row_id = id_row[0] if id_row else slug

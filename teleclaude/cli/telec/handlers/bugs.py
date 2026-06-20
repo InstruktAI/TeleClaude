@@ -144,7 +144,7 @@ def _handle_bugs_list(args: list[str]) -> None:
     conn = db._sync_conn()
     try:
         rows = conn.execute(
-            "SELECT r.slug, s.state FROM roadmap r "  # guard: raw-sql
+            "SELECT r.slug, s.state FROM todo r "  # guard: raw-sql
             "JOIN todo_state s ON r.id = s.id "
             "WHERE r.status = 'active' "
             "AND json_extract(s.state, '$.kind') = 'bug' "

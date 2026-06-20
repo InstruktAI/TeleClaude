@@ -181,9 +181,16 @@ def _migrate_artifact_versions_schema(conn: sqlite3.Connection) -> None:
 
     logger.info("Fixing todo_artifact_versions schema (id INTEGER → version_id + id TEXT)")
 
+    # The owner table is ``roadmap`` on pre-rename DBs and ``todo`` once the
+    # substrate rename has run; resolve whichever is present so an already-
+    # renamed DB carrying the old artifact-version schema keeps real row ids
+    # instead of minting unrelated UUIDs.
+    owner_table = "roadmap" if _table_exists(conn, "roadmap") else "todo"
     slug_to_id: dict[str, str] = {}
-    if "id" in _table_columns(conn, "roadmap"):
-        for row_id, slug, status in conn.execute("SELECT id, slug, status FROM roadmap").fetchall():
+    if "id" in _table_columns(conn, owner_table):
+        for row_id, slug, status in conn.execute(
+            f"SELECT id, slug, status FROM {owner_table}"  # guard: raw-sql - owner table resolved above
+        ).fetchall():
             if status != "delivered" or slug not in slug_to_id:
                 slug_to_id[str(slug)] = str(row_id)
 
@@ -386,6 +393,83 @@ def _migrate_bug_artifact_to_input(conn: sqlite3.Connection) -> None:
         logger.warning("bug->input migration left bug artifacts in place (slug already has input): %s", collided)
 
 
+def _migrate_roadmap_to_todo_substrate(conn: sqlite3.Connection) -> None:
+    """Rename the legacy ``roadmap`` substrate tables to ``todo``.
+
+    Final, guarded migration: renames the physical ``roadmap``/``roadmap_deps``
+    tables to ``todo``/``todo_deps`` and rebuilds whichever child tables are
+    present so their foreign keys explicitly reference ``todo(id) ON DELETE
+    CASCADE`` — independent of SQLite's automatic reference rewriting on table
+    rename. Absent child tables are left to ``create_all`` to create fresh
+    against the renamed parent. Recreates the partial unique index as
+    ``idx_todo_slug_active``. Guarded on the old ``roadmap`` table, so it is a
+    no-op on already-migrated and fresh-schema DBs.
+    """
+    if not _table_exists(conn, "roadmap"):
+        return
+
+    logger.info("Renaming roadmap substrate to todo")
+
+    conn.execute("DROP INDEX IF EXISTS idx_roadmap_slug_active")
+    conn.execute("ALTER TABLE roadmap RENAME TO todo")
+    if _table_exists(conn, "roadmap_deps"):
+        conn.execute("ALTER TABLE roadmap_deps RENAME TO todo_deps")
+
+    if _table_exists(conn, "todo_state"):
+        conn.execute(
+            "CREATE TABLE todo_state_new ("
+            "id TEXT PRIMARY KEY REFERENCES todo(id) ON DELETE CASCADE, "
+            "slug TEXT NOT NULL, state TEXT NOT NULL, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO todo_state_new (id, slug, state, created_at, updated_at) "
+            "SELECT id, slug, state, created_at, updated_at FROM todo_state"
+        )
+        conn.execute("DROP TABLE todo_state")
+        conn.execute("ALTER TABLE todo_state_new RENAME TO todo_state")
+
+    if _table_exists(conn, "todo_artifacts"):
+        conn.execute(
+            "CREATE TABLE todo_artifacts_new ("
+            "id TEXT NOT NULL REFERENCES todo(id) ON DELETE CASCADE, "
+            "slug TEXT NOT NULL, name TEXT NOT NULL, "
+            "content TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', "
+            "updated_by TEXT, updated_at TEXT, PRIMARY KEY (id, name))"
+        )
+        conn.execute(
+            "INSERT INTO todo_artifacts_new (id, slug, name, content, digest, updated_by, updated_at) "
+            "SELECT id, slug, name, content, digest, updated_by, updated_at FROM todo_artifacts"
+        )
+        conn.execute("DROP TABLE todo_artifacts")
+        conn.execute("ALTER TABLE todo_artifacts_new RENAME TO todo_artifacts")
+
+    if _table_exists(conn, "todo_artifact_versions"):
+        conn.execute(
+            "CREATE TABLE todo_artifact_versions_new ("
+            "version_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "id TEXT NOT NULL REFERENCES todo(id) ON DELETE CASCADE, "
+            "slug TEXT NOT NULL, name TEXT NOT NULL, "
+            "content TEXT NOT NULL, digest TEXT NOT NULL, updated_by TEXT, "
+            "created_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO todo_artifact_versions_new "
+            "(version_id, id, slug, name, content, digest, updated_by, created_at) "
+            "SELECT version_id, id, slug, name, content, digest, updated_by, created_at "
+            "FROM todo_artifact_versions"
+        )
+        conn.execute("DROP TABLE todo_artifact_versions")
+        conn.execute("ALTER TABLE todo_artifact_versions_new RENAME TO todo_artifact_versions")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_av_id_name ON todo_artifact_versions(id, name, created_at)")
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_todo_slug_active ON todo(slug) WHERE status IN ('active', 'icebox')"
+    )
+    conn.commit()
+    logger.info("roadmap->todo substrate rename complete")
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -401,6 +485,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
             _migrate_roadmap_ordering_columns(conn)
             _purge_holder_payload(conn)
         _migrate_bug_artifact_to_input(conn)
+        _migrate_roadmap_to_todo_substrate(conn)
         conn.commit()
     finally:
         conn.close()

@@ -23,7 +23,7 @@ async def execute_todo_remove(db: Db, slug: str | None, cwd: str) -> str:
         raise ValueError("slug is required for remove")
 
     todos_db = await get_todos_db(cwd)
-    removed = await todos_db.soft_remove_from_roadmap(slug, cwd=cwd)
+    removed = await todos_db.soft_remove_from_todo(slug, cwd=cwd)
     if not removed:
         raise LookupError(f"no live todo found for remove: {slug}")
     logger.info("Removed todo %s", slug)

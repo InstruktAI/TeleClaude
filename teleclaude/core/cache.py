@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
-from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent, RoadmapStatus
+from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent, TodoStatus
 from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
 from teleclaude.core.reconciliation import FleetCapabilityEntry
@@ -393,7 +393,7 @@ class DaemonCache:
 
         todos = cached.data
         if not include_removed:
-            todos = [t for t in todos if t.status != RoadmapStatus.REMOVED.value]
+            todos = [t for t in todos if t.status != TodoStatus.REMOVED.value]
 
         return todos
 
@@ -428,7 +428,7 @@ class DaemonCache:
 
             todos = cached.data
             if not include_removed:
-                todos = [t for t in todos if t.status != RoadmapStatus.REMOVED.value]
+                todos = [t for t in todos if t.status != TodoStatus.REMOVED.value]
 
             entries.append(
                 TodoCacheEntry(

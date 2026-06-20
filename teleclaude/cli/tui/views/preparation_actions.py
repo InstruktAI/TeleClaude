@@ -810,9 +810,9 @@ class PreparationViewActionsMixin:
             self.app.notify("Reactivate only applies to trashed entries")  # type: ignore[attr-defined]
             return
 
-        roadmap_id = row.todo.roadmap_id
-        if not roadmap_id:
-            self.app.notify("row missing durable id; refresh the roadmap pane", severity="warning")  # type: ignore[attr-defined]
+        todo_id = row.todo.todo_id
+        if not todo_id:
+            self.app.notify("row missing durable id; refresh the todo pane", severity="warning")  # type: ignore[attr-defined]
             return
 
         slug = row.slug
@@ -823,12 +823,12 @@ class PreparationViewActionsMixin:
         try:
             result = tool_api_request(
                 "POST",
-                f"/todos/by-id/{roadmap_id}/reactivate",
+                f"/todos/by-id/{todo_id}/reactivate",
                 json_body={"cwd": project_path},
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Restored '{slug}' to roadmap")  # type: ignore[attr-defined]
+                self.app.notify(f"Restored '{slug}' to todo")  # type: ignore[attr-defined]
                 # Rely on _on_mutation("todo_updated") to refresh via websocket,
                 # but call refresh_data to be sure if needed.
                 self.app._refresh_data()  # type: ignore[attr-defined]

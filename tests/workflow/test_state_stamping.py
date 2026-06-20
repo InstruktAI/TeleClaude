@@ -47,12 +47,12 @@ async def _project_db(project_root: Path) -> TodosDb:
 
 
 async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_state(slug, {"schema_version": 4, "kind": None, "phase": "pending"})
 
 
 async def _add_build_started_todo(todos_db: TodosDb, slug: str, *, active_runner: str | None = None) -> None:
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_state(
         slug,
         {
@@ -66,7 +66,7 @@ async def _add_build_started_todo(todos_db: TodosDb, slug: str, *, active_runner
 
 
 async def _add_feature_todo_with_prd(todos_db: TodosDb, slug: str) -> None:
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_state(
         slug,
         {
@@ -165,7 +165,7 @@ async def test_prd_approval_records_current_artifact_digest(tmp_path: Path) -> N
 async def test_creative_design_spec_confirmed_stamp_sets_flag(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_SLUG)
+    await todos_db.add_to_todo(_SLUG)
     # A creative design-spec gate is observable from state: the section exists
     # but its ``confirmed`` flag is not yet set. The explicit creative stamp sets it.
     await todos_db.write_state(
@@ -222,7 +222,7 @@ async def test_kind_assign_task_writes_task_plan_and_prepared_phase(tmp_path: Pa
 async def test_kind_assign_refuses_already_kinded_todo(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_SLUG)
+    await todos_db.add_to_todo(_SLUG)
     await todos_db.write_state(
         _SLUG,
         {
@@ -313,7 +313,7 @@ async def test_manual_refusal_surfaces_claimant_session_id(tmp_path: Path) -> No
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     claimant_id = f"{tmp_path.name}-claimant"
-    await todos_db.add_to_roadmap(_SLUG)
+    await todos_db.add_to_todo(_SLUG)
     await todos_db.write_state(
         _SLUG,
         {

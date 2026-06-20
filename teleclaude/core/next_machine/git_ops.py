@@ -421,7 +421,7 @@ async def derive_parent_prd_ground_drift(
     if _artifact_is_absent(entry):
         return DRIFT_FRESH
     current_deps = await todos_db.get_deps_with_status(slug)
-    if current_deps and all(dependency.roadmap_status == "delivered" for dependency in current_deps):
+    if current_deps and all(dependency.todo_status == "delivered" for dependency in current_deps):
         return DRIFT_FRESH
     if not entry.async_provenance_complete:
         return DRIFT_PENDING
@@ -544,12 +544,12 @@ def _review_is_within_age_window(
 
 def _sorted_dependency_entries(entries: list[DependencyEntry]) -> list[DependencyEntry]:
     normalized = [_normalize_dependency_entry(entry) for entry in entries]
-    return sorted(normalized, key=lambda entry: (entry.dep_slug, entry.roadmap_status))
+    return sorted(normalized, key=lambda entry: (entry.dep_slug, entry.todo_status))
 
 
 def _normalize_dependency_entry(entry: DependencyEntry) -> DependencyEntry:
-    if entry.roadmap_status == "delivered":
-        return DependencyEntry(dep_slug=entry.dep_slug, roadmap_status="active")
+    if entry.todo_status == "delivered":
+        return DependencyEntry(dep_slug=entry.dep_slug, todo_status="active")
     return entry
 
 

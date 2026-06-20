@@ -55,8 +55,8 @@ from teleclaude.types.todos import (
     DependencyEntry,
     DriftReviewedStamp,
     ParentPrdGroundEntry,
-    RoadmapStatusLiteral,
     TodoState,
+    TodoStatusLiteral,
 )
 
 pytestmark = pytest.mark.functional
@@ -140,7 +140,7 @@ async def _add_todo(
     lifecycle_phase: LifecyclePhase,
     after: list[str] | None = None,
 ) -> None:
-    await todos_db.add_to_roadmap(slug, after=after)
+    await todos_db.add_to_todo(slug, after=after)
     await todos_db.write_state(
         slug,
         {
@@ -176,7 +176,7 @@ async def _add_feature_with_rewritten_approved_prd(
     caller_session_id: str,
     approved_digest: str | None,
 ) -> tuple[str, str]:
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nApproved version.", updated_by="test")
     old_digest = await todos_db.artifact_digest(slug, ARTIFACT_PRD)
     await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nCurrent version.", updated_by="test")
@@ -192,8 +192,8 @@ async def _add_feature_with_rewritten_approved_prd(
     return old_digest, current_digest
 
 
-def _dependency_entry(dep_slug: str, roadmap_status: RoadmapStatusLiteral) -> DependencyEntry:
-    return DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
+def _dependency_entry(dep_slug: str, todo_status: TodoStatusLiteral) -> DependencyEntry:
+    return DependencyEntry(dep_slug=dep_slug, todo_status=todo_status)
 
 
 def _parent_ground_entry(
@@ -238,7 +238,7 @@ def _prepared_dependent_with_parent_ground() -> TodoState:
 async def test_prepare_selector_skips_kindless_todos_without_lifecycle_phase(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap("classify-me")
+    await todos_db.add_to_todo("classify-me")
     await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
 
     output = await next_prepare(cast(Db, _CapturingDb([])), None, str(project_root))
@@ -247,13 +247,13 @@ async def test_prepare_selector_skips_kindless_todos_without_lifecycle_phase(tmp
 
 
 @pytest.mark.spec(_SPEC, "UC-WPS4")
-async def test_prepare_unknown_slug_does_not_create_roadmap_row(tmp_path: Path, snapshot: object) -> None:
+async def test_prepare_unknown_slug_does_not_create_todo_row(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
 
     output = await next_prepare(cast(Db, _CapturingDb([])), "unknown-prepare", str(project_root))
 
-    assert not await todos_db.slug_in_roadmap("unknown-prepare")
+    assert not await todos_db.slug_in_todo("unknown-prepare")
     assert output == snapshot
 
 
@@ -342,7 +342,7 @@ async def _prepare_dispatch_for_substantive_drift_stamp(
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = f"anomalous-{phase.value}-{artifact.replace('_', '-')}"
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     model = _prepared_bug_model()
     model.lifecycle_phase = phase.value
     model.approvals.drift_reviewed[artifact] = DriftReviewedStamp(
@@ -493,7 +493,7 @@ async def test_plan_rewrite_clears_the_seed_and_advances_to_plan_review(tmp_path
     todos_db = await _project_db(project_root)
     slug = "seeded-rewrite"
     body = "# Plan\n\nSeeded hypothesis.\n"
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, body, updated_by="test")
     model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=4)
     model.artifacts.implementation_plan.digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
@@ -528,7 +528,7 @@ async def test_non_plan_rewrite_leaves_a_seeded_plan_untouched(tmp_path: Path) -
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = "seeded-other-rewrite"
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, "# Plan\n\nSeeded.\n", updated_by="test")
     prd_body = "# PRD\n\nUnrelated rewrite.\n"
     await todos_db.write_artifact(slug, ARTIFACT_PRD, prd_body, updated_by="test")
@@ -718,7 +718,7 @@ async def test_prepared_bug_with_matching_diagnosis_upstream_does_not_redispatch
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_DRIFT_SLUG)
+    await todos_db.add_to_todo(_DRIFT_SLUG)
     state = _prepared_bug_model().model_dump(exclude_none=True)
     await todos_db.write_state(_DRIFT_SLUG, state)
     monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
@@ -778,7 +778,7 @@ async def test_prepare_hydration_refreshes_stale_referenced_paths_without_stamp_
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = "stale-reference-refresh"
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_artifact(
         slug,
         ARTIFACT_IMPLEMENTATION_PLAN,
@@ -830,11 +830,11 @@ async def test_prepare_dispatches_drift_analyzer_for_parent_prd_ground_drift(
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_PARENT)
+    await todos_db.add_to_todo(_PARENT)
     await todos_db.write_state(
         _PARENT, _approved_parent_model(prd_digest="parent-prd-v2").model_dump(exclude_none=True)
     )
-    await todos_db.add_to_roadmap(_CHILD, after=[_PARENT])
+    await todos_db.add_to_todo(_CHILD, after=[_PARENT])
     await todos_db.write_state(_CHILD, _prepared_dependent_with_parent_ground().model_dump(exclude_none=True))
     monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
 
@@ -850,7 +850,7 @@ async def test_prepare_hydration_refreshes_declared_referenced_paths(
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     slug = "declared-reference-refresh"
-    await todos_db.add_to_roadmap(slug)
+    await todos_db.add_to_todo(slug)
     await todos_db.write_artifact(
         slug,
         ARTIFACT_IMPLEMENTATION_PLAN,
@@ -888,7 +888,7 @@ async def test_work_entry_with_matching_diagnosis_upstream_dispatches_build_star
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_DRIFT_SLUG)
+    await todos_db.add_to_todo(_DRIFT_SLUG)
     await todos_db.write_state(_DRIFT_SLUG, _prepared_bug_model().model_dump(exclude_none=True))
     worktree_cwd = project_root / "trees" / _DRIFT_SLUG
     worktree_cwd.mkdir(parents=True)
@@ -922,11 +922,11 @@ async def test_work_entry_bounces_before_worktree_setup_for_parent_prd_ground_dr
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_PARENT)
+    await todos_db.add_to_todo(_PARENT)
     await todos_db.write_state(
         _PARENT, _approved_parent_model(prd_digest="parent-prd-v2").model_dump(exclude_none=True)
     )
-    await todos_db.add_to_roadmap(_CHILD, after=[_PARENT])
+    await todos_db.add_to_todo(_CHILD, after=[_PARENT])
     await todos_db.write_state(_CHILD, _prepared_dependent_with_parent_ground().model_dump(exclude_none=True))
 
     output = await work_machine._check_work_entry_drift(todos_db, _CHILD, str(project_root), _CHILD)

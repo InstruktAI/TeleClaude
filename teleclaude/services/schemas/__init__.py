@@ -5,7 +5,7 @@ by Alembic migrations to create and evolve the database structure.
 
 Pillars:
     events.sql   — event channel outbox tables, subscriber cursors, NOTIFY triggers
-    work.sql     — todos, artifacts, roadmap (domain-discriminated)
+    work.sql     — todos, artifacts, todo (domain-discriminated)
     runtime.sql  — ephemeral session state, tokens, operations
     ledger.sql   — permanent session archive, blocks, projections
     identity.sql — people, credentials, roles

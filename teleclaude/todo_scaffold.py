@@ -58,7 +58,7 @@ def create_draft_skeleton(
     conn = db._sync_conn()
     try:
         existing = conn.execute(
-            "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
+            "SELECT 1 FROM todo WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (slug,),
         ).fetchone()
         if existing:
@@ -67,14 +67,14 @@ def create_draft_skeleton(
         now = datetime.now(UTC).isoformat()
         row_id = str(_uuid.uuid4())
         conn.execute(
-            "INSERT INTO roadmap "  # guard: raw-sql
+            "INSERT INTO todo "  # guard: raw-sql
             "(id, slug, status, created_at, updated_at) "
             "VALUES (?, ?, 'active', ?, ?)",
             (row_id, slug, now, now),
         )
         for dep in after or []:
             conn.execute(
-                "INSERT INTO roadmap_deps (slug, depends_on) VALUES (?, ?)",  # guard: raw-sql
+                "INSERT INTO todo_deps (slug, depends_on) VALUES (?, ?)",  # guard: raw-sql
                 (slug, dep),
             )
         conn.commit()

@@ -81,8 +81,8 @@ SNIPPET_VISIBILITY_INTERNAL = "internal"
 SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)
 
 
-class RoadmapStatus(StrEnum):
-    """Roadmap table `status` column and projected todo status (CLI/API/TUI)."""
+class TodoStatus(StrEnum):
+    """Todo table `status` column and projected todo status (CLI/API/TUI)."""
 
     DRAFT = "draft"
     PENDING = "pending"

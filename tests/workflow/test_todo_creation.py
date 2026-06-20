@@ -16,10 +16,10 @@ from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
 from teleclaude.cli.telec.handlers import todo as todo_handlers
-from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT, RoadmapStatus
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT, TodoStatus
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.roadmap import assemble_roadmap_from_db
+from teleclaude.core.todo import assemble_todo_from_db
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
@@ -63,7 +63,7 @@ async def _add_todo(
     after: list[str] | None = None,
     kind: str = _KIND_CHANGE,
 ) -> None:
-    await todos_db.add_to_roadmap(slug, after=after)
+    await todos_db.add_to_todo(slug, after=after)
     await todos_db.write_state(
         slug,
         {
@@ -256,9 +256,9 @@ async def test_icebox_create_parks_todo_and_suppresses_dispatch(
     assert state is not None
     assert await todos_db.read_artifact(_PARKED, ARTIFACT_INPUT)
 
-    [todo] = assemble_roadmap_from_db(str(project_root), include_icebox=True, icebox_only=True)
+    [todo] = assemble_todo_from_db(str(project_root), include_icebox=True, icebox_only=True)
     assert todo.slug == _PARKED
-    assert todo.status == RoadmapStatus.ICEBOX
+    assert todo.status == TodoStatus.ICEBOX
     assert todo.ready_since is None
 
     [event_kwargs] = emitted
@@ -299,7 +299,7 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
 
     child_state = await todos_db.read_state(_CHILD)
     assert child_state is not None
-    [child] = [t for t in assemble_roadmap_from_db(str(project_root), include_icebox=True) if t.slug == _CHILD]
+    [child] = [t for t in assemble_todo_from_db(str(project_root), include_icebox=True) if t.slug == _CHILD]
     assert child.group == _PARENT
 
     assert await todos_db.is_holder(_PARENT) is True

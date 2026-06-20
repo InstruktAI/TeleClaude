@@ -200,7 +200,7 @@ def _write_todos_db(project_root: Path, statuses: dict[str, str]) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
-            "CREATE TABLE roadmap ("
+            "CREATE TABLE todo ("
             "id TEXT PRIMARY KEY, slug TEXT NOT NULL, status TEXT NOT NULL, "
             "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
         )
@@ -212,7 +212,7 @@ def _write_todos_db(project_root: Path, statuses: dict[str, str]) -> None:
         for index, (slug, status) in enumerate(statuses.items(), start=1):
             row_id = f"todo-{index}"
             conn.execute(
-                "INSERT INTO roadmap (id, slug, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO todo (id, slug, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
                 (row_id, slug, status, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
             )
             conn.execute(

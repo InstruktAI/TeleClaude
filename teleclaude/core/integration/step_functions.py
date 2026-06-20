@@ -381,7 +381,7 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     conn = todos_db._sync_conn()
     try:
         rows = conn.execute(
-            "SELECT slug FROM roadmap WHERE status = 'delivered'",  # guard: raw-sql
+            "SELECT slug FROM todo WHERE status = 'delivered'",  # guard: raw-sql
         ).fetchall()
         delivered = {row[0] for row in rows}
     finally:
@@ -693,7 +693,7 @@ def _step_delivery_bookkeeping(
     todos_db = get_todos_db_sync(cwd)
     conn = todos_db._sync_conn()
     try:
-        conn.execute("DELETE FROM roadmap_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
+        conn.execute("DELETE FROM todo_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
         conn.commit()
     finally:
         conn.close()

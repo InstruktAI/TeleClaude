@@ -100,7 +100,7 @@ SURFACE: dict[str, CommandDef] = {
     # "work.update-phase":    CommandDef(handler=..., ...),
     # "work.read-artifact":   CommandDef(handler=..., ...),
     # "work.write-artifact":  CommandDef(handler=..., ...),
-    # "work.list-roadmap":    CommandDef(handler=..., ...),
+    # "work.list-todo":    CommandDef(handler=..., ...),
     #
     # -- runtime domain -------------------------------------------------------
     # "runtime.list-sessions":   CommandDef(handler=..., ...),

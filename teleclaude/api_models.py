@@ -236,7 +236,7 @@ class TodoDTO(BaseModel):
     hold: bool = False
     hold_source: str | None = None
     active_runner: str | None = None
-    roadmap_id: str | None = None
+    todo_id: str | None = None
     removed_at: str | None = None
 
 
@@ -313,7 +313,7 @@ class ProjectWithTodosDTO(ProjectDTO):
     model_config = ConfigDict(frozen=True)
 
     todos: list[TodoDTO] = Field(default_factory=list)
-    has_roadmap: bool = False
+    has_todo: bool = False
 
 
 class AgentAvailabilityDTO(BaseModel):

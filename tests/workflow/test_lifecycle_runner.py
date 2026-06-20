@@ -191,7 +191,7 @@ async def _add_todo(
     manually_started: bool = False,
     hold: bool = False,
 ) -> None:
-    await todos_db.add_to_roadmap(slug, after=after)
+    await todos_db.add_to_todo(slug, after=after)
     await todos_db.write_state(
         slug,
         TodoState(
@@ -206,13 +206,13 @@ async def _add_todo(
 
 
 async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
-    """Add a roadmap entry whose state carries no kind (kind-discovery pending).
+    """Add a todo entry whose state carries no kind (kind-discovery pending).
 
     The stored state omits ``kind`` so the canonicalizer normalizes it to ``None``
     (a missing kind, not the ``TodoState`` default of ``feature``); this is the
     genuine kind-less shape the runner routes to kind discovery.
     """
-    await todos_db.add_to_roadmap(slug, after=None)
+    await todos_db.add_to_todo(slug, after=None)
     await todos_db.write_state(slug, {"schema_version": 4})
 
 
@@ -223,7 +223,7 @@ async def _split_into_child(todos_db: TodosDb, parent: str, child: str, *, kind:
     child purges the parent's state row, leaving the parent an active holder with
     no resolvable state while the child carries a runnable lifecycle state.
     """
-    await todos_db.add_to_roadmap(child, group_slug=parent)
+    await todos_db.add_to_todo(child, group_slug=parent)
     await todos_db.write_state(
         child,
         TodoState(
@@ -543,9 +543,9 @@ async def test_split_holder_is_never_dispatched_child_prepare_preserved(tmp_path
 async def test_non_holder_stateless_row_still_dispatches_to_analyze(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    # A roadmap row with no state row and no child group-referencing it: the
+    # A todo row with no state row and no child group-referencing it: the
     # genuine kind-discovery case the holder guard must not swallow.
-    await todos_db.add_to_roadmap(_WORK_SLUG, after=None)
+    await todos_db.add_to_todo(_WORK_SLUG, after=None)
     client = _RunnerClient()
 
     result = await run_lifecycle_runner(

@@ -37,7 +37,7 @@ from teleclaude.core.next_machine.slug_resolution import (
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import TodosDb, get_todos_db
-from teleclaude.core.todos_db._rows import RoadmapRow
+from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 
@@ -357,7 +357,7 @@ async def _is_live_runner(db: Db, session_id: str | None) -> bool:
     return bool(session_id and await is_live_session_id(db, session_id))
 
 
-async def _read_runner_todo(todos_db: TodosDb, row: RoadmapRow) -> RunnerTodo | None:
+async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> RunnerTodo | None:
     if row["status"] in {"delivered", "removed"}:
         return RunnerTodo(
             slug=row["slug"],
@@ -374,7 +374,7 @@ async def _read_runner_todo(todos_db: TodosDb, row: RoadmapRow) -> RunnerTodo | 
     return _todo_from_state(row, state)
 
 
-def _todo_from_state(row: RoadmapRow, state: Mapping[str, StateValue]) -> RunnerTodo:
+def _todo_from_state(row: TodoRow, state: Mapping[str, StateValue]) -> RunnerTodo:
     kind = state.get("kind")
     phase = state.get("lifecycle_phase")
     active_runner = state.get("active_runner")
@@ -415,8 +415,8 @@ async def _set_active_runner(todos_db: TodosDb, slug: str, session_id: str, *, m
     await writer.commit(todos_db, slug)
 
 
-def _holder_slugs(rows: Sequence[RoadmapRow]) -> set[str]:
-    """Structural-holder slugs derived in-memory from the loaded roadmap rows.
+def _holder_slugs(rows: Sequence[TodoRow]) -> set[str]:
+    """Structural-holder slugs derived in-memory from the loaded todo rows.
 
     Mirrors ``TodosDb._is_state_holder_slug`` (``group_slug == slug``,
     ``slug != slug``, ``status != "removed"``) over the already-fetched rows,
@@ -433,7 +433,7 @@ def _holder_slugs(rows: Sequence[RoadmapRow]) -> set[str]:
 async def _load_todos(
     todos_db: TodosDb, db: Db, *, claimed_slugs: set[str] | None = None
 ) -> tuple[dict[str, RunnerTodo], list[str]]:
-    rows = await todos_db.list_roadmap(include_icebox=True, include_delivered=True, include_removed=True)
+    rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True)
     deps = await todos_db.load_deps()
     outstanding = claimed_slugs or set()
     holders = _holder_slugs(rows)

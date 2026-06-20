@@ -28,7 +28,7 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow, row_content_width
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
-from teleclaude.core.roadmap_tree import FlatRow, build_roadmap_sections, flatten
+from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
 
 
@@ -130,7 +130,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 getattr(t, "band", None) or "",
                 getattr(t, "ready_since", None) or "",
                 getattr(t, "updated_at", None) or "",
-                getattr(t, "roadmap_id", None) or "",
+                getattr(t, "todo_id", None) or "",
                 getattr(t, "removed_at", None) or "",
             )
             for p in projects
@@ -216,7 +216,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 hold_source=dto.hold_source,
                 active_runner=dto.active_runner,
                 project_path=dto.project_path or project_path,
-                roadmap_id=dto.roadmap_id,
+                todo_id=dto.todo_id,
                 removed_at=dto.removed_at,
                 is_holder=is_holder,
             )
@@ -224,7 +224,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         # Sectioned dependency trees come from the projection — the view renders;
         # it does not derive hierarchy, grouping, or section membership.
         project_sections = {
-            project_collapse_key(p.computer, p.path): build_roadmap_sections(list(p.todos or []))
+            project_collapse_key(p.computer, p.path): build_todo_sections(list(p.todos or []))
             for p in self._projects_with_todos
         }
 

@@ -190,7 +190,7 @@ async def read_referenced_snippet_digests(
 
 
 async def read_dependency_set(todos_db: TodosDb, slug: str) -> list[DependencyEntry]:
-    """Read the todo's immediate after set and each direct dep's roadmap status."""
+    """Read the todo's immediate after set and each direct dep's todo status."""
     return await todos_db.get_deps_with_status(slug)
 
 

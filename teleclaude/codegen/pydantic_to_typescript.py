@@ -96,9 +96,9 @@ _AGENT_ACTIVITY_EVENT_MEMBERS: tuple[str, ...] = (
 # relies on beyond what the Pydantic default communicates.
 _OPTIONAL_FIELD_OVERRIDES: frozenset[tuple[str, str]] = frozenset(
     {
-        # ProjectWithTodosDTO.has_roadmap defaults to False, but frontend consumers
+        # ProjectWithTodosDTO.has_todo defaults to False, but frontend consumers
         # treat the field as optional because older payloads omit it entirely.
-        ("ProjectWithTodosDTO", "has_roadmap"),
+        ("ProjectWithTodosDTO", "has_todo"),
         # SessionDTO.visibility has the literal default "private"; the frontend
         # treats it as optional to tolerate payloads from pre-visibility sessions.
         ("SessionDTO", "visibility"),

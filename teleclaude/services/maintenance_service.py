@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
-from teleclaude.constants import RESTART_CONTINUATION_STIMULUS, RoadmapStatus
+from teleclaude.constants import RESTART_CONTINUATION_STIMULUS, TodoStatus
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
@@ -33,12 +33,12 @@ from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map
-from teleclaude.resource_validation._snippet import build_roadmap_status_map
+from teleclaude.resource_validation._todo_status import build_todo_status_map
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
     from teleclaude.core.todos_db import TodosDb
-    from teleclaude.core.todos_db._roadmap import ExpiredRemovedRow, PurgedRemovedRow
+    from teleclaude.core.todos_db._todo import ExpiredRemovedRow, PurgedRemovedRow
 
 logger = get_logger(__name__)
 
@@ -228,7 +228,7 @@ def _verify_layer3(
         logger.info(
             "Removed-todo purge retained pending paths",
             project_root=str(project_root),
-            roadmap_id=row["id"],
+            todo_id=row["id"],
             slug=row["slug"],
             paths=sorted(pending_set),
             reason=PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE,
@@ -241,7 +241,7 @@ def _verify_layer3(
         logger.info(
             "Removed-todo purge git command failed",
             project_root=str(project_root),
-            roadmap_id=row["id"],
+            todo_id=row["id"],
             slug=row["slug"],
             reason=PURGE_REASON_GIT_COMMAND_FAILURE,
             git_args=["status", "--porcelain"],
@@ -253,7 +253,7 @@ def _verify_layer3(
         logger.info(
             "Removed-todo purge retained pending paths",
             project_root=str(project_root),
-            roadmap_id=row["id"],
+            todo_id=row["id"],
             slug=row["slug"],
             paths=sorted(pending_set),
             reason=PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE,
@@ -280,7 +280,7 @@ async def _commit_and_finalize_removed_row(
         logger.info(
             "Removed-todo purge retained pending paths",
             project_root=str(project_root),
-            roadmap_id=row["id"],
+            todo_id=row["id"],
             slug=row["slug"],
             paths=pending_paths,
             reason=PURGE_REASON_GIT_ADD_FAILURE,
@@ -296,7 +296,7 @@ async def _commit_and_finalize_removed_row(
         logger.info(
             "Removed-todo purge retained pending paths",
             project_root=str(project_root),
-            roadmap_id=row["id"],
+            todo_id=row["id"],
             slug=row["slug"],
             paths=pending_paths,
             reason=PURGE_REASON_LAYER_2_STAGED_SET_MISMATCH,
@@ -305,13 +305,13 @@ async def _commit_and_finalize_removed_row(
         )
         return None
 
-    message = f"chore(roadmap): purge {row['slug']}; reconcile delivered_by in {len(pending_paths)} snippets"
+    message = f"chore(todo): purge {row['slug']}; reconcile delivered_by in {len(pending_paths)} snippets"
     rc, _stdout, stderr = _run_git_cmd(["commit", "-m", message, "--", *pending_paths], cwd=str(project_root))
     if rc != 0:
         logger.info(
             "Removed-todo purge retained pending paths",
             project_root=str(project_root),
-            roadmap_id=row["id"],
+            todo_id=row["id"],
             slug=row["slug"],
             paths=pending_paths,
             reason=PURGE_REASON_COMMIT_FAILURE,
@@ -328,10 +328,10 @@ async def _cleanup_removed_todo_row(
     project_root: Path,
     todos_db: TodosDb,
     row: ExpiredRemovedRow,
-    roadmap_status_map: Mapping[str, str],
+    todo_status_map: Mapping[str, str],
 ) -> PurgedRemovedRow | None:
-    row_status = roadmap_status_map.get(row["slug"])
-    if row_status is not None and row_status != RoadmapStatus.REMOVED:
+    row_status = todo_status_map.get(row["slug"])
+    if row_status is not None and row_status != TodoStatus.REMOVED:
         return await todos_db.purge_one_removed(row["id"])
 
     pending_paths = row["pending_purge_paths"]
@@ -347,7 +347,7 @@ async def _cleanup_removed_todo_row(
                 return None
             return await _finalize_removed_row(todos_db, row)
 
-        plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], roadmap_status_map)
+        plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], todo_status_map)
         _write_snippet_plans(_plans_for_paths(plans, pending_paths, project_root))
         return await _commit_and_finalize_removed_row(
             project_root,
@@ -356,7 +356,7 @@ async def _cleanup_removed_todo_row(
             pending_paths=pending_paths,
         )
 
-    plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], roadmap_status_map)
+    plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], todo_status_map)
     candidate_paths = [_repo_relative_path(project_root, plan.path) for plan in plans]
     if not candidate_paths:
         return await todos_db.purge_one_removed(row["id"])
@@ -368,7 +368,7 @@ async def _cleanup_removed_todo_row(
         logger.info(
             "Removed-todo purge skipped dirty candidate paths",
             project_root=str(project_root),
-            roadmap_id=row["id"],
+            todo_id=row["id"],
             slug=row["slug"],
             paths=sorted(dirty_paths),
             reason=PURGE_REASON_FOREIGN_EDIT_ON_FRESH_PASS,
@@ -551,10 +551,10 @@ class MaintenanceService:
                 continue
             try:
                 todos_db = await get_todos_db(str(project_root))
-                roadmap_status_map = build_roadmap_status_map(project_root)
+                todo_status_map = build_todo_status_map(project_root)
                 rows = await todos_db.list_expired_removed(cutoff_iso)
                 for row in rows:
-                    purged = await _cleanup_removed_todo_row(project_root, todos_db, row, roadmap_status_map)
+                    purged = await _cleanup_removed_todo_row(project_root, todos_db, row, todo_status_map)
                     if purged is None:
                         continue
                     removed_at = datetime.fromisoformat(row["removed_at"])
@@ -562,7 +562,7 @@ class MaintenanceService:
                     logger.info(
                         "Purged removed todo past retention",
                         project_root=str(project_root),
-                        roadmap_id=purged["id"],
+                        todo_id=purged["id"],
                         slug=purged["slug"],
                         removed_at=purged["removed_at"],
                         removed_age_seconds=removed_age_seconds,

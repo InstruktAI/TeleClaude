@@ -74,7 +74,7 @@ async def _active_runner_slug(db: Db, session_id: str) -> tuple[str | None, str 
     project_path = str(Path(session.project_path).resolve())
     todos_db = await get_todos_db(project_path)
     matches: list[str] = []
-    for row in await todos_db.list_roadmap(include_icebox=True):
+    for row in await todos_db.list_todo(include_icebox=True):
         state = await todos_db.read_state(row["slug"])
         if state and state.get("active_runner") == session_id:
             matches.append(row["slug"])

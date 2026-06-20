@@ -6,10 +6,10 @@ from sqlalchemy import Column, ForeignKey, Index, String, Text, text
 from sqlmodel import Field, SQLModel
 
 
-class TodoRoadmap(SQLModel, table=True):
-    """Roadmap entry persisted in todos.db."""
+class Todo(SQLModel, table=True):
+    """Todo entry persisted in todos.db."""
 
-    __tablename__ = "roadmap"  # pyright: ignore[reportAssignmentType]
+    __tablename__ = "todo"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: str = Field(primary_key=True)
@@ -43,7 +43,7 @@ class TodoStateModel(SQLModel, table=True):
         sa_column=Column(
             "id",
             String,
-            ForeignKey("roadmap.id", ondelete="CASCADE"),
+            ForeignKey("todo.id", ondelete="CASCADE"),
             primary_key=True,
         )
     )
@@ -63,7 +63,7 @@ class TodoArtifact(SQLModel, table=True):
         sa_column=Column(
             "id",
             String,
-            ForeignKey("roadmap.id", ondelete="CASCADE"),
+            ForeignKey("todo.id", ondelete="CASCADE"),
             primary_key=True,
         )
     )
@@ -86,7 +86,7 @@ class TodoArtifactVersion(SQLModel, table=True):
         sa_column=Column(
             "id",
             String,
-            ForeignKey("roadmap.id", ondelete="CASCADE"),
+            ForeignKey("todo.id", ondelete="CASCADE"),
             nullable=False,
         )
     )
@@ -98,10 +98,10 @@ class TodoArtifactVersion(SQLModel, table=True):
     created_at: str
 
 
-class RoadmapDep(SQLModel, table=True):
-    """Dependency edge between roadmap slugs."""
+class TodoDep(SQLModel, table=True):
+    """Dependency edge between todo slugs."""
 
-    __tablename__ = "roadmap_deps"  # pyright: ignore[reportAssignmentType]
+    __tablename__ = "todo_deps"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     slug: str = Field(primary_key=True)
@@ -122,42 +122,42 @@ class TodoDispatchClaim(SQLModel, table=True):
 
 
 Index(
-    "idx_roadmap_slug_active",
-    TodoRoadmap.slug,
+    "idx_todo_slug_active",
+    Todo.slug,
     unique=True,
     sqlite_where=text("status IN ('active', 'icebox')"),
 )
 Index("idx_av_id_name", TodoArtifactVersion.id, TodoArtifactVersion.name, TodoArtifactVersion.created_at)
 
-ROADMAP_TABLE = SQLModel.metadata.tables["roadmap"]
+TODO_TABLE = SQLModel.metadata.tables["todo"]
 TODO_STATE_TABLE = SQLModel.metadata.tables["todo_state"]
 TODO_ARTIFACT_TABLE = SQLModel.metadata.tables["todo_artifacts"]
 TODO_ARTIFACT_VERSION_TABLE = SQLModel.metadata.tables["todo_artifact_versions"]
-ROADMAP_DEPS_TABLE = SQLModel.metadata.tables["roadmap_deps"]
+TODO_DEPS_TABLE = SQLModel.metadata.tables["todo_deps"]
 TODO_DISPATCH_CLAIMS_TABLE = SQLModel.metadata.tables["todo_dispatch_claims"]
 
 TODOS_DB_TABLES = [
-    ROADMAP_TABLE,
+    TODO_TABLE,
     TODO_STATE_TABLE,
     TODO_ARTIFACT_TABLE,
     TODO_ARTIFACT_VERSION_TABLE,
-    ROADMAP_DEPS_TABLE,
+    TODO_DEPS_TABLE,
     TODO_DISPATCH_CLAIMS_TABLE,
 ]
 
 
 __all__ = [
-    "ROADMAP_DEPS_TABLE",
-    "ROADMAP_TABLE",
     "TODOS_DB_TABLES",
     "TODO_ARTIFACT_TABLE",
     "TODO_ARTIFACT_VERSION_TABLE",
+    "TODO_DEPS_TABLE",
     "TODO_DISPATCH_CLAIMS_TABLE",
     "TODO_STATE_TABLE",
-    "RoadmapDep",
+    "TODO_TABLE",
+    "Todo",
     "TodoArtifact",
     "TodoArtifactVersion",
+    "TodoDep",
     "TodoDispatchClaim",
-    "TodoRoadmap",
     "TodoStateModel",
 ]

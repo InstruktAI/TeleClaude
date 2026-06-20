@@ -539,7 +539,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "--include-delivered returns the full delivery history; scope it with --since.",
                     "--since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.",
                     "--since alone implies --include-delivered; combine with --delivered-only to exclude active items.",
-                    "--include-removed interleaves soft-removed entries; each removed row renders with its roadmap id and removed_at age.",
+                    "--include-removed interleaves soft-removed entries; each removed row renders with its todo id and removed_at age.",
                 ],
                 examples=[
                     "telec todo list --include-delivered --since 7d",

@@ -154,7 +154,7 @@
   - slow: complex reasoning, architecture, planning, root cause analysis
   '''
 # ---
-# name: test_prepare_unknown_slug_does_not_create_roadmap_row
+# name: test_prepare_unknown_slug_does_not_create_todo_row
   '''
   ERROR: TODO_NOT_FOUND
   No active todo exists for unknown-prepare. Create it before running prepare.

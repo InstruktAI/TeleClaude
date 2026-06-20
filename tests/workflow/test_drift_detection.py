@@ -35,8 +35,8 @@ from teleclaude.types.todos import (
     DependencyEntry,
     DriftReviewedStamp,
     ParentPrdGroundEntry,
-    RoadmapStatusLiteral,
     TodoState,
+    TodoStatusLiteral,
 )
 
 pytestmark = pytest.mark.functional
@@ -104,8 +104,8 @@ def _prepared_bug_model(*, diagnosis_digest: str = _DIAGNOSIS_DIGEST) -> TodoSta
     return model
 
 
-def _dependency_entry(dep_slug: str, roadmap_status: RoadmapStatusLiteral) -> DependencyEntry:
-    return DependencyEntry(dep_slug=dep_slug, roadmap_status=roadmap_status)
+def _dependency_entry(dep_slug: str, todo_status: TodoStatusLiteral) -> DependencyEntry:
+    return DependencyEntry(dep_slug=dep_slug, todo_status=todo_status)
 
 
 def _plan_with_dependency_set(entries: list[DependencyEntry]) -> TodoState:
@@ -253,12 +253,12 @@ async def test_dependency_graph_review_anchor_uses_normalized_statuses() -> None
 async def test_parent_prd_ground_provenance_records_direct_prd_approved_dependency(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap("parent")
+    await todos_db.add_to_todo("parent")
     await todos_db.write_artifact("parent", ARTIFACT_PRD, "# Parent PRD\n", updated_by="test")
     parent = _approved_parent_model(prd_digest=await todos_db.artifact_digest("parent", ARTIFACT_PRD))
     parent.artifacts.architecture.digest = "parent-architecture"
     await todos_db.write_state("parent", parent.model_dump(exclude_none=True))
-    await todos_db.add_to_roadmap("child", after=["parent"])
+    await todos_db.add_to_todo("child", after=["parent"])
     await todos_db.write_artifact("child", ARTIFACT_IMPLEMENTATION_PLAN, "# Plan\n", updated_by="test")
     child = TodoState(kind="change", lifecycle_phase="plan_review", schema_version=4)
     writer = StateWriter(child.model_dump(exclude_none=True))

@@ -418,7 +418,7 @@ async def _resolve_explicit_work_slug(
     delivered = set()
     if not is_bug:
         delivered = await todos_db.delivered_slugs()
-    if not is_bug and slug not in delivered and not await todos_db.slug_in_roadmap(slug):
+    if not is_bug and slug not in delivered and not await todos_db.slug_in_todo(slug):
         return "", format_error(
             "TODO_NOT_FOUND",
             f"No active todo exists for {slug}. Create and prepare it before running work.",
@@ -471,7 +471,7 @@ async def _resolve_holder_slug(
             f"Holder '{slug}' has children, but none are ready to start work.",
             next_call=f"Call telec todo prepare on the child items for '{slug}' first.",
         )
-    if holder_reason is HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP:
+    if holder_reason is HolderResolutionReason.CHILDREN_NOT_IN_TODO:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_children_missing")
         return "", format_error(
             "NOT_PREPARED",
