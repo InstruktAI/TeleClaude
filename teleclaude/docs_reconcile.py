@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -286,7 +287,29 @@ def reconcile_delivered_snippets(project_root: Path, slug: str) -> list[Path]:
         if path not in changed:
             changed.append(path)
 
+    _assert_no_residual_markers(project_root, slug)
     return changed
+
+
+class ResidualMarkerError(RuntimeError):
+    """A delivered slug's in-body markers survived the reconcile fold.
+
+    With validation rejecting inline and nested markers upstream this never fires
+    in practice; it exists so a future fold gap fails loudly at delivery — naming
+    the file, line, and slug — instead of silently leaving a stale marker that
+    jams the platform-wide liveness gate.
+    """
+
+
+def _assert_no_residual_markers(project_root: Path, slug: str) -> None:
+    pattern = re.compile(rf"<!--[ \t]*/?(?:planned-change|planned|change):{re.escape(slug)}[ \t]*-->")
+    for path in _iter_snippet_files(project_root):
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if pattern.search(line):
+                raise ResidualMarkerError(
+                    f"reconcile left an unresolved '{slug}' marker after delivery in {path}:{lineno}: {line.strip()}"
+                )
 
 
 def rewrite_delivered_by_slug(

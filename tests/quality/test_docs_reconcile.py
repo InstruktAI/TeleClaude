@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from teleclaude.docs_reconcile import reconcile_delivered_snippets
+from teleclaude.docs_reconcile import ResidualMarkerError, reconcile_delivered_snippets
 
 pytestmark = pytest.mark.functional
 
@@ -68,3 +68,77 @@ After.
         "content": content_after_first_run,
         "second_changed": second_changed,
     } == snapshot
+
+
+_EOF_SLUG = "eof-add"
+_EOF_KEPT_CONTENT = "Kept content."
+_RESIDUAL_SLUG = "residual-demo"
+_RESIDUAL_FILENAME = "residual.md"
+_HAPPY_SLUG = "clean-slug"
+_HAPPY_FILENAME = "clean.md"
+_HAPPY_REPLACEMENT = "Replacement."
+
+
+@pytest.mark.spec(_SPEC, "UC-LMR1")
+def test_reconcile_strips_planned_add_close_at_eof_without_trailing_newline(tmp_path: Path) -> None:
+    parent = tmp_path / "docs" / "project" / "spec" / "feature" / "context" / "eof-add.md"
+    parent.parent.mkdir(parents=True, exist_ok=True)
+    # The closing marker is the file's final line with no trailing newline.
+    parent.write_text(
+        "---\n"
+        "description: Reconcile fixture.\n"
+        f"delivered_by: ['{_EOF_SLUG}']\n"
+        "---\n"
+        "# EOF Add — Spec\n\n"
+        "## Canonical fields\n\n"
+        f"<!-- planned:{_EOF_SLUG} -->\n"
+        f"{_EOF_KEPT_CONTENT}\n"
+        f"<!-- /planned:{_EOF_SLUG} -->",
+        encoding="utf-8",
+    )
+
+    reconcile_delivered_snippets(tmp_path, _EOF_SLUG)
+
+    content = parent.read_text(encoding="utf-8")
+    assert f"<!-- planned:{_EOF_SLUG} -->" not in content
+    assert f"<!-- /planned:{_EOF_SLUG} -->" not in content
+    assert _EOF_KEPT_CONTENT in content
+
+
+@pytest.mark.spec(_SPEC, "UC-LMR1")
+def test_reconcile_raises_loudly_on_residual_marker(tmp_path: Path) -> None:
+    parent = tmp_path / "docs" / "project" / "spec" / "feature" / "context" / _RESIDUAL_FILENAME
+    # An inline planned-change the newline-anchored fold cannot resolve — it survives,
+    # standing in for any future fold gap. The guard must fail loudly, not silently.
+    _write_snippet(
+        parent,
+        "# Residual — Spec\n\n## Canonical fields\n\n"
+        f"Before <!-- planned-change:{_RESIDUAL_SLUG} -->current"
+        f"<!-- change:{_RESIDUAL_SLUG} -->replacement"
+        f"<!-- /planned-change:{_RESIDUAL_SLUG} --> after.",
+        delivered_by=[_RESIDUAL_SLUG],
+    )
+
+    with pytest.raises(ResidualMarkerError) as exc_info:
+        reconcile_delivered_snippets(tmp_path, _RESIDUAL_SLUG)
+
+    message = str(exc_info.value)
+    assert _RESIDUAL_SLUG in message
+    assert _RESIDUAL_FILENAME in message
+
+
+@pytest.mark.spec(_SPEC, "UC-LMR1")
+def test_reconcile_happy_path_returns_changed_paths(tmp_path: Path) -> None:
+    parent = tmp_path / "docs" / "project" / "spec" / "feature" / "context" / _HAPPY_FILENAME
+    _write_snippet(
+        parent,
+        "# Clean — Spec\n\n## Canonical fields\n\n"
+        f"<!-- planned-change:{_HAPPY_SLUG} -->\nCurrent.\n"
+        f"<!-- change:{_HAPPY_SLUG} -->\n{_HAPPY_REPLACEMENT}\n<!-- /planned-change:{_HAPPY_SLUG} -->",
+        delivered_by=[_HAPPY_SLUG],
+    )
+
+    changed = reconcile_delivered_snippets(tmp_path, _HAPPY_SLUG)
+
+    assert [path.name for path in changed] == [_HAPPY_FILENAME]
+    assert _HAPPY_REPLACEMENT in parent.read_text(encoding="utf-8")

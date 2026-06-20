@@ -617,6 +617,191 @@ Retry.
         assert _normalized_findings(tmp_path) == snapshot
 
 
+_UC_SFV1C = "UC-SFV1c"
+
+
+class TestMarkerStructureValidation:
+    """In-body markers must be whole-line, non-nested, balanced, kebab.
+
+    Binds to the validator's accepted grammar equalling the delivery fold's
+    resolvable grammar (UC-SFV1c).
+    """
+
+    def _validate_block(self, tmp_path: Path, block: str) -> list[dict[str, str]]:
+        snippet = tmp_path / "docs" / "project" / "concept" / "marker-structure.md"
+        snippet.parent.mkdir(parents=True, exist_ok=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(planned_change_block=block),
+            encoding="utf-8",
+        )
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+        return _normalized_findings(tmp_path)
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_inline_planned_change_markers_are_line_level_findings(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "Before <!-- planned-change:inline-pc -->current<!-- change:inline-pc -->"
+            "replacement<!-- /planned-change:inline-pc --> after.",
+        )
+        assert findings == [
+            {
+                "code": "snippet_marker_not_line_level",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- planned-change:inline-pc -->",
+            },
+            {
+                "code": "snippet_marker_not_line_level",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- change:inline-pc -->",
+            },
+            {
+                "code": "snippet_marker_not_line_level",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- /planned-change:inline-pc -->",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_inline_planned_add_markers_are_line_level_findings(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "Before <!-- planned:inline-add -->added<!-- /planned:inline-add --> after.",
+        )
+        assert findings == [
+            {
+                "code": "snippet_marker_not_line_level",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- planned:inline-add -->",
+            },
+            {
+                "code": "snippet_marker_not_line_level",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- /planned:inline-add -->",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_non_kebab_planned_add_slug_is_a_finding(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "<!-- planned:Bad_Slug -->\nadded content\n<!-- /planned:Bad_Slug -->",
+        )
+        assert findings == [
+            {
+                "code": "snippet_marker_invalid_slug",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- planned:Bad_Slug -->",
+                "reason": "slug must be kebab-case",
+            },
+            {
+                "code": "snippet_marker_invalid_slug",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- /planned:Bad_Slug -->",
+                "reason": "slug must be kebab-case",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_planned_change_nested_in_planned_change_is_a_finding(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "<!-- planned-change:outer -->\ncurrent-outer\n"
+            "<!-- planned-change:inner -->\ncurrent-inner\n<!-- change:inner -->\n"
+            "replacement-inner\n<!-- /planned-change:inner -->\n"
+            "<!-- change:outer -->\nreplacement-outer\n<!-- /planned-change:outer -->",
+        )
+        assert findings == [
+            {
+                "code": "snippet_marker_nested",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- planned-change:inner -->",
+                "enclosing": "<!-- planned-change:outer -->",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_planned_add_nested_in_planned_add_is_a_finding(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "<!-- planned:outer -->\nouter content\n"
+            "<!-- planned:inner -->\ninner content\n<!-- /planned:inner -->\n"
+            "<!-- /planned:outer -->",
+        )
+        assert findings == [
+            {
+                "code": "snippet_marker_nested",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- planned:inner -->",
+                "enclosing": "<!-- planned:outer -->",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_unclosed_planned_add_block_is_unbalanced(self, tmp_path: Path) -> None:
+        findings = self._validate_block(tmp_path, "<!-- planned:lonely -->\norphaned content")
+        assert findings == [
+            {
+                "code": "snippet_marker_unbalanced",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- planned:lonely -->",
+                "reason": "block is never closed",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_orphan_planned_close_is_unbalanced(self, tmp_path: Path) -> None:
+        findings = self._validate_block(tmp_path, "<!-- /planned:orphan -->")
+        assert findings == [
+            {
+                "code": "snippet_marker_unbalanced",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- /planned:orphan -->",
+                "reason": "closing marker has no matching open block",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_mismatched_planned_close_slug_is_unbalanced(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "<!-- planned:slug-a -->\ncontent\n<!-- /planned:slug-b -->",
+        )
+        assert findings == [
+            {
+                "code": "snippet_marker_unbalanced",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- /planned:slug-b -->",
+                "reason": "closing marker has no matching open block",
+            },
+            {
+                "code": "snippet_marker_unbalanced",
+                "path": "docs/project/concept/marker-structure.md",
+                "marker": "<!-- planned:slug-a -->",
+                "reason": "block is never closed",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_own_line_non_nested_balanced_markers_validate_cleanly(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "<!-- planned:add-slug -->\nadded content\n<!-- /planned:add-slug -->\n\n"
+            "<!-- planned-change:change-slug -->\ncurrent\n<!-- change:change-slug -->\n"
+            "replacement\n<!-- /planned-change:change-slug -->",
+        )
+        assert findings == []
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", _UC_SFV1C)
+    def test_markers_inside_code_fence_are_not_flagged(self, tmp_path: Path) -> None:
+        findings = self._validate_block(
+            tmp_path,
+            "```\n<!-- planned:Bad_Slug -->\ninline <!-- planned-change:Also_Bad --> example\n```",
+        )
+        assert findings == []
+
+
 class TestLintPipelineDocValidationScoping:
     def test_file_scoped_run_skips_resource_validation_step(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
