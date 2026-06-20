@@ -15,6 +15,7 @@ from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.sessions_actions_routes import _prepare_run_session
 from teleclaude.api_models import CreateSessionResponseDTO, RunSessionRequest
 from teleclaude.cli.api_client import RunSessionArgs
+from teleclaude.config import WorkflowRunnerMode
 from teleclaude.config import config as tc_config
 from teleclaude.constants import ROLE_ORCHESTRATOR
 from teleclaude.core import db as db_mod
@@ -276,6 +277,62 @@ def test_preparation_runs_regardless_of_autostart_only_work_is_gated() -> None:
     assert lanes["prepare-a"] == RunnerLane.PREPARE
     assert "work-a" not in lanes
     assert decision.skips[RunnerSkipReason.POLICY_DISABLED] == ["work-a"]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-27")
+def test_manual_runner_mode_freezes_all_autonomous_dispatch() -> None:
+    """Under manual mode the runner dispatches nothing on any lane —
+    kind-discovery, prepare, and work are all frozen — even for a todo set
+    that is eligible across every lane. The same set dispatches under
+    autostart, proving the gate (not a regression) is what suppresses it."""
+    eligible = {
+        "kindless-a": RunnerTodo(
+            slug="kindless-a",
+            status="active",
+            kind=None,
+            lifecycle_phase=None,
+            hold=False,
+            active_runner=None,
+        ),
+        "prepare-a": RunnerTodo(
+            slug="prepare-a",
+            status="active",
+            kind=_CHANGE,
+            lifecycle_phase=LifecyclePhase.PRD_DRAFTING.value,
+            hold=False,
+            active_runner=None,
+        ),
+        "work-a": RunnerTodo(
+            slug="work-a",
+            status="active",
+            kind=_CHANGE,
+            lifecycle_phase=LifecyclePhase.PREPARED.value,
+            hold=False,
+            active_runner=None,
+        ),
+    }
+    full_autostart = {_FEATURE: True, _CHANGE: True, "bug": True, _TASK: True}
+
+    manual = decide_dispatches(
+        eligible,
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart=full_autostart,
+        live_session_ids=set(),
+        runner_mode=WorkflowRunnerMode.MANUAL,
+    )
+    assert manual.intents == []
+    assert manual.evaluated == len(eligible)
+
+    autostart = decide_dispatches(
+        eligible,
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart=full_autostart,
+        live_session_ids=set(),
+        runner_mode=WorkflowRunnerMode.AUTOSTART,
+    )
+    assert {intent.slug for intent in autostart.intents} == set(eligible)
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")

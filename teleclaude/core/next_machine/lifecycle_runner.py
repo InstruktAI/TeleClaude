@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
-from teleclaude.config import config
+from teleclaude.config import WorkflowRunnerMode, config
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.dispatch_claims import (
     acquire_dispatch_claim,
@@ -262,8 +262,14 @@ def decide_dispatches(
     claimed: set[tuple[str, RunnerLane]] | None = None,
     max_dispatch: int = 5,
     live_driver_count: int = 0,
+    runner_mode: WorkflowRunnerMode = WorkflowRunnerMode.AUTOSTART,
 ) -> RunnerDecision:
     decision = RunnerDecision(evaluated=len(todos))
+    # Manual mode is the operator's runaway brake: the runner performs no
+    # autonomous dispatch on any lane. The manual-start path
+    # (resolve_manual_dispatch_intent) never reaches here, so it stays ungated.
+    if runner_mode is WorkflowRunnerMode.MANUAL:
+        return decision
     active_claims = claimed or set()
     owned_slugs = orchestrator_owned_slugs or set()
     # Concurrency budget: how many more drivers may go live this pass. Each
@@ -825,6 +831,14 @@ async def run_lifecycle_runner(
     }
     live_session_ids, auto_driver_count = await _live_active_runners(runtime_db, todos)
     orchestrator_owned_slugs = await live_orchestrator_owned_slugs(runtime_db, project_root)
+    if workflow.runner is WorkflowRunnerMode.MANUAL:
+        logger.info(
+            "lifecycle runner frozen by manual mode",
+            project_path=str(project_root),
+            trigger=trigger,
+            runner_mode=workflow.runner.value,
+            evaluated=len(todos),
+        )
     decision = decide_dispatches(
         todos,
         prepared_slugs=prepared_slugs,
@@ -835,6 +849,7 @@ async def run_lifecycle_runner(
         claimed=claimed_pairs,
         max_dispatch=workflow.max_todo_dispatch,
         live_driver_count=auto_driver_count,
+        runner_mode=workflow.runner,
     )
 
     dispatched: list[DispatchIntent] = []

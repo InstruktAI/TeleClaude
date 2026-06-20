@@ -47,6 +47,7 @@ from teleclaude.config._models import WhatsAppCredsConfig as WhatsAppCredsConfig
 from teleclaude.config._models import WhatsAppQoSConfig as WhatsAppQoSConfig
 from teleclaude.config._models import WorkflowAutostartConfig as WorkflowAutostartConfig
 from teleclaude.config._models import WorkflowConfig as WorkflowConfig
+from teleclaude.config._models import WorkflowRunnerMode as WorkflowRunnerMode
 from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
 from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
@@ -365,6 +366,13 @@ def _parse_workflow_config(raw: dict[str, object] | None) -> WorkflowConfig:  # 
             bug=_as_bool(autostart_raw.get("bug", False)),
             task=_as_bool(autostart_raw.get("task", False)),
         )
+    runner_raw = raw.get("runner", "autostart")
+    if not isinstance(runner_raw, str):
+        raise ValueError(f"workflow.runner must be one of {[mode.value for mode in WorkflowRunnerMode]}")
+    try:
+        runner = WorkflowRunnerMode(runner_raw)
+    except ValueError:
+        raise ValueError(f"workflow.runner must be one of {[mode.value for mode in WorkflowRunnerMode]}") from None
     max_dispatch_raw = raw.get("max_todo_dispatch", 5)
     if isinstance(max_dispatch_raw, bool) or not isinstance(max_dispatch_raw, int):
         if isinstance(max_dispatch_raw, str) and max_dispatch_raw.strip().isdigit():
@@ -375,7 +383,7 @@ def _parse_workflow_config(raw: dict[str, object] | None) -> WorkflowConfig:  # 
         max_todo_dispatch = max_dispatch_raw
     if max_todo_dispatch < 1:
         raise ValueError("workflow.max_todo_dispatch must be greater than or equal to 1")
-    return WorkflowConfig(autostart=autostart, max_todo_dispatch=max_todo_dispatch)
+    return WorkflowConfig(autostart=autostart, runner=runner, max_todo_dispatch=max_todo_dispatch)
 
 
 def parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
