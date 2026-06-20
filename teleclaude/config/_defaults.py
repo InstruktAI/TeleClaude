@@ -94,6 +94,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
             "bug": False,
             "task": False,
         },
+        "runner": "autostart",
         "max_todo_dispatch": 5,
     },
     "experiments": [],

@@ -6,6 +6,7 @@ schema definitions only.
 """
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from teleclaude.config._chiptunes import ChiptunesConfig
 from teleclaude.config._remote_computers import RemoteComputerConfig
@@ -269,11 +270,19 @@ class WorkflowAutostartConfig:
     task: bool = False
 
 
+class WorkflowRunnerMode(StrEnum):
+    """Master switch over the lifecycle runner's autonomous dispatch path."""
+
+    AUTOSTART = "autostart"
+    MANUAL = "manual"
+
+
 @dataclass
 class WorkflowConfig:
     """Daemon-runtime lifecycle-runner control plane."""
 
     autostart: WorkflowAutostartConfig = field(default_factory=WorkflowAutostartConfig)
+    runner: WorkflowRunnerMode = WorkflowRunnerMode.AUTOSTART
     max_todo_dispatch: int = 5
 
 
