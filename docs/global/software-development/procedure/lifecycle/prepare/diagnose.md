@@ -44,31 +44,62 @@ that makes the plan groundable.
 - `telec todo artifacts read {slug} input` exists with the reported symptom and discovery
   context.
 - No `diagnosis` artifact exists yet (its presence is what advances the phase).
+- No sibling bug for the same defect is already in flight — the duplicate triage (Step 1)
+  enforces this before any artifact is written.
 
 ## Steps
 
-1. **Read the symptom.** `telec todo artifacts read {slug} input`. Treat it as a real,
+1. **Triage for a duplicate — before reading the symptom or writing any artifact.**
+   Simultaneous log scans and human reports produce near-coincident reports of the same
+   defect, each scaffolding its own bug todo. The report-time moment cannot catch this —
+   each reporter checks before the other's todo exists — but by the time this phase runs
+   the sibling already exists, so the triage lives here, ahead of all other work. List
+   the in-flight bugs (`telec bugs list`, `telec todo list`) and read the `input` symptom
+   of the candidates that look related. A **duplicate** is another bug todo whose reported
+   defect shares the same root symptom — the same error signature, the same failing
+   surface — not merely the same file or area; that judgment is yours to make from the
+   symptoms, not a string match.
+   - **If a sibling for the same defect is already in flight, retire this todo as the
+     duplicate.** Resolve the race deterministically so two simultaneous diagnose sessions
+     never both retire themselves: the **survivor** is whichever twin is already further
+     along (has an `investigation`/`diagnosis` or an active diagnose session); when both
+     sit at the same fresh state, the survivor is the **earliest-created** todo,
+     tie-broken by lexically-first slug. If this todo is not the survivor, remove it —
+     `telec todo remove {slug}`, naming the surviving slug in the reason — and **end the
+     session**. Write **no** `investigation` and **no** `diagnosis`: a todo about to be
+     retired earns no artifacts, and the survivor owns the diagnosis.
+   - **Hand forward material info — only when sure it helps.** Before removing, compare
+     this twin's `input` against the survivor's todo. If this twin carries discovery
+     context the survivor does not surface — a distinct reproduction, a second occurrence
+     site, an environment detail — and you are **confident it is genuinely additive**,
+     send a single informational message to the survivor's active session
+     (`telec sessions send <session_id> "<info>"`) before retiring. Substance only: no
+     acknowledgement, no echo, no narration. If you are not sure it adds, stay silent and
+     just retire — silence is the default, a low-value message is noise that interrupts an
+     agent mid-diagnosis.
+   - **If this todo is the survivor, or no sibling exists, proceed to Step 2.**
+2. **Read the symptom.** `telec todo artifacts read {slug} input`. Treat it as a real,
    reproducible defect until investigation proves otherwise (refuse bug-denial).
-2. **Investigate.** Follow the systematic debugging procedure — reproduce first, then
+3. **Investigate.** Follow the systematic debugging procedure — reproduce first, then
    bisect and isolate. Read the actual code paths; do not pattern-match a likely cause.
    **Trace the cause, not the location:** trace backward from where the symptom surfaces
    to where the bad value or state **originates** — the first violated invariant, the
    first wrong value, the line that produces it. Naming where the error is _thrown_ or
    _observed_ is a restatement of the symptom located in code, not a cause.
-3. **Record the `investigation`.** Write the evidence substrate — the reproduction (or,
+4. **Record the `investigation`.** Write the evidence substrate — the reproduction (or,
    where reproduction is not stable, what was observed and why), the avenues walked, and
    the observations gathered, each as a **re-verifiable fact, not a verdict** ("the value
    at `f():120` is already null", not "the cache is not the cause"). This persists the
    pre-work whether or not the cause grounds, and does not advance the phase.
    `telec todo artifacts write {slug} investigation <content>`.
-4. **Conclude — or escalate.** If a causal root cause grounds, write the thin
+5. **Conclude — or escalate.** If a causal root cause grounds, write the thin
    `diagnosis`: `## Symptom` (referencing `input`) and `## Root Cause` (the causal
    mechanism, **referencing the `investigation`'s evidence** for each claim). A reader
    can follow the mechanism from symptom to origin through cited evidence — not just a
    file and a line. `telec todo artifacts write {slug} diagnosis <content>`. If the cause
    will **not** ground, do not write a `diagnosis` and do not advance — escalate per
    Recovery.
-5. **Advance.** Once the `diagnosis` is written, call `telec todo prepare {slug}`. The
+6. **Advance.** Once the `diagnosis` is written, call `telec todo prepare {slug}`. The
    state machine derives `PLAN_DRAFTING` next; the planner consumes the root cause and
    derives the fix, and the plan reviewer validates that the root cause is a genuine
    causal mechanism grounded in the investigation.
@@ -103,7 +134,9 @@ and fallback-shaped workarounds. Slides to refuse: (1) accepting a located sympt
 root cause; (2) prescribing a fix or verification approach here — diagnosis grounds the
 cause, the planner decides the fix; (3) writing a conclusion not grounded in the recorded
 investigation; (4) writing a "likely" cause to keep moving when the mechanism will not
-ground — escalate instead. Escalation is the strong, honest move: a "likely" cause is
+ground — escalate instead; (5) diagnosing past a duplicate — investigating or writing
+artifacts into a todo whose defect a further-along sibling already owns, instead of
+triaging first (Step 1), retiring the twin, and ending. A duplicate earns no artifacts. Escalation is the strong, honest move: a "likely" cause is
 imagined confidence, and dressing it as a finding to keep the pipeline moving is the
 cardinal sin this phase stops. The diagnosis is judged by the cross-model plan reviewer;
 write it to be refuted, not to look right.
