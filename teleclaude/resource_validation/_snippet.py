@@ -51,6 +51,7 @@ _THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
 _PLANNED_CHANGE_MARKER_RE = re.compile(
     r"<!--[ \t]*(?P<closing>/)?(?P<kind>planned-change|change):(?P<slug>[^>\s]+)[ \t]*-->"
 )
+_PLANNED_MARKER_RE = re.compile(r"<!--[ \t]*(?P<closing>/)?planned:(?P<slug>[^>\s]+)[ \t]*-->")
 _PLANNED_CHANGE_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 _ROADMAP_STATUS_VALUES = (
     RoadmapStatus.ACTIVE,
@@ -294,6 +295,7 @@ def _validate_delivered_by(
 
 
 _LIVE_ROADMAP_STATUSES = frozenset({RoadmapStatus.ACTIVE.value, RoadmapStatus.ICEBOX.value})
+_NO_SUCH_TODO_HINT = "no such todo — check `telec history search {slug}`; maybe authored ahead, renamed, or gone"
 
 
 def _validate_delivered_by_roadmap(
@@ -303,17 +305,16 @@ def _validate_delivered_by_roadmap(
 ) -> None:
     """Flag any delivered_by slug that is not a live (active/icebox) todo.
 
-    A valid pending marker names an in-flight todo. A slug resolving to a
-    delivered/removed todo should have been cleared on delivery; one resolving to
-    nothing is a typo or a deleted todo. Both are anomalies — not legacy to tolerate
-    — so they fail validation and must be removed.
+    A valid pending marker names an in-flight todo. A delivered/removed slug should
+    have been folded on delivery; a slug resolving to nothing is not auto-stale —
+    investigate via `telec history search <slug>` (authored-ahead, renamed, or gone).
     """
     delivered_by = _as_str_list(meta.get("delivered_by"))
     for slug in delivered_by:
         status = roadmap_status_map.get(slug)
         if status in _LIVE_ROADMAP_STATUSES:
             continue
-        reason = "no such todo (typo or deleted)" if status is None else f"todo is {status}, not in flight"
+        reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
         _error("snippet_delivered_by_invalid_slug", path=str(path), slug=slug, reason=reason)
 
 
@@ -342,8 +343,43 @@ def _mask_fenced_code_blocks(text: str) -> str:
     return "".join(lines)
 
 
-def _validate_planned_change_markers(path: Path, body: str) -> None:
-    body = _mask_fenced_code_blocks(body)
+def _mask_inline_code_spans(text: str) -> str:
+    def _blank(match: re.Match[str]) -> str:
+        return "".join("\n" if char == "\n" else " " for char in match.group(0))
+
+    return "".join(_INLINE_CODE_SPAN.sub(_blank, line) for line in text.splitlines(keepends=True))
+
+
+def _mask_marker_examples(body: str) -> str:
+    return _mask_inline_code_spans(_mask_fenced_code_blocks(body))
+
+
+def _validate_planned_marker_liveness(
+    path: Path,
+    body: str,
+    roadmap_status_map: Mapping[str, str],
+) -> None:
+    checked_slugs: set[str] = set()
+    for marker in [*_PLANNED_CHANGE_MARKER_RE.finditer(body), *_PLANNED_MARKER_RE.finditer(body)]:
+        slug = marker.group("slug")
+        if slug in checked_slugs:
+            continue
+        checked_slugs.add(slug)
+        status = roadmap_status_map.get(slug)
+        if status in _LIVE_ROADMAP_STATUSES:
+            continue
+        reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
+        _error("snippet_planned_marker_invalid_slug", path=str(path), slug=slug, reason=reason)
+
+
+def _validate_planned_change_markers(
+    path: Path,
+    body: str,
+    roadmap_status_map: Mapping[str, str] | None = None,
+) -> None:
+    body = _mask_marker_examples(body)
+    if roadmap_status_map is not None:
+        _validate_planned_marker_liveness(path, body, roadmap_status_map)
     valid_spans = [match.span() for match in PLANNED_CHANGE_BLOCK_RE.finditer(body)]
     markers = [
         marker
@@ -441,7 +477,7 @@ def validate_snippet(
     _validate_delivered_by(path, meta)
     if roadmap_status_map is not None:
         _validate_delivered_by_roadmap(path, meta, roadmap_status_map)
-    _validate_planned_change_markers(path, body)
+    _validate_planned_change_markers(path, body, roadmap_status_map)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains, classification=classification)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, classification=classification)
