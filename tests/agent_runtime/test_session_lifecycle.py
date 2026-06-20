@@ -24,6 +24,8 @@ from teleclaude.api import auth as auth_mod
 from teleclaude.api import sessions_routes
 from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_remote import dispatch_session_close_to_peer
+from teleclaude.cli import api_client as api_client_mod
+from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.constants import EVENT_END_SESSION, WORKTREE_DIR
 from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
 from teleclaude.core.agent_coordinator import AgentCoordinator
@@ -33,6 +35,7 @@ from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import MessageMetadata, SessionSnapshot
 from teleclaude.core.models._session import Session
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
+from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CloseSessionCommand
 
@@ -741,6 +744,56 @@ async def test_child_inherits_parent_human_role(api: AsyncClient, snapshot) -> N
     child = await _get_session_from_db(api, child_resp.json()["session_id"])
     assert {"human_role": child.human_role} == snapshot
     assert child.initiator_session_id == parent_id
+
+
+# ---------------------------------------------------------------------------
+# 4b. Daemon-hosted operation caller authenticates without a foreign tmux factor
+# ---------------------------------------------------------------------------
+
+
+async def test_operation_caller_authorizes_without_ambient_tmux(
+    api: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A daemon-hosted lifecycle operation builds caller identity headers from the
+    contextvar override while holding no tmux pane. Honoring the caller-verification
+    contract's pane-less caveat (``docs/project/spec/feature/identity/caller-verification.md``
+    Known caveats: identity-context-spawned tasks without a tmux pane authenticate by
+    sending no tmux signal), the client must omit ``x-tmux-session`` rather than attach
+    the daemon's foreign ambient tmux session — which would 403 the caller as a session
+    identity mismatch. Drives the real header-building path into the real auth boundary
+    and asserts the authorization outcome (not the header dict).
+    """
+    caller = await _create_session(api, human_role="member")
+    caller_id = caller["session_id"]
+
+    # The daemon process has no tmux pane, so the ambient read resolves to a foreign
+    # session; the operation runner installs only the caller session id via the override.
+    monkeypatch.setattr(TelecAPIClient, "_read_tmux_session_name", lambda self: "tc_foreign-daemon")
+    monkeypatch.setattr(api_client_mod, "get_session_token", lambda: None)
+    monkeypatch.setattr(api_client_mod, "read_current_session_email", lambda: None)
+
+    token = set_caller_session_id(caller_id)
+    try:
+        headers = TelecAPIClient()._build_identity_headers()
+    finally:
+        reset_caller_session_id(token)
+
+    resp = await api.post(
+        "/sessions",
+        json={
+            "computer": "TestComputer",
+            "project_path": "/tmp",
+            "agent": "claude",
+            "thinking_mode": "fast",
+            "title": "operation-dispatch",
+            "launch_kind": "empty",
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 200, f"operation caller rejected: {resp.status_code} {resp.text}"
+    child = await _get_session_from_db(api, resp.json()["session_id"])
+    assert child.initiator_session_id == caller_id
 
 
 # ---------------------------------------------------------------------------
