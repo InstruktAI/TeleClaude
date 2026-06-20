@@ -94,22 +94,24 @@ Then marker-liveness is not checked
 
 <!-- planned:inline-in-body-marker-fold-gap -->
 
-#### UC-SFV1c: In-body markers must be whole-line and non-nested
+#### UC-SFV1c: In-body markers must be whole-line, balanced, and non-nested
 
 ```
 Given a snippet contains a planned, planned-change, or change marker with non-whitespace text before its opening "<!--" or after its closing "-->" on the same line
 When snippet validation runs
 Then a "snippet_marker_not_line_level" finding is reported for that marker
-Given a snippet contains an in-body block whose markers each occupy their own line
-And no other slug's marker opens between that block's open and close
+Given a snippet contains an in-body block whose markers each occupy their own line, is balanced, and no other slug's marker opens between its open and close
 When snippet validation runs
-Then no line-level or nesting finding is reported
+Then no line-level, balance, or nesting finding is reported
+Given a snippet contains a planned ADD opening marker with no matching close, a close with no matching open, or a close whose slug differs from the open
+When snippet validation runs
+Then a "snippet_marker_unbalanced" finding is reported for that marker
 Given a snippet contains an in-body block (planned or planned-change) that opens while another in-body block is still open
 When snippet validation runs
 Then a "snippet_marker_nested" finding is reported for the inner marker
 Given the marker appears only inside an inline code span or a fenced code block (a syntax example)
 When snippet validation runs
-Then no line-level or nesting finding is reported
+Then no line-level, balance, or nesting finding is reported
 ```
 
 <!-- /planned:inline-in-body-marker-fold-gap -->
