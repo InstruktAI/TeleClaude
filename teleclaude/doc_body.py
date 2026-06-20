@@ -125,5 +125,5 @@ def strip_planned_markers(text: str, slug: str) -> str:
     delivered, its planned content becomes part of the live contract, so only the
     bracketing comment lines are removed.
     """
-    marker = re.compile(rf"[ \t]*<!--[ \t]*/?planned:{re.escape(slug)}[ \t]*-->[ \t]*\n")
+    marker = re.compile(rf"[ \t]*<!--[ \t]*/?planned:{re.escape(slug)}[ \t]*-->[ \t]*\n?")
     return marker.sub("", text)

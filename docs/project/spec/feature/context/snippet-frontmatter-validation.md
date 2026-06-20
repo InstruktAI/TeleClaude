@@ -92,9 +92,7 @@ When snippet validation runs
 Then marker-liveness is not checked
 ```
 
-<!-- planned:inline-in-body-marker-fold-gap -->
-
-#### UC-SFV1c: In-body markers must be whole-line and non-nested
+#### UC-SFV1c: In-body markers must be whole-line, non-nested, and balanced
 
 ```
 Given a snippet contains a planned, planned-change, or change marker with non-whitespace text before its opening "<!--" or after its closing "-->" on the same line
@@ -107,12 +105,16 @@ Then no line-level or nesting finding is reported
 Given a snippet contains an in-body block (planned or planned-change) that opens while another in-body block is still open
 When snippet validation runs
 Then a "snippet_marker_nested" finding is reported for the inner marker
+Given a snippet contains a planned ADD block whose opening marker is never closed, or a planned close marker with no matching open, or a planned close whose slug differs from its open
+When snippet validation runs
+Then a "snippet_marker_unbalanced" finding is reported for the unbalanced marker
+Given a snippet contains a planned ADD marker whose slug is not kebab-case
+When snippet validation runs
+Then a "snippet_marker_invalid_slug" finding is reported for that marker
 Given the marker appears only inside an inline code span or a fenced code block (a syntax example)
 When snippet validation runs
 Then no line-level or nesting finding is reported
 ```
-
-<!-- /planned:inline-in-body-marker-fold-gap -->
 
 #### UC-SFV2: H1 type suffix is validated from the path-derived type
 
