@@ -149,15 +149,7 @@ slug does not trigger drift).
 | `prd`                  |  ✓   | `input`           |       ✓       |        ✓         |        ✓         |  ✓  |
 | `architecture` (index) |  ✓   | `prd`             |       ✓       |        ✓         |        ✓         |  ✓  |
 
-<!-- planned-change:track-input-drift-for-plan-only-kinds -->
-
-| `implementation-plan` | ✓ | `architecture`, `prd`, `diagnosis` | _(none)_ | ✓ | ✓ | ✓ |
-
-<!-- change:track-input-drift-for-plan-only-kinds -->
-
 | `implementation-plan` | ✓ | `prd`, `architecture`, `diagnosis` (feature, bug); `input` (change) | _(none)_ | ✓ | ✓ | ✓ |
-
-<!-- /planned-change:track-input-drift-for-plan-only-kinds -->
 
 The `code` column is contract-scoped. Today only the `implementation-plan`
 declares a `referenced-paths` contract block. All other tracked artifacts have
@@ -168,19 +160,6 @@ empty-surface code drift derives fresh.
 snippets directly (intake → feature spec; architecture → domain/design
 snippets). `implementation-plan` does not author durable snippets, so it
 has no owned-snippet class.
-
-<!-- planned-change:track-input-drift-for-plan-only-kinds -->
-
-Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is
-the frozen source of human intent; changing intent happens through PRD
-refinement, not by rewriting input and asking drift to classify it. `diagnosis`
-is re-grounded only when the diagnose phase is intentionally re-entered; plan
-freshness observes diagnosis through the implementation-plan's
-`upstream_digests[diagnosis]` evidence. A direct `input` or `diagnosis`
-drift verdict is invalid because no work-entry re-derivation phase owns that
-verdict.
-
-<!-- change:track-input-drift-for-plan-only-kinds -->
 
 Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is
 never a direct drift target: a direct `input` drift verdict is invalid because
@@ -195,8 +174,6 @@ intent the plan derives from directly, so the implementation-plan observes
 observes `diagnosis`. The plan is the tracked target in every case; `input` and
 `diagnosis` are upstream evidence, never tracked targets, and drift derivation
 never reports `drift.input` or `drift.diagnosis`.
-
-<!-- /planned-change:track-input-drift-for-plan-only-kinds -->
 
 ### Stamp scoping — the evidence anchor
 
@@ -547,8 +524,6 @@ Scenario: prepare hydration self-heals stale greedy referenced paths
   And a delivered direct dependency that was recorded active does not create dependency-graph drift
 ```
 
-<!-- planned:track-input-drift-for-plan-only-kinds -->
-
 #### UC-WDD10: Change input rewrite drifts the implementation-plan
 
 ```gherkin
@@ -571,8 +546,6 @@ Scenario: change implementation-plan upstream derivation is fresh when input mat
   And implementation-plan has no pending upstream-artifact drift
   And feature and bug implementation-plan upstream derivation is unchanged
 ```
-
-<!-- /planned:track-input-drift-for-plan-only-kinds -->
 
 ```gherkin
 Scenario: dependency-graph drift after an upstream dep delivers
