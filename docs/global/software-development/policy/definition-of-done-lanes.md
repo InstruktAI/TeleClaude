@@ -238,7 +238,7 @@ Common anti-patterns to flag:
 - Invariants enforced only through documentation, not code.
 - Missing validation at construction boundaries.
 - Types with too many responsibilities.
-- **Closed vocabulary not modeled as the mandated type** — a finite set of related string values expressed as a `Literal` + scattered constants (or tuple/frozenset) instead of the single `StrEnum`/union `code-quality-practices` (State and Data) mandates, with literals inlined at call sites. The `Literal` permits the bare literal everywhere, which is precisely why a lint then has to police it.
+- **Closed vocabulary not modeled as the mandated type** — a finite set of related string values expressed as a `Literal` + scattered constants (or tuple/frozenset) instead of the single `StrEnum`/union `code-quality-practices` (State and Data) mandates, with literals inlined at call sites. The `Literal` permits the bare literal everywhere, which is precisely why a lint then has to police it. This lane fires on **production call sites**, never on a literal used as test input or fixture data; in a test the rule means importing the production member, not removing the literal — see `code-quality-practices` → Testing Alignment.
 - **Invariant policed by a scanner a type could own** — an invariant enforced by an external lint, guardrail, regex, or meta-test when an `Enum`/type/schema could make the illegal state unrepresentable. The scanner is the band-aid; the type is the fix. See the enforcement-placement order in the test-coverage lane.
 
 Severity guidance:

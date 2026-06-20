@@ -77,6 +77,7 @@ visibility: 'public'
 
 - In tests, assert observable behavior and contracts, not narrative documentation wording.
 - String content is asserted via snapshots, never literal/substring/pattern comparison. Protocol identifiers go through named constants whose values are snapshot-governed at the schema layer. See `software-development/policy/testing` → "String Assertions — One Paradigm".
+- The closed-vocabulary `StrEnum` rule (State and Data) governs production **call sites**, where an inlined literal drifts and makes illegal states representable. In a test it means importing the production member when behavior turns on its identity — never that a fixture literal must be lifted out of the test body. "Extract this test string into a constant" is not a sanctioned remedy; the test-side owner is the string-assertion paradigm above (snapshot, or imported production constant).
 
 ## Rationale
 

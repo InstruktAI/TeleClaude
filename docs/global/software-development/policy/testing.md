@@ -95,7 +95,13 @@ visibility: 'public'
     snapshot-covered at the renderer's boundary. Agent-facing advisory output — formatter
     instructions, prompts, guidance strings — is its own declaration: a snapshot of it is permitted
     but never mandated, and it is never asserted by content. A change to such prose is not a coverage
-    gap; the only forbidden outcome is a content-grading assert.
+    gap; the only forbidden outcome is a content-grading assert. A bare string literal used as test
+    input or fixture data is unremarkable and stays inline — it is not a magic-string violation, and
+    the closed-vocabulary/constant discipline does not reach it. When a forbidden content assertion
+    must be fixed, the remedy is a **snapshot** or, only when behavior turns on identity, the
+    **imported production constant** — never a constant defined inside the test to hold the expected
+    value. Hoisting a literal into a test-local constant is not a remedy but literal-echo;
+    "extract this string into a constant" is therefore not a valid review finding against a test.
 13. **Rejected as primary assertions:** logger/metric/trace calls and log text; native
     struct/model/config shapes that are not an external wire contract; private helpers; constructor
     or dependency-injection wiring; mock-call echoes where the mocked thing is not an architectural
