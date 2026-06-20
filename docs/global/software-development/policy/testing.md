@@ -27,7 +27,11 @@ visibility: 'public'
 4. **Functional is the primary level.** One real interaction chain at a boundary: real in-process
    components, mocking only what crosses the process or network line. Each functional test asserts
    its own boundary contract — the shape, event, or response it emits or consumes — so composition
-   is trustworthy without broad end-to-end tests.
+   is trustworthy without broad end-to-end tests. What counts as the boundary, which mocks are
+   legitimate (only the process or network line), and the tells of a unit test wearing the
+   functional label are defined in `software-development/concept/functional-test-boundary`. The
+   marker is self-asserted by the author and proves nothing; the functional-versus-unit distinction
+   is a review judgment against that definition, never a path check or a scanner.
 5. **Smoke proves wiring, machine-checkably.** A small set of tests assert concrete wiring facts —
    services registered, routes mounted, the bus subscribed, one request flowing end to end. "It
    started without crashing" is not a smoke test; assert the structural facts.

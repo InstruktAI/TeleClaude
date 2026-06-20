@@ -11,9 +11,12 @@ visibility: 'public'
 
 ## Rules
 
-1. **No unit tests.** `tests/unit/` does not exist and must not be created;
-   `tools/lint/forbid_unit_tests.py` (pre-commit) blocks any `tests/unit/**/test_*.py`. Python is a
-   compiler-less language under the generic rule — behavior is verified by functional and smoke tests.
+1. **No unit tests.** Behavior is verified by functional and smoke tests; Python is a compiler-less
+   language under the generic rule. `tools/lint/forbid_unit_tests.py` (pre-commit) only prevents the
+   `tests/unit/` path from reappearing — a path guard, not a unit-test detector. A unit test placed
+   in any other directory, or wearing a `@pytest.mark.functional` label, passes every automated
+   check and is caught only at review, against `software-development/concept/functional-test-boundary`.
+   The discipline lives in the definition and the review, not in the path guard.
 2. **Test files mirror the feature spec.** A spec at `docs/project/spec/feature/<domain>/<slug>.md`
    is covered by `tests/<domain>/test_<slug>.py`. Contract-defining tooling (wrappers, git filters)
    is not tested — see the generic policy.
