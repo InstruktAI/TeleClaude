@@ -58,9 +58,13 @@ rebuildable id cache.
   GitHub state from current local truth; applying it twice is a no-op. Graph
   relations (dependencies, sub-issues) are read-then-reconciled to the local set;
   an "already exists" rejection on an edge is treated as already-converged.
-- **Off the hot path.** The projection runs in the event pipeline, never inside a
-  todo mutation. A GitHub outage, rate-limit, or revoked token never fails, blocks,
-  or slows a `telec todo` mutation. The mirror is eventually consistent by design.
+- **Off the hot path, failures isolated.** The projection runs in the event pipeline,
+  never inside a todo mutation. A GitHub outage, rate-limit, or revoked token never
+  fails, blocks, or slows a `telec todo` mutation. The mirror processor catches every
+  projection error internally and returns normally to the pipeline — it never raises —
+  so the pipeline's retry and dead-letter machinery never fires on a GitHub failure and
+  GitHub health is never coupled back into event processing. Reconciliation is the only
+  re-attempt path. The mirror is eventually consistent by design.
 - **Clean-slate enablement.** The mirror is enabled for a project only when its
   GitHub repository had no pre-existing Issues and no pre-existing Projects v2 board
   at setup time. When any GitHub-side state already exists, the mirror stays inert
@@ -103,25 +107,45 @@ out-of-order or duplicate delivery converges to the same result.
 
 ### 2. Reconciliation (on-demand, optionally scheduled)
 
-The same projection swept over every todo in a project — simultaneously the
-integrity audit and the self-heal. It re-asserts the whole graph, converting silent
-divergence into loud convergence, and is the backstop for any per-event projection
-that failed.
+A `telec` command runs the same projection over every todo in a project —
+simultaneously the integrity audit and the self-heal. The command contract:
+
+- **Verb:** `telec projects mirror-reconcile [--project <path>]` — conforms to the
+  existing `telec projects` namespace and the CLI scaffold; resolves the project from
+  the working directory when `--project` is omitted.
+- **Behavior:** idempotent — runs the projection over every todo in the project;
+  re-asserting an already-converged project changes nothing on GitHub.
+- **Output:** reports how many todos were already converged versus repaired, turning
+  silent divergence into a visible result.
+- **Gating:** inert unless `github.enabled`; the same clean-slate and
+  never-touch-foreign invariants as event-driven projection apply.
+
+It is the backstop for any per-event projection that was dropped (see Failure modes)
+and is optionally schedulable.
 
 ### 3. Enablement preflight (folded into `projects init` / `onboard`)
 
-Idempotent. Resolves the GitHub origin, probes read+write capability and the
-required `gh` scopes, and inventories existing GitHub state. On a clean slate it
-provisions the board and its single-select field option sets and records the
-verified enablement flag; on any pre-existing Issues or board it records the
-discovery and leaves the mirror inert. Non-interactive — clean repos enable, others
-stay off.
+Idempotent. Resolves the GitHub origin, probes read+write capability and the required
+`gh` scopes, and inventories existing GitHub state. On a clean slate it provisions the
+board and its single-select field option sets and records the verified enablement
+flag; on any pre-existing Issues or board it records the discovery and leaves the
+mirror inert. Non-interactive — clean repos enable, others stay off.
+
+### 4. Tooling prerequisite check (`make install`)
+
+`make install` verifies the machine's `gh` authentication carries the scopes the
+mirror needs — `repo` and `project` — and, for any missing scope, prints the exact
+remediation (`gh auth refresh -s <missing>`) instead of failing silently. This is a
+machine-level capability gate (once per machine), distinct from the per-project
+enablement preflight above; the mirror reuses the existing `gh` login and adds no new
+credential surface.
 
 ## Failure modes
 
-- **GitHub outage or rate-limit.** The per-event projection fails without affecting
-  any local mutation; reconciliation re-converges the project on its next run. There
-  is no retry that can stall the pipeline.
+- **GitHub outage or rate-limit.** The per-event projection fails; the mirror catches
+  it internally and returns normally (it never raises), so the pipeline's retry/DLQ
+  machinery never fires and no local mutation is affected. Reconciliation re-converges
+  the project on its next run.
 - **Token scope lost after enablement.** Projection fails and surfaces through the
   mirror's health/status; it never becomes a hot-path failure and never silently
   corrupts GitHub state.
