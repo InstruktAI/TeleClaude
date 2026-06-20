@@ -49,16 +49,19 @@ that makes the plan groundable.
 
 ## Steps
 
-1. **Triage for a duplicate — before reading the symptom or writing any artifact.**
+1. **Triage for a duplicate — before any investigation or artifact write.**
    Simultaneous log scans and human reports produce near-coincident reports of the same
    defect, each scaffolding its own bug todo. The report-time moment cannot catch this —
    each reporter checks before the other's todo exists — but by the time this phase runs
-   the sibling already exists, so the triage lives here, ahead of all other work. List
-   the in-flight bugs (`telec bugs list`, `telec todo list`) and read the `input` symptom
-   of the candidates that look related. A **duplicate** is another bug todo whose reported
-   defect shares the same root symptom — the same error signature, the same failing
-   surface — not merely the same file or area; that judgment is yours to make from the
-   symptoms, not a string match.
+   the sibling already exists, so the triage lives here, ahead of the investigation and
+   every artifact write. Read this todo's reported symptom for the comparison
+   (`telec todo artifacts read {slug} input`), list the in-flight bugs
+   (`telec bugs list`, `telec todo list`), and read the `input` of the candidates that
+   look related. A **duplicate** is another bug todo whose reported defect shares the same
+   root symptom — the same error signature, the same failing surface — not merely the same
+   file or area; that judgment is yours to make from the symptoms, not a string match.
+   Reading inputs is the triage's own work; the hard gate is on investigation and artifact
+   writes, never on the read the triage depends on.
    - **If a sibling for the same defect is already in flight, retire this todo as the
      duplicate.** Resolve the race deterministically so two simultaneous diagnose sessions
      never both retire themselves: the **survivor** is whichever twin is already further
@@ -78,8 +81,9 @@ that makes the plan groundable.
      just retire — silence is the default, a low-value message is noise that interrupts an
      agent mid-diagnosis.
    - **If this todo is the survivor, or no sibling exists, proceed to Step 2.**
-2. **Read the symptom.** `telec todo artifacts read {slug} input`. Treat it as a real,
-   reproducible defect until investigation proves otherwise (refuse bug-denial).
+2. **Read the symptom as a defect to investigate.** With the `input` already in hand from
+   triage, treat it as a real, reproducible defect until investigation proves otherwise
+   (refuse bug-denial).
 3. **Investigate.** Follow the systematic debugging procedure — reproduce first, then
    bisect and isolate. Read the actual code paths; do not pattern-match a likely cause.
    **Trace the cause, not the location:** trace backward from where the symptom surfaces
