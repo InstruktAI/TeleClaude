@@ -3,7 +3,7 @@
 A kind is the work-unit's entry point into the lifecycle. There are exactly four:
   feature → enters at intake (needs a PRD)
   change  → enters at plan (a known change to existing code; no PRD; intent is the input artifact)
-  bug     → enters at fix (a defect; no PRD and no upfront plan)
+  bug     → enters at diagnose (a defect; no PRD; verify the diagnosis first, then draft a plan)
   task    → non-SDLC, created silent, tracked by a task-plan artifact
 
 Orthogonal creation inputs (never declared as a kind):
