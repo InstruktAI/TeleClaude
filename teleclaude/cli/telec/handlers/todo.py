@@ -826,6 +826,12 @@ def _handle_todo_stamp(args: list[str]) -> None:
     }
     response = tool_api_call("POST", "/todos/stamp", json_body=body)
     if isinstance(response, dict) and response.get("status") == "ok":
+        if stamp_type == "build_complete":
+            print(
+                f"Recorded build-complete claim for {slug}; "
+                f"build gates run on the next telec todo work {slug} dispatch."
+            )
+            return
         label = f"{stamp_type}={value}" if value else stamp_type
         if phase:
             label = f"{label} phase={phase}"

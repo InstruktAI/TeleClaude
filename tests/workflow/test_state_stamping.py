@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -10,6 +11,8 @@ import pytest
 from git import Actor, Repo
 
 import teleclaude.core.db as db_mod
+from teleclaude.cli.telec import main
+from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_TASK_PLAN,
@@ -381,3 +384,31 @@ async def test_manual_refusal_with_no_caller_surfaces_claimant(tmp_path: Path) -
 
     with pytest.raises(PermissionError, match=rf"{claimant_id}.*Give the human the claiming session id"):
         await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="build_complete", caller_session_id=None)
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS4")
+def test_stamp_help_lists_build_complete_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    snapshot: object,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["telec", "todo", "stamp", "--help"])
+
+    main()
+
+    captured = capsys.readouterr()
+    assert {"stdout": captured.out, "stderr": captured.err} == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS4")
+def test_build_complete_confirmation_conveys_claim_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    snapshot: object,
+) -> None:
+    monkeypatch.setattr(todo_handlers, "tool_api_call", lambda *_args, **_kwargs: {"status": "ok"})
+
+    todo_handlers._handle_todo_stamp([_SLUG, "--build-complete"])
+
+    captured = capsys.readouterr()
+    assert {"stdout": captured.out, "stderr": captured.err} == snapshot

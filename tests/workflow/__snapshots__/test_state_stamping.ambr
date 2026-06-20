@@ -1,4 +1,13 @@
 # serializer version: 1
+# name: test_build_complete_confirmation_conveys_claim_recorded
+  dict({
+    'stderr': '',
+    'stdout': '''
+      Recorded build-complete claim for stamp-target; build gates run on the next telec todo work stamp-target dispatch.
+  
+    ''',
+  })
+# ---
 # name: test_kind_assign_task_writes_task_plan_and_prepared_phase
   '''
   # stamp-target — Task Plan
@@ -16,4 +25,36 @@
   - <timestamp> Assigned task kind.
   
   '''
+# ---
+# name: test_stamp_help_lists_build_complete_flag
+  dict({
+    'stderr': '',
+    'stdout': '''
+      Usage:
+        telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready]
+      
+        Stamp a verdict or readiness marker into todo state
+      
+      Options:
+        --verdict               approve | changes_requested | needs_work | needs_decision
+        --phase                 Review phase the verdict belongs to (architecture_review, plan_review, build_review)
+        --prd-approved          Mark PRD as approved by the human
+        --architecture-skipped  Skip architecture phase with a reason
+        --drift-reviewed        Record drift review: <artifact> <substantive|cosmetic> <reason>
+        --kind-assign           Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]
+        --build-complete        Record the worker's build-complete claim; gates run on the next telec todo work dispatch
+        --finalize-ready        Mark worktree as ready for finalize handoff
+      
+      Notes:
+        Use this command to stamp a verdict or readiness marker into todo state.
+      
+      Examples:
+        telec todo stamp my-slug --verdict approve --phase plan_review
+        telec todo stamp my-slug --kind-assign task "actionable task"
+        telec todo stamp my-slug --verdict changes_requested --phase build_review
+        telec todo stamp my-slug --finalize-ready
+      
+  
+    ''',
+  })
 # ---
