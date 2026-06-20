@@ -75,7 +75,7 @@ visibility: 'public'
 
 ## Enforcement
 
-- `tools/lint/forbid_unit_tests.py` (pre-commit) blocks any unit test.
+- `tools/lint/forbid_unit_tests.py` (pre-commit) blocks the `tests/unit/` path only — it is a path guard, not a unit-test detector. Functional-versus-unit structure anywhere else is enforced at review against `software-development/concept/functional-test-boundary`.
 - `tools/lint/spec_coverage.py` reports bound / unbound / duplicate / orphan / stale.
 
 ## Exceptions
