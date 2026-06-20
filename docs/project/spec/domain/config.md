@@ -133,8 +133,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the machine's runtime configuration.
 - **Lifecycle:** authored with the machine configuration consumed by the daemon. The daemon reads it before service-loop registration; changes take effect on the next daemon configuration reload or restart.
 
-<!-- planned:chiptunes-corpus-detrack-fetch -->
-
 #### Chiptunes Configuration (value object)
 
 - **Root:** `ChiptunesConfig`
@@ -149,7 +147,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - The configuration gate `enabled` is distinct from the chiptunes manager's runtime playback state; the gate drives the runtime state, never the reverse.
 - **Identifier:** the machine's runtime configuration.
 - **Lifecycle:** `chiptunes` is a hot-reloadable configuration section. Toggling `enabled` is applied live by the daemon's config watcher without a restart: enabling it provisions the corpus on demand — asynchronously, so the reload never blocks — and activates playback; disabling it stops playback. The daemon never fetches the corpus synchronously at startup; when `enabled` is set and the corpus is absent, startup triggers the same idempotent asynchronous provisioning.
-<!-- /planned:chiptunes-corpus-detrack-fetch -->
 
 ### Domain events emitted
 

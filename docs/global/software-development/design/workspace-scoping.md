@@ -31,22 +31,12 @@ current guardrails lane remains TeleClaude-repo-rooted.
 Three execution contexts drive file resolution:
 
 1. **Worktree** — isolated by design. All dirty paths in the worktree belong to
-the task.
-<!-- planned-change:telec-code-scope-misses-shell-edits -->
+   the task.
 2. **Shared branch with session identity** — multiple agents may have
-uncommitted work. Scope to the current session's touched dirty files.
-<!-- change:telec-code-scope-misses-shell-edits -->
-3. **Shared branch with session identity** — scope depends on whether another
-agent session is concurrently live on the same shared checkout. When the
-current session is the only live agent, all dirty paths belong to it and drive
-scope, exactly as in a worktree — a change made by any means, including through
-the shell, is in scope. When one or more other agent sessions are concurrently
-live on the same checkout, scope narrows to the current session's touched dirty
-files so one agent's run never sweeps another's in-progress work.
-<!-- /planned-change:telec-code-scope-misses-shell-edits -->
-4. **Shared branch without session identity** — human or CI context. Both legs
+   uncommitted work. Scope to the current session's touched dirty files.
+3. **Shared branch without session identity** — human or CI context. Both legs
    run the full suite (no file list).
-5. **Explicit files** — caller passes file arguments directly. Skip workspace
+4. **Explicit files** — caller passes file arguments directly. Skip workspace
    scoping.
 
 `make lint` and `make test` are the project's own entrypoints; they run native
@@ -98,48 +88,33 @@ guardrails lane).
 
 1. **No stashing.** The scoping mechanism keeps files outside the agent's scope untouched, so there is never a need to stash anything aside.
 2. **Worktrees are task-scoped.** A worktree is isolated — all dirty files
-belong to the task. Existing dirty files drive both legs and the
-commit-staging set; commit staging may also include deleted dirty paths.
-<!-- planned-change:telec-code-scope-misses-shell-edits -->
+   belong to the task. Existing dirty files drive both legs and the
+   commit-staging set; commit staging may also include deleted dirty paths.
 3. **Shared branches are session-scoped.** On a shared branch, only files the
-current session touched and that are dirty are scoped. This prevents agents
-from linting or committing other agents' in-progress work.
-<!-- change:telec-code-scope-misses-shell-edits -->
-4. **Shared branches are session-scoped only under concurrency.** On a shared
-branch with session identity, scope depends on live-peer presence, determined
-from the sessions database: the active, non-closed agent sessions bound to the
-same shared checkout (same project working tree, excluding worktrees and the
-current session). When no live peer exists, the full dirty set is scoped, so a
-change made by any means — including through the shell — is detected and
-committable. When one or more live peers exist, scope narrows to the
-intersection of the current session's touched paths and the dirty set, which
-prevents an agent from linting or committing another agent's in-progress work.
-Detection that cannot positively confirm zero peers is treated as peers
-present, so the concurrency protection is never weakened by a detection
-failure.
-<!-- /planned-change:telec-code-scope-misses-shell-edits -->
-5. **Explicit files override everything.** When the caller passes files as
+   current session touched and that are dirty are scoped. This prevents agents
+   from linting or committing other agents' in-progress work.
+4. **Explicit files override everything.** When the caller passes files as
    arguments, scoping is skipped and those files drive both legs.
-6. **Commit gates run in-process, no stash.** `telec code commit` runs format
+5. **Commit gates run in-process, no stash.** `telec code commit` runs format
    then lint against `quality_paths` before `git commit --no-verify`; the thin
    `.git/hooks/pre-commit` performs only a partial-staging backstop. No
    framework stash, no working-tree reset outside the commit pathspec.
-7. **Scope failure is an error.** If workspace scope cannot be resolved and no
+6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
-8. **No session identity on a shared branch means full run.** Human and CI
+7. **No session identity on a shared branch means full run.** Human and CI
    contexts have no session identity; both legs run the whole suite.
-9. **Tool environment is owned by make and the lane.** Scoping decides what to
+8. **Tool environment is owned by make and the lane.** Scoping decides what to
    check; the project's `make` recipes own the native tool environment, and the
    guardrails lane owns the policy scripts. `telec code` invokes no tool of its
    own.
-10. **`make test` is never file-scoped.** The spec-anchored model has no 1:1
-    source→test map, so `telec code test` delegates to `make test` with no scope.
-11. **Both legs fail the command.** `telec code lint` runs the native `make lint`
+9. **`make test` is never file-scoped.** The spec-anchored model has no 1:1
+   source→test map, so `telec code test` delegates to `make test` with no scope.
+10. **Both legs fail the command.** `telec code lint` runs the native `make lint`
     leg first (ruff `--fix` may edit), then the guardrails lane; it exits
     non-zero if either leg fails. `make lint` carries no guardrails; the
     guardrails lane carries no native tools.
-12. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
+11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
     make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
     paths; on full runs neither is scoped. Because the make leg's paths travel
     in a NUL file (not a command line), a filename with spaces or shell
@@ -181,8 +156,6 @@ telec code changed (worktree detected)
 
 ### Shared branch flow (session available)
 
-<!-- planned-change:telec-code-scope-misses-shell-edits -->
-
 ```
 telec code lint (no args, not a worktree, session identity present)
   → resolve dirty paths once
@@ -190,20 +163,6 @@ telec code lint (no args, not a worktree, session identity present)
   → validate paths
   → make lint FILES_FROM=<nul tempfile of scoped paths>  +  guardrails lane <scoped>
 ```
-
-<!-- change:telec-code-scope-misses-shell-edits -->
-
-```
-telec code lint (no args, not a worktree, session identity present)
-  → resolve dirty paths once
-  → detect live peers on the same shared checkout from the sessions database
-  → no live peer:   scope = all dirty paths
-  → live peer(s):   scope = dirty paths ∩ session-touched files from transcript
-  → validate paths
-  → make lint FILES_FROM=<nul tempfile of scoped paths>  +  guardrails lane <scoped>
-```
-
-<!-- /planned-change:telec-code-scope-misses-shell-edits -->
 
 ### Shared branch flow (no session)
 
