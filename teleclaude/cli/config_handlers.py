@@ -16,6 +16,7 @@ import os
 import secrets
 import shutil
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -264,6 +265,11 @@ def list_person_dirs() -> list[str]:
 # --- Writing (atomic) ---
 
 
+def _represent_enum(representer: Any, data: Enum) -> Any:
+    """Serialize any Enum (incl. StrEnum) as its underlying value for YAML."""
+    return representer.represent_data(data.value)
+
+
 def _atomic_yaml_write(path: Path, data: dict[str, Any]) -> None:  # guard: loose-dict - YAML serialization boundary
     """Atomic YAML write using tmp file + os.replace.
 
@@ -277,6 +283,7 @@ def _atomic_yaml_write(path: Path, data: dict[str, Any]) -> None:  # guard: loos
     yaml = YAML()
     yaml.preserve_quotes = True
     yaml.default_flow_style = False
+    yaml.representer.add_multi_representer(Enum, _represent_enum)
 
     with open(lock_path, "w", encoding="utf-8") as lock_file:
         try:
