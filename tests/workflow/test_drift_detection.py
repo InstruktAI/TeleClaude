@@ -193,6 +193,32 @@ def test_referenced_paths_ignore_prose_mentions_and_missing_contract_blocks() ->
     assert derive_artifact_drift(entry, None, "", "") == DRIFT_FRESH
 
 
+def test_dependency_snapshot_accepts_legacy_roadmap_status_field() -> None:
+    """Snapshots persisted before `roadmap_status` was renamed to `todo_status` stay readable.
+
+    Reproduces the deserialization failure on stored state whose
+    ``dependency_set_at_write`` entries carry only the old ``roadmap_status`` key.
+    """
+    legacy_dep_slug = "project-onboarding"
+    legacy_status = "active"
+    raw = {
+        "schema_version": 4,
+        "kind": "bug",
+        "lifecycle_phase": "plan_drafting",
+        "artifacts": {
+            "implementation_plan": {
+                "dependency_set_at_write": [{"dep_slug": legacy_dep_slug, "roadmap_status": legacy_status}],
+            },
+        },
+    }
+
+    state = TodoState.model_validate(raw)
+
+    entry = state.artifacts.implementation_plan.dependency_set_at_write[0]
+    assert entry.dep_slug == legacy_dep_slug
+    assert entry.todo_status == legacy_status
+
+
 @pytest.mark.spec(_SPEC, "UC-WDD7")
 async def test_delivered_dependency_status_matches_recorded_active_status() -> None:
     model = _plan_with_dependency_set([_dependency_entry("dep", "active")])
