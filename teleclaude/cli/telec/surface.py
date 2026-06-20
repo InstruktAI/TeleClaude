@@ -794,6 +794,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--body", desc="Detailed description body for bug.md"),
                     _FLAG_PROJECT_TRUSTED,
                 ],
+                notes=[
+                    "Duplicate detection runs at the diagnose phase, not here: if another bug for the same defect is already in flight, the diagnose phase retires the later twin.",
+                    "Your reported todo may therefore be removed as a duplicate — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
+                ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "list": CommandDef(
