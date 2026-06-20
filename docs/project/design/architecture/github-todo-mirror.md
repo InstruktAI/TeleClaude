@@ -65,10 +65,21 @@ rebuildable id cache.
   so the pipeline's retry and dead-letter machinery never fires on a GitHub failure and
   GitHub health is never coupled back into event processing. Reconciliation is the only
   re-attempt path. The mirror is eventually consistent by design.
-- **Clean-slate enablement.** The mirror is enabled for a project only when its
-  GitHub repository had no pre-existing Issues and no pre-existing Projects v2 board
-  at setup time. When any GitHub-side state already exists, the mirror stays inert
-  and writes nothing.
+- **Live eligibility, resolved per event.** Before any GitHub mutation the projector
+  re-resolves the repository from `git remote get-url origin` at event time — git
+  config is authoritative and the repo identity is never copied into config — and
+  confirms the origin is a GitHub repo whose token currently holds read/write
+  capability. The stored `github.enabled` flag records intent; it never authorizes a
+  write on its own. A repo that is re-pointed, made non-GitHub, or whose token lost
+  capability becomes inert with no mutation.
+- **Clean-slate enablement, with conscious override.** Automatic enablement happens
+  only when the repository had no pre-existing Issues and no pre-existing Projects v2
+  board; on any pre-existing GitHub state automatic enablement is refused and the
+  mirror stays inert. An operator may still enable a non-clean repository they own
+  through an explicit conscious-acceptance action that records the decision to coexist
+  with the existing state. This override never fires automatically and never applies to
+  a repo the operator has not explicitly opted into; even when enabled this way the
+  never-touch-foreign invariant still holds.
 - **Self-describing identity.** The `roadmap.id` (a UUID) is stamped into each issue
   body as a hidden HTML-comment marker, invisible when rendered. The entire
   local→GitHub mapping is reconstructible by scanning issue markers; the local id
@@ -91,7 +102,7 @@ sequenceDiagram
     participant GH as GitHub (gh)
     DB->>Bus: workflow.todo.* (created/phase_advanced/delivered/updated/renamed)
     Bus->>Mirror: deliver event (off the mutation hot path)
-    Mirror->>Mirror: github.enabled for this project? else inert
+    Mirror->>Mirror: resolve live origin + verify capability + github.enabled? else inert
     Mirror->>DB: read this todo's complete current truth
     Mirror->>GH: upsert Issue (roadmap.id marker, title, open/closed state)
     Mirror->>GH: upsert board item + fields (Kind, Phase, Hold, Delivered SHA)
@@ -131,6 +142,14 @@ board and its single-select field option sets and records the verified enablemen
 flag; on any pre-existing Issues or board it records the discovery and leaves the
 mirror inert. Non-interactive — clean repos enable, others stay off.
 
+The preflight is the same idempotent check for a brand-new project and an
+already-set-up one: it runs for any eligible project that has no `github` section yet,
+not only at first `init`/`onboard`, so existing projects pick up the mirror once the
+capability is present without being re-onboarded. A non-clean repository the operator
+owns is enabled through the explicit conscious-acceptance action (per the
+clean-slate-with-override invariant), which provisions the board and sets
+`github.enabled` while accepting that the repository's existing Issues coexist.
+
 ### 4. Tooling prerequisite check (`make install`)
 
 `make install` verifies the machine's `gh` authentication carries the scopes the
@@ -155,6 +174,10 @@ credential surface.
 - **Foreign state appears after enablement.** The never-touch-foreign invariant
   holds: only marker-bearing issues and the marker-stamped board are ever written,
   so unrelated Issues are never mutated.
+- **Origin re-pointed or capability lost.** The event-time live-eligibility check
+  fails, the projector is inert for that event, and nothing is written — a repo the
+  project no longer owns (or can no longer write) is never mutated, regardless of the
+  stored `github.enabled` flag.
 - **Stale or lost id cache.** Rebuilt by scanning issue markers; the cache is never
   the source of truth.
 
