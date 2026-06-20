@@ -12,7 +12,7 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.constants import ARTIFACT_INPUT
+from teleclaude.constants import ARTIFACT_INPUT, RoadmapStatus
 from teleclaude.core.next_machine.lifecycle import is_ready_band_eligible
 from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._models import (
@@ -229,9 +229,14 @@ class TodosDbRoadmapMixin:
         group_slug: str | None = None,
         after: list[str] | None = None,
         description: str | None = None,
+        status: RoadmapStatus = RoadmapStatus.ACTIVE,
         session: SqlAsyncSession | None = None,
     ) -> bool:
-        """Add or update a slug in the roadmap. Idempotent — returns True on success."""
+        """Add or update a slug in the roadmap. Idempotent — returns True on success.
+
+        ``status`` sets the new entry's roadmap status (``RoadmapStatus.ICEBOX``
+        parks it at creation); re-adding an existing slug never re-parks it.
+        """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
@@ -260,7 +265,7 @@ class TodosDbRoadmapMixin:
                     slug=slug,
                     group_slug=group_slug,
                     description=description,
-                    status="active",
+                    status=status.value,
                     created_at=now,
                     updated_at=now,
                 )

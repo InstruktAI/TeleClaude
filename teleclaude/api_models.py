@@ -352,20 +352,22 @@ class TodoDumpRequest(BaseModel):
     Omitted ``kind`` creates a kind-less todo: content is stored as immutable
     ``input`` with no lifecycle_phase and routed to /analyze-todo-input for assignment.
 
-    ``hold`` creates the todo with the automatic-dispatch brake set. ``silent``
-    is a legacy alias for non-task operator parking.
+    ``icebox`` creates the todo parked in the icebox so the daemon's prepare
+    auto-spawn is suppressed. ``group`` attaches the new todo as a child of the
+    named parent slug. The retired create-time parking fields ``hold``,
+    ``release``, and ``silent`` are rejected (``extra="forbid"``): a stale body
+    carrying them fails fast rather than silently auto-dispatching.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     slug: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
     kind: TodoDumpKind | None = None
     after: list[str] | None = None
     cwd: str | None = None
-    silent: bool = False
-    hold: bool = False
-    release: bool = False
+    icebox: bool = False
+    group: str | None = None
     plan: bool = False
 
 

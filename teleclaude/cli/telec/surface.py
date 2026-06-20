@@ -470,7 +470,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--hold] [--release] [--plan]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
@@ -482,9 +482,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "TUI dump path only."
                         ),
                     ),
-                    Flag("--silent", desc="Suppress autonomous pickup — explicit human request only", hidden=True),
-                    Flag("--hold", desc="Create the todo with automatic dispatch held"),
-                    Flag("--release", desc="Create the todo unheld; explicit counterpart for legacy parking aliases"),
+                    Flag("--icebox", desc="Create the todo parked in the icebox; suppress prepare auto-spawn"),
+                    Flag("--project-root", "-p", desc="Target an explicit project root instead of the invocation cwd"),
+                    Flag("--group", desc="Attach the new todo as a child of <parent-slug>, making the parent a holder"),
                     Flag(
                         "--plan",
                         desc="Content is a complete implementation-plan; skip prepare to build (--kind change only).",
@@ -501,9 +501,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
                     "deliberate exception: its content is a complete implementation-plan, not an input.)",
-                    "By default todos are unheld; the lifecycle runner applies the kind's autostart policy. "
-                    "--hold is the visible parking brake. The hidden --silent flag remains a legacy alias for "
-                    "non-task hold only.",
+                    "--icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — "
+                    "the create-time parking flag for ideas known to be on hold. --group <parent-slug> is the "
+                    "atomic alternative to split: it creates a complete grouped child in one call and makes the "
+                    "parent a holder via the existing derivation, no separate split step.",
                     "ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. "
                     "Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where "
                     "human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI "

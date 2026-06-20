@@ -241,9 +241,9 @@ def _handle_todo_create(args: list[str]) -> None:
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
-    silent = False
-    hold = False
-    release = False
+    icebox = False
+    group: str | None = None
+    project_root: str | None = None
     plan = False
     kind_value: str | None = None
 
@@ -255,15 +255,23 @@ def _handle_todo_create(args: list[str]) -> None:
         if arg == "--after" and i + 1 < len(args):
             after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
             i += 2
-        elif arg == "--silent":
-            silent = True
+        elif arg == "--icebox":
+            icebox = True
             i += 1
-        elif arg == "--hold":
-            hold = True
-            i += 1
-        elif arg == "--release":
-            release = True
-            i += 1
+        elif arg in ("--project-root", "-p") and i + 1 < len(args):
+            project_root = args[i + 1]
+            i += 2
+        elif arg in ("--project-root", "-p"):
+            print("Error: --project-root requires a value")
+            print(_usage("todo", "create"))
+            raise SystemExit(1)
+        elif arg == "--group" and i + 1 < len(args):
+            group = args[i + 1]
+            i += 2
+        elif arg == "--group":
+            print("Error: --group requires a value")
+            print(_usage("todo", "create"))
+            raise SystemExit(1)
         elif arg == "--plan":
             plan = True
             i += 1
@@ -302,11 +310,6 @@ def _handle_todo_create(args: list[str]) -> None:
         print(f"Error: invalid --kind '{kind_value}'. Valid values: {_VALID_KINDS_STR}")
         print(_usage("todo", "create"))
         raise SystemExit(1)
-    if hold and release:
-        print("Error: --hold and --release are mutually exclusive")
-        print(_usage("todo", "create"))
-        raise SystemExit(1)
-
     dump_kind = cast(TodoDumpKind, kind_value) if kind_value is not None else None
 
     request = TodoDumpRequest(
@@ -314,10 +317,9 @@ def _handle_todo_create(args: list[str]) -> None:
         content=content,
         after=after,
         kind=dump_kind,
-        cwd=str(resolve_invocation_cwd()),
-        silent=silent,
-        hold=hold,
-        release=release,
+        cwd=project_root if project_root is not None else str(resolve_invocation_cwd()),
+        icebox=icebox,
+        group=group,
         plan=plan,
     )
     result = tool_api_request(

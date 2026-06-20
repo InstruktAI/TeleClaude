@@ -43,6 +43,7 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
+    RoadmapStatus,
 )
 from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
@@ -665,8 +666,9 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
       - "bug": content is the "input" artifact; enters the diagnose-then-plan
         prepare flow.
       - "task": content is the "input" artifact; enters prepared and is unheld.
-    ``hold`` sets the per-todo dispatch brake. ``silent`` is a legacy alias for
-    non-task operator parking only.
+    ``icebox`` creates the todo parked in the icebox (no prepare auto-spawn).
+    ``group`` attaches the new todo as a child of the named parent slug,
+    making the parent a structural holder via the existing derivation.
     """
     slug = request.slug
     try:
@@ -685,31 +687,21 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 status_code=400,
                 detail="--plan supplies a complete implementation-plan and is only valid with --kind change",
             )
-        if request.hold and request.release:
-            raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
-
         state = initial_todo_state_for_kind(request.kind)
-        hold_requested = bool(
-            request.hold or (request.silent and not request.release and request.kind != TODO_KIND_TASK)
-        )
-        if request.kind is not None and not autostart_enabled_for_kind(map_v1_kind_to_canonical(request.kind)):
-            hold_requested = False
-        state["hold"] = hold_requested
-        if hold_requested:
-            state["hold_audit"] = {
-                "source": "creation",
-                "set_at": datetime.now(UTC).isoformat(),
-                "set_by_session_id": "",
-                "reason": "create",
-            }
         force_silent = request.kind == TODO_KIND_TASK
-        pickup_requested = not (hold_requested or force_silent)
+        pickup_requested = not (request.icebox or force_silent)
 
         written_artifact_name = ""
         written_artifact_body = ""
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
-                await todos_db.add_to_roadmap(slug, after=request.after if request.after else None, session=session)
+                await todos_db.add_to_roadmap(
+                    slug,
+                    after=request.after if request.after else None,
+                    group_slug=request.group,
+                    status=RoadmapStatus.ICEBOX if request.icebox else RoadmapStatus.ACTIVE,
+                    session=session,
+                )
                 await todos_db.write_state(slug, state, session=session)
 
                 if request.plan:
@@ -783,7 +775,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
     except HTTPException:
         raise
     except Exception:
-        logger.error("todo creation failed for slug=%s", slug, exc_info=True)
+        logger.error("todo creation failed", slug=slug, exc_info=True)
         raise
 
 
