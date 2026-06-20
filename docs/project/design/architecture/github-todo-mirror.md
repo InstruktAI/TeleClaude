@@ -22,7 +22,9 @@ and the same projection re-asserted on demand repairs any divergence.
 Inputs:
 
 - `workflow.todo.*` domain events (`created`, `phase_advanced`, `delivered`,
-  `updated`) delivered through the daemon's system event pipeline.
+  `updated`, `renamed`) delivered through the daemon's system event pipeline. The
+  `renamed` event carries the slug change; the projector resolves the affected todo
+  by its new slug and updates the existing Issue, identified by `roadmap.id`.
 - Local todo truth read at projection time from the todo store (status, kind,
   lifecycle phase, hold, delivered commit, dependency edges, group/children).
 - The project's GitHub origin, resolved live from `git remote get-url origin`.
@@ -68,6 +70,10 @@ rebuildable id cache.
   local→GitHub mapping is reconstructible by scanning issue markers; the local id
   cache is a lookup accelerator only, never authoritative, and is rebuildable from
   the markers.
+- **Slug rename preserves linkage.** The projector keys on the immutable
+  `roadmap.id`, never on the slug. A todo's active slug may change; the projection
+  resolves the todo by its new slug and updates the existing Issue in place, never
+  creating a duplicate.
 
 ## Primary flows
 
@@ -79,7 +85,7 @@ sequenceDiagram
     participant Bus as System event pipeline
     participant Mirror as Mirror projector
     participant GH as GitHub (gh)
-    DB->>Bus: workflow.todo.* (created/phase_advanced/delivered/updated)
+    DB->>Bus: workflow.todo.* (created/phase_advanced/delivered/updated/renamed)
     Bus->>Mirror: deliver event (off the mutation hot path)
     Mirror->>Mirror: github.enabled for this project? else inert
     Mirror->>DB: read this todo's complete current truth

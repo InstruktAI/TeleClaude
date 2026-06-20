@@ -371,6 +371,22 @@ canonical machine identity used for the log namespace
 (`instrukt-ai-logs {project_slug}`), the cross-project docs namespace, and
 service-level project lookup. `project_name` remains display-only.
 
+<!-- planned:github-todo-mirror -->
+
+### GitHub mirror
+
+The `github` section gates and parameterizes the per-project GitHub todo mirror.
+`github.enabled` is a verified flag written only by the clean-slate enablement
+preflight (`telec projects init` / `telec projects onboard`); every mirror projection
+checks it before any write. The section also holds a rebuildable cache of
+GitHub-generated identifiers — the Projects v2 board node id, single-select field
+option ids, and an id→issue map — which is an accelerator only, never authoritative,
+and is reconstructible by scanning issue `roadmap.id` markers. No credentials live in
+config: the mirror authenticates through the machine's existing `gh` login (scopes
+`repo` + `project`).
+
+<!-- /planned:github-todo-mirror -->
+
 ## Known caveats
 
 - `config.yml:agents` is required; startup fails if it is missing.
