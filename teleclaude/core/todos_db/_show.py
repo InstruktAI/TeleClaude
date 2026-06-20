@@ -17,7 +17,7 @@ from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
-    from teleclaude.core.todos_db._models import TodoRoadmap
+    from teleclaude.core.todos_db._models import Todo
     from teleclaude.core.todos_db._rows import ArtifactMetadataRow
 
 
@@ -222,8 +222,8 @@ def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> C
     return block
 
 
-def _derive_roadmap_block(row: TodoRoadmap | None, deps: dict[str, list[str]], slug: str) -> dict[str, StateValue]:
-    """Project persisted roadmap facts for ``slug``."""
+def _derive_todo_block(row: Todo | None, deps: dict[str, list[str]], slug: str) -> dict[str, StateValue]:
+    """Project persisted todo facts for ``slug``."""
     block: dict[str, StateValue] = {"deps": cast(StateValue, deps.get(slug, []))}
     if row is None:
         return block
@@ -424,9 +424,9 @@ async def _build_blocked_by(
     return blockers if blockers else None
 
 
-async def _find_roadmap_row(todos_db: TodosDb, slug: str) -> TodoRoadmap | None:
-    """Return the active/icebox/delivered roadmap row that backs the show payload."""
-    rows = await todos_db._list_roadmap_models(include_icebox=True, include_delivered=True)
+async def _find_todo_row(todos_db: TodosDb, slug: str) -> Todo | None:
+    """Return the active/icebox/delivered todo row that backs the show payload."""
+    rows = await todos_db._list_todo_models(include_icebox=True, include_delivered=True)
     for row in rows:
         if row.slug == slug:
             return row
@@ -435,7 +435,7 @@ async def _find_roadmap_row(todos_db: TodosDb, slug: str) -> TodoRoadmap | None:
 
 async def _holder_children(todos_db: TodosDb, slug: str) -> list[str]:
     """Return non-removed direct group children for a structural holder slug."""
-    entries = await todos_db.list_roadmap(include_icebox=True, include_delivered=True)
+    entries = await todos_db.list_todo(include_icebox=True, include_delivered=True)
     children = [
         str(entry["slug"])
         for entry in entries
@@ -449,12 +449,12 @@ async def _holder_children(todos_db: TodosDb, slug: str) -> list[str]:
 
 async def _lookup_removed_state(todos_db: TodosDb, slug: str) -> dict[str, StateValue] | None:
     """Resolve slug against removed rows and return state if uniquely matched."""
-    removed_entries = await todos_db.list_roadmap(include_removed=True, removed_only=True)
+    removed_entries = await todos_db.list_todo(include_removed=True, removed_only=True)
     matches = [r for r in removed_entries if r["slug"] == slug]
     if len(matches) == 1:
-        roadmap_id = matches[0]["id"]
+        todo_id = matches[0]["id"]
         async with todos_db._session() as session:
-            state_model = await session.get(TodoStateModel, roadmap_id)
+            state_model = await session.get(TodoStateModel, todo_id)
             if state_model is not None:
                 return upcycle_state_dict(json.loads(state_model.state))
     return None
@@ -487,24 +487,24 @@ async def _assemble_holder_payload(
     todos_db: TodosDb,
     slug: str,
     *,
-    roadmap_row: TodoRoadmap,
+    todo_row: Todo,
     holder_children: list[str],
     include_artifact_content: bool,
 ) -> HolderShowPayload:
     """Assemble a structural payload for a holder that intentionally has no state."""
     deps = await todos_db.load_deps()
-    roadmap_block = _derive_roadmap_block(roadmap_row, deps, slug)
-    roadmap_block["children"] = cast(StateValue, holder_children)
+    todo_block = _derive_todo_block(todo_row, deps, slug)
+    todo_block["children"] = cast(StateValue, holder_children)
     artifact_rows = await todos_db.artifact_metadata(slug)
     artifact_names = [row["name"] for row in artifact_rows]
     payload = HolderShowPayload(
         slug=slug,
         stage=_HOLDER_PHASE,
-        roadmap=roadmap_block,
+        roadmap=todo_block,
         artifacts=list(artifact_names),
     )
-    if roadmap_row.description:
-        payload["description"] = roadmap_row.description
+    if todo_row.description:
+        payload["description"] = todo_row.description
     if include_artifact_content:
         artifact_content: dict[str, str] = {}
         for name in artifact_names:
@@ -521,15 +521,15 @@ async def assemble_show_payload(
     include_artifact_content: bool = False,
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
-    roadmap_row = await _find_roadmap_row(todos_db, slug)
+    todo_row = await _find_todo_row(todos_db, slug)
     state = await todos_db.read_state(slug)
-    if state is None and roadmap_row is not None:
+    if state is None and todo_row is not None:
         holder_children = await _holder_children(todos_db, slug)
         if holder_children:
             return await _assemble_holder_payload(
                 todos_db,
                 slug,
-                roadmap_row=roadmap_row,
+                todo_row=todo_row,
                 holder_children=holder_children,
                 include_artifact_content=include_artifact_content,
             )
@@ -550,11 +550,11 @@ async def assemble_show_payload(
 
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
 
-    roadmap_entries = await todos_db.list_roadmap(
+    todo_entries = await todos_db.list_todo(
         include_icebox=True, include_delivered=True, include_removed=include_removed
     )
     description: str | None = None
-    for entry in roadmap_entries:
+    for entry in todo_entries:
         if entry["slug"] == slug:
             if is_removed and entry["status"] != "removed":
                 continue
@@ -567,7 +567,7 @@ async def assemble_show_payload(
         payload["description"] = description
 
     deps = await todos_db.load_deps()
-    payload["roadmap"] = _derive_roadmap_block(roadmap_row, deps, slug)
+    payload["roadmap"] = _derive_todo_block(todo_row, deps, slug)
     payload["state"] = _derive_state_block(state_model)
     payload["approvals"] = _derive_approvals_block(state_model)
     payload["reviews"] = _derive_reviews_block(state_model)

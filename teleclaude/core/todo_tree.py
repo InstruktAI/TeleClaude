@@ -1,7 +1,7 @@
-"""Sectioned dependency-tree projection for the roadmap.
+"""Sectioned dependency-tree projection for the todo.
 
 Single owner of todo shape: takes the flat ``list[TodoDTO]`` from
-``assemble_roadmap_from_db`` and returns ``active``/``delivered``/``icebox``
+``assemble_todo_from_db`` and returns ``active``/``delivered``/``icebox``
 sections, each a dependency tree. Every consumer (TUI, ``telec todo list``)
 renders these — no consumer re-derives hierarchy.
 
@@ -19,18 +19,18 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.constants import RoadmapStatus
-from teleclaude.core.roadmap import section_sort_key
+from teleclaude.constants import TodoStatus
+from teleclaude.core.todo import section_sort_key
 
 SiblingKey = Callable[[TodoDTO], Any]
 
 
 @dataclass
-class RoadmapNode:
+class TodoNode:
     """A todo and its nested children within one section's dependency tree."""
 
     todo: TodoDTO
-    children: list[RoadmapNode] = field(default_factory=list)
+    children: list[TodoNode] = field(default_factory=list)
     is_holder: bool = False
     """True only when other todos group-reference this slug (real holder).
 
@@ -41,13 +41,13 @@ class RoadmapNode:
 
 
 @dataclass
-class RoadmapSections:
+class TodoSections:
     """The todo list split into independent dependency trees by status."""
 
-    active: list[RoadmapNode] = field(default_factory=list)
-    delivered: list[RoadmapNode] = field(default_factory=list)
-    icebox: list[RoadmapNode] = field(default_factory=list)
-    removed: list[RoadmapNode] = field(default_factory=list)
+    active: list[TodoNode] = field(default_factory=list)
+    delivered: list[TodoNode] = field(default_factory=list)
+    icebox: list[TodoNode] = field(default_factory=list)
+    removed: list[TodoNode] = field(default_factory=list)
 
 
 @dataclass
@@ -130,7 +130,7 @@ def _topo_sort_siblings(
     return order
 
 
-def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) -> list[RoadmapNode]:
+def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) -> list[TodoNode]:
     """Build one section's dependency forest. Hierarchy is restricted to ``todos``."""
     if not todos:
         return []
@@ -175,8 +175,8 @@ def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) 
                     root_after[todo_root].append(dep_root)
     ordered_roots = _topo_sort_siblings(roots, root_after, by_slug=by_slug, sibling_key=sibling_key)
 
-    def _node(slug: str) -> RoadmapNode:
-        return RoadmapNode(
+    def _node(slug: str) -> TodoNode:
+        return TodoNode(
             todo=by_slug[slug],
             children=[_node(child) for child in children_map.get(slug, [])],
             is_holder=slug in holder_slugs,
@@ -185,7 +185,7 @@ def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) 
     return [_node(root) for root in ordered_roots]
 
 
-def build_roadmap_sections(todos: list[TodoDTO]) -> RoadmapSections:
+def build_todo_sections(todos: list[TodoDTO]) -> TodoSections:
     """Split the flat todo list into active/delivered/icebox dependency trees.
 
     Each section's tree is built over only its own members, so cross-section
@@ -196,30 +196,30 @@ def build_roadmap_sections(todos: list[TodoDTO]) -> RoadmapSections:
     icebox: list[TodoDTO] = []
     removed: list[TodoDTO] = []
     for todo in todos:
-        if todo.status == RoadmapStatus.DELIVERED:
+        if todo.status == TodoStatus.DELIVERED:
             delivered.append(todo)
-        elif todo.status == RoadmapStatus.ICEBOX:
+        elif todo.status == TodoStatus.ICEBOX:
             icebox.append(todo)
-        elif todo.status == RoadmapStatus.REMOVED:
+        elif todo.status == TodoStatus.REMOVED:
             removed.append(todo)
         else:
             active.append(todo)
-    return RoadmapSections(
+    return TodoSections(
         active=_build_tree(active, sibling_key=section_sort_key),
         delivered=_build_tree(
             delivered,
-            sibling_key=lambda todo: section_sort_key(todo, raw_status=RoadmapStatus.DELIVERED),
+            sibling_key=lambda todo: section_sort_key(todo, raw_status=TodoStatus.DELIVERED),
         ),
         icebox=_build_tree(
             icebox,
-            sibling_key=lambda todo: section_sort_key(todo, raw_status=RoadmapStatus.ICEBOX),
+            sibling_key=lambda todo: section_sort_key(todo, raw_status=TodoStatus.ICEBOX),
         ),
-        removed=[RoadmapNode(todo=t) for t in sorted(removed, key=lambda t: t.roadmap_id or "")],
+        removed=[TodoNode(todo=t) for t in sorted(removed, key=lambda t: t.todo_id or "")],
     )
 
 
 def flatten(
-    nodes: list[RoadmapNode],
+    nodes: list[TodoNode],
     _tree_lines: list[bool] | None = None,
     *,
     force_root_branch: bool = False,

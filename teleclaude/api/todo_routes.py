@@ -43,7 +43,7 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
-    RoadmapStatus,
+    TodoStatus,
 )
 from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
@@ -59,8 +59,8 @@ from teleclaude.core.next_machine.state_mutation import StateMutationError, Stat
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import HolderWriteRefused, get_todos_db
-from teleclaude.core.todos_db._roadmap_soft_delete import ReactivateRefused
 from teleclaude.core.todos_db._show import assemble_show_payload
+from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
@@ -332,7 +332,7 @@ async def todo_update(  # pyright: ignore
     migration_result: KindMigrationResult | None = None
     todos_db = await _get_todos_db_from_cwd(cwd)
 
-    if not await todos_db.slug_in_roadmap(slug):
+    if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
 
     if (new_slug is not None or kind is not None) and await _todo_build_started(todos_db, slug):
@@ -526,7 +526,7 @@ async def write_artifact(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     effective_updated_by = updated_by or "api.todo.write_artifact"
-    if not await todos_db.slug_in_roadmap(slug):
+    if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
     if await todos_db.is_holder(slug):
         raise HTTPException(
@@ -576,7 +576,7 @@ async def remove_artifact(
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     if name == ARTIFACT_INPUT:
         raise HTTPException(status_code=400, detail="input artifact cannot be removed")
-    if not await todos_db.slug_in_roadmap(slug):
+    if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
 
     try:
@@ -695,11 +695,11 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         written_artifact_body = ""
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
-                await todos_db.add_to_roadmap(
+                await todos_db.add_to_todo(
                     slug,
                     after=request.after if request.after else None,
                     group_slug=request.group,
-                    status=RoadmapStatus.ICEBOX if request.icebox else RoadmapStatus.ACTIVE,
+                    status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
                     session=session,
                 )
                 await todos_db.write_state(slug, state, session=session)
@@ -789,7 +789,7 @@ async def todo_split(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
-    if not await todos_db.slug_in_roadmap(slug):
+    if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
 
     parent_state = await todos_db.read_state(slug)
@@ -812,7 +812,7 @@ async def todo_split(
                     raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
                 if await todos_db.slug_conflicts_non_removed(child_slug, session=session):
                     raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
-                await todos_db.add_to_roadmap(child_slug, group_slug=slug, session=session)
+                await todos_db.add_to_todo(child_slug, group_slug=slug, session=session)
                 await todos_db.write_state(child_slug, child_state, session=session)
                 if parent_input:
                     await todos_db.write_artifact(
@@ -911,7 +911,7 @@ async def todo_reactivate(
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
     # Resolve slug to removed-row id (refuse if ambiguous)
-    removed_entries = await todos_db.list_roadmap(include_removed=True, removed_only=True)
+    removed_entries = await todos_db.list_todo(include_removed=True, removed_only=True)
     matches = [r for r in removed_entries if r["slug"] == slug]
 
     if not matches:
@@ -923,18 +923,18 @@ async def todo_reactivate(
             detail=f"Ambiguous slug '{slug}': multiple removed rows exist ({details}). Restore by id instead.",
         )
 
-    roadmap_id = matches[0]["id"]
+    todo_id = matches[0]["id"]
     try:
-        await todos_db.reactivate_removed(roadmap_id)
+        await todos_db.reactivate_removed(todo_id)
     except ReactivateRefused as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
-@router.post("/by-id/{roadmap_id}/reactivate")
+@router.post("/by-id/{todo_id}/reactivate")
 async def todo_reactivate_by_id(
-    roadmap_id: str,
+    todo_id: str,
     cwd: Annotated[str | None, Body(embed=True)] = None,
     _identity: CallerIdentity = Depends(clearance_todos_reactivate),
 ) -> _SlugStatusResponse:
@@ -942,7 +942,7 @@ async def todo_reactivate_by_id(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     try:
-        slug = await todos_db.reactivate_removed(roadmap_id)
+        slug = await todos_db.reactivate_removed(todo_id)
     except ReactivateRefused as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _SlugStatusResponse(status="ok", slug=slug)

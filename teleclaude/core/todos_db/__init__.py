@@ -1,4 +1,4 @@
-"""Todo lifecycle database for roadmap state and text artifacts."""
+"""Todo lifecycle database for todo state and text artifacts."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ from teleclaude.project_root import resolve_state_root
 from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
 from ._errors import HolderWriteRefused
-from ._roadmap import TodosDbRoadmapMixin
-from ._roadmap_soft_delete import TodosDbRoadmapSoftDeleteMixin
-from ._rows import ArtifactMetadataRow, ArtifactVersionRow, RoadmapRow
+from ._rows import ArtifactMetadataRow, ArtifactVersionRow, TodoRow
 from ._state import TodosDbStateMixin
+from ._todo import TodosDbTodoMixin
+from ._todo_soft_delete import TodosDbTodoSoftDeleteMixin
 
 
 class TodosDb(
     TodosDbArtifactsMixin,
-    TodosDbRoadmapMixin,
-    TodosDbRoadmapSoftDeleteMixin,
+    TodosDbTodoMixin,
+    TodosDbTodoSoftDeleteMixin,
     TodosDbStateMixin,
     TodosDbBase,
 ):
@@ -95,7 +95,7 @@ __all__ = [
     "ArtifactMetadataRow",
     "ArtifactVersionRow",
     "HolderWriteRefused",
-    "RoadmapRow",
+    "TodoRow",
     "TodosDb",
     "close_todos_db_instances",
     "get_todos_db",

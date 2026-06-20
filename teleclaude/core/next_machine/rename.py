@@ -116,7 +116,7 @@ async def execute_todo_rename(
     project_root_str = str(project_root)
     todos_db = await get_todos_db(project_root)
 
-    if not await todos_db.slug_in_roadmap(old_slug):
+    if not await todos_db.slug_in_todo(old_slug):
         return _refusal(f"todo {old_slug!r} was not found")
     if await todos_db.slug_conflicts_non_removed(new_slug):
         return _refusal(f"new slug {new_slug!r} is already held by a non-removed todo")
@@ -144,8 +144,8 @@ async def execute_todo_rename(
                     raise RuntimeError(f"state rename failed for {old_slug!r}")
                 if not await todos_db.rename_artifacts_slug(old_slug, new_slug, session=session):
                     raise RuntimeError(f"artifact rename failed for {old_slug!r}")
-                if not await todos_db.rename_roadmap_slug(old_slug, new_slug, session=session):
-                    raise RuntimeError(f"roadmap rename failed for {old_slug!r}")
+                if not await todos_db.rename_todo_slug(old_slug, new_slug, session=session):
+                    raise RuntimeError(f"todo rename failed for {old_slug!r}")
     except Exception:
         _restore_snippet_bytes(snippet_snapshot)
         rollback_todo_slug_surfaces(project_root_str, moves)

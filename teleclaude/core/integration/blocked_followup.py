@@ -190,7 +190,7 @@ class BlockedFollowUpStore:
             try:
                 now = datetime.now(tz=UTC).isoformat()
                 conn.execute(
-                    "INSERT INTO roadmap "  # guard: raw-sql
+                    "INSERT INTO todo "  # guard: raw-sql
                     "(id, slug, status, created_at, updated_at) "
                     "VALUES (?, ?, 'active', ?, ?)",
                     (str(uuid.uuid4()), slug, now, now),

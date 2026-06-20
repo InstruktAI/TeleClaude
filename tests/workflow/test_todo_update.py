@@ -77,7 +77,7 @@ async def _add_todo(
     build_started: bool = False,
     hold: bool = False,
 ) -> None:
-    await todos_db.add_to_roadmap(slug, group_slug=group_slug, after=after)
+    await todos_db.add_to_todo(slug, group_slug=group_slug, after=after)
     state: dict[str, StateValue] = {
         "schema_version": 4,
         "kind": kind,
@@ -337,8 +337,8 @@ async def test_rename_engine_preserves_artifacts_versions_and_deps(tmp_path: Pat
     result = await execute_todo_rename(daemon_db, "old-slug", "new-slug", str(project_root))
 
     assert result
-    assert not await todos_db.slug_in_roadmap("old-slug")
-    assert await todos_db.slug_in_roadmap("new-slug")
+    assert not await todos_db.slug_in_todo("old-slug")
+    assert await todos_db.slug_in_todo("new-slug")
     assert await todos_db.read_artifact("new-slug", ARTIFACT_INPUT) == _ARTIFACT_SECOND
     assert [version["content"] for version in await todos_db.artifact_versions("new-slug", ARTIFACT_INPUT)] == [
         _ARTIFACT_SECOND,

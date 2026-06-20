@@ -21,7 +21,7 @@ from teleclaude.types.state_value import StateValue
 
 from ._errors import HolderWriteRefused
 from ._migration_logs import record_v2_to_v3_migration
-from ._models import ROADMAP_DEPS_TABLE, ROADMAP_TABLE, TODO_STATE_TABLE, RoadmapDep, TodoRoadmap, TodoStateModel
+from ._models import TODO_DEPS_TABLE, TODO_STATE_TABLE, TODO_TABLE, Todo, TodoDep, TodoStateModel
 from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
 
 logger = get_logger(__name__)
@@ -123,15 +123,15 @@ class TodosDbStateMixin:
         return True
 
     async def _resolve_active_row_id(self, session: SqlAsyncSession, slug: str) -> str | None:
-        """Resolve a live (active or icebox) roadmap slug to its stable row id.
+        """Resolve a live (active or icebox) todo slug to its stable row id.
 
         Excludes delivered and removed rows so state reads/writes never resolve
         a soft-removed todo.
         """
         result = await session.exec(
-            select(TodoRoadmap.id)
-            .where(ROADMAP_TABLE.c.slug == slug)
-            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+            select(Todo.id)
+            .where(TODO_TABLE.c.slug == slug)
+            .where(TODO_TABLE.c.status.in_(("active", "icebox")))
             .limit(1)
         )
         row_id = result.one_or_none()
@@ -140,10 +140,10 @@ class TodosDbStateMixin:
     async def _is_state_holder_slug(self, session: SqlAsyncSession, slug: str) -> bool:
         """Return whether any live child group-references ``slug``."""
         result = await session.exec(
-            select(TodoRoadmap.id)
-            .where(ROADMAP_TABLE.c.group_slug == slug)
-            .where(ROADMAP_TABLE.c.slug != slug)
-            .where(ROADMAP_TABLE.c.status != "removed")
+            select(Todo.id)
+            .where(TODO_TABLE.c.group_slug == slug)
+            .where(TODO_TABLE.c.slug != slug)
+            .where(TODO_TABLE.c.status != "removed")
             .limit(1)
         )
         return result.first() is not None
@@ -169,8 +169,8 @@ class TodosDbStateMixin:
     ) -> None:
         if not self._payload_is_ready_candidate(payload):
             return
-        deps_result = await session.exec(select(RoadmapDep.depends_on).where(ROADMAP_DEPS_TABLE.c.slug == slug))
-        delivered_result = await session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+        deps_result = await session.exec(select(TodoDep.depends_on).where(TODO_DEPS_TABLE.c.slug == slug))
+        delivered_result = await session.exec(select(Todo.slug).where(TODO_TABLE.c.status == "delivered"))
         after_deps = [str(dep) for dep in deps_result.all()]
         delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
         if not is_ready_band_eligible(
@@ -181,9 +181,9 @@ class TodosDbStateMixin:
         ):
             return
         await session.exec(
-            update(TodoRoadmap)
-            .where(ROADMAP_TABLE.c.id == row_id)
-            .where(ROADMAP_TABLE.c.ready_since.is_(None))
+            update(Todo)
+            .where(TODO_TABLE.c.id == row_id)
+            .where(TODO_TABLE.c.ready_since.is_(None))
             .values(ready_since=when)
         )
 
@@ -198,8 +198,8 @@ class TodosDbStateMixin:
     ) -> None:
         if not self._payload_is_ready_candidate(payload):
             return
-        deps_result = session.exec(select(RoadmapDep.depends_on).where(ROADMAP_DEPS_TABLE.c.slug == slug))
-        delivered_result = session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+        deps_result = session.exec(select(TodoDep.depends_on).where(TODO_DEPS_TABLE.c.slug == slug))
+        delivered_result = session.exec(select(Todo.slug).where(TODO_TABLE.c.status == "delivered"))
         after_deps = [str(dep) for dep in deps_result.all()]
         delivered_slugs = {str(delivered_slug) for delivered_slug in delivered_result.all()}
         if not is_ready_band_eligible(
@@ -210,9 +210,9 @@ class TodosDbStateMixin:
         ):
             return
         session.exec(
-            update(TodoRoadmap)
-            .where(ROADMAP_TABLE.c.id == row_id)
-            .where(ROADMAP_TABLE.c.ready_since.is_(None))
+            update(Todo)
+            .where(TODO_TABLE.c.id == row_id)
+            .where(TODO_TABLE.c.ready_since.is_(None))
             .values(ready_since=when)
         )
 
@@ -220,10 +220,10 @@ class TodosDbStateMixin:
         """Sync counterpart of :meth:`_is_state_holder_slug`."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
             result = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.group_slug == slug)
-                .where(ROADMAP_TABLE.c.slug != slug)
-                .where(ROADMAP_TABLE.c.status != "removed")
+                select(Todo.id)
+                .where(TODO_TABLE.c.group_slug == slug)
+                .where(TODO_TABLE.c.slug != slug)
+                .where(TODO_TABLE.c.status != "removed")
                 .limit(1)
             )
             return result.first() is not None
@@ -255,28 +255,28 @@ class TodosDbStateMixin:
 
     async def write_state_by_id(
         self,
-        roadmap_id: str,
+        todo_id: str,
         state: dict[str, StateValue],
         *,
         session: SqlAsyncSession | None = None,
     ) -> None:
-        """Write the typed state payload for a specific roadmap row id."""
+        """Write the typed state payload for a specific todo row id."""
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
-            entry = await db_session.get(TodoRoadmap, roadmap_id)
+            entry = await db_session.get(Todo, todo_id)
             if entry is None:
-                raise ValueError(f"Roadmap row {roadmap_id} not found")
+                raise ValueError(f"Todo row {todo_id} not found")
 
             # Upcycle and canonicalize before storage
             canonical = canonicalize_state_for_storage(state)
             now = datetime.now(UTC).isoformat()
 
             # Upsert state model
-            state_model = await db_session.get(TodoStateModel, roadmap_id)
+            state_model = await db_session.get(TodoStateModel, todo_id)
             if state_model is None:
                 state_model = TodoStateModel(
-                    id=roadmap_id,
+                    id=todo_id,
                     slug=entry.slug,
                     state=json.dumps(canonical),
                     created_at=now,
@@ -364,14 +364,14 @@ class TodosDbStateMixin:
         await self.write_state(slug, typed_state)
 
     async def read_state_delivered(self, slug: str) -> dict[str, StateValue] | None:
-        """Read state for a delivered slug via roadmap ID join."""
+        """Read state for a delivered slug via todo ID join."""
         async with self._session() as session:  # type: ignore[attr-defined]
             result = await session.exec(
                 select(TODO_STATE_TABLE.c.state)
-                .join(ROADMAP_TABLE, TODO_STATE_TABLE.c.id == ROADMAP_TABLE.c.id)
-                .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status == "delivered")
-                .order_by(ROADMAP_TABLE.c.delivered_at.desc())
+                .join(TODO_TABLE, TODO_STATE_TABLE.c.id == TODO_TABLE.c.id)
+                .where(TODO_TABLE.c.slug == slug)
+                .where(TODO_TABLE.c.status == "delivered")
+                .order_by(TODO_TABLE.c.delivered_at.desc())
                 .limit(1)
             )
             state_json = result.one_or_none()
@@ -435,14 +435,14 @@ class TodosDbStateMixin:
         """Return all slugs with stored state, excluding soft-removed todos.
 
         State rows are retained when a todo is removed, so this enumeration must
-        join the roadmap row and gate out ``removed`` — otherwise a removed todo
+        join the todo row and gate out ``removed`` — otherwise a removed todo
         leaks back in through the state-derived slug list.
         """
         async with self._session() as session:  # type: ignore[attr-defined]
             result = await session.exec(
                 select(TodoStateModel.slug)
-                .join(TodoRoadmap, TODO_STATE_TABLE.c.id == ROADMAP_TABLE.c.id)
-                .where(ROADMAP_TABLE.c.status != "removed")
+                .join(Todo, TODO_STATE_TABLE.c.id == TODO_TABLE.c.id)
+                .where(TODO_TABLE.c.status != "removed")
                 .order_by(TODO_STATE_TABLE.c.slug)
             )
             return [str(slug) for slug in result.all()]
@@ -468,18 +468,18 @@ class TodosDbStateMixin:
         """Sync version of read_state for use from worker threads."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
             holder = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.group_slug == slug)
-                .where(ROADMAP_TABLE.c.slug != slug)
-                .where(ROADMAP_TABLE.c.status != "removed")
+                select(Todo.id)
+                .where(TODO_TABLE.c.group_slug == slug)
+                .where(TODO_TABLE.c.slug != slug)
+                .where(TODO_TABLE.c.status != "removed")
                 .limit(1)
             ).first()
             if holder is not None:
                 return None
             row_id = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+                select(Todo.id)
+                .where(TODO_TABLE.c.slug == slug)
+                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             ).one_or_none()
             if row_id is None:
@@ -502,19 +502,19 @@ class TodosDbStateMixin:
         payload = canonicalize_state_for_storage(state)
         with self._sync_session() as session:  # type: ignore[attr-defined]
             row_id = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+                select(Todo.id)
+                .where(TODO_TABLE.c.slug == slug)
+                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             ).one_or_none()
             if row_id is None:
                 msg = f"write_state_sync: no active/icebox todo for slug {slug!r}"
                 raise ValueError(msg)
             holder = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.group_slug == slug)
-                .where(ROADMAP_TABLE.c.slug != slug)
-                .where(ROADMAP_TABLE.c.status != "removed")
+                select(Todo.id)
+                .where(TODO_TABLE.c.group_slug == slug)
+                .where(TODO_TABLE.c.slug != slug)
+                .where(TODO_TABLE.c.status != "removed")
                 .limit(1)
             ).first()
             if holder is not None:

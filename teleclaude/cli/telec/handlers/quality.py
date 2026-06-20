@@ -22,6 +22,9 @@ from teleclaude.quality.scope import (
     validate_scoped_paths,
 )
 
+_PROCESS_GROUP_TERM_GRACE_SECONDS = 2.0
+_PROCESS_GROUP_KILL_GRACE_SECONDS = 2.0
+
 
 def handle_lint(args: list[str]) -> None:
     """Handle the ``telec code lint`` command.
@@ -243,12 +246,12 @@ def _kill_process_group(proc: subprocess.Popen[bytes]) -> None:
         os.killpg(pgid, signal.SIGTERM)
     except OSError:
         return
-    if not _wait_process_group(proc, pgid, timeout=2):
+    if not _wait_process_group(proc, pgid, timeout=_PROCESS_GROUP_TERM_GRACE_SECONDS):
         try:
             os.killpg(pgid, signal.SIGKILL)
         except OSError:
             pass
-        _wait_process_group(proc, pgid, timeout=2)
+        _wait_process_group(proc, pgid, timeout=_PROCESS_GROUP_KILL_GRACE_SECONDS)
 
 
 def _process_group_exists(pgid: int) -> bool:

@@ -28,7 +28,7 @@ async def read_parent_prd_ground(
     """Read PRD-approved direct dependency ground for a dependent todo."""
     entries: list[ParentPrdGroundEntry] = []
     for dependency in await todos_db.get_deps_with_status(slug):
-        if dependency.roadmap_status == "delivered":
+        if dependency.todo_status == "delivered":
             continue
         raw_state = await todos_db.read_state(dependency.dep_slug)
         if raw_state is None:

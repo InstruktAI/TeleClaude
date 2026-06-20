@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.constants import IntegrationPhase, RoadmapStatus
+from teleclaude.constants import IntegrationPhase, TodoStatus
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     derive_build_status,
@@ -101,9 +101,9 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
     leaf-children aggregate. Derived here so every consumer reads one
     authoritative value.
     """
-    by_id = {t.roadmap_id: t for t in todos if t.roadmap_id}
+    by_id = {t.todo_id: t for t in todos if t.todo_id}
     # Removed slug twins must not override a live/delivered row used for tree derivation.
-    non_removed_by_slug = {t.slug: t for t in todos if t.status != RoadmapStatus.REMOVED}
+    non_removed_by_slug = {t.slug: t for t in todos if t.status != TodoStatus.REMOVED}
 
     children_by_parent: dict[str, list[str]] = {}
     for todo in todos:
@@ -117,7 +117,7 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
         kids = children_by_parent.get(slug)
         if not kids:
             leaf = non_removed_by_slug.get(slug)
-            if leaf is None or leaf.status == RoadmapStatus.ICEBOX:
+            if leaf is None or leaf.status == TodoStatus.ICEBOX:
                 return []
             return [leaf]
         collected: list[TodoDTO] = []
@@ -136,27 +136,27 @@ def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
         leaf_statuses = [leaf.status for leaf in leaf_todos]
         if not leaf_statuses:
             continue
-        if all(s == RoadmapStatus.DELIVERED for s in leaf_statuses):
-            derived = RoadmapStatus.DELIVERED
-        elif any(s == RoadmapStatus.IN_PROGRESS for s in leaf_statuses):
-            derived = RoadmapStatus.IN_PROGRESS
-        elif all(s == RoadmapStatus.READY for s in leaf_statuses):
-            derived = RoadmapStatus.READY
+        if all(s == TodoStatus.DELIVERED for s in leaf_statuses):
+            derived = TodoStatus.DELIVERED
+        elif any(s == TodoStatus.IN_PROGRESS for s in leaf_statuses):
+            derived = TodoStatus.IN_PROGRESS
+        elif all(s == TodoStatus.READY for s in leaf_statuses):
+            derived = TodoStatus.READY
         else:
-            derived = RoadmapStatus.PENDING
+            derived = TodoStatus.PENDING
 
         updates: dict[str, str | None] = {"status": derived.value}
-        if derived == RoadmapStatus.READY:
+        if derived == TodoStatus.READY:
             updates["band"] = READY_BAND
             updates["ready_since"] = _first_text([leaf.ready_since or leaf.updated_at for leaf in leaf_todos])
 
         if updates["status"] != holder.status or any(getattr(holder, key) != value for key, value in updates.items()):
             updated_holder = holder.model_copy(update=updates)
-            if holder.roadmap_id:
-                by_id[holder.roadmap_id] = updated_holder
+            if holder.todo_id:
+                by_id[holder.todo_id] = updated_holder
             non_removed_by_slug[parent_slug] = updated_holder
 
-    return [by_id[t.roadmap_id] if t.roadmap_id and t.roadmap_id in by_id else t for t in todos]
+    return [by_id[t.todo_id] if t.todo_id and t.todo_id in by_id else t for t in todos]
 
 
 def _descending_text_key(value: str | None) -> tuple[int, tuple[int, ...]]:
@@ -208,13 +208,13 @@ def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, State
     else:
         lifecycle = require_lifecycle_phase(
             state.get("lifecycle_phase"),
-            context=f"assemble_roadmap_from_db({slug})",
+            context=f"assemble_todo_from_db({slug})",
         )
         current_value = lifecycle.value
         is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
     state_phase = state.get("phase", "")
-    is_delivered = state_phase == RoadmapStatus.DELIVERED
+    is_delivered = state_phase == TodoStatus.DELIVERED
 
     build_status = derive_build_status(
         current_value,
@@ -235,24 +235,24 @@ def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, State
         integration_phase = raw_integration_phase
 
     todo_status = raw_status
-    if todo_status == RoadmapStatus.DELIVERED or is_delivered:
-        todo_status = RoadmapStatus.DELIVERED
+    if todo_status == TodoStatus.DELIVERED or is_delivered:
+        todo_status = TodoStatus.DELIVERED
         integration_phase = IntegrationPhase.DELIVERED
-    elif todo_status == RoadmapStatus.ACTIVE and is_draft_lifecycle:
-        todo_status = RoadmapStatus.PENDING
+    elif todo_status == TodoStatus.ACTIVE and is_draft_lifecycle:
+        todo_status = TodoStatus.PENDING
 
     ready, _ = is_ready_for_work(
         kind=kind if isinstance(kind, str) else TODO_KIND_DEFAULT,
         lifecycle_phase=lifecycle_phase,
     )
-    if todo_status == RoadmapStatus.ACTIVE and build_status:
-        todo_status = RoadmapStatus.IN_PROGRESS
-    elif todo_status == RoadmapStatus.ACTIVE and ready:
-        todo_status = RoadmapStatus.READY
-    elif todo_status == RoadmapStatus.ACTIVE and kind_is_unset:
-        todo_status = RoadmapStatus.IN_PROGRESS
-    elif todo_status == RoadmapStatus.ACTIVE and lifecycle_phase:
-        todo_status = RoadmapStatus.IN_PROGRESS
+    if todo_status == TodoStatus.ACTIVE and build_status:
+        todo_status = TodoStatus.IN_PROGRESS
+    elif todo_status == TodoStatus.ACTIVE and ready:
+        todo_status = TodoStatus.READY
+    elif todo_status == TodoStatus.ACTIVE and kind_is_unset:
+        todo_status = TodoStatus.IN_PROGRESS
+    elif todo_status == TodoStatus.ACTIVE and lifecycle_phase:
+        todo_status = TodoStatus.IN_PROGRESS
 
     return _ProjectionFields(
         todo_status=todo_status,
@@ -273,9 +273,9 @@ def section_sort_key(todo: TodoDTO, *, raw_status: str | None = None) -> tuple[i
     sorts by ``delivered_at``, icebox by ``updated_at``. Slug breaks ties.
     """
     status = raw_status or todo.status
-    if status == RoadmapStatus.DELIVERED:
+    if status == TodoStatus.DELIVERED:
         return (0, _descending_text_key(todo.delivered_at), todo.slug)
-    if status == RoadmapStatus.ICEBOX:
+    if status == TodoStatus.ICEBOX:
         return (0, _descending_text_key(todo.updated_at), todo.slug)
     band_rank = 0 if todo.band == READY_BAND else 1
     return (band_rank, _descending_text_key(todo.ready_since or todo.created_at), todo.slug)
@@ -286,21 +286,21 @@ def _apply_section_ordering(
     delivered_slug_set: set[str],
     raw_status_by_id: dict[str, str],
 ) -> list[TodoDTO]:
-    """Sort todos into their roadmap sections (ready/prep/icebox/delivered)."""
+    """Sort todos into their todo sections (ready/prep/icebox/delivered)."""
     banded: list[TodoDTO] = []
     for todo in todos:
-        raw_status = raw_status_by_id.get(todo.roadmap_id or "")
-        if raw_status == RoadmapStatus.ACTIVE:
+        raw_status = raw_status_by_id.get(todo.todo_id or "")
+        if raw_status == TodoStatus.ACTIVE:
             banded.append(_with_active_band(todo, delivered_slug_set))
         else:
             banded.append(todo)
     return sorted(
         banded,
-        key=lambda todo: section_sort_key(todo, raw_status=raw_status_by_id.get(todo.roadmap_id or "")),
+        key=lambda todo: section_sort_key(todo, raw_status=raw_status_by_id.get(todo.todo_id or "")),
     )
 
 
-def assemble_roadmap_from_db(
+def assemble_todo_from_db(
     project_path: str,
     include_icebox: bool = False,
     icebox_only: bool = False,
@@ -365,22 +365,22 @@ def assemble_roadmap_from_db(
             conditions.append(" OR ".join(parts))
 
         where = conditions[0] if conditions else "1=1"
-        roadmap_started_at = time.perf_counter()
+        todo_started_at = time.perf_counter()
         rows = conn.execute(
             "SELECT id, slug, ready_since, group_slug, description, status, "  # guard: raw-sql
-            f"delivered_at, updated_at, created_at, removed_at FROM roadmap WHERE {where} ORDER BY id",
+            f"delivered_at, updated_at, created_at, removed_at FROM todo WHERE {where} ORDER BY id",
         ).fetchall()
-        roadmap_dt = time.perf_counter() - roadmap_started_at
+        todo_dt = time.perf_counter() - todo_started_at
 
         delivered_slug_rows = conn.execute(
-            "SELECT slug FROM roadmap WHERE status = 'delivered'",  # guard: raw-sql
+            "SELECT slug FROM todo WHERE status = 'delivered'",  # guard: raw-sql
         ).fetchall()
         delivered_slug_set = {str(delivered_slug[0]) for delivered_slug in delivered_slug_rows}
 
         # Load deps
         deps_started_at = time.perf_counter()
         dep_rows = conn.execute(
-            "SELECT slug, depends_on FROM roadmap_deps",  # guard: raw-sql
+            "SELECT slug, depends_on FROM todo_deps",  # guard: raw-sql
         ).fetchall()
         deps_dt = time.perf_counter() - deps_started_at
         deps_map: dict[str, list[str]] = {}
@@ -410,10 +410,10 @@ def assemble_roadmap_from_db(
             is_holder = slug in holder_slugs
             if state_row is None and not is_holder:
                 logger.debug(
-                    "Skipping roadmap row without todo state",
+                    "Skipping todo row without todo state",
                     slug=slug,
                     project_path=project_path,
-                    roadmap_id=str(row_id),
+                    todo_id=str(row_id),
                 )
                 continue
             if is_holder:
@@ -490,7 +490,7 @@ def assemble_roadmap_from_db(
                     ),
                     files=[ar[0] for ar in artifact_rows],
                     version_total=version_total,
-                    roadmap_id=str(row_id),
+                    todo_id=str(row_id),
                     removed_at=row[9],
                 )
             )
@@ -510,7 +510,7 @@ def assemble_roadmap_from_db(
                 t
                 for t in todos
                 if not (
-                    t.status == RoadmapStatus.DELIVERED
+                    t.status == TodoStatus.DELIVERED
                     and t.delivered_at
                     and t.delivered_at < delivered_since
                     and not (t.group and t.group in all_slugs)
@@ -521,8 +521,8 @@ def assemble_roadmap_from_db(
         if total_dt >= 2.0:
             logger.warning(
                 (
-                    "assemble_roadmap_from_db was slow: total=%.3fs project=%s rows=%d deps=%d "
-                    "init=%.3fs conn_open=%.3fs roadmap=%.3fs deps_load=%.3fs "
+                    "assemble_todo_from_db was slow: total=%.3fs project=%s rows=%d deps=%d "
+                    "init=%.3fs conn_open=%.3fs todo=%.3fs deps_load=%.3fs "
                     "state_queries=%.3fs artifact_queries=%.3fs todo_build=%.3fs other=%.3fs"
                 ),
                 total_dt,
@@ -531,7 +531,7 @@ def assemble_roadmap_from_db(
                 len(dep_rows),
                 init_dt,
                 conn_open_dt,
-                roadmap_dt,
+                todo_dt,
                 deps_dt,
                 state_query_total_dt,
                 artifact_query_total_dt,
@@ -541,7 +541,7 @@ def assemble_roadmap_from_db(
                     total_dt
                     - init_dt
                     - conn_open_dt
-                    - roadmap_dt
+                    - todo_dt
                     - deps_dt
                     - state_query_total_dt
                     - artifact_query_total_dt

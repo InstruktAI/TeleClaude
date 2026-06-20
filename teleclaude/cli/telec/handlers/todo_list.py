@@ -8,8 +8,8 @@ from typing import TypedDict
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.cli.telec.help import _usage
-from teleclaude.core.roadmap import parse_since_to_cutoff
-from teleclaude.core.roadmap_tree import RoadmapNode, build_roadmap_sections, flatten
+from teleclaude.core.todo import parse_since_to_cutoff
+from teleclaude.core.todo_tree import TodoNode, build_todo_sections, flatten
 from teleclaude.project_root import resolve_invocation_project_root
 from teleclaude.services.work import get_work_service
 
@@ -38,7 +38,7 @@ def _handle_todo_list(args: list[str]) -> None:
     show_removed = parsed["include_removed"] or parsed["removed_only"]
 
     svc = get_work_service(str(project_root))
-    todos = svc.roadmap.entries(
+    todos = svc.todo.entries(
         include_icebox=True,
         include_delivered=True,
         include_removed=True,
@@ -52,7 +52,7 @@ def _handle_todo_list(args: list[str]) -> None:
             print("Todo list is empty.")
         return
 
-    sections = build_roadmap_sections(todos)
+    sections = build_todo_sections(todos)
     if parsed["delivered_only"]:
         section_items = [("delivered", sections.delivered)]
     elif parsed["icebox_only"]:
@@ -132,7 +132,7 @@ def _resolve_todo_project_root() -> Path:
     return resolve_invocation_project_root()
 
 
-def _print_sectioned_todo_list(sections: list[tuple[str, list[RoadmapNode]]]) -> None:
+def _print_sectioned_todo_list(sections: list[tuple[str, list[TodoNode]]]) -> None:
     first = True
     for name, nodes in sections:
         if not nodes:
@@ -178,7 +178,7 @@ def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
     return result
 
 
-def _node_to_dict(node: RoadmapNode) -> _TrimmedTodoDict:
+def _node_to_dict(node: TodoNode) -> _TrimmedTodoDict:
     result = _todo_to_trimmed_dict(node.todo)
     if node.children:
         result["children"] = [_node_to_dict(child) for child in node.children]

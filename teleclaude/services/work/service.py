@@ -1,7 +1,7 @@
 """SqliteWorkService — facade composing focused sub-services.
 
 The service exposes sub-services as properties:
-    svc.roadmap   — todo-list ordering/dependency storage operations
+    svc.todo   — todo-list ordering/dependency storage operations
     svc.state     — todo state read, write, delete, list, classify
     svc.artifacts — artifact read, write, list, versions, digest
 
@@ -15,26 +15,26 @@ from pathlib import Path
 
 from teleclaude.services.work._artifacts import ArtifactOps
 from teleclaude.services.work._base import WorkServiceBase
-from teleclaude.services.work._roadmap import RoadmapOps
 from teleclaude.services.work._state import StateOps
+from teleclaude.services.work._todo import TodoOps
 
 
 class SqliteWorkService(WorkServiceBase):
     """Work service backed by TodosDb (SQLite).
 
-    Composes RoadmapOps, StateOps, and ArtifactOps as sub-services.
+    Composes TodoOps, StateOps, and ArtifactOps as sub-services.
     Each sub-service is a plain class with a focused responsibility.
     """
 
     def __init__(self, project_root: str) -> None:
         super().__init__(project_root)
-        self._roadmap = RoadmapOps(self)
+        self._todo = TodoOps(self)
         self._state = StateOps(self)
         self._artifacts = ArtifactOps(self)
 
     @property
-    def roadmap(self) -> RoadmapOps:
-        return self._roadmap
+    def todo(self) -> TodoOps:
+        return self._todo
 
     @property
     def state(self) -> StateOps:

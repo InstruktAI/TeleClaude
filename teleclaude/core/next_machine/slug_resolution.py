@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.core.todos_db._rows import RoadmapRow
+from teleclaude.core.todos_db._rows import TodoRow
 
 
 class HolderResolutionMode(StrEnum):
@@ -38,7 +38,7 @@ class HolderResolutionReason(StrEnum):
 
     NOT_HOLDER = "not_holder"
     OK = "ok"
-    CHILDREN_NOT_IN_ROADMAP = "children_not_in_roadmap"
+    CHILDREN_NOT_IN_TODO = "children_not_in_todo"
     COMPLETE = "complete"
     DEPS_UNSATISFIED = "deps_unsatisfied"
     ALL_PREPARED = "all_prepared"
@@ -74,7 +74,7 @@ async def resolve_slug_async(
     if slug:
         return slug, True, ""
 
-    entries = await todos_db.list_roadmap()
+    entries = await todos_db.list_todo()
     delivered = await todos_db.delivered_slugs()
     dependency_delivered = (
         await effective_delivered_slugs_for_dependencies(todos_db, delivered) if dependencies is not None else delivered
@@ -111,9 +111,9 @@ async def _get_item_phase_db(
     if delivered is None:
         delivered = await todos_db.delivered_slugs()
     is_delivered = slug in delivered
-    is_in_roadmap = await todos_db.slug_in_roadmap(slug)
+    is_in_todo = await todos_db.slug_in_todo(slug)
 
-    if is_delivered and is_in_roadmap:
+    if is_delivered and is_in_todo:
         msg = (
             f"Slug '{slug}' found in both delivered and the active todo list. "
             f"This is a data integrity issue — escalate to the user to resolve."
@@ -128,7 +128,7 @@ async def _get_item_phase_db(
         if isinstance(phase, str):
             return phase
 
-    if is_in_roadmap:
+    if is_in_todo:
         return ItemPhase.PENDING.value
 
     msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in the todo list. Cannot determine phase."
@@ -154,7 +154,7 @@ def deps_satisfied(dependencies: dict[str, list[str]], satisfied_set: set[str], 
     return not slug_deps or all(dep in satisfied_set for dep in slug_deps)
 
 
-def _children_by_group(entries: list[RoadmapRow]) -> dict[str, list[str]]:
+def _children_by_group(entries: list[TodoRow]) -> dict[str, list[str]]:
     """Index group_slug children from todo rows."""
     children: dict[str, list[str]] = {}
     for entry in entries:
@@ -186,7 +186,7 @@ async def effective_delivered_slugs_for_dependencies(
     mirrors the todo list projection without mutating the holder row itself.
     """
     effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
-    entries = await todos_db.list_roadmap(include_delivered=True)
+    entries = await todos_db.list_todo(include_delivered=True)
     grouped_children = _children_by_group(entries)
     candidates = {entry["slug"] for entry in entries}
 
@@ -221,7 +221,7 @@ async def effective_prepared_slugs_for_dependencies(
 ) -> set[str]:
     """Return delivered/prepared slugs plus holders whose children are all prepared."""
     effective = set(delivered if delivered is not None else await todos_db.delivered_slugs())
-    entries = await todos_db.list_roadmap(include_delivered=True)
+    entries = await todos_db.list_todo(include_delivered=True)
     for entry in entries:
         slug = entry["slug"]
         if slug in effective:
@@ -265,7 +265,7 @@ async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
 
 async def resolve_holder_children_db(todos_db: TodosDb, holder_slug: str) -> list[str]:
     """Resolve container/holder child slugs from DB todo grouping."""
-    entries = await todos_db.list_roadmap(include_delivered=True)
+    entries = await todos_db.list_todo(include_delivered=True)
     return await _resolve_holder_children_from_entries(todos_db, holder_slug, _children_by_group(entries))
 
 
@@ -281,7 +281,7 @@ async def resolve_runnable_holder_children_db(
     if not children:
         return HolderChildResolution(children=(), runnable=(), reason=HolderResolutionReason.NOT_HOLDER)
 
-    entries = await todos_db.list_roadmap()
+    entries = await todos_db.list_todo()
     active_slugs = {entry["slug"] for entry in entries}
     delivered = await todos_db.delivered_slugs()
     dependency_satisfied = (
@@ -290,19 +290,19 @@ async def resolve_runnable_holder_children_db(
         else await effective_delivered_slugs_for_dependencies(todos_db, delivered)
     )
     runnable: list[str] = []
-    has_children_in_roadmap = False
+    has_children_in_todo = False
     has_incomplete_children = False
     has_deps_blocked = False
     has_not_ready = False
 
     for child in children:
         if child in delivered:
-            has_children_in_roadmap = True
+            has_children_in_todo = True
             continue
         if child not in active_slugs:
             continue
 
-        has_children_in_roadmap = True
+        has_children_in_todo = True
         phase = await _get_item_phase_db(todos_db, child, delivered)
         if phase == ItemPhase.DONE.value:
             continue
@@ -329,9 +329,9 @@ async def resolve_runnable_holder_children_db(
         return HolderChildResolution(
             children=tuple(children), runnable=tuple(runnable), reason=HolderResolutionReason.OK
         )
-    if not has_children_in_roadmap:
+    if not has_children_in_todo:
         return HolderChildResolution(
-            children=tuple(children), runnable=(), reason=HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP
+            children=tuple(children), runnable=(), reason=HolderResolutionReason.CHILDREN_NOT_IN_TODO
         )
     if not has_incomplete_children:
         return HolderChildResolution(children=tuple(children), runnable=(), reason=HolderResolutionReason.COMPLETE)
@@ -352,9 +352,9 @@ def get_item_phase(cwd: str, slug: str) -> str:
     todos_db = get_todos_db_sync(cwd)
     delivered = todos_db.delivered_slugs_sync()
     is_delivered = slug in delivered
-    is_in_roadmap = todos_db.resolve_id_sync(slug) is not None
+    is_in_todo = todos_db.resolve_id_sync(slug) is not None
 
-    if is_delivered and is_in_roadmap:
+    if is_delivered and is_in_todo:
         msg = (
             f"Slug '{slug}' found in both delivered and the active todo list. "
             f"This is a data integrity issue — escalate to the user to resolve."
@@ -369,16 +369,16 @@ def get_item_phase(cwd: str, slug: str) -> str:
         if isinstance(phase, str) and phase:
             return phase
 
-    if is_in_roadmap:
+    if is_in_todo:
         return ItemPhase.PENDING.value
 
     msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in the todo list. Cannot determine phase."
     raise ValueError(msg)
 
 
-async def slug_in_roadmap(todos_db: TodosDb, slug: str) -> bool:
-    """Compatibility shim for callers/tests that still patch module-level roadmap checks."""
-    return await todos_db.slug_in_roadmap(slug)
+async def slug_in_todo(todos_db: TodosDb, slug: str) -> bool:
+    """Compatibility shim for callers/tests that still patch module-level todo checks."""
+    return await todos_db.slug_in_todo(slug)
 
 
 def set_item_phase(cwd: str, slug: str, phase: str) -> None:
@@ -403,5 +403,5 @@ __all__ = [
     "resolve_slug_async",
     "set_item_phase",
     "set_item_phase_db",
-    "slug_in_roadmap",
+    "slug_in_todo",
 ]

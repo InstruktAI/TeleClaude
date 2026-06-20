@@ -11,9 +11,9 @@ import pytest
 
 from teleclaude.cli.telec.handlers import _todo_show
 from teleclaude.cli.telec.handlers import todo as todo_handlers
-from teleclaude.constants import RoadmapStatus
+from teleclaude.constants import TodoStatus
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
-from teleclaude.core.roadmap import assemble_roadmap_from_db
+from teleclaude.core.todo import assemble_todo_from_db
 from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
 from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
 
@@ -28,7 +28,7 @@ _HOLDER_INPUT = "# Holder input"
 _SLUG_KEY = "slug"
 _STAGE_KEY = "stage"
 _HOLDER_STAGE = "holder"
-_ROADMAP_KEY = "roadmap"
+_TODO_KEY = "roadmap"
 _INPUT_ARTIFACT = "input"
 _ARTIFACTS_KEY = "artifacts"
 _ARTIFACT_CONTENT_KEY = "artifact_content"
@@ -41,7 +41,7 @@ _HOLDER_STRUCTURAL_KEYS = frozenset(
     {
         _SLUG_KEY,
         _STAGE_KEY,
-        _ROADMAP_KEY,
+        _TODO_KEY,
         _ARTIFACTS_KEY,
         _ARTIFACT_CONTENT_KEY,
     }
@@ -135,7 +135,7 @@ async def test_show_payload_classifies_kindless_todo_without_lifecycle_phase(tmp
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap("classify-me")
+    await todos_db.add_to_todo("classify-me")
     await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
 
     payload = await assemble_show_payload(todos_db, "classify-me")
@@ -154,7 +154,7 @@ async def test_show_payload_buckets_diagnose_as_prepare(tmp_path: Path, snapshot
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap("diagnose-me")
+    await todos_db.add_to_todo("diagnose-me")
     await todos_db.write_state(
         "diagnose-me",
         {
@@ -173,17 +173,17 @@ async def test_show_payload_buckets_diagnose_as_prepare(tmp_path: Path, snapshot
 
 
 @pytest.mark.spec(_SPEC, "UC-WM1")
-async def test_roadmap_projection_includes_kindless_todo_without_lifecycle_phase(
+async def test_todo_projection_includes_kindless_todo_without_lifecycle_phase(
     tmp_path: Path,
     snapshot: object,
 ) -> None:
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap("classify-me")
+    await todos_db.add_to_todo("classify-me")
     await todos_db.write_state("classify-me", {"schema_version": 4, "kind": None, "phase": "pending"})
 
-    [todo] = assemble_roadmap_from_db(str(project_root))
+    [todo] = assemble_todo_from_db(str(project_root))
 
     assert {
         "slug": todo.slug,
@@ -196,11 +196,11 @@ async def test_roadmap_projection_includes_kindless_todo_without_lifecycle_phase
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")
-async def test_roadmap_projection_and_show_payload_include_hold_and_active_runner(tmp_path: Path) -> None:
+async def test_todo_projection_and_show_payload_include_hold_and_active_runner(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap("held-work")
+    await todos_db.add_to_todo("held-work")
     await todos_db.write_state(
         "held-work",
         {
@@ -214,7 +214,7 @@ async def test_roadmap_projection_and_show_payload_include_hold_and_active_runne
         },
     )
 
-    [todo] = assemble_roadmap_from_db(str(project_root))
+    [todo] = assemble_todo_from_db(str(project_root))
     assert todo.hold is True
     assert todo.hold_source == _HOLD_SOURCE_MANUAL
     assert todo.active_runner == _ACTIVE_RUNNER
@@ -227,12 +227,12 @@ async def test_roadmap_projection_and_show_payload_include_hold_and_active_runne
 
 
 @pytest.mark.spec(_SPEC, "UC-WM6")
-async def test_roadmap_projection_skips_stateless_non_holder_rows(tmp_path: Path) -> None:
+async def test_todo_projection_skips_stateless_non_holder_rows(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap(_STATELESS_ANCHOR)
-    await todos_db.add_to_roadmap(_DEPENDENT_CHILD, after=[_STATELESS_ANCHOR])
+    await todos_db.add_to_todo(_STATELESS_ANCHOR)
+    await todos_db.add_to_todo(_DEPENDENT_CHILD, after=[_STATELESS_ANCHOR])
     await todos_db.write_state(
         _DEPENDENT_CHILD,
         {
@@ -243,19 +243,19 @@ async def test_roadmap_projection_skips_stateless_non_holder_rows(tmp_path: Path
         },
     )
 
-    by_slug = {todo.slug: todo for todo in assemble_roadmap_from_db(str(project_root))}
+    by_slug = {todo.slug: todo for todo in assemble_todo_from_db(str(project_root))}
 
     assert _STATELESS_ANCHOR not in by_slug
     assert _DEPENDENT_CHILD in by_slug
 
 
 @pytest.mark.spec(_SPEC, "UC-WM7")
-async def test_roadmap_projection_keeps_stateless_group_holders(tmp_path: Path) -> None:
+async def test_todo_projection_keeps_stateless_group_holders(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap(_STRUCTURAL_HOLDER)
-    await todos_db.add_to_roadmap(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
+    await todos_db.add_to_todo(_STRUCTURAL_HOLDER)
+    await todos_db.add_to_todo(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
     await todos_db.write_state(
         _STRUCTURAL_CHILD,
         {
@@ -266,10 +266,10 @@ async def test_roadmap_projection_keeps_stateless_group_holders(tmp_path: Path) 
         },
     )
 
-    by_slug = {todo.slug: todo for todo in assemble_roadmap_from_db(str(project_root))}
+    by_slug = {todo.slug: todo for todo in assemble_todo_from_db(str(project_root))}
     holder = by_slug[_STRUCTURAL_HOLDER]
 
-    assert holder.status == RoadmapStatus.READY
+    assert holder.status == TodoStatus.READY
     assert holder.kind is None
     assert holder.lifecycle_phase is None
     assert holder.build_status is None
@@ -281,9 +281,9 @@ async def test_show_payload_resolves_stateless_group_holder(tmp_path: Path) -> N
     project_root = tmp_path / "project"
     await close_todos_db_instances()
     todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_roadmap(_STRUCTURAL_HOLDER)
+    await todos_db.add_to_todo(_STRUCTURAL_HOLDER)
     await todos_db.write_artifact(_STRUCTURAL_HOLDER, _INPUT_ARTIFACT, _HOLDER_INPUT)
-    await todos_db.add_to_roadmap(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
+    await todos_db.add_to_todo(_STRUCTURAL_CHILD, group_slug=_STRUCTURAL_HOLDER)
     await todos_db.write_state(
         _STRUCTURAL_CHILD,
         {

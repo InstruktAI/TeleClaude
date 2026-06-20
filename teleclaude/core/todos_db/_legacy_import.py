@@ -50,7 +50,7 @@ _TRAILING_FOLDER_REF_RE = re.compile(r"\s*\(`?todos/[^)]*\)\s*$")
 class LegacyImportSummary:
     """Counts for one bootstrap-time legacy import."""
 
-    roadmap_rows: int
+    todo_rows: int
     state_rows: int
     artifact_rows: int
     version_rows: int
@@ -92,9 +92,9 @@ def maybe_auto_import_legacy_markdown_todos(db_path: str) -> LegacyImportSummary
         conn.close()
 
     logger.info(
-        "Auto-imported legacy markdown todos from %s: roadmap=%d state=%d artifacts=%d versions=%d",
+        "Auto-imported legacy markdown todos from %s: todo=%d state=%d artifacts=%d versions=%d",
         todos_dir,
-        summary.roadmap_rows,
+        summary.todo_rows,
         summary.state_rows,
         summary.artifact_rows,
         summary.version_rows,
@@ -118,7 +118,7 @@ def _has_legacy_markers(todos_dir: Path) -> bool:
 
 
 def _database_is_empty(conn: sqlite3.Connection) -> bool:
-    for table in ("roadmap", "todo_state", "todo_artifacts"):
+    for table in ("todo", "todo_state", "todo_artifacts"):
         row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()  # guard: raw-sql
         if row and int(row[0]) > 0:
             return False
@@ -137,13 +137,13 @@ def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> 
         return None
 
     now = datetime.now(UTC).isoformat()
-    summary = LegacyImportSummary(roadmap_rows=0, state_rows=0, artifact_rows=0, version_rows=0)
+    summary = LegacyImportSummary(todo_rows=0, state_rows=0, artifact_rows=0, version_rows=0)
     artifact_targets: dict[str, str] = {}
 
     for entry in entries:
         row_id = str(uuid.uuid4())
         conn.execute(
-            "INSERT INTO roadmap "
+            "INSERT INTO todo "
             "(id, slug, group_slug, description, status, "
             "delivered_at, delivered_commit, children, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -161,7 +161,7 @@ def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> 
             ),
         )
         summary = LegacyImportSummary(
-            roadmap_rows=summary.roadmap_rows + 1,
+            todo_rows=summary.todo_rows + 1,
             state_rows=summary.state_rows,
             artifact_rows=summary.artifact_rows,
             version_rows=summary.version_rows,
@@ -176,7 +176,7 @@ def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> 
                 (row_id, entry.slug, json.dumps(state, default=str), now, now),
             )
             summary = LegacyImportSummary(
-                roadmap_rows=summary.roadmap_rows,
+                todo_rows=summary.todo_rows,
                 state_rows=summary.state_rows + 1,
                 artifact_rows=summary.artifact_rows,
                 version_rows=summary.version_rows,
@@ -202,7 +202,7 @@ def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> 
                 (row_id, slug, name, content, digest, "legacy-import", now),
             )
             summary = LegacyImportSummary(
-                roadmap_rows=summary.roadmap_rows,
+                todo_rows=summary.todo_rows,
                 state_rows=summary.state_rows,
                 artifact_rows=summary.artifact_rows + 1,
                 version_rows=summary.version_rows + 1,

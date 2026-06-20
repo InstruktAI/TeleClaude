@@ -179,7 +179,7 @@ async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
     artifacts and DB flags so that CREATIVE_COMPLETE slugs are skipped
     without trusting stale state.
     """
-    entries = await todos_db.list_roadmap()
+    entries = await todos_db.list_todo()
     delivered = await todos_db.delivered_slugs()
 
     for entry in entries:

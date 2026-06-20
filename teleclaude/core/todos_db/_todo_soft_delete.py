@@ -1,4 +1,4 @@
-"""Roadmap soft-delete and purge persistence mixin."""
+"""Todo soft-delete and purge persistence mixin."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
-    ROADMAP_DEPS_TABLE,
-    ROADMAP_TABLE,
-    RoadmapDep,
-    TodoRoadmap,
+    TODO_DEPS_TABLE,
+    TODO_TABLE,
+    Todo,
+    TodoDep,
     TodoStateModel,
 )
 from teleclaude.docs_reconcile import scan_remove_orphans
@@ -45,24 +45,24 @@ class ReactivateRefused(Exception):
       - ``invalid_removed_deps``: the tombstone dependency snapshot is not the
         expected JSON list of strings.
 
-    Tests assert on ``.reason``/``.roadmap_id``/``.slug`` — never on the
+    Tests assert on ``.reason``/``.todo_id``/``.slug`` — never on the
     rendered message text.
     """
 
     def __init__(
         self,
         reason: str,
-        roadmap_id: str,
+        todo_id: str,
         slug: str | None = None,
     ) -> None:
         self.reason = reason
-        self.roadmap_id = roadmap_id
+        self.todo_id = todo_id
         self.slug = slug
-        super().__init__(f"reactivate refused for {roadmap_id} ({slug}): {reason}")
+        super().__init__(f"reactivate refused for {todo_id} ({slug}): {reason}")
 
 
 class ExpiredRemovedRow(TypedDict):
-    """Removed roadmap row eligible for purge planning."""
+    """Removed todo row eligible for purge planning."""
 
     id: str
     slug: str
@@ -71,17 +71,17 @@ class ExpiredRemovedRow(TypedDict):
 
 
 class PurgedRemovedRow(TypedDict):
-    """Removed roadmap row that was hard-deleted."""
+    """Removed todo row that was hard-deleted."""
 
     id: str
     slug: str
     removed_at: str
 
 
-class TodosDbRoadmapSoftDeleteMixin:
-    """Persistence logic for soft-removed roadmap entries and their retention lifecycle."""
+class TodosDbTodoSoftDeleteMixin:
+    """Persistence logic for soft-removed todo entries and their retention lifecycle."""
 
-    async def soft_remove_from_roadmap(
+    async def soft_remove_from_todo(
         self,
         slug: str,
         *,
@@ -92,7 +92,7 @@ class TodosDbRoadmapSoftDeleteMixin:
 
         The durable record survives: status flips to ``removed``, ``removed_at``
         is stamped, and the entry's outgoing dependency slugs are snapshotted into
-        ``removed_deps`` keyed by the row's stable id. Live ``roadmap_deps`` rows
+        ``removed_deps`` keyed by the row's stable id. Live ``todo_deps`` rows
         are scrubbed in *both* directions so the slug is free for immediate reuse
         and so no live consumer still points at the tombstoned entry. State,
         artifacts, and artifact version history are intentionally retained.
@@ -124,15 +124,13 @@ class TodosDbRoadmapSoftDeleteMixin:
                         await db_session.rollback()
                     return False
 
-                roadmap_status_map = await cast(Any, self)._roadmap_status_map(db_session)
-                blocking_snippets = scan_remove_orphans(Path(cwd), slug, roadmap_status_map)
+                todo_status_map = await cast(Any, self)._todo_status_map(db_session)
+                blocking_snippets = scan_remove_orphans(Path(cwd), slug, todo_status_map)
                 if blocking_snippets:
                     raise RemoveRefused(slug=slug, blocking_snippets=blocking_snippets)
 
                 outgoing_deps = await db_session.exec(
-                    select(RoadmapDep.depends_on)
-                    .where(ROADMAP_DEPS_TABLE.c.slug == slug)
-                    .order_by(RoadmapDep.depends_on)
+                    select(TodoDep.depends_on).where(TODO_DEPS_TABLE.c.slug == slug).order_by(TodoDep.depends_on)
                 )
                 outgoing = [str(dep) for dep in outgoing_deps.all()]
 
@@ -151,8 +149,8 @@ class TodosDbRoadmapSoftDeleteMixin:
                 entry.updated_at = now
                 db_session.add(entry)
 
-                await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.slug == slug))
-                await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.depends_on == slug))
+                await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.slug == slug))
+                await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.depends_on == slug))
 
                 if owns_session:
                     await db_session.commit()
@@ -171,13 +169,13 @@ class TodosDbRoadmapSoftDeleteMixin:
 
     async def reactivate_removed(
         self,
-        roadmap_id: str,
+        todo_id: str,
         *,
         session: SqlAsyncSession | None = None,
     ) -> str:
-        """Restore a soft-removed roadmap row addressed by its durable row id.
+        """Restore a soft-removed todo row addressed by its durable row id.
 
-        The input is a ``roadmap.id`` — never a bare slug — because repeated
+        The input is a ``todo.id`` — never a bare slug — because repeated
         remove/recreate cycles can leave several removed rows per slug, and the
         slug alone cannot disambiguate them. The operation is fail-closed:
 
@@ -191,7 +189,7 @@ class TodosDbRoadmapSoftDeleteMixin:
 
         On success: status flips back to ``prev_status`` (fallback ``icebox``
         for legacy rows that predate the tombstone fields), ``removed_deps`` is
-        deserialized and replayed as outgoing ``roadmap_deps``, and all
+        deserialized and replayed as outgoing ``todo_deps``, and all
         tombstone fields are cleared. Inbound third-party edges are NOT
         resurrected — only the entry's own footprint is restored. State,
         artifacts, and version history were retained at soft-remove and
@@ -202,11 +200,11 @@ class TodosDbRoadmapSoftDeleteMixin:
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
-            entry = await db_session.get(TodoRoadmap, roadmap_id)
+            entry = await db_session.get(Todo, todo_id)
             if entry is None or entry.status != "removed":
                 raise ReactivateRefused(
                     reason="not_removed",
-                    roadmap_id=roadmap_id,
+                    todo_id=todo_id,
                     slug=entry.slug if entry is not None else None,
                 )
 
@@ -214,7 +212,7 @@ class TodosDbRoadmapSoftDeleteMixin:
             if live_twin is not None:
                 raise ReactivateRefused(
                     reason="live_twin_exists",
-                    roadmap_id=roadmap_id,
+                    todo_id=todo_id,
                     slug=entry.slug,
                 )
 
@@ -226,13 +224,13 @@ class TodosDbRoadmapSoftDeleteMixin:
                 except (ValueError, TypeError) as exc:
                     raise ReactivateRefused(
                         reason="invalid_removed_deps",
-                        roadmap_id=roadmap_id,
+                        todo_id=todo_id,
                         slug=entry.slug,
                     ) from exc
                 if not isinstance(parsed, list) or not all(isinstance(dep, str) for dep in parsed):
                     raise ReactivateRefused(
                         reason="invalid_removed_deps",
-                        roadmap_id=roadmap_id,
+                        todo_id=todo_id,
                         slug=entry.slug,
                     )
                 replay_slugs = parsed
@@ -245,7 +243,7 @@ class TodosDbRoadmapSoftDeleteMixin:
             db_session.add(entry)
 
             for dep in replay_slugs:
-                db_session.add(RoadmapDep(slug=entry.slug, depends_on=dep))
+                db_session.add(TodoDep(slug=entry.slug, depends_on=dep))
 
             slug = entry.slug
             if owns_session:
@@ -256,21 +254,18 @@ class TodosDbRoadmapSoftDeleteMixin:
             if owns_session:
                 await db_session.close()
 
-    async def slug_in_roadmap(self, slug: str) -> bool:
-        """Check if an active/icebox slug exists in the roadmap."""
+    async def slug_in_todo(self, slug: str) -> bool:
+        """Check if an active/icebox slug exists in the todo."""
         async with cast(Any, self)._session() as session:
             return await cast(Any, self)._active_entry(session=session, slug=slug) is not None
 
     async def slug_conflicts_non_removed(self, slug: str, *, session: SqlAsyncSession | None = None) -> bool:
-        """Return whether any non-removed roadmap row already holds a slug."""
+        """Return whether any non-removed todo row already holds a slug."""
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
             result = await db_session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status != "removed")
-                .limit(1)
+                select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status != "removed").limit(1)
             )
             return result.first() is not None
         finally:
@@ -278,7 +273,7 @@ class TodosDbRoadmapSoftDeleteMixin:
                 await db_session.close()
 
     async def list_expired_removed(self, cutoff_iso: str) -> list[ExpiredRemovedRow]:
-        """List removed roadmap rows whose tombstone predates ``cutoff_iso``.
+        """List removed todo rows whose tombstone predates ``cutoff_iso``.
 
         Self-heals legacy/partial rows first: any row with ``status='removed'`` and
         a NULL ``removed_at`` gets stamped with the current timestamp so it joins
@@ -288,17 +283,17 @@ class TodosDbRoadmapSoftDeleteMixin:
         async with cast(Any, self)._session() as session:
             now_iso = datetime.now(UTC).isoformat()
             await session.exec(
-                update(TodoRoadmap)
-                .where(ROADMAP_TABLE.c.status == "removed")
-                .where(ROADMAP_TABLE.c.removed_at.is_(None))
+                update(Todo)
+                .where(TODO_TABLE.c.status == "removed")
+                .where(TODO_TABLE.c.removed_at.is_(None))
                 .values(removed_at=now_iso, updated_at=now_iso)
             )
 
             expired = await session.exec(
-                select(TodoRoadmap)
-                .where(ROADMAP_TABLE.c.status == "removed")
-                .where(ROADMAP_TABLE.c.removed_at.is_not(None))
-                .where(ROADMAP_TABLE.c.removed_at < cutoff_iso)
+                select(Todo)
+                .where(TODO_TABLE.c.status == "removed")
+                .where(TODO_TABLE.c.removed_at.is_not(None))
+                .where(TODO_TABLE.c.removed_at < cutoff_iso)
             )
             for entry in expired.all():
                 expired_rows.append(
@@ -308,7 +303,7 @@ class TodosDbRoadmapSoftDeleteMixin:
                         "removed_at": str(entry.removed_at),
                         "pending_purge_paths": _decode_pending_purge_paths(
                             entry.pending_purge_paths,
-                            roadmap_id=str(entry.id),
+                            todo_id=str(entry.id),
                         ),
                     }
                 )
@@ -317,30 +312,30 @@ class TodosDbRoadmapSoftDeleteMixin:
         return expired_rows
 
     async def set_pending_purge_paths(self, row_id: str, paths: list[str]) -> None:
-        """Persist the sweep-owned snippet paths for a removed roadmap row."""
+        """Persist the sweep-owned snippet paths for a removed todo row."""
         encoded_paths = json.dumps(paths)
         async with cast(Any, self)._session() as session:
             await session.exec(
-                update(TodoRoadmap)
-                .where(ROADMAP_TABLE.c.id == row_id)
+                update(Todo)
+                .where(TODO_TABLE.c.id == row_id)
                 .values(pending_purge_paths=encoded_paths, updated_at=datetime.now(UTC).isoformat())
             )
             await session.commit()
         cast(Any, self)._on_mutation("todo_updated", None)
 
     async def clear_pending_purge_paths(self, row_id: str) -> None:
-        """Clear the sweep-owned snippet paths for a removed roadmap row."""
+        """Clear the sweep-owned snippet paths for a removed todo row."""
         async with cast(Any, self)._session() as session:
             await session.exec(
-                update(TodoRoadmap)
-                .where(ROADMAP_TABLE.c.id == row_id)
+                update(Todo)
+                .where(TODO_TABLE.c.id == row_id)
                 .values(pending_purge_paths=None, updated_at=datetime.now(UTC).isoformat())
             )
             await session.commit()
         cast(Any, self)._on_mutation("todo_updated", None)
 
     async def purge_one_removed(self, row_id: str) -> PurgedRemovedRow | None:
-        """Hard-delete one removed roadmap row by durable row id.
+        """Hard-delete one removed todo row by durable row id.
 
         The ``ON DELETE CASCADE`` foreign keys clear matching state and artifact
         rows. No slug-keyed cleanup runs here because a same-slug live todo may
@@ -348,7 +343,7 @@ class TodosDbRoadmapSoftDeleteMixin:
         """
         purged: PurgedRemovedRow | None = None
         async with cast(Any, self)._session() as session:
-            entry = await session.get(TodoRoadmap, row_id)
+            entry = await session.get(Todo, row_id)
             if entry is None or entry.status != "removed":
                 return None
             purged = {
@@ -371,13 +366,13 @@ class TodosDbRoadmapSoftDeleteMixin:
         return purged
 
 
-def _decode_pending_purge_paths(encoded: str | None, *, roadmap_id: str) -> list[str] | None:
+def _decode_pending_purge_paths(encoded: str | None, *, todo_id: str) -> list[str] | None:
     if encoded is None:
         return None
     try:
         decoded = json.loads(encoded)
     except (ValueError, TypeError) as exc:
-        raise ValueError(f"Invalid pending_purge_paths for roadmap row {roadmap_id}") from exc
+        raise ValueError(f"Invalid pending_purge_paths for todo row {todo_id}") from exc
     if not isinstance(decoded, list) or not all(isinstance(p, str) for p in decoded):
-        raise ValueError(f"Invalid pending_purge_paths for roadmap row {roadmap_id}")
+        raise ValueError(f"Invalid pending_purge_paths for todo row {todo_id}")
     return decoded

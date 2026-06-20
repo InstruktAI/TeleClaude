@@ -281,14 +281,14 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                             todos = self.cache.get_todos(
                                 comp or config.computer.name, proj.path, include_removed=include_removed
                             )
-                            roadmap_exists = False
+                            todo_exists = False
                             projects.append(
                                 ProjectWithTodosDTO(
                                     computer=comp,
                                     name=proj.name,
                                     path=proj.path,
                                     description=proj.description,
-                                    has_roadmap=roadmap_exists,
+                                    has_todo=todo_exists,
                                     todos=[
                                         t.model_copy(
                                             update={

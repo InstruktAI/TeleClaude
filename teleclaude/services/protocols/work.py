@@ -1,4 +1,4 @@
-"""Work domain protocols — reader/writer contracts for todos, roadmap, artifacts.
+"""Work domain protocols — reader/writer contracts for todos, todo, artifacts.
 
 These protocols define the service interface for the work schema pillar.
 Implementations may target SQLite (current) or Postgres (target).
@@ -18,9 +18,9 @@ type StateValue = str | int | float | bool | None | dict[str, Any] | list[Any]  
 class WorkReader(Protocol):
     """Read-only operations on the work domain."""
 
-    # -- roadmap reads --------------------------------------------------------
+    # -- todo reads --------------------------------------------------------
 
-    async def list_roadmap(
+    async def list_todo(
         self,
         *,
         domain: str | None = None,
@@ -28,7 +28,7 @@ class WorkReader(Protocol):
         include_delivered: bool = False,
     ) -> list[dict[str, Any]]: ...
 
-    async def get_roadmap_entry(self, slug: str) -> dict[str, Any] | None: ...
+    async def get_todo_entry(self, slug: str) -> dict[str, Any] | None: ...
 
     async def get_dependencies(self, slug: str) -> list[str]: ...
 
@@ -65,9 +65,9 @@ class WorkReader(Protocol):
 class WorkWriter(Protocol):
     """Write operations on the work domain. May emit events on state changes."""
 
-    # -- roadmap mutations ----------------------------------------------------
+    # -- todo mutations ----------------------------------------------------
 
-    async def add_roadmap_entry(
+    async def add_todo_entry(
         self,
         slug: str,
         *,
@@ -80,9 +80,9 @@ class WorkWriter(Protocol):
         parent_id: str | None = None,
     ) -> str: ...
 
-    async def remove_roadmap_entry(self, slug: str) -> bool: ...
+    async def remove_todo_entry(self, slug: str) -> bool: ...
 
-    async def move_roadmap_entry(self, slug: str, *, before: str | None = None, after: str | None = None) -> bool: ...
+    async def move_todo_entry(self, slug: str, *, before: str | None = None, after: str | None = None) -> bool: ...
 
     async def set_dependencies(self, slug: str, *, after: list[str]) -> None: ...
 

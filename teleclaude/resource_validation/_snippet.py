@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
@@ -12,7 +11,7 @@ import frontmatter
 from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
-    RoadmapStatus,
+    TodoStatus,
 )
 from teleclaude.core.todos_db import todos_db_path
 from teleclaude.doc_body import PLANNED_CHANGE_BLOCK_RE
@@ -35,6 +34,7 @@ from teleclaude.resource_validation._models import (
     _error,
     _first_out_of_order_ref,
 )
+from teleclaude.resource_validation._todo_status import build_todo_status_map
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots
 from teleclaude.snippet_validation import (
     SnippetClassification,
@@ -53,20 +53,6 @@ _PLANNED_CHANGE_MARKER_RE = re.compile(
 )
 _PLANNED_MARKER_RE = re.compile(r"<!--[ \t]*(?P<closing>/)?planned:(?P<slug>[^>\s]+)[ \t]*-->")
 _PLANNED_CHANGE_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
-_ROADMAP_STATUS_VALUES = (
-    RoadmapStatus.ACTIVE,
-    RoadmapStatus.ICEBOX,
-    RoadmapStatus.DELIVERED,
-    RoadmapStatus.REMOVED,
-)
-_ROADMAP_STATUS_PRIORITY = {
-    RoadmapStatus.REMOVED: -1,
-    RoadmapStatus.DELIVERED: 0,
-    RoadmapStatus.ACTIVE: 1,
-    RoadmapStatus.ICEBOX: 1,
-}
-
-
 # ---------------------------------------------------------------------------
 # Shared ref resolution
 # ---------------------------------------------------------------------------
@@ -234,54 +220,6 @@ def _validate_activation_trigger(path: Path, meta: Mapping[str, object], *, snip
         _error("snippet_activation_trigger_empty", path=str(path))
 
 
-def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
-    """Read roadmap slug status once for snippet validation/reconciliation.
-
-    Falls back to the canonical state root (main repo) when invoked from a
-    git worktree where ``.teleclaude/todos.db`` is not present.
-    """
-    db_path = todos_db_path(project_root)
-    if not db_path.exists():
-        return {}
-    conn = sqlite3.connect(db_path)
-    try:
-        # A real todo exists in ``todo_state``; the legacy ``roadmap`` table only
-        # carries the delivered/removed status (until ``v2-workflow-drop-roadmap``
-        # migrates it). Join so orphaned roadmap rows with no real todo are excluded
-        # — otherwise a phantom slug would read as a live deliverer.
-        rows = conn.execute(
-            "SELECT r.slug, r.status FROM roadmap r "  # guard: raw-sql
-            "JOIN todo_state ts ON ts.slug = r.slug "
-            "WHERE r.status IN (?, ?, ?, ?)",
-            _ROADMAP_STATUS_VALUES,
-        ).fetchall()
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc):
-            return {}
-        raise
-    finally:
-        conn.close()
-
-    status_map: dict[str, str] = {}
-    for slug, raw_status in rows:
-        if not isinstance(slug, str) or not isinstance(raw_status, str):
-            continue
-        try:
-            status = RoadmapStatus(raw_status)
-        except ValueError:
-            continue
-        if status not in _ROADMAP_STATUS_VALUES:
-            continue
-        current_raw = status_map.get(slug)
-        if current_raw is None:
-            status_map[slug] = status.value
-            continue
-        current = RoadmapStatus(current_raw)
-        if _ROADMAP_STATUS_PRIORITY[status] > _ROADMAP_STATUS_PRIORITY[current]:
-            status_map[slug] = status.value
-    return status_map
-
-
 def _validate_delivered_by(
     path: Path,
     meta: Mapping[str, object],
@@ -294,14 +232,14 @@ def _validate_delivered_by(
         _error("snippet_delivered_by_invalid_shape", path=str(path))
 
 
-_LIVE_ROADMAP_STATUSES = frozenset({RoadmapStatus.ACTIVE.value, RoadmapStatus.ICEBOX.value})
+_LIVE_TODO_STATUSES = frozenset({TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value})
 _NO_SUCH_TODO_HINT = "no such todo — check `telec history search {slug}`; maybe authored ahead, renamed, or gone"
 
 
-def _validate_delivered_by_roadmap(
+def _validate_delivered_by_todo(
     path: Path,
     meta: Mapping[str, object],
-    roadmap_status_map: Mapping[str, str],
+    todo_status_map: Mapping[str, str],
 ) -> None:
     """Flag any delivered_by slug that is not a live (active/icebox) todo.
 
@@ -311,8 +249,8 @@ def _validate_delivered_by_roadmap(
     """
     delivered_by = _as_str_list(meta.get("delivered_by"))
     for slug in delivered_by:
-        status = roadmap_status_map.get(slug)
-        if status in _LIVE_ROADMAP_STATUSES:
+        status = todo_status_map.get(slug)
+        if status in _LIVE_TODO_STATUSES:
             continue
         reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
         _error("snippet_delivered_by_invalid_slug", path=str(path), slug=slug, reason=reason)
@@ -357,7 +295,7 @@ def _mask_marker_examples(body: str) -> str:
 def _validate_planned_marker_liveness(
     path: Path,
     body: str,
-    roadmap_status_map: Mapping[str, str],
+    todo_status_map: Mapping[str, str],
 ) -> None:
     checked_slugs: set[str] = set()
     for marker in [*_PLANNED_CHANGE_MARKER_RE.finditer(body), *_PLANNED_MARKER_RE.finditer(body)]:
@@ -365,8 +303,8 @@ def _validate_planned_marker_liveness(
         if slug in checked_slugs:
             continue
         checked_slugs.add(slug)
-        status = roadmap_status_map.get(slug)
-        if status in _LIVE_ROADMAP_STATUSES:
+        status = todo_status_map.get(slug)
+        if status in _LIVE_TODO_STATUSES:
             continue
         reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
         _error("snippet_planned_marker_invalid_slug", path=str(path), slug=slug, reason=reason)
@@ -375,11 +313,11 @@ def _validate_planned_marker_liveness(
 def _validate_planned_change_markers(
     path: Path,
     body: str,
-    roadmap_status_map: Mapping[str, str] | None = None,
+    todo_status_map: Mapping[str, str] | None = None,
 ) -> None:
     body = _mask_marker_examples(body)
-    if roadmap_status_map is not None:
-        _validate_planned_marker_liveness(path, body, roadmap_status_map)
+    if todo_status_map is not None:
+        _validate_planned_marker_liveness(path, body, todo_status_map)
     valid_spans = [match.span() for match in PLANNED_CHANGE_BLOCK_RE.finditer(body)]
     markers = [
         marker
@@ -431,13 +369,13 @@ def validate_snippet(
     project_root: Path,
     *,
     domains: set[str],
-    roadmap_status_map: Mapping[str, str] | None = None,
+    todo_status_map: Mapping[str, str] | None = None,
 ) -> None:
     """Validate a single doc snippet. Collects validation findings via ``_error``.
 
-    When ``roadmap_status_map`` is provided, delivered_by slugs are also checked
-    against the live roadmap (existence + in-flight status); when ``None`` the
-    snippet is validated for shape only (roadmap-agnostic callers).
+    When ``todo_status_map`` is provided, delivered_by slugs are also checked
+    against the live todo (existence + in-flight status); when ``None`` the
+    snippet is validated for shape only (todo-agnostic callers).
     """
     if _is_third_party_doc(path, project_root):
         validate_third_party_doc(path, content, project_root)
@@ -475,9 +413,9 @@ def validate_snippet(
     snippet_type = _snippet_type_for_validation(classification)
     _validate_activation_trigger(path, meta, snippet_type=snippet_type)
     _validate_delivered_by(path, meta)
-    if roadmap_status_map is not None:
-        _validate_delivered_by_roadmap(path, meta, roadmap_status_map)
-    _validate_planned_change_markers(path, body, roadmap_status_map)
+    if todo_status_map is not None:
+        _validate_delivered_by_todo(path, meta, todo_status_map)
+    _validate_planned_change_markers(path, body, todo_status_map)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains, classification=classification)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, classification=classification)
@@ -920,15 +858,15 @@ def _validate_baseline_dedup(project_root: Path) -> None:
                     _error("baseline_dedup_violation", path=str(container), snippet_id=snippet_id, domain=domain)
 
 
-def _resolve_roadmap_status_map(project_root: Path) -> dict[str, str] | None:
-    """Load the roadmap slug→status map, or ``None`` when no todos DB is reachable.
+def _resolve_todo_status_map(project_root: Path) -> dict[str, str] | None:
+    """Load the todo slug→status map, or ``None`` when no todos DB is reachable.
 
     Returning ``None`` (DB genuinely absent — fresh clone, CI without state) skips
-    the delivered_by roadmap-validity check rather than flagging every slug as
-    missing. An empty map with a present DB is a real empty roadmap and still runs.
+    the delivered_by todo-validity check rather than flagging every slug as
+    missing. An empty map with a present DB is a real empty todo and still runs.
     """
     if todos_db_path(project_root).exists():
-        return build_roadmap_status_map(project_root)
+        return build_todo_status_map(project_root)
     return None
 
 
@@ -974,7 +912,7 @@ def validate_all_snippets(project_root: Path, *, paths: list[Path] | None = None
                 validate_snippet(path, text, project_root, domains=domains)
         return
 
-    roadmap_status_map = _resolve_roadmap_status_map(project_root)
+    todo_status_map = _resolve_todo_status_map(project_root)
     snippet_roots = _iter_snippet_roots(project_root)
     for snippets_root in snippet_roots:
         try:
@@ -994,6 +932,6 @@ def validate_all_snippets(project_root: Path, *, paths: list[Path] | None = None
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
-            validate_snippet(path, text, project_root, domains=domains, roadmap_status_map=roadmap_status_map)
+            validate_snippet(path, text, project_root, domains=domains, todo_status_map=todo_status_map)
     _validate_baseline_dedup(project_root)
     validate_third_party_docs(project_root)

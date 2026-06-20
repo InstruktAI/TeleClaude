@@ -28,7 +28,7 @@ LifecyclePhaseValue = Literal[
     "finalize_ready",
 ]
 
-RoadmapStatusLiteral = Literal["active", "icebox", "delivered"]
+TodoStatusLiteral = Literal["active", "icebox", "delivered"]
 
 
 class DorActions(BaseModel):
@@ -94,7 +94,7 @@ class DependencyEntry(BaseModel):
     """Snapshot of a direct todo dependency and its todo status."""
 
     dep_slug: str
-    roadmap_status: RoadmapStatusLiteral
+    todo_status: TodoStatusLiteral
 
 
 class ParentPrdGroundEntry(BaseModel):

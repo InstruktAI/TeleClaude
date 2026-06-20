@@ -88,7 +88,7 @@ def _format_holder_prepare_instruction(
             f"Holder '{holder_slug}' has direct children, but none are prepare-runnable because "
             "their dependencies have not reached the PREPARED gate yet."
         )
-    if reason is HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP:
+    if reason is HolderResolutionReason.CHILDREN_NOT_IN_TODO:
         return f"Holder '{holder_slug}' has child todos, but none are active todo-list entries."
     return (
         f"Holder '{holder_slug}' has direct children, but none are currently prepare-runnable. "
@@ -125,7 +125,7 @@ async def _hydrate_artifact_presence_for_adoption(
 
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
     """Find the first todo still in the prepare lane."""
-    entries = await todos_db.list_roadmap()
+    entries = await todos_db.list_todo()
     deps = await todos_db.load_deps()
     prepared = await effective_prepared_slugs_for_dependencies(todos_db)
     for entry in entries:
@@ -202,7 +202,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             blockers=[f"split holder has children: {', '.join(holder_resolution.children)}"],
         )
 
-    if not await todos_db.slug_in_roadmap(resolved_slug):
+    if not await todos_db.slug_in_todo(resolved_slug):
         return format_error(
             "TODO_NOT_FOUND",
             f"No active todo exists for {resolved_slug}. Create it before running prepare.",

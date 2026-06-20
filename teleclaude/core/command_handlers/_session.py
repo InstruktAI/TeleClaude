@@ -24,11 +24,11 @@ from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import ComputerInfo, MessageMetadata, ProjectInfo, Session, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
-from teleclaude.core.roadmap import assemble_roadmap_from_db, recently_delivered_cutoff
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_title import initial_session_title
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
@@ -323,7 +323,7 @@ async def list_todos(project_path: str) -> list[TodoDTO]:
     Returns:
         List of todo objects.
     """
-    return assemble_roadmap_from_db(
+    return assemble_todo_from_db(
         project_path,
         include_icebox=True,
         include_delivered=True,

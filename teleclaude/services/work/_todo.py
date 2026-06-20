@@ -1,20 +1,20 @@
-"""Roadmap operations — list, add, freeze, deliver, deps."""
+"""Todo operations — list, add, freeze, deliver, deps."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.core.roadmap import assemble_roadmap_from_db
+from teleclaude.core.todo import assemble_todo_from_db
 
 if TYPE_CHECKING:
     from teleclaude.services.work._base import WorkServiceBase
 
 
-class RoadmapOps:
-    """Roadmap reads and mutations.
+class TodoOps:
+    """Todo reads and mutations.
 
-    Held by SqliteWorkService and accessed as `svc.roadmap`.
+    Held by SqliteWorkService and accessed as `svc.todo`.
     """
 
     def __init__(self, base: WorkServiceBase) -> None:
@@ -33,8 +33,8 @@ class RoadmapOps:
         include_removed: bool = False,
         removed_only: bool = False,
     ) -> list[TodoDTO]:
-        """Return roadmap entries as TodoDTOs. Synchronous."""
-        return assemble_roadmap_from_db(
+        """Return todo entries as TodoDTOs. Synchronous."""
+        return assemble_todo_from_db(
             self._base.project_root,
             include_icebox=include_icebox,
             icebox_only=icebox_only,
@@ -46,7 +46,7 @@ class RoadmapOps:
         )
 
     def get_entry(self, slug: str, *, include_icebox: bool = True, include_delivered: bool = True) -> TodoDTO | None:
-        """Return a single roadmap entry as a TodoDTO, or None if not found.
+        """Return a single todo entry as a TodoDTO, or None if not found.
 
         Uses the same rich projection as entries() — callers get consistent
         domain types whether they ask for one or many.
@@ -86,14 +86,14 @@ class RoadmapOps:
         group: str | None = None,
         after: str | list[str] | None = None,
     ) -> str:
-        """Add a new roadmap entry."""
+        """Add a new todo entry."""
         db = await self._base._ensure_db()
         after_list: list[str] | None
         if isinstance(after, str):
             after_list = [p.strip() for p in after.split(",") if p.strip()]
         else:
             after_list = after
-        await db.add_to_roadmap(
+        await db.add_to_todo(
             slug,
             group_slug=group,
             after=after_list,
@@ -103,7 +103,7 @@ class RoadmapOps:
 
     async def remove(self, slug: str) -> bool:
         db = await self._base._ensure_db()
-        return await db.soft_remove_from_roadmap(slug, cwd=self._base.project_root)
+        return await db.soft_remove_from_todo(slug, cwd=self._base.project_root)
 
     async def set_dependencies(self, slug: str, *, after: list[str]) -> None:
         db = await self._base._ensure_db()

@@ -9,7 +9,7 @@ from typing import Literal, TypedDict, cast
 
 import yaml
 
-from teleclaude.constants import RoadmapStatus
+from teleclaude.constants import TodoStatus
 from teleclaude.doc_body import resolve_planned_change_for_delivery, strip_planned_markers
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import companion_parent, companion_slug
@@ -104,9 +104,9 @@ def _delivered_by(metadata: SnippetFrontmatter) -> list[str]:
     return list(raw_delivered_by)
 
 
-def _is_live_deliverer(slug: str, roadmap_status_map: Mapping[str, str]) -> bool:
-    status = roadmap_status_map.get(slug)
-    return status is not None and status != RoadmapStatus.REMOVED
+def _is_live_deliverer(slug: str, todo_status_map: Mapping[str, str]) -> bool:
+    status = todo_status_map.get(slug)
+    return status is not None and status != TodoStatus.REMOVED
 
 
 _MetadataPlanner = Callable[
@@ -118,7 +118,7 @@ _MetadataPlanner = Callable[
 def scan_remove_orphans(
     project_root: Path,
     candidate_slug: str,
-    roadmap_status_map: Mapping[str, str],
+    todo_status_map: Mapping[str, str],
 ) -> list[BlockingSnippet]:
     """Return snippets that would be orphaned by removing ``candidate_slug``."""
     blockers: list[BlockingSnippet] = []
@@ -133,15 +133,13 @@ def scan_remove_orphans(
             continue
 
         live_after_remove = [
-            slug for slug in delivered_by if slug != candidate_slug and _is_live_deliverer(slug, roadmap_status_map)
+            slug for slug in delivered_by if slug != candidate_slug and _is_live_deliverer(slug, todo_status_map)
         ]
         if live_after_remove:
             continue
 
         other_removed = [
-            slug
-            for slug in delivered_by
-            if slug != candidate_slug and roadmap_status_map.get(slug) == RoadmapStatus.REMOVED
+            slug for slug in delivered_by if slug != candidate_slug and todo_status_map.get(slug) == TodoStatus.REMOVED
         ]
         blockers.append(
             BlockingSnippet(
@@ -161,14 +159,14 @@ def _purged_metadata_planner(purged_slugs: tuple[str, ...]) -> _MetadataPlanner:
         snippet_path: Path,
         metadata: SnippetFrontmatter,
         delivered_by: list[str],
-        roadmap_status_map: Mapping[str, str],
+        todo_status_map: Mapping[str, str],
     ) -> tuple[SnippetFrontmatter | None, tuple[str, ...]]:
         removed_slugs = tuple(slug for slug in delivered_by if slug in purged_slug_set)
         if not removed_slugs:
             return None, ()
 
         remaining_slugs = [slug for slug in delivered_by if slug not in purged_slug_set]
-        live_remaining = [slug for slug in remaining_slugs if _is_live_deliverer(slug, roadmap_status_map)]
+        live_remaining = [slug for slug in remaining_slugs if _is_live_deliverer(slug, todo_status_map)]
         if not live_remaining:
             raise RuntimeError(
                 f"Cannot purge snippet lifecycle deliverer(s) {', '.join(removed_slugs)} from {snippet_path}: "
@@ -184,7 +182,7 @@ def _purged_metadata_planner(purged_slugs: tuple[str, ...]) -> _MetadataPlanner:
 
 def _planned_snippet_writes(
     project_root: Path,
-    roadmap_status_map: Mapping[str, str],
+    todo_status_map: Mapping[str, str],
     metadata_planner: _MetadataPlanner,
     *,
     only_slug: str | None = None,
@@ -201,7 +199,7 @@ def _planned_snippet_writes(
             continue
         if only_slug is not None and only_slug not in delivered_by:
             continue
-        next_metadata, removed_slugs = metadata_planner(snippet_path, metadata, delivered_by, roadmap_status_map)
+        next_metadata, removed_slugs = metadata_planner(snippet_path, metadata, delivered_by, todo_status_map)
         if next_metadata is None:
             continue
         rendered = _render_frontmatter(next_metadata, body)
@@ -219,13 +217,13 @@ def _planned_snippet_writes(
 def reconcile_snippets_for_purged_slugs(
     project_root: Path,
     purged_slugs: Iterable[str],
-    roadmap_status_map: Mapping[str, str],
+    todo_status_map: Mapping[str, str],
 ) -> list[SnippetWriteResult]:
     """Plan snippet lifecycle frontmatter rewrites for hard-purged todo slugs."""
     purged_slug_tuple = tuple(dict.fromkeys(purged_slugs))
     if not purged_slug_tuple:
         return []
-    return _planned_snippet_writes(project_root, roadmap_status_map, _purged_metadata_planner(purged_slug_tuple))
+    return _planned_snippet_writes(project_root, todo_status_map, _purged_metadata_planner(purged_slug_tuple))
 
 
 def _companion_parent(path: Path, slug: str) -> Path | None:

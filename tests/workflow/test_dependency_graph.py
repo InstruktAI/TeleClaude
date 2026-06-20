@@ -52,7 +52,7 @@ async def _add_todo(
     group_slug: str | None = None,
     after: list[str] | None = None,
 ) -> None:
-    await todos_db.add_to_roadmap(slug, group_slug=group_slug, after=after)
+    await todos_db.add_to_todo(slug, group_slug=group_slug, after=after)
     await todos_db.write_state(
         slug,
         {
@@ -145,7 +145,7 @@ async def test_prd_approval_clears_prepare_gate_but_not_work_gate(tmp_path: Path
 @pytest.mark.spec(_SPEC, "UC-WDG2")
 async def test_holder_dependency_rolls_up_when_all_children_are_prepared(tmp_path: Path) -> None:
     todos_db = await _project_db(tmp_path / "project")
-    await todos_db.add_to_roadmap(_HOLDER)
+    await todos_db.add_to_todo(_HOLDER)
     await _add_todo(todos_db, _CHILD_A, lifecycle_phase=LifecyclePhase.PREPARED, group_slug=_HOLDER)
     await _add_todo(todos_db, _CHILD_B, lifecycle_phase=LifecyclePhase.BUILD_STARTED, group_slug=_HOLDER)
 
@@ -157,7 +157,7 @@ async def test_holder_dependency_rolls_up_when_all_children_are_prepared(tmp_pat
 @pytest.mark.spec(_SPEC, "UC-WDG1")
 async def test_holder_prepare_resolution_uses_prepared_gate(tmp_path: Path) -> None:
     todos_db = await _project_db(tmp_path / "project")
-    await todos_db.add_to_roadmap(_HOLDER)
+    await todos_db.add_to_todo(_HOLDER)
     await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
     await _add_todo(
         todos_db,

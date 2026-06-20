@@ -69,7 +69,7 @@ async def _run_merge_main_failure_with_live_builder(
     lifecycle_phase: LifecyclePhase,
 ) -> str:
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_SLUG)
+    await todos_db.add_to_todo(_SLUG)
     await todos_db.write_state(
         _SLUG,
         TodoState(
@@ -116,7 +116,7 @@ async def test_prepared_entry_advances_to_build_started_without_removed_phase_co
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_SLUG)
+    await todos_db.add_to_todo(_SLUG)
     await todos_db.write_state(
         _SLUG,
         TodoState(
@@ -194,7 +194,7 @@ async def test_finalize_ready_terminal_output_ends_slug_workers_and_self(
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await todos_db.add_to_roadmap(_FINALIZED_SLUG)
+    await todos_db.add_to_todo(_FINALIZED_SLUG)
     await todos_db.write_state(
         _FINALIZED_SLUG,
         TodoState(
@@ -261,11 +261,11 @@ async def test_work_without_slug_terminalizes_without_selecting_followup_work(
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM2")
-async def test_work_unknown_slug_does_not_create_roadmap_row(tmp_path: Path, snapshot: object) -> None:
+async def test_work_unknown_slug_does_not_create_todo_row(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
 
     output = await next_work(cast(Db, _CapturingDb([])), _UNKNOWN_SLUG, str(project_root))
 
-    assert not await todos_db.slug_in_roadmap(_UNKNOWN_SLUG)
+    assert not await todos_db.slug_in_todo(_UNKNOWN_SLUG)
     assert output == snapshot

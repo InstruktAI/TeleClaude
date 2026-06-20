@@ -14,12 +14,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._models import (
-    ROADMAP_TABLE,
     TODO_ARTIFACT_TABLE,
     TODO_ARTIFACT_VERSION_TABLE,
+    TODO_TABLE,
+    Todo,
     TodoArtifact,
     TodoArtifactVersion,
-    TodoRoadmap,
 )
 from teleclaude.core.todos_db._rows import ArtifactMetadataRow, ArtifactRemovalResult, ArtifactVersionRow
 
@@ -37,7 +37,7 @@ class TodosDbArtifactsMixin:
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
 
     async def _resolve_artifact_id(self, slug: str, session: SqlAsyncSession) -> str | None:
-        """Resolve slug to roadmap id for artifact reads. Returns None for unknown slugs.
+        """Resolve slug to todo id for artifact reads. Returns None for unknown slugs.
 
         Prefers active/icebox, falls back to delivered. Read callers treat None as
         the absent case — mirroring the existing unknown-artifact-name convention
@@ -45,40 +45,37 @@ class TodosDbArtifactsMixin:
         :meth:`_ensure_artifact_id` which raises instead.
         """
         result = await session.exec(
-            select(TodoRoadmap.id)
-            .where(ROADMAP_TABLE.c.slug == slug)
-            .where(ROADMAP_TABLE.c.status != "removed")
+            select(Todo.id)
+            .where(TODO_TABLE.c.slug == slug)
+            .where(TODO_TABLE.c.status != "removed")
             .order_by(
                 # active/icebox first, delivered last
-                (ROADMAP_TABLE.c.status == "delivered").asc()
+                (TODO_TABLE.c.status == "delivered").asc()
             )
             .limit(1)
         )
-        roadmap_id = result.first()
-        return str(roadmap_id) if roadmap_id is not None else None
+        todo_id = result.first()
+        return str(todo_id) if todo_id is not None else None
 
     async def _is_artifact_holder_slug(self, session: SqlAsyncSession, slug: str) -> bool:
         """Return whether any live child group-references ``slug``."""
         result = await session.exec(
-            select(TodoRoadmap.id)
-            .where(ROADMAP_TABLE.c.group_slug == slug)
-            .where(ROADMAP_TABLE.c.slug != slug)
-            .where(ROADMAP_TABLE.c.status != "removed")
+            select(Todo.id)
+            .where(TODO_TABLE.c.group_slug == slug)
+            .where(TODO_TABLE.c.slug != slug)
+            .where(TODO_TABLE.c.status != "removed")
             .limit(1)
         )
         return result.first() is not None
 
     async def _ensure_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
-        """Resolve slug to roadmap id for artifact writes. Raises for unknown or delivered slugs.
+        """Resolve slug to todo id for artifact writes. Raises for unknown or delivered slugs.
 
         Distinguishes the two failure modes in the error message so the caller can tell
         whether the slug is unrecognized or merely frozen as ``delivered``.
         """
         result = await session.exec(
-            select(TodoRoadmap)
-            .where(ROADMAP_TABLE.c.slug == slug)
-            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
-            .limit(1)
+            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
         )
         entry = result.first()
         if entry is not None:
@@ -87,10 +84,7 @@ class TodosDbArtifactsMixin:
             return entry.id
 
         delivered = await session.exec(
-            select(TodoRoadmap.id)
-            .where(ROADMAP_TABLE.c.slug == slug)
-            .where(ROADMAP_TABLE.c.status == "delivered")
-            .limit(1)
+            select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "delivered").limit(1)
         )
         if delivered.first() is not None:
             raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
@@ -108,28 +102,28 @@ class TodosDbArtifactsMixin:
     def _resolve_artifact_id_sync(self, slug: str) -> str | None:
         """Sync counterpart of :meth:`_resolve_artifact_id`. Returns None for unknown slugs."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
-            roadmap_id = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status != "removed")
-                .order_by((ROADMAP_TABLE.c.status == "delivered").asc())
+            todo_id = session.exec(
+                select(Todo.id)
+                .where(TODO_TABLE.c.slug == slug)
+                .where(TODO_TABLE.c.status != "removed")
+                .order_by((TODO_TABLE.c.status == "delivered").asc())
                 .limit(1)
             ).first()
-            return str(roadmap_id) if roadmap_id is not None else None
+            return str(todo_id) if todo_id is not None else None
 
     def read_artifact_sync(self, slug: str, name: str) -> str:
         """Read artifact content synchronously. Returns empty string for unknown slug or name."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
-            roadmap_id = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status != "removed")
-                .order_by((ROADMAP_TABLE.c.status == "delivered").asc())
+            todo_id = session.exec(
+                select(Todo.id)
+                .where(TODO_TABLE.c.slug == slug)
+                .where(TODO_TABLE.c.status != "removed")
+                .order_by((TODO_TABLE.c.status == "delivered").asc())
                 .limit(1)
             ).first()
-            if roadmap_id is None:
+            if todo_id is None:
                 return ""
-            artifact = session.get(TodoArtifact, (str(roadmap_id), name))
+            artifact = session.get(TodoArtifact, (str(todo_id), name))
             return artifact.content if artifact is not None else ""
 
     async def write_artifact(
@@ -206,27 +200,24 @@ class TodosDbArtifactsMixin:
         """Upsert artifact content synchronously and append to version history."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
             result = session.exec(
-                select(TodoRoadmap)
-                .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+                select(Todo)
+                .where(TODO_TABLE.c.slug == slug)
+                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             )
             entry = result.first()
             if entry is None:
                 delivered = session.exec(
-                    select(TodoRoadmap.id)
-                    .where(ROADMAP_TABLE.c.slug == slug)
-                    .where(ROADMAP_TABLE.c.status == "delivered")
-                    .limit(1)
+                    select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "delivered").limit(1)
                 ).first()
                 if delivered is not None:
                     raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
                 raise ValueError(f"Cannot write artifact: unknown todo {slug!r}")
             holder = session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.group_slug == slug)
-                .where(ROADMAP_TABLE.c.slug != slug)
-                .where(ROADMAP_TABLE.c.status != "removed")
+                select(Todo.id)
+                .where(TODO_TABLE.c.group_slug == slug)
+                .where(TODO_TABLE.c.slug != slug)
+                .where(TODO_TABLE.c.status != "removed")
                 .limit(1)
             ).first()
             if holder is not None:
@@ -362,9 +353,9 @@ class TodosDbArtifactsMixin:
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
             result = await db_session.exec(
-                select(TodoRoadmap.id)
-                .where(ROADMAP_TABLE.c.slug == old_slug)
-                .where(ROADMAP_TABLE.c.status.notin_(("delivered", "removed")))
+                select(Todo.id)
+                .where(TODO_TABLE.c.slug == old_slug)
+                .where(TODO_TABLE.c.status.notin_(("delivered", "removed")))
                 .limit(1)
             )
             row_id = result.one_or_none()
