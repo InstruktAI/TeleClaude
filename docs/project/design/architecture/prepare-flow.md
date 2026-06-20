@@ -124,15 +124,7 @@ Flow: agent talks with human; fills PRD template; writes PRD; presents for appro
 
 **Use case 2 — dumped work, auto-spawned, no human present.**
 
-<!-- planned-change:revise-todo-create-flags -->
-
-Trigger: `telec todo create <slug> <description> --kind <kind>` without `--silent`. Daemon writes input artifact and auto-spawns an orchestrator with `additional_context: human_in_loop: false`.
-
-<!-- change:revise-todo-create-flags -->
-
 Trigger: `telec todo create <slug> <description> --kind <kind>` without `--icebox`. Daemon writes input artifact and auto-spawns an orchestrator with `additional_context: human_in_loop: false`.
-
-<!-- /planned-change:revise-todo-create-flags -->
 
 Mode: standin.
 
@@ -148,15 +140,7 @@ Flow: agent queries the state machine; gets current layer + outstanding stamps +
 - Refine an artifact → agent clears the relevant downstream approvals and re-enters that artifact's phase with the delta.
 - Re-open intake → substantial new thinking; agent restarts at PRD with delta as new input.
 
-<!-- planned-change:revise-todo-create-flags -->
-
-Also covers the silent-create case: human comes back to a slug created with `--silent` that has an `input` artifact but no auto-spawn happened; the resume is use case 1's intake conversation applied to the existing input.
-
-<!-- change:revise-todo-create-flags -->
-
 Also covers the parked-create case: human comes back to a slug created with `--icebox` (or otherwise parked) that has an `input` artifact but no auto-spawn happened; after `telec todo unfreeze {slug}` the resume is use case 1's intake conversation applied to the existing input.
-
-<!-- /planned-change:revise-todo-create-flags -->
 
 ## Failure modes
 
