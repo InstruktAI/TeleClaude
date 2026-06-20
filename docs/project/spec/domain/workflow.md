@@ -1011,25 +1011,12 @@ And the runner clears the stale `active_runner` link and re-evaluates "my-slug" 
 
 #### UC-WFL-23: Hold is dormant when the kind's autostart is disabled
 
-<!-- planned-change:revise-todo-create-flags -->
-
-```gherkin
-Given a todo whose kind has autostart disabled
-When any set-site attempts to engage hold — creation (`--hold`/`--silent`), the manual-close interlock, or the manual engage path (`/todos/update --hold`, TUI hold action)
-Then `hold` stays false on the todo
-And no hold audit is recorded
-```
-
-<!-- change:revise-todo-create-flags -->
-
 ```gherkin
 Given a todo whose kind has autostart disabled
 When any set-site attempts to engage hold — the manual-close interlock or the manual engage path (`/todos/update --hold`, TUI hold action); creation is no longer a hold set-site
 Then `hold` stays false on the todo
 And no hold audit is recorded
 ```
-
-<!-- /planned-change:revise-todo-create-flags -->
 
 ```gherkin
 Given a todo whose kind has autostart disabled and a residual `hold=true` flag from before the kind's autostart was last toggled
