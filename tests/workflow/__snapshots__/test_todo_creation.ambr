@@ -4,21 +4,22 @@
     'stderr': '',
     'stdout': '''
       Usage:
-        telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--hold] [--release] [--plan]
+        telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]
       
         Create a todo with substantive content
       
       Options:
         --after                 Comma-separated dependency slugs
         --kind                  The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only.
-        --hold                  Create the todo with automatic dispatch held
-        --release               Create the todo unheld; explicit counterpart for legacy parking aliases
+        --icebox                Create the todo parked in the icebox; suppress prepare auto-spawn
+        -p, --project-root      Target an explicit project root instead of the invocation cwd
+        --group                 Attach the new todo as a child of <parent-slug>, making the parent a holder
         --plan                  Content is a complete implementation-plan; skip prepare to build (--kind change only).
       
       Notes:
         Creates the todo entry, canonical state, and stores content as the input artifact.
         Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
-        By default todos are unheld; the lifecycle runner applies the kind's autostart policy. --hold is the visible parking brake. The hidden --silent flag remains a legacy alias for non-task hold only.
+        --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> is the atomic alternative to split: it creates a complete grouped child in one call and makes the parent a holder via the existing derivation, no separate split step.
         ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
         --plan is valid only with --kind change and treats content as a complete implementation plan.
         Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.

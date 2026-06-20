@@ -914,25 +914,6 @@ And the todo-scoped diff (UC-WFL-18 above) is implemented in terms of this primi
 
 #### UC-WFL-19: Legacy silent creation is a boundary alias for hold
 
-<!-- planned-change:revise-todo-create-flags -->
-
-```
-Given a legacy caller creates a non-task "<slug>" whose kind has autostart enabled with the retired `creation_mode = silent` (or `--silent`)
-When the workflow service accepts the creation
-Then the todo is created with `hold=true` and no `creation_mode = silent` state is persisted
-And `workflow.todo.created` carries no silent or `pickup_requested` dispatch semantics
-And the lifecycle runner decides dispatch from `hold` and autostart policy alone, never from a creation-mode flag
-```
-
-```
-Given a legacy caller creates a non-task "<slug>" whose kind has autostart disabled with the retired `creation_mode = silent` (or `--silent`)
-When the workflow service accepts the creation
-Then the todo is created with `hold=false`
-And the lifecycle runner leaves it undispatched for policy-disabled, not for hold
-```
-
-<!-- change:revise-todo-create-flags -->
-
 ```
 Given a caller passes `--silent` (or a `silent` request field) to `telec todo create`
 When the workflow service validates the request body
@@ -940,8 +921,6 @@ Then no silent-to-hold alias applies — `--silent` is no longer part of the cre
 And a create without any retired parking field enters its kind's lifecycle normally, with no `hold` set at creation
 And the create-time parking mechanism is `--icebox` (roadmap `status="icebox"`, `pickup_requested=false`), which the runner skips as an iceboxed entry
 ```
-
-<!-- /planned-change:revise-todo-create-flags -->
 
 ```
 Given a legacy caller creates a `task` carrying the force-silent default
@@ -969,27 +948,6 @@ And in v1 every target wake-up is backed by either an existing v1 emission or an
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
-<!-- planned-change:revise-todo-create-flags -->
-
-```gherkin
-Given an operator creates a todo with `--hold` whose kind has autostart enabled
-When workflow persists the todo
-Then the todo is active and visible in normal todo reads
-And `hold=true` prevents automatic lifecycle-runner dispatch
-And releasing hold makes the todo eligible on the next runner wake-up if all other gates pass
-```
-
-```gherkin
-Given an operator creates a task without `--hold`
-When workflow persists the task
-Then the task has `hold=false`
-And the default autostart policy for `task` evaluates to false
-And the lifecycle runner skips it for policy-disabled, not for hold
-And explicit `telec todo work <slug>` remains valid
-```
-
-<!-- change:revise-todo-create-flags -->
-
 ```gherkin
 Given an operator wants to park a new todo so it does not enter its lifecycle yet
 When they run `telec todo create <slug> "<content>" --kind <k> --icebox`
@@ -1007,8 +965,6 @@ And the default autostart policy for `task` evaluates to false
 And the lifecycle runner skips it for policy-disabled, not for hold
 And explicit `telec todo work <slug>` remains valid
 ```
-
-<!-- /planned-change:revise-todo-create-flags -->
 
 ```gherkin
 Given a legacy v1 task was stored with `creation_mode=silent` only because task uses the force-silent default

@@ -6,14 +6,17 @@ import sys
 from collections.abc import AsyncGenerator, Mapping
 from pathlib import Path
 from typing import TypedDict, Unpack, cast
+from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from teleclaude.api import todo_routes
 from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
-from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN
+from teleclaude.cli.telec.handlers import todo as todo_handlers
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT, RoadmapStatus
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.roadmap import assemble_roadmap_from_db
@@ -34,10 +37,10 @@ _KIND_BUG = "bug"
 _PARENT = "parent"
 _CHILD = "child"
 _KINDLESS = "kindless"
+_PARKED = "parked-idea"
 _NEXT_PREPARE = "/next-prepare"
 _NEXT_WORK = "/next-work"
 _ANALYZE_TODO_INPUT = "/analyze-todo-input"
-_HOLD_SOURCE_CREATION = "creation"
 _CAPTURED_SESSION = "captured-session"
 
 
@@ -223,8 +226,8 @@ async def test_kindless_create_persists_no_phase_and_dispatches_analyzer(
     assert call["project_path"] == str(project_root)
 
 
-@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")
-async def test_create_with_hold_persists_visible_brake_and_suppresses_pickup(
+@pytest.mark.spec(_SPEC, "UC-WTC11")
+async def test_icebox_create_parks_todo_and_suppresses_dispatch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -235,36 +238,40 @@ async def test_create_with_hold_persists_visible_brake_and_suppresses_pickup(
         emitted.append(cast(_EmittedEvent, kwargs))
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
-    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda kind: kind == _KIND_CHANGE)
+    monkeypatch.setattr(lifecycle_router, "TelecAPIClient", _CapturingTelecAPIClient)
+    _CapturingTelecAPIClient.calls = []
 
     await todo_routes.todo_content_create(
         TodoDumpRequest(
-            slug="held-change",
-            content="Park this until released.",
+            slug=_PARKED,
+            content="Park this idea until promoted.",
             kind=_KIND_CHANGE,
             cwd=str(project_root),
-            hold=True,
+            icebox=True,
         )
     )
 
     todos_db = await get_todos_db(project_root)
-    state = await todos_db.read_state("held-change")
+    state = await todos_db.read_state(_PARKED)
     assert state is not None
-    assert state["hold"] is True
-    hold_audit = state["hold_audit"]
-    assert isinstance(hold_audit, dict)
-    assert hold_audit["source"] == _HOLD_SOURCE_CREATION
+    assert await todos_db.read_artifact(_PARKED, ARTIFACT_INPUT)
+
+    [todo] = assemble_roadmap_from_db(str(project_root), include_icebox=True, icebox_only=True)
+    assert todo.slug == _PARKED
+    assert todo.status == RoadmapStatus.ICEBOX
+    assert todo.ready_since is None
+
     [event_kwargs] = emitted
     payload = event_kwargs["payload"]
     assert isinstance(payload, dict)
     assert payload["pickup_requested"] is False
-    [todo] = assemble_roadmap_from_db(str(project_root))
-    assert todo.hold is True
-    assert todo.hold_source == _HOLD_SOURCE_CREATION
+
+    await LifecycleRouterCartridge().process(_created_event(payload), cast(PipelineContext, object()))
+    assert _CapturingTelecAPIClient.calls == []
 
 
-@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
-async def test_create_with_hold_noops_for_autostart_disabled_kind(
+@pytest.mark.spec(_SPEC, "UC-WTC12")
+async def test_group_create_attaches_child_and_derives_parent_holder(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -275,106 +282,97 @@ async def test_create_with_hold_noops_for_autostart_disabled_kind(
         emitted.append(cast(_EmittedEvent, kwargs))
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
-    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda _kind: False)
+
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, f"# {_PARENT} — Input\n\nParent scope.\n", updated_by="test")
 
     await todo_routes.todo_content_create(
         TodoDumpRequest(
-            slug="autostart-off-change",
-            content="No redundant parking flag.",
+            slug=_CHILD,
+            content="Grouped child created complete.",
             kind=_KIND_CHANGE,
             cwd=str(project_root),
-            hold=True,
+            group=_PARENT,
         )
     )
 
-    todos_db = await get_todos_db(project_root)
-    state = await todos_db.read_state("autostart-off-change")
-    assert state is not None
-    assert state["hold"] is False
-    hold_audit = state["hold_audit"]
-    assert isinstance(hold_audit, dict)
-    assert not hold_audit["source"]
+    child_state = await todos_db.read_state(_CHILD)
+    assert child_state is not None
+    [child] = [t for t in assemble_roadmap_from_db(str(project_root), include_icebox=True) if t.slug == _CHILD]
+    assert child.group == _PARENT
+
+    assert await todos_db.is_holder(_PARENT) is True
+    # Parent stripped to a structural holder: non-input state purged, frozen input retained.
+    assert await todos_db.read_state(_PARENT) is None
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT)
+
     [event_kwargs] = emitted
     payload = event_kwargs["payload"]
     assert isinstance(payload, dict)
-    assert payload["pickup_requested"] is True
+    assert payload["slug"] == _CHILD
 
 
-@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
-async def test_kindless_create_with_hold_keeps_parking_hold(
+@pytest.mark.spec(_SPEC, "UC-WTC13")
+async def test_project_root_create_targets_explicit_project(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    project_root = tmp_path / "project"
+    invocation_cwd = tmp_path / "invocation"
+    target_project = tmp_path / "other-project"
+    invocation_cwd.mkdir()
+    target_project.mkdir()
 
-    async def _capture_emit_event(**_kwargs: object) -> None:
-        return None
+    # CLI handler maps --project-root to the request cwd, not the invocation cwd.
+    tool_api_request = MagicMock(return_value={"status": "ok"})
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: invocation_cwd)
+    monkeypatch.setattr(todo_handlers, "tool_api_request", tool_api_request)
 
-    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
-    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda _kind: False)
-
-    await todo_routes.todo_content_create(
-        TodoDumpRequest(
-            slug="held-kindless",
-            content="Park until classified.",
-            cwd=str(project_root),
-            hold=True,
-        )
+    todo_handlers._handle_todo_create(
+        ["remote-task", "Targeted create.", "--kind", _KIND_CHANGE, "--project-root", str(target_project)]
     )
 
-    todos_db = await get_todos_db(project_root)
-    state = await todos_db.read_state("held-kindless")
-    assert state is not None
-    assert state["kind"] is None
-    assert state["hold"] is True
+    json_body = tool_api_request.call_args.kwargs["json_body"]
+    assert Path(json_body["cwd"]) == target_project
 
-
-@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-19")
-async def test_legacy_silent_is_hold_for_non_task_but_not_for_task(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    project_root = tmp_path / "project"
+    # Route honors the supplied cwd: the todo and its event land in the targeted project.
     emitted: list[_EmittedEvent] = []
 
     async def _capture_emit_event(**kwargs: object) -> None:
         emitted.append(cast(_EmittedEvent, kwargs))
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
-    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda kind: kind == _KIND_CHANGE)
-
     await todo_routes.todo_content_create(
         TodoDumpRequest(
-            slug="silent-change",
-            content="Legacy parked change.",
+            slug="remote-task",
+            content="Targeted create.",
             kind=_KIND_CHANGE,
-            cwd=str(project_root),
-            silent=True,
-        )
-    )
-    await todo_routes.todo_content_create(
-        TodoDumpRequest(
-            slug="task-default",
-            content="Task stays gated by policy.",
-            kind="task",
-            cwd=str(project_root),
-            silent=True,
+            cwd=str(target_project),
         )
     )
 
-    todos_db = await get_todos_db(project_root)
-    change_state = await todos_db.read_state("silent-change")
-    task_state = await todos_db.read_state("task-default")
-    assert change_state is not None
-    assert task_state is not None
-    assert change_state["hold"] is True
-    assert task_state["hold"] is False
-    pickup_requested: list[object] = []
-    for event in emitted:
-        payload = event["payload"]
-        assert isinstance(payload, Mapping)
-        pickup_requested.append(payload["pickup_requested"])
-    assert pickup_requested == [False, False]
+    target_db = await get_todos_db(target_project)
+    assert await target_db.read_state("remote-task") is not None
+    invocation_db = await get_todos_db(invocation_cwd)
+    assert await invocation_db.read_state("remote-task") is None
+    [event_kwargs] = emitted
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["project_path"] == str(target_project)
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC14")
+@pytest.mark.parametrize("retired_field", ["hold", "release", "silent"])
+def test_retired_create_parking_fields_are_rejected(retired_field: str) -> None:
+    with pytest.raises(ValidationError):
+        TodoDumpRequest.model_validate(
+            {
+                "slug": "rejected",
+                "content": "Stale client body.",
+                "kind": _KIND_CHANGE,
+                retired_field: True,
+            }
+        )
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC4")
