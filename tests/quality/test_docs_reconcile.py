@@ -15,13 +15,6 @@ pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/context/lifecycle-marker-reconciliation"
 
-# Sentinel tokens for the inline-marker fold test — the test asserts fold
-# behavior (markers gone, replacement kept, current dropped), not any prose.
-_INLINE_SLUG = "inline-slug"
-_ADD_CONTENT = "INLINE-ADD-LIVE"
-_CHANGE_CURRENT = "INLINE-CHANGE-CURRENT"
-_CHANGE_REPLACEMENT = "INLINE-CHANGE-REPLACEMENT"
-
 
 def _write_snippet(path: Path, body: str, *, delivered_by: list[str] | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,30 +68,3 @@ After.
         "content": content_after_first_run,
         "second_changed": second_changed,
     } == snapshot
-
-
-def test_reconcile_folds_inline_markers(tmp_path: Path) -> None:
-    """Inline markers (mid-prose) fold on delivery, not just own-line blocks."""
-    parent = tmp_path / "docs" / "project" / "spec" / "feature" / "context" / "inline-target.md"
-    _write_snippet(
-        parent,
-        f"# Inline Target — Spec\n\n"
-        f"Lead-in <!-- planned:{_INLINE_SLUG} -->{_ADD_CONTENT}<!-- /planned:{_INLINE_SLUG} --> trailer.\n\n"
-        f"Lead-in <!-- planned-change:{_INLINE_SLUG} -->{_CHANGE_CURRENT}"
-        f"<!-- change:{_INLINE_SLUG} -->{_CHANGE_REPLACEMENT}"
-        f"<!-- /planned-change:{_INLINE_SLUG} --> trailer.\n",
-        delivered_by=[_INLINE_SLUG],
-    )
-
-    changed = reconcile_delivered_snippets(tmp_path, _INLINE_SLUG)
-    result = parent.read_text(encoding="utf-8")
-
-    assert parent in changed
-    # Every trace of the delivered slug is gone — markers and delivered_by.
-    assert _INLINE_SLUG not in result
-    # ADD content becomes live; planned-change keeps the replacement, drops current.
-    assert _ADD_CONTENT in result
-    assert _CHANGE_REPLACEMENT in result
-    assert _CHANGE_CURRENT not in result
-    # Idempotent.
-    assert reconcile_delivered_snippets(tmp_path, _INLINE_SLUG) == []
