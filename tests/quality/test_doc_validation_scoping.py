@@ -400,7 +400,7 @@ Missing owner content.
             {
                 "code": "snippet_planned_marker_invalid_slug",
                 "path": "docs/project/concept/planned-change-validation.md",
-                "reason": "no such todo (typo or deleted)",
+                "reason": "no such todo — check `telec history search missing-owner`; maybe authored ahead, renamed, or gone",
                 "slug": "missing-owner",
             },
         ]
@@ -436,7 +436,7 @@ Bare content.
             {
                 "code": "snippet_planned_marker_invalid_slug",
                 "path": "docs/project/concept/planned-change-validation.md",
-                "reason": "no such todo (typo or deleted)",
+                "reason": "no such todo — check `telec history search bare-owner`; maybe authored ahead, renamed, or gone",
                 "slug": "bare-owner",
             }
         ]

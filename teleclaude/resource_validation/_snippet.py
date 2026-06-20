@@ -295,6 +295,7 @@ def _validate_delivered_by(
 
 
 _LIVE_ROADMAP_STATUSES = frozenset({RoadmapStatus.ACTIVE.value, RoadmapStatus.ICEBOX.value})
+_NO_SUCH_TODO_HINT = "no such todo — check `telec history search {slug}`; maybe authored ahead, renamed, or gone"
 
 
 def _validate_delivered_by_roadmap(
@@ -304,17 +305,16 @@ def _validate_delivered_by_roadmap(
 ) -> None:
     """Flag any delivered_by slug that is not a live (active/icebox) todo.
 
-    A valid pending marker names an in-flight todo. A slug resolving to a
-    delivered/removed todo should have been cleared on delivery; one resolving to
-    nothing is a typo or a deleted todo. Both are anomalies — not legacy to tolerate
-    — so they fail validation and must be removed.
+    A valid pending marker names an in-flight todo. A delivered/removed slug should
+    have been folded on delivery; a slug resolving to nothing is not auto-stale —
+    investigate via `telec history search <slug>` (authored-ahead, renamed, or gone).
     """
     delivered_by = _as_str_list(meta.get("delivered_by"))
     for slug in delivered_by:
         status = roadmap_status_map.get(slug)
         if status in _LIVE_ROADMAP_STATUSES:
             continue
-        reason = "no such todo (typo or deleted)" if status is None else f"todo is {status}, not in flight"
+        reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
         _error("snippet_delivered_by_invalid_slug", path=str(path), slug=slug, reason=reason)
 
 
@@ -368,7 +368,7 @@ def _validate_planned_marker_liveness(
         status = roadmap_status_map.get(slug)
         if status in _LIVE_ROADMAP_STATUSES:
             continue
-        reason = "no such todo (typo or deleted)" if status is None else f"todo is {status}, not in flight"
+        reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
         _error("snippet_planned_marker_invalid_slug", path=str(path), slug=slug, reason=reason)
 
 
