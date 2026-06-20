@@ -99,7 +99,16 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 #### Runtime Configuration (aggregate)
 
 - **Root:** `RuntimeConfig`
-- **Contains:** computer identity (name, host, user, role, platform, timezone), agents inventory, Redis URL, daemon socket path, deployment release channel + pinned minor, the workflow autostart policy (per-kind auto-dispatch toggles read by the lifecycle runner; off for every kind by default),<!-- planned:workflow-runner-mode --> the `workflow.runner` master mode (`autostart` | `manual`, default `autostart`) that gates whether the runner performs any autonomous dispatch,<!-- /planned:workflow-runner-mode --> and `max_todo_dispatch` (the per-machine cap on concurrent auto-dispatched lifecycle sessions; default 5).
+<!-- planned-change:workflow-runner-mode -->
+
+- **Contains:** computer identity (name, host, user, role, platform, timezone), agents inventory, Redis URL, daemon socket path, deployment release channel + pinned minor, the workflow autostart policy (per-kind auto-dispatch toggles read by the lifecycle runner; off for every kind by default), and `max_todo_dispatch` (the per-machine cap on concurrent auto-dispatched lifecycle sessions; default 5).
+
+<!-- change:workflow-runner-mode -->
+
+- **Contains:** computer identity (name, host, user, role, platform, timezone), agents inventory, Redis URL, daemon socket path, deployment release channel + pinned minor, the workflow autostart policy (per-kind auto-dispatch toggles read by the lifecycle runner; off for every kind by default), the `workflow.runner` master mode (`autostart` | `manual`, default `autostart`) that gates whether the runner performs any autonomous dispatch, and `max_todo_dispatch` (the per-machine cap on concurrent auto-dispatched lifecycle sessions; default 5).
+
+<!-- /planned-change:workflow-runner-mode -->
+
 - **Invariants:**
   - Exactly one runtime configuration per machine. File at `config.yml` (location TBD by platform conventions).
   - Computer identity fields are immutable per machine; changing them requires re-running `make install` / wizard.
