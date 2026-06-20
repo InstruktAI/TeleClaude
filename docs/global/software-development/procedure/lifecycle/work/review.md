@@ -142,6 +142,17 @@ Do not auto-remediate when uncertainty is high, product decisions are unresolved
 or changes require broad refactoring. Keep those findings unresolved and request
 changes.
 
+<!-- planned:gate-prepare-artifact-writes -->
+
+Auto-remediation never edits a prepare artifact (`input`, `prd`, `architecture`,
+`diagnosis`, `implementation-plan`). A `review-findings` fix targets code. When a
+finding reveals the intent or plan itself is wrong, it is not a fix here — it
+bounces the todo to prepare, where the prepare orchestrator owns the edit. The
+workflow service refuses any prepare-artifact write from a work-phase session, so
+this is enforced, not advisory.
+
+<!-- /planned:gate-prepare-artifact-writes -->
+
 **Missing test coverage is never auto-remediated.** For new functionality, test
 specs are expected to have been delivered upfront — a gap means the spec or build
 phase fell short, not something the reviewer patches. For existing code, coverage

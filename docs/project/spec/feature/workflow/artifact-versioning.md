@@ -92,6 +92,60 @@ When an agent attempts to write any artifact for that slug
 Then the workflow service refuses with a "delivered (read-only)" error
 ```
 
+<!-- planned:gate-prepare-artifact-writes -->
+
+### Write authority
+
+Prepare artifacts (`input`, `prd`, `architecture`, `diagnosis`,
+`implementation-plan`) are writable only by the prepare-orchestrator session
+bound to the slug — the session executing the prepare lifecycle. The work
+orchestrator and every dispatched worker (builders, reviewers, drift analyzers)
+cannot write them; the workflow service refuses the write before any state
+mutation. Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
+remain writable by the work-phase sessions that own them.
+
+The write path resolves the caller's identity, with parity to the stamp and
+artifact-remove boundaries, and records the resolved principal as `updated_by`.
+A work-phase session that needs a prepare artifact changed has no write path: it
+bounces the todo back to prepare, where the prepare orchestrator owns the edit
+and intent changes pass the human approval gate.
+
+#### UC-WAV9: Worker write to a prepare artifact is refused
+
+```gherkin
+Given an active todo with a dispatched worker session bound to the slug
+When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
+Then the workflow service refuses the write as unauthorized before any state mutation
+And the artifact's current version is unchanged
+```
+
+#### UC-WAV10: Work orchestrator write to a prepare artifact is refused
+
+```gherkin
+Given an active todo whose work-orchestrator session is bound to the slug
+When the work orchestrator attempts to write input
+Then the workflow service refuses the write as unauthorized before any state mutation
+```
+
+#### UC-WAV11: Prepare orchestrator write to a prepare artifact is accepted
+
+```gherkin
+Given an active todo whose prepare-orchestrator session is bound to the slug
+When the prepare orchestrator writes prd
+Then the workflow service accepts the write
+And records the resolved caller principal as updated_by
+```
+
+#### UC-WAV12: Artifact write records the resolved principal
+
+```gherkin
+Given a permitted prepare-artifact write
+When the workflow service persists the new version
+Then updated_by is the resolved caller principal, not a constant placeholder
+```
+
+<!-- /planned:gate-prepare-artifact-writes -->
+
 ### Cross-context references
 
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.
@@ -100,7 +154,11 @@ Then the workflow service refuses with a "delivered (read-only)" error
 ## Known caveats
 
 - The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `implementation-plan`).
+<!-- planned-change:gate-prepare-artifact-writes -->
 - The `input` artifact has special status: once `requirements` exists, the workflow service refuses further `input` writes with a "frozen" conflict, and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+<!-- change:gate-prepare-artifact-writes -->
+- The `input` artifact is writable only by the prepare orchestrator (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+<!-- /planned-change:gate-prepare-artifact-writes -->
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.
