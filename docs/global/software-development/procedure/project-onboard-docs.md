@@ -47,7 +47,14 @@ Determine the project's primary characteristics before deep analysis:
 - Check for existing `teleclaude.yml`, `docs/project/`, and `AGENTS.md` to
   understand current TeleClaude integration state.
 - If the project already has `generated_by: telec-init` snippets, this is a
-  re-analysis. Note existing snippet IDs for merge decisions.
+re-analysis. Note existing snippet IDs for merge decisions.
+<!-- planned:onboard-docs-incremental-enrichment -->
+- Read `.telec-init-meta.yaml`. When it records a `last_analyzed_commit`, this
+is an incremental re-run: compute `git diff <last_analyzed_commit>..HEAD
+  --name-only` and scope the analysis and snippet refresh to the changed
+areas, leaving snippets whose source is unchanged untouched. When the file
+is absent or carries no commit, analyze the full tree (first run).
+<!-- /planned:onboard-docs-incremental-enrichment -->
 
 ### 2. Language and Framework Detection
 
@@ -295,6 +302,10 @@ proceeds.
 - A set of schema-valid doc snippets under `docs/project/`.
 - A concise summary of what was created/updated.
 - A `telec sync --skip-deploy` run confirming snippet validity.
+<!-- planned:onboard-docs-incremental-enrichment -->
+- An updated `.telec-init-meta.yaml` recording `last_analyzed_commit` set to the
+HEAD commit analyzed, so the next run has a diff base.
+<!-- /planned:onboard-docs-incremental-enrichment -->
 
 ## Recovery
 
