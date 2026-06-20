@@ -26,9 +26,9 @@ from teleclaude.constants import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, ARTIFACT_UPSTREAMS
+from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, upstream_keys_for
+from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS as ARTIFACT_UPSTREAMS  # re-export
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
-from teleclaude.core.next_machine.kinds import PLAN_WITHOUT_INTENT_UPSTREAM_KINDS
 from teleclaude.core.next_machine.parent_prd_ground import (
     ParentPrdGroundReader,
     read_parent_prd_ground,
@@ -280,10 +280,8 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
     entry = getattr(model.artifacts, state_key)
     if _artifact_is_absent(entry):
         return DRIFT_FRESH
-    upstream_keys = ARTIFACT_UPSTREAMS.get(state_key, ())
+    upstream_keys = upstream_keys_for(model.kind, state_key)
     if not upstream_keys:
-        return DRIFT_FRESH
-    if _has_intentional_plan_only_upstreams(model, state_key, upstream_keys, entry.upstream_digests):
         return DRIFT_FRESH
     current = {key: getattr(model.artifacts, key).digest for key in upstream_keys}
     if entry.upstream_digests == current:
@@ -295,18 +293,6 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
         stamp,
         evidence_matches_review=lambda reviewed: reviewed.upstream_digests_at_review == current,
     )
-
-
-def _has_intentional_plan_only_upstreams(
-    model: TodoState,
-    state_key: str,
-    upstream_keys: tuple[str, ...],
-    recorded_digests: dict[str, str],
-) -> bool:
-    if state_key != STATE_KEY_IMPLEMENTATION_PLAN or model.kind not in PLAN_WITHOUT_INTENT_UPSTREAM_KINDS:
-        return False
-    current_digests = [getattr(model.artifacts, upstream_key).digest for upstream_key in upstream_keys]
-    return not any(current_digests) and not any(recorded_digests.values())
 
 
 def _has_missing_required_upstream(

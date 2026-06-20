@@ -27,6 +27,7 @@ from teleclaude.constants import (
 # low-level Pydantic models (e.g. teleclaude.types.todos) can reference them
 # without importing from the next-machine feature package. Re-exported here
 # for backward compatibility with the historical import path.
+from teleclaude.core.next_machine.kinds import PLAN_WITHOUT_INTENT_UPSTREAM_KINDS
 from teleclaude.types.state_value import StateScalar as StateScalar  # re-export
 from teleclaude.types.state_value import StateValue as StateValue  # re-export
 from teleclaude.types.todos import TodoState
@@ -156,6 +157,21 @@ ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
     STATE_KEY_DIAGNOSIS: (STATE_KEY_INPUT,),
     STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE, STATE_KEY_DIAGNOSIS),
 }
+
+
+def upstream_keys_for(kind: str | None, state_key: str) -> tuple[str, ...]:
+    """Resolve an artifact's upstream keys, kind-aware for the implementation-plan.
+
+    For kinds that draft the plan directly from intent with no PRD/diagnosis
+    intermediary (``change``), the plan's intent upstream is ``input`` — so an
+    input rewrite after the plan is drafted surfaces as upstream drift. Every
+    other artifact, and ``feature``/``bug`` plans, resolve through the static
+    ``ARTIFACT_UPSTREAMS`` table unchanged.
+    """
+    if state_key == STATE_KEY_IMPLEMENTATION_PLAN and kind in PLAN_WITHOUT_INTENT_UPSTREAM_KINDS:
+        return (STATE_KEY_INPUT,)
+    return ARTIFACT_UPSTREAMS.get(state_key, ())
+
 
 REVIEW_DIFF_NOTE = (
     "Review guard: if `git log --oneline HEAD..main` shows commits, "

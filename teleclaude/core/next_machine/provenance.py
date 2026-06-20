@@ -26,7 +26,7 @@ from teleclaude.constants import (
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
 )
-from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
+from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_origin_main_sha
 from teleclaude.core.next_machine.parent_prd_ground import read_parent_prd_ground
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -219,7 +219,7 @@ def _entry(writer: StateWriter, key: str) -> ArtifactEntry:
 def _current_upstream_digests(writer: StateWriter, key: str) -> dict[str, str]:
     return {
         upstream_key: getattr(writer.state.artifacts, upstream_key).digest
-        for upstream_key in ARTIFACT_UPSTREAMS.get(key, ())
+        for upstream_key in upstream_keys_for(writer.state.kind, key)
     }
 
 

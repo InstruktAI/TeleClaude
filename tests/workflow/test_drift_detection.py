@@ -44,9 +44,27 @@ pytestmark = pytest.mark.functional
 
 _SPEC = "project/spec/feature/workflow/drift-detection"
 _BUG_KIND = "bug"
+_CHANGE_KIND = "change"
 _INPUT_DIGEST = "input-v1"
+_REWRITTEN_INPUT_DIGEST = "input-v2"
 _DIAGNOSIS_DIGEST = "diagnosis-v1"
 _REWRITTEN_DIGEST = "diagnosis-v2"
+
+
+def _prepared_change_model(
+    *, input_digest: str = _INPUT_DIGEST, recorded_input_digest: str = _INPUT_DIGEST
+) -> TodoState:
+    """A prepared change Todo whose plan was drafted directly from input (no PRD/diagnosis)."""
+    model = TodoState(kind=_CHANGE_KIND, lifecycle_phase="prepared", schema_version=4)
+    model.plan_review.verdict = "approve"
+
+    model.artifacts.input.digest = input_digest
+    model.artifacts.input.async_provenance_complete = True
+
+    model.artifacts.implementation_plan.digest = "plan-v1"
+    model.artifacts.implementation_plan.upstream_digests = {STATE_KEY_INPUT: recorded_input_digest}
+    model.artifacts.implementation_plan.async_provenance_complete = True
+    return model
 
 
 class _DependencyReader:
@@ -417,6 +435,32 @@ def test_diagnosis_rewrite_drifts_bug_implementation_plan() -> None:
     model = _prepared_bug_model(diagnosis_digest=_REWRITTEN_DIGEST)
 
     assert derive_upstream_artifact_drift(model, ARTIFACT_IMPLEMENTATION_PLAN) == DRIFT_PENDING
+
+
+@pytest.mark.spec(_SPEC, "UC-WDD10")
+async def test_change_input_rewrite_drifts_implementation_plan() -> None:
+    model = _prepared_change_model(input_digest=_REWRITTEN_INPUT_DIGEST, recorded_input_digest=_INPUT_DIGEST)
+
+    assert derive_upstream_artifact_drift(model, ARTIFACT_IMPLEMENTATION_PLAN) == DRIFT_PENDING
+
+    drift = await derive_lifecycle_drift(
+        "my-change",
+        model,
+        repo_root="",
+        todos_db=_DependencyReader(),
+        snippet_digest_fn=_empty_snippet_digest,
+        writer=StateWriter(model.model_dump(exclude_none=True)),
+    )
+
+    assert STATE_KEY_INPUT not in drift
+    assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] == DRIFT_PENDING
+
+
+@pytest.mark.spec(_SPEC, "UC-WDD11")
+def test_change_implementation_plan_is_fresh_when_input_unchanged() -> None:
+    model = _prepared_change_model(input_digest=_INPUT_DIGEST, recorded_input_digest=_INPUT_DIGEST)
+
+    assert derive_upstream_artifact_drift(model, ARTIFACT_IMPLEMENTATION_PLAN) == DRIFT_FRESH
 
 
 @pytest.mark.spec(_SPEC, "UC-WDD4")

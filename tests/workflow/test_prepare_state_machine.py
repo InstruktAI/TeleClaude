@@ -227,7 +227,10 @@ def _prepared_dependent_with_parent_ground() -> TodoState:
     model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=4)
     model.plan_review.verdict = "approve"
     model.plan_review.approved_digest = "plan-v1"
+    model.artifacts.input.digest = _INPUT_DIGEST
+    model.artifacts.input.async_provenance_complete = True
     model.artifacts.implementation_plan.digest = "plan-v1"
+    model.artifacts.implementation_plan.upstream_digests = {STATE_KEY_INPUT: _INPUT_DIGEST}
     model.artifacts.implementation_plan.async_provenance_complete = True
     model.artifacts.implementation_plan.dependency_set_at_write = [_dependency_entry(_PARENT, "active")]
     model.artifacts.implementation_plan.parent_prd_ground_at_write = [_parent_ground_entry()]

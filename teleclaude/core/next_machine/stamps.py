@@ -38,7 +38,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
-from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS
+from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
@@ -418,7 +418,7 @@ def _canonical_artifact_name(artifact: str) -> str:
 def _current_upstream_digests(writer: StateWriter, state_key: str) -> dict[str, str]:
     return {
         upstream_key: getattr(writer.state.artifacts, upstream_key).digest
-        for upstream_key in ARTIFACT_UPSTREAMS.get(state_key, ())
+        for upstream_key in upstream_keys_for(writer.state.kind, state_key)
     }
 
 
