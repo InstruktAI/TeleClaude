@@ -45,6 +45,7 @@ from teleclaude.cli.models import (
 )
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.session_identity import get_session_id, get_session_token
 
 logger = get_logger(__name__)
@@ -474,8 +475,17 @@ class _TelecConnectionClient:
     def _build_identity_headers(self) -> dict[str, str]:
         """Build caller identity headers for daemon-side auth checks."""
         headers: dict[str, str] = {}
-        tmux_session = self._read_tmux_session_name()
-        use_session_identity = tmux_session != _TUI_SESSION_NAME
+
+        # Identity-context-spawned tasks (daemon-hosted lifecycle operations) carry the
+        # caller's session id via a contextvar override but run with no tmux pane. The
+        # ambient tmux read resolves to the daemon's most-recently-active foreign session,
+        # which the server's dual-factor cross-check rejects as an identity mismatch.
+        # Honor the caller-verification contract's pane-less caveat: send the session-id
+        # factor only, no tmux signal. In a genuine agent process the override is absent
+        # and the live tmux read is preserved unchanged.
+        in_caller_context = get_caller_session_id() is not None
+        tmux_session = None if in_caller_context else self._read_tmux_session_name()
+        use_session_identity = in_caller_context or tmux_session != _TUI_SESSION_NAME
 
         # Agent sessions: send daemon-issued token first (takes priority on the server side).
         token = get_session_token() if use_session_identity else None
