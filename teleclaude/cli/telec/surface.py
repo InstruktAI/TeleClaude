@@ -751,7 +751,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--architecture-skipped <reason>]"
                     " [--drift-reviewed <artifact> <verdict> <reason>]"
                     f" [--kind-assign <{TODO_KIND_USAGE}> [<content>]]"
-                    " [--finalize-ready]"
+                    " [--build-complete] [--finalize-ready]"
                 ),
                 flags=[
                     _H,
@@ -766,6 +766,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag(
                         "--kind-assign",
                         desc=f"Assign kind and enter that kind's lifecycle entry phase: <{TODO_KIND_USAGE}> [content]",
+                    ),
+                    Flag(
+                        "--build-complete",
+                        desc="Record the worker's build-complete claim; gates run on the next telec todo work dispatch",
                     ),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                 ],
