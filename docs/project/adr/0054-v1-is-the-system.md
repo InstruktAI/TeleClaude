@@ -16,12 +16,12 @@ converged.
 
 Two forces made the split untenable:
 
-- **The v2 parts do not function.** Despite todos marked "delivered" against Rust
-  work (the webhook ingress, the integration crate, the hooks service), none of it
-  runs in production. The running system is v1, end to end.
+- **The v2 parts do not function.** The Rust work — the webhook ingress, the
+  integration crate, the hooks service — does not run in production, even where
+  internal status records report it complete. The running system is v1, end to end.
 - **The documentation drifted toward the v2 target.** Domain specs increasingly
-  described the v2 Rust contract as if it were the live contract, carrying
-  cutover markers. New work read those specs, built toward an unbuilt
+  described the v2 Rust contract as if it were the live contract. New work read
+  those specs, built toward an unbuilt
   destination, and repeatedly stalled on the v1/v2 fault line (live state in v1,
   an attempted boundary in v2, bridged buses between them). Status fields and
   specs described a system that does not exist.
@@ -52,9 +52,9 @@ v1 (Python) is the canonical running system and the home for all functionality.
   the source.
 - New work unblocks: there is one system to build in, with no fault line to land
   on per feature.
-- Trust in status is restored only after re-baselining — a "delivered" marker on
-  retired Rust work does not mean functional, and those records must be corrected
-  rather than believed.
+- Trust in status is restored only after re-baselining — the retired Rust work is
+  not functional regardless of how its internal status records read, and those
+  records must be corrected rather than believed.
 - The investment in the Rust crates is shelved (sunk cost), and any v2 design
   worth keeping must be re-realized in v1 — the webhook ingress and any other
   needed boundary are rebuilt in Python, not inherited.
