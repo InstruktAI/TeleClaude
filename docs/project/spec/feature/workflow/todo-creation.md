@@ -29,11 +29,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   <!-- planned:task-lane -->
   - `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
     <!-- /planned:task-lane -->
-    <!-- planned-change:plan-flag-enters-plan-draft -->
-  - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes the `implementation-plan` artifact and marks the todo prepared for work.
-  <!-- change:plan-flag-enters-plan-draft -->
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes it as the `implementation-plan` artifact and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
-  <!-- /planned-change:plan-flag-enters-plan-draft -->
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
@@ -54,11 +50,7 @@ The workflow service emits the event with this payload:
 - `creation_mode` — `"pickup"` when pickup is requested, otherwise `"silent"`; derived from `pickup_requested`.
 - `pickup_requested` — boolean, false when the caller passed `--icebox` or the kind is `task`.
   <!-- /planned-change:revise-todo-create-flags -->
-  <!-- planned-change:plan-flag-enters-plan-draft -->
-- `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task` and `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
-<!-- change:plan-flag-enters-plan-draft -->
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task`, `"plan_drafting"` for `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
-  <!-- /planned-change:plan-flag-enters-plan-draft -->
     <!-- planned:task-lane -->
   Task creation emits `"task_plan_drafting"`.
     <!-- /planned:task-lane -->
@@ -110,21 +102,6 @@ And the todo waits in the icebox until `telec todo unfreeze parked-idea` returns
 
 <!-- /planned:revise-todo-create-flags -->
 
-<!-- planned-change:plan-flag-enters-plan-draft -->
-
-```
-Given a human or agent already has a complete implementation plan
-When they run `telec todo create my-feature "<content>" --kind change --plan`
-Then the request carries kind="change" and plan=true
-And the route writes the content as the `implementation-plan` artifact (body prefixed "# my-feature — Implementation Plan")
-And the route applies the prepared-state primitives so lifecycle_phase becomes "prepared"
-And the route emits workflow.todo.created with canonical kind="change" and pickup_requested=true
-And the lifecycle router dispatches /next-work (build), bypassing prepare
-And the CLI prints "Created todo: my-feature (kind=change)"
-```
-
-<!-- change:plan-flag-enters-plan-draft -->
-
 ```
 Given a human or agent already has a complete implementation plan
 When they run `telec todo create my-feature "<content>" --kind change --plan`
@@ -135,8 +112,6 @@ And the route emits workflow.todo.created with canonical kind="change" and picku
 And the lifecycle router dispatches /next-prepare, where the planner grounds the supplied plan, reflects affected doc snippets, and the plan is reviewed before prepared
 And the CLI prints "Created todo: my-feature (kind=change)"
 ```
-
-<!-- /planned-change:plan-flag-enters-plan-draft -->
 
 ```
 Given an operator runs `telec todo create existing-slug "<content>" --kind feature`
@@ -268,11 +243,7 @@ And the router dispatches /next-prepare for "child" as usual
 ## Known caveats
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
-<!-- planned-change:plan-flag-enters-plan-draft -->
-- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal, no human approval gate — it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should skip prepare.
-<!-- change:plan-flag-enters-plan-draft -->
 - `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review.
-  <!-- /planned-change:plan-flag-enters-plan-draft -->
   <!-- planned-change:revise-todo-create-flags -->
 - `--silent` does NOT suppress the event. The route always emits `workflow.todo.created` after a successful create. `--silent` flips `pickup_requested` to `false`, and the lifecycle router uses that field to decide whether to dispatch.
 <!-- change:revise-todo-create-flags -->

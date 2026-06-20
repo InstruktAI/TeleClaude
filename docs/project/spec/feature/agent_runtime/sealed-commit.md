@@ -21,15 +21,7 @@ The contract resolves four classes of file state at commit time:
 3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec code add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
-<!-- planned-change:telec-code-scope-misses-shell-edits -->
-
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
-
-<!-- change:telec-code-scope-misses-shell-edits -->
-
-The scope itself is peer-gated on a shared branch. When the current session is the only agent live on the shared checkout, the scope is the full set of currently dirty paths — a change made by any means, including through the shell, is in scope and committable. When one or more other agent sessions are concurrently live on the same checkout, the scope narrows to `(this session's transcript-touched paths) ∩ (currently dirty paths)`: a deletion or edit of a file the session did not touch is NOT in scope, so one agent's commit cannot include another agent's in-progress change. Live-peer presence is read from the sessions database; detection that cannot positively confirm zero peers is treated as peers present, so the concurrency protection is never weakened by a detection failure. In the concurrent case, Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`. In an isolated worktree the scope is always the full dirty set.
-
-<!-- /planned-change:telec-code-scope-misses-shell-edits -->
 
 On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the human-approved gate that lets the commit proceed; on a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
@@ -236,44 +228,6 @@ And `foreign.py` is NOT in agent B's scope
 And agent B's subsequent `telec code commit --approved` records only `mine.py` in HEAD
 And `foreign.py` remains a pending working-tree deletion for agent A to commit or recover
 ```
-
-<!-- planned:telec-code-scope-misses-shell-edits -->
-
-#### UC-SCOPE-1 — Single live agent on a shared branch scopes all dirty paths
-
-```
-Given a shared branch (not a worktree) with the current session's identity present
-And the current session is the only agent live on the shared checkout
-And a file `shell_made.py` is dirty in the working tree but absent from the session's transcript-touched set
-When workspace-scope resolution runs
-Then the resolved scope contains `shell_made.py`
-And `telec code changed` lists `shell_made.py`
-And a subsequent `telec code commit --approved "<msg>"` can record `shell_made.py` in HEAD
-```
-
-#### UC-SCOPE-2 — Live peer on a shared branch restricts scope to session-touched dirty paths
-
-```
-Given a shared branch (not a worktree) with the current session's identity present
-And another agent session is concurrently live on the same shared checkout
-And a file `peer_made.py` is dirty in the working tree but absent from the current session's transcript-touched set
-When workspace-scope resolution runs
-Then the resolved scope does NOT contain `peer_made.py`
-And the resolved scope contains only the current session's touched dirty paths
-```
-
-#### UC-SCOPE-3 — Peer detection failure falls back to session-scoped resolution
-
-```
-Given a shared branch (not a worktree) with the current session's identity present
-And live-peer detection against the sessions database cannot complete
-And a file `shell_made.py` is dirty in the working tree but absent from the session's transcript-touched set
-When workspace-scope resolution runs
-Then the resolved scope does NOT contain `shell_made.py`
-And the resolved scope contains only the current session's touched dirty paths
-```
-
-<!-- /planned:telec-code-scope-misses-shell-edits -->
 
 #### Foreign staged files in the index are not swept by the pathspec
 

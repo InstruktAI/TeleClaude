@@ -8,6 +8,7 @@ step are active.
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -193,6 +194,36 @@ def _run_git(project_root: Path, *args: str) -> None:
     )
 
 
+def _write_todos_db(project_root: Path, statuses: dict[str, str]) -> None:
+    db_path = project_root / ".teleclaude" / "todos.db"
+    db_path.parent.mkdir(parents=True)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE roadmap ("
+            "id TEXT PRIMARY KEY, slug TEXT NOT NULL, status TEXT NOT NULL, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "CREATE TABLE todo_state ("
+            "id TEXT PRIMARY KEY, slug TEXT NOT NULL, state TEXT NOT NULL, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        for index, (slug, status) in enumerate(statuses.items(), start=1):
+            row_id = f"todo-{index}"
+            conn.execute(
+                "INSERT INTO roadmap (id, slug, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (row_id, slug, status, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+            )
+            conn.execute(
+                "INSERT INTO todo_state (id, slug, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (row_id, slug, "{}", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 class TestValidateAllSnippetsScoping:
     def test_scoped_call_ignores_foreign_malformed_snippet(self, tmp_path: Path) -> None:
         good, _ = _setup_docs(tmp_path)
@@ -237,6 +268,191 @@ Current body.
 Replacement body.
 <!-- /planned-change:<slug> -->
 ```"""
+            ),
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        assert not get_errors()
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_inline_code_span_planned_change_examples_are_not_validated(self, tmp_path: Path) -> None:
+        snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(
+                planned_change_block="""`<!-- planned-change:BadSlug -->`
+`<!-- change:BadSlug -->`
+`<!-- /planned-change:BadSlug -->`
+
+<!-- planned-change:BadSlug -->
+Current body.
+<!-- change:BadSlug -->
+Replacement body.
+<!-- /planned-change:BadSlug -->"""
+            ),
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path, paths=[snippet])
+
+        assert _normalized_findings(tmp_path) == [
+            {
+                "code": "snippet_planned_change_marker_invalid",
+                "marker": "<!-- planned-change:BadSlug -->",
+                "path": "docs/project/concept/planned-change-validation.md",
+                "reason": "slug must be kebab-case",
+            },
+            {
+                "code": "snippet_planned_change_marker_invalid",
+                "marker": "<!-- change:BadSlug -->",
+                "path": "docs/project/concept/planned-change-validation.md",
+                "reason": "slug must be kebab-case",
+            },
+            {
+                "code": "snippet_planned_change_marker_invalid",
+                "marker": "<!-- /planned-change:BadSlug -->",
+                "path": "docs/project/concept/planned-change-validation.md",
+                "reason": "slug must be kebab-case",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_full_run_reports_delivered_planned_change_marker_slug(self, tmp_path: Path) -> None:
+        _write_todos_db(tmp_path, {"already-delivered": "delivered"})
+        snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(
+                planned_change_block="""<!-- planned-change:already-delivered -->
+Current body.
+<!-- change:already-delivered -->
+Replacement body.
+<!-- /planned-change:already-delivered -->"""
+            ),
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path)
+
+        assert _normalized_findings(tmp_path) == [
+            {
+                "code": "snippet_planned_marker_invalid_slug",
+                "path": "docs/project/concept/planned-change-validation.md",
+                "reason": "todo is delivered, not in flight",
+                "slug": "already-delivered",
+            }
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_full_run_accepts_active_planned_change_marker_slug(self, tmp_path: Path) -> None:
+        _write_todos_db(tmp_path, {"active-owner": "active"})
+        snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(
+                planned_change_block="""<!-- planned-change:active-owner -->
+Current body.
+<!-- change:active-owner -->
+Replacement body.
+<!-- /planned-change:active-owner -->"""
+            ),
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path)
+
+        assert not get_errors()
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_full_run_reports_removed_and_missing_planned_add_marker_slugs(self, tmp_path: Path) -> None:
+        _write_todos_db(tmp_path, {"removed-owner": "removed"})
+        snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(
+                planned_change_block="""<!-- planned:removed-owner -->
+Removed owner content.
+<!-- /planned:removed-owner -->
+
+<!-- planned:missing-owner -->
+Missing owner content.
+<!-- /planned:missing-owner -->"""
+            ),
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path)
+
+        assert _normalized_findings(tmp_path) == [
+            {
+                "code": "snippet_planned_marker_invalid_slug",
+                "path": "docs/project/concept/planned-change-validation.md",
+                "reason": "todo is removed, not in flight",
+                "slug": "removed-owner",
+            },
+            {
+                "code": "snippet_planned_marker_invalid_slug",
+                "path": "docs/project/concept/planned-change-validation.md",
+                "reason": "no such todo (typo or deleted)",
+                "slug": "missing-owner",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_marker_liveness_ignores_code_examples_but_reports_bare_marker(self, tmp_path: Path) -> None:
+        _write_todos_db(tmp_path, {})
+        snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(
+                planned_change_block="""`<!-- planned:example-owner -->`
+`delivered_by: [{slug}]`
+  — in-context `<!-- planned:placeholder-owner -->` blocks for additions.
+
+```
+<!-- planned:another-example -->
+Example content.
+<!-- /planned:another-example -->
+```
+
+<!-- planned:bare-owner -->
+Bare content.
+<!-- /planned:bare-owner -->"""
+            ),
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path)
+
+        assert _normalized_findings(tmp_path) == [
+            {
+                "code": "snippet_planned_marker_invalid_slug",
+                "path": "docs/project/concept/planned-change-validation.md",
+                "reason": "no such todo (typo or deleted)",
+                "slug": "bare-owner",
+            }
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_scoped_run_does_not_check_marker_slug_liveness(self, tmp_path: Path) -> None:
+        _write_todos_db(tmp_path, {"already-delivered": "delivered"})
+        snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            _PLANNED_CHANGE_CONCEPT_SNIPPET.format(
+                planned_change_block="""<!-- planned-change:already-delivered -->
+Current body.
+<!-- change:already-delivered -->
+Replacement body.
+<!-- /planned-change:already-delivered -->"""
             ),
             encoding="utf-8",
         )
