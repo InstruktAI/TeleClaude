@@ -90,6 +90,30 @@ And "parent-slug" resolves as a holder via the live child group-reference, with 
 And the route emits workflow.todo.created for "child-a" so its own lane proceeds under the normal dependency gate
 ```
 
+<!-- planned:retire-todo-split -->
+
+#### UC-WTC15: Holder artifacts are frozen — a write to a holder is refused with a clean 409
+
+```
+Given "parent-slug" is a structural holder because a live child group-references it
+When a caller attempts to write any non-`input` artifact to "parent-slug"
+Then the workflow service refuses the write with a 409 conflict naming the slug as a structural holder with grouped children
+And the holder's retained frozen `input` artifact is left unchanged
+And the caller is directed to write to the holder's children instead
+```
+
+#### UC-WTC16: Group create refuses to holder-ify a parent that is past prepare
+
+```
+Given "parent-slug" already carries a non-`input` artifact (it has advanced past intake — for example an implementation-plan)
+When an operator runs `telec todo create child-a "<content>" --kind change --group parent-slug`
+Then the workflow service refuses the create with a 409 conflict stating the parent carries prepared artifacts and cannot become a holder
+And "parent-slug"'s existing artifacts and state are left intact (no holder-purge occurs)
+And no child row is created
+```
+
+<!-- /planned:retire-todo-split -->
+
 #### UC-WTC13: Project-root create targets an explicit project
 
 ```

@@ -173,6 +173,21 @@ Then workflow persists the dependency edge and leaves schedule empty
 
 <!-- /planned:task-lane -->
 
+<!-- planned:retire-todo-split -->
+
+#### UC-WDG5: A group member cannot depend on its own holder
+
+```gherkin
+Given "child-a" is in the todo list with group_slug="parent-slug" (so "parent-slug" is a holder)
+When a caller runs `telec todo update child-a --after parent-slug`
+Then the request is refused with a conflict error stating that group membership and an "after" dependency on the same holder are mutually exclusive
+And "child-a"'s existing dependencies are left unchanged
+And the same refusal applies when the requested dependency is any ancestor holder of "child-a" reached by walking group_slug transitively
+And a dependency from a non-member todo onto the holder is still allowed
+```
+
+<!-- /planned:retire-todo-split -->
+
 ### Cross-context references
 
 - `workflow` orchestration internals — prepare and work pickup consult the dependency graph against the delivered set to decide what is runnable.
