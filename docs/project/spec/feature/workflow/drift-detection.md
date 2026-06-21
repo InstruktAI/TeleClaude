@@ -1,5 +1,5 @@
 ---
-description: "Detect when a Todo's prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, dependency graph, and age — and force re-grounding before the Todo may reach prepared."
+description: "Detect when a Todo's prepared artifacts and authored doc snippets no longer reflect current truth — code surfaces, upstream artifacts, owned/referenced doc snippets, and age — and force re-grounding before the Todo may reach prepared."
 visibility: 'public'
 ---
 
@@ -22,9 +22,21 @@ The bug `input` artifact is frozen human intent, not a drift surface. The bug
 work-entry drift candidate.
 
 Drift is not a single class — it is a taxonomy. Truth lives in several
+
+<!-- planned-change:remove-dependency-graph-drift -->
+
 places (code, sibling artifacts, doc snippets, the todo-list dependency
 graph) and an artifact authored at one moment can fall out of step with any
 of them by the time prepare is asked to converge. The feature names each
+
+<!-- change:remove-dependency-graph-drift -->
+
+places (code, sibling artifacts, doc snippets) and an artifact authored at one
+moment can fall out of step with any of them by the time prepare is asked to
+converge. The feature names each
+
+<!-- /planned-change:remove-dependency-graph-drift -->
+
 class explicitly, records the provenance needed to detect it, derives a
 status per class on every `telec todo prepare` call, and routes a
 `/next-drift-analyze` worker when classification cannot be made
@@ -59,21 +71,36 @@ Each tracked artifact is evaluated against every applicable class on every
 prepare call. The overall artifact drift status is the **most blocking**
 status across its classes (`substantive` > `pending` > `cosmetic` > `fresh`).
 
-| Class                 | Evidence checked                                                                                                  | When pending                                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| **code**              | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to `referenced_paths`.                   | HEAD has moved AND at least one changed path overlaps `referenced_paths`.                                             |
-| **upstream-artifact** | Digest of each upstream artifact (e.g., PRD digest at the time architecture was written) vs current digest.       | Any upstream artifact has been rewritten since this artifact was authored.                                            |
-| **owned-snippet**     | Digest of each doc snippet the Todo owns via `delivered_by` (recorded at artifact write time) vs current digest.  | An owned snippet was edited outside this prepare flow since the artifact was authored.                                |
-| **upstream-snippet**  | Digest of each non-owned doc snippet the artifact references by ID, recorded at write time, vs current digest.    | A referenced snippet's content has changed since the reference was recorded.                                          |
-| **dependency-graph**  | The Todo's immediate `after` set and each direct dep's status at write time vs current. Shallow — not transitive. | The immediate dep set changed (added/removed) OR any direct dep's status flipped (e.g., a HELD dep is now DELIVERED). |
-| **age** _(policy)_    | Artifact `produced_at` vs configurable freshness window.                                                          | `produced_at` is older than the configured window for the artifact kind.                                              |
+| Class                 | Evidence checked                                                                                                 | When pending                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **code**              | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to `referenced_paths`.                  | HEAD has moved AND at least one changed path overlaps `referenced_paths`.              |
+| **upstream-artifact** | Digest of each upstream artifact (e.g., PRD digest at the time architecture was written) vs current digest.      | Any upstream artifact has been rewritten since this artifact was authored.             |
+| **owned-snippet**     | Digest of each doc snippet the Todo owns via `delivered_by` (recorded at artifact write time) vs current digest. | An owned snippet was edited outside this prepare flow since the artifact was authored. |
+| **upstream-snippet**  | Digest of each non-owned doc snippet the artifact references by ID, recorded at write time, vs current digest.   | A referenced snippet's content has changed since the reference was recorded.           |
+
+<!-- planned-change:remove-dependency-graph-drift -->
+
+| **dependency-graph** | The Todo's immediate `after` set and each direct dep's status at write time vs current. Shallow — not transitive. | The immediate dep set changed (added/removed) OR any direct dep's status flipped (e.g., a HELD dep is now DELIVERED). |
+
+<!-- change:remove-dependency-graph-drift -->
+<!-- /planned-change:remove-dependency-graph-drift -->
+
+| **age** _(policy)_ | Artifact `produced_at` vs configurable freshness window. | `produced_at` is older than the configured window for the artifact kind. |
 
 Pending drift contract update:
 
-| Class                | Evidence checked                                                                                                                         | When pending                                                                                                                                               |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **code**             | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
-| **dependency-graph** | The Todo's immediate `after` set and each direct dep's normalized status at write time vs current. Shallow -- not transitive.            | The immediate dep set changed (added/removed) OR a direct dep crossed the active/icebox boundary. `active` -> `delivered` is normalized and stays fresh.   |
+| Class    | Evidence checked                                                                                                                         | When pending                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **code** | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
+
+<!-- planned-change:remove-dependency-graph-drift -->
+
+| **dependency-graph** | The Todo's immediate `after` set and each direct dep's normalized status at write time vs current. Shallow -- not transitive. | The immediate dep set changed (added/removed) OR a direct dep crossed the active/icebox boundary. `active` -> `delivered` is normalized and stays fresh. |
+
+<!-- change:remove-dependency-graph-drift -->
+<!-- /planned-change:remove-dependency-graph-drift -->
+
+<!-- planned-change:remove-dependency-graph-drift -->
 
 Prepare dependency ground may be satisfied by a
 direct dependency's human-approved PRD before that dependency reaches
@@ -89,6 +116,16 @@ before `prepared -> build_started`. A pending or substantive
 `parent-prd-ground` result blocks the dependent exactly like existing drift
 classes. If every direct dependency is delivered, the class derives fresh
 because delivered ground supersedes PRD-only prepare ground.
+
+<!-- change:remove-dependency-graph-drift -->
+
+Prepare dependency ground may be satisfied by a direct dependency's
+human-approved PRD before that dependency reaches `prepared`. This is a gating
+relaxation enforced at slug resolution, not a drift surface: the prepare gate
+reads the dependency's live PRD approval, so a lost or changed approval re-blocks
+dispatch directly. No staleness class is derived for it.
+
+<!-- /planned-change:remove-dependency-graph-drift -->
 
 ### Provenance recorded per artifact
 
@@ -118,24 +155,32 @@ drift class that applies to it. Per-artifact provenance:
   persisted state continues to use `upstream_digests`. This avoids any
   persisted-schema migration, alias, or read/write compatibility shim — the
   existing storage is reused with no on-disk change. New per-class provenance
+  <!-- planned-change:remove-dependency-graph-drift -->
   fields (`owned_snippet_digests`, `referenced_snippet_digests`,
   `dependency_set_at_write`, `produced_at`) are pure additions to the
+  <!-- change:remove-dependency-graph-drift -->
+  fields (`owned_snippet_digests`, `referenced_snippet_digests`,
+  `produced_at`) are pure additions to the
+  <!-- /planned-change:remove-dependency-graph-drift -->
   artifact lifecycle entry (default-empty) and follow the same
   backward-compat rule: absent values resolve to `pending` per the fail-safe
   contract, so old state loads cleanly.
 - `owned_snippet_digests` — map of `{snippet_id: digest}` for every snippet
   the Todo owns via its `delivered_by` membership at write time.
 - `referenced_snippet_digests` — map of `{snippet_id: digest}` for every
-  snippet the artifact references by id (extracted from the
-  validator-accepted inline reference forms — `@<HOME>/.teleclaude/docs/<id-path>.md`
-  for global snippets and `@docs/<id-path>.md` for project snippets. The
-  extractor maps each accepted reference to its canonical snippet ID and
-  the ID is the key into the digest map. Forms outside the validator's
-  accepted set are not tracked, by design — references in the body, not
-  by literal path substring).
+snippet the artifact references by id (extracted from the
+validator-accepted inline reference forms — `@<HOME>/.teleclaude/docs/<id-path>.md`
+for global snippets and `@docs/<id-path>.md` for project snippets. The
+extractor maps each accepted reference to its canonical snippet ID and
+the ID is the key into the digest map. Forms outside the validator's
+accepted set are not tracked, by design — references in the body, not
+by literal path substring).
+<!-- planned-change:remove-dependency-graph-drift -->
 - `dependency_set_at_write` — list of `{dep_slug, status}` tuples for the
   Todo's **immediate** `after` set at write time. Shallow only; see the
   "dependency-graph class is shallow, not transitive" caveat below.
+  <!-- change:remove-dependency-graph-drift -->
+  <!-- /planned-change:remove-dependency-graph-drift -->
 - `produced_at` — UTC wall-clock timestamp.
 
 Snippet digests are content hashes of the snippet body (excluding
@@ -144,12 +189,25 @@ slug does not trigger drift).
 
 ### Per-artifact coverage matrix
 
+<!-- planned-change:remove-dependency-graph-drift -->
+
 | Artifact               | code | upstream-artifact | owned-snippet | upstream-snippet | dependency-graph | age |
 | ---------------------- | :--: | ----------------- | :-----------: | :--------------: | :--------------: | :-: |
 | `prd`                  |  ✓   | `input`           |       ✓       |        ✓         |        ✓         |  ✓  |
 | `architecture` (index) |  ✓   | `prd`             |       ✓       |        ✓         |        ✓         |  ✓  |
 
 | `implementation-plan` | ✓ | `prd`, `architecture`, `diagnosis` (feature, bug); `input` (change) | _(none)_ | ✓ | ✓ | ✓ |
+
+<!-- change:remove-dependency-graph-drift -->
+
+| Artifact               | code | upstream-artifact | owned-snippet | upstream-snippet | age |
+| ---------------------- | :--: | ----------------- | :-----------: | :--------------: | :-: |
+| `prd`                  |  ✓   | `input`           |       ✓       |        ✓         |  ✓  |
+| `architecture` (index) |  ✓   | `prd`             |       ✓       |        ✓         |  ✓  |
+
+| `implementation-plan` | ✓ | `prd`, `architecture`, `diagnosis` (feature, bug); `input` (change) | _(none)_ | ✓ | ✓ |
+
+<!-- /planned-change:remove-dependency-graph-drift -->
 
 The `code` column is contract-scoped. Today only the `implementation-plan`
 declares a `referenced-paths` contract block. All other tracked artifacts have
@@ -183,7 +241,10 @@ the **evidence anchor** at which the verdict was made:
 - `head_sha_at_review` — the HEAD SHA when the analyzer ran.
 - `upstream_digests_at_review` — the upstream artifact digest map at review.
 - `snippet_digests_at_review` — the snippet digest map at review.
+<!-- planned-change:remove-dependency-graph-drift -->
 - `dep_set_at_review` — the dependency-set snapshot at review.
+  <!-- change:remove-dependency-graph-drift -->
+  <!-- /planned-change:remove-dependency-graph-drift -->
 
 On every prepare call, the per-artifact drift derivation first compares
 **current evidence** against the stamp's anchor for the same class. If any
@@ -311,11 +372,17 @@ For a valid substantive stamp:
 - X's review verdict is cleared (architecture-review or plan-review, as
   applicable).
 - Every downstream artifact's review verdict is cleared (a substantive
-  PRD drift invalidates architecture and plan; substantive architecture
-  drift invalidates plan).
+PRD drift invalidates architecture and plan; substantive architecture
+drift invalidates plan).
+<!-- planned-change:remove-dependency-graph-drift -->
 - The PRD-approved gate is **not** re-opened by drift on the PRD's
-  downstream evidence (code/snippets/deps). It IS re-opened when the PRD
+downstream evidence (code/snippets/deps). It IS re-opened when the PRD
+artifact itself is rewritten through intent-level refinement (its live
+<!-- change:remove-dependency-graph-drift -->
+- The PRD-approved gate is **not** re-opened by drift on the PRD's
+  downstream evidence (code/snippets). It IS re-opened when the PRD
   artifact itself is rewritten through intent-level refinement (its live
+  <!-- /planned-change:remove-dependency-graph-drift -->
   digest diverges from `approved_digest`; see `prepare-flow#refinement`).
   This supersedes a legacy approval that bound no `approved_digest` and one
   that recorded no `approved_at`; a re-approval whose `approved_at` is at or
@@ -485,6 +552,8 @@ Scenario: upstream-snippet drift on a referenced domain spec
   And the worker classifies and stamps the verdict
 ```
 
+<!-- planned-change:remove-dependency-graph-drift -->
+
 #### UC-WDD7: Active dependency delivery is not dependency-graph drift
 
 ```gherkin
@@ -509,7 +578,12 @@ Scenario: dependency-graph still drifts for icebox status and direct dependency 
   Then the machine reports drift.implementation-plan = pending (class: dependency-graph)
 ```
 
+<!-- change:remove-dependency-graph-drift -->
+<!-- /planned-change:remove-dependency-graph-drift -->
+
 #### UC-WDD9: Prepare hydration refreshes stale referenced paths without stamp churn
+
+<!-- planned-change:remove-dependency-graph-drift -->
 
 ```gherkin
 Scenario: prepare hydration self-heals stale greedy referenced paths
@@ -523,6 +597,22 @@ Scenario: prepare hydration self-heals stale greedy referenced paths
   And code drift for implementation-plan derives fresh
   And a delivered direct dependency that was recorded active does not create dependency-graph drift
 ```
+
+<!-- change:remove-dependency-graph-drift -->
+
+```gherkin
+Scenario: prepare hydration self-heals stale greedy referenced paths
+  Given a prepared Todo whose implementation-plan has complete async provenance
+  And the stored referenced_paths include stale greedy prose matches
+  And the current implementation-plan body declares no referenced-paths contract block
+  And the implementation-plan has an existing drift-reviewed stamp
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then prepare hydration refreshes referenced_paths from the current artifact body
+  And referenced_paths becomes empty without changing produced_at, dependency provenance, or drift-reviewed stamps
+  And code drift for implementation-plan derives fresh
+```
+
+<!-- /planned-change:remove-dependency-graph-drift -->
 
 #### UC-WDD10: Change input rewrite drifts the implementation-plan
 
@@ -547,6 +637,8 @@ Scenario: change implementation-plan upstream derivation is fresh when input mat
   And feature and bug implementation-plan upstream derivation is unchanged
 ```
 
+<!-- planned-change:remove-dependency-graph-drift -->
+
 ```gherkin
 Scenario: dependency-graph drift after an upstream dep delivers
   Given a Todo with "after: [feature-X]" and an approved plan
@@ -557,6 +649,9 @@ Scenario: dependency-graph drift after an upstream dep delivers
   And the drift-analyze worker is dispatched with the dep-graph class named
   And the worker stamps cosmetic or substantive based on whether the dep delivery affects plan tasks
 ```
+
+<!-- change:remove-dependency-graph-drift -->
+<!-- /planned-change:remove-dependency-graph-drift -->
 
 ```gherkin
 Scenario: age drift on a long-paused Todo
@@ -663,8 +758,14 @@ Scenario: re-writing an artifact clears its drift stamps
 
 ## Allowed values
 
+<!-- planned-change:remove-dependency-graph-drift -->
+
 - **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
-  `upstream-snippet`, `dependency-graph`, `age`, `parent-prd-ground`.
+`upstream-snippet`, `dependency-graph`, `age`, `parent-prd-ground`.
+<!-- change:remove-dependency-graph-drift -->
+- **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
+`upstream-snippet`, `age`.
+<!-- /planned-change:remove-dependency-graph-drift -->
 
 - **Drift status:** `fresh`, `pending`, `cosmetic`, `substantive`. Priority
   for collapse to per-artifact status: `substantive` > `pending` >
@@ -717,10 +818,11 @@ Scenario: re-writing an artifact clears its drift stamps
 <!-- /planned-change:gate-prepare-artifact-writes -->
 
 - **Snippet digests exclude `delivered_by` frontmatter churn.** When a
-  sibling delivery flips a snippet's `delivered_by` (`target` → `actual`
-  bookkeeping), the body digest is unchanged and no drift fires. This
-  prevents lifecycle-bookkeeping edits from invalidating unrelated
-  artifacts.
+sibling delivery flips a snippet's `delivered_by` (`target` → `actual`
+bookkeeping), the body digest is unchanged and no drift fires. This
+prevents lifecycle-bookkeeping edits from invalidating unrelated
+artifacts.
+<!-- planned-change:remove-dependency-graph-drift -->
 - **The dependency-graph class is shallow, not transitive.** It detects
   changes to the Todo's immediate `after` set and each direct dep's
   status. Deep transitive changes (a dep's dep changed) are not tracked
@@ -732,6 +834,8 @@ Scenario: re-writing an artifact clears its drift stamps
   delivery is covered by the code class scoped to the plan's declared
   `referenced-paths` contract. Status changes involving `icebox` and direct
   dep add/remove still register drift.
+  <!-- change:remove-dependency-graph-drift -->
+  <!-- /planned-change:remove-dependency-graph-drift -->
 - **Age drift is policy-driven and disabled by default per project until
   the config defaults are set.** Projects that do not configure age
   windows do not pay the age class on their prepare cycles.

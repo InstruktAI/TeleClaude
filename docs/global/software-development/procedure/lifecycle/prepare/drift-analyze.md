@@ -1,5 +1,5 @@
 ---
-description: 'Drift analysis phase. Classify each pending prepare-artifact drift across the six drift classes (code, upstream-artifact, owned-snippet, upstream-snippet, dependency-graph, age) as cosmetic or substantive and stamp the verdict so the lifecycle can continue or re-derive the affected layer.'
+description: 'Drift analysis phase. Classify each pending prepare-artifact drift across the five drift classes (code, upstream-artifact, owned-snippet, upstream-snippet, age) as cosmetic or substantive and stamp the verdict so the lifecycle can continue or re-derive the affected layer.'
 visibility: 'public'
 ---
 
@@ -32,7 +32,15 @@ classes are pending. The collapsed per-artifact status is the
 most-blocking class status; the analyzer must consider every pending
 class, not only the one that drove the collapse.
 
+<!-- planned-change:remove-dependency-graph-drift -->
+
 The six drift classes:
+
+<!-- change:remove-dependency-graph-drift -->
+
+The five drift classes:
+
+<!-- /planned-change:remove-dependency-graph-drift -->
 
 - **code** — `codebase_sha_at_write` vs current `origin/main` HEAD,
   scoped to `referenced_paths`.
@@ -42,14 +50,17 @@ The six drift classes:
 - **owned-snippet** — `owned_snippet_digests` vs current digest of each
   snippet the Todo owns via its `delivered_by` membership at write time.
 - **upstream-snippet** — `referenced_snippet_digests` vs current digest
-  of each non-owned snippet the artifact references by validator-
-  accepted inline reference extraction (`@<HOME>/.teleclaude/docs/...`
-  for global snippets, `@docs/...` for project snippets — per
-  `teleclaude/resource_validation/_snippet.py:124`), mapped to
-  canonical snippet IDs.
+of each non-owned snippet the artifact references by validator-
+accepted inline reference extraction (`@<HOME>/.teleclaude/docs/...`
+for global snippets, `@docs/...` for project snippets — per
+`teleclaude/resource_validation/_snippet.py:124`), mapped to
+canonical snippet IDs.
+<!-- planned-change:remove-dependency-graph-drift -->
 - **dependency-graph** — `dependency_set_at_write` vs the Todo's current
   **immediate** `after` set and each direct dep's todo status.
   Shallow only — not transitive.
+  <!-- change:remove-dependency-graph-drift -->
+  <!-- /planned-change:remove-dependency-graph-drift -->
 - **age** — `produced_at` vs the artifact-kind's configured freshness
   window (policy-driven; disabled when unset).
 
