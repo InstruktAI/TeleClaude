@@ -375,15 +375,14 @@ service-level project lookup. `project_name` remains display-only.
 
 ### GitHub mirror
 
-The `github` section gates and parameterizes the per-project GitHub todo mirror.
-`github.enabled` is a verified flag written only by the clean-slate enablement
-preflight (`telec projects init` / `telec projects onboard`); every mirror projection
-checks it before any write. The section also holds a rebuildable cache of
-GitHub-generated identifiers — the Projects v2 board node id, single-select field
-option ids, and an id→issue map — which is an accelerator only, never authoritative,
-and is reconstructible by scanning issue `roadmap.id` markers. No credentials live in
-config: the mirror authenticates through the machine's existing `gh` login (scopes
-`repo` + `project`).
+The `github` section parameterizes the per-project GitHub todo mirror. `github.enabled`
+is the per-project toggle the repo owner sets to turn the mirror on; every mirror
+projection checks it before any write — it is the entire enablement decision (no
+detection, probe, or prompt). The section also holds a rebuildable cache of
+GitHub-generated identifiers — the Projects v2 board node id, single-select field option
+ids, and an id→issue map — an accelerator only, never authoritative, reconstructible by
+scanning issue `roadmap.id` markers. No credentials live in config: the mirror
+authenticates through the machine's existing `gh` login (scopes `repo` + `project`).
 
 <!-- /planned:github-todo-mirror -->
 
