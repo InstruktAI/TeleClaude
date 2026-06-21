@@ -21,24 +21,13 @@ visibility: 'public'
    is covered by `tests/<domain>/test_<slug>.py`. Contract-defining tooling (wrappers, git filters)
    is not tested — see the generic policy.
 3. **Bind scenarios with the marker** `@pytest.mark.spec("<spec_id>", "<UC-id>")`.
-   <!-- planned-change:isolate-process-meta-tests -->
-   The functional/integration tier is a marker (`@pytest.mark.functional` / `@pytest.mark.integration`),
-   never a directory.
-   <!-- change:isolate-process-meta-tests -->
    The functional/integration/process tier is a marker (`@pytest.mark.functional` /
    `@pytest.mark.integration` / `@pytest.mark.process`), never a directory — a directory may
    _organize_ a tier's tests (e.g. `tests/process/`), but tier selection is always by marker. The
    `process` tier marks a test that drives a real OS subprocess across wall-clock deadlines.
-   <!-- /planned-change:isolate-process-meta-tests -->
    Shared fixtures live in `tests/conftest.py`.
 4. **Run via `uv run pytest`.** The harness is plain pytest plus declarative configuration — no
    watchdog, reaper, in-flight tracker, or custom wall code.
-   <!-- planned-change:isolate-process-meta-tests -->
-   Time budgets are enforced by
-   `pytest-timeout` (`timeout=5`, `timeout_method="signal"` for the functional/integration tier) and
-   the suite wall-clock ceiling by `session_timeout`, both in `[tool.pytest.ini_options]` as the
-   single source; parallelism is `pytest-xdist` (`-n auto`).
-   <!-- change:isolate-process-meta-tests -->
    Time budgets for the fast tier (functional/integration) are enforced by
    `pytest-timeout` (`timeout=5`, `timeout_method="signal"`) and the suite wall-clock ceiling by
    `session_timeout`, both in `[tool.pytest.ini_options]` as the single source; parallelism is
@@ -48,7 +37,6 @@ visibility: 'public'
    separate serial stage (xdist cleared via `-o "addopts="`) under its own relaxed per-test timeout,
    so that budget is a constant of the process stage, never a larger number granted to a fast-tier
    test.
-   <!-- /planned-change:isolate-process-meta-tests -->
    A per-test budget breach forcibly stops
    the offending test and names it by node id with a dumped traceback (signal method), per xdist
    worker — the one point a running test is interrupted, so in-flight identification lives here. The

@@ -1,4 +1,4 @@
-.PHONY: help install link certs format lint check-no-unit-tests test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
+.PHONY: help install link certs format lint check-no-unit-tests test-e2e test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -25,6 +25,7 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-e2e         Run integration/e2e tests only"
+	@echo "  make test-meta        Run process meta tests (serial, isolated harness)"
 	@echo "  make test             Run repo-wide tests"
 	@echo "  make coverage         Run tests with coverage report"
 	@echo "  make coverage-html    Generate HTML coverage report"
@@ -184,6 +185,11 @@ test-agents:
 	@uv run pytest tests/integration/test_agent_invocation_matrix.py -v -m expensive -o "addopts="
 	@echo "✓ Agent matrix tests passed"
 
+test-meta:
+	@echo "Running process meta tests (serial, isolated harness)..."
+	@uv run pytest tests/process/ -o "addopts=" --timeout=60
+	@echo "✓ Process meta tests passed"
+
 test:
 	@echo "Running repo-wide tests..."
 	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" bash -eu -o pipefail -c '\
@@ -193,6 +199,7 @@ test:
 		if [ -d frontend ] && [ -f frontend/package.json ]; then if [ -n "$$SNAPSHOT_UPDATE" ]; then (cd frontend && run_frontend_test -- -u); else (cd frontend && run_frontend_test); fi; fi; \
 		if [ -f Cargo.toml ]; then cargo test --workspace --lib; fi; \
 	'
+	@if [ -z "$$CI" ]; then $(MAKE) test-meta; fi
 	@echo "✓ All tests passed"
 
 coverage:

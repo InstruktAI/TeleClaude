@@ -320,7 +320,7 @@
   max_supported_python="3.14"
 
 [tool.pytest.ini_options]
-  addopts=["--strict-config", "--strict-markers", "--tb=short", "-q", "-n", "auto"]
+  addopts=["--strict-config", "--strict-markers", "--tb=short", "-q", "-n", "auto", "-m", "not process"]
   asyncio_mode="auto"
   timeout=5
   timeout_method="signal"
@@ -335,6 +335,7 @@
   markers=[
     "functional: Real API/auth/DB chain tests with local harnessed dependencies",
     "integration: Integration tests (slower, real components)",
+    "process: Drives a real OS subprocess across wall-clock deadlines; runs serially in its own relaxed-timeout stage, excluded from the fast -n auto suite",
     "spec(spec_id, scenario_id): Bind this test to a feature-spec Gherkin scenario",
   ]
   python_classes=["Test*"]
