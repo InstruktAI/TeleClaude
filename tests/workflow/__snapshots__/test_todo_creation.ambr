@@ -14,7 +14,7 @@
         --icebox                Create the todo parked in the icebox; suppress prepare auto-spawn
         -p, --project-root      Target an explicit project root instead of the invocation cwd
         --group                 Attach the new todo as a child of <parent-slug>, making the parent a holder
-        --plan                  Content is a complete implementation-plan; skip prepare to build (--kind change only).
+        --plan                  Content seeds the implementation-plan as a draft basis (not an approved artifact): the todo enters at plan-drafting for a full plan-draft pass, then plan-review, before build (--kind change only).
       
       Notes:
         Creates the todo entry, canonical state, and stores content as the input artifact.
