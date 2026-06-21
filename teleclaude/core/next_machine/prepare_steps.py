@@ -35,6 +35,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_send_command,
     format_tool_call,
 )
+from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.snippet_validation import snippet_body_digest
@@ -204,6 +205,7 @@ def _load_procedure(
     command: SlashCommand,
     hat: str,
     expected: str,
+    reason: DispatchReason | None = None,
 ) -> tuple[bool, str]:
     """Emit a procedure-load script for a drafting phase.
 
@@ -212,12 +214,47 @@ def _load_procedure(
     procedure inline and does the work. This helper produces the verbatim
     instruction for that load. Reviewer phases use ``_dispatch_worker``
     instead because the cross-model reviewer runs in a separate session.
+
+    A re-entry drafting phase passes ``reason`` so the loaded procedure reads
+    an explicit ``Dispatch reason`` header instead of defaulting to a
+    fresh-from-scratch production that silently overwrites an existing plan.
     """
     return False, format_procedure_load(
         slug=slug,
         command_name=command.value,
         hat=hat,
         expected=expected,
+        reason=reason,
+    )
+
+
+def _plan_drafting_reason(state: dict[str, StateValue]) -> DispatchReason:
+    """Classify why PLAN_DRAFTING was entered, from the same state signals the
+    lifecycle's ``_plan_only_phase`` routes on.
+
+    The artifact-absent case is a genuine fresh production. The two cases that
+    route a *present* plan to PLAN_DRAFTING — a ``--plan`` seed and a
+    substantive-drift clear — each carry their own reason so the planner
+    preserves/re-derives the existing plan instead of overwriting it. No other
+    state reaches PLAN_DRAFTING with a present plan (a stale review routes to
+    PLAN_REVIEW), so a present plan never falls to ``FRESH``.
+    """
+    model = StateWriter(state).state
+    plan = model.artifacts.implementation_plan
+    if not (plan.digest or plan.produced_at):
+        return DispatchReason.FRESH
+    if plan.seeded:
+        return DispatchReason.SEEDED
+    if model.plan_review.cleared_by_substantive_drift:
+        return DispatchReason.SUBSTANTIVE_DRIFT
+    raise ValueError(
+        "PLAN_DRAFTING reached with a present implementation-plan that is "
+        "neither seeded nor substantive-drift-cleared. Only an absent plan may "
+        "dispatch FRESH; falling through here would silently re-derive from "
+        "scratch and overwrite the existing plan — the exact failure this "
+        "dispatch reason exists to prevent. The contradictory state must be "
+        "resolved (or a new present-plan route given its own reason), not "
+        "papered over with a produce-from-scratch dispatch."
     )
 
 
@@ -317,6 +354,7 @@ async def _prepare_dispatch(
             command=SlashCommand.NEXT_PREPARE_PLAN,
             hat="Planner",
             expected="an `implementation-plan` artifact or breakdown decision",
+            reason=_plan_drafting_reason(state),
         )
     if phase == PreparePhase.PLAN_REVIEW:
         return await _dispatch_worker(

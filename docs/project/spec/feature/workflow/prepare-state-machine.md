@@ -96,6 +96,17 @@ And a cosmetic drift verdict does not re-open the gate
 And a human re-approval whose approved_at is at or after the drift stamp advances past the gate
 ```
 
+#### UC-WPS10: A plan-drafting re-entry carries an explicit dispatch reason
+
+```gherkin
+Given a Todo at lifecycle_phase=plan_drafting whose implementation-plan Artifact is present
+When the orchestrator calls "telec todo prepare my-bug" and the re-entry is a substantive-drift clear (plan_review.cleared_by_substantive_drift)
+Then the loaded plan-drafting procedure dispatch carries the header "Dispatch reason: substantive-drift"
+And when instead the present plan is a --plan seed (implementation_plan.seeded) the header reads "Dispatch reason: seeded"
+And when no implementation-plan Artifact is present the header reads "Dispatch reason: fresh"
+And a non-plan drafting phase (e.g. diagnose) dispatch carries no dispatch-reason header
+```
+
 <!-- planned:task-lane -->
 
 #### UC-WPS6: Task todos bypass the prepare machine

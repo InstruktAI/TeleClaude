@@ -50,6 +50,7 @@ from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.next_machine.work_steps import _artifact_contract_note
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.paths import COMMANDS_DIR
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import (
     DependencyEntry,
@@ -444,6 +445,71 @@ def test_seeded_plan_is_held_in_plan_drafting_until_the_seed_clears() -> None:
 
     model.artifacts.implementation_plan.seeded = False
     assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PLAN_REVIEW
+
+
+async def _dispatch_for(model: TodoState, *, phase: PreparePhase) -> str:
+    """Drive _prepare_dispatch for a drafting phase and return the dispatch script.
+
+    Drafting phases (PLAN_DRAFTING, DIAGNOSE) build their instruction purely
+    from the typed state — they touch neither `db` nor `todos_db` — so no
+    project database is created: the test pins the dispatch-string contract
+    without DB I/O.
+    """
+    _, output = await _prepare_dispatch(
+        db=cast(Db, _CapturingDb([])),
+        todos_db=cast(TodosDb, None),
+        slug="plan-drafting-reason",
+        cwd=_PROJECT_ROOT,
+        phase=phase,
+        state=model.model_dump(exclude_none=True),
+    )
+    return output
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS10")
+async def test_plan_drafting_reentry_dispatch_carries_its_reason(snapshot: object) -> None:
+    """A present plan re-entered into PLAN_DRAFTING must carry an explicit
+    dispatch reason so the planner preserves/re-derives it instead of silently
+    overwriting it: substantive-drift clear and --plan seed each name their
+    reason. An absent plan is a genuine fresh production. A non-plan drafting
+    phase (diagnose) carries no reason header (the formatter default is
+    untouched). The snapshot pins the full dispatch surface for every case."""
+    substantive = TodoState(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=5)
+    substantive.artifacts.implementation_plan.digest = "plan-v1"
+    substantive.plan_review.cleared_by_substantive_drift = True
+
+    seeded = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=5)
+    seeded.artifacts.implementation_plan.digest = "seed-v1"
+    seeded.artifacts.implementation_plan.seeded = True
+
+    fresh = TodoState(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=5)
+    diagnose = TodoState(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.DIAGNOSE.value, schema_version=5)
+
+    outputs = {
+        "substantive_drift": await _dispatch_for(substantive, phase=PreparePhase.PLAN_DRAFTING),
+        "seeded": await _dispatch_for(seeded, phase=PreparePhase.PLAN_DRAFTING),
+        "fresh": await _dispatch_for(fresh, phase=PreparePhase.PLAN_DRAFTING),
+        "diagnose": await _dispatch_for(diagnose, phase=PreparePhase.DIAGNOSE),
+    }
+    # COMMANDS_DIR resolves under a per-run sandboxed TELECLAUDE_HOME, so the
+    # loader path is volatile; sanitize it before snapshotting (the file's
+    # established pattern for non-deterministic paths).
+    sanitized = {key: value.replace(str(COMMANDS_DIR), "<commands>") for key, value in outputs.items()}
+
+    assert sanitized == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WPS10")
+async def test_present_plan_without_recognized_reason_fails_loudly() -> None:
+    """A present plan that is neither seeded nor substantive-drift-cleared cannot
+    reach PLAN_DRAFTING in correct operation. If state ever lands there, the
+    dispatch refuses to fall to a produce-from-scratch FRESH that would silently
+    overwrite the plan — it raises instead of papering over the contradiction."""
+    model = TodoState(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=5)
+    model.artifacts.implementation_plan.digest = "plan-v1"
+
+    with pytest.raises(ValueError):
+        await _dispatch_for(model, phase=PreparePhase.PLAN_DRAFTING)
 
 
 async def test_plan_rewrite_clears_the_seed_and_advances_to_plan_review(tmp_path: Path) -> None:

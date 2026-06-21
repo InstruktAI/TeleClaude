@@ -94,6 +94,14 @@ header. Pick your behavior from the reason:
   instead of authoring from scratch. The supplied plan accelerates drafting; it
   does not skip grounding, blast radius, doc reflection, or the downstream plan
   review.
+- **`substantive-drift`** — code under the existing plan's referenced paths
+  drifted materially, clearing the prior plan review (`cleared_by_substantive_drift`)
+  and routing back here with the plan still present. Read the existing plan via
+  `telec todo artifacts read {slug} implementation-plan` and re-ground it against
+  the changed code: re-derive the tasks whose grounding the drift invalidated and
+  preserve every task the drift does not touch. Do not produce from scratch — the
+  plan exists and most of it is still valid. Skip the atomicity decision (step 2)
+  and proceed to step 5.
 - **`findings-fix`** — a `needs_work` verdict was issued. Read
   `telec todo artifacts read {slug} plan-review-findings` alongside the existing
   plan. Apply targeted fixes to address each finding. Preserve every task not

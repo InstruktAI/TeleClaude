@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
+from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
 from teleclaude.paths import COMMANDS_DIR
 
 if TYPE_CHECKING:
@@ -321,6 +322,8 @@ def format_procedure_load(
     command_name: str,
     hat: str,
     expected: str,
+    reason: DispatchReason | None = None,
+    diffs: list[tuple[str, str, str, str]] | None = None,
 ) -> str:
     """Format a procedure-load instruction for the active prepare session.
 
@@ -329,9 +332,15 @@ def format_procedure_load(
     phase's procedure inline and does the phase's work. Reviewer phases keep
     using ``format_tool_call`` because they are legitimate cross-model
     dispatches.
+
+    When ``reason`` is supplied, an explicit ``Dispatch reason: <reason>``
+    header is prepended so a re-entry drafting phase (currently only the plan
+    phase) tells the worker why it was dispatched instead of falling silently
+    to the fresh default. When ``reason`` is ``None`` the output is unchanged,
+    so non-plan draft dispatches are untouched.
     """
     loader = format_command_loader_message(command_name, slug)
-    return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
+    body = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 SLUG: {slug}
 
@@ -349,6 +358,9 @@ WHEN THE PHASE'S WORK IS COMPLETE:
 Call `telec todo prepare {slug}` to advance the state machine. The state
 machine will route the next action — dispatch a reviewer, pause for human
 approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED."""
+    if reason is None:
+        return body
+    return format_dispatch_reason(body, slug, reason, diffs)
 
 
 def format_error(code: str, message: str, next_call: str = "") -> str:

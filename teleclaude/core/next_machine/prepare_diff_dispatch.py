@@ -35,6 +35,14 @@ class DispatchReason(StrEnum):
     FRESH = "fresh"
     """No prior artifact exists; produce from scratch."""
 
+    SEEDED = "seeded"
+    """A `--plan`-created plan is present at first entry with no prior review;
+    treat it as the draft basis, not an oracle, and ground it fully."""
+
+    SUBSTANTIVE_DRIFT = "substantive-drift"
+    """Code under the plan's referenced paths drifted materially; re-derive the
+    existing plan against the change and preserve unaffected tasks."""
+
     FINDINGS_FIX = "findings-fix"
     """A needs_work verdict requires targeted revision against findings."""
 
