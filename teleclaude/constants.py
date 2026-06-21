@@ -363,6 +363,10 @@ CHECKPOINT_AGENT_RESTART_EVIDENCE = ["telec sessions restart", "/agent-restart",
 CHECKPOINT_RELOAD_EVIDENCE = ["pkill -SIGUSR2", "kill -USR2"]
 CHECKPOINT_LOG_CHECK_EVIDENCE = ["instrukt-ai-logs"]
 CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
+# A post-commit review is satisfied once the commit(s) are dispatched to a
+# reviewer — either a fresh run of /next-review-commits or a remediation sent to
+# an already-open reviewer ("review commits <sha>" via telec sessions send).
+CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["/next-review-commits", "review commits"]
 
 # File categories ordered by action precedence (R2, R9).
 # Evidence substrings are matched against Bash tool call commands (R4).

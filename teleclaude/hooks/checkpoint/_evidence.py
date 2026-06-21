@@ -7,6 +7,7 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
     CHECKPOINT_COMMIT_EVIDENCE,
+    CHECKPOINT_REVIEW_DISPATCH_EVIDENCE,
     FileCategory,
 )
 from teleclaude.core.todos_db import get_todos_db_sync
@@ -37,6 +38,7 @@ __all__ = [
     "_has_commit_evidence_after_last_mutation",
     "_has_evidence",
     "_has_evidence_after_index",
+    "_has_review_dispatch_evidence",
     "_iter_shell_command_records",
     "_last_category_mutation_index",
     "_last_git_file_mutation_index",
@@ -62,6 +64,16 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
         if _command_has_evidence(command, substrings):
             return True
     return False
+
+
+def _has_review_dispatch_evidence(timeline: TurnTimeline) -> bool:
+    """Return True when the commit(s) were dispatched to a reviewer this cycle.
+
+    Recognizes both a fresh ``/next-review-commits`` run and a remediation sent to
+    an already-open reviewer (``telec sessions send <id> "review commits ..."``),
+    which discharges the post-commit review obligation.
+    """
+    return _has_evidence(timeline, CHECKPOINT_REVIEW_DISPATCH_EVIDENCE)
 
 
 def _has_commit_evidence(timeline: TurnTimeline) -> bool:
@@ -271,6 +283,10 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return head in {"kill", "pkill"} and any("USR2" in token for token in rest)
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
+    if evidence == "/next-review-commits":
+        return head == "telec" and "sessions" in rest and any("/next-review-commits" in token for token in rest)
+    if evidence == "review commits":
+        return head == "telec" and "sessions" in rest and "send" in rest and "review commits" in segment
     if evidence == "/agent-restart":
         return any("/agent-restart" in token for token in tokens)
     if evidence == "agent_restart":

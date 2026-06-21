@@ -15,7 +15,11 @@ from teleclaude.cli.telec.handlers import code
 from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.core.agents import AgentName
 from teleclaude.git import Repo
-from teleclaude.hooks.checkpoint import get_checkpoint_content, run_heuristics
+from teleclaude.hooks.checkpoint import (
+    _post_commit_review_instruction,
+    get_checkpoint_content,
+    run_heuristics,
+)
 from teleclaude.hooks.checkpoint._models import CheckpointContext
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
@@ -711,6 +715,50 @@ def test_docs_dir_telec_sync_suppressed_with_evidence(
     result = run_heuristics(["docs/spec.md"], timeline, context)
 
     assert _TELEC_SYNC_INSTR not in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP5A")
+def test_post_commit_review_discharged_by_review_dispatch(
+    tmp_path: Path,
+) -> None:
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)  # on main
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+    review_instr = _post_commit_review_instruction()
+
+    # No dispatch evidence: the review obligation surfaces after an authored commit.
+    bare = run_heuristics([], _empty_timeline(), context, authored_main_commit=True)
+    assert review_instr in bare.required_actions
+    assert bare.post_commit_review_action_required is True
+
+    # A fresh /next-review-commits run discharges it.
+    fresh = run_heuristics(
+        [],
+        _timeline_with_bash("telec sessions run --command /next-review-commits --args abc123 --agent codex --mode med"),
+        context,
+        authored_main_commit=True,
+    )
+    assert review_instr not in fresh.required_actions
+    assert fresh.post_commit_review_action_required is False
+
+    # A remediation sent to an already-open reviewer discharges it too.
+    remediation = run_heuristics(
+        [],
+        _timeline_with_bash('telec sessions send sess-9 "review commits abc123 — remediation of findings"'),
+        context,
+        authored_main_commit=True,
+    )
+    assert review_instr not in remediation.required_actions
+
+    # An incidental mention that is not a sessions command does not discharge it.
+    incidental = run_heuristics(
+        [],
+        _timeline_with_bash("echo run /next-review-commits later"),
+        context,
+        authored_main_commit=True,
+    )
+    assert review_instr in incidental.required_actions
 
 
 @pytest.mark.functional

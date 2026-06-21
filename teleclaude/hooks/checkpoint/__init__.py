@@ -30,6 +30,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _has_commit_evidence_after_last_mutation,
     _has_evidence,
     _has_evidence_after_index,
+    _has_review_dispatch_evidence,
     _iter_shell_command_records,
     _last_category_mutation_index,
     _segment_matches_evidence,
@@ -142,7 +143,10 @@ def run_heuristics(
         if action not in result.required_actions:
             result.required_actions.append(action)
 
-    if result.on_main and result.authored_main_commit:
+    # The post-commit review obligation is discharged once the commit(s) are
+    # dispatched to a reviewer this cycle (a /next-review-commits run, or a
+    # remediation sent to an open reviewer) — re-surfacing it then is a no-op nag.
+    if result.on_main and result.authored_main_commit and not _has_review_dispatch_evidence(timeline):
         append_required_action(_post_commit_review_instruction())
         result.post_commit_review_action_required = True
 
@@ -615,7 +619,10 @@ def get_checkpoint_content(
             return None
 
         message = _compose_checkpoint_message(effective_files, result)
-        if result.post_commit_review_action_required:
+        # Consume the authored-commit flag once the review obligation is either
+        # surfaced or already discharged by a review dispatch this cycle, so the
+        # main-commit force-fire does not re-fire on a settled, reviewed commit.
+        if result.post_commit_review_action_required or _has_review_dispatch_evidence(timeline):
             consume_authored_main_commit_flag(session_id)
         mode = (
             "main_commit_authored"
