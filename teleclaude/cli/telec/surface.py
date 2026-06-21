@@ -487,7 +487,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--group", desc="Attach the new todo as a child of <parent-slug>, making the parent a holder"),
                     Flag(
                         "--plan",
-                        desc="Content is a complete implementation-plan; skip prepare to build (--kind change only).",
+                        desc="Content seeds the implementation-plan as a draft basis (not an approved artifact): the todo enters at plan-drafting for a full plan-draft pass, then plan-review, before build (--kind change only).",
                     ),
                 ],
                 notes=[
