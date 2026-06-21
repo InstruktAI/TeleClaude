@@ -114,6 +114,10 @@ and do its focused work. Each procedure ends by calling `telec todo prepare
 | Architecture | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect |
 | Plan         | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner   |
 
+Intake's focused work includes situating the premise against the existing todo
+landscape — reconciling overlap and undeclared dependencies with sibling todos
+before scoping (intake procedure, step 1.6).
+
 ### 4. Honor the PRD approval gate
 
 The PRD is the only artifact gated by human approval. When intake produces

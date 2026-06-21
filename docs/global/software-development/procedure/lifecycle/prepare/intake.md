@@ -19,6 +19,13 @@ author/enrich the feature spec snippet that captures the business value +
 Gherkin acceptance scenarios in the durable docs layer. The wider prepare
 lifecycle is still yours; this phase is one focused part of it.
 
+Intake is also where you situate the premise in what already exists. The same
+collecting instinct as proactive feature surfacing — turned outward, from "what
+does this domain usually include" to "what sibling todos already exist or are
+coming" — so this work is scoped against the landscape, not in isolation. It is
+intake's own job, done in-process here, never deferred to a separate agent that
+must be up and healthy to keep you aware.
+
 Feature spec authoring is **not** an unconditional intake output. Most work
 shapes do NOT produce a feature spec. See "Classify the work shape" (step 1.5
 below) for the hard gate that decides.
@@ -67,6 +74,9 @@ anything in between) and produce:
    independently-deliverable slices, a **proactive split** of this todo into
    a container + per-pillar children (see Pillar identification + split
    below).
+4. **Reconciliation against the existing landscape** (step 1.6): undeclared
+   dependencies on sibling todos recorded as `after` edges, and any overlap
+   either descoped into Scope or surfaced to the PO as a possible duplicate.
 
 ### Pillar identification + split (multi-pillar features)
 
@@ -197,6 +207,48 @@ by an input. An input that is a work order rather than intent — pervasive HOW,
 discernible WHAT/WHY — fails the viability gate; escalate rather than mine scope
 from it.
 
+### 1.6 Situate the premise in the existing todo landscape
+
+A todo is created without awareness of what else exists — the human empties a
+thought and walks away, forgetting overlapping conversations and todos they drove
+before. So before you scope, situate this premise against the live landscape.
+This is the same collecting discipline as proactive feature surfacing (step 2),
+pointed at the todo list instead of the domain, and it is done **in-process here**
+— not by a separate reconciler that must be up to keep you aware.
+
+**Scan** the active and prepared-unclaimed todos (`telec todo list`). Keep it
+bounded so it stays cheap: that set only — delivered, removed, and iceboxed todos
+are out of scope — and read cheap signals first (slug, then `input`), reaching for
+a candidate's deeper artifacts only when it looks genuinely related.
+
+**Judge two relations:**
+
+- **Overlap** — another todo already delivers or plans this functionality. If it
+  is a true duplicate of intent, surface it to the PO for an explicit decision
+  (do not silently proceed, do not silently drop — the same discipline as feature
+  surfacing). If it overlaps only in part, descope the overlapping portion and
+  write the boundary into the PRD Scope.
+- **Undeclared dependency** — this premise actually needs another todo's
+  deliverable that the creator never declared as an `after`.
+
+**Act on each relation by the living-vs-dormant split** — the same pattern as the
+duplicate triage in `diagnose`:
+
+- The related todo has a **living orchestrator** (an active prepare or work
+  session) AND you hold context it lacks → send one **best-effort** informational
+  message (`telec sessions send <session_id> "<info>"`), substance only — no
+  acknowledgement, no echo. Never block on it: if that session is absent or flaky,
+  move on.
+- A **dormant prepared/unclaimed** todo this premise depends on → record the edge:
+  `telec todo update {slug} --after {dep}`. The edge **records the ordering
+  dependency that gates dispatch** — an unmet dependency holds the dependent until
+  the dep is satisfied. That gate is the reliable backbone; the message above is
+  the best-effort enhancement on top of it.
+
+**Fold** the findings into the PRD: overlap into Scope (and "Docs to author or
+update" where a shifted boundary moves doc ownership), declared dependencies noted
+alongside the edges you recorded.
+
 ### 2. Interview the Product Owner to fill the PRD template
 
 The BA fills a structured **PRD template** through elicitation. The template sections are:
@@ -307,6 +359,10 @@ re-engages and stamps approval.
 - **`prd_approved` stamp** — recorded when the real human confirms. The PO emulator cannot stamp this; the real human always owns final approval.
 - **Skip stamp** when applicable: `architecture_skipped`, with reason.
 - **`work_split` stamps** when the BA breaks the work down — references to child slugs.
+- **Dependency edges + overlap reconciliation** (step 1.6) — an undeclared
+  dependency discovered against a sibling todo is recorded via
+  `telec todo update {slug} --after {dep}`; discovered overlap is reconciled into
+  the PRD Scope or surfaced to the PO as a possible duplicate.
 
 ## Recovery
 
@@ -320,6 +376,9 @@ re-engages and stamps approval.
 - **Daemon-side `additional_context` is missing or ambiguous.** Default to
   human-in-loop: treat the human as the PO unless an input artifact exists or
   they request the standin.
+- **A related todo's session is down or flaky (step 1.6).** Do not block intake
+  on the best-effort message. The recorded `after` edge is the backbone; the
+  message is an enhancement. Record the edge and proceed.
 
 ## See Also
 
