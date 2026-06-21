@@ -87,9 +87,10 @@ canonical snippet IDs.
     via `delivered_by`; judge whether the edit changes anything THIS
     artifact relies on.
   - **upstream-snippet** — read each referenced non-owned snippet at its
-    current digest (`telec docs get <snippet-id>`) and compare. Judge
-    whether the referenced snippet's edit changes the contract THIS
-    artifact references.
+  current digest (`telec docs get <snippet-id>`) and compare. Judge
+  whether the referenced snippet's edit changes the contract THIS
+  artifact references.
+  <!-- planned-change:remove-dependency-graph-drift -->
   - **dependency-graph** — compare the recorded `dependency_set_at_write`
     to the Todo's current **immediate** `after` set (added/removed deps)
     and each direct dep's todo status flips (e.g., HELD → DELIVERED).
@@ -97,6 +98,8 @@ canonical snippet IDs.
     changes are surfaced upward by each direct dep's own drift detection
     when that dep is itself prepared. Judge whether the dep-graph change
     affects the artifact's plan or claims.
+    <!-- change:remove-dependency-graph-drift -->
+    <!-- /planned-change:remove-dependency-graph-drift -->
   - **age** — the artifact has aged past its configured freshness window.
     Re-ground against current code/snippets/deps and judge whether the
     artifact still holds; an aged artifact whose claims happen to remain
@@ -139,9 +142,21 @@ verdict per the spec's re-derivation contract. Only when EVERY pending
 class is cosmetic does the artifact get a `cosmetic` stamp.
 
 The state-stamping boundary captures the **evidence anchor** at stamp
+
+<!-- planned-change:remove-dependency-graph-drift -->
+
 time automatically (`head_sha_at_review`, `upstream_digests_at_review`,
 `snippet_digests_at_review`, `dep_set_at_review`). The analyzer does not
 pass these as flags; they are read from current state by
+
+<!-- change:remove-dependency-graph-drift -->
+
+time automatically (`head_sha_at_review`, `upstream_digests_at_review`,
+`snippet_digests_at_review`). The analyzer does not
+pass these as flags; they are read from current state by
+
+<!-- /planned-change:remove-dependency-graph-drift -->
+
 `_apply_drift_reviewed_stamp` and persisted on the `DriftReviewedStamp`.
 A cosmetic verdict at this anchor expires lazily on a future derivation
 if evidence has moved past the anchor on any anchored dimension; the
@@ -192,10 +207,13 @@ evidence.
   multiple times since the recorded digest), stamp `substantive` on
   upstream-artifact — the chain must re-derive.
 - If a referenced snippet ID no longer resolves (`telec docs get` errors
-  or the snippet was removed), stamp `substantive` on
-  upstream-snippet — the artifact's grounding is now incomplete.
+or the snippet was removed), stamp `substantive` on
+upstream-snippet — the artifact's grounding is now incomplete.
+<!-- planned-change:remove-dependency-graph-drift -->
 - If a dep slug no longer exists in the todo list, stamp `substantive` on
   dependency-graph — the artifact's dep assumptions are invalid.
+  <!-- change:remove-dependency-graph-drift -->
+  <!-- /planned-change:remove-dependency-graph-drift -->
 - If the project's age window for the artifact kind is unset (`0` or
   absent), the age class is disabled and does not appear in the
   pending-class set; do not stamp on it.

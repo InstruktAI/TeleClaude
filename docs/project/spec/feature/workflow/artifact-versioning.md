@@ -15,7 +15,15 @@ visibility: 'public'
 
 The Artifact aggregate inside the `workflow` bounded context persists every Artifact write (PRD, architecture, implementation-plan, etc.) as a content-addressed version. Each write computes the SHA256 digest of the content, appends a new version record, and updates the current-version pointer in place. Previous versions remain addressable by digest so the workflow service can render unified diffs between any two versions on demand.
 
+<!-- planned-change:remove-dependency-graph-drift -->
+
 Artifact provenance — the `origin/main` SHA at write time (captured via the workflow's origin-main-sha helper, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's lifecycle state (the artifact lifecycle stamp), not on the artifact version itself. The artifact records stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp is the carrier of the extended drift-evidence fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `dependency_set_at_write`, `produced_at`) — see `@spec/feature/workflow/drift-detection` for their per-class semantics and the single workflow provenance boundary that populates them.
+
+<!-- change:remove-dependency-graph-drift -->
+
+Artifact provenance — the `origin/main` SHA at write time (captured via the workflow's origin-main-sha helper, never local HEAD) and the workspace paths referenced by the artifact body — is captured alongside the digest, but it is stored on the Todo's lifecycle state (the artifact lifecycle stamp), not on the artifact version itself. The artifact records stay narrow: id, slug, name, content, digest, updated_by, timestamps. The lifecycle stamp is the carrier of the extended drift-evidence fields (`upstream_digests`, `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`) — see `@spec/feature/workflow/drift-detection` for their per-class semantics and the single workflow provenance boundary that populates them.
+
+<!-- /planned-change:remove-dependency-graph-drift -->
 
 Removal of an artifact deletes both the current record and the full version history atomically. Artifact kinds are enumerated; the canonical list is enforced at the workflow boundary before any state mutation. Each artifact kind is unique per Todo (one `prd` per slug, one `implementation-plan` per slug, etc.).
 
