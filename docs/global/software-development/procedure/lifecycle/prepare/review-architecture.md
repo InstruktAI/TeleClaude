@@ -10,6 +10,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
 
 ## Goal
 

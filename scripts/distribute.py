@@ -404,15 +404,6 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     return filtered
 
 
-def _is_truthy_flag(value: object) -> bool:
-    """Treat a frontmatter boolean flag as true whether it survives as bool or string.
-
-    YAML reserializers (e.g. the Codex single-quote normalizer) can stringify a
-    ``true`` into ``'True'``; accept both so the flag's meaning is robust.
-    """
-    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
-
-
 def _load_snippet_index_entries(project_root: Path) -> dict[str, SnippetIndexEntry]:
     entries: dict[str, SnippetIndexEntry] = {}
     for index_path in (
@@ -486,7 +477,7 @@ def _needs_domain_baseline_domain(content: str, *, project_root: Path, current_p
         entry = _index_entry_for_path(resolved, project_root=project_root, entries_by_id=entries_by_id)
         if entry is None:
             continue
-        if _is_truthy_flag(entry.get("needs_domain_baseline")):
+        if entry.get("needs_domain_baseline") is True:
             domain = entry.get("domain")
             if isinstance(domain, str) and domain:
                 return domain

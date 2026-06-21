@@ -1,7 +1,7 @@
 ---
 activation_trigger: 'A bug todo is at the DIAGNOSE prepare phase and needs its root cause verified before planning the fix.'
 description: 'Bug diagnosis phase. Record the investigation, then trace the root cause — the causal mechanism — to specific code as a thin diagnosis grounded in that investigation, before any fix is planned. Diagnosis grounds the cause and prescribes no fix.'
-needs_domain_baseline: 'True'
+needs_domain_baseline: true
 visibility: 'public'
 ---
 

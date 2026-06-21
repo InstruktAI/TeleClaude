@@ -33,7 +33,11 @@ machine and the interactive creative process.
 
 ### 1. Enter the machine
 
-Call the creative machine with the target slug. Read the returned instruction.
+Call the creative machine with the target slug:
+
+`telec todo design {slug}`
+
+Read the returned instruction.
 
 ### 2. Execute the instruction
 

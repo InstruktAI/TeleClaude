@@ -1,6 +1,6 @@
 ---
 description: 'Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.'
-needs_domain_baseline: 'True'
+needs_domain_baseline: true
 visibility: 'public'
 ---
 

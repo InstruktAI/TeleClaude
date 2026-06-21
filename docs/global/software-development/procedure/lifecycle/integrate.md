@@ -5,6 +5,10 @@ visibility: 'public'
 
 # Integration — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/principle/session-lifecycle.md
+
 ## Goal
 
 Merge candidate branches to canonical main via the integration state machine, handling

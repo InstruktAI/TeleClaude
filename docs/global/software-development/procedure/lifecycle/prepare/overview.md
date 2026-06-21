@@ -1,13 +1,19 @@
 ---
 description: 'Prepare stage overview. Lifecycle scaffolding for the one session that drives the derivation chain (PRD → Architecture → Plan) with PRD-only human approval, reviewer-gated derivation artifacts, and standin mode for autonomous intake.'
 visibility: 'public'
+needs_domain_baseline: true
 ---
 
 # Prepare Overview — Procedure
 
 ## Required reads
 
+- @~/.teleclaude/docs/general/principle/session-lifecycle.md
+- @~/.teleclaude/docs/general/concept/orchestrator.md
+- @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
+- @~/.teleclaude/docs/software-development/concept/architect.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
 
 ## Goal
 

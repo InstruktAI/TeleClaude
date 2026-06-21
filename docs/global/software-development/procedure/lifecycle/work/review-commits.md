@@ -1,6 +1,6 @@
 ---
 description: 'Review discrete commits already on main by SHA, without a worktree or the todo lifecycle.'
-needs_domain_baseline: 'True'
+needs_domain_baseline: true
 visibility: 'public'
 ---
 
