@@ -44,8 +44,6 @@ And pending snippets (those with delivered_by) append " (delivered by: slug1,slu
 And current snippets (no delivered_by) render with no suffix
 ```
 
-<!-- planned:retire-todo-split -->
-
 #### UC-3PR3: Phase-1 index --target lists a slug's pending work, new and reworked
 
 ```
@@ -56,8 +54,6 @@ Then phase 1 lists the new snippet the slug delivers
 And phase 1 also lists the live snippet the slug supersedes
 And snippets that the slug neither delivers nor supersedes are omitted
 ```
-
-<!-- /planned:retire-todo-split -->
 
 #### UC-3PR2: Phase-2 get surfaces pending-change awareness for live parents
 

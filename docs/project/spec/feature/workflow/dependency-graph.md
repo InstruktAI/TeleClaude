@@ -175,8 +175,6 @@ Then workflow persists the dependency edge and leaves schedule empty
 
 <!-- /planned:task-lane -->
 
-<!-- planned:retire-todo-split -->
-
 #### UC-WDG5: A group member cannot depend on its own holder
 
 ```gherkin
@@ -187,8 +185,6 @@ And "child-a"'s existing dependencies are left unchanged
 And the same refusal applies when the requested dependency is any ancestor holder of "child-a" reached by walking group_slug transitively
 And a dependency from a non-member todo onto the holder is still allowed
 ```
-
-<!-- /planned:retire-todo-split -->
 
 ### Cross-context references
 
