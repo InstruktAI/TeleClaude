@@ -225,7 +225,17 @@ And no roadmap row is created for "unknown-prepare"
 ### Cross-context references
 
 - `agent_runtime` — drafting Phases load procedures into the orchestrator session inline; reviewer Phases (architecture-review, plan-review) and the drift-analyzer dispatch a worker session.
+
+<!-- planned-change:remove-dependency-graph-drift -->
+
 - `integration` — when an Artifact's anchored evidence (origin/main HEAD, upstream-artifact digests, owned/upstream snippet digests, dep-graph snapshot) moves past the recorded anchor on any applicable class, the drift derivation flips that artifact's collapsed status to pending and the machine refuses to advance to `prepared`. See `@spec/feature/workflow/drift-detection` for the full class taxonomy and the evidence anchor semantics.
+
+<!-- change:remove-dependency-graph-drift -->
+
+- `integration` — when an Artifact's anchored evidence (origin/main HEAD, upstream-artifact digests, owned/upstream snippet digests) moves past the recorded anchor on any applicable class, the drift derivation flips that artifact's collapsed status to pending and the machine refuses to advance to `prepared`. See `@spec/feature/workflow/drift-detection` for the full class taxonomy and the evidence anchor semantics.
+
+<!-- /planned-change:remove-dependency-graph-drift -->
+
 - `session_ledger` — the resolved session principal for each Stamp is recorded so the PRD-approval gate can refuse approvals authored by a non-human principal.
 - `identity` — the `--prd-approved` Stamp requires the caller's principal to resolve to a real human; orchestrator-emulated PO sessions cannot satisfy this gate.
 - `knowledge` — drafting procedures and reviewer briefings pull doc snippets so the worker is grounded against the same canonical docs the architecture invariants reference.
