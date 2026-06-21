@@ -17,7 +17,7 @@ from teleclaude.api_models import CreateSessionResponseDTO, RunSessionRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.config import WorkflowRunnerMode
 from teleclaude.config import config as tc_config
-from teleclaude.constants import ROLE_ORCHESTRATOR
+from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR
 from teleclaude.core import db as db_mod
 from teleclaude.core import session_listeners as session_listeners_mod
 from teleclaude.core.db import Db
@@ -60,6 +60,7 @@ from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.schemas import register_all
+from teleclaude.git import Repo
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
@@ -76,6 +77,7 @@ _CHILD = "child"
 _WORK_SLUG = "work-a"
 _LIVE_SLUG = "live-a"
 _OTHER_SLUG = "other-a"
+_OTHER_WORKTREE_SLUG = "unrelated-feature"
 _STALE_SESSION = "stale-session"
 _LIVE_SESSION = "live-session"
 _ORCH_SESSION = "orch-session"
@@ -1863,3 +1865,98 @@ async def test_notify_gate_approved_is_best_effort_on_delivery_failure(monkeypat
     result = await session_listeners_mod.notify_gate_approved(_LIVE_SESSION, slug=_WORK_SLUG)
 
     assert result is False
+
+
+def _init_main_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a real main checkout plus a linked git worktree under trees/.
+
+    Returns ``(main_root, worktree_path)`` where ``worktree_path`` is an
+    *unrelated* feature worktree — the shape that wakes the runner with a
+    non-canonical ``project_path``. Real git metadata is used so
+    ``resolve_state_root`` exercises the gitdir-walk rather than a mocked
+    normalizer.
+    """
+    main_root = (tmp_path / "main").resolve()
+    main_root.mkdir(parents=True, exist_ok=True)
+    repo = Repo.init(main_root)
+    repo.git.checkout("-B", "main")
+    repo.git.config("user.name", "Runner Test")
+    repo.git.config("user.email", "runner-test@example.test")
+    (main_root / "README.md").write_text("initial\n", encoding="utf-8")
+    repo.git.add(".")
+    repo.git.commit("-m", "initial")
+    worktree_path = main_root / WORKTREE_DIR / _OTHER_WORKTREE_SLUG
+    worktree_path.parent.mkdir(parents=True, exist_ok=True)
+    repo.git.worktree("add", "-b", _OTHER_WORKTREE_SLUG, str(worktree_path), "HEAD")
+    return main_root, worktree_path.resolve()
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_runner_pickup_in_worktree_dispatches_orchestrator_on_main(tmp_path: Path) -> None:
+    """An event whose project_path is an unrelated feature worktree dispatches the
+    orchestrator with the canonical main checkout as its cwd and no subfolder."""
+    main_root, worktree_path = _init_main_with_worktree(tmp_path)
+    todos_db = await _project_db(main_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        worktree_path,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert [intent.slug for intent in result.dispatched] == [_WORK_SLUG]
+    request = client.requests[0]
+    assert Path(request["project_path"]).resolve() == main_root
+    assert "subfolder" not in request
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_start_in_worktree_dispatches_orchestrator_on_main(tmp_path: Path) -> None:
+    """An operator START invoked from inside a feature worktree dispatches the
+    orchestrator with the canonical main checkout as its cwd and no subfolder."""
+    main_root, worktree_path = _init_main_with_worktree(tmp_path)
+    todos_db = await _project_db(main_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    client = _RunnerClient()
+
+    result = await manual_start_lifecycle_session(
+        worktree_path,
+        _WORK_SLUG,
+        lane=RunnerLane.WORK,
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert result.status is ManualLifecycleStatus.DISPATCHED
+    request = client.requests[0]
+    assert Path(request["project_path"]).resolve() == main_root
+    assert "subfolder" not in request
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_adoption_in_worktree_matches_main_root_live_owner(tmp_path: Path) -> None:
+    """Adoption invoked from a feature worktree normalizes to the main checkout
+    before the project-scoped live-owner check, so a main-root orchestrator owner
+    is seen and the worktree caller is refused as ALREADY_DRIVEN."""
+    main_root, worktree_path = _init_main_with_worktree(tmp_path)
+    todos_db = await _project_db(main_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    owner = _Session(
+        session_id=_ORCH_SESSION,
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(main_root),
+    )
+
+    result = await adopt_manual_lifecycle_session(
+        worktree_path,
+        _WORK_SLUG,
+        "different-caller",
+        db=cast(Db, _FakeDb({owner.session_id: owner})),
+    )
+
+    assert result.status is ManualLifecycleStatus.ALREADY_DRIVEN
+    assert result.session_id == _ORCH_SESSION

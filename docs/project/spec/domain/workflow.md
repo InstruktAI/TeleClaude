@@ -973,8 +973,6 @@ And it never dispatches from a project-ambiguous event
 And in v1 every target wake-up is backed by either an existing v1 emission or an explicitly wired v1 seam, never by assuming Rust v2 events reach the Python runner
 ```
 
-<!-- planned:fix-lifecycle-runner-dispatched-a-next-work -->
-
 ```gherkin
 Given a wake-up whose carried project path points inside a git worktree (for example a session that ran under `<main-checkout>/trees/<other-slug>` ended)
 When the lifecycle runner resolves the project root
@@ -982,8 +980,6 @@ Then it normalizes the path to the owning main checkout and uses that single can
 And every dispatched orchestrator runs in the main checkout, never inside the triggering worktree
 And the same canonical root is resolved whether the runner is woken by an event, an operator `telec todo work`/`telec todo prepare`, or headless adoption
 ```
-
-<!-- /planned:fix-lifecycle-runner-dispatched-a-next-work -->
 
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
