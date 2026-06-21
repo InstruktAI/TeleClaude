@@ -19,8 +19,10 @@ Verify the implementation against the PRD, prepared artifacts, and standards, an
 
 ## Preconditions
 
-- The approved intent artifact exists — `prd` for a `feature`, `input` for a
-  `change`/`bug` (see `software-development/concept/approved-intent-artifact`).
+- The approved intent artifact resolves — `prd` for a `feature`, `input` for a
+  `change`/`bug` (see `software-development/concept/approved-intent-artifact`). A
+  `change` created via `--plan` has no `input`; its `implementation-plan`'s
+  _Intent & scope_ is the intent basis, and the missing `input` is intended, not a blocker.
 - `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix).
 - `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections (unless bug fix).

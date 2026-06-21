@@ -20,7 +20,9 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 - The approved intent artifact is readable — `prd` for a `feature`, or `input`
   for a `change`/`bug` (see `software-development/concept/approved-intent-artifact`).
   For `change`/`bug` there is no PRD; that is intended, not a defect, and the
-  implementation-plan (or, for a bug, the fix) is grounded in `input`.
+  implementation-plan (or, for a bug, the fix) is grounded in `input`. A `change`
+  created via `--plan` has no `input` either — its `implementation-plan`'s
+  _Intent & scope_ is the intent basis; the missing `input` is intended, not a defect.
 - `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes `## Build Gates (Builder)`.
 - The todo scope is implementable in one build phase.

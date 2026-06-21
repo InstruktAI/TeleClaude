@@ -20,10 +20,14 @@ it without guessing and a reviewer finds no surprises.
 ## Preconditions
 
 - `telec todo artifacts read {slug} implementation-plan` exists.
-- The approved intent artifact exists (see
+- The approved intent artifact resolves (see
   `software-development/concept/approved-intent-artifact`): `prd` for a `feature`,
   `input` for a `change`. For a `change`, the absence of a PRD is the intended
-  design — do NOT treat it as a defect or raise a finding for it.
+  design — do NOT treat it as a defect or raise a finding for it. A `change`
+  created via `--plan` also has no `input`: its `implementation-plan` is the intent
+  basis and the plan's own _Intent & scope_ is the contract to review against. A
+  missing `input` on a `change` is intended, never a blocker — do NOT block the
+  review or raise a finding for it.
 - For a `bug`, the approved intent is `input` (the reported symptom) and a
   `diagnosis` artifact is present carrying the verified, code-grounded root cause —
   the causal mechanism. The plan must derive its fix and verification from that root
@@ -36,7 +40,7 @@ First read the software-development principles as listed in the software-develop
 ### 1. Read context
 
 - `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
-- The approved intent artifact — `prd` for a `feature`, `input` for a `change` — the contract the plan must satisfy.
+- The approved intent artifact — `prd` for a `feature`, `input` for a `change`, or (for a `--plan` `change` with no `input`) the `implementation-plan`'s _Intent & scope_ — the contract the plan must satisfy.
 - `telec todo artifacts read {slug} architecture` — when present.
 - `telec todo artifacts read {slug} diagnosis` — when present (a `bug` carries
   this; it holds the verified, code-grounded root cause — the causal mechanism —
@@ -54,7 +58,7 @@ Structural coverage ("a task exists for this requirement") is not sufficient.
 Produce a `Delivery analysis` section in `plan-review-findings.md` with one
 entry per requirement success criterion.
 
-For each success criterion in the approved intent artifact (`prd` for a `feature`, or each goal/outcome stated in `input` for a `change`):
+For each success criterion in the approved intent artifact (`prd` for a `feature`; each goal/outcome stated in `input` for a `change`; or, for a `--plan` `change` with no `input`, each goal/outcome stated in the `implementation-plan`'s _Intent & scope_):
 
 1. Reference the criterion by `@prd#section-header` — do not copy its text.
 2. Reference the task body (or multiple tasks' bodies) that delivers it by

@@ -32,9 +32,11 @@ for one builder session, this phase owns the split.
 
 ## Preconditions
 
-1. The approved intent artifact exists — `prd` for a `feature`, `input` for a
+1. The approved intent artifact resolves — `prd` for a `feature`, `input` for a
    `change` (see `software-development/concept/approved-intent-artifact`). A
-   `change` has no PRD by design; `input` is its intent. Drafts from a `feature`
+   `change` has no PRD by design; `input` is its intent. A `change` created via
+   `--plan` has no `input` either — its seeded `implementation-plan` is the intent
+   basis (see the `seeded` re-entry reason in step 1b). Drafts from a `feature`
    PRD are human-approved before this phase.
 2. `architecture` is either reviewer-approved or explicitly skipped.
 3. Slug is active (not icebox, not delivered).

@@ -47,13 +47,15 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 
 #### Scope verification
 
-**Authority:** the requirement contract — `prd` (feature) or `input` (change/bug).
+**Authority:** the requirement contract — `prd` (feature) or `input` (change/bug),
+or the `implementation-plan`'s _Intent & scope_ for a `--plan` `change` with no `input`.
 
 The delivery must match the approved intent (`prd` for a `feature`, `input` for a
-`change`/`bug`; see `software-development/concept/approved-intent-artifact`) —
+`change`/`bug`, or the `implementation-plan`'s _Intent & scope_ for a `--plan`
+`change` with no `input`; see `software-development/concept/approved-intent-artifact`) —
 nothing more, nothing less.
 
-For each approved-intent success criterion (a `prd` criterion, or a goal/outcome stated in `input`), produce a `Scope verification` entry in `review-findings.md`:
+For each approved-intent success criterion (a `prd` criterion, a goal/outcome stated in `input`, or — for a `--plan` `change` with no `input` — a goal/outcome stated in the `implementation-plan`'s _Intent & scope_), produce a `Scope verification` entry in `review-findings.md`:
 
 1. Quote the criterion verbatim from the approved intent artifact.
 2. Name the specific code change in the diff that delivers the criterion (file, function, line range).
