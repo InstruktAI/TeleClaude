@@ -760,6 +760,25 @@ def test_post_commit_review_discharged_by_review_dispatch(
     )
     assert review_instr in incidental.required_actions
 
+    # A sessions message that merely *mentions* the command (e.g. a question) is
+    # not a dispatch and must not discharge the gate.
+    mention = run_heuristics(
+        [],
+        _timeline_with_bash('telec sessions send sess-1 "should I run /next-review-commits?"'),
+        context,
+        authored_main_commit=True,
+    )
+    assert review_instr in mention.required_actions
+
+    # A `sessions run` of a different command is not a review dispatch.
+    other_run = run_heuristics(
+        [],
+        _timeline_with_bash("telec sessions run --command /next-build --args abc123 --agent codex"),
+        context,
+        authored_main_commit=True,
+    )
+    assert review_instr in other_run.required_actions
+
 
 @pytest.mark.functional
 @pytest.mark.spec(_SPEC, "UC-CP10")

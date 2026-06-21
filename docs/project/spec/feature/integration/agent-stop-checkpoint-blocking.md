@@ -157,6 +157,15 @@ And the post-commit review-gate surfacing action is emitted once
 And the authored-main-commit marker is consumed
 And the commit action is suppressed only by commit evidence in the turn timeline, not by the authored-main-commit marker
 And no system role, including integrator, is exempt from this code-authorship rule
+
+Given the current branch is main
+And the session-scoped authored-main-commit marker is present
+And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run --command /next-review-commits ...` run, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
+When the heuristic engine evaluates the turn window
+Then the post-commit review-gate surfacing action is NOT emitted
+And the authored-main-commit marker is consumed
+So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
+And a command that merely mentions `/next-review-commits` without dispatching it (a different `--command`, or a question in a `telec sessions send` message) does not discharge the gate
 ```
 
 #### UC-CP6: Per-adapter checkpoint response payloads
