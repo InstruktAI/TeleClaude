@@ -518,9 +518,11 @@ def _is_env_var_required(info: EnvVarInfo, app_config: Any | None) -> bool:
     """
     group = info.adapter
     if group == "redis":
-        # REDIS_URL is essential infrastructure; REDIS_PASSWORD is opt-in
-        # because auth-less local Redis is the documented default.
-        return info.name == "REDIS_URL"
+        # Redis env vars are optional: an unset REDIS_URL falls back to the
+        # redis://localhost:6379 default in DEFAULT_CONFIG, and auth-less local
+        # Redis needs no REDIS_PASSWORD. Reachability is enforced at the /ready
+        # start boundary, not by env-var presence.
+        return False
     if app_config is None:
         return False
     if group == "telegram":

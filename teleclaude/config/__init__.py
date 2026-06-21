@@ -147,6 +147,26 @@ def deep_merge(
     return result
 
 
+def strip_unset_placeholders(data: object) -> object:
+    """Drop config keys whose value is an unexpanded ``${VAR}`` placeholder.
+
+    After :func:`expand_env_vars`, a value still shaped like ``${VAR}`` means the
+    environment variable was unset. Dropping the key lets the ``DEFAULT_CONFIG``
+    value win in :func:`deep_merge`, so the Python default applies instead of a
+    literal ``"${VAR}"`` string silently overriding it.
+    """
+    if isinstance(data, dict):
+        cleaned: dict[str, object] = {}  # guard: loose-dict - YAML config tree
+        for key, value in data.items():
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                continue
+            cleaned[key] = strip_unset_placeholders(value)
+        return cleaned
+    if isinstance(data, list):
+        return [strip_unset_placeholders(item) for item in data]
+    return data
+
+
 def prune_defaults(
     data: dict[str, object],  # guard: loose-dict - YAML config tree
     defaults: dict[str, object],  # guard: loose-dict - YAML config tree
@@ -684,14 +704,16 @@ def _load_config_from_disk(path: Path) -> Config:
     with open(path, encoding="utf-8") as f:
         raw_user_config = yaml.safe_load(f)
 
-    user_config: Any = expand_env_vars(raw_user_config) if isinstance(raw_user_config, dict) else {}
+    user_config: Any = (
+        strip_unset_placeholders(expand_env_vars(raw_user_config)) if isinstance(raw_user_config, dict) else {}
+    )
 
     experiments_path = path.parent / "experiments.yml"
     if experiments_path.exists():
         with open(experiments_path, encoding="utf-8") as f:
             raw_experiments_config = yaml.safe_load(f)
         if isinstance(raw_experiments_config, dict) and isinstance(user_config, dict):
-            experiments_config: Any = expand_env_vars(raw_experiments_config)
+            experiments_config: Any = strip_unset_placeholders(expand_env_vars(raw_experiments_config))
             if "experiments" in experiments_config:
                 user_config.setdefault("experiments", [])
                 exp_list = experiments_config["experiments"]
