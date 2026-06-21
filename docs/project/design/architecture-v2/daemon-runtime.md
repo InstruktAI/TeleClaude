@@ -13,9 +13,20 @@ visibility: 'public'
 
 ## Purpose
 
+<!-- planned-change:remove-rust-v2-implementation -->
+
 Define the `telec-daemon` process: the v2 long-running supervisor binary and
 its supervision. It is the first always-on Rust process in the platform and the
 host that the v2 control loops mount onto.
+
+<!-- change:remove-rust-v2-implementation -->
+
+Define the `telec-daemon` process as designed for v2: the long-running
+supervisor binary and its supervision — the aspirational first always-on Rust
+process and the host the v2 control loops mount onto. This is preserved v2
+target design; v1 Python is the running supervisor.
+
+<!-- /planned-change:remove-rust-v2-implementation -->
 
 The runtime is a **shell**. It owns process lifecycle — startup, signal
 handling, graceful shutdown — and the operator control surface that drives the
@@ -113,6 +124,18 @@ be healthy; an absent unit reports one informational line and does not degrade
 overall health. The v2 cutover makes the build mandatory, adds the unit to the
 managed set, and installs and loads it unconditionally.
 
+On Linux the same contract holds through systemd: a `telec-daemon` unit
+template mirrors the launchd conventions (restart-on-failure supervision,
+`WorkingDirectory` at the project root so the binary loads `CLUSTER_REDIS_URL`
+from `.env` exactly as the plist does, program path at
+`~/.local/bin/telec-daemon`) and is installed only through the explicit
+`install-telec-daemon` subcommand. The operator control surface reaches the unit
+identically on both platforms: install and the `status`/`start`/`stop`/`restart`
+verbs treat it as required-if-present — an installed unit must be healthy and is
+operated by every control verb; an absent unit reports one informational line,
+does not degrade overall health, and is skipped by the control verbs. Identical
+opt-in semantics, identical operator surface.
+
 ### Unified operator control surface
 
 ```mermaid
@@ -174,6 +197,9 @@ its logic.
 ## See Also
 
 - docs/project/adr/0024-reconciliation-bounded-context.md
+<!-- planned:remove-rust-v2-implementation -->
+- docs/project/adr/0054-v1-is-the-system.md
+<!-- /planned:remove-rust-v2-implementation -->
 - docs/project/adr/0028-single-lan-bound-ingress.md
 - docs/project/design/architecture-v2/observability-model.md
 - docs/project/design/architecture-v2/event-bus-transports.md

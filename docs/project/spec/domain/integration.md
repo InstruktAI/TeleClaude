@@ -46,7 +46,16 @@ This context does NOT own: domain business rules (each domain service owns its r
 : A third-party external system the platform integrates with: Telegram, Discord, WhatsApp, email, GitHub. Each provider has a boundary module that knows its protocol. Agent CLIs are NOT providers — they're internal systems supervised by agent_runtime.
 
 **Provider boundary module**
+
+<!-- planned-change:remove-rust-v2-implementation -->
+
 : The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Lives at `crates/integration/src/providers/<name>.rs`. MUST NOT import deployment or customer-relations modules.
+
+<!-- change:remove-rust-v2-implementation -->
+
+: The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Each provider has its own boundary module, which MUST NOT import deployment or customer-relations modules.
+
+<!-- /planned-change:remove-rust-v2-implementation -->
 
 **Inbox**
 : The durable capture of inbound events. Stored in Postgres (`integration.inbox`). Every inbound event lands here first; publication happens after durable capture. Ensures no loss across restarts.
