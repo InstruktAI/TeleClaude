@@ -19,12 +19,10 @@ author/enrich the feature spec snippet that captures the business value +
 Gherkin acceptance scenarios in the durable docs layer. The wider prepare
 lifecycle is still yours; this phase is one focused part of it.
 
-Intake is also where you situate the premise in what already exists. The same
-collecting instinct as proactive feature surfacing — turned outward, from "what
-does this domain usually include" to "what sibling todos already exist or are
-coming" — so this work is scoped against the landscape, not in isolation. It is
-intake's own job, done in-process here, never deferred to a separate agent that
-must be up and healthy to keep you aware.
+Intake also situates the premise against what already exists: the same collecting
+instinct as proactive feature surfacing, turned outward from the domain to the
+sibling todos that exist or are coming, so the work is scoped against the
+landscape rather than in isolation.
 
 Feature spec authoring is **not** an unconditional intake output. Most work
 shapes do NOT produce a feature spec. See "Classify the work shape" (step 1.5
@@ -209,12 +207,9 @@ from it.
 
 ### 1.6 Situate the premise in the existing todo landscape
 
-A todo is created without awareness of what else exists — the human empties a
-thought and walks away, forgetting overlapping conversations and todos they drove
-before. So before you scope, situate this premise against the live landscape.
-This is the same collecting discipline as proactive feature surfacing (step 2),
-pointed at the todo list instead of the domain, and it is done **in-process here**
-— not by a separate reconciler that must be up to keep you aware.
+Before scoping, compare this premise against the existing todo landscape — the
+same collecting discipline as proactive feature surfacing (step 2), pointed at the
+todo list instead of the domain.
 
 **Scan** the active and prepared-unclaimed todos (`telec todo list`). Keep it
 bounded so it stays cheap: that set only — delivered, removed, and iceboxed todos
