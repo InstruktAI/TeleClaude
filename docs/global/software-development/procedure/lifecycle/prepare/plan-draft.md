@@ -121,19 +121,16 @@ header. Pick your behavior from the reason:
   tasks whose grounding has actually drifted; preserve tasks that still pin
   the upstream artifact correctly. Skip the atomicity decision and proceed to step 5.
 
-<!-- planned:restore-prepare-dispatch-reason -->
-
 - **`substantive-drift`** — a drift review judged the code under the plan's
-referenced paths to have changed materially, and the plan's `plan_review` was
-cleared by that substantive drift. The existing plan is present and
-authoritative: read it via
-`telec todo artifacts read {slug} implementation-plan`, re-ground each task
-against the changed code, and update only the tasks whose grounding the drift
-invalidates — preserve every task whose grounding still holds. This reason is
-distinct from `upstream-changed`: the trigger is drifted code under referenced
-paths, not a changed `prd`/`architecture` digest. Skip the atomicity decision
-and proceed to step 5.
-<!-- /planned:restore-prepare-dispatch-reason -->
+  referenced paths to have changed materially, and the plan's `plan_review` was
+  cleared by that substantive drift. The existing plan is present and
+  authoritative: read it via
+  `telec todo artifacts read {slug} implementation-plan`, re-ground each task
+  against the changed code, and update only the tasks whose grounding the drift
+  invalidates — preserve every task whose grounding still holds. This reason is
+  distinct from `upstream-changed`: the trigger is drifted code under referenced
+  paths, not a changed `prd`/`architecture` digest. Skip the atomicity decision
+  and proceed to step 5.
 
 ### 2. Decide whether the todo is atomic
 
