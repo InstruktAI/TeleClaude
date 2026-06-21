@@ -15,16 +15,20 @@ jobs:
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
       INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
-      # Redirect the bootstrap's runtime home into the per-job RUNNER_TEMP (wiped
-      # at job start and end) so install.sh never mutates the runner's live
-      # ~/.teleclaude. Self-cleaning — no accumulation, no cleanup step.
-      TELECLAUDE_HOME: ${{ runner.temp }}/tc-home
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Use repo-local telec
         run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+
+      # Redirect the bootstrap's runtime home into the per-job RUNNER_TEMP (wiped
+      # at job start and end) so install.sh never mutates the runner's live
+      # ~/.teleclaude. Self-cleaning — no accumulation, no cleanup step.
+      # ($RUNNER_TEMP is a runtime env var; the `runner` context is unavailable
+      # at job-level `env:`, so inject via $GITHUB_ENV from a step instead.)
+      - name: Isolate runtime home from the live ~/.teleclaude
+        run: echo "TELECLAUDE_HOME=$RUNNER_TEMP/tc-home" >> "$GITHUB_ENV"
 
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci

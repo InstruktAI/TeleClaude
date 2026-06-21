@@ -1086,7 +1086,12 @@ main() {
     install_blueprint_engine
     setup_corepack
     setup_frontend
-    setup_agents_interactive
+    # Agent CLI enablement/install resolves from config and can invoke external
+    # installers against the host; CI never needs it (release reads the real
+    # operator config, lint/test uses TELECLAUDE_CONFIG_PATH).
+    if [ "$CI_MODE" = false ]; then
+        setup_agents_interactive
+    fi
     ensure_env_file
     validate_config
     provision_logs

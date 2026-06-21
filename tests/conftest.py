@@ -6,6 +6,7 @@ import dataclasses
 import logging
 import shutil
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -129,7 +130,7 @@ def _isolate_test_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _redirect_home(tmp_path_factory: pytest.TempPathFactory):
+def _redirect_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     """Redirect $HOME so un-mocked ``Path.home()`` writes can't touch the host.
 
     The runtime home is already sandboxed via ``RuntimeConfig.home`` (see the
