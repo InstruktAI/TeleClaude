@@ -50,7 +50,7 @@ Read **in full, not only the diff**:
 
 The reviewer must be able to state, from the PRD success criteria, what every
 required outcome promises before running any lane. A review that reads only the
-diff passes scope-narrowed deliveries because the diff looks self-consistent.
+diff passes scope-narrowed deliveries that a self-consistent diff hides.
 Reading the PRD in full is the safeguard against that failure.
 
 Use merge-base to focus the diff:
@@ -222,7 +222,7 @@ severity.
 Stamp the verdict into todo state:
 `telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`.
 The state machine derives phase from stamped primitives — if the reviewer does not
-stamp, the orchestrator will be instructed to nudge the reviewer to do so.
+stamp, the state machine instructs the orchestrator to nudge the reviewer to do so.
 Report summary and verdict to the caller.
 
 ## Report format
