@@ -28,10 +28,9 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_origin_main_sha
-from teleclaude.core.next_machine.parent_prd_ground import read_parent_prd_ground
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_SNIPPETS_DIR
-from teleclaude.types.todos import ArtifactEntry, DependencyEntry
+from teleclaude.types.todos import ArtifactEntry
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -88,8 +87,6 @@ async def sync_artifact_provenance(
         repo_root=repo_root,
         snippet_digest_fn=snippet_digest_fn,
     )
-    entry.dependency_set_at_write = await read_dependency_set(todos_db, slug)
-    entry.parent_prd_ground_at_write = await read_parent_prd_ground(todos_db, slug)
     entry.produced_at = datetime.now(UTC).isoformat()
     entry.async_provenance_complete = True
     _clear_rewrite_drift_state(writer, artifact_name)
@@ -118,8 +115,6 @@ def sync_artifact_provenance_sync_subset(
     entry.produced_at = datetime.now(UTC).isoformat()
     entry.owned_snippet_digests = {}
     entry.referenced_snippet_digests = {}
-    entry.dependency_set_at_write = []
-    entry.parent_prd_ground_at_write = []
     entry.async_provenance_complete = False
     _clear_rewrite_drift_state(writer, artifact_name)
 
@@ -149,8 +144,6 @@ def clear_artifact_provenance(writer: StateWriter, slug: str, artifact_name: str
     entry.upstream_digests = {}
     entry.owned_snippet_digests = {}
     entry.referenced_snippet_digests = {}
-    entry.dependency_set_at_write = []
-    entry.parent_prd_ground_at_write = []
     entry.async_provenance_complete = False
     _clear_rewrite_drift_state(writer, artifact_name)
 
@@ -187,11 +180,6 @@ async def read_referenced_snippet_digests(
         for snippet_id in extract_snippet_refs(artifact_body, repo_root)
         if (digest := snippet_digest_fn(snippet_id))
     }
-
-
-async def read_dependency_set(todos_db: TodosDb, slug: str) -> list[DependencyEntry]:
-    """Read the todo's immediate after set and each direct dep's todo status."""
-    return await todos_db.get_deps_with_status(slug)
 
 
 def extract_snippet_refs(artifact_body: str, project_root: str) -> list[str]:

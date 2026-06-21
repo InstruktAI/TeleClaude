@@ -75,7 +75,7 @@ async def _run_merge_main_failure_with_live_builder(
         TodoState(
             kind="change",
             lifecycle_phase=lifecycle_phase.value,
-            schema_version=4,
+            schema_version=5,
         ).model_dump(exclude_none=True),
     )
     worktree_cwd = project_root / "trees" / _SLUG
@@ -122,7 +122,7 @@ async def test_prepared_entry_advances_to_build_started_without_removed_phase_co
         TodoState(
             kind="change",
             lifecycle_phase=LifecyclePhase.PREPARED.value,
-            schema_version=4,
+            schema_version=5,
         ).model_dump(exclude_none=True),
     )
     worktree_cwd = project_root / "trees" / _SLUG
@@ -201,7 +201,7 @@ async def test_finalize_ready_terminal_output_ends_slug_workers_and_self(
             kind="change",
             phase="in_progress",
             lifecycle_phase=LifecyclePhase.FINALIZE_READY.value,
-            schema_version=4,
+            schema_version=5,
         ).model_dump(exclude_none=True),
     )
     worktree_cwd = project_root / "trees" / _FINALIZED_SLUG

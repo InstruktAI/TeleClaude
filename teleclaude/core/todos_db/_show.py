@@ -318,7 +318,6 @@ def _derive_artifact_state_block(
                 "referenced_paths": [],
                 "owned_snippet_digests": {},
                 "referenced_snippet_digests": {},
-                "dependency_set_at_write": [],
                 "async_provenance_complete": False,
             }
         metadata["updated_by"] = artifact_row["updated_by"]

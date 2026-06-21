@@ -29,7 +29,7 @@
       'kind': None,
       'lifecycle_phase': None,
       'phase': 'pending',
-      'schema_version': 4,
+      'schema_version': 5,
     }),
   })
 # ---

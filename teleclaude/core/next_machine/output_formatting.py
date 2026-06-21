@@ -62,9 +62,7 @@ _DRIFT_CLASS_ORDER = {
     "upstream-artifact": 1,
     "owned-snippet": 2,
     "upstream-snippet": 3,
-    "dependency-graph": 4,
-    "parent-prd-ground": 5,
-    "age": 6,
+    "age": 4,
 }
 
 

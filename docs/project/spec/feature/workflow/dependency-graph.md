@@ -37,11 +37,7 @@ A dependency is **phase-specific**: a single `after` edge projects into two dist
 
 `PREPARED` is a durable freeze, not a decaying signal: reaching it clears the prepare gate and does not un-clear. A later parent re-derivation does not reopen the prepare gate; it surfaces on the dependent as upstream-artifact drift (see `@spec/feature/workflow/drift-detection`) and routes the dependent to re-review. Drift propagates the signal; it does not author the change.
 
-<!-- planned:remove-dependency-graph-drift -->
-
 An `after` edge is **gate-only**: it is dispatch-blocking ordering metadata consumed by the prepare and work gates, and it is never a drift surface. Mutating the `after` set (adding or removing an edge) or a dependency crossing the freeze/unfreeze boundary changes what is dispatchable, not whether any of the dependent's prepared artifacts are stale — there is nothing to re-derive. Ordering is enforced solely by the dispatch gates above; drift detection tracks no dependency-graph class.
-
-<!-- /planned:remove-dependency-graph-drift -->
 
 Both gates apply in **both dispatch directions**:
 

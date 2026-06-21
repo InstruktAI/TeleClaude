@@ -27,6 +27,8 @@ from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_FEATURE, TODO_KIND_TASK
 
 pytestmark = pytest.mark.functional
@@ -412,3 +414,54 @@ def test_build_complete_confirmation_conveys_claim_recorded(
 
     captured = capsys.readouterr()
     assert {"stdout": captured.out, "stderr": captured.err} == snapshot
+
+
+@pytest.mark.parametrize("entry_version", [3, 4])
+def test_forward_migration_strips_dependency_drift_provenance(entry_version: int) -> None:
+    """A pre-v5 state migrates to v5 with the dependency-drift provenance stripped.
+
+    The v5 model carries no dependency-set or parent-prd-ground provenance, so the
+    migration drops `dependency_set_at_write` / `parent_prd_ground_at_write` from artifact
+    entries and `dep_set_at_review` / `parent_prd_ground_at_review` from drift-review
+    stamps. A v3 entry routes through the v4->v5 strip hop rather than jumping straight to
+    the latest version.
+    """
+    removed_artifact_keys = ("dependency_set_at_write", "parent_prd_ground_at_write")
+    removed_review_keys = ("dep_set_at_review", "parent_prd_ground_at_review")
+    old_shape: dict[str, StateValue] = {
+        "schema_version": entry_version,
+        "kind": "change",
+        "lifecycle_phase": "prepared",
+        "artifacts": {
+            "implementation_plan": {
+                "digest": "plan-v1",
+                "dependency_set_at_write": [{"dep_slug": "dep", "todo_status": "active"}],
+                "parent_prd_ground_at_write": [{"dep_slug": "parent", "prd_digest": "p1"}],
+            },
+        },
+        "approvals": {
+            "drift_reviewed": {
+                "implementation-plan": {
+                    "verdict": "cosmetic",
+                    "dep_set_at_review": [{"dep_slug": "dep", "todo_status": "active"}],
+                    "parent_prd_ground_at_review": [{"dep_slug": "parent", "prd_digest": "p1"}],
+                },
+            },
+        },
+    }
+
+    migrated = canonicalize_state_for_storage(old_shape)
+
+    assert migrated["schema_version"] == 5
+    artifacts = migrated["artifacts"]
+    assert isinstance(artifacts, dict)
+    plan_entry = artifacts["implementation_plan"]
+    assert isinstance(plan_entry, dict)
+    assert all(key not in plan_entry for key in removed_artifact_keys)
+    approvals = migrated["approvals"]
+    assert isinstance(approvals, dict)
+    drift_reviewed = approvals["drift_reviewed"]
+    assert isinstance(drift_reviewed, dict)
+    review_stamp = drift_reviewed["implementation-plan"]
+    assert isinstance(review_stamp, dict)
+    assert all(key not in review_stamp for key in removed_review_keys)

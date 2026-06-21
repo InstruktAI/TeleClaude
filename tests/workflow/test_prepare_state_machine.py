@@ -54,7 +54,6 @@ from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import (
     DependencyEntry,
     DriftReviewedStamp,
-    ParentPrdGroundEntry,
     TodoState,
     TodoStatusLiteral,
 )
@@ -182,7 +181,7 @@ async def _add_feature_with_rewritten_approved_prd(
     await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nCurrent version.", updated_by="test")
     current_digest = await todos_db.artifact_digest(slug, ARTIFACT_PRD)
 
-    model = TodoState(kind=KIND_FEATURE, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=4)
+    model = TodoState(kind=KIND_FEATURE, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=5)
     model.artifacts.prd.digest = current_digest
     model.artifacts.prd.async_provenance_complete = True
     model.approvals.prd_approved.approved = True
@@ -194,47 +193,6 @@ async def _add_feature_with_rewritten_approved_prd(
 
 def _dependency_entry(dep_slug: str, todo_status: TodoStatusLiteral) -> DependencyEntry:
     return DependencyEntry(dep_slug=dep_slug, todo_status=todo_status)
-
-
-def _parent_ground_entry(
-    *,
-    dep_slug: str = _PARENT,
-    prd_digest: str = "parent-prd-v1",
-    architecture_digest: str = "",
-    implementation_plan_digest: str = "",
-) -> ParentPrdGroundEntry:
-    return ParentPrdGroundEntry(
-        dep_slug=dep_slug,
-        prd_digest=prd_digest,
-        prd_approved_at="2026-06-10T00:00:00+00:00",
-        prd_approved_by_session_id="human:parent",
-        architecture_digest=architecture_digest,
-        implementation_plan_digest=implementation_plan_digest,
-    )
-
-
-def _approved_parent_model(*, prd_digest: str = "parent-prd-v1") -> TodoState:
-    model = TodoState(kind=KIND_FEATURE, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value, schema_version=4)
-    model.artifacts.prd.digest = prd_digest
-    model.approvals.prd_approved.approved = True
-    model.approvals.prd_approved.approved_at = "2026-06-10T00:00:00+00:00"
-    model.approvals.prd_approved.caller_session_id = "human:parent"
-    model.approvals.prd_approved.approved_digest = prd_digest
-    return model
-
-
-def _prepared_dependent_with_parent_ground() -> TodoState:
-    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=4)
-    model.plan_review.verdict = "approve"
-    model.plan_review.approved_digest = "plan-v1"
-    model.artifacts.input.digest = _INPUT_DIGEST
-    model.artifacts.input.async_provenance_complete = True
-    model.artifacts.implementation_plan.digest = "plan-v1"
-    model.artifacts.implementation_plan.upstream_digests = {STATE_KEY_INPUT: _INPUT_DIGEST}
-    model.artifacts.implementation_plan.async_provenance_complete = True
-    model.artifacts.implementation_plan.dependency_set_at_write = [_dependency_entry(_PARENT, "active")]
-    model.artifacts.implementation_plan.parent_prd_ground_at_write = [_parent_ground_entry()]
-    return model
 
 
 @pytest.mark.spec(_SPEC, "UC-WPS3")
@@ -307,11 +265,11 @@ async def test_prepared_terminal_cleanup_without_parent_worker_reuse(tmp_path: P
 
 
 def _bug_model() -> TodoState:
-    return TodoState(kind=KIND_BUG, schema_version=4)
+    return TodoState(kind=KIND_BUG, schema_version=5)
 
 
 def _prepared_bug_model() -> TodoState:
-    model = TodoState(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=4)
+    model = TodoState(kind=KIND_BUG, lifecycle_phase=LifecyclePhase.PREPARED.value, schema_version=5)
     model.plan_review.verdict = "approve"
     model.artifacts.input.digest = _INPUT_DIGEST
     model.artifacts.input.async_provenance_complete = True
@@ -439,7 +397,7 @@ def test_review_approval_is_invalidated_when_its_artifact_is_rewritten() -> None
     architecture, and legacy-requirements gates — the architecture and requirements
     gates are reached via the no-PRD legacy-requirements path."""
     # Plan gate.
-    plan = TodoState(kind=KIND_CHANGE, schema_version=4)
+    plan = TodoState(kind=KIND_CHANGE, schema_version=5)
     plan.artifacts.implementation_plan.digest = "plan-approved"
     plan.plan_review.verdict = "approve"
     plan.plan_review.approved_digest = "plan-approved"
@@ -449,7 +407,7 @@ def test_review_approval_is_invalidated_when_its_artifact_is_rewritten() -> None
 
     # Architecture gate: current requirements pass the intent gate, current
     # architecture advances to plan_drafting; rewriting architecture re-opens review.
-    arch = TodoState(kind=KIND_FEATURE, schema_version=4)
+    arch = TodoState(kind=KIND_FEATURE, schema_version=5)
     arch.artifacts.requirements.digest = "req-current"
     arch.requirements_review.verdict = "approve"
     arch.requirements_review.approved_digest = "req-current"
@@ -462,7 +420,7 @@ def test_review_approval_is_invalidated_when_its_artifact_is_rewritten() -> None
 
     # Legacy-requirements gate: current requirements advance past the intent gate;
     # rewriting requirements re-opens prd_human_approval.
-    req = TodoState(kind=KIND_FEATURE, schema_version=4)
+    req = TodoState(kind=KIND_FEATURE, schema_version=5)
     req.artifacts.requirements.digest = "req-approved"
     req.requirements_review.verdict = "approve"
     req.requirements_review.approved_digest = "req-approved"
@@ -479,7 +437,7 @@ def test_seeded_plan_is_held_in_plan_drafting_until_the_seed_clears() -> None:
     """A supplied --plan present at first entry must run a full plan-draft pass
     before review: the `seeded` flag overrides the plan-present⇒review default,
     and clearing it (same present, still-unreviewed artifact) advances to review."""
-    model = TodoState(kind=KIND_CHANGE, schema_version=4)
+    model = TodoState(kind=KIND_CHANGE, schema_version=5)
     model.artifacts.implementation_plan.digest = "seed-v1"
     model.artifacts.implementation_plan.seeded = True
     assert adopt_prepare_handoff_phase(model) == LifecyclePhase.PLAN_DRAFTING
@@ -498,7 +456,7 @@ async def test_plan_rewrite_clears_the_seed_and_advances_to_plan_review(tmp_path
     body = "# Plan\n\nSeeded hypothesis.\n"
     await todos_db.add_to_todo(slug)
     await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, body, updated_by="test")
-    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=4)
+    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=5)
     model.artifacts.implementation_plan.digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
     model.artifacts.implementation_plan.seeded = True
     await todos_db.write_state(slug, model.model_dump(exclude_none=True))
@@ -535,7 +493,7 @@ async def test_non_plan_rewrite_leaves_a_seeded_plan_untouched(tmp_path: Path) -
     await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, "# Plan\n\nSeeded.\n", updated_by="test")
     prd_body = "# PRD\n\nUnrelated rewrite.\n"
     await todos_db.write_artifact(slug, ARTIFACT_PRD, prd_body, updated_by="test")
-    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=4)
+    model = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value, schema_version=5)
     model.artifacts.implementation_plan.digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
     model.artifacts.implementation_plan.seeded = True
     await todos_db.write_state(slug, model.model_dump(exclude_none=True))
@@ -575,7 +533,7 @@ def _feature_with_prd_drift(
     input either drifted (upstream-artifact drift) or unchanged, and an optional
     drift_reviewed["prd"] stamp."""
     current_input = _INPUT_DRIFTED if input_drifted else _INPUT_AT_WRITE
-    model = TodoState(kind=KIND_FEATURE, schema_version=4)
+    model = TodoState(kind=KIND_FEATURE, schema_version=5)
     model.artifacts.prd.digest = _PRD_DIGEST
     model.artifacts.prd.upstream_digests = {STATE_KEY_INPUT: _INPUT_AT_WRITE}
     model.artifacts.input.digest = current_input
@@ -672,7 +630,7 @@ async def test_substantive_upstream_prd_drift_reopens_human_approval_gate(tmp_pa
 def test_stray_substantive_prd_drift_is_inert_for_plan_only_kind() -> None:
     """The prd_human_approval re-open is feature-gate only; a change todo that never
     gates on prd_approved is unaffected by a stray substantive prd drift stamp."""
-    model = TodoState(kind=KIND_CHANGE, schema_version=4)
+    model = TodoState(kind=KIND_CHANGE, schema_version=5)
     model.artifacts.implementation_plan.digest = "plan-approved"
     model.plan_review.verdict = "approve"
     model.plan_review.approved_digest = "plan-approved"
@@ -795,7 +753,6 @@ async def test_prepare_hydration_refreshes_stale_referenced_paths_without_stamp_
         "manifests/cli-surface.md",
         "teleclaude/core/next_machine/git_ops.py",
     ]
-    entry.dependency_set_at_write = [_dependency_entry("dep", "active")]
     produced_at_before = entry.produced_at
     state = model.model_dump(exclude_none=True)
     await todos_db.write_state(slug, state)
@@ -809,7 +766,6 @@ async def test_prepare_hydration_refreshes_stale_referenced_paths_without_stamp_
     refreshed = writer.state.artifacts.implementation_plan
     assert refreshed.referenced_paths == []
     assert refreshed.async_provenance_complete is True
-    assert refreshed.dependency_set_at_write == [_dependency_entry("dep", "active")]
     assert refreshed.produced_at == produced_at_before
     assert writer.state.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN] == stamp_before
     assert derive_artifact_drift(refreshed, None, "", "") == DRIFT_FRESH
@@ -823,27 +779,6 @@ async def test_prepare_hydration_refreshes_stale_referenced_paths_without_stamp_
         writer=writer,
     )
     assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] == DRIFT_FRESH
-
-
-@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD5")
-async def test_prepare_dispatches_drift_analyzer_for_parent_prd_ground_drift(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    snapshot: object,
-) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_PARENT)
-    await todos_db.write_state(
-        _PARENT, _approved_parent_model(prd_digest="parent-prd-v2").model_dump(exclude_none=True)
-    )
-    await todos_db.add_to_todo(_CHILD, after=[_PARENT])
-    await todos_db.write_state(_CHILD, _prepared_dependent_with_parent_ground().model_dump(exclude_none=True))
-    monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
-
-    output = await next_prepare(cast(Db, _CapturingDb([])), _CHILD, str(project_root))
-
-    assert output.replace(str(project_root), "<project>") == snapshot
 
 
 async def test_prepare_hydration_refreshes_declared_referenced_paths(
@@ -916,27 +851,6 @@ async def test_work_entry_with_matching_diagnosis_upstream_dispatches_build_star
 
     assert dispatch_phases == [WorkPhase.BUILD_STARTED]
     assert output == snapshot
-
-
-@pytest.mark.spec(_DRIFT_SPEC, "UC-WDD5")
-async def test_work_entry_bounces_before_worktree_setup_for_parent_prd_ground_drift(
-    tmp_path: Path,
-    snapshot: object,
-) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await todos_db.add_to_todo(_PARENT)
-    await todos_db.write_state(
-        _PARENT, _approved_parent_model(prd_digest="parent-prd-v2").model_dump(exclude_none=True)
-    )
-    await todos_db.add_to_todo(_CHILD, after=[_PARENT])
-    await todos_db.write_state(_CHILD, _prepared_dependent_with_parent_ground().model_dump(exclude_none=True))
-
-    output = await work_machine._check_work_entry_drift(todos_db, _CHILD, str(project_root), _CHILD)
-
-    assert output is not None
-    assert output == snapshot
-    assert not (project_root / "trees" / _CHILD).exists()
 
 
 async def _test_guidance(_db: Db) -> str:

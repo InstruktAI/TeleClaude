@@ -3,41 +3,33 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
 import pytest
 
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
-    ARTIFACT_PRD,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
 )
-from teleclaude.core.next_machine import git_ops, provenance
+from teleclaude.core.next_machine import git_ops
 from teleclaude.core.next_machine.git_ops import (
-    DRIFT_COSMETIC,
     DRIFT_FRESH,
     DRIFT_PENDING,
     derive_artifact_drift,
-    derive_dependency_graph_drift,
-    derive_parent_prd_ground_drift,
     derive_upstream_artifact_drift,
     extract_referenced_paths,
 )
 from teleclaude.core.next_machine.lifecycle import collapse_drift, derive_lifecycle_drift
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
-from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.core.todos_db import close_todos_db_instances
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import (
     DependencyEntry,
     DriftReviewedStamp,
-    ParentPrdGroundEntry,
     TodoState,
-    TodoStatusLiteral,
 )
 
 pytestmark = pytest.mark.functional
@@ -55,7 +47,7 @@ def _prepared_change_model(
     *, input_digest: str = _INPUT_DIGEST, recorded_input_digest: str = _INPUT_DIGEST
 ) -> TodoState:
     """A prepared change Todo whose plan was drafted directly from input (no PRD/diagnosis)."""
-    model = TodoState(kind=_CHANGE_KIND, lifecycle_phase="prepared", schema_version=4)
+    model = TodoState(kind=_CHANGE_KIND, lifecycle_phase="prepared", schema_version=5)
     model.plan_review.verdict = "approve"
 
     model.artifacts.input.digest = input_digest
@@ -95,7 +87,7 @@ def _empty_snippet_digest(_snippet_id: str) -> str:
 
 
 def _prepared_bug_model(*, diagnosis_digest: str = _DIAGNOSIS_DIGEST) -> TodoState:
-    model = TodoState(kind=_BUG_KIND, lifecycle_phase="prepared", schema_version=4)
+    model = TodoState(kind=_BUG_KIND, lifecycle_phase="prepared", schema_version=5)
     model.plan_review.verdict = "approve"
 
     model.artifacts.input.digest = _INPUT_DIGEST
@@ -123,64 +115,6 @@ def _prepared_bug_model(*, diagnosis_digest: str = _DIAGNOSIS_DIGEST) -> TodoSta
     return model
 
 
-def _dependency_entry(dep_slug: str, todo_status: TodoStatusLiteral) -> DependencyEntry:
-    return DependencyEntry(dep_slug=dep_slug, todo_status=todo_status)
-
-
-def _plan_with_dependency_set(entries: list[DependencyEntry]) -> TodoState:
-    model = TodoState(kind="change", lifecycle_phase="prepared", schema_version=4)
-    model.artifacts.implementation_plan.digest = "plan-v1"
-    model.artifacts.implementation_plan.async_provenance_complete = True
-    model.artifacts.implementation_plan.dependency_set_at_write = entries
-    return model
-
-
-def _approved_parent_model(
-    *,
-    prd_digest: str = "parent-prd-v1",
-    approved_at: str = "2026-06-10T00:00:00+00:00",
-    caller_session_id: str = "human:parent",
-    architecture_digest: str = "",
-    implementation_plan_digest: str = "",
-) -> TodoState:
-    model = TodoState(kind="feature", lifecycle_phase="prd_human_approval", schema_version=4)
-    model.artifacts.prd.digest = prd_digest
-    model.approvals.prd_approved.approved = True
-    model.approvals.prd_approved.approved_at = approved_at
-    model.approvals.prd_approved.caller_session_id = caller_session_id
-    model.approvals.prd_approved.approved_digest = prd_digest
-    model.artifacts.architecture.digest = architecture_digest
-    model.artifacts.implementation_plan.digest = implementation_plan_digest
-    return model
-
-
-def _parent_ground_entry(
-    *,
-    dep_slug: str = "parent",
-    prd_digest: str = "parent-prd-v1",
-    approved_at: str = "2026-06-10T00:00:00+00:00",
-    caller_session_id: str = "human:parent",
-    architecture_digest: str = "",
-    implementation_plan_digest: str = "",
-) -> ParentPrdGroundEntry:
-    return ParentPrdGroundEntry(
-        dep_slug=dep_slug,
-        prd_digest=prd_digest,
-        prd_approved_at=approved_at,
-        prd_approved_by_session_id=caller_session_id,
-        architecture_digest=architecture_digest,
-        implementation_plan_digest=implementation_plan_digest,
-    )
-
-
-def _plan_with_parent_ground(entries: list[ParentPrdGroundEntry]) -> TodoState:
-    model = TodoState(kind="change", lifecycle_phase="prepared", schema_version=4)
-    model.artifacts.implementation_plan.digest = "plan-v1"
-    model.artifacts.implementation_plan.async_provenance_complete = True
-    model.artifacts.implementation_plan.parent_prd_ground_at_write = entries
-    return model
-
-
 def test_referenced_paths_come_from_declared_contract_block() -> None:
     body = """
 This plan mentions manifests/cli-surface.md in prose.
@@ -204,221 +138,12 @@ new/untracked/file.py
 
 def test_referenced_paths_ignore_prose_mentions_and_missing_contract_blocks() -> None:
     body = "Grounding mentions manifests/cli-surface.md, but no contract block declares it."
-    entry = TodoState(kind="change", schema_version=4).artifacts.implementation_plan
+    entry = TodoState(kind="change", schema_version=5).artifacts.implementation_plan
     entry.digest = "plan-v1"
     entry.referenced_paths = extract_referenced_paths(body)
 
     assert entry.referenced_paths == []
     assert derive_artifact_drift(entry, None, "", "") == DRIFT_FRESH
-
-
-def test_dependency_snapshot_accepts_legacy_roadmap_status_field() -> None:
-    """Persisted state from before the `roadmap_status`->`todo_status` rename stays readable.
-
-    Reproduces the production failure at the real read boundary: read paths
-    (``read_state`` and the roadmap loader) consume persisted state through
-    ``upcycle_state_dict``, which raised a ``ValidationError`` on dependency
-    snapshots carrying only the legacy ``roadmap_status`` key.
-    """
-    legacy_dep_slug = "project-onboarding"
-    legacy_status = "active"
-    clean_dep_slug = "already-migrated"
-    clean_status = "delivered"
-    persisted_raw = {
-        "schema_version": 4,
-        "kind": "bug",
-        "lifecycle_phase": "plan_drafting",
-        "artifacts": {
-            "input": {
-                "dependency_set_at_write": [{"dep_slug": legacy_dep_slug, "roadmap_status": legacy_status}],
-            },
-            "implementation_plan": {
-                "dependency_set_at_write": [
-                    {"dep_slug": legacy_dep_slug, "roadmap_status": legacy_status},
-                    {"dep_slug": clean_dep_slug, "todo_status": clean_status},
-                ],
-            },
-        },
-        "approvals": {
-            "drift_reviewed": {
-                "implementation-plan": {
-                    "verdict": "cosmetic",
-                    "dep_set_at_review": [{"dep_slug": legacy_dep_slug, "roadmap_status": legacy_status}],
-                },
-            },
-        },
-    }
-
-    payload = upcycle_state_dict(persisted_raw)
-
-    state = TodoState.model_validate(payload)
-    input_entry = state.artifacts.input.dependency_set_at_write[0]
-    assert input_entry.dep_slug == legacy_dep_slug
-    assert input_entry.todo_status == legacy_status
-
-    legacy_entry, clean_entry = state.artifacts.implementation_plan.dependency_set_at_write
-    assert legacy_entry.dep_slug == legacy_dep_slug
-    assert legacy_entry.todo_status == legacy_status
-    # An entry already carrying `todo_status` passes through unchanged (idempotent).
-    assert clean_entry.dep_slug == clean_dep_slug
-    assert clean_entry.todo_status == clean_status
-
-    # The same legacy key in a drift-review snapshot is normalized at the same boundary.
-    review_entry = state.approvals.drift_reviewed["implementation-plan"].dep_set_at_review[0]
-    assert review_entry.dep_slug == legacy_dep_slug
-    assert review_entry.todo_status == legacy_status
-
-
-@pytest.mark.spec(_SPEC, "UC-WDD7")
-async def test_delivered_dependency_status_matches_recorded_active_status() -> None:
-    model = _plan_with_dependency_set([_dependency_entry("dep", "active")])
-
-    drift = await derive_dependency_graph_drift(
-        "todo",
-        model,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader([_dependency_entry("dep", "delivered")]),
-    )
-
-    assert drift == DRIFT_FRESH
-
-
-@pytest.mark.spec(_SPEC, "UC-WDD8")
-async def test_dependency_graph_still_drifts_for_icebox_and_set_membership_changes() -> None:
-    held_to_delivered = await derive_dependency_graph_drift(
-        "todo",
-        _plan_with_dependency_set([_dependency_entry("dep", "icebox")]),
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader([_dependency_entry("dep", "delivered")]),
-    )
-    removed = await derive_dependency_graph_drift(
-        "todo",
-        _plan_with_dependency_set([_dependency_entry("dep", "active")]),
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader([]),
-    )
-    added = await derive_dependency_graph_drift(
-        "todo",
-        _plan_with_dependency_set([]),
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader([_dependency_entry("dep", "active")]),
-    )
-
-    assert held_to_delivered == DRIFT_PENDING
-    assert removed == DRIFT_PENDING
-    assert added == DRIFT_PENDING
-
-
-async def test_dependency_graph_review_anchor_uses_normalized_statuses() -> None:
-    model = _plan_with_dependency_set([])
-    model.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
-        verdict=DRIFT_COSMETIC,
-        dep_set_at_review=[_dependency_entry("dep", "delivered")],
-    )
-
-    drift = await derive_dependency_graph_drift(
-        "todo",
-        model,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader([_dependency_entry("dep", "active")]),
-    )
-
-    assert drift == DRIFT_COSMETIC
-
-
-async def test_parent_prd_ground_provenance_records_direct_prd_approved_dependency(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await get_todos_db(project_root)
-    await todos_db.add_to_todo("parent")
-    await todos_db.write_artifact("parent", ARTIFACT_PRD, "# Parent PRD\n", updated_by="test")
-    parent = _approved_parent_model(prd_digest=await todos_db.artifact_digest("parent", ARTIFACT_PRD))
-    parent.artifacts.architecture.digest = "parent-architecture"
-    await todos_db.write_state("parent", parent.model_dump(exclude_none=True))
-    await todos_db.add_to_todo("child", after=["parent"])
-    await todos_db.write_artifact("child", ARTIFACT_IMPLEMENTATION_PLAN, "# Plan\n", updated_by="test")
-    child = TodoState(kind="change", lifecycle_phase="plan_review", schema_version=4)
-    writer = StateWriter(child.model_dump(exclude_none=True))
-
-    await provenance.sync_artifact_provenance(
-        todos_db,
-        writer,
-        "child",
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        repo_root=str(project_root),
-        artifact_body="# Plan\n",
-        snippet_digest_fn=_empty_snippet_digest,
-    )
-
-    assert writer.state.artifacts.implementation_plan.parent_prd_ground_at_write == [
-        _parent_ground_entry(prd_digest=parent.artifacts.prd.digest, architecture_digest="parent-architecture")
-    ]
-
-
-@pytest.mark.spec(_SPEC, "UC-WDD5")
-async def test_parent_prd_ground_drift_detects_parent_prd_and_later_artifact_changes() -> None:
-    model = _plan_with_parent_ground([_parent_ground_entry()])
-
-    fresh = await derive_parent_prd_ground_drift(
-        "child",
-        model,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader(
-            [_dependency_entry("parent", "active")],
-            {"parent": _approved_parent_model()},
-        ),
-    )
-    prd_changed = await derive_parent_prd_ground_drift(
-        "child",
-        model,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader(
-            [_dependency_entry("parent", "active")],
-            {"parent": _approved_parent_model(prd_digest="parent-prd-v2")},
-        ),
-    )
-    architecture_appeared = await derive_parent_prd_ground_drift(
-        "child",
-        model,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader(
-            [_dependency_entry("parent", "active")],
-            {"parent": _approved_parent_model(architecture_digest="parent-architecture")},
-        ),
-    )
-    delivered = await derive_parent_prd_ground_drift(
-        "child",
-        model,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader(
-            [_dependency_entry("parent", "delivered")],
-            {"parent": _approved_parent_model(prd_digest="parent-prd-v2")},
-        ),
-    )
-
-    assert fresh == DRIFT_FRESH
-    assert prd_changed == DRIFT_PENDING
-    assert architecture_appeared == DRIFT_PENDING
-    assert delivered == DRIFT_FRESH
-
-
-async def test_parent_prd_ground_review_anchor_can_mark_current_evidence_cosmetic() -> None:
-    model = _plan_with_parent_ground([])
-    model.approvals.drift_reviewed[ARTIFACT_IMPLEMENTATION_PLAN] = DriftReviewedStamp(
-        verdict=DRIFT_COSMETIC,
-        parent_prd_ground_at_review=[_parent_ground_entry()],
-    )
-
-    drift = await derive_parent_prd_ground_drift(
-        "child",
-        model,
-        ARTIFACT_IMPLEMENTATION_PLAN,
-        todos_db=_DependencyReader(
-            [_dependency_entry("parent", "active")],
-            {"parent": _approved_parent_model()},
-        ),
-    )
-
-    assert drift == DRIFT_COSMETIC
 
 
 @pytest.mark.spec(_SPEC, "UC-WDD1")
@@ -436,26 +161,6 @@ async def test_bug_implementation_plan_upstream_drift_is_fresh_when_diagnosis_ma
         writer=StateWriter(model.model_dump(exclude_none=True)),
     )
     assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] != DRIFT_PENDING
-
-
-@pytest.mark.spec(_SPEC, "UC-WDD5")
-async def test_lifecycle_drift_includes_parent_prd_ground_for_dependent_artifacts() -> None:
-    model = _plan_with_parent_ground([_parent_ground_entry()])
-
-    drift = await derive_lifecycle_drift(
-        "child",
-        model,
-        repo_root="",
-        todos_db=_DependencyReader(
-            [_dependency_entry("parent", "active")],
-            {"parent": _approved_parent_model(prd_digest="parent-prd-v2")},
-        ),
-        snippet_digest_fn=_empty_snippet_digest,
-        writer=StateWriter(model.model_dump(exclude_none=True)),
-    )
-
-    assert drift[ARTIFACT_IMPLEMENTATION_PLAN]["parent-prd-ground"] == DRIFT_PENDING
-    assert collapse_drift(drift)[ARTIFACT_IMPLEMENTATION_PLAN] == DRIFT_PENDING
 
 
 @pytest.mark.spec(_SPEC, "UC-WDD2")

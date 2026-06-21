@@ -97,17 +97,6 @@ class DependencyEntry(BaseModel):
     todo_status: TodoStatusLiteral
 
 
-class ParentPrdGroundEntry(BaseModel):
-    """Snapshot of PRD-approved dependency ground used by a dependent artifact."""
-
-    dep_slug: str
-    prd_digest: str = ""
-    prd_approved_at: str = ""
-    prd_approved_by_session_id: str = ""
-    architecture_digest: str = ""
-    implementation_plan_digest: str = ""
-
-
 class DriftReviewedStamp(BaseModel):
     """Drift review verdict for one prepare artifact."""
 
@@ -118,8 +107,6 @@ class DriftReviewedStamp(BaseModel):
     head_sha_at_review: str = ""
     upstream_digests_at_review: dict[str, str] = Field(default_factory=dict)
     snippet_digests_at_review: dict[str, str] = Field(default_factory=dict)
-    dep_set_at_review: list[DependencyEntry] = Field(default_factory=list)
-    parent_prd_ground_at_review: list[ParentPrdGroundEntry] = Field(default_factory=list)
 
 
 class ApprovalsState(BaseModel):
@@ -190,8 +177,6 @@ class ArtifactEntry(BaseModel):
     referenced_paths: list[str] = Field(default_factory=list)
     owned_snippet_digests: dict[str, str] = Field(default_factory=dict)
     referenced_snippet_digests: dict[str, str] = Field(default_factory=dict)
-    dependency_set_at_write: list[DependencyEntry] = Field(default_factory=list)
-    parent_prd_ground_at_write: list[ParentPrdGroundEntry] = Field(default_factory=list)
     async_provenance_complete: bool = False
     # True when this artifact was supplied at creation (e.g. `--plan`) and has not
     # yet been processed by its drafting pass; cleared on first rewrite.
@@ -255,7 +240,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[4] = 4
+    schema_version: Literal[5] = 5
     phase: str = "pending"
     lifecycle_phase: LifecyclePhaseValue | None = "draft"
     prepare_phase: str = Field(default="", exclude=True)

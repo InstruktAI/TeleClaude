@@ -55,12 +55,7 @@ The confirmed plan is the handoff input to the work phase.
 
 **Drift:**
 
-<!-- planned-change:remove-dependency-graph-drift -->
-
-- Drift is a multi-class derivation. The full taxonomy and per-artifact coverage matrix live in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, dependency-graph, age). Per-artifact status collapses by `substantive > pending > cosmetic > fresh`.
-<!-- change:remove-dependency-graph-drift -->
 - Drift is a multi-class derivation. The full taxonomy and per-artifact coverage matrix live in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, age). Per-artifact status collapses by `substantive > pending > cosmetic > fresh`.
-<!-- /planned-change:remove-dependency-graph-drift -->
 - The same shared `derive_lifecycle_drift` function runs at every lifecycle entry point where prepared artifacts must reflect current truth: during the prepare BLOCKED branch AND at the work state machine's entry boundary before the `prepared → build_started` handoff.
 - Drift surfacing dispatches a lean drift-analysis worker to ascertain impact; the active procedure integrates findings on re-entry.
 - Substantive drift triggers re-derivation of affected layers and clears every downstream review verdict; cosmetic drift is recorded with an evidence anchor and expires lazily per class when current evidence moves past the anchor.

@@ -197,7 +197,7 @@ async def _add_todo(
     await todos_db.write_state(
         slug,
         TodoState(
-            schema_version=4,
+            schema_version=5,
             kind=kind,
             lifecycle_phase=lifecycle_phase,
             active_runner=active_runner,
@@ -229,7 +229,7 @@ async def _split_into_child(todos_db: TodosDb, parent: str, child: str, *, kind:
     await todos_db.write_state(
         child,
         TodoState(
-            schema_version=4,
+            schema_version=5,
             kind=kind,
             lifecycle_phase=LifecyclePhase.DRAFT.value,
         ).model_dump(exclude_none=True),

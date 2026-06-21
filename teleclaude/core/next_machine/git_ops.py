@@ -29,11 +29,6 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, upstream_keys_for
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS as ARTIFACT_UPSTREAMS  # re-export
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
-from teleclaude.core.next_machine.parent_prd_ground import (
-    ParentPrdGroundReader,
-    read_parent_prd_ground,
-    sorted_parent_prd_ground,
-)
 from teleclaude.git import (
     GIT_EXECUTABLE,
     GitCommandError,
@@ -72,7 +67,7 @@ _STATE_KEY_TO_ARTIFACT: dict[str, str] = {
 
 
 class DependencyStatusReader(Protocol):
-    """Boundary needed by dependency-graph drift derivation."""
+    """Boundary for reading a todo's direct dependency status and persisted state."""
 
     async def get_deps_with_status(self, slug: str) -> list[DependencyEntry]:
         """Return immediate dependency slugs with todo status."""
@@ -370,59 +365,6 @@ def derive_upstream_snippet_drift(
     )
 
 
-async def derive_dependency_graph_drift(
-    slug: str,
-    model: TodoState,
-    artifact_name: str,
-    *,
-    todos_db: DependencyStatusReader,
-) -> ArtifactDriftStatus:
-    """Derive drift for the todo's immediate dependency set and direct dep statuses."""
-    state_key = _state_key_for_artifact(artifact_name)
-    entry = getattr(model.artifacts, state_key)
-    if _artifact_is_absent(entry):
-        return DRIFT_FRESH
-    if not entry.async_provenance_complete:
-        return DRIFT_PENDING
-    current = _sorted_dependency_entries(await todos_db.get_deps_with_status(slug))
-    recorded = _sorted_dependency_entries(entry.dependency_set_at_write)
-    if recorded == current:
-        return DRIFT_FRESH
-    return _reviewed_verdict_or_pending(
-        _drift_stamp_for_artifact(model, state_key),
-        evidence_matches_review=lambda reviewed: _sorted_dependency_entries(reviewed.dep_set_at_review) == current,
-    )
-
-
-async def derive_parent_prd_ground_drift(
-    slug: str,
-    model: TodoState,
-    artifact_name: str,
-    *,
-    todos_db: ParentPrdGroundReader,
-) -> ArtifactDriftStatus:
-    """Derive drift for dependents prepared against parent PRD-approved ground."""
-    state_key = _state_key_for_artifact(artifact_name)
-    entry = getattr(model.artifacts, state_key)
-    if _artifact_is_absent(entry):
-        return DRIFT_FRESH
-    current_deps = await todos_db.get_deps_with_status(slug)
-    if current_deps and all(dependency.todo_status == "delivered" for dependency in current_deps):
-        return DRIFT_FRESH
-    if not entry.async_provenance_complete:
-        return DRIFT_PENDING
-    current = await read_parent_prd_ground(todos_db, slug)
-    recorded = sorted_parent_prd_ground(entry.parent_prd_ground_at_write)
-    if recorded == current:
-        return DRIFT_FRESH
-    return _reviewed_verdict_or_pending(
-        _drift_stamp_for_artifact(model, state_key),
-        evidence_matches_review=lambda reviewed: (
-            sorted_parent_prd_ground(reviewed.parent_prd_ground_at_review) == current
-        ),
-    )
-
-
 def derive_age_drift(
     model: TodoState,
     artifact_name: str,
@@ -526,17 +468,6 @@ def _review_is_within_age_window(
         return False
     review_age_seconds = (now - stamped_at).total_seconds()
     return review_age_seconds <= age_window_seconds
-
-
-def _sorted_dependency_entries(entries: list[DependencyEntry]) -> list[DependencyEntry]:
-    normalized = [_normalize_dependency_entry(entry) for entry in entries]
-    return sorted(normalized, key=lambda entry: (entry.dep_slug, entry.todo_status))
-
-
-def _normalize_dependency_entry(entry: DependencyEntry) -> DependencyEntry:
-    if entry.todo_status == "delivered":
-        return DependencyEntry(dep_slug=entry.dep_slug, todo_status="active")
-    return entry
 
 
 def _parse_iso_datetime(value: str) -> datetime:
@@ -849,7 +780,6 @@ __all__ = [
     "compose_agent_guidance",
     "derive_age_drift",
     "derive_artifact_drift",
-    "derive_dependency_graph_drift",
     "derive_owned_snippet_drift",
     "derive_upstream_artifact_drift",
     "derive_upstream_snippet_drift",

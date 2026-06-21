@@ -15,15 +15,7 @@ visibility: 'public'
 
 `telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: an analyzer's kind assignment, a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the kind-assignment, approvals, and review managers are the typed owners for kind-shaped, approval-shaped, and verdict-shaped mutations. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
 
-<!-- planned-change:remove-dependency-graph-drift -->
-
-The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, `dependency_set_at_write`, and `produced_at` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
-
-<!-- change:remove-dependency-graph-drift -->
-
 The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, and `produced_at` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
-
-<!-- /planned-change:remove-dependency-graph-drift -->
 
 ## Canonical fields
 
@@ -140,20 +132,6 @@ And no runner wake-up is emitted
 
 <!-- /planned:task-lane -->
 
-<!-- planned-change:remove-dependency-graph-drift -->
-
-```
-Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
-When the next-drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed prd cosmetic 'rename-only refactor, intent preserved'"
-Then the drift-reviewed handler parses the (artifact, verdict, reason) triple
-And the approvals manager validates verdict is one of {substantive, cosmetic}
-And persists the drift-reviewed stamp under approvals.drift_reviewed[artifact] including the evidence anchor at stamp time (head_sha_at_review, upstream_digests_at_review, snippet_digests_at_review, dep_set_at_review)
-And the prepare gate stops treating the drift as blocking on next read for as long as current evidence has not moved past the anchor on any dimension
-And when later evidence moves past the anchor (HEAD advances with new referenced-path overlap, OR upstream digest changes, OR snippet digest changes, OR dep-set changes), the cosmetic verdict is treated as expired-for-class and the class re-pends automatically — no manual stamp clearing required
-```
-
-<!-- change:remove-dependency-graph-drift -->
-
 ```
 Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
 When the next-drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed prd cosmetic 'rename-only refactor, intent preserved'"
@@ -163,8 +141,6 @@ And persists the drift-reviewed stamp under approvals.drift_reviewed[artifact] i
 And the prepare gate stops treating the drift as blocking on next read for as long as current evidence has not moved past the anchor on any dimension
 And when later evidence moves past the anchor (HEAD advances with new referenced-path overlap, OR upstream digest changes, OR snippet digest changes), the cosmetic verdict is treated as expired-for-class and the class re-pends automatically — no manual stamp clearing required
 ```
-
-<!-- /planned-change:remove-dependency-graph-drift -->
 
 ```
 Given the same artifact at "pending" drift status

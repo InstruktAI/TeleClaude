@@ -42,9 +42,7 @@ from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.git_ops import get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
-from teleclaude.core.next_machine.parent_prd_ground import read_parent_prd_ground
 from teleclaude.core.next_machine.provenance import (
-    read_dependency_set,
     read_owned_snippet_digests,
     read_referenced_snippet_digests,
     sync_artifact_provenance,
@@ -386,15 +384,11 @@ async def _apply_drift_reviewed_stamp(
         repo_root=repo_root,
         snippet_digest_fn=snippet_digest_fn,
     )
-    dependency_set = await read_dependency_set(todos_db, slug)
-    parent_prd_ground = await read_parent_prd_ground(todos_db, slug)
     upstream_digests = _current_upstream_digests(writer, state_key)
     entry = getattr(writer.state.artifacts, state_key)
     if not entry.async_provenance_complete:
         entry.owned_snippet_digests = owned_snippets
         entry.referenced_snippet_digests = referenced_snippets
-        entry.dependency_set_at_write = dependency_set
-        entry.parent_prd_ground_at_write = parent_prd_ground
         entry.async_provenance_complete = True
         bootstrap_reason = "bootstrap: established baseline anchor for sync-written artifact"
         reason = f"{reason}; {bootstrap_reason}" if reason.strip() else bootstrap_reason
@@ -406,8 +400,6 @@ async def _apply_drift_reviewed_stamp(
         head_sha_at_review=get_origin_main_sha(repo_root),
         upstream_digests_at_review=upstream_digests,
         snippet_digests_at_review={**owned_snippets, **referenced_snippets},
-        dep_set_at_review=dependency_set,
-        parent_prd_ground_at_review=parent_prd_ground,
     )
 
 

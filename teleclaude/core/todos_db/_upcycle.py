@@ -9,11 +9,13 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 4
+LATEST_TODO_STATE_SCHEMA_VERSION = 5
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
 _V3_SCHEMA_VERSION = 3
+_V4_SCHEMA_VERSION = 4
+_V5_SCHEMA_VERSION = 5
 _LEGACY_HANDED_OFF_PHASE = "handed_off"
 
 _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
@@ -230,7 +232,43 @@ def _upcycle_v2_to_v3(raw: dict[str, StateValue]) -> dict[str, StateValue]:
 
 def _upcycle_v3_to_v4(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = _normalize_finalize_ready_contract(raw)
-    migrated["schema_version"] = LATEST_TODO_STATE_SCHEMA_VERSION
+    migrated["schema_version"] = _V4_SCHEMA_VERSION
+    return migrated
+
+
+def _strip_removed_keys(entry: StateValue, removed: tuple[str, ...]) -> StateValue:
+    if not isinstance(entry, dict):
+        return entry
+    return {key: value for key, value in entry.items() if key not in removed}
+
+
+def _upcycle_v4_to_v5(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Bring v4 state to the v5 shape, which carries no dependency-drift provenance.
+
+    The v5 model has no dependency-set or parent-prd-ground provenance, so the hop
+    strips those keys from every artifact lifecycle entry (``dependency_set_at_write``,
+    ``parent_prd_ground_at_write``) and every drift-review stamp (``dep_set_at_review``,
+    ``parent_prd_ground_at_review``) before stamping the new version.
+    """
+    migrated = dict(raw)
+    artifacts = migrated.get("artifacts")
+    if isinstance(artifacts, dict):
+        migrated["artifacts"] = {
+            name: _strip_removed_keys(entry, ("dependency_set_at_write", "parent_prd_ground_at_write"))
+            for name, entry in artifacts.items()
+        }
+    approvals = migrated.get("approvals")
+    if isinstance(approvals, dict):
+        drift_reviewed = approvals.get("drift_reviewed")
+        if isinstance(drift_reviewed, dict):
+            migrated["approvals"] = {
+                **approvals,
+                "drift_reviewed": {
+                    name: _strip_removed_keys(stamp, ("dep_set_at_review", "parent_prd_ground_at_review"))
+                    for name, stamp in drift_reviewed.items()
+                },
+            }
+    migrated["schema_version"] = _V5_SCHEMA_VERSION
     return migrated
 
 
@@ -251,6 +289,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v2_to_v3(migrated)
         elif version == _V3_SCHEMA_VERSION:
             migrated = _upcycle_v3_to_v4(migrated)
+        elif version == _V4_SCHEMA_VERSION:
+            migrated = _upcycle_v4_to_v5(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)
@@ -260,48 +300,6 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
         msg = f"todo state schema v{LATEST_TODO_STATE_SCHEMA_VERSION} is missing required lifecycle_phase"
         raise ValueError(msg)
     return migrated
-
-
-def _migrate_legacy_dependency_entry(entry: StateValue) -> StateValue:
-    """Rewrite a single dependency snapshot's pre-rename status key.
-
-    Snapshots written before the `roadmap_status`->`todo_status` rename carry the
-    value under `roadmap_status`. Map it onto `todo_status` and drop the legacy
-    key. An entry already carrying `todo_status` passes through unchanged
-    (idempotent). A new dict is returned; the input is never mutated.
-    """
-    if isinstance(entry, dict) and "todo_status" not in entry and "roadmap_status" in entry:
-        migrated = {key: value for key, value in entry.items() if key != "roadmap_status"}
-        migrated["todo_status"] = entry["roadmap_status"]
-        return migrated
-    return entry
-
-
-def _normalize_dependency_status_entries(
-    container: dict[str, StateValue], dependency_field: str
-) -> dict[str, StateValue]:
-    """Rewrite legacy `roadmap_status` keys in every dependency snapshot list.
-
-    `container` is a mapping of named entries (e.g. `artifacts` or
-    `drift_reviewed`); each entry may hold a list of `DependencyEntry` snapshots
-    under `dependency_field`. Touched dicts and lists are rebuilt rather than
-    mutated, since `_upcycle_to_latest` only shallow-copies the outer state and
-    the nested structures still alias the caller's input.
-    """
-    normalized: dict[str, StateValue] = {}
-    for name, entry in container.items():
-        if not isinstance(entry, dict):
-            normalized[name] = entry
-            continue
-        dep_set = entry.get(dependency_field)
-        if not isinstance(dep_set, list):
-            normalized[name] = entry
-            continue
-        normalized[name] = {
-            **entry,
-            dependency_field: [_migrate_legacy_dependency_entry(element) for element in dep_set],
-        }
-    return normalized
 
 
 def upcycle_state_dict(raw: dict[str, StateValue]) -> dict[str, StateValue]:
@@ -318,22 +316,6 @@ def upcycle_state_dict(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     else:
         latest["kind"] = None
         latest.pop("lifecycle_phase", None)
-    # Dependency-status normalization is likewise unconditional: a row already at
-    # the latest version can still carry a pre-rename `roadmap_status` key in any
-    # persisted DependencyEntry. Both locations flow through this validate boundary
-    # — artifact snapshots and drift-review snapshots — so both are normalized here
-    # (ADR-0025: old-shape handling lives in the upcaster, not in domain code).
-    artifacts = latest.get("artifacts")
-    if isinstance(artifacts, dict):
-        latest["artifacts"] = _normalize_dependency_status_entries(artifacts, "dependency_set_at_write")
-    approvals = latest.get("approvals")
-    if isinstance(approvals, dict):
-        drift_reviewed = approvals.get("drift_reviewed")
-        if isinstance(drift_reviewed, dict):
-            latest["approvals"] = {
-                **approvals,
-                "drift_reviewed": _normalize_dependency_status_entries(drift_reviewed, "dep_set_at_review"),
-            }
     model = TodoState.model_validate(latest)
     payload = model.model_dump(exclude_none=True)
     if model.kind is None:
