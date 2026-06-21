@@ -409,12 +409,25 @@ def assemble_todo_from_db(
             todo_build_started_at = time.perf_counter()
             is_holder = slug in holder_slugs
             if state_row is None and not is_holder:
-                logger.debug(
-                    "Skipping todo row without todo state",
-                    slug=slug,
-                    project_path=project_path,
-                    todo_id=str(row_id),
-                )
+                # A delivered row legitimately carries no state: the legacy
+                # importer records delivered todos as history (todo + artifacts,
+                # no state). A non-delivered row missing state is an integrity
+                # defect worth surfacing.
+                if raw_status == "delivered":
+                    logger.debug(
+                        "Skipping delivered todo row without todo state",
+                        slug=slug,
+                        project_path=project_path,
+                        todo_id=str(row_id),
+                    )
+                else:
+                    logger.warning(
+                        "Skipping todo row missing todo state",
+                        slug=slug,
+                        status=raw_status,
+                        project_path=project_path,
+                        todo_id=str(row_id),
+                    )
                 continue
             if is_holder:
                 state = None
