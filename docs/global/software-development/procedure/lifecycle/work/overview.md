@@ -154,7 +154,7 @@ stamps `telec todo stamp [slug] --build-complete`, then the orchestrator re-ente
 ## See also
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review-findings.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md

@@ -18,7 +18,7 @@ visibility: 'public'
 
 1. Read `telec todo artifacts read {slug} deferrals`.
 2. For each deferral entry:
-   - If `Suggested outcome` is `NEW_TODO`, create a new todo with `telec todo create` and dependencies if needed.
+   - If `Suggested outcome` is `NEW_TODO`, create a new todo with `telec todo create <new_slug>--group {slug}` and dependencies if needed.
    - If `Suggested outcome` is `NOOP`, mark the entry as processed.
 3. Stamp processing complete:
    - `telec todo stamp {slug} --deferrals-processed`

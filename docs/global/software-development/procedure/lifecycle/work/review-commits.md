@@ -8,7 +8,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
 
 ## Goal

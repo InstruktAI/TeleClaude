@@ -9,7 +9,7 @@ You are now the Reviewer.
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review-build.md
 
 ## Purpose
 
