@@ -73,8 +73,10 @@ anything in between) and produce:
    a container + per-pillar children (see Pillar identification + split
    below).
 4. **Reconciliation against the existing landscape** (step 1.6): undeclared
-   dependencies on sibling todos recorded as `after` edges, and any overlap
-   either descoped into Scope or surfaced to the PO as a possible duplicate.
+   dependencies recorded as `after` edges; overlap where this premise yields
+   descoped into Scope or surfaced to the PO; and, where this premise supersedes an
+   existing todo, that todo escalated to the human — halted only on certainty when
+   it is already building.
 
 ### Pillar identification + split (multi-pillar features)
 
@@ -216,18 +218,23 @@ bounded so it stays cheap: that set only — delivered, removed, and iceboxed to
 are out of scope — and read cheap signals first (slug, then `input`), reaching for
 a candidate's deeper artifacts only when it looks genuinely related.
 
-**Judge two relations:**
+**Judge the relation and its direction.** Overlap has a direction — precedence is
+the default, intent is the override:
 
-- **Overlap** — another todo already delivers or plans this functionality. If it
-  is a true duplicate of intent, surface it to the PO for an explicit decision
-  (do not silently proceed, do not silently drop — the same discipline as feature
-  surfacing). If it overlaps only in part, descope the overlapping portion and
-  write the boundary into the PRD Scope.
-- **Undeclared dependency** — this premise actually needs another todo's
-  deliverable that the creator never declared as an `after`.
+- **This premise yields** — it is redundant with an existing todo. The existing
+  todo came first and is authoritative. Descope the overlapping portion of this
+  premise and write the boundary into the PRD Scope; for a true duplicate of
+  intent, surface it to the PO for an explicit decision (do not silently proceed,
+  do not silently drop — the same discipline as feature surfacing).
+- **This premise supersedes** — it replaces, broadens, or obsoletes an existing
+  todo. Precedence does not rule here; this premise's intent displaces the older
+  work. The action targets the **other** todo and is higher-stakes — see "Acting
+  on a supersession" below.
+- **Undeclared dependency** — this premise needs another todo's deliverable that
+  the creator never declared as an `after`.
 
-**Act on each relation by the living-vs-dormant split** — the same pattern as the
-duplicate triage in `diagnose`:
+**Act on a dependency or a hand-off by the living-vs-dormant split** — the same
+pattern as the duplicate triage in `diagnose`:
 
 - The related todo has a **living orchestrator** (an active prepare or work
   session) AND you hold context it lacks → send one **best-effort** informational
@@ -239,6 +246,30 @@ duplicate triage in `diagnose`:
   dependency that gates dispatch** — an unmet dependency holds the dependent until
   the dep is satisfied. That gate is the reliable backbone; the message above is
   the best-effort enhancement on top of it.
+
+**Acting on a supersession.** A supersession judgment from this orchestrator is a
+hypothesis, not a verdict, and it touches another's existing work — so obsoleting
+that work is the human's call unless the case is unambiguous. Act by the other
+todo's state, and **never halt running work except on certainty**:
+
+- Other todo **dormant (prepared, unclaimed)** → surface to the human; optionally
+  freeze it (`telec todo freeze`, reversible) to hold it pending their decision.
+  Nothing in flight is lost.
+- Other todo **claimed, still in prepare** → hand the supersession to its living
+  orchestrator (`telec sessions send`) and surface to the human. The obsolete call
+  remains the human's.
+- Other todo **claimed, building or delivering** → the gate is **confidence**, set
+  tight:
+  - **Certain or extremely confident** it is truly superseded or obsolete → halt it
+    before it commits to main — freeze the todo and signal its worker to stand down
+    — then surface to the human. Letting obsolete work run to completion lands its
+    commit on main, the greater harm; the lost in-flight work is the lesser.
+  - **Below that bar** → do not halt; that is a premature stall on a hunch. Surface
+    to the human and let it proceed unless they pull it.
+
+  Only 100%-sure / extremely-confident licenses halting claimed, running work.
+  Confidence is the gate; the other todo's state sets what is at stake, not whether
+  to act.
 
 **Fold** the findings into the PRD: overlap into Scope (and "Docs to author or
 update" where a shifted boundary moves doc ownership), declared dependencies noted
@@ -355,9 +386,10 @@ re-engages and stamps approval.
 - **Skip stamp** when applicable: `architecture_skipped`, with reason.
 - **`work_split` stamps** when the BA breaks the work down — references to child slugs.
 - **Dependency edges + overlap reconciliation** (step 1.6) — an undeclared
-  dependency discovered against a sibling todo is recorded via
-  `telec todo update {slug} --after {dep}`; discovered overlap is reconciled into
-  the PRD Scope or surfaced to the PO as a possible duplicate.
+  dependency is recorded via `telec todo update {slug} --after {dep}`; overlap
+  where this premise yields is reconciled into the PRD Scope or surfaced to the PO;
+  a supersession is escalated to the human, and a superseded todo already building
+  is halted only on certainty.
 
 ## Recovery
 
