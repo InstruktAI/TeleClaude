@@ -129,6 +129,26 @@ def _isolate_test_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _redirect_home(tmp_path_factory: pytest.TempPathFactory):
+    """Redirect $HOME so un-mocked ``Path.home()`` writes can't touch the host.
+
+    The runtime home is already sandboxed via ``RuntimeConfig.home`` (see the
+    conftest module preamble), but install-time writers such as
+    ``configure_agent_cli`` address ``Path.home()/.claude`` etc. directly. With
+    no test exercising them today this is latent, but redirecting $HOME makes the
+    isolation structural rather than by-convention.
+    """
+    home = tmp_path_factory.mktemp("home")
+    mp = pytest.MonkeyPatch()
+    mp.setenv("HOME", str(home))
+    mp.setenv("USERPROFILE", str(home))
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _neutralize_launcher_binaries():
     """Keep any un-mocked subprocess call from executing real launcher binaries."""
     from teleclaude.config import config as tc_config  # startup boundary

@@ -879,7 +879,7 @@ install_blueprint_engine() {
     # Skip only when the pinned version is already present in the managed venv —
     # an arbitrary graphify already on PATH is never trusted.
     if [ -x "$graphify_bin" ] && [ "$("$graphify_bin" --version 2>/dev/null | awk '{print $2}')" = "$GRAPHIFY_PINNED_VERSION" ]; then
-        publish_binary graphify "$graphify_bin"
+        [ "$CI_MODE" = false ] && publish_binary graphify "$graphify_bin"
         print_info "Blueprint engine (graphify $GRAPHIFY_PINNED_VERSION) already installed"
         return 0
     fi
@@ -888,6 +888,10 @@ install_blueprint_engine() {
 
     local ok=0
     mkdir -p "$(dirname "$graphify_venv")"
+    # Drop any stale/partial venv from an aborted prior run; uv venv refuses to
+    # write into a pre-existing non-venv directory, which wedges self-hosted
+    # runners that carry state across jobs.
+    rm -rf "$graphify_venv"
     uv venv "$graphify_venv" --python "$PYTHON_CMD" >> "$LOG_FILE" 2>&1 || ok=1
     if [ $ok -eq 0 ]; then
         uv pip sync "$GRAPHIFY_LOCK_FILE" \
@@ -909,7 +913,11 @@ install_blueprint_engine() {
         exit 1
     fi
 
-    publish_binary graphify "$graphify_bin"
+    if [ "$CI_MODE" = true ]; then
+        print_info "CI: graphify ready at $graphify_bin (not published to ~/.local/bin)"
+    else
+        publish_binary graphify "$graphify_bin"
+    fi
     print_success "Blueprint engine installed (graphify $GRAPHIFY_PINNED_VERSION)"
 }
 
@@ -955,6 +963,11 @@ install_rust_runtime() {
     if [ ! -x "$source_binary" ]; then
         print_error "Expected telec-daemon binary missing after build: $source_binary"
         exit 1
+    fi
+
+    if [ "$CI_MODE" = true ]; then
+        print_info "CI: telec-daemon build verified (not published to $target_dir)"
+        return 0
     fi
 
     mkdir -p "$target_dir"
@@ -1087,9 +1100,13 @@ main() {
     fi
 
     setup_mcp_config
-    configure_agent_cli
+    if [ "$CI_MODE" = false ]; then
+        configure_agent_cli
+    fi
     setup_git_filters
-    link_shared_scripts
+    if [ "$CI_MODE" = false ]; then
+        link_shared_scripts
+    fi
 
     print_header "Install Complete"
     print_success "Binaries, Python dependencies, and machine-global tooling installed"

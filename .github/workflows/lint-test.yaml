@@ -15,6 +15,10 @@ jobs:
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
       INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
+      # Redirect the bootstrap's runtime home into the per-job RUNNER_TEMP (wiped
+      # at job start and end) so install.sh never mutates the runner's live
+      # ~/.teleclaude. Self-cleaning — no accumulation, no cleanup step.
+      TELECLAUDE_HOME: ${{ runner.temp }}/tc-home
 
     steps:
       - uses: actions/checkout@v4

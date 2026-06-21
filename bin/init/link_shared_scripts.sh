@@ -4,16 +4,17 @@ set -euo pipefail
 link_shared_scripts() {
     print_header "Linking Shared Scripts"
 
-    local base_dir="$HOME/.teleclaude"
+    local base_dir="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
     local target_dir="$base_dir/scripts"
     mkdir -p "$base_dir"
     ln -sfn "$INSTALL_DIR/scripts" "$target_dir"
 
-    # Point ~/.teleclaude/docs at the repo's global docs via a single whole-tree
-    # symlink, so every domain, the generated index, and the per-domain
-    # domain-baseline.md files are a live view of source that can never be
-    # partially deployed. Replace any stale real directory left by older installs.
-    local docs_root="$HOME/.teleclaude/docs"
+    # Point the runtime docs root at the repo's global docs via a single
+    # whole-tree symlink, so every domain, the generated index, and the
+    # per-domain domain-baseline.md files are a live view of source that can
+    # never be partially deployed. Replace any stale real directory left by
+    # older installs.
+    local docs_root="$base_dir/docs"
     local source_docs="$INSTALL_DIR/docs/global"
     if [ -d "$source_docs" ]; then
         if [ -e "$docs_root" ] && [ ! -L "$docs_root" ]; then
