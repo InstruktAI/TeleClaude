@@ -96,6 +96,30 @@ When the PUSH_SUCCEEDED step runs its confirmation gate
 Then no delivery record is written and the candidate returns to PUSH_REJECTED
 ```
 
+<!-- planned:harden-integration-fold-nonclean-paths -->
+
+#### UC-WISM3: Delivered-snippet fold re-asserted across every delivery path
+
+```gherkin
+Given a candidate is committed in the integration worktree via any path — clean merge, conflict resolution, or crash-resume
+When the state machine reaches delivery bookkeeping before pushing to origin/main
+Then it runs the idempotent delivered-snippet fold for the candidate slug
+And the fold is a no-op when an earlier path already folded the slug's snippets
+And any companion swap, planned-marker strip, or delivered_by clearance the fold produces is staged and committed into the delivery before the push
+```
+
+#### UC-WISM4: Pre-push residual-marker gate fails closed
+
+```gherkin
+Given the delivered slug's snippets would still carry a planned-change or planned marker for that slug after the fold
+When the delivery-bookkeeping residual-marker gate runs before the push
+Then the push to origin/main does not happen
+And the candidate stays at delivery bookkeeping with a residual-marker error naming the file, line, and slug
+And a delivered slug never reaches origin/main carrying its own live markers
+```
+
+<!-- /planned:harden-integration-fold-nonclean-paths -->
+
 ```
 Given another integrator session holds the integration/main lease and the TTL has not elapsed
 When the operator runs "telec todo integrate"
