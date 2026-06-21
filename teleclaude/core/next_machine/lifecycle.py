@@ -64,16 +64,13 @@ __all__ = [
     "_DRIFT_MATRIX_ARTIFACTS",
     "_DRIFT_REROUTABLE_CLASSES_BY_ARTIFACT",
     "ApprovalGate",
-    "HumanControl",
     "LifecyclePhase",
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
     "coerce_lifecycle_phase",
     "collapse_drift",
     "derive_lifecycle_drift",
-    "hold_control_available",
-    "hold_in_effect",
-    "hold_state",
+    "effective_hold",
     "is_in_prepare_lane",
     "is_prepare_lifecycle_phase",
     "is_ready_band_eligible",
@@ -98,13 +95,6 @@ READY_BAND_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.REVIEW_APPROVED,
     }
 )
-
-
-class HumanControl(StrEnum):
-    """Human-actionable control currently available for a todo."""
-
-    APPROVE = "approve"
-    HOLD = "hold"
 
 
 class ApprovalGate(StrEnum):
@@ -265,45 +255,19 @@ def pending_approval_gate(todo_state: TodoState | Mapping[str, object]) -> Appro
     return None
 
 
-def hold_state(todo_state: TodoState | Mapping[str, object]) -> HumanControl | None:
-    """Return :data:`HumanControl.HOLD` when the operator brake is engaged.
+def effective_hold(*, hold: bool, lifecycle_phase: str | None, autostart_active: bool) -> bool:
+    """Return whether a stored hold flag currently acts as the dispatch brake.
 
-    Reads only the ``hold`` flag. It never consults the approval phase: a held
-    todo and a todo with a pending approval gate are orthogonal conditions.
+    A todo is *effectively held* exactly when three conditions hold together:
+    its stored ``hold`` flag is set, its kind's autostart is active
+    (``autostart_active``, resolved by the caller from the context it owns), and
+    its phase is past ``prepared`` (the work lane). Hold has no meaning in the
+    prepare lane, so a residual flag there is inert. The predicate is pure over
+    these primitives — it reads no global config — so the one rule serves every
+    source (the runner from its explicit inputs, the projection from config)
+    without a shared protocol or dict/attribute branching.
     """
-    if isinstance(todo_state, TodoState):
-        hold = todo_state.hold
-    else:
-        hold = todo_state.get("hold") is True
-    return HumanControl.HOLD if hold else None
-
-
-def hold_in_effect(kind: str | None, hold: bool, *, autostart_enabled: bool) -> bool:
-    """Return whether a stored hold flag currently acts as the dispatch brake."""
-    if not hold:
-        return False
-    if kind is None:
-        return True
-    return autostart_enabled
-
-
-def hold_control_available(todo_state: TodoState | Mapping[str, object], *, autostart_enabled: bool) -> bool:
-    """Whether the operator *hold control* should be offered for a todo.
-
-    The hold control is the ``prepared -> work`` brake: offered only when the
-    todo is in the ``prepared`` phase, its kind is autostart-enabled, and it is
-    not already held. This is narrower than the hold flag itself, which the
-    runner honors in every lane regardless of this control.
-    """
-    if not autostart_enabled:
-        return False
-    if isinstance(todo_state, TodoState):
-        phase = coerce_lifecycle_phase(todo_state.lifecycle_phase)
-        held = todo_state.hold
-    else:
-        phase = coerce_lifecycle_phase(todo_state.get("lifecycle_phase"))
-        held = todo_state.get("hold") is True
-    return phase == LifecyclePhase.PREPARED and not held
+    return bool(hold) and autostart_active and not is_in_prepare_lane(lifecycle_phase)
 
 
 def derive_build_status(

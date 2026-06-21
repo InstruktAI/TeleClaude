@@ -96,8 +96,7 @@ def test_todo_row_renders_disapproved_review_status(snapshot: object) -> None:
     assert row.render().plain == snapshot
 
 
-def test_todo_row_renders_hold_distinct_from_icebox(monkeypatch: pytest.MonkeyPatch, snapshot: object) -> None:
-    monkeypatch.setattr(todo_row_mod, "autostart_enabled_for_kind", lambda kind: kind == "change")
+def test_todo_row_renders_hold_distinct_from_icebox(snapshot: object) -> None:
     items = [
         TodoItem(
             slug="held-work",
@@ -106,8 +105,9 @@ def test_todo_row_renders_hold_distinct_from_icebox(monkeypatch: pytest.MonkeyPa
             has_requirements=False,
             has_impl_plan=False,
             kind="change",
-            lifecycle_phase="plan_drafting",
+            lifecycle_phase="build_started",
             hold=True,
+            held=True,
             hold_source="manual",
         ),
         TodoItem(
@@ -127,10 +127,7 @@ def test_todo_row_renders_hold_distinct_from_icebox(monkeypatch: pytest.MonkeyPa
     assert [row.render().plain for row in rows] == snapshot
 
 
-def test_todo_row_renders_pending_approval_distinct_from_hold(
-    monkeypatch: pytest.MonkeyPatch, snapshot: object
-) -> None:
-    monkeypatch.setattr(todo_row_mod, "autostart_enabled_for_kind", lambda kind: kind == "feature")
+def test_todo_row_renders_pending_approval_distinct_from_hold(snapshot: object) -> None:
     items = [
         TodoItem(
             slug="approval-work",
@@ -141,6 +138,7 @@ def test_todo_row_renders_pending_approval_distinct_from_hold(
             kind="feature",
             lifecycle_phase="prd_human_approval",
             hold=True,
+            held=False,
         ),
         TodoItem(
             slug="held-work",
@@ -149,8 +147,9 @@ def test_todo_row_renders_pending_approval_distinct_from_hold(
             has_requirements=False,
             has_impl_plan=False,
             kind="feature",
-            lifecycle_phase="plan_drafting",
+            lifecycle_phase="build_started",
             hold=True,
+            held=True,
         ),
     ]
     slug_width = max(len(i.slug) for i in items)
@@ -160,10 +159,10 @@ def test_todo_row_renders_pending_approval_distinct_from_hold(
     assert [row.render().plain for row in rows] == snapshot
 
 
-def test_todo_row_suppresses_hold_glyph_when_autostart_disabled(
-    monkeypatch: pytest.MonkeyPatch, snapshot: object
-) -> None:
-    monkeypatch.setattr(todo_row_mod, "autostart_enabled_for_kind", lambda _kind: False)
+def test_todo_row_suppresses_hold_glyph_when_not_effectively_held(snapshot: object) -> None:
+    # A residual ``hold`` flag whose derived verdict is not effectively held
+    # (autostart off, runner manual, or still in the prepare lane) renders no
+    # lock glyph: the widget reads only the pre-derived ``held`` verdict.
     item = TodoItem(
         slug="legacy-held",
         status=TodoStatus.IN_PROGRESS,
@@ -173,6 +172,7 @@ def test_todo_row_suppresses_hold_glyph_when_autostart_disabled(
         kind="change",
         lifecycle_phase="prepared",
         hold=True,
+        held=False,
         hold_source="manual",
     )
     row = TodoRow(

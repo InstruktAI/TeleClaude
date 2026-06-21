@@ -22,7 +22,7 @@ from teleclaude.core.next_machine.dispatch_claims import (
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle import (
     coerce_lifecycle_phase,
-    hold_in_effect,
+    effective_hold,
     lifecycle_phase_index,
     pending_approval_gate,
 )
@@ -302,10 +302,17 @@ def decide_dispatches(
             held_kind = canonical_kind(todo.kind) if todo.kind is not None else None
         except ValueError:
             held_kind = todo.kind
-        held_autostart_enabled = (
-            _autostart_enabled(held_kind, autostart) if held_kind is not None and held_kind in autostart else False
+        # Resolve autostart_active from the function's explicit inputs only — the
+        # runner_mode and the autostart map it already receives — never global
+        # config, so the decision stays pure over its parameters. (runner_mode is
+        # AUTOSTART here: MANUAL returned early above.)
+        autostart_active = (
+            runner_mode is WorkflowRunnerMode.AUTOSTART
+            and held_kind is not None
+            and held_kind in autostart
+            and _autostart_enabled(held_kind, autostart)
         )
-        if hold_in_effect(held_kind, todo.hold, autostart_enabled=held_autostart_enabled):
+        if effective_hold(hold=todo.hold, lifecycle_phase=todo.lifecycle_phase, autostart_active=autostart_active):
             decision.skip(RunnerSkipReason.HELD, slug)
             continue
         # Orchestrator dedup is registry-authoritative: a live orchestrator bound

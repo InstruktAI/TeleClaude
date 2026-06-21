@@ -69,16 +69,16 @@
 # ---
 # name: test_todo_row_renders_hold_distinct_from_icebox
   list([
-    '  ├─■ held-work····chng··P:plan draft·····🔒',
-    '  ├─■ frozen-work··chng··P:icebox···········',
+    '  ├─■ held-work····chng··B:started·····🔒',
+    '  ├─■ frozen-work··chng··P:icebox········',
   ])
 # ---
 # name: test_todo_row_renders_pending_approval_distinct_from_hold
   list([
-    '  ├─■ approval-work··feat··P:approve········🔒',
-    '  ├─■ held-work······feat··P:plan draft·····🔒',
+    '  ├─■ approval-work··feat··P:approve·······',
+    '  ├─■ held-work······feat··B:started·····🔒',
   ])
 # ---
-# name: test_todo_row_suppresses_hold_glyph_when_autostart_disabled
+# name: test_todo_row_suppresses_hold_glyph_when_not_effectively_held
   '  ├─■ legacy-held··chng··P:prepared·······'
 # ---

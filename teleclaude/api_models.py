@@ -234,6 +234,7 @@ class TodoDTO(BaseModel):
     integration_phase: str | None = None
     finalize_status: str | None = None
     hold: bool = False
+    held: bool = False
     hold_source: str | None = None
     active_runner: str | None = None
     todo_id: str | None = None

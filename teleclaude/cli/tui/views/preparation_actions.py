@@ -26,10 +26,8 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT
-from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.lifecycle import (
     ApprovalGate,
-    hold_control_available,
     is_ready_for_work,
     pending_approval_gate,
 )
@@ -73,10 +71,9 @@ def _approval_gate_pending(row: TodoRow) -> bool:
 def _hold_control_available(row: TodoRow) -> bool:
     if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
         return False
-    return hold_control_available(
-        {"lifecycle_phase": row.todo.lifecycle_phase, "hold": row.todo.hold},
-        autostart_enabled=autostart_enabled_for_kind(row.todo.kind),
-    )
+    # The offered control IS the unhold control: it is present exactly when the
+    # todo is effectively held, and pressing it clears the flag.
+    return row.todo.held
 
 
 class PreparationViewActionsMixin:
@@ -702,7 +699,7 @@ class PreparationViewActionsMixin:
             self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
 
     def action_hold(self) -> None:
-        """h: engage the automatic-dispatch hold brake (one-way; START proceeds)."""
+        """h: clear the automatic-dispatch hold brake (offered only when held)."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if not row:
             return
@@ -720,11 +717,11 @@ class PreparationViewActionsMixin:
             result = tool_api_request(
                 "POST",
                 "/todos/update",
-                json_body={"slug": slug, "cwd": project_path, "hold": True},
+                json_body={"slug": slug, "cwd": project_path, "release": True},
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Held '{slug}'")  # type: ignore[attr-defined]
+                self.app.notify(f"Released hold on '{slug}'")  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]

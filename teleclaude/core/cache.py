@@ -721,6 +721,7 @@ class DaemonCache:
                             todo.integration_phase or "",
                             todo.finalize_status or "",
                             "1" if todo.hold else "0",
+                            "1" if todo.held else "0",
                             todo.hold_source or "",
                             todo.active_runner or "",
                         ]

@@ -27,7 +27,7 @@ from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.next_machine import lifecycle_runner as runner_mod
 from teleclaude.core.next_machine import session_hold
 from teleclaude.core.next_machine.dispatch_claims import list_dispatch_claims
-from teleclaude.core.next_machine.lifecycle import ApprovalGate, HumanControl, hold_state, pending_approval_gate
+from teleclaude.core.next_machine.lifecycle import ApprovalGate, effective_hold, pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
     DispatchIntent,
     DispatchOrigin,
@@ -362,7 +362,35 @@ def test_autostart_disabled_residual_hold_does_not_skip_prepare_lane() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
-def test_autostart_enabled_hold_skips_runner_as_held() -> None:
+def test_work_lane_hold_skips_runner_as_held() -> None:
+    """Hold is effective only in the work lane: a held todo past ``prepared``
+    under an active-autostart kind is skipped for hold."""
+    decision = decide_dispatches(
+        {
+            "work-held": RunnerTodo(
+                slug="work-held",
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.BUILD_STARTED.value,
+                hold=True,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_CHANGE: True},
+        live_session_ids=set(),
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.HELD] == ["work-held"]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+def test_prepared_residual_hold_does_not_skip_under_active_autostart() -> None:
+    """The reported bug: a residual ``hold`` on a ``prepared`` todo whose kind's
+    autostart is active is inert — hold has no meaning in the prepare lane, so
+    the runner does not skip it for hold."""
     decision = decide_dispatches(
         {
             "prepared-held": RunnerTodo(
@@ -380,12 +408,39 @@ def test_autostart_enabled_hold_skips_runner_as_held() -> None:
         live_session_ids=set(),
     )
 
-    assert decision.intents == []
-    assert decision.skips[RunnerSkipReason.HELD] == ["prepared-held"]
+    assert RunnerSkipReason.HELD not in decision.skips
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
-def test_kindless_hold_still_skips_runner_as_held() -> None:
+def test_work_lane_hold_under_manual_runner_is_not_held() -> None:
+    """A held work-lane todo is not effectively held when the runner mode is
+    ``manual`` — the autonomous path is frozen and hold does not act."""
+    decision = decide_dispatches(
+        {
+            "work-held": RunnerTodo(
+                slug="work-held",
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.BUILD_STARTED.value,
+                hold=True,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_CHANGE: True},
+        live_session_ids=set(),
+        runner_mode=WorkflowRunnerMode.MANUAL,
+    )
+
+    assert RunnerSkipReason.HELD not in decision.skips
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+def test_kindless_hold_does_not_skip_runner() -> None:
+    """A kind-less todo is pre-classification, outside the autostart-governed
+    surface, and never effectively held — its residual hold is inert and it
+    proceeds to kind discovery."""
     decision = decide_dispatches(
         {
             "kindless-held": RunnerTodo(
@@ -403,8 +458,7 @@ def test_kindless_hold_still_skips_runner_as_held() -> None:
         live_session_ids=set(),
     )
 
-    assert decision.intents == []
-    assert decision.skips[RunnerSkipReason.HELD] == ["kindless-held"]
+    assert RunnerSkipReason.HELD not in decision.skips
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1126,16 +1180,20 @@ def test_pending_approval_gate_parks_runner_independently_of_hold() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-def test_approval_gate_and_hold_state_are_independent() -> None:
+def test_approval_gate_and_hold_are_independent() -> None:
     # Changing hold never changes the approval result.
     base = {"kind": _CHANGE, "lifecycle_phase": LifecyclePhase.PRD_HUMAN_APPROVAL.value}
     assert pending_approval_gate({**base, "hold": False}) is ApprovalGate.PRD
     assert pending_approval_gate({**base, "hold": True}) is ApprovalGate.PRD
 
-    # Changing the approval phase never changes the hold result.
-    assert hold_state({"hold": True, "lifecycle_phase": LifecyclePhase.PRD_HUMAN_APPROVAL.value}) is HumanControl.HOLD
-    assert hold_state({"hold": True, "lifecycle_phase": LifecyclePhase.PLAN_DRAFTING.value}) is HumanControl.HOLD
-    assert hold_state({"hold": False, "lifecycle_phase": LifecyclePhase.PRD_HUMAN_APPROVAL.value}) is None
+    # effective_hold reads only its own inputs (hold, phase, autostart_active),
+    # never the approval gate: a held work-lane todo under an active-autostart
+    # kind is effectively held independent of any pending approval, and the flag
+    # alone decides it.
+    assert effective_hold(hold=True, lifecycle_phase=LifecyclePhase.BUILD_STARTED.value, autostart_active=True) is True
+    assert (
+        effective_hold(hold=False, lifecycle_phase=LifecyclePhase.BUILD_STARTED.value, autostart_active=True) is False
+    )
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
