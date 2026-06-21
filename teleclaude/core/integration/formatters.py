@@ -188,13 +188,20 @@ Repo root main has diverged from origin/main after delivery push.
 git pull --ff-only output:
 {stderr.strip()}
 
-Resolve per the CONFLICT RESOLUTION REQUIRED section (already loaded).
 All git commands targeting repo root must use: `git -C {project_root}`
 
-Remember, if dirty files block the merge, STOP and ask the human —
-uncommitted work has no recovery path after overwrite.
+If the working tree is clean: rebase local main onto origin/main (linear history,
+no merge commit), resolve any conflicts preserving both sides, then call
+telec todo integrate.
 
-NEXT: Resolve divergence on repo root, then call telec todo integrate"""
+If dirty files block the sync: they are concurrent agents' uncommitted WIP — never
+stash, overwrite, or rebase across them. This block is transient (they commit within
+minutes). Do not idle or escalate — set a non-blocking heartbeat (~2-3 min), re-check
+`git -C {project_root} status --short` each beat, and resume the instant it is clean.
+Escalate to the human only if it stays dirty ~15-20 min (a stuck change, not WIP).
+
+NEXT: Resolve divergence on repo root (or heartbeat-retry while blocked by dirty
+WIP), then call telec todo integrate"""
 
 
 def _format_error(code: str, message: str) -> str:

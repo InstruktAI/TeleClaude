@@ -38,11 +38,13 @@ each decision point until the queue is drained.
   without ceremony. The `--confirmed` friction is the integrator's deliberate
   ratification that the working-tree mutation has been inspected and will not
   silently overwrite intentional state before the next bookkeeping commit.
-- **When repo-root sync finds dirty files**, halt and surface to the human. The
-  integrator does NOT stash and does NOT rebase across foreign WIP. Dirty files in
-  the project root belong to concurrent agents; their author is the only safe
-  resolver. The state-machine emits this guidance explicitly when it observes the
-  divergence; do not work around it.
+- **When repo-root sync is blocked by dirty files**, the integrator does NOT stash
+  and does NOT rebase across foreign WIP — dirty files in the project root belong to
+  concurrent agents, and only their author may resolve them. But this block is almost
+  always **transient**: those agents commit their snippets within minutes and main
+  goes green on its own. So do not idle and do not escalate on first contact — wait
+  and retry on a heartbeat (see **REPO ROOT SYNC REQUIRED** below). The state machine
+  emits this guidance when it observes the divergence.
 
 ## Steps
 
@@ -131,6 +133,32 @@ Push to origin/main was rejected (likely non-fast-forward).
 3. Resolve any new conflicts, then `git push origin HEAD:main`.
 4. Call `telec todo integrate`.
 
+### REPO ROOT SYNC REQUIRED
+
+Repo-root `main` has diverged from origin/main after a delivery push (the `--ff-only`
+pull could not fast-forward). Two cases:
+
+- **Clean working tree:** rebase local main onto origin/main, resolve any conflicts
+  preserving both sides, then call `telec todo integrate`. The repo keeps linear
+  history — rebase, do not create a merge commit.
+- **Blocked on dirty main:** concurrent agents have uncommitted work in the project
+  root. The integrator must never stash, overwrite, or rebase across it — only the
+  authoring agent may resolve it. This block is **transient**: those agents commit
+  within minutes and main clears. So do not idle, do not end the session, and do not
+  escalate on first contact — **retry on a heartbeat**:
+  1. Set a non-blocking heartbeat (~2–3 min): a one-shot
+     `Bash(run_in_background=true)` `sleep` — never cron or `/loop` (those leave
+     zombie timers).
+  2. When it fires, re-check repo-root cleanliness (`git -C <root> status --short`).
+     Still dirty → reset the heartbeat and wait again. Clean → resume
+     `telec todo integrate` and continue the drain.
+  3. Escalate to the human only after the block persists ~15–20 min (≈5 beats) of
+     continuous dirtiness — past that window it is no longer transient WIP but a
+     stuck or abandoned change that needs a human.
+
+  While waiting you are not idle: you hold the lease and the in-flight candidate is
+  already committed, ready to push the instant main clears.
+
 ### LEASE_BUSY
 
 Another integrator session already holds the lease. Exit immediately.
@@ -156,6 +184,19 @@ failed and the agent resolved it manually, push repo root using the explicit
 project root path emitted by the engine.
 
 Self-end: `telec sessions end self`.
+
+### When to end, when to wait, when to beacon
+
+The integrator's terminal behavior has three shapes — do not collapse them:
+
+- **Queue drained (INTEGRATION COMPLETE):** end the session — `telec sessions end
+self`. The runner re-dispatches a fresh integrator when candidates next queue.
+  Dying clean is correct here; do not linger.
+- **Transient block (dirty main):** do not end and do not idle — heartbeat-retry
+  until main clears, then continue the drain (see **REPO ROOT SYNC REQUIRED**). The
+  block self-heals as concurrent agents commit.
+- **Unrecoverable block (genuine human decision):** stay alive as a beacon, but only
+  after recovery and the retry window are exhausted, so the human sees and intervenes.
 
 ## Outputs
 
