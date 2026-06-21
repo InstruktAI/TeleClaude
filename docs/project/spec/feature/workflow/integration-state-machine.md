@@ -96,8 +96,6 @@ When the PUSH_SUCCEEDED step runs its confirmation gate
 Then no delivery record is written and the candidate returns to PUSH_REJECTED
 ```
 
-<!-- planned:harden-integration-fold-nonclean-paths -->
-
 #### UC-WISM3: Delivered-snippet fold re-asserted across every delivery path
 
 ```gherkin
@@ -106,6 +104,12 @@ When the state machine reaches delivery bookkeeping before pushing to origin/mai
 Then it runs the idempotent delivered-snippet fold for the candidate slug
 And the fold is a no-op when an earlier path already folded the slug's snippets
 And any companion swap, planned-marker strip, or delivered_by clearance the fold produces is staged and committed into the delivery before the push
+
+Given the delivered-snippet fold staged changes but staging or the cleanup commit carrying them into the delivery fails
+When the delivery-bookkeeping step checks the staging and commit results before the push
+Then the push to origin/main does not happen
+And the candidate stays at delivery bookkeeping with an error naming the slug
+And no delivery record is written
 ```
 
 #### UC-WISM4: Pre-push residual-marker gate fails closed
@@ -117,8 +121,6 @@ Then the push to origin/main does not happen
 And the candidate stays at delivery bookkeeping with a residual-marker error naming the file, line, and slug
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
-
-<!-- /planned:harden-integration-fold-nonclean-paths -->
 
 ```
 Given another integrator session holds the integration/main lease and the TTL has not elapsed

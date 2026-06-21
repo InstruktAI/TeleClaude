@@ -19,6 +19,7 @@ from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREM
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
 from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso, _write_checkpoint
+from teleclaude.core.integration.delivery_fold import assert_clean_before_push, reassert_delivered_fold
 from teleclaude.core.integration.formatters import (
     _format_commit_decision,
     _format_conflict_decision,
@@ -27,12 +28,21 @@ from teleclaude.core.integration.formatters import (
     _format_push_rejected,
     _format_queue_empty,
 )
+from teleclaude.core.integration.git_ops import (
+    _get_branch_log,
+    _get_conflicted_files,
+    _get_diff_stats,
+    _get_head_sha,
+    _get_remote_main_sha,
+    _git_dir,
+    _merge_head_exists,
+    _run_git,
+)
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.docs_reconcile import reconcile_delivered_snippets
-from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
 from teleclaude.session_identity import get_session_id
@@ -50,66 +60,6 @@ _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
-
-
-def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
-    """Run a git command via GitPython; return (returncode, stdout, stderr)."""
-    try:
-        repo = Repo(cwd, search_parent_directories=True)
-        stdout = str(repo.git.execute([GIT_EXECUTABLE, *args]))
-        return 0, stdout, ""
-    except GitCommandError as exc:
-        rc = exc.status if isinstance(exc.status, int) else 1
-        return rc, exc.stdout or "", exc.stderr or ""
-    except Exception as exc:
-        logger.warning("git %s failed: %s", " ".join(args[:2]), exc)
-        return 1, "", str(exc)
-
-
-def _get_head_sha(cwd: str) -> str | None:
-    rc, stdout, _ = _run_git(["rev-parse", "HEAD"], cwd=cwd)
-    return stdout.strip() if rc == 0 and stdout.strip() else None
-
-
-def _get_remote_main_sha(cwd: str) -> str | None:
-    rc, stdout, _ = _run_git(["ls-remote", "origin", "refs/heads/main"], cwd=cwd)
-    if rc != 0 or not stdout.strip():
-        return None
-    parts = stdout.strip().split()
-    return parts[0] if parts else None
-
-
-def _git_dir(cwd: str) -> Path | None:
-    """Return the actual .git directory, handling worktree indirection."""
-    rc, stdout, _ = _run_git(["rev-parse", "--git-dir"], cwd=cwd)
-    if rc != 0:
-        return None
-    git_dir = Path(stdout.strip())
-    if not git_dir.is_absolute():
-        git_dir = Path(cwd) / git_dir
-    return git_dir
-
-
-def _merge_head_exists(cwd: str) -> bool:
-    gd = _git_dir(cwd)
-    return gd is not None and (gd / "MERGE_HEAD").exists()
-
-
-def _get_conflicted_files(cwd: str) -> list[str]:
-    rc, stdout, _ = _run_git(["diff", "--name-only", "--diff-filter=U"], cwd=cwd)
-    if rc != 0:
-        return []
-    return [f.strip() for f in stdout.splitlines() if f.strip()]
-
-
-def _get_diff_stats(cwd: str) -> str:
-    rc, stdout, _ = _run_git(["diff", "--cached", "--stat"], cwd=cwd)
-    return stdout.strip() if rc == 0 else ""
-
-
-def _get_branch_log(cwd: str, branch: str, *, base_ref: str = "main") -> str:
-    rc, stdout, _ = _run_git(["log", f"{base_ref}..{branch}", "--oneline", "--no-decorate"], cwd=cwd)
-    return stdout.strip() if rc == 0 else ""
 
 
 def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
@@ -665,8 +615,25 @@ def _step_delivery_bookkeeping(
     if not key:
         return False, _format_error("INVALID_STATE", "DELIVERY_BOOKKEEPING phase has no candidate key")
 
-    wt = str(_integration_worktree_path(cwd))
+    integration_wt = _integration_worktree_path(cwd)
+    wt = str(integration_wt)
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
+
+    # Re-assert the idempotent delivered-snippet fold at this universal delivery
+    # chokepoint (fails closed; see delivery_fold). Stage any change so the existing
+    # cleanup commit carries it into the delivery before the push. Staging itself
+    # must fail closed: an unstaged fold never reaches the commit, so an unfolded
+    # tree would reach origin/main while the working-tree marker gate still passes.
+    staged_changed, fold_error = reassert_delivered_fold(integration_wt, key.slug)
+    if fold_error:
+        return False, _format_error("RESIDUAL_MARKERS", fold_error)
+    if staged_changed:
+        add_rc, _, add_stderr = _run_git(["add", "-A"], cwd=wt)
+        if add_rc != 0:
+            return False, _format_error(
+                "RESIDUAL_MARKERS",
+                f"Staging the delivered-snippet fold failed for {key.slug}; refusing to push: {add_stderr.strip()}",
+            )
 
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:
@@ -683,11 +650,23 @@ def _step_delivery_bookkeeping(
             cwd=wt,
         )
         if rc_cleanup != 0:
-            msg = f"Cleanup commit failed for {key.slug}: {stderr_cleanup.strip()}"
-            logger.warning(msg)
-            warnings.append(msg)
+            # Fail closed: the staged fold (and any other staged delivery state) must
+            # be committed before the push. A swallowed failure here pushes HEAD
+            # without the fold, carrying the delivered slug's markers to origin/main.
+            return False, _format_error(
+                "RESIDUAL_MARKERS",
+                f"Cleanup commit failed for {key.slug}; refusing to push: {stderr_cleanup.strip()}",
+            )
 
     checkpoint.warnings = warnings
+
+    # Fail-closed gate immediately before the push (see delivery_fold): a delivered
+    # slug must never reach origin/main carrying live markers. With staging and the
+    # cleanup commit both proven above, the worktree tree now equals the HEAD that
+    # will be pushed, so this working-tree assertion gates the pushed commit too.
+    gate_error = assert_clean_before_push(integration_wt, key.slug)
+    if gate_error:
+        return False, _format_error("RESIDUAL_MARKERS", gate_error)
 
     # --- Push the squash worktree commit to main ---
     # The delivery stamp and dependency cleanup are untracked todos.db writes made

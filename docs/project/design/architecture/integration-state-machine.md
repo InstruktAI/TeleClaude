@@ -460,11 +460,7 @@ flowchart TD
 
 `core.todos_db.deliver_sync(slug)` stamps the todo `delivered`, records the delivered commit, and sets the todo-state delivery phase in a single transaction. It runs only after the push is confirmed on `origin/main`, on the `PUSH_SUCCEEDED` convergence path reached by both a direct push and a recovered one. Entry to that path re-fetches `origin` and asserts the integration-worktree HEAD is an ancestor of `origin/main`; on failure the candidate returns to `PUSH_REJECTED` and no delivery record is written. The recorded delivered commit is the integration-worktree HEAD that landed on `main`, not the candidate-branch commit.
 
-<!-- planned:harden-integration-fold-nonclean-paths -->
-
 Delivery bookkeeping is the universal chokepoint for the delivered-snippet fold. Before pushing, it re-runs the idempotent `reconcile_delivered_snippets(worktree, slug)` for the candidate slug and stages any change it produces, so the fold rides the delivery on every path that reaches a commit — clean merge, conflict resolution, and crash-resume alike — not only the clean-merge branch that folds eagerly. The bookkeeping fold is a no-op when the eager fold already ran, and its failure is never swallowed. A residual-marker gate then runs before the push and fails closed: if any `planned-change`/`planned` marker for the delivered slug survives the fold, the candidate stays at `DELIVERY_BOOKKEEPING` with an error naming the file, line, and slug, and the push does not happen — a delivered slug never reaches `origin/main` carrying its own live markers.
-
-<!-- /planned:harden-integration-fold-nonclean-paths -->
 
 ### Blueprint regeneration
 
@@ -511,15 +507,7 @@ flowchart LR
 | After dequeue, before merge | `CANDIDATE_DEQUEUED`               | Routes to merge. No work lost.                         |
 | After merge, before commit  | `MERGE_CLEAN` / `MERGE_CONFLICTED` | Re-prompts agent. Staged changes persist in git index. |
 
-<!-- planned-change:harden-integration-fold-nonclean-paths -->
-
-| After commit, before push | `COMMITTED` | Re-enters `DELIVERY_BOOKKEEPING` and pushes (idempotent); delivery is recorded only once the push is confirmed. |
-
-<!-- change:harden-integration-fold-nonclean-paths -->
-
 | After commit, before push | `COMMITTED` | Re-enters `DELIVERY_BOOKKEEPING`, which re-asserts the idempotent delivered-snippet fold and the residual-marker gate before pushing; delivery is recorded only once the push is confirmed. |
-
-<!-- /planned-change:harden-integration-fold-nonclean-paths -->
 
 | After push rejection | `PUSH_REJECTED` | Re-checks if heads match. Re-prompts if not. |
 | During cleanup | `CLEANUP` | Re-runs cleanup (idempotent). Missing worktrees are no-ops. |
