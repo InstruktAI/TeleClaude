@@ -15,26 +15,26 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 ### Referenced files
 
-| File                                                                                                                                           | Purpose                                      |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                                                     | State machine implementation (`next_work()`) |
-| [`docs/software-development/procedure/lifecycle/work/build.md`](../../../software-development/procedure/lifecycle/work/build.md)               | Build procedure                              |
-| [`docs/software-development/procedure/lifecycle/work/review-build.md`](../../../software-development/procedure/lifecycle/work/review-build.md) | Review procedure                             |
-| [`docs/software-development/procedure/lifecycle/work/fix-review.md`](../../../software-development/procedure/lifecycle/work/fix-review.md)     | Fix review procedure                         |
-| [`docs/software-development/procedure/lifecycle/work/finalize.md`](../../../software-development/procedure/lifecycle/work/finalize.md)         | Finalize procedure                           |
-| [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md)                                                       | Orchestration loop procedure                 |
+| File                                                                                                                                               | Purpose                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                                                         | State machine implementation (`next_work()`) |
+| [`docs/software-development/procedure/lifecycle/work/build.md`](../../../software-development/procedure/lifecycle/work/build.md)                   | Build procedure                              |
+| [`docs/software-development/procedure/lifecycle/work/review-build.md`](../../../software-development/procedure/lifecycle/work/review-build.md)     | Review procedure                             |
+| [`docs/software-development/procedure/lifecycle/fix-review-findings.md`](../../../software-development/procedure/lifecycle/fix-review-findings.md) | Fix review procedure                         |
+| [`docs/software-development/procedure/lifecycle/work/finalize.md`](../../../software-development/procedure/lifecycle/work/finalize.md)             | Finalize procedure                           |
+| [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md)                                                           | Orchestration loop procedure                 |
 
 ### Referenced doc snippets
 
-| Snippet ID                                                 | Content                                                  |
-| ---------------------------------------------------------- | -------------------------------------------------------- |
-| `software-development/procedure/lifecycle/work/build`      | Build phase — implement plan, commit per task            |
-| `software-development/procedure/lifecycle/work/review`     | Review phase — parallel lanes, structured findings       |
-| `software-development/procedure/lifecycle/work/fix-review` | Fix phase — address findings, peer conversation          |
-| `software-development/procedure/lifecycle/work/finalize`   | Finalize — two-stage: worker prepare, orchestrator apply |
-| `general/procedure/orchestration`                          | Orchestration loop and dispatch rules                    |
-| `software-development/policy/definition-of-done`           | Quality gates for completion                             |
-| `software-development/policy/testing`                      | Pre-commit quality gates                                 |
+| Snippet ID                                                     | Content                                                  |
+| -------------------------------------------------------------- | -------------------------------------------------------- |
+| `software-development/procedure/lifecycle/work/build`          | Build phase — implement plan, commit per task            |
+| `software-development/procedure/lifecycle/work/review`         | Review phase — parallel lanes, structured findings       |
+| `software-development/procedure/lifecycle/fix-review-findings` | Fix phase — address findings, peer conversation          |
+| `software-development/procedure/lifecycle/work/finalize`       | Finalize — two-stage: worker prepare, orchestrator apply |
+| `general/procedure/orchestration`                              | Orchestration loop and dispatch rules                    |
+| `software-development/policy/definition-of-done`               | Quality gates for completion                             |
+| `software-development/policy/testing`                          | Pre-commit quality gates                                 |
 
 ## Inputs/Outputs
 

@@ -69,8 +69,11 @@ a work-phase fixer cannot target one regardless of the dispatch message.
 6. **Stamp build completion** after code-review fixes: `telec todo stamp {slug} --build-complete`.
    For non-code prepare artifact fixes, use the verdict or artifact stamp named in the dispatch message instead.
 
-7. **Report FIX COMPLETE** in your session output. Your failure mode is scope expansion —
-   address each finding precisely without improving adjacent code.
+7. **Close the review link, then report FIX COMPLETE.** If a `--direct` link with a
+   reviewer session is open (the work build-review fix loop), close it before reporting:
+   `telec sessions send <reviewer_session_id> --close-link`. Then report FIX COMPLETE in
+   your session output. Your failure mode is scope expansion — address each finding
+   precisely without improving adjacent code.
 
 ## Outputs
 

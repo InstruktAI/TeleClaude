@@ -48,7 +48,7 @@ Caught at review. Required-read mounted in:
 
 - `software-development/procedure/lifecycle/work/build.md` — prevent before writing.
 - `software-development/procedure/lifecycle/work/review-build.md` — catch in review.
-- `software-development/procedure/lifecycle/work/fix-review.md` — prevent re-introduction during fix.
+- `software-development/procedure/lifecycle/fix-review-findings.md` — prevent re-introduction during fix.
 
 The baseline `intelligence-boundaries` principle carries the trigger heuristic; this policy carries the catalog.
 

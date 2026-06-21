@@ -6,24 +6,6 @@ from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS
 from teleclaude.core.next_machine.output_formatting import HEARTBEAT_RESET_INSTRUCTION, format_send_command
 
 
-def format_fix_findings_message(
-    slug: str,
-    phase_label: str,
-    rounds: int,
-    findings_artifact: str,
-    target_artifact: str,
-) -> str:
-    """Build the findings relay message sent to an existing worker session."""
-    return (
-        f"Round {rounds} {phase_label} review needs work. "
-        f"Findings artifact: `{findings_artifact}`. "
-        f"Target artifact: `{target_artifact}`. "
-        f"Required read: software-development/procedure/lifecycle/fix-review-findings. "
-        f"Address the findings and report FIX COMPLETE. "
-        f"Read findings via: telec todo artifacts read {slug} {findings_artifact}"
-    )
-
-
 def format_reviewer_direct_fix_message(
     *,
     fixer_session_id: str,
