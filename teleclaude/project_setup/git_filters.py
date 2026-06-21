@@ -10,6 +10,7 @@ and force re-smudges any already-checked-out files that are still unexpanded, so
 existing checkout converges to a working state on every ``telec sync``.
 """
 
+import re
 from pathlib import Path
 
 from teleclaude.git import GitCommandError, Repo
@@ -17,6 +18,12 @@ from teleclaude.git import GitCommandError, Repo
 # The portable token written to disk by the clean filter (and present in any
 # checkout where smudge never ran). Detecting it identifies stale files.
 PRE_SMUDGE_TOKEN = "@~/.teleclaude"
+
+# The portable doc-prose form of a home reference. The clean filter only ever
+# substitutes the home root for this token, so collapsing an absolute home path
+# back to it is the one legitimate filter effect — the basis for telling filter
+# residue (safe to reset) apart from a genuine edit (must be preserved).
+_PORTABLE_HOME = "~/.teleclaude"
 
 # The filter only ever applies under docs/ (see .gitattributes and
 # gitattributes.FILTER_PATTERNS). Scoping the working-tree scan here keeps it
@@ -40,10 +47,13 @@ def ensure_git_filters(project_root: Path) -> None:
 
     repo = Repo(project_root)
     _configure_filter_driver(repo)
+    reconciled = _reconcile_filter_residue(repo, project_root)
+    if reconciled:
+        print(f"git_filters: reconciled {reconciled} file(s) from a prior filter pattern.")
     restored = _force_resmudge(repo, project_root)
     if restored:
         print(f"git_filters: re-smudged {restored} file(s) to absolute paths.")
-    else:
+    elif not reconciled:
         print("git_filters: filter driver configured; working tree already smudged.")
 
 
@@ -99,6 +109,77 @@ def _force_resmudge(repo: Repo, project_root: Path) -> int:
         (project_root / relative_path).unlink()
     repo.git.checkout("--", *stale)
     return len(stale)
+
+
+def _reconcile_filter_residue(repo: Repo, project_root: Path) -> int:
+    """Reset filtered files left in a prior filter pattern's bare-absolute home form.
+
+    A working tree last smudged under the historical *bare* driver carries
+    bare-absolute ``<home>/.teleclaude`` paths that the current *anchored* clean
+    filter cannot contract, so git reports them modified — surfacing as unrelated
+    docs mutations and as hardcoded-HOME guardrail offenses. This converges those
+    files to the committed canonical form via the same delete + checkout primitive
+    as the token lane, but keyed on residue the token lane is blind to.
+
+    The genuine-edit guard resets a file only when its sole divergence from the
+    committed blob is home-path representation: ``normalize(working)`` must equal
+    ``normalize(index_blob)`` after collapsing absolute home paths back to the
+    portable token. A real content edit fails that equality and is left untouched.
+    On an already-consistent tree there are no candidates, so this is a no-op.
+
+    Returns the number of files reset.
+    """
+    home = str(Path.home())
+    candidates = _filter_matched(repo, _files_with_home_path(repo, home))
+    residue = re.compile(r"(?<!@)" + re.escape(home) + r"/\.teleclaude")
+    stale: list[str] = []
+    for relative_path in candidates:
+        working = (project_root / relative_path).read_text(encoding="utf-8")
+        if not residue.search(working):
+            continue
+        index_blob = _index_blob(repo, relative_path)
+        if _normalize_home(working, home) == _normalize_home(index_blob, home):
+            stale.append(relative_path)
+
+    ordered = sorted(set(stale))
+    if not ordered:
+        return 0
+    for relative_path in ordered:
+        (project_root / relative_path).unlink()
+    repo.git.checkout("--", *ordered)
+    return len(ordered)
+
+
+def _files_with_home_path(repo: Repo, home: str) -> list[str]:
+    """Return tracked docs files whose working tree holds an absolute home path.
+
+    Fixed-string grep keeps the scan cheap; it over-matches ``@``-prefixed smudge
+    output, which the caller's residue check then filters out. NUL-framed like the
+    other working-tree scans, robust to any character in a tracked path.
+    """
+    try:
+        listed: str = repo.git.grep("-l", "-z", "-F", f"{home}/.teleclaude", "--", _FILTER_SCOPE)
+    except GitCommandError as exc:
+        if exc.status == 1:  # git grep exits 1 when nothing matches
+            return []
+        raise
+    return [path for path in listed.split("\0") if path]
+
+
+def _index_blob(repo: Repo, relative_path: str) -> str:
+    """Return the committed (cleaned) blob for a path from the index, bytes-exact.
+
+    ``strip_newline_in_stdout=False`` preserves the trailing newline so the
+    residue guard compares working and index content without a spurious newline
+    divergence.
+    """
+    blob: str = repo.git.show(f":{relative_path}", strip_newline_in_stdout=False)
+    return blob
+
+
+def _normalize_home(text: str, home: str) -> str:
+    """Collapse absolute home references to the portable token for residue comparison."""
+    return text.replace(f"{home}/.teleclaude", _PORTABLE_HOME)
 
 
 def _files_with_token(repo: Repo) -> list[str]:
