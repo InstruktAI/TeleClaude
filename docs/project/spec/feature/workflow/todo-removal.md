@@ -53,6 +53,8 @@ And the CLI renders the affected snippet path, slug role, and live-deliverer cou
 
 <!-- planned:fix-telec-sync-hard-blocks-on-an-orphaned-pl -->
 
+#### UC-TR-INBODY-MARKER-ORPHAN: Removal is refused when a live snippet body still names the slug in an in-body marker
+
 ```
 Given a live snippet body carries an in-body planned or planned-change marker naming Todo "feature-x"
 And "feature-x" is not listed in any snippet's delivered_by frontmatter
