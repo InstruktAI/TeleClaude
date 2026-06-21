@@ -133,15 +133,11 @@ source files, tests, documentation, config, generated files, or prepare
 artifacts. The only writes a build reviewer owns are the `review-findings`
 artifact and the `build_review` verdict stamp.
 
-<!-- planned:gate-prepare-artifact-writes -->
-
 Review never edits a prepare artifact (`input`, `prd`, `architecture`,
 `diagnosis`, `implementation-plan`). When a finding reveals the intent or plan
 itself is wrong, it bounces the todo to prepare, where the prepare orchestrator
 owns the edit. The workflow service refuses any prepare-artifact write from a
 work-phase session, so this is enforced, not advisory.
-
-<!-- /planned:gate-prepare-artifact-writes -->
 
 **Missing test coverage is reported, not patched by the reviewer.** For new
 functionality, test specs are expected to have been delivered upfront — a gap

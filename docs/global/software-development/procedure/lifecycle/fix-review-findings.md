@@ -21,16 +21,12 @@ Typical phase/artifact combinations:
 Legacy todos may still reference `requirements-review-findings` → `requirements`.
 New prepare work uses human `prd_approved` rather than a requirements review phase.
 
-<!-- planned:gate-prepare-artifact-writes -->
-
 The artifact targets (`architecture`, `implementation-plan`) are writable only
 during the prepare review-fix loops, which the prepare orchestrator runs. In the
 work build-review loop the target is `review-findings` → code; a finding that
 implicates a prepare artifact is not fixed here — it bounces the todo to prepare.
 The workflow service refuses prepare-artifact writes from work-phase sessions, so
 a work-phase fixer cannot target one regardless of the dispatch message.
-
-<!-- /planned:gate-prepare-artifact-writes -->
 
 ## Preconditions
 

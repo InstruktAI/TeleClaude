@@ -649,24 +649,12 @@ Scenario: re-writing an artifact clears its drift stamps
   drift stamps. The next analyze pass establishes a fresh anchor against
   current evidence.
 
-<!-- planned-change:gate-prepare-artifact-writes -->
-
-- **Only re-derivable artifacts are drift-reviewed.** `input` and
-  `diagnosis` are not drift-reviewed artifacts. Input changes through PRD
-  refinement, and diagnosis is consumed as plan upstream evidence. If either
-  appears as a direct drift target, the lifecycle treats it as an anomaly
-  rather than a substantive verdict.
-
-<!-- change:gate-prepare-artifact-writes -->
-
 - **Only re-derivable artifacts are drift-reviewed.** `input` and
   `diagnosis` are not drift-reviewed artifacts. `input` is the intent root,
   edited only during prepare by the prepare orchestrator; its changes reach
   downstream artifacts through their `upstream_digests`. `diagnosis` is consumed
   as plan upstream evidence. Neither is a direct drift target; if either appears
   as one, the lifecycle treats it as an anomaly rather than a substantive verdict.
-
-<!-- /planned-change:gate-prepare-artifact-writes -->
 
 - **Snippet digests exclude `delivered_by` frontmatter churn.** When a
   sibling delivery flips a snippet's `delivered_by` (`target` → `actual`

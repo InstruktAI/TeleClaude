@@ -166,6 +166,19 @@ ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
 
 ARTIFACT_NAMES_WRITABLE: frozenset[str] = ARTIFACT_NAMES - ARTIFACT_NAMES_RETIRED
 
+# The prepare-owned derivation-root artifacts. Writable only by the
+# prepare-orchestrator session bound to the slug — see the Write authority
+# contract in docs/project/spec/feature/workflow/artifact-versioning.md.
+PREPARE_ARTIFACT_NAMES: frozenset[str] = frozenset(
+    {
+        ARTIFACT_INPUT,
+        ARTIFACT_PRD,
+        ARTIFACT_ARCHITECTURE,
+        ARTIFACT_DIAGNOSIS,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+    }
+)
+
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"

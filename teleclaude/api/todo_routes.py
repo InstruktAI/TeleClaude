@@ -20,6 +20,7 @@ from teleclaude.api.auth import (
     CallerIdentity,
     clearance_todos_artifacts_diff,
     clearance_todos_artifacts_remove,
+    clearance_todos_artifacts_write,
     clearance_todos_create,
     clearance_todos_integrate,
     clearance_todos_prepare,
@@ -43,6 +44,7 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
+    PREPARE_ARTIFACT_NAMES,
     TodoStatus,
 )
 from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
@@ -58,7 +60,7 @@ from teleclaude.core.next_machine.state_mutation import StateMutationError, Stat
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import HolderTransitionRefused, HolderWriteRefused, get_todos_db
-from teleclaude.core.todos_db._show import assemble_show_payload
+from teleclaude.core.todos_db._show import assemble_show_payload, derive_active_todo_stage
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
@@ -488,15 +490,33 @@ async def read_artifact(
     return _ArtifactReadResponse(slug=slug, name=name, content=content)
 
 
+def _resolved_write_principal(identity: CallerIdentity) -> str:
+    """Resolve the caller principal recorded as an artifact's ``updated_by``.
+
+    Mirrors ``todo_stamp``: an agent session is recorded under its session id, a
+    human-driven terminal under its verified human principal. Caller-supplied
+    audit identity is never honored.
+    """
+    if identity.session_id:
+        return identity.session_id
+    if identity.principal and identity.principal.startswith("human:"):
+        return identity.principal
+    if identity.email:
+        return f"human:{identity.email}"
+    if identity.human_role:
+        return "human:terminal"
+    raise HTTPException(status_code=403, detail="caller identity required to write artifact")
+
+
 @router.post("/artifacts/{slug}/{name}")
 async def write_artifact(
     slug: str,
     name: str,
     content: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-    updated_by: Annotated[str | None, Body()] = None,
     codebase_sha_at_write: Annotated[str | None, Body()] = None,
     referenced_paths: Annotated[list[str] | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_artifacts_write),
 ) -> _ArtifactWriteResponse:
     """Write (create or update) a todo artifact."""
     if name not in ARTIFACT_NAMES_WRITABLE:
@@ -515,7 +535,6 @@ async def write_artifact(
         )
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    effective_updated_by = updated_by or "api.todo.write_artifact"
     if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
     if await todos_db.is_holder(slug):
@@ -526,11 +545,25 @@ async def write_artifact(
                 "artifacts or state — write to its children instead"
             ),
         )
-    if name == ARTIFACT_INPUT and await todos_db.artifact_exists(slug, ARTIFACT_REQUIREMENTS):
-        raise HTTPException(
-            status_code=409,
-            detail=f"input artifact for '{slug}' is frozen — requirements already exist",
+    if name in PREPARE_ARTIFACT_NAMES:
+        state = await todos_db.read_state(slug)
+        active_runner = state.get("active_runner") if state else None
+        stage = await derive_active_todo_stage(todos_db, slug, state) if state else None
+        is_bound_prepare_orchestrator = (
+            bool(identity.session_id)
+            and state is not None
+            and identity.session_id == active_runner
+            and stage == "prepare"
         )
+        if not is_bound_prepare_orchestrator:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"prepare artifact '{name}' for '{slug}' is writable only by the "
+                    "prepare-orchestrator session bound to the slug"
+                ),
+            )
+    effective_updated_by = _resolved_write_principal(identity)
     try:
         await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
         _ = codebase_sha_at_write, referenced_paths

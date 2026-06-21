@@ -195,6 +195,19 @@ def _derive_stage(current_value: str, *, delivered: bool) -> TodoShowStage:
     return "work"
 
 
+async def derive_active_todo_stage(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> TodoShowStage:
+    """Classify an in-flight (non-delivered) todo state into its stage bucket.
+
+    Reuses the same phase/stage derivation that backs the show payload so callers
+    that gate on "the prepare stage" (e.g. the prepare-artifact write guard)
+    cannot drift from a second definition of the prepare value set.
+    """
+    project_root = _project_root_from_db(todos_db)
+    worktree_cwd = _worktree_cwd_for(project_root, slug)
+    current_value = await _derive_phase_value(state, todos_db, slug, worktree_cwd)
+    return _derive_stage(current_value, delivered=False)
+
+
 def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> CurrentBlock:
     """Build the ``current`` block for the payload."""
     phase = _PHASE_LABEL.get(current_value, current_value)
