@@ -68,9 +68,13 @@ logger = get_logger(__name__)
 # Used both by run_slash_command() internally and exported for api_server.py.
 COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_BUILD: (ROLE_WORKER, JobRole.BUILDER),
+    SlashCommand.NEXT_BUGS_FIX: (ROLE_WORKER, JobRole.FIXER),
     SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.NEXT_REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.ARCHITECTURE_REVIEWER),
+    SlashCommand.NEXT_REVIEW_COMMITS: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.NEXT_CREATE_ART: (ROLE_WORKER, JobRole.ARTIST),
+    SlashCommand.NEXT_CREATE_HTML: (ROLE_WORKER, JobRole.FRONTENDER),
     SlashCommand.NEXT_FIX_REVIEW: (ROLE_WORKER, JobRole.FIXER),
     SlashCommand.NEXT_FINALIZE: (ROLE_WORKER, JobRole.FINALIZER),
     SlashCommand.NEXT_PREPARE_INTAKE: (ROLE_WORKER, JobRole.INTAKER),

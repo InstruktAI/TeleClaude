@@ -77,9 +77,11 @@ WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_FINALIZE,
 }
 
-SLUG_BOUND_LIFECYCLE_COMMANDS = {
-    command.value for command in COMMAND_ROLE_MAP if command is not SlashCommand.NEXT_INTEGRATE
-}
+# Worker-class commands that carry no todo slug: the integrator runs without one,
+# and review-commits is bound to a commit SHA rather than a slug.
+_NON_SLUG_BOUND = {SlashCommand.NEXT_INTEGRATE, SlashCommand.NEXT_REVIEW_COMMITS}
+
+SLUG_BOUND_LIFECYCLE_COMMANDS = {command.value for command in COMMAND_ROLE_MAP if command not in _NON_SLUG_BOUND}
 SLUG_BOUND_LIFECYCLE_COMMANDS.add("analyze-todo-input")
 
 _STATE = SimpleNamespace(client=None)

@@ -191,9 +191,11 @@ class SlashCommand(str, Enum):
     """Canonical slash commands dispatched to agent sessions."""
 
     NEXT_BUILD = "next-build"
+    NEXT_BUGS_FIX = "next-bugs-fix"
     NEXT_REVIEW_BUILD = "next-review-build"
     NEXT_REVIEW_PLAN = "next-review-plan"
     NEXT_REVIEW_ARCHITECTURE = "next-review-architecture"
+    NEXT_REVIEW_COMMITS = "next-review-commits"
     NEXT_FIX_REVIEW = "next-fix-review"
     NEXT_FINALIZE = "next-finalize"
     NEXT_PREPARE_INTAKE = "next-prepare-intake"

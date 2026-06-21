@@ -26,7 +26,7 @@ from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, re
 from teleclaude.api.session_remote import dispatch_session_close_to_peer
 from teleclaude.cli import api_client as api_client_mod
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.constants import EVENT_END_SESSION, WORKTREE_DIR
+from teleclaude.constants import EVENT_END_SESSION, ROLE_WORKER, WORKTREE_DIR, JobRole, SlashCommand
 from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.command_handlers import _session as session_handler_mod
@@ -1117,3 +1117,89 @@ async def test_restricted_role_jailed_to_help_desk(api: AsyncClient, tmp_path: P
     session = await _get_session_from_db(api, data["session_id"])
     assert session.project_path is not None
     assert {"jailed_dir": Path(session.project_path).name} == snapshot
+
+
+# ---------------------------------------------------------------------------
+# 11. Worker-class commands dispatched via sessions/run are contained
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_run_session(
+    api: AsyncClient,
+    *,
+    command: str,
+    args: str,
+    headers: dict[str, str] | None = None,
+) -> Any:
+    """POST /sessions/run and return the raw response."""
+    return await api.post(
+        "/sessions/run",
+        json={
+            "computer": "TestComputer",
+            "command": command,
+            "args": args,
+            "project": "/tmp",
+            "agent": "claude",
+            "thinking_mode": "fast",
+        },
+        headers=headers or {},
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "args", "expected_job", "expected_working_slug"),
+    [
+        (SlashCommand.NEXT_REVIEW_COMMITS, "abc123def4567890", JobRole.REVIEWER, None),
+        (SlashCommand.NEXT_BUGS_FIX, "bug-slug", JobRole.FIXER, "bug-slug"),
+        (SlashCommand.NEXT_CREATE_ART, "art-mood-board", JobRole.ARTIST, "art-mood-board"),
+        (SlashCommand.NEXT_CREATE_HTML, "html-artifact", JobRole.FRONTENDER, "html-artifact"),
+    ],
+)
+async def test_worker_class_dispatch_is_tagged_and_contained(
+    api: AsyncClient,
+    command: SlashCommand,
+    args: str,
+    expected_job: JobRole,
+    expected_working_slug: str | None,
+) -> None:
+    """Worker-class command sessions are tagged as workers and cannot dispatch."""
+    dispatch_resp = await _dispatch_run_session(api, command=f"/{command.value}", args=args)
+    assert dispatch_resp.status_code == 200, f"dispatch failed: {dispatch_resp.text}"
+    worker_session_id = dispatch_resp.json()["session_id"]
+
+    worker = await _get_session_from_db(api, worker_session_id)
+    assert worker is not None
+    assert {
+        "system_role": worker.system_role,
+        "job": worker.job,
+        "working_slug": worker.working_slug,
+    } == {
+        "system_role": ROLE_WORKER,
+        "job": expected_job.value,
+        "working_slug": expected_working_slug,
+    }
+
+    token = await api.db.issue_session_token(worker_session_id, f"system:{worker_session_id}", "admin")
+    worker_headers = {"x-session-token": token}
+
+    run_resp = await _dispatch_run_session(
+        api,
+        command=f"/{SlashCommand.NEXT_BUILD.value}",
+        args="some-slug",
+        headers=worker_headers,
+    )
+    assert run_resp.status_code == 403
+
+    start_resp = await api.post(
+        "/sessions",
+        json={
+            "computer": "TestComputer",
+            "project_path": "/tmp",
+            "agent": "claude",
+            "thinking_mode": "fast",
+            "title": "grandchild",
+            "launch_kind": "empty",
+        },
+        headers=worker_headers,
+    )
+    assert start_resp.status_code == 403
