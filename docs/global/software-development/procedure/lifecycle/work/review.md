@@ -1,6 +1,6 @@
 ---
 description: 'Review phase. Verify PRD intent, prepared artifacts, code quality, tests, and deliver verdict with findings.'
-needs_domain_baseline: 'True'
+needs_domain_baseline: true
 visibility: 'public'
 ---
 
@@ -124,39 +124,27 @@ For browser-based frontend or web UI changes, the reviewer must also:
 
 If user-facing verification is not possible, note the gap as a finding.
 
-#### Reviewer auto-remediation
+#### Reviewer separation
 
-Default behavior is to act in place. If a finding is localized, high-confidence,
-and can be validated within the same review pass, the reviewer should fix it
-directly instead of handing it off.
-
-Auto-remediation is appropriate when all of the following are true:
-
-1. The fix does not change requirement intent or approved scope.
-2. The fix does not introduce a new architectural decision.
-3. The fix is localized (for example: typing, docs/help text, plan
-   consistency, straightforward bug fix in touched area).
-4. The reviewer can re-run the relevant checks and validate correctness.
-
-Do not auto-remediate when uncertainty is high, product decisions are unresolved,
-or changes require broad refactoring. Keep those findings unresolved and request
-changes.
+Reviewers evaluate; they do not author fixes. A build reviewer must not edit
+source files, tests, documentation, config, generated files, or prepare
+artifacts. The only writes a build reviewer owns are the `review-findings`
+artifact and the `build_review` verdict stamp.
 
 <!-- planned:gate-prepare-artifact-writes -->
 
-Auto-remediation never edits a prepare artifact (`input`, `prd`, `architecture`,
-`diagnosis`, `implementation-plan`). A `review-findings` fix targets code. When a
-finding reveals the intent or plan itself is wrong, it is not a fix here — it
-bounces the todo to prepare, where the prepare orchestrator owns the edit. The
-workflow service refuses any prepare-artifact write from a work-phase session, so
-this is enforced, not advisory.
+Review never edits a prepare artifact (`input`, `prd`, `architecture`,
+`diagnosis`, `implementation-plan`). When a finding reveals the intent or plan
+itself is wrong, it bounces the todo to prepare, where the prepare orchestrator
+owns the edit. The workflow service refuses any prepare-artifact write from a
+work-phase session, so this is enforced, not advisory.
 
 <!-- /planned:gate-prepare-artifact-writes -->
 
-**Missing test coverage is never auto-remediated.** For new functionality, test
-specs are expected to have been delivered upfront — a gap means the spec or build
-phase fell short, not something the reviewer patches. For existing code, coverage
-is characterization work that requires the builder's implementation context
+**Missing test coverage is reported, not patched by the reviewer.** For new
+functionality, test specs are expected to have been delivered upfront — a gap
+means the spec or build phase fell short. For existing code, coverage is
+characterization work that requires the builder's implementation context
 (OBSERVE-ASSERT-VERIFY cycle). In both cases, report the finding and request
 changes.
 
@@ -227,14 +215,11 @@ The reviewer must not invent categories ("non-blocking", "accepted", "deferred
 to follow-up", "suggestion", "nit", "polish") to reduce a count and achieve APPROVE.
 The reviewer must not classify requirement-gaps as Important or Critical to make
 them deferrable — requirement-gaps are Requirement-Violation by definition. The
-only way to reduce a count is to resolve the finding: auto-remediate it, or
-investigate and determine it is invalid with evidence. Overall delivery quality
-does not override individual finding severity.
+only way to reduce a count is to investigate and determine the finding is invalid
+with evidence. Overall delivery quality does not override individual finding
+severity.
 
-If all findings were remediated inline, record a short "Resolved During Review"
-section so the caller can trace what changed.
-
-Commit all files in the worktree. Stamp the verdict into todo state:
+Stamp the verdict into todo state:
 `telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`.
 The state machine derives phase from stamped primitives — if the reviewer does not
 stamp, the orchestrator will be instructed to nudge the reviewer to do so.
@@ -264,7 +249,6 @@ must be accompanied by the "Why no issues" justification per §5 Quality gates.
 ## Outputs
 
 - `review-findings` todo artifact persisted via `telec todo artifacts write {slug} review-findings "<content>"`, with structured severity sections.
-- A commit containing review findings (and any allowed checklist updates).
 - Verdict reported to orchestrator for phase-state recording.
 
 ## Recovery

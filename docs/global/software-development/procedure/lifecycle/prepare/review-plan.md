@@ -193,8 +193,8 @@ to pre-satisfy:
   the task that records evidence for build and review.
 
 A lane triggered by any requirement but not addressed by a named deliverable
-per that requirement is an Important finding. Auto-remediate by inserting the
-missing task when the gap is localized; otherwise mark `needs_work`.
+per that requirement is an Important finding. Record the finding and mark
+`needs_work`; the plan drafter owns the missing task.
 
 ### 7. Policy compliance
 
@@ -218,24 +218,17 @@ Check the plan against:
 
 Policy violations are Critical findings.
 
-### 8. Auto-remediate localized findings
+### 8. Preserve reviewer separation
 
-Default behavior is to act in place. If a finding is localized, high-confidence,
-and does not change intent, the reviewer should fix the plan directly in this
-same pass instead of handing it back.
+Plan reviewers evaluate; they do not author. A plan reviewer must not edit the
+`implementation-plan`, upstream prepare artifacts, documentation snippets, source
+files, tests, config, or generated files. The only writes a plan reviewer owns
+are the `plan-review-findings` artifact, when findings exist, and the
+`plan_review` verdict stamp.
 
-Localized means all of the following are true:
-
-- No requirement intent changes.
-- No new architectural decision is introduced.
-- Scope stays within the reviewed planning artifacts and related grounding metadata.
-- The reviewer can fully validate the fix from current context.
-
-Not allowed — route via `needs_work` instead:
-
-- Adding new tasks not traceable to PRD, architecture, or feature-spec scenarios.
-- Changing scope or splitting the todo.
-- Inventing architectural decisions not grounded in PRD, architecture, or codebase.
+When the plan has a localized defect, record it as a finding and stamp
+`needs_work`. The plan drafter owns the corrective edit and the state machine
+routes the todo back through review.
 
 ### 8a. Forbidden reviewer moves
 
@@ -278,9 +271,9 @@ findings, including the policy citation requirement defined in `lifecycle/work/r
 
 If no unresolved findings remain, do not write a new findings artifact.
 
-### 10. Commit and report
+### 10. Report
 
-Commit all files in the worktree. Report:
+Report:
 
 ```
 PLAN REVIEW: {slug}
@@ -293,13 +286,11 @@ Findings artifact: plan-review-findings when NEEDS WORK
 
 - Verdict stamped with `telec todo stamp`.
 - `telec todo artifacts read {slug} plan-review-findings` if findings exist.
-- Commit containing review artifacts.
 
 ## Recovery
 
-- If unresolved Critical or Important findings remain after auto-remediation,
-  mark `needs_work`. The state machine will dispatch the plan drafter again
-  with the findings.
+- If unresolved Critical or Important findings remain, mark `needs_work`. The
+  state machine will dispatch the plan drafter again with the findings.
 - If upstream artifacts themselves are the problem (plan is correct but PRD,
   architecture, or in-scope feature specs are wrong), flag as blocker — the affected
   upstream artifact must be re-reviewed first.
