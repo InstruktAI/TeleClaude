@@ -2,24 +2,75 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from teleclaude.constants import TodoStatus
 from teleclaude.core.blueprint import BlueprintStatus, graph_path, manifest_path, read_manifest
+from teleclaude.core.db import Db
 from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
     IntegrationPhase,
     _now_iso,
+    _read_checkpoint,
     _write_checkpoint,
 )
+from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.integration.step_functions import _step_push_succeeded
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.checkpoint_flags import read_integrator_maintenance_marker
 
 _SPEC = "project/spec/feature/workflow/integration-state-machine"
 
 _FAKE_SESSION = "integrator-test-session"
+
+_SLUG = "test-slug"
+
+
+def _seed_active_todo(project_root: Path, slug: str = _SLUG) -> None:
+    """Insert an active todo row directly so deliver_sync can flip it to delivered.
+
+    Pure sync sqlite (no event loop) — fast and signal-safe under the parallel
+    timeout harness, where an asyncio.run seed risks crashing the xdist worker.
+    """
+    db = get_todos_db_sync(str(project_root))
+    conn = db._sync_conn()
+    now = "2026-01-01T00:00:00+00:00"
+    try:
+        conn.execute(
+            "INSERT INTO todo (id, slug, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 'active', ?, ?)",
+            (f"{slug}-id", slug, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class _TodoRow(NamedTuple):
+    status: str
+    delivered_commit: str | None
+
+
+def _todo_row(project_root: Path, slug: str = _SLUG) -> _TodoRow | None:
+    """Read the persisted todo row (status, delivered_commit) from todos.db."""
+    db = get_todos_db_sync(str(project_root))
+    conn = db._sync_conn()
+    try:
+        cursor = conn.execute(
+            "SELECT status, delivered_commit FROM todo WHERE slug = ?",  # guard: raw-sql
+            (slug,),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    return _TodoRow(status=row[0], delivered_commit=row[1])
 
 
 def _make_checkpoint(pre_merge_head: str | None = "abc123") -> IntegrationCheckpoint:
@@ -59,6 +110,7 @@ def test_delivery_writes_maintenance_marker_with_range_before_candidate_delivere
     checkpoint_path = tmp_path / "integrate-state.json"
     cp = _make_checkpoint(pre_merge_head=pre_merge_sha)
     _write_checkpoint(checkpoint_path, cp)
+    _seed_active_todo(tmp_path)
 
     with (
         patch("teleclaude.core.integration.step_functions.get_session_id", return_value=_FAKE_SESSION),
@@ -102,6 +154,7 @@ def test_maintenance_marker_accumulates_across_candidates(
 
     ranges = [("pre1", "post1"), ("pre2", "post2")]
     checkpoint_path = tmp_path / "integrate-state.json"
+    _seed_active_todo(tmp_path)
 
     for pre_sha, post_sha in ranges:
         cp = _make_checkpoint(pre_merge_head=pre_sha)
@@ -112,6 +165,7 @@ def test_maintenance_marker_accumulates_across_candidates(
             patch("teleclaude.core.integration.step_functions._run_git") as mock_git,
             patch("teleclaude.core.integration.step_functions._get_head_sha", return_value=post_sha),
             patch("teleclaude.core.integration.step_functions._do_cleanup") as mock_cleanup,
+            patch("teleclaude.core.integration.step_functions._regenerate_blueprint_after_delivery", return_value=None),
         ):
 
             def _fake_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
@@ -160,6 +214,7 @@ def test_delivery_regenerates_blueprint_with_pushed_baseline(tmp_path: Path) -> 
     checkpoint_path = tmp_path / "integrate-state.json"
     cp = _make_checkpoint()
     _write_checkpoint(checkpoint_path, cp)
+    _seed_active_todo(tmp_path)
 
     def _fake_graphify_update(repo_root: Path) -> int:
         out = Path(repo_root) / "graphify-out"
@@ -191,6 +246,7 @@ def test_delivery_completes_when_blueprint_regeneration_fails(tmp_path: Path) ->
     checkpoint_path = tmp_path / "integrate-state.json"
     cp = _make_checkpoint()
     _write_checkpoint(checkpoint_path, cp)
+    _seed_active_todo(tmp_path)
 
     with (
         patch("teleclaude.core.integration.step_functions.get_session_id", return_value=None),
@@ -215,6 +271,7 @@ def test_delivery_warns_when_blueprint_manifest_write_fails(tmp_path: Path, snap
     checkpoint_path = tmp_path / "integrate-state.json"
     cp = _make_checkpoint()
     _write_checkpoint(checkpoint_path, cp)
+    _seed_active_todo(tmp_path)
 
     def _fake_graphify_update(repo_root: Path) -> int:
         out = Path(repo_root) / "graphify-out"
@@ -236,3 +293,189 @@ def test_delivery_warns_when_blueprint_manifest_write_fails(tmp_path: Path, snap
     assert success is True
     assert graph_path(tmp_path).is_file()
     assert "\n".join(cp.warnings) == snapshot
+
+
+# ---------------------------------------------------------------------------
+# UC-WISM2: delivery recorded only on a confirmed push
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_git(
+    *, push_rc: int = 0, is_ancestor: bool = True, fetch_rc: int = 0
+) -> Callable[..., tuple[int, str, str]]:
+    """Script the process-boundary git calls for a driven integration.
+
+    Only the push result, the confirmation re-fetch, and the post-push ancestry
+    check vary per scenario; every other git call (stash list, pull, staged-diff
+    probe) is a benign success so the dispatcher and steps flow to the gate.
+    """
+
+    def _fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        if args[:2] == ["push", "origin"]:
+            return push_rc, "", ("! [rejected] (non-fast-forward)" if push_rc != 0 else "")
+        if args[:2] == ["fetch", "origin"]:
+            return fetch_rc, "", ("fatal: unable to access origin" if fetch_rc != 0 else "")
+        if args[:2] == ["merge-base", "--is-ancestor"]:
+            return (0 if is_ancestor else 1), "", ""
+        if args[:3] == ["rev-list", "--count", "origin/main..HEAD"]:
+            return 0, "0\n", ""
+        return 0, "", ""
+
+    return _fake_git
+
+
+async def _drive_integrate(
+    *,
+    tmp_path: Path,
+    seed_phase: IntegrationPhase,
+    landed_sha: str,
+    fake_git: Callable[..., tuple[int, str, str]],
+    remote_main_sha: str | None = None,
+) -> tuple[str, IntegrationPhase]:
+    """Seed a durable checkpoint and a real active todo row, then drive next_integrate.
+
+    Returns the agent instruction and the persisted checkpoint phase. Fakes only
+    the process boundary (git, the bus emission, the graphify subprocess) and the
+    external store locations (checkpoint dir, todos.db) — every in-process step
+    runs for real.
+    """
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    checkpoint_path = state_dir / "integrate-state.json"
+    cp = _make_checkpoint()
+    cp.phase = seed_phase.value
+    if seed_phase == IntegrationPhase.PUSH_REJECTED:
+        cp.error_context = {"rejection_reason": "non-fast-forward"}
+    _write_checkpoint(checkpoint_path, cp)
+    _seed_active_todo(tmp_path)
+
+    sf = "teleclaude.core.integration.step_functions"
+    sm = "teleclaude.core.integration.state_machine"
+    with (
+        patch(f"{sm}._default_state_dir", return_value=state_dir),
+        patch(f"{sm}._run_git", side_effect=fake_git),
+        patch(f"{sf}._run_git", side_effect=fake_git),
+        patch(f"{sf}._get_head_sha", return_value=landed_sha),
+        patch(
+            f"{sf}._get_remote_main_sha", return_value=remote_main_sha if remote_main_sha is not None else landed_sha
+        ),
+        patch(f"{sf}._regenerate_blueprint_after_delivery", return_value=None),
+        patch(f"{sf}._emit_lifecycle_event"),
+        patch(f"{sf}.cleanup_delivered_slug"),
+        patch(f"{sf}.get_session_id", return_value=None),
+    ):
+        instruction = await next_integrate(cast(Db, MagicMock()), _SLUG, str(tmp_path))
+
+    persisted_phase = IntegrationPhase(_read_checkpoint(checkpoint_path).phase)
+    return instruction, persisted_phase
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM2")
+async def test_rejected_push_leaves_todo_not_delivered(tmp_path: Path) -> None:
+    """A rejected push records no delivery and leaves the phase at PUSH_REJECTED."""
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
+        landed_sha="squashhead0001",
+        fake_git=_make_fake_git(push_rc=1),
+    )
+
+    assert phase is IntegrationPhase.PUSH_REJECTED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status != TodoStatus.DELIVERED
+    assert row.delivered_commit is None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM2")
+async def test_confirmed_push_delivers_once_with_landed_commit(tmp_path: Path) -> None:
+    """A confirmed push delivers exactly once, recording the worktree HEAD on main."""
+    landed_sha = "squashhead0002"
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
+        landed_sha=landed_sha,
+        fake_git=_make_fake_git(push_rc=0, is_ancestor=True),
+    )
+
+    assert phase is not IntegrationPhase.PUSH_REJECTED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status == TodoStatus.DELIVERED
+    assert row.delivered_commit == landed_sha
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM2")
+async def test_recovered_push_delivers_once_with_landed_commit(tmp_path: Path) -> None:
+    """Operator recovery (worktree HEAD == origin/main) delivers exactly once."""
+    landed_sha = "recoveredhead0003"
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.PUSH_REJECTED,
+        landed_sha=landed_sha,
+        fake_git=_make_fake_git(is_ancestor=True),
+        remote_main_sha=landed_sha,
+    )
+
+    assert phase is not IntegrationPhase.PUSH_REJECTED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status == TodoStatus.DELIVERED
+    assert row.delivered_commit == landed_sha
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM2")
+async def test_push_success_but_not_ancestor_withholds_delivery(tmp_path: Path) -> None:
+    """A push that reports success but is not an ancestor of main withholds delivery."""
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
+        landed_sha="orphanhead0004",
+        fake_git=_make_fake_git(push_rc=0, is_ancestor=False),
+    )
+
+    assert phase is IntegrationPhase.PUSH_REJECTED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status != TodoStatus.DELIVERED
+    assert row.delivered_commit is None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM2")
+async def test_fetch_failure_withholds_delivery(tmp_path: Path) -> None:
+    """A failed confirmation re-fetch withholds delivery (no trusting a stale ref)."""
+    _, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.DELIVERY_BOOKKEEPING,
+        landed_sha="staleref0006",
+        fake_git=_make_fake_git(push_rc=0, is_ancestor=True, fetch_rc=1),
+    )
+
+    assert phase is IntegrationPhase.PUSH_REJECTED
+    row = _todo_row(tmp_path)
+    assert row is not None
+    assert row.status != TodoStatus.DELIVERED
+    assert row.delivered_commit is None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-WISM2")
+async def test_push_rejection_recovery_instruction_is_worktree_qualified(tmp_path: Path, snapshot: object) -> None:
+    """The recovery instruction directory-qualifies each git command to the worktree."""
+    instruction, phase = await _drive_integrate(
+        tmp_path=tmp_path,
+        seed_phase=IntegrationPhase.PUSH_REJECTED,
+        landed_sha="localhead0005",
+        fake_git=_make_fake_git(),
+        remote_main_sha="remotehead9999",
+    )
+
+    assert phase is IntegrationPhase.PUSH_REJECTED
+    worktree = str((tmp_path / "trees" / "_integration").resolve())
+    normalized = instruction.replace(worktree, "<INTEGRATION_WORKTREE>")
+    assert normalized == snapshot

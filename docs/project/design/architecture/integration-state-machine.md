@@ -48,7 +48,7 @@ The Integration state machine is the **only role authorized to push canonical `m
 **Outputs:**
 
 - Updated `origin/main` with squash-merged feature content (pushed from `trees/_integration/`)
-- Delivery bookkeeping on repo root: todo-list delivery transitions and cleanup
+- Delivery record (todo-list delivery transition) written only after the push is confirmed on `origin/main`, plus cleanup
 - Cleanup: worktree removal, branch deletion, todo directory removal
 - `integration.*` lifecycle events at each state transition
 - Final status with metrics (`items_processed`, `items_blocked`, `duration_ms`)
@@ -127,20 +127,20 @@ stateDiagram-v2
 
 ### States reference
 
-| State                  | Description                                                | Agent Action Required                   | Auto-advance |
-| ---------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------ |
-| `IDLE`                 | No candidate in progress. Pop next from queue or complete. | No                                      | Yes          |
-| `CANDIDATE_DEQUEUED`   | Candidate popped. Route to merge or skip.                  | No                                      | Yes          |
-| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.       | **Yes** — compose squash commit message | No           |
-| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                           | **Yes** — resolve conflicts + commit    | No           |
-| `AWAITING_COMMIT`      | Re-entry check: did the agent commit?                      | No                                      | Yes          |
-| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                 | No                                      | Yes          |
-| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin.                          | No                                      | Yes          |
-| `PUSH_SUCCEEDED`       | Push landed. Proceed to cleanup.                           | No                                      | Yes          |
-| `PUSH_REJECTED`        | Push rejected (non-fast-forward).                          | **Yes** — rebase + push                 | No           |
-| `CLEANUP`              | Remove worktree, branch, todo dir.                         | No                                      | Yes          |
-| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark and reset.                | No                                      | Yes          |
-| `COMPLETED`            | Queue empty. Terminal state.                               | **Yes** — self-end session              | —            |
+| State                  | Description                                                     | Agent Action Required                   | Auto-advance |
+| ---------------------- | --------------------------------------------------------------- | --------------------------------------- | ------------ |
+| `IDLE`                 | No candidate in progress. Pop next from queue or complete.      | No                                      | Yes          |
+| `CANDIDATE_DEQUEUED`   | Candidate popped. Route to merge or skip.                       | No                                      | Yes          |
+| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.            | **Yes** — compose squash commit message | No           |
+| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                                | **Yes** — resolve conflicts + commit    | No           |
+| `AWAITING_COMMIT`      | Re-entry check: did the agent commit?                           | No                                      | Yes          |
+| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                      | No                                      | Yes          |
+| `DELIVERY_BOOKKEEPING` | Push the squash merge to origin.                                | No                                      | Yes          |
+| `PUSH_SUCCEEDED`       | Push confirmed. Record delivery (ancestry-gated), then cleanup. | No                                      | Yes          |
+| `PUSH_REJECTED`        | Push rejected (non-fast-forward).                               | **Yes** — rebase + push                 | No           |
+| `CLEANUP`              | Remove worktree, branch, todo dir.                              | No                                      | Yes          |
+| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark and reset.                     | No                                      | Yes          |
+| `COMPLETED`            | Queue empty. Terminal state.                                    | **Yes** — self-end session              | —            |
 
 ### Single candidate flow
 
@@ -163,13 +163,13 @@ flowchart TD
 
     CommitCheck{"HEAD advanced?<br/>(new commit detected)"}
 
-    Bookkeeping["DELIVERY_BOOKKEEPING<br/>- core.todos_db.deliver_sync slug<br/>- commit bookkeeping"]
+    Bookkeeping["DELIVERY_BOOKKEEPING<br/>push squash to origin"]
 
     Push["git push origin HEAD:main"]
 
     PushResult{"Push result?"}
 
-    PushOK["PUSH_SUCCEEDED"]
+    PushOK["PUSH_SUCCEEDED<br/>- confirm HEAD ancestor of origin/main<br/>- core.todos_db.deliver_sync slug"]
     PushFail["PUSH_REJECTED<br/>Return: rebase + retry"]
 
     RecoveryCheck{"Local HEAD ==<br/>remote main?"}
@@ -274,9 +274,10 @@ sequenceDiagram
 
     SM->>SM: Detect HEAD advanced - COMMITTED
     SM->>SM: DELIVERY_BOOKKEEPING
-    Note over SM: core.todos_db.deliver_sync(my-feature)
     SM->>WT: git push origin HEAD:main
     Note over Origin: Push succeeds
+    SM->>SM: PUSH_SUCCEEDED
+    Note over SM: Confirm HEAD ancestor of origin/main<br/>core.todos_db.deliver_sync(my-feature)
 
     SM->>SM: CLEANUP
     Note over SM: Remove worktree branch<br/>Delete todo dir
@@ -441,30 +442,23 @@ Both guards emit `integration.candidate.already_merged` lifecycle events.
 
 ### Delivery bookkeeping
 
-After the agent commits the squash merge, the machine runs bookkeeping on the **repo root** (not the integration worktree):
+The agent commits the squash merge inside the integration worktree (`trees/_integration/`); `DELIVERY_BOOKKEEPING` then pushes that worktree to `origin/main`. The delivery record lives in the untracked `todos.db` — local daemon state, never part of the pushed commit — so it is never staged into the merge.
 
 ```mermaid
 flowchart TD
     Committed["COMMITTED"]
+    Push["DELIVERY_BOOKKEEPING<br/>git push origin HEAD:main"]
+    PushResult{"Push confirmed on<br/>origin/main?"}
+    Deliver["PUSH_SUCCEEDED<br/>- confirm HEAD ancestor of origin/main<br/>- core.todos_db.deliver_sync(slug)<br/>- clean dependency edges"]
+    Reject["PUSH_REJECTED<br/>(no delivery record)"]
 
-    IsBug{"Is bug slug?"}
-
-    Deliver["core.todos_db.deliver_sync(slug)<br/>(todos.db delivery stamp)"]
-
-    Stage["git add<br/>todos.db<br/>(todo list + delivered)"]
-    Commit["git commit<br/>'chore: deliver slug'"]
-
-    Push["DELIVERY_BOOKKEEPING<br/>complete"]
-
-    Committed --> IsBug
-    IsBug -->|"No"| Deliver
-    IsBug -->|"Yes"| Stage
-    Deliver --> Stage
-    Stage --> Commit
-    Commit --> Push
+    Committed --> Push
+    Push --> PushResult
+    PushResult -->|"Yes"| Deliver
+    PushResult -->|"No / not ancestor"| Reject
 ```
 
-Only bookkeeping files are staged (`git add` by path, not `git add -A`), preserving any dirty state on main.
+`core.todos_db.deliver_sync(slug)` stamps the todo `delivered`, records the delivered commit, and sets the todo-state delivery phase in a single transaction. It runs only after the push is confirmed on `origin/main`, on the `PUSH_SUCCEEDED` convergence path reached by both a direct push and a recovered one. Entry to that path re-fetches `origin` and asserts the integration-worktree HEAD is an ancestor of `origin/main`; on failure the candidate returns to `PUSH_REJECTED` and no delivery record is written. The recorded delivered commit is the integration-worktree HEAD that landed on `main`, not the candidate-branch commit.
 
 ### Blueprint regeneration
 
@@ -506,14 +500,14 @@ flowchart LR
     C6 --> R6
 ```
 
-| Crash Point                 | Checkpoint Phase                   | Recovery                                                    |
-| --------------------------- | ---------------------------------- | ----------------------------------------------------------- |
-| After dequeue, before merge | `CANDIDATE_DEQUEUED`               | Routes to merge. No work lost.                              |
-| After merge, before commit  | `MERGE_CLEAN` / `MERGE_CONFLICTED` | Re-prompts agent. Staged changes persist in git index.      |
-| After commit, before push   | `COMMITTED`                        | Re-runs delivery bookkeeping (idempotent). Then pushes.     |
-| After push rejection        | `PUSH_REJECTED`                    | Re-checks if heads match. Re-prompts if not.                |
-| During cleanup              | `CLEANUP`                          | Re-runs cleanup (idempotent). Missing worktrees are no-ops. |
-| After candidate delivered   | `CANDIDATE_DELIVERED`              | Marks integrated, resets to IDLE, loops for next.           |
+| Crash Point                 | Checkpoint Phase                   | Recovery                                                                                                        |
+| --------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| After dequeue, before merge | `CANDIDATE_DEQUEUED`               | Routes to merge. No work lost.                                                                                  |
+| After merge, before commit  | `MERGE_CLEAN` / `MERGE_CONFLICTED` | Re-prompts agent. Staged changes persist in git index.                                                          |
+| After commit, before push   | `COMMITTED`                        | Re-enters `DELIVERY_BOOKKEEPING` and pushes (idempotent); delivery is recorded only once the push is confirmed. |
+| After push rejection        | `PUSH_REJECTED`                    | Re-checks if heads match. Re-prompts if not.                                                                    |
+| During cleanup              | `CLEANUP`                          | Re-runs cleanup (idempotent). Missing worktrees are no-ops.                                                     |
+| After candidate delivered   | `CANDIDATE_DELIVERED`              | Marks integrated, resets to IDLE, loops for next.                                                               |
 
 ### Lifecycle events
 

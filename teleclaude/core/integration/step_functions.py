@@ -654,49 +654,20 @@ def _step_delivery_bookkeeping(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """DELIVERY_BOOKKEEPING: run bookkeeping in integration worktree, then push all together.
+    """DELIVERY_BOOKKEEPING: push the squash (plus any tracked staged change) to main.
 
-    Bookkeeping commits (todo delivery, todo cleanup) are created in the
-    integration worktree alongside the squash merge commit. This avoids the
-    divergence that occurred when bookkeeping ran on repo root after the
-    integration worktree had already pushed.
+    The todo delivery stamp and dependency cleanup are ``todos.db`` writes —
+    untracked local state, never part of the pushed commit — deferred to the
+    confirmed-push path in ``_step_push_succeeded``. Writing them here, before
+    the push lands, would flag the todo delivered even on a rejected push.
     """
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "DELIVERY_BOOKKEEPING phase has no candidate key")
 
     wt = str(_integration_worktree_path(cwd))
-
-    # --- Delivery bookkeeping via todos.db ---
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
 
-    todos_db = get_todos_db_sync(cwd)
-    delivered = todos_db.deliver_sync(key.slug, commit=checkpoint.candidate_sha)
-    if not delivered:
-        # `deliver_sync` returns False for two distinct reasons: the row is
-        # already in 'delivered' (idempotent, expected after a worker-side
-        # finalize that wrote delivered_commit), or the slug doesn't exist in
-        # the todo list at all (genuine bug — typo, race with todo remove,
-        # schema drift). Probe to distinguish; fail fast on the missing case.
-        if key.slug in todos_db.delivered_slugs_sync():
-            logger.info(
-                "integration.delivery.already_delivered",
-                extra={"slug": key.slug, "candidate_sha": checkpoint.candidate_sha},
-            )
-        else:
-            return False, _format_error(
-                "DELIVERY_FAILED",
-                f"todos_db.deliver_sync returned False for {key.slug} and the slug is not in delivered_slugs — todo entry is missing",
-            )
-
-    # --- Clean dependency references in DB ---
-    todos_db = get_todos_db_sync(cwd)
-    conn = todos_db._sync_conn()
-    try:
-        conn.execute("DELETE FROM todo_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
-        conn.commit()
-    finally:
-        conn.close()
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:
         rc_cleanup, _, stderr_cleanup = _run_git(
@@ -704,7 +675,7 @@ def _step_delivery_bookkeeping(
                 "commit",
                 "-m",
                 (
-                    f"chore({key.slug}): todo cleanup after delivery\n\n"
+                    f"chore({key.slug}): integration worktree cleanup\n\n"
                     "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
                     "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
                 ),
@@ -718,8 +689,10 @@ def _step_delivery_bookkeeping(
 
     checkpoint.warnings = warnings
 
-    # --- Push all commits (squash + bookkeeping + cleanup) from integration worktree ---
-    # Serialize under flock to prevent races with concurrent bookkeeping commits.
+    # --- Push the squash worktree commit to main ---
+    # The delivery stamp and dependency cleanup are untracked todos.db writes made
+    # only after this push is confirmed (in _step_push_succeeded). Serialize under
+    # flock against concurrent integrator pushes.
     with main_branch_lock():
         rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
     if rc == 0:
@@ -738,7 +711,7 @@ def _step_delivery_bookkeeping(
 
         _emit_lifecycle_event("integration.push.rejected", {"slug": key.slug, "rejection_reason": rejection})
         logger.info("%s slug=%s phase=PUSH_REJECTED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
-        return False, _format_push_rejected(rejection, key.slug)
+        return False, _format_push_rejected(rejection, key.slug, wt)
 
 
 def _step_push_rejected(
@@ -769,7 +742,7 @@ def _step_push_rejected(
         return True, ""  # loop into PUSH_SUCCEEDED
 
     rejection = (checkpoint.error_context or {}).get("rejection_reason", "unknown rejection")
-    return False, _format_push_rejected(rejection, key.slug)
+    return False, _format_push_rejected(rejection, key.slug, wt)
 
 
 def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str) -> str | None:
@@ -795,14 +768,64 @@ def _step_push_succeeded(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_SUCCEEDED: sync repo root with pushed origin/main, then cleanup.
+    """PUSH_SUCCEEDED: confirm the candidate on origin/main, record delivery, sync, cleanup.
 
-    Cleanup always runs regardless of pull outcome — the pull is a
-    convenience sync for repo root, not a gate for artifact cleanup.
+    Records the todo delivery and dependency cleanup in untracked todos.db only
+    after the confirmation gate passes, then best-effort syncs repo root. Cleanup
+    always runs regardless of pull outcome — the pull is a convenience sync.
     """
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
+
+    # Gate delivery on confirmed presence on origin/main: a failed re-fetch (stale
+    # ref), unresolved HEAD, or non-ancestor worktree HEAD all withhold delivery.
+    wt = str(_integration_worktree_path(cwd))
+    fetch_rc, _, _ = _run_git(["fetch", "origin"], cwd=wt)
+    landed_sha = _get_head_sha(wt)
+    is_ancestor = (
+        fetch_rc == 0
+        and bool(landed_sha)
+        and (_run_git(["merge-base", "--is-ancestor", landed_sha, "origin/main"], cwd=wt)[0] == 0)
+    )
+    if not is_ancestor:
+        # Candidate not confirmed on origin/main: withhold delivery, route back through
+        # normal rejection-recovery. No lifecycle event (no delivery-confirmation event).
+        reason = (
+            f"Delivery confirmation gate: worktree HEAD {landed_sha or '(unresolved)'} not confirmed on "
+            "origin/main after push (fetch or ancestry check failed); delivery withheld."
+        )
+        checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": reason}
+        checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
+        _write_checkpoint(checkpoint_path, checkpoint)
+        logger.info("%s slug=%s phase=PUSH_REJECTED (confirmation gate)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
+        return False, _format_push_rejected(reason, key.slug, wt)
+
+    # Confirmed on main: record the delivery against the landed commit.
+    todos_db = get_todos_db_sync(cwd)
+    delivered = todos_db.deliver_sync(key.slug, commit=landed_sha)
+    if not delivered:
+        # `deliver_sync` returns False either because the row is already
+        # 'delivered' (idempotent — crash re-entry into this phase, or a
+        # worker-side finalize) or because the slug is absent (genuine bug).
+        # Probe to distinguish; fail fast on the missing case.
+        if key.slug in todos_db.delivered_slugs_sync():
+            logger.info(
+                "integration.delivery.already_delivered",
+                extra={"slug": key.slug, "commit_sha": landed_sha},
+            )
+        else:
+            return False, _format_error(
+                "DELIVERY_FAILED",
+                f"todos_db.deliver_sync returned False for {key.slug} and the slug is not in delivered_slugs — todo entry is missing",
+            )
+
+    conn = todos_db._sync_conn()  # clean dependency references on the same gated path
+    try:
+        conn.execute("DELETE FROM todo_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
+        conn.commit()
+    finally:
+        conn.close()
 
     # Best-effort sync of repo root with origin/main. Failure is logged
     # but does not block cleanup — the integration worktree already pushed.
@@ -897,14 +920,14 @@ def _do_cleanup(
 ) -> tuple[bool, str]:
     """Perform cleanup and advance to CANDIDATE_DELIVERED.
 
-    Git-tracked bookkeeping (todo delivery, todo removal, dependency
-    cleanup) was already committed in the integration worktree and pushed
-    to origin/main during DELIVERY_BOOKKEEPING. This step delegates to
-    cleanup_delivered_slug which handles physical artifacts (worktree
-    removal, branch deletion, leftover directory removal) and also runs
+    The squash commit was pushed to origin/main during DELIVERY_BOOKKEEPING, and
+    the todo delivery stamp plus dependency cleanup were written to untracked
+    todos.db during the confirmed PUSH_SUCCEEDED gate. This step delegates to
+    cleanup_delivered_slug, which handles physical artifacts (worktree removal,
+    branch deletion, leftover directory removal) and runs
     clean_dependency_references idempotently on repo root.
     """
-    # Merge commit SHA lives in the integration worktree (where delivery was committed)
+    # Merge commit SHA lives in the integration worktree (the pushed squash commit)
     wt = str(_integration_worktree_path(cwd))
     merge_commit = _get_head_sha(wt) or "unknown"
 

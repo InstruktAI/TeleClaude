@@ -58,19 +58,6 @@ And integration.candidate.already_merged is emitted
 And any leftover squash-merge bookkeeping is cleaned up
 ```
 
-<!-- planned-change:gate-integration-delivery-on-confirmed-push -->
-
-```
-Given the bookkeeping commit and squash commit are staged in the integration worktree
-When the push to main is rejected (remote moved)
-Then the state machine writes PUSH_REJECTED with the rejection reason
-And returns an instruction asking the agent to rebase onto origin/main and push from the integration worktree
-And the next call computes local HEAD vs remote main; if they match, recovery is detected and phase advances to PUSH_SUCCEEDED
-And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
-```
-
-<!-- change:gate-integration-delivery-on-confirmed-push -->
-
 ```
 Given the squash commit is committed in the integration worktree
 When the push to main is rejected (remote moved)
@@ -79,8 +66,6 @@ And returns an instruction asking the agent to rebase onto origin/main and push 
 And the next call computes local HEAD vs remote main; if they match, recovery is detected and phase advances to PUSH_SUCCEEDED
 And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
 ```
-
-<!-- /planned-change:gate-integration-delivery-on-confirmed-push -->
 
 #### UC-WISM1: Integrator-maintenance marker emission at delivery
 
@@ -92,8 +77,6 @@ And the marker carries the delivered merge range (pre_merge_head..advanced repo-
 And when several candidates are drained in one call the marker accumulates the union of the delivered ranges
 And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
 ```
-
-<!-- planned:gate-integration-delivery-on-confirmed-push -->
 
 #### UC-WISM2: Delivery recorded only on confirmed push
 
@@ -112,8 +95,6 @@ Given the push reports success but a re-fetch shows the worktree HEAD is not an 
 When the PUSH_SUCCEEDED step runs its confirmation gate
 Then no delivery record is written and the candidate returns to PUSH_REJECTED
 ```
-
-<!-- /planned:gate-integration-delivery-on-confirmed-push -->
 
 ```
 Given another integrator session holds the integration/main lease and the TTL has not elapsed
@@ -156,11 +137,7 @@ And no candidate is dequeued for this call
 
 - The integrator is the only writer authorized to push `origin/main`. Worker sessions on per-slug branches push their feature branches only; main is reachable solely through this state machine.
 - Two already-merged guards exist because squash merges do **not** create ancestry edges between the source branch and the merge commit. The ancestry check catches non-squash re-queues; the empty-staged-diff check catches squash re-queues. Both are required.
-<!-- planned-change:gate-integration-delivery-on-confirmed-push -->
-- Delivery bookkeeping commits (todo delivery, dependency-reference cleanup, cleanup commit) are created inside `trees/_integration/`, not on repo root. Only the bookkeeping changes plus the squash are pushed; nothing else is staged.
-<!-- change:gate-integration-delivery-on-confirmed-push -->
 - Delivery bookkeeping runs inside `trees/_integration/`, not on repo root. The squash commit is pushed; the todo delivery stamp and dependency-reference cleanup are `todos.db` writes — untracked local state, never staged — applied only after the push is confirmed on `origin/main`.
-<!-- /planned-change:gate-integration-delivery-on-confirmed-push -->
 - After a successful push, the integrator best-effort syncs repo root and pushes any repo-root bookkeeping that is ahead. Pull failure is non-fatal — cleanup proceeds regardless, and a warning surfaces in the completed summary.
 - When the idle step is called with an explicit slug, only that slug is verified as ready; the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
 - The normal enqueue path is event-triggered: `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.

@@ -2,3 +2,25 @@
 # name: test_delivery_warns_when_blueprint_manifest_write_fails
   'Blueprint regeneration did not complete (status=error); blast-radius falls back to manual exploration until the next integrate.'
 # ---
+# name: test_push_rejection_recovery_instruction_is_worktree_qualified
+  '''
+  INTEGRATION DECISION: PUSH REJECTION RECOVERY
+  
+  Candidate: test-slug
+  
+  Push from integration worktree to origin/main was rejected.
+  Rejection output:
+  non-fast-forward
+  
+  ## Your Task
+  1. Diagnose the rejection (likely non-fast-forward — another commit landed)
+  2. Fetch and rebase (each command targets the integration worktree):
+     git -C <INTEGRATION_WORKTREE> fetch origin
+     git -C <INTEGRATION_WORKTREE> rebase origin/main
+  3. Resolve any new conflicts if present
+  4. Push again: git -C <INTEGRATION_WORKTREE> push origin HEAD:main
+  5. Then call: telec todo integrate
+  
+  NEXT: Fetch, rebase, resolve (if needed), push, then call telec todo integrate
+  '''
+# ---

@@ -99,7 +99,7 @@ NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec t
     )
 
 
-def _format_push_rejected(rejection_reason: str, slug: str, *, warnings: list[str] | None = None) -> str:
+def _format_push_rejected(rejection_reason: str, slug: str, worktree: str, *, warnings: list[str] | None = None) -> str:
     return f"""INTEGRATION DECISION: PUSH REJECTION RECOVERY
 
 Candidate: {slug}
@@ -110,11 +110,11 @@ Rejection output:
 
 ## Your Task
 1. Diagnose the rejection (likely non-fast-forward — another commit landed)
-2. Fetch and rebase:
-   git fetch origin
-   git rebase origin/main
+2. Fetch and rebase (each command targets the integration worktree):
+   git -C {worktree} fetch origin
+   git -C {worktree} rebase origin/main
 3. Resolve any new conflicts if present
-4. Push again: git push origin HEAD:main
+4. Push again: git -C {worktree} push origin HEAD:main
 5. Then call: telec todo integrate
 
 NEXT: Fetch, rebase, resolve (if needed), push, then call telec todo integrate""" + _format_anomalies(warnings or [])
