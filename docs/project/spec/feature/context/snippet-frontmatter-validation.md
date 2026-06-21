@@ -27,9 +27,11 @@ non-empty list of slug strings; absence means the snippet is current. No
 `status` field is validated or required. On a full `telec sync` run with the
 todos DB reachable, relationship state is additionally validated: every
 `delivered_by` slug and every in-body planned / planned-change marker slug must
-name a live in-flight todo (active or icebox); a slug that resolves to a
-delivered, removed, or non-existent todo is reported. Scoped per-file runs and
-runs without a reachable todos DB validate shape only.
+resolve to a retained todo — active, icebox, or soft-removed. A soft-removed
+todo is retained and reactivatable for its grace window (and its pending
+references self-heal when it is hard-purged), so it is tolerated; only a slug
+that resolves to a delivered or non-existent todo is reported. Scoped per-file
+runs and runs without a reachable todos DB validate shape only.
 
 ## Canonical fields
 
@@ -56,6 +58,11 @@ Scenario: delivered_by relationship state is validated on a full run
   And the todos DB is reachable (full run)
   When snippet validation runs
   Then a "snippet_delivered_by_invalid_slug" finding is reported
+Scenario: delivered_by naming a soft-removed todo is tolerated
+  Given a snippet with delivered_by ["removed-slug"]
+  And the todos DB reports "removed-slug" as removed (full run)
+  When snippet validation runs
+  Then no relationship finding is reported
 Scenario: delivered_by relationship state is not checked on a scoped run
   Given a snippet with delivered_by ["already-delivered-slug"]
   And validation runs per-file without the todos DB
@@ -77,11 +84,11 @@ Then a planned-change marker finding is reported
 #### UC-SFV1b: In-body marker slug liveness is validated on full runs
 
 ```
-Given a snippet contains an in-body planned or planned-change marker whose slug resolves to a delivered, removed, or non-existent todo
+Given a snippet contains an in-body planned or planned-change marker whose slug resolves to a delivered or non-existent todo
 And the todos DB is reachable (full run)
 When snippet validation runs
 Then a "snippet_planned_marker_invalid_slug" finding is reported for that slug
-Given the marker slug names a live in-flight todo (active or icebox)
+Given the marker slug resolves to a retained todo (active, icebox, or soft-removed)
 When snippet validation runs
 Then no marker-liveness finding is reported
 Given the marker appears only inside an inline code span or a fenced code block (a syntax example)

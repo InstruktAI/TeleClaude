@@ -17,7 +17,9 @@ __all__ = [
     "PLANNED_CHANGE_BLOCK_RE",
     "apply_planned_change_sections",
     "apply_planned_sections",
+    "drop_planned_additions",
     "resolve_inline_refs",
+    "resolve_planned_change_for_abandon",
     "resolve_planned_change_for_delivery",
     "split_frontmatter",
     "strip_planned_markers",
@@ -127,3 +129,33 @@ def strip_planned_markers(text: str, slug: str) -> str:
     """
     marker = re.compile(rf"[ \t]*<!--[ \t]*/?planned:{re.escape(slug)}[ \t]*-->[ \t]*\n?")
     return marker.sub("", text)
+
+
+def drop_planned_additions(text: str, slug: str) -> str:
+    """Remove a slug's ``<!-- planned:slug -->`` blocks **with their content**.
+
+    The abandon-side counterpart to :func:`strip_planned_markers`: when a slug is
+    hard-purged its addition was never delivered, so the whole block — markers and
+    wrapped body — is dropped, while other slugs' blocks are preserved.
+    """
+
+    def _resolve(match: re.Match[str]) -> str:
+        return "" if match.group("slug") == slug else match.group(0)
+
+    return PLANNED_BLOCK_RE.sub(_resolve, text)
+
+
+def resolve_planned_change_for_abandon(text: str, slug: str) -> str:
+    """Resolve a slug's planned-change to its **original** side, preserving other slugs.
+
+    The abandon-side counterpart to :func:`resolve_planned_change_for_delivery`: a
+    purged slug's replacement was never delivered, so the current (pre-change) body
+    survives and the planned replacement is discarded.
+    """
+
+    def _resolve(match: re.Match[str]) -> str:
+        if match.group("slug") == slug:
+            return match.group("current")
+        return match.group(0)
+
+    return PLANNED_CHANGE_BLOCK_RE.sub(_resolve, text)

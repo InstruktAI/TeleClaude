@@ -370,7 +370,10 @@ Replacement body.
         assert not get_errors()
 
     @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
-    def test_full_run_reports_removed_and_missing_planned_add_marker_slugs(self, tmp_path: Path) -> None:
+    def test_full_run_tolerates_removed_but_reports_missing_planned_add_marker_slug(self, tmp_path: Path) -> None:
+        # A removed todo is retained and reactivatable for its grace window, so its
+        # in-body marker is tolerated (and self-heals at hard-purge); a slug that
+        # resolves to nothing is still a dangling reference and is reported.
         _write_todos_db(tmp_path, {"removed-owner": "removed"})
         snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
         snippet.parent.mkdir(parents=True)
@@ -394,14 +397,65 @@ Missing owner content.
             {
                 "code": "snippet_planned_marker_invalid_slug",
                 "path": "docs/project/concept/planned-change-validation.md",
-                "reason": "todo is removed, not in flight",
-                "slug": "removed-owner",
-            },
-            {
-                "code": "snippet_planned_marker_invalid_slug",
-                "path": "docs/project/concept/planned-change-validation.md",
                 "reason": "no such todo — check `telec history search missing-owner`; maybe authored ahead, renamed, or gone",
                 "slug": "missing-owner",
+            },
+        ]
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_full_run_tolerates_removed_delivered_by_slug_but_reports_missing(self, tmp_path: Path) -> None:
+        # delivered_by shares the same liveness set as in-body markers: a removed
+        # deliverer is tolerated (retained, reactivatable), a missing one is reported.
+        _write_todos_db(tmp_path, {"removed-deliverer": "removed"})
+        removed_snippet = tmp_path / "docs" / "project" / "concept" / "removed-deliverer-fixture.md"
+        removed_snippet.parent.mkdir(parents=True)
+        removed_snippet.write_text(
+            """---
+description: Delivered-by tolerance fixture.
+delivered_by: [removed-deliverer]
+---
+
+# Removed Deliverer Fixture — Concept
+
+## What
+
+Body.
+
+## Why
+
+Body.
+""",
+            encoding="utf-8",
+        )
+        missing_snippet = tmp_path / "docs" / "project" / "concept" / "missing-deliverer-fixture.md"
+        missing_snippet.write_text(
+            """---
+description: Delivered-by missing fixture.
+delivered_by: [missing-deliverer]
+---
+
+# Missing Deliverer Fixture — Concept
+
+## What
+
+Body.
+
+## Why
+
+Body.
+""",
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path)
+
+        assert _normalized_findings(tmp_path) == [
+            {
+                "code": "snippet_delivered_by_invalid_slug",
+                "path": "docs/project/concept/missing-deliverer-fixture.md",
+                "reason": "no such todo — check `telec history search missing-deliverer`; maybe authored ahead, renamed, or gone",
+                "slug": "missing-deliverer",
             },
         ]
 

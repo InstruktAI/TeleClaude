@@ -17,7 +17,7 @@ visibility: 'public'
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
-A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. After the retention window elapses, routine maintenance plans any needed snippet `delivered_by` removals, records the target paths in `pending_purge_paths`, writes and verifies the files, stages and commits only those exact pathspecs, performs staged-set and post-commit verification, then clears `pending_purge_paths` and hard-purges the removed entry by durable identity. Retained state/artifact history cascades to deletion only after that sequence succeeds.
+A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. After the retention window elapses, routine maintenance plans any needed snippet reconciliation for the slug — both clearing it from `delivered_by` frontmatter and folding its in-body `planned` / `planned-change` markers with abandon semantics (a `planned` ADD block is dropped with its content and a `planned-change` block reverts to its original side, since the purged work was never delivered) — records the target paths in `pending_purge_paths`, writes and verifies the files, stages and commits only those exact pathspecs, performs staged-set and post-commit verification, then clears `pending_purge_paths` and hard-purges the removed entry by durable identity. Retained state/artifact history cascades to deletion only after that sequence succeeds.
 
 ## Canonical fields
 
@@ -105,6 +105,18 @@ When routine maintenance sees pending_purge_paths on the retained removed entry
 Then the sweep treats those paths as sweep-owned residue
 And if the files already match HEAD, it skips the commit stage and re-runs post-commit verification
 And if the files diverge from HEAD, it re-applies the planned snippet mutation and retries the exact-pathspec commit sequence
+```
+
+#### UC-TR-PURGE-STRIPS-INBODY-MARKERS: Purge folds the slug's in-body markers with abandon semantics
+
+```
+Given a snippet body carries the purged slug in a planned ADD block and in a planned-change block
+And another slug's in-body marker is present in the same snippet
+When routine maintenance reconciles snippets for the hard-purged slug
+Then the purged slug's planned ADD block is removed together with its wrapped content
+And the purged slug's planned-change block reverts to its original side, discarding the replacement
+And the other slug's in-body marker is left unchanged
+And a subsequent liveness scan over the result reports no finding for the purged slug
 ```
 
 ```
