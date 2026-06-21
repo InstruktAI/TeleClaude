@@ -17,7 +17,7 @@ jobs:
       INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Use repo-local telec
         run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
