@@ -24,10 +24,12 @@ it without guessing and a reviewer finds no surprises.
   `software-development/concept/approved-intent-artifact`): `prd` for a `feature`,
   `input` for a `change`. For a `change`, the absence of a PRD is the intended
   design — do NOT treat it as a defect or raise a finding for it. A `change`
-  created via `--plan` also has no `input`: its `implementation-plan` is the intent
-  basis and the plan's own _Intent & scope_ is the contract to review against. A
-  missing `input` on a `change` is intended, never a blocker — do NOT block the
-  review or raise a finding for it.
+  created via `--plan` has no `input` either: its seeded `implementation-plan`
+  carries an _Intent & scope_ section that is the contract to review against, and
+  that missing `input` is intended — do NOT block the review or raise a finding for
+  it. This exception is specific to `--plan`: a `change` with neither an `input`
+  nor a self-contained _Intent & scope_ in its `implementation-plan` has no intent
+  basis at all, which remains an intent-artifact defect, not an approvable state.
 - For a `bug`, the approved intent is `input` (the reported symptom) and a
   `diagnosis` artifact is present carrying the verified, code-grounded root cause —
   the causal mechanism. The plan must derive its fix and verification from that root
