@@ -149,7 +149,7 @@ class TodosDbStateMixin:
         return result.first() is not None
 
     async def is_holder(self, slug: str) -> bool:
-        """Whether ``slug`` is a structural holder (split into children).
+        """Whether ``slug`` is a structural holder (has grouped children).
 
         Holders carry no todo_state or artifacts — their children own those.
         Public predicate so callers (e.g. the API) can refuse holder writes with

@@ -74,6 +74,73 @@ def test_phase1_appends_lifecycle_suffixes_for_pending_snippets(tmp_path: Path, 
     assert output == snapshot
 
 
+@pytest.mark.spec(_SPEC, "UC-3PR3")
+def test_phase1_target_lists_delivered_and_superseded_snippets(tmp_path: Path) -> None:
+    """index --target lists both the slug's new (delivered_by) and reworked (superseded_by) snippets."""
+    target = "retire-todo-split"
+    base = "project/spec/feature/context"
+    docs_dir = tmp_path / "docs" / "project" / "spec" / "feature" / "context"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+
+    def _entry(name: str, **lifecycle: list[str]) -> _IndexEntry:
+        snippet_path = docs_dir / f"{name}.md"
+        _write_snippet_named(snippet_path, f"{base}/{name}", f"# {name}\n\nBody.\n")
+        entry: _IndexEntry = {
+            "id": f"{base}/{name}",
+            "description": f"{name} snippet.",
+            "type": "spec",
+            "scope": "project",
+            "domain": "project",
+            "visibility": "public",
+            "path": str(snippet_path.relative_to(tmp_path)),
+        }
+        entry.update(lifecycle)  # type: ignore[typeddict-item]
+        return entry
+
+    index_path = tmp_path / "docs" / "project" / "index.yaml"
+    index_path.write_text(
+        json.dumps(
+            {
+                "project_root": str(tmp_path),
+                "snippets": [
+                    _entry("new-snippet", delivered_by=[target]),
+                    _entry("reworked-snippet", superseded_by=[target]),
+                    _entry("unrelated-snippet"),
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    output = build_context_output(
+        areas=[],
+        project_root=tmp_path,
+        snippet_ids=None,
+        target_slug=target,
+    )
+
+    assert f"{base}/new-snippet" in output
+    assert f"{base}/reworked-snippet" in output
+    assert f"{base}/unrelated-snippet" not in output
+
+
+def _write_snippet_named(path: Path, snippet_id: str, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"""---
+id: {snippet_id}
+type: spec
+domain: software-development
+scope: project
+description: {snippet_id} snippet.
+---
+{body}
+""",
+        encoding="utf-8",
+    )
+
+
 def _write_snippet(path: Path, body: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

@@ -72,7 +72,7 @@ def _format_holder_prepare_instruction(
     if runnable:
         commands = "\n".join(f"telec todo prepare {child}" for child in runnable)
         return (
-            "This slug is a split holder. The holder is not a prepare/work target.\n"
+            "This slug is a structural holder grouping child todos. The holder is not a prepare/work target.\n"
             "Run prepare on these direct child todos:\n"
             f"{commands}"
         )
@@ -199,7 +199,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         return format_blocker_resolution(
             resolved_slug,
             instruction,
-            blockers=[f"split holder has children: {', '.join(holder_resolution.children)}"],
+            blockers=[f"structural holder has grouped children: {', '.join(holder_resolution.children)}"],
         )
 
     if not await todos_db.slug_in_todo(resolved_slug):

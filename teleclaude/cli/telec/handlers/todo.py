@@ -61,7 +61,6 @@ __all__ = [
     "_handle_todo_list",
     "_handle_todo_remove",
     "_handle_todo_show",
-    "_handle_todo_split",
     "_handle_todo_stamp",
     "_handle_todo_unfreeze",
     "_handle_todo_update",
@@ -88,7 +87,6 @@ def _handle_todo(args: list[str]) -> None:
         "reactivate": _handle_todo_reactivate,
         "remove": _handle_todo_remove,
         "show": _handle_todo_show,
-        "split": _handle_todo_split,
         "stamp": _handle_todo_stamp,
         "unfreeze": _handle_todo_unfreeze,
         "update": _handle_todo_update,
@@ -342,69 +340,6 @@ def _handle_todo_create(args: list[str]) -> None:
 def _handle_todo_design(args: list[str]) -> None:
     """Handle telec todo design [<slug>]."""
     handle_todo_design(args)
-
-
-def _handle_todo_split(args: list[str]) -> None:
-    """Handle telec todo split <slug> --into <child1> [<child2> ...].
-
-    Creates children in todos.db; parent becomes a stateless holder.
-    No filesystem writes. No git commits.
-    """
-    if not args:
-        print(_usage("todo", "split"))
-        return
-
-    slug: str | None = None
-    children: list[str] = []
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--into" and i + 1 < len(args):
-            i += 1
-            children.append(args[i])
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "split"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one parent slug is allowed.")
-                print(_usage("todo", "split"))
-                raise SystemExit(1)
-            slug = arg
-        i += 1
-
-    if not slug:
-        print("Missing required argument: <slug>")
-        print(_usage("todo", "split"))
-        raise SystemExit(1)
-
-    if not children:
-        print("Missing required flag: --into <child> (at least one)")
-        print(_usage("todo", "split"))
-        raise SystemExit(1)
-
-    result = tool_api_request(
-        "POST",
-        "/todos/split",
-        json_body={"slug": slug, "children": children, "cwd": str(resolve_invocation_cwd())},
-        timeout=10.0,
-    )
-
-    if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Split '{slug}' into {len(children)} children: {', '.join(children)}")
-        print(
-            "Inspect each child and confirm the inherited parent kind is still correct: "
-            f"{', '.join(children)}. "
-            "Correct any child whose kind should differ with "
-            "telec todo update <child> --kind <new_kind>."
-        )
-    elif isinstance(result, dict) and result.get("detail"):
-        print(f"Error: {result['detail']}")
-        raise SystemExit(1)
-    else:
-        print(f"Error: {result}")
-        raise SystemExit(1)
 
 
 def _handle_todo_remove(args: list[str]) -> None:

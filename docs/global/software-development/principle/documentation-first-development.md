@@ -104,7 +104,7 @@ what's a real product capability. A missing spec for true Category A work
 surfaces as a gap that the next delivery in that capability fills
 naturally. Default to skip when classification is uncertain.
 
-**`delivered_by` is many-to-many.** A single delivery may shape multiple snippets; a single snippet may be shaped over time by multiple deliveries. The `delivered_by` list accumulates slugs while in flight; each slug clears as it delivers. The `delivered_by` field empties only when every listed slug has delivered.
+**`delivered_by` is authorship provenance, not a dispatch gate.** A single delivery may shape multiple snippets; a single snippet may accumulate `delivered_by` entries from multiple independent deliveries as each shapes it over time. Each listed slug clears independently when its delivery lands; the field empties when every listed slug has delivered. `delivered_by` carries no scheduling or dispatch meaning — no core system or state machine reads it to gate work or coordinate deliveries.
 
 **The architecture design lives in doc snippets; the `architecture` workflow.artifact is only a thin index/log.** Design decisions that survive delivery land in docs across two locations:
 
@@ -125,17 +125,16 @@ Ephemeral workflow.artifacts (PRD, implementation plan, review findings, drift a
 
 The prepare state machine still has phases; each phase's output shifts to docs (or stays workflow.artifact for the scaffolding). A phase with nothing to author (e.g., architecture phase on a Gherkin-only feature enrichment) produces no doc change and advances naturally.
 
-### 5. Multi-pillar features split at intake
+### 5. Multi-pillar features group at intake
 
-A feature whose acceptance scenarios cross multiple bounded contexts (pillars) gets handled by the intake phase via proactive split:
+A feature whose acceptance scenarios cross multiple bounded contexts (pillars) gets handled by the intake phase via proactive grouping:
 
-1. Intake authors ONE feature spec snippet capturing the cross-context business value and end-to-end Gherkin.
-2. Intake identifies which contexts the feature touches (the pillars).
-3. If the per-pillar slices could deliver independently (the typical case for multi-pillar features), intake recommends `telec todo split`: a container todo holds the feature identity; per-pillar child todos handle each context's implementation slice. Each child carries its own PRD workflow.artifact (its slice's scope) but the children all reference the SAME feature spec via `delivered_by`. The feature spec's `delivered_by` accumulates every child slug.
-4. Children deliver independently; the feature spec's `delivered_by:` clears only when ALL children deliver (per the many-to-many accumulation rule above).
-5. If the slices MUST land together (e.g., a new event taxonomy where every consumer needs the coordinated update on the same day), intake keeps a single todo with multiple per-context commits. Independence is the discriminator.
+1. Intake identifies which contexts the feature touches (the pillars).
+2. If the per-pillar slices deliver independently (the typical case), intake creates a container todo and per-pillar children via `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child owns its own feature spec(s) 1:1 — there is no shared feature spec across children. Each child carries its own PRD workflow.artifact scoped to its slice.
+3. Children deliver independently. Each child's `delivered_by` on its own spec clears when that child delivers.
+4. If the slices MUST land together (e.g., a new event taxonomy where every consumer needs the coordinated update on the same day), intake keeps a single todo with multiple per-context commits. Independence is the discriminator.
 
-The human reviewer confirms the split decomposition before child todos are dispatched. Auto-splitting without review risks fragmenting features the human wanted atomic.
+Grouping is an agent intelligence decision derived from the work's shape — there is no human approval gate. The agent partitions the parent's EXISTING scope into children; a child that needs scope absent from the parent is a NEW todo, not a grouped child.
 
 ## Tensions
 

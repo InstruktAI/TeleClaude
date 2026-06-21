@@ -117,14 +117,13 @@ idempotency key is `original_entry_id`.
 The `domain.software-development.prepare.*` family covers every observable transition
 in the prepare state machine. All events carry `slug` as a payload field unless noted.
 
-| Event type                     | Level       | Description                                                  | Key payload fields                             |
-| ------------------------------ | ----------- | ------------------------------------------------------------ | ---------------------------------------------- |
-| `prepare.phase_skipped`        | WORKFLOW    | Phase skipped via split inheritance                          | `slug`, `phase`, `reason`                      |
-| `prepare.input_consumed`       | WORKFLOW    | Input consumed by discovery, requirements production started | `slug`                                         |
-| `prepare.artifact_produced`    | WORKFLOW    | Artifact written and lifecycle-tracked in state              | `slug`, `artifact`, `digest`                   |
-| `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact               | `slug`, `artifact`                             |
-| `prepare.review_scoped`        | WORKFLOW    | Scoped re-review dispatched with a findings artifact         | `slug`, `findings_artifact`                    |
-| `prepare.split_inherited`      | WORKFLOW    | Child todo inherited parent's approved prepare phase         | `parent_slug`, `child_slug`, `inherited_phase` |
+| Event type                     | Level       | Description                                                  | Key payload fields           |
+| ------------------------------ | ----------- | ------------------------------------------------------------ | ---------------------------- |
+| `prepare.phase_skipped`        | WORKFLOW    | Prepare phase skipped via inheritance from parent todo       | `slug`, `phase`, `reason`    |
+| `prepare.input_consumed`       | WORKFLOW    | Input consumed by discovery, requirements production started | `slug`                       |
+| `prepare.artifact_produced`    | WORKFLOW    | Artifact written and lifecycle-tracked in state              | `slug`, `artifact`, `digest` |
+| `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact               | `slug`, `artifact`           |
+| `prepare.review_scoped`        | WORKFLOW    | Scoped re-review dispatched with a findings artifact         | `slug`, `findings_artifact`  |
 
 ### Expansion Joint
 

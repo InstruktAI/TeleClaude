@@ -314,18 +314,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["findings_artifact"]),
         )
     )
-    catalog.register(
-        EventSchema(
-            event_type="domain.software-development.prepare.split_inherited",
-            description="Child todo inherited parent approved prepare phase on split",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(
-                creates=True, group_key="child_slug", meaningful_fields=["inherited_phase"]
-            ),
-        )
-    )
-
     # --- Integration lifecycle events ---
 
     catalog.register(

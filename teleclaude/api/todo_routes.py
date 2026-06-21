@@ -52,13 +52,12 @@ from teleclaude.core.next_machine.kind_migration import (
     KindMigrationResult,
     migrate_todo_kind,
 )
-from teleclaude.core.next_machine.kinds import canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
-from teleclaude.core.todos_db import HolderWriteRefused, get_todos_db
+from teleclaude.core.todos_db import HolderTransitionRefused, HolderWriteRefused, get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
@@ -126,15 +125,6 @@ class _ArtifactRemoveResponse(BaseModel):
     name: str
     removed: bool
     versions_deleted: int
-
-
-class _SplitResponse(BaseModel):
-    """Response from todo split."""
-
-    model_config = ConfigDict(frozen=True)
-    status: str
-    slug: str
-    children: str
 
 
 class _TodoUpdateResponse(BaseModel):
@@ -532,7 +522,7 @@ async def write_artifact(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"todo '{slug}' was split into children and is now a holder; it carries no "
+                f"todo '{slug}' is a structural holder with grouped children; it carries no "
                 "artifacts or state — write to its children instead"
             ),
         )
@@ -774,64 +764,11 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
         return _SlugStatusResponse(status="ok", slug=slug)
     except HTTPException:
         raise
+    except HolderTransitionRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception:
         logger.error("todo creation failed", slug=slug, exc_info=True)
         raise
-
-
-@router.post("/split")
-async def todo_split(
-    slug: Annotated[str, Body()],
-    children: Annotated[list[str], Body()],
-    cwd: Annotated[str | None, Body()] = None,
-) -> _SplitResponse:
-    """Split a todo into children and turn the parent into a stateless holder."""
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-
-    if not await todos_db.slug_in_todo(slug):
-        raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
-
-    parent_state = await todos_db.read_state(slug)
-    raw_parent_kind = parent_state.get("kind") if parent_state is not None else None
-    try:
-        parent_kind = canonical_kind(raw_parent_kind if isinstance(raw_parent_kind, str) else None)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Parent todo '{slug}' has unresolvable kind: {raw_parent_kind!r}",
-        ) from exc
-
-    parent_input = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
-    child_state = initial_todo_state_for_kind(parent_kind)
-
-    async with todos_db._session() as session:  # pylint: disable=protected-access
-        async with session.begin():
-            for child_slug in children:
-                if child_slug == slug:
-                    raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
-                if await todos_db.slug_conflicts_non_removed(child_slug, session=session):
-                    raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
-                await todos_db.add_to_todo(child_slug, group_slug=slug, session=session)
-                await todos_db.write_state(child_slug, child_state, session=session)
-                if parent_input:
-                    await todos_db.write_artifact(
-                        child_slug,
-                        ARTIFACT_INPUT,
-                        parent_input,
-                        updated_by="api.todo.split.clone_input",
-                        session=session,
-                    )
-
-    todos_db.on_committed("todo_updated")
-    logger.info(
-        "todo split completed",
-        slug=slug,
-        child_count=len(children),
-        cwd=effective_cwd,
-    )
-
-    return _SplitResponse(status="ok", slug=slug, children=",".join(children))
 
 
 @router.post("/remove", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)

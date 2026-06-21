@@ -316,7 +316,7 @@ async def _prepare_dispatch(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_PLAN,
             hat="Planner",
-            expected="an `implementation-plan` artifact or split decision",
+            expected="an `implementation-plan` artifact or breakdown decision",
         )
     if phase == PreparePhase.PLAN_REVIEW:
         return await _dispatch_worker(

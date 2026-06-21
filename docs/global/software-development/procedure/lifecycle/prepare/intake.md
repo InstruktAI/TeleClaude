@@ -69,8 +69,8 @@ anything in between) and produce:
    names the relevant domain spec / CLI surface spec / architecture doc
    instead.
 3. If the input touches MULTIPLE pillars (bounded contexts) with
-   independently-deliverable slices, a **proactive split** of this todo into
-   a container + per-pillar children (see Pillar identification + split
+   independently-deliverable slices, a **proactive grouping** of this todo into
+   a container + per-pillar children (see Pillar identification + grouping
    below).
 4. **Reconciliation against the existing landscape** (step 1.6): undeclared
    dependencies recorded as `after` edges; overlap where this premise yields
@@ -78,7 +78,7 @@ anything in between) and produce:
    existing todo, that todo escalated to the human — halted only on certainty when
    it is already building.
 
-### Pillar identification + split (multi-pillar features)
+### Pillar identification + grouping (multi-pillar features)
 
 During grounding, identify which bounded contexts the feature touches. The
 list of pillars comes from `project/spec/domain/context-map` and the per-
@@ -88,26 +88,24 @@ Decision rule:
 
 - **Single-pillar feature** → regular todo flow. Author the feature spec under
   the touched context's directory; one todo carries the work.
-- **Multi-pillar feature, slices INDEPENDENT** → propose `telec todo split`
-  to the human. Create a container todo holding the feature identity; one
-  child per pillar for the per-context implementation slice. All children's
-  `delivered_by` accumulates on the SAME feature spec snippet (chosen primary
-  context for the feature). Each child has its own PRD workflow.artifact for
-  its slice's scope. Children deliver independently; feature spec's
-  `delivered_by:` clears only when ALL children deliver.
+- **Multi-pillar feature, slices INDEPENDENT** → create a container todo first,
+  then one child per pillar using `telec todo create <child> "<child-content>" --kind <k> --group <container>`. Read the container's full scope first; each
+  child partitions the parent's existing scope — adding no functional or business
+  scope absent from the parent. A child that needs scope not present in the parent
+  is a NEW todo, not a grouped child. Each child owns its own feature spec(s) 1:1;
+  there is no shared feature spec across children. Each child has its own PRD
+  workflow.artifact scoped to its slice. Children deliver independently.
 - **Multi-pillar feature, slices MUST land together** (e.g., a new event
   taxonomy where every consumer needs the coordinated update on the same
   day) → keep a single todo with multiple per-context commits. Independence
   is the discriminator.
 
-The human reviewer confirms the split decomposition before child todos are
-dispatched. Do not split without explicit human approval — auto-splitting
-risks fragmenting features the human wanted atomic.
+Grouping is an agent intelligence decision derived from the work's shape — there
+is no human approval gate. The agent partitions the parent's EXISTING scope into
+children that together sum to the parent and add no new scope.
 
-When splitting, the feature spec snippet's `delivered_by` lists the children
-(not the container). The container's role is to hold the feature identity and
-frozen source input while child scope is seeded. It has no lifecycle state of
-its own; it projects delivered when all children deliver.
+The container holds the feature identity and frozen source input. It has no
+lifecycle state of its own; it projects delivered when all children deliver.
 
 The stakeholder being interviewed is the **Product Owner role** — either the
 real human directly, or a dispatched AI PO emulator standing in. The emulator
@@ -326,7 +324,7 @@ As the conversation progresses, the BA senses the size and nature of the work an
 
 - **Small work** (single-file change, copy edit, simple modification) → BA may stamp `architecture_skipped` with reason at the end of intake. Downstream goes from PRD straight to plan.
 - **Standard work** (typical feature) → full chain: PRD → Architecture → Plan.
-- **Large / epic work** → BA proposes breakdown to the PO in plain register ("this feels like a lot for one work item; let me split it into N parts we can tackle independently"). Uses `telec todo split` to spawn children. Each child gets its own prepare/work track.
+- **Large / epic work** → BA proposes breakdown to the PO in plain register ("this feels like a lot for one work item; let me break it into parts we can tackle independently"). Creates a container todo, then one child per part using `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child gets its own prepare/work track.
 
 Skip stamps carry a `reason` field describing why the phase isn't needed for this work.
 

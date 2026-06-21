@@ -140,14 +140,13 @@ Evaluate:
   heuristics from the policy.
 
 **If the work fails the scope/size gate, stop here.** Do not draft a plan for
-work that will fail gate validation. Split first:
+work that will fail gate validation. Group first:
 
-- call `telec todo split <slug> --into <child1> --into <child2> ...` — this
-  creates the children and clones the parent `input` into each
-- narrow each child's input to its own scope, drawing on the human-approved
-  parent PRD and any reviewer-approved architecture-snippet slices
-- add dependency ordering between the children with `telec todo set-deps`
-- stop treating the parent as directly prepare/work-ready
+- read the parent's full approved scope (PRD and architecture artifacts)
+- create each child with `telec todo create <child> "<child-content>" --kind <k> --group <slug>`, partitioning the parent's existing scope — adding no functional or business scope absent from the parent
+- narrow each child's content to its own scope slice, drawing on the human-approved parent PRD and any reviewer-approved architecture-snippet slices
+- add dependency ordering between the children with `telec todo update <child> --after <dep>`
+- stop treating the parent as directly prepare/work-ready; it is now a structural holder
 
 If the work passes the scope/size gate, continue to plan drafting.
 
@@ -256,11 +255,11 @@ If the todo stays atomic, write (using human-approved PRD and the optional revie
 Do not write grounding fields directly. The state machine owns grounding
 metadata and current worktree state.
 
-If the todo is split instead:
+If the todo is grouped instead:
 
-- Call `telec todo split <slug> --into <child1> --into <child2> ...`
-- Treat the parent as a stateless holder after the split. Its retained input artifact is frozen source material; do not plan follow-up writes against the holder.
-- Seed each child's `input` with the relevant subset of parent PRD and reviewer-approved architecture-snippet context.
+- Create each child with `telec todo create <child> "<child-content>" --kind <k> --group <slug>`, one per independently deliverable slice.
+- Treat the parent as a stateless holder once children group-reference it. Its retained input artifact is frozen source material; do not plan follow-up writes against the holder.
+- Each child's content carries the relevant subset of parent PRD and reviewer-approved architecture-snippet context.
 - Treat only the children as prepare/work targets. The parent is a holder and must not be prepared or worked as an implementation item.
 
 ### 6. Enforce boundaries
@@ -273,8 +272,8 @@ If the todo is split instead:
 
 ### 7. Final step — advance
 
-When the implementation-plan artifact is written (or the split has been
-executed via `telec todo split`), call:
+When the implementation-plan artifact is written (or child grouping has been
+executed via `telec todo create ... --group`), call:
 
 ```
 telec todo prepare {slug}
@@ -290,14 +289,14 @@ implementation-plan to resolve each finding, then advance again.
 
 1. Atomic case:
    `telec todo artifacts read {slug} implementation-plan`.
-2. Split case:
+2. Grouped case:
    child todos, dependency links, and a stateless holder row with frozen input only.
 
 ## Recovery
 
 1. If the PRD is ambiguous, note the ambiguity in the plan and derive the
    most likely interpretation. Mark it `[inferred]` in the plan.
-2. If planning reveals the parent is not atomic, split it rather than stretching one
+2. If planning reveals the parent is not atomic, group it into children rather than stretching one
    builder plan past the session-size limit.
 3. If a file referenced in an upstream artifact does not exist, verify whether it should be
    created or whether the upstream artifact is stale.

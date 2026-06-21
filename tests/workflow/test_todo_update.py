@@ -32,7 +32,6 @@ pytestmark = pytest.mark.functional
 
 _TODO_MANAGEMENT_SPEC = "project/spec/feature/workflow/todo-management"
 _DEPENDENCY_GRAPH_SPEC = "project/spec/feature/workflow/dependency-graph"
-_TODO_SPLIT_SPEC = "project/spec/feature/workflow/todo-split"
 _TODO_LIFECYCLE_PHASE_SPEC = "project/spec/feature/workflow/todo-lifecycle-phase"
 _ARTIFACT_VERSIONING_SPEC = "project/spec/feature/workflow/artifact-versioning"
 _MY_TODO = "my-todo"
@@ -379,7 +378,7 @@ async def test_todo_update_after_replaces_dependencies_and_validates_cycles(tmp_
     assert cycle.value.detail == snapshot
 
 
-@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG5")
 async def test_todo_update_rejects_member_dependency_on_direct_holder(
     tmp_path: Path, snapshot: SnapshotAssertion
 ) -> None:
@@ -402,7 +401,7 @@ async def test_todo_update_rejects_member_dependency_on_direct_holder(
     assert (await todos_db.load_deps())["child"] == ["baseline"]
 
 
-@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG5")
 async def test_todo_update_rejects_member_dependency_on_ancestor_holder(
     tmp_path: Path, snapshot: SnapshotAssertion
 ) -> None:
@@ -424,7 +423,7 @@ async def test_todo_update_rejects_member_dependency_on_ancestor_holder(
     assert conflict.value.detail == snapshot
 
 
-@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG5")
 async def test_todo_update_rejects_icebox_member_dependency_on_holder(
     tmp_path: Path, snapshot: SnapshotAssertion
 ) -> None:
@@ -446,7 +445,7 @@ async def test_todo_update_rejects_icebox_member_dependency_on_holder(
     assert conflict.value.detail == snapshot
 
 
-@pytest.mark.spec(_TODO_SPLIT_SPEC, "UC-WTS12")
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG5")
 async def test_todo_update_allows_non_member_dependency_on_holder(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)

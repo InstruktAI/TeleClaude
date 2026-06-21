@@ -286,7 +286,7 @@ Print version, channel, and commit
 
 ## `telec sync`
 
-Validate (always blocks), then build indexes and deploy artifacts
+Validate doc/snippet/artifact sources (blocks on findings) and apply your edits
 
 **Usage:** `telec sync [--skip-deploy]`
 
@@ -298,6 +298,25 @@ Validate (always blocks), then build indexes and deploy artifacts
 
 - Validation always blocks — there is no warn-and-pass mode.
 - --skip-deploy is the read-only gate (pre-commit / CI / lint); it never mutates the host.
+
+## `telec context`
+
+Codebase context engineering surface
+
+### `telec context blueprint`
+
+Query the codebase Blueprint (structural blast-radius)
+
+#### `telec context blueprint affected`
+
+Print the blast-radius dependents of changed files
+
+**Usage:** `telec context blueprint affected <changed-files>`
+
+**Notes:**
+
+- Maps each changed file to its symbols, runs a transitive reverse dependency traversal over the Blueprint, and prints the union of dependents with file:line.
+- When the Blueprint is missing or stale (manifest baseline != current main), prints a fallback notice and exits 0 — fall back to manual exploration; blast-radius is never silently skipped.
 
 ## `telec docs`
 
@@ -314,14 +333,14 @@ Query documentation snippets
 
 List snippet IDs and metadata (phase 1)
 
-**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|customer-relations>] [--target <slug>]`
+**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|customer-relations|erp>] [--target <slug>]`
 
 **Flags:**
 
 - `--baseline-only` (`-b`): Show only baseline snippets
 - `--third-party` (`-t`): Include third-party docs
 - `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec|adr); omit for all
-- `--domains` (`-d`): Filter by domain (software-development|creative|marketing|customer-relations); omit for all
+- `--domains` (`-d`): Filter by domain (software-development|creative|marketing|customer-relations|erp); omit for all
 - `--target`: Filter to snippets delivered by slug
 
 **Notes:**
@@ -336,7 +355,7 @@ Fetch full snippet content by ID (phase 2)
 
 **Flags:**
 
-- `--target`: Include the slug's planned sections in the body (default: strip all)
+- `--target`: Include the slug's planned sections and companion replacement body (default: strip all)
 
 ## `telec todo`
 
@@ -346,19 +365,23 @@ Manage work items
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> [--kind <feature|change|bug|task>] [--after <deps>] [--plan]`
+**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
-- `--kind`: Optional. The work-unit's entry point into the lifecycle: feature|change|bug|task.
-- `--plan`: Content is a complete implementation-plan; skip prepare to build (--kind change only).
+- `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only.
+- `--icebox`: Create the todo parked in the icebox; suppress prepare auto-spawn
+- `--project-root` (`-p`): Target an explicit project root instead of the invocation cwd
+- `--group`: Attach the new todo as a child of <parent-slug>, making the parent a holder
+- `--plan`: Content seeds the implementation-plan as a draft basis (not an approved artifact): the todo enters at plan-drafting for a full plan-draft pass, then plan-review, before build (--kind change only).
 
 **Notes:**
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
-- By default this emits workflow.todo.created so a prepare orchestrator auto-picks-up the todo. The hidden --silent flag suppresses that event (no auto-pickup) and must be passed ONLY when the human explicitly asks to file a todo without starting work.
-- Omitting --kind creates a kind-less todo classified by /analyze-todo-input; it proposes only and never executes.
+- Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
+- --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent to its input alone, so a parent past prepare is refused.
+- ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
 - --plan is valid only with --kind change and treats content as a complete implementation plan.
 - Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
 
@@ -386,7 +409,7 @@ List todo entries (source of truth for todo status)
 - --include-delivered returns the full delivery history; scope it with --since.
 - --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
 - --since alone implies --include-delivered; combine with --delivered-only to exclude active items.
-- --include-removed interleaves soft-removed entries; each removed row renders with its roadmap id and removed_at age.
+- --include-removed interleaves soft-removed entries; each removed row renders with its todo id and removed_at age.
 
 ### `telec todo design`
 
@@ -422,11 +445,28 @@ Move todo to delivered
 
 - `--commit`: Commit hash (auto-detects HEAD if omitted)
 
-### `telec todo rename`
+### `telec todo update`
 
-Rename a todo slug
+Update a todo slug, dependencies, or kind
 
-**Usage:** `telec todo rename <old-slug> <new-slug>`
+**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <feature|change|bug|task>] [--hold] [--release] [--force]`
+
+**Flags:**
+
+- `--slug`: New todo slug; delegates to the durable rename engine
+- `--after`: Dependency slug(s); replaces the full set. CSV accepted: --after parent-a,parent-b. Repeated flags accepted for compatibility: --after parent-a --after parent-b. Use --after "" to clear all dependencies.
+- `--kind`: New todo kind: feature|change|bug|task
+- `--hold`: Set the per-todo automatic dispatch brake
+- `--release`: Release the per-todo automatic dispatch brake
+- `--force`: Allow permanent orphan-artifact handling for kind migrations
+
+**Notes:**
+
+- Mutates slug, deps, kind, or hold; --after replaces the full dependency set.
+- Kind and slug changes are refused after build starts; --after remains allowed.
+- --hold and --release are mutually exclusive and compose with dependency updates.
+- --force only applies to kind orphan handling.
+- Combining --slug with other legs is staged, not a single atomic patch.
 
 ### `telec todo prepare`
 
@@ -451,31 +491,6 @@ Run the Phase C (integrate) state machine
 
 **Usage:** `telec todo integrate [<slug>]`
 
-### `telec todo set-deps`
-
-Set dependencies for a work item in the todo list
-
-**Usage:** `telec todo set-deps <slug> [--after <slugs>]`
-
-**Flags:**
-
-- `--after`: Dependency slug (repeatable)
-
-### `telec todo split`
-
-Split a todo into child items (container transition)
-
-**Usage:** `telec todo split <slug> [--into <child>]`
-
-**Flags:**
-
-- `--into`: Child slug (repeatable, at least one required)
-
-**Notes:**
-
-- Scaffolds children and marks the parent as a holder/container. Parent artifacts are preserved as source material for plucking and seeding child todos.
-- Children start fresh at the beginning of prepare with the parent's input artifact cloned into each; narrow each child's input to its own scope after the split.
-
 ### `telec todo artifacts`
 
 Manage todo artifacts in the database
@@ -490,13 +505,13 @@ List artifacts for a todo
 
 Read a todo artifact
 
-**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 #### `telec todo artifacts write`
 
 Write a todo artifact
 
-**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
+**Usage:** `telec todo artifacts write <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
 
 **Notes:**
 
@@ -506,7 +521,7 @@ Write a todo artifact
 
 Show a unified diff between two artifact versions
 
-**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
+**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
 
 **Notes:**
 
@@ -517,7 +532,7 @@ Show a unified diff between two artifact versions
 
 Remove a todo artifact and its version history
 
-**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
 
 **Notes:**
 
@@ -550,7 +565,7 @@ Restore a soft-removed todo
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-proposed <feature|change|bug|task> <rationale>] [--kind-approved] [--finalize-ready]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready]`
 
 **Flags:**
 
@@ -559,8 +574,8 @@ Stamp a verdict or readiness marker into todo state
 - `--prd-approved`: Mark PRD as approved by the human
 - `--architecture-skipped`: Skip architecture phase with a reason
 - `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
-- `--kind-proposed`: Record analyzer proposal: <feature|change|bug|task> <rationale>
-- `--kind-approved`: Approve the proposed kind and enter that kind's lifecycle entry phase
+- `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]
+- `--build-complete`: Record the worker's build-complete claim; gates run on the next telec todo work dispatch
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
 
 ## `telec bugs`
@@ -578,6 +593,11 @@ Scaffold a bug from a description; lifecycle router dispatches /next-prepare
 - `--slug`: Custom slug (default: auto-generated)
 - `--body`: Detailed description body for bug.md
 - `--project`: Project name (from trusted_dirs)
+
+**Notes:**
+
+- Duplicate detection runs at the diagnose phase, not here: if another bug for the same defect is already in flight, the diagnose phase retires the later twin.
+- Your reported todo may therefore be removed as a duplicate — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.
 
 ### `telec bugs list`
 
@@ -824,16 +844,15 @@ Code quality and commit tools
 
 ### `telec code lint`
 
-Run language-aware lint pipeline
+Run native make lint plus TeleClaude guardrails
 
 **Flags:**
 
-- `--step`: Run a single pipeline step
 - `--all`: Run against all configured sources, skip workspace scoping
 
 ### `telec code test`
 
-Run language-aware test suite
+Run native make test
 
 **Flags:**
 
@@ -842,11 +861,15 @@ Run language-aware test suite
 
 ### `telec code format`
 
-Run language-aware code formatter
+Run native make format
 
 **Flags:**
 
 - `--all`: Format all configured sources, skip workspace scoping
+
+### `telec code install`
+
+Run native make install
 
 ### `telec code changed`
 
@@ -861,9 +884,9 @@ Stage files for the next commit (NEW, unmerged, or partial-staged tracked)
 **Notes:**
 
 - Sealed equivalent of 'git add' for the three cases git's data model genuinely requires staging:
--   (1) NEW (untracked) files — must enter the index before commit pathspec can match.
--   (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
--   (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec code commit` directs agents here for recovery.
+- (1) NEW (untracked) files — must enter the index before commit pathspec can match.
+- (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
+- (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec code commit` directs agents here for recovery.
 - Modified-tracked files that are NOT partial-staged don't need staging — pathspec commits them straight from the working tree.
 - NEW files in scope are NOT auto-committed; this is the explicit declaration step. Without it, untracked files stay untracked (safety net for temp/scratch artifacts the agent may have created incidentally).
 - Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.

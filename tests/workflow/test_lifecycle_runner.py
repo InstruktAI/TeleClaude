@@ -218,12 +218,12 @@ async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
     await todos_db.write_state(slug, {"schema_version": 4})
 
 
-async def _split_into_child(todos_db: TodosDb, parent: str, child: str, *, kind: str = _CHANGE) -> None:
-    """Reproduce the post-split shape: parent becomes a state-less holder, child owns state.
+async def _group_into_child(todos_db: TodosDb, parent: str, child: str, *, kind: str = _CHANGE) -> None:
+    """Build the holder shape: parent becomes a state-less holder, child owns state.
 
-    Mirrors ``telec todo split`` without the API handler: group-referencing the
-    child purges the parent's state row, leaving the parent an active holder with
-    no resolvable state while the child carries a runnable lifecycle state.
+    Group-referencing the child purges the parent's state row, leaving the parent
+    an active holder with no resolvable state while the child carries a runnable
+    lifecycle state.
     """
     await todos_db.add_to_todo(child, group_slug=parent)
     await todos_db.write_state(
@@ -514,7 +514,7 @@ async def test_split_holder_is_never_dispatched_child_prepare_preserved(tmp_path
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _PARENT, kind=_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value)
-    await _split_into_child(todos_db, _PARENT, _CHILD)
+    await _group_into_child(todos_db, _PARENT, _CHILD)
     client = _RunnerClient()
 
     result = await run_lifecycle_runner(

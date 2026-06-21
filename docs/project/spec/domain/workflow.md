@@ -83,7 +83,7 @@ kind mutation is refused.
 : One row in the roadmap, addressed by its own durable row identity (v1: `todo.id`). Carries: slug (the active alias), the **persisted** `status` (`active` | `icebox` | `delivered` | `removed`), `removed_at` (tombstone timestamp, set only when `status=removed`), `prev_status` and `removed_deps` (the Removal tombstone — pre-removal status and the outgoing-`after`-edge snapshot, set only when `status=removed`), `after` (live dependency slugs), optional `group` and `description`. Persisted `status` is distinct from the todo-list **display state**: the todo-list view derives `pending` / `ready` / `in_progress` from a live (`active`) entry plus its lifecycle phase, while `delivered`/`icebox` surface directly and `removed` is hidden from the default view (visible only via the recovery surface). The soft-delete invariants below operate on the persisted vocabulary.
 
 **Holder**
-: A structural roadmap row that groups child Todos. A row becomes a holder when at least one live child row sets `group_slug` to the holder slug. A holder is not an implementation Todo: it MUST NOT have a `todo_state` row, MUST NOT carry lifecycle phase, approvals, verdicts, or non-input artifacts, and MUST retain at most the original `input` artifact that seeded the split. That retained input is frozen - readable and cloneable into children, but not writable or removable through artifact mutation paths. Holder status is display-only, derived from child rows; holder dependency satisfaction is likewise computed from child delivery without mutating the holder row.
+: A structural roadmap row that groups child Todos. A row becomes a holder when at least one live child row sets `group_slug` to the holder slug. A holder is not an implementation Todo: it MUST NOT have a `todo_state` row, MUST NOT carry lifecycle phase, approvals, verdicts, or non-input artifacts, and MUST retain at most the original `input` artifact that seeded the grouping. That retained input is frozen - readable and cloneable into children, but not writable or removable through artifact mutation paths. Holder status is display-only, derived from child rows; holder dependency satisfaction is likewise computed from child delivery without mutating the holder row.
 
 **Dependency**
 : An `after` relationship between roadmap entries. Todo A is `after: [B, C]` means A cannot start until B and C are `delivered`.
@@ -246,7 +246,7 @@ kind mutation is refused.
   - **The human gate-control surface derives two independent controls.** A todo row's approval control and hold control are each computed from current todo state and never stored; they are orthogonal — no mutual exclusion and no precedence between them. The approval control governs progression within prepare and requires a human-authenticated caller; the hold control is the unhold control, offered exactly when a todo is effectively held — its `hold` flag is set, its kind's autostart is active (`workflow.runner` is `autostart` and the kind's toggle on), and its phase is past `prepared` — and it clears the flag (manual start still takes any todo forward and never reads hold). It renders as a gate/lock icon in the row's last column whenever effectively held, and renders nothing and offers no control while autostart is off, the runner is `manual`, or the todo is in the prepare lane through `prepared`. The same derived predicate decides the lifecycle runner's auto-dispatch skips.
   <!-- /planned-change:fix-hold-disabled-still-held -->
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
-- **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo split` (child of a container). Kind-less creation starts with `kind=None` and no `lifecycle_phase` and routes to `/analyze-todo-input`, which assigns the kind autonomously through the `--kind-assign` stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo create <child> "<content>" --kind <k> --group <parent>` (grouped child of a container). Kind-less creation starts with `kind=None` and no `lifecycle_phase` and routes to `/analyze-todo-input`, which assigns the kind autonomously through the `--kind-assign` stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
 
 #### Roadmap (aggregate)
 
@@ -1124,10 +1124,10 @@ Then no lane is resolved and the operation is not dispatched
 And kind discovery is not bypassed
 ```
 
-#### UC-WFL-25: Split holders are never dispatched by the runner
+#### UC-WFL-25: Grouped holders are never dispatched by the runner
 
 ```gherkin
-Given a todo "parent" is split into children that group-reference it
+Given a todo "parent" has children that group-reference it
 And "parent" is therefore a structural holder with no resolvable state
 When the lifecycle runner reloads the active todo list across successive passes
 Then "parent" is recognised as a structural holder and excluded from the eligible set
@@ -1172,7 +1172,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`todo-management`](../feature/workflow/todo-management.md) — Per-project ordered todo-list access through todo-scoped commands; derived section ordering; delivery transition.
 - [`todo-icebox`](../feature/workflow/todo-icebox.md) — Frozen-but-recoverable state for Todo entries; iceboxed entries do not participate in dependency resolution.
 - [`todo-creation`](../feature/workflow/todo-creation.md) — `create` and `design` paths to scaffold a Todo; `--plan` with `--kind change` seeds the plan and enters plan-drafting; bug-kind helpers route to `/next-prepare`.
-- [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; children inherit the parent's canonical kind, split stays non-auto-routing, and the command output instructs the agent to tend child kinds. The parent becomes a stateless holder derived from live child `todo.group_slug` rows; its retained input artifact is frozen and no `todo_state` row may exist for it.
+- [`todo-creation`](../feature/workflow/todo-creation.md#uc-wtc12-group-create-attaches-a-child-and-derives-the-parent-holder) — `--group <parent>` on `telec todo create` attaches a grouped child; the parent becomes a stateless holder derived from live child `group_slug` rows, its retained input artifact is frozen, and no `todo_state` row may exist for it. See also [`dependency-graph`](../feature/workflow/dependency-graph.md) for the DAG constraints that apply to grouped children.
 - [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
 
 ### Context map position

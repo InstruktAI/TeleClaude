@@ -122,7 +122,7 @@ def format_blocker_resolution(
 
     Used when the prepare state machine reaches a state that requires a
     concrete next action without dispatching a worker — approval gates,
-    non-drift blockers, no-active-work, split-holder, and loop-limit cases.
+    non-drift blockers, no-active-work, structural-holder, and loop-limit cases.
     """
     parts = ["IMPORTANT: This output is an execution script. Follow it verbatim.", ""]
     parts.append(f"SLUG: {slug or '<none>'}")

@@ -615,7 +615,7 @@ telec todo unfreeze low-priority-item
 - Each entry tracks: slug, status, DOR score, dependencies, container membership
 - Dependencies use `after:` — the item won't be started until all dependencies are delivered
 - The icebox holds frozen items that aren't on the active todo list (`telec todo freeze/unfreeze`)
-- Container items can be split into sub-items with `telec todo split`
+- Grouped children are attached to a parent container via `telec todo create <child> "<content>" --kind <k> --group <parent>`
 - Status progression: `pending` → `ready` → `in_progress` → delivered
 
 **Where to find things:**

@@ -854,10 +854,16 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         snippets_by_path=snippets_by_path,
     )
     if not snippet_ids and target_slug is not None:
-        # Index --target: focus on one todo's not-yet-live new snippets. Without a
-        # target the listing shows everything, flagging pending work inline via the
-        # (delivered by:) / (superseded by:) suffixes rather than hiding it.
-        snippets = [snippet for snippet in snippets if target_slug in snippet.delivered_by]
+        # Index --target: focus on one todo's pending work — both the not-yet-live
+        # NEW snippets it delivers and the LIVE snippets it reworks via planned
+        # sections / companions. Without a target the listing shows everything,
+        # flagging pending work inline via the (delivered by:) / (superseded by:)
+        # suffixes rather than hiding it.
+        snippets = [
+            snippet
+            for snippet in snippets
+            if target_slug in snippet.delivered_by or target_slug in snippet.superseded_by
+        ]
         third_party_entries = []
 
     areas_set = set(areas)

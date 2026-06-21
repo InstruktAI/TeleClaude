@@ -161,9 +161,9 @@ class StateWriter:
         """Validate and persist the current state via the async DB session.
 
         When ``session`` is provided the write participates in that caller-owned
-        transaction, so transactional flows (e.g. ``todo_split``) can keep
-        parent-state persistence on the single validated boundary without
-        opening a nested session.
+        transaction, so transactional flows (e.g. ``todo_content_create``) can
+        keep state persistence on the single validated boundary without opening a
+        nested session.
         """
         payload = self.to_dict()
         if session is None:

@@ -577,7 +577,7 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
         cwd: Project root directory
         slug: Work item slug
         assessed: Whether breakdown assessment has been performed
-        todos: List of todo slugs created from split (empty if no breakdown)
+        todos: List of child todo slugs created by breakdown (empty if no breakdown)
     """
     db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)

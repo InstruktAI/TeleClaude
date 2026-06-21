@@ -9,6 +9,7 @@ from typing import TypedDict, Unpack, cast
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from teleclaude.api import todo_routes
@@ -20,7 +21,7 @@ from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT, T
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todo import assemble_todo_from_db
-from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db import HolderWriteRefused, TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.envelope import EventEnvelope, EventLevel
@@ -311,6 +312,103 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
     payload = event_kwargs["payload"]
     assert isinstance(payload, dict)
     assert payload["slug"] == _CHILD
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC16")
+async def test_group_create_refuses_to_holderify_parent_past_prepare(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    """A parent carrying a prepared (non-input) artifact cannot be turned into a holder."""
+    project_root = tmp_path / "project"
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    parent_input = f"# {_PARENT} — Input\n\nParent scope.\n"
+    parent_plan = f"# {_PARENT} — Implementation Plan\n\nPrepared work that must survive.\n"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, parent_input, updated_by="test")
+    await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, parent_plan, updated_by="test")
+
+    with pytest.raises(HTTPException) as exc:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(
+                slug=_CHILD,
+                content="Grouped child rejected.",
+                kind=_KIND_CHANGE,
+                cwd=str(project_root),
+                group=_PARENT,
+            )
+        )
+
+    assert exc.value.status_code == 409
+    # The refusal detail is the contract: it names the parent and the prepared-artifact reason.
+    assert exc.value.detail == snapshot
+    # Parent left intact: still not a holder, state preserved, no holder-purge ran.
+    assert await todos_db.is_holder(_PARENT) is False
+    assert await todos_db.read_state(_PARENT) is not None
+    # Both artifacts retained byte-for-byte — the prepared plan was not shredded.
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT) == parent_input
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN) == parent_plan
+    # No child row was created.
+    assert await todos_db.read_state(_CHILD) is None
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC15")
+async def test_holder_artifact_write_returns_clean_409_not_500(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    """A write to a holder is refused with a clean 409 (and a typed db error), never a raw 500."""
+    project_root = tmp_path / "project"
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    parent_input = f"# {_PARENT} — Input\n\nParent scope.\n"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING)
+    await todos_db.write_artifact(_PARENT, ARTIFACT_INPUT, parent_input, updated_by="test")
+    # The first grouped child turns the parent into a structural holder.
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug=_CHILD,
+            content="Grouped child created complete.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            group=_PARENT,
+        )
+    )
+
+    assert await todos_db.is_holder(_PARENT) is True
+
+    # API surface: a holder write returns a clean 409, not a raw 500.
+    with pytest.raises(HTTPException) as exc:
+        await todo_routes.write_artifact(
+            slug=_PARENT,
+            name=ARTIFACT_IMPLEMENTATION_PLAN,
+            content=f"# {_PARENT} — Implementation Plan\n",
+            cwd=str(project_root),
+        )
+    assert exc.value.status_code == 409
+    # The refusal detail is the contract: structural holder, write-to-children directive.
+    assert exc.value.detail == snapshot
+
+    # DB surface: the refusal is the typed HolderWriteRefused (a ValueError subclass) —
+    # this is what proves the 409 above is the holder path, not another conflict.
+    with pytest.raises(HolderWriteRefused):
+        await todos_db.write_artifact(_PARENT, ARTIFACT_IMPLEMENTATION_PLAN, "# plan\n", updated_by="test")
+
+    # The holder's frozen input survives the refused write byte-for-byte.
+    assert await todos_db.read_artifact(_PARENT, ARTIFACT_INPUT) == parent_input
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC13")

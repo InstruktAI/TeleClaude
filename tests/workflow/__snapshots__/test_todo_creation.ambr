@@ -19,7 +19,7 @@
       Notes:
         Creates the todo entry, canonical state, and stores content as the input artifact.
         Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
-        --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> is the atomic alternative to split: it creates a complete grouped child in one call and makes the parent a holder via the existing derivation, no separate split step.
+        --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent to its input alone, so a parent past prepare is refused.
         ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
         --plan is valid only with --kind change and treats content as a complete implementation plan.
         Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
@@ -35,4 +35,10 @@
   Step 1: do the thing.
   
   '''
+# ---
+# name: test_group_create_refuses_to_holderify_parent_past_prepare
+  "todo 'parent' carries prepared artifacts (past prepare) and cannot be grouped into a holder; group only parents that hold input alone"
+# ---
+# name: test_holder_artifact_write_returns_clean_409_not_500
+  "todo 'parent' is a structural holder with grouped children; it carries no artifacts or state — write to its children instead"
 # ---
