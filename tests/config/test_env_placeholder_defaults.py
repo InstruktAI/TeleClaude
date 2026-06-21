@@ -1,49 +1,69 @@
-"""Unset ``${VAR}`` placeholders fall back to Python defaults, not literal strings."""
+"""Unset ``${VAR}`` placeholders fall back to Python defaults, not literal strings.
+
+These drive the real loader boundary ``_load_config_from_disk`` so the fix wiring
+(``strip_unset_placeholders`` in the load pipeline) is actually exercised — removing
+it from the loader makes ``test_loader_applies_default_when_redis_url_unset`` fail.
+"""
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import cast
+
+import teleclaude.config as config_mod
 from teleclaude.cli.config_handlers import EnvVarInfo, _is_env_var_required
-from teleclaude.config import DEFAULT_CONFIG, deep_merge, strip_unset_placeholders
-from teleclaude.utils import expand_env_vars
+from teleclaude.config import DEFAULT_CONFIG
 
 PROD_REDIS_URL = "rediss://prod.example:6478"
-EXPLICIT_REDIS_URL = "redis://explicit:6379"
+DEFAULT_REDIS_URL = str(
+    cast("dict[str, object]", DEFAULT_CONFIG["redis"])["url"]  # guard: loose-dict - read default from config blueprint
+)
+
+# Smallest config that builds: one enabled agent + redis placeholders. Every other
+# section falls back to DEFAULT_CONFIG, so no adapter secret is needed.
+_MINIMAL_CONFIG = """\
+agents:
+  default: claude
+  claude:
+    enabled: true
+redis:
+  url: ${REDIS_URL}
+  password: ${REDIS_PASSWORD}
+"""
 
 
-def _load(
-    raw: dict[str, object],  # guard: loose-dict - YAML config tree
-) -> dict[str, object]:  # guard: loose-dict - YAML config tree
-    """Mirror the loader: expand env vars, strip unresolved placeholders, merge defaults."""
-    user = strip_unset_placeholders(expand_env_vars(raw))
-    return deep_merge(DEFAULT_CONFIG, user)
+def _write_config(tmp_path: Path) -> Path:
+    dst = tmp_path / "config.yml"
+    dst.write_text(_MINIMAL_CONFIG, encoding="utf-8")
+    return dst
 
 
-def test_unset_placeholder_falls_back_to_default(monkeypatch) -> None:
+def _neutralize_dotenv(tmp_path: Path, monkeypatch) -> None:
+    """Stop the loader's _refresh_dotenv from re-injecting vars from the real .env."""
+    monkeypatch.setattr(config_mod, "_dotenv_path", tmp_path / "absent.env")
+    monkeypatch.setattr(config_mod, "_dotenv_managed_keys", set())
+
+
+def test_loader_applies_default_when_redis_url_unset(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+    _neutralize_dotenv(tmp_path, monkeypatch)
 
-    merged = _load({"redis": {"url": "${REDIS_URL}", "password": "${REDIS_PASSWORD}"}})
+    cfg = config_mod._load_config_from_disk(_write_config(tmp_path))
 
-    assert merged["redis"]["url"] == DEFAULT_CONFIG["redis"]["url"]  # type: ignore[index]
-    assert merged["redis"]["password"] is None  # type: ignore[index]
+    assert cfg.redis.url == DEFAULT_REDIS_URL
+    assert cfg.redis.password is None
 
 
-def test_set_placeholder_overrides_default(monkeypatch) -> None:
+def test_loader_uses_env_when_redis_url_set(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("REDIS_URL", PROD_REDIS_URL)
+    _neutralize_dotenv(tmp_path, monkeypatch)
 
-    merged = _load({"redis": {"url": "${REDIS_URL}"}})
+    cfg = config_mod._load_config_from_disk(_write_config(tmp_path))
 
-    assert merged["redis"]["url"] == PROD_REDIS_URL  # type: ignore[index]
-
-
-def test_literal_value_is_preserved(monkeypatch) -> None:
-    monkeypatch.delenv("REDIS_URL", raising=False)
-
-    merged = _load({"redis": {"url": EXPLICIT_REDIS_URL}})
-
-    assert merged["redis"]["url"] == EXPLICIT_REDIS_URL  # type: ignore[index]
+    assert cfg.redis.url == PROD_REDIS_URL
 
 
 def test_redis_url_not_required() -> None:
-    info = EnvVarInfo("REDIS_URL", "redis", "Redis connection URL", DEFAULT_CONFIG["redis"]["url"])  # type: ignore[index]
+    info = EnvVarInfo("REDIS_URL", "redis", "Redis connection URL", DEFAULT_REDIS_URL)
     assert _is_env_var_required(info, app_config=None) is False
