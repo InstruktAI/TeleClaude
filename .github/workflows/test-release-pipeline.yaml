@@ -35,7 +35,10 @@ jobs:
 
       - name: Run Arbiter
         run: |
+          # No host config on this runner — the scenario fixtures supply all
+          # three lanes, so opt into the all-agents quorum explicitly.
           uv run scripts/release_consolidator.py \
+            --default-all-agents \
             --claude-report claude-report.json \
             --codex-report codex-report.json \
             --gemini-report gemini-report.json \

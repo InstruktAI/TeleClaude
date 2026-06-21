@@ -81,13 +81,26 @@ def runtime_config_path() -> Path | None:
     return Path(home) / "config.yml" if home else None
 
 
-def get_enabled_agents(config_path: Path | None = None) -> list[str]:
-    """Read enabled agents from config.yml in arbiter preference order."""
+def get_enabled_agents(config_path: Path | None = None, *, allow_default: bool = False) -> list[str]:
+    """Read enabled agents from config.yml in arbiter preference order.
+
+    Missing or unresolvable config is a boundary failure — the release quorum must
+    derive from a validated runtime config, never a fabricated default — and exits
+    fatally, unless the caller explicitly opts into the all-agents fallback via
+    ``allow_default`` (the ``--default-all-agents`` flag).
+    """
     if config_path is None:
         config_path = runtime_config_path()
     if config_path is None or not config_path.exists():
         where = config_path or "$TELECLAUDE_HOME unset and no --config"
-        print(f"WARNING: config not found ({where}), defaulting to all agents", file=sys.stderr)
+        if not allow_default:
+            print(
+                f"FATAL: release config not found ({where}); pass --config <path> "
+                "or --default-all-agents to proceed without it",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        print(f"WARNING: config not found ({where}); --default-all-agents set, using all agents", file=sys.stderr)
         return list(ARBITER_PREFERENCE)
 
     with open(config_path, encoding="utf-8") as f:
@@ -314,9 +327,14 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Explicit config.yml path (default: $TELECLAUDE_HOME/config.yml)",
     )
+    parser.add_argument(
+        "--default-all-agents",
+        action="store_true",
+        help="Run against all agents when no config resolves (else missing config is fatal)",
+    )
     args = parser.parse_args(argv)
 
-    enabled_agents = get_enabled_agents(args.config)
+    enabled_agents = get_enabled_agents(args.config, allow_default=args.default_all_agents)
     print(f"Enabled agents: {', '.join(enabled_agents)}", file=sys.stderr)
     print(f"Quorum required: {_required_quorum(len(enabled_agents))}/{len(enabled_agents)}", file=sys.stderr)
 

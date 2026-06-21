@@ -9,24 +9,33 @@ Exit codes:
   1 — quorum failure or fatal error
 """
 # Repo-bound exception to project/policy/scripts-standalone-execution: this entry
-# imports teleclaude.* for agent invocation, so it cannot run in uv's isolated
-# PEP 723 environment. It carries no inline metadata, so `uv run` executes it in
-# the project environment (where teleclaude is editable-installed) — the form the
-# release workflow uses. The sibling `release_consolidator` resolves from the
-# script's own directory (sys.path[0]); no path manipulation is required.
+# drives agent invocation through teleclaude.*, so it runs only in the project
+# environment (invoked as `uv run scripts/release_lanes.py` from the repo root).
+# The heavy imports are deferred into the functions that use them, so the module
+# loads — and `--help` works — from any cwd; actual execution fails with an
+# actionable error if the project environment is absent, never an opaque import
+# crash. The sibling `release_consolidator` resolves from sys.path[0].
 
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import sys
 from pathlib import Path
 
-from release_consolidator import ARBITER_PREFERENCE, load_report, resolve_consensus  # type: ignore[import-not-found]
 
-from teleclaude.core.agents import get_enabled_agents
-from teleclaude.helpers.agent_cli import _extract_json_object, _load_schema, _run_agent
-from teleclaude.helpers.agent_types import AgentName, ThinkingMode
+def _require_project_runtime() -> None:
+    """Fail loudly when the project environment is unavailable for execution."""
+    missing = [name for name in ("release_consolidator", "teleclaude") if importlib.util.find_spec(name) is None]
+    if missing:
+        print(
+            "FATAL: release_lanes requires the project environment — run it as "
+            "`uv run scripts/release_lanes.py` from the repository root "
+            f"(missing: {', '.join(missing)})",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
 
 async def _run_lane(
@@ -35,6 +44,9 @@ async def _run_lane(
     schema: dict[str, object],  # guard: loose-dict - JSON schema is an arbitrary nested structure
 ) -> Path:
     """Run a single inspector lane and write the report file. Returns the report path."""
+    from teleclaude.helpers.agent_cli import _extract_json_object, _run_agent
+    from teleclaude.helpers.agent_types import AgentName, ThinkingMode
+
     report_path = Path(f"{agent_name}-report.json")
     try:
         agent = AgentName.from_str(agent_name)
@@ -75,6 +87,16 @@ async def _run_lane(
 
 async def run_lanes(prompt_file: Path, schema_file: Path) -> int:
     """Run all enabled lanes in parallel, consolidate, and write decision."""
+    _require_project_runtime()
+    from release_consolidator import (  # type: ignore[import-not-found]
+        ARBITER_PREFERENCE,
+        load_report,
+        resolve_consensus,
+    )
+
+    from teleclaude.core.agents import get_enabled_agents
+    from teleclaude.helpers.agent_cli import _load_schema
+
     enabled = list(get_enabled_agents())
     if not enabled:
         print("FATAL: no enabled agents in config", file=sys.stderr)
