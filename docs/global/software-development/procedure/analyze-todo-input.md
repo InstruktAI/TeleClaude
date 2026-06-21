@@ -52,9 +52,15 @@ never executes the work itself and never mutates the `input`.
    - Do not edit todo state directly. The stamp command is the validated
      state-write boundary and the only place kind is assigned.
 
-4. **Done.** The assignment routes the todo into its kind's lane on the next
-   dispatch; the normal orchestrator picks it up. There is nothing to wait for —
-   classification is a route decision, not a request for approval.
+4. **End the session.** On a successful stamp, run `telec sessions end self` as
+   the final action. This is not optional cleanup — it is the dispatch trigger.
+   The analyzer holds the todo's `active_runner` lease for as long as it lives,
+   and the lifecycle runner skips the slug as already-driven while that lease is
+   held; ending the session releases the lease and emits the session-ended event
+   that wakes the runner to dispatch the kind's lane. A worker that stops without
+   ending idles forever holding the lease and blocks the very dispatch it just
+   set up. End only on success: if the stamp failed or the kind is undecidable
+   (see Recovery), do not end — leave the session for the human.
 
 ### The `task-plan` blueprint
 
@@ -81,6 +87,7 @@ The session is the hands; the task-plan is the memory.
 - A todo with `kind` fixed and `lifecycle_phase = KIND_ENTRY_PHASE[kind]`.
 - For a `task`: a `task-plan` artifact (intent + steps + status + log).
 - The `input` artifact unchanged.
+- The analyzer session ended (lease released, kind's lane dispatched) on success.
 
 ## Recovery
 
