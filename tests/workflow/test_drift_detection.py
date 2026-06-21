@@ -222,13 +222,29 @@ def test_dependency_snapshot_accepts_legacy_roadmap_status_field() -> None:
     """
     legacy_dep_slug = "project-onboarding"
     legacy_status = "active"
+    clean_dep_slug = "already-migrated"
+    clean_status = "delivered"
     persisted_raw = {
         "schema_version": 4,
         "kind": "bug",
         "lifecycle_phase": "plan_drafting",
         "artifacts": {
-            "implementation_plan": {
+            "input": {
                 "dependency_set_at_write": [{"dep_slug": legacy_dep_slug, "roadmap_status": legacy_status}],
+            },
+            "implementation_plan": {
+                "dependency_set_at_write": [
+                    {"dep_slug": legacy_dep_slug, "roadmap_status": legacy_status},
+                    {"dep_slug": clean_dep_slug, "todo_status": clean_status},
+                ],
+            },
+        },
+        "approvals": {
+            "drift_reviewed": {
+                "implementation-plan": {
+                    "verdict": "cosmetic",
+                    "dep_set_at_review": [{"dep_slug": legacy_dep_slug, "roadmap_status": legacy_status}],
+                },
             },
         },
     }
@@ -236,9 +252,21 @@ def test_dependency_snapshot_accepts_legacy_roadmap_status_field() -> None:
     payload = upcycle_state_dict(persisted_raw)
 
     state = TodoState.model_validate(payload)
-    entry = state.artifacts.implementation_plan.dependency_set_at_write[0]
-    assert entry.dep_slug == legacy_dep_slug
-    assert entry.todo_status == legacy_status
+    input_entry = state.artifacts.input.dependency_set_at_write[0]
+    assert input_entry.dep_slug == legacy_dep_slug
+    assert input_entry.todo_status == legacy_status
+
+    legacy_entry, clean_entry = state.artifacts.implementation_plan.dependency_set_at_write
+    assert legacy_entry.dep_slug == legacy_dep_slug
+    assert legacy_entry.todo_status == legacy_status
+    # An entry already carrying `todo_status` passes through unchanged (idempotent).
+    assert clean_entry.dep_slug == clean_dep_slug
+    assert clean_entry.todo_status == clean_status
+
+    # The same legacy key in a drift-review snapshot is normalized at the same boundary.
+    review_entry = state.approvals.drift_reviewed["implementation-plan"].dep_set_at_review[0]
+    assert review_entry.dep_slug == legacy_dep_slug
+    assert review_entry.todo_status == legacy_status
 
 
 @pytest.mark.spec(_SPEC, "UC-WDD7")

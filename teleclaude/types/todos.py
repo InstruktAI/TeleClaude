@@ -96,19 +96,6 @@ class DependencyEntry(BaseModel):
     dep_slug: str
     todo_status: TodoStatusLiteral
 
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_legacy_status_field(cls, data: object) -> object:
-        """Read snapshots persisted before the status field was named `todo_status`.
-
-        Earlier snapshots stored the same value under `roadmap_status`. Map it
-        onto `todo_status` when the new field is absent so already-persisted
-        dependency snapshots remain deserializable.
-        """
-        if isinstance(data, dict) and "todo_status" not in data and "roadmap_status" in data:
-            return {**data, "todo_status": data["roadmap_status"]}
-        return data
-
 
 class ParentPrdGroundEntry(BaseModel):
     """Snapshot of PRD-approved dependency ground used by a dependent artifact."""
