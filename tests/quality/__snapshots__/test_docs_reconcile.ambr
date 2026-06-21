@@ -1,4 +1,27 @@
 # serializer version: 1
+# name: test_purge_abandons_in_body_markers_for_purged_slug
+  '''
+  ---
+  description: Reconcile fixture.
+  ---
+  # Purge Target — Spec
+  
+  ## Canonical fields
+  
+  Before.
+  
+  
+  Original paragraph.
+  
+  <!-- planned:other-slug -->
+  Other addition.
+  <!-- /planned:other-slug -->
+  
+  After.
+  
+  
+  '''
+# ---
 # name: test_reconcile_delivered_snippets_resolves_owned_planned_change_only
   dict({
     'content': '''
