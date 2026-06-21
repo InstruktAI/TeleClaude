@@ -87,6 +87,17 @@ class RunnerSkipReason(StrEnum):
     UNKNOWN_PHASE = "unknown-phase"
 
 
+# Steady-state terminal reasons carry the entire backlog and never change
+# actionably; the runner log keeps their counts but omits the slug flood.
+_TERMINAL_SKIP_REASONS: frozenset[RunnerSkipReason] = frozenset(
+    {
+        RunnerSkipReason.DELIVERED,
+        RunnerSkipReason.REMOVED,
+        RunnerSkipReason.ICEBOX,
+    }
+)
+
+
 class ManualLifecycleStatus(StrEnum):
     ADOPTED = "adopted"
     ALREADY_ACTIVE = "already-active"
@@ -893,7 +904,8 @@ async def run_lifecycle_runner(
         trigger=trigger,
         evaluated=result.evaluated,
         dispatched=[(intent.slug, intent.lane.value) for intent in dispatched],
-        skips={reason.value: slugs for reason, slugs in result.skips.items()},
+        skip_counts={reason.value: len(slugs) for reason, slugs in result.skips.items()},
+        skips={reason.value: slugs for reason, slugs in result.skips.items() if reason not in _TERMINAL_SKIP_REASONS},
         reconciled=reconciled,
     )
     return result
