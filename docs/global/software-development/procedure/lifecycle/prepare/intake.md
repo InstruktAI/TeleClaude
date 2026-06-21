@@ -261,9 +261,8 @@ todo's state, and **never halt running work except on certainty**:
 - Other todo **claimed, building or delivering** → the gate is **confidence**, set
   tight:
   - **Certain or extremely confident** it is truly superseded or obsolete → halt it
-    before it commits to main — freeze the todo and signal its worker to stand down
-    — then surface to the human. Letting obsolete work run to completion lands its
-    commit on main, the greater harm; the lost in-flight work is the lesser.
+    before it commits to main: freeze the todo, signal its worker to stand down,
+    then surface to the human.
   - **Below that bar** → do not halt; that is a premature stall on a hunch. Surface
     to the human and let it proceed unless they pull it.
 
