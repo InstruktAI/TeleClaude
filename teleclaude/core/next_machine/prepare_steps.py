@@ -27,13 +27,12 @@ from teleclaude.core.next_machine.lifecycle import (
     prepare_blockers,
 )
 from teleclaude.core.next_machine.output_formatting import (
-    HEARTBEAT_RESET_INSTRUCTION,
     ToolCallRequest,
     format_blocker_resolution,
     format_pending_classes_for_dispatch,
     format_procedure_load,
-    format_send_command,
     format_tool_call,
+    format_worker_redispatch,
 )
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
@@ -174,12 +173,11 @@ async def _dispatch_worker(
             f"drift_reviewed for each re-assessed artifact."
         )
         message = f"{additional_context} {base_message}" if additional_context else base_message
-        return False, (
-            f"WORKER RE-DISPATCH (reuse): {slug}\n\n"
-            f"Execute in order:\n\n"
-            f"{format_send_command(worker_id, message)}\n\n"
-            f"{HEARTBEAT_RESET_INSTRUCTION}\n"
-            f"When the worker reports idle, call telec todo prepare {slug}."
+        return False, format_worker_redispatch(
+            worker_id,
+            slug=slug,
+            message=message,
+            advance_call=f"telec todo prepare {slug}",
         )
 
     # No live worker — spawn a fresh one.

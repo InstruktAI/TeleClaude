@@ -46,6 +46,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_send_command,
     format_tool_call,
     format_uncommitted_changes,
+    format_worker_redispatch,
 )
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
 from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
@@ -345,12 +346,11 @@ async def _work_step_build_complete(
             f"counts are zero. Stamp verdict with "
             f"`telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`."
         )
-        return False, (
-            f"REVIEW RE-DISPATCH: {slug}\n\n"
-            f"Execute in order:\n\n"
-            f"{format_send_command(reviewer_id, message)}\n\n"
-            f"{HEARTBEAT_RESET_INSTRUCTION}\n"
-            f"When the reviewer reports idle, call telec todo work {slug}."
+        return False, format_worker_redispatch(
+            reviewer_id,
+            slug=slug,
+            message=message,
+            advance_call=f"telec todo work {slug}",
         )
 
     try:
@@ -358,18 +358,17 @@ async def _work_step_build_complete(
     except RuntimeError as exc:
         return False, format_error("NO_AGENTS", str(exc))
 
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_REVIEW_BUILD,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            next_call=f"telec todo work {slug}",
-            note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE}",
-            post_block=_reviewer_idle_post_block(slug),
-        )
+    request = ToolCallRequest(
+        command=SlashCommand.NEXT_REVIEW_BUILD,
+        args=slug,
+        project=_derive_project_root(cwd, slug),
+        guidance=guidance,
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        next_call=f"telec todo work {slug}",
+        note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE}",
+        post_block=_reviewer_idle_post_block(slug),
     )
+    return False, format_tool_call(request)
 
 
 async def _work_step_review_changes_requested(

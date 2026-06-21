@@ -24,6 +24,7 @@ __all__ = [
     "PENDING_DRIFT_CONTEXT_PREFIX",
     "REVIEW_DIFF_NOTE",
     "ToolCallRequest",
+    "dispatch_or_reuse",
     "format_blocker_resolution",
     "format_command_loader_message",
     "format_error",
@@ -35,6 +36,7 @@ __all__ = [
     "format_tool_call",
     "format_uncommitted_changes",
     "format_work_entry_drift_bounce",
+    "format_worker_redispatch",
     "parse_human_in_loop",
 ]
 
@@ -171,6 +173,42 @@ def format_send_command(session_id: str, message: str) -> str:
     stay inert.
     """
     return f"telec sessions send {session_id} {shlex.quote(message)}"
+
+
+def format_worker_redispatch(
+    session_id: str,
+    *,
+    slug: str,
+    message: str,
+    advance_call: str,
+) -> str:
+    """Format the canonical script for reusing a live worker session."""
+    return (
+        f"WORKER RE-DISPATCH (reuse): {slug}\n\n"
+        f"Execute in order:\n\n"
+        f"{format_send_command(session_id, message)}\n\n"
+        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
+        f"When the worker reports idle, call {advance_call}."
+    )
+
+
+def dispatch_or_reuse(
+    worker_id: str | None,
+    *,
+    request: ToolCallRequest,
+    slug: str,
+    message: str,
+    advance_call: str,
+) -> str:
+    """Reuse a live worker when present, otherwise format a fresh dispatch."""
+    if worker_id is not None:
+        return format_worker_redispatch(
+            worker_id,
+            slug=slug,
+            message=message,
+            advance_call=advance_call,
+        )
+    return format_tool_call(request)
 
 
 def _format_additional_context(request: ToolCallRequest) -> tuple[str, str]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -31,6 +32,11 @@ class _Session:
     session_id: str
     title: str
     subdir: str | None = None
+    lifecycle_status: str | None = None
+    closed_at: datetime | None = None
+    last_activity: datetime | None = None
+    last_message_sent_at: datetime | None = None
+    last_agent_stop_at: datetime | None = None
 
 
 class _CapturingDb:
@@ -108,6 +114,45 @@ async def _run_merge_main_failure_with_live_builder(
     )
 
 
+async def _run_build_complete_review_dispatch(
+    *,
+    project_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    sessions: list[_Session],
+    round_num: int,
+    baseline_commit: str = "",
+) -> str:
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_todo(_SLUG)
+    model = TodoState(
+        kind="change",
+        lifecycle_phase=LifecyclePhase.BUILD_COMPLETE.value,
+        schema_version=5,
+    )
+    model.build_review.round = round_num
+    model.build_review.baseline_commit = baseline_commit
+    await todos_db.write_state(_SLUG, model.model_dump(exclude_none=True))
+    worktree_cwd = project_root / "trees" / _SLUG
+    worktree_cwd.mkdir(parents=True)
+
+    async def _ensure_ready(_cwd: str, _slug: str, _phase_slug: str) -> tuple[str, None]:
+        return str(worktree_cwd), None
+
+    async def _guidance(_db: Db) -> str:
+        return "agent guidance"
+
+    monkeypatch.setattr(work_machine, "get_stash_entries", lambda _cwd: [])
+    monkeypatch.setattr(work_machine, "_check_work_entry_drift", _no_work_entry_drift)
+    monkeypatch.setattr(work_machine, "_ensure_worktree_ready", _ensure_ready)
+    monkeypatch.setattr(work_machine, "_merge_origin_main_into_worktree", lambda _cwd, _slug: "")
+    monkeypatch.setattr(work_machine, "get_head_commit", lambda _cwd: "head-sha")
+    monkeypatch.setattr(work_steps, "get_head_commit", lambda _cwd: "head-sha")
+    monkeypatch.setattr(work_steps, "compose_agent_guidance", _guidance)
+
+    output = await next_work(cast(Db, _CapturingDb(sessions)), _SLUG, str(project_root))
+    return output.replace(str(project_root), "/repo")
+
+
 @pytest.mark.spec(_SPEC, "UC-WSM0")
 async def test_prepared_entry_advances_to_build_started_without_removed_phase_commands(
     tmp_path: Path,
@@ -151,6 +196,47 @@ async def test_prepared_entry_advances_to_build_started_without_removed_phase_co
     output = await next_work(cast(Db, _CapturingDb([])), _SLUG, str(project_root))
 
     assert dispatch_phases == [WorkPhase.BUILD_STARTED]
+    assert output == snapshot
+
+
+async def test_build_complete_reuses_live_reviewer_for_incremental_rereview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    output = await _run_build_complete_review_dispatch(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+        sessions=[
+            _Session(
+                "reviewer-session",
+                f"/next-review-build {_SLUG}",
+                subdir=f"trees/{_SLUG}",
+                lifecycle_status="closed",
+                closed_at=datetime(2026, 6, 21, tzinfo=UTC),
+            )
+        ],
+        round_num=1,
+        baseline_commit="baseline-sha",
+    )
+
+    assert output == snapshot
+
+
+async def test_build_complete_spawns_reviewer_without_live_reviewer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    output = await _run_build_complete_review_dispatch(
+        project_root=project_root,
+        monkeypatch=monkeypatch,
+        sessions=[],
+        round_num=0,
+    )
+
     assert output == snapshot
 
 

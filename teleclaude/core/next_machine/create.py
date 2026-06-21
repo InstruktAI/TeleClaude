@@ -16,9 +16,8 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import (
-    HEARTBEAT_RESET_INSTRUCTION,
     ToolCallRequest,
-    format_send_command,
+    dispatch_or_reuse,
     format_tool_call,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
@@ -110,28 +109,6 @@ def _creative_blocked(slug: str, live_sessions: list[str]) -> str:
         f"Check `telec todo show {slug}` for details.\n\n"
         f"Live sessions kept alive for human inspection:\n"
         f"{sessions_block}"
-    )
-
-
-def _format_creative_iteration_script(
-    slug: str,
-    worker_session_id: str,
-    phase_label: str,
-    workspace_subdir: str,
-) -> str:
-    """Script for ART/VISUAL iteration: send feedback to the live worker."""
-    message = (
-        f"Iteration round for {phase_label}: the human reviewed your output and requested changes. "
-        f"Read the feedback (look for the most recent human message and any updated review context), "
-        f"revise the artifacts in {workspace_subdir}, and report when ready for re-review."
-    )
-    return (
-        f"{phase_label.upper()} ITERATION REQUIRED: {slug}\n\n"
-        f"Execute in order:\n\n"
-        f"{format_send_command(worker_session_id, message)}\n\n"
-        f"{HEARTBEAT_RESET_INSTRUCTION}\n"
-        f"Wait passively for the worker to idle.\n"
-        f"When the worker idles, call telec todo design {slug}."
     )
 
 
@@ -236,11 +213,9 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
         return _art_pending_approval(slug, cwd)
     if phase == CreativePhase.ART_ITERATION_REQUIRED:
         artist_id = await find_live_session_for_slug(db, slug, "/next-create-art", subdir_override=creative_subdir)
-        if artist_id is not None:
-            return _format_creative_iteration_script(slug, artist_id, "art", f"workspace/{slug}/art/")
-        # Fallback: dispatch fresh artist when no live session
-        return format_tool_call(
-            ToolCallRequest(
+        return dispatch_or_reuse(
+            artist_id,
+            request=ToolCallRequest(
                 command=SlashCommand.NEXT_CREATE_ART,
                 args=slug,
                 project=cwd,
@@ -253,7 +228,14 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                     f"Read the feedback and revise the images in workspace/{slug}/art/."
                 ),
                 post_block=post_block,
-            )
+            ),
+            slug=slug,
+            message=(
+                "Iteration round for art: the human reviewed your output and requested changes. "
+                "Read the feedback (look for the most recent human message and any updated review context), "
+                f"revise the artifacts in workspace/{slug}/art/, and report when ready for re-review."
+            ),
+            advance_call=f"telec todo design {slug}",
         )
     if phase == CreativePhase.VISUAL_DRAFTS_REQUIRED:
         return format_tool_call(
@@ -272,10 +254,9 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
         return _visuals_pending_approval(slug, cwd)
     if phase == CreativePhase.VISUAL_ITERATION_REQUIRED:
         frontender_id = await find_live_session_for_slug(db, slug, "/next-create-html", subdir_override=creative_subdir)
-        if frontender_id is not None:
-            return _format_creative_iteration_script(slug, frontender_id, "visual", f"workspace/{slug}/html/")
-        return format_tool_call(
-            ToolCallRequest(
+        return dispatch_or_reuse(
+            frontender_id,
+            request=ToolCallRequest(
                 command=SlashCommand.NEXT_CREATE_HTML,
                 args=slug,
                 project=cwd,
@@ -288,7 +269,14 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                     f"Read the feedback and revise the HTML+CSS in workspace/{slug}/html/."
                 ),
                 post_block=post_block,
-            )
+            ),
+            slug=slug,
+            message=(
+                "Iteration round for visual: the human reviewed your output and requested changes. "
+                "Read the feedback (look for the most recent human message and any updated review context), "
+                f"revise the artifacts in workspace/{slug}/html/, and report when ready for re-review."
+            ),
+            advance_call=f"telec todo design {slug}",
         )
     if phase == CreativePhase.CREATIVE_COMPLETE:
         live_sessions = await find_all_live_sessions_for_slug(db, slug, subdir_override=creative_subdir)

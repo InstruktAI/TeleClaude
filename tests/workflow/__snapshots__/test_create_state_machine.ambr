@@ -1,0 +1,89 @@
+# serializer version: 1
+# name: test_art_iteration_reuses_live_artist
+  '''
+  WORKER RE-DISPATCH (reuse): creative-work
+  
+  Execute in order:
+  
+  telec sessions send artist-session 'Iteration round for art: the human reviewed your output and requested changes. Read the feedback (look for the most recent human message and any updated review context), revise the artifacts in workspace/creative-work/art/, and report when ready for re-review.'
+  
+  Cancel your existing backup heartbeat timer, then start a fresh 300-second one the same way — your runtime's own non-blocking timer mechanism, per the non-blocking Heartbeat policy (never hold a tool call open, never block user input). The timer is a bare, fire-once delay that re-engages your judgment — never a condition test, never a tighter interval.
+  When the worker reports idle, call telec todo design creative-work.
+  '''
+# ---
+# name: test_art_iteration_spawns_artist_without_live_worker
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  agent guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  PARALLELIZATION (append to --additional-context):
+  "When the work decomposes into independent sub-tasks with no data dependency, dispatch them concurrently using your runtime's own native parallel mechanism instead of serializing them; ensure parallel workers never mutate the same files."
+  
+  Dispatch metadata: command="/next-create-art" args="creative-work" project="/repo" subfolder=""
+  
+  ADDITIONAL CONTEXT FOR WORKER:
+  ITERATION: The human reviewed the art and wants changes. Read the feedback and revise the images in workspace/creative-work/art/.
+  
+  telec sessions run --command "/next-create-art" --args "creative-work" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder "" --additional-context 'ITERATION: The human reviewed the art and wants changes. Read the feedback and revise the images in workspace/creative-work/art/.'
+  Save the returned session_id.
+  
+  STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Start a 300-second backup heartbeat timer using your runtime's own non-blocking timer mechanism — per the non-blocking Heartbeat policy, it must never hold a tool call open or block you from user input. Note its handle so you can cancel it later.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  INTENT — read this before continuing: the notification is the completion signal; you will be told.
+  This timer is a backup check-in only — its sole purpose is to re-engage YOUR judgment when you have
+  heard nothing. It is not a control loop and it does not watch the worker; you do.
+  - The timer is always a bare, fire-once delay. It never tests conditions, never invokes telec, never loops.
+    (A test deciding "done/not done" is assessment smuggled into automation — forbidden.)
+  - Exactly one timer exists at a time. Cancel the existing one before starting a new one.
+  - 300 seconds is the floor. NEVER set a tighter heartbeat.
+  
+  STEP 3 - WAIT PASSIVELY:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Do nothing until an event arrives in your conversation. No tailing between events, no extra
+  watchers, no tighter timers.
+  
+  TAILING DISCIPLINE (every arriving event — a notification or your backup timer completing —
+  licenses exactly one tail; no event, no tail):
+  - First tail: default latest-turn window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: the session is non-terminal and the latest observed activity is not an authoritative stop.
+  - `idle`: the session is terminal (`closing`/`closed` or `closed_at` set), or the latest turn has an agent stop with no later input.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival: tail once and act on what you read.
+  - On timer completion (you heard nothing): tail once and judge what you see. Silence may be deep
+    work, saturation, or a dead worker — that assessment is yours, never a script's.
+  - If `agent_status` is `active`: reset ONE bare backup timer and return to passive waiting.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: reset ONE bare backup timer and return to passive waiting.
+  - RECOVERY: if you cannot tell whether your timer survived (restart, compaction): kill any timers
+    you can, start ONE bare timer, resume passive waiting. Never compensate for uncertainty with
+    extra watchers or shorter intervals.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: Cancel your existing backup heartbeat timer, then start a fresh 300-second one the same way — your runtime's own non-blocking timer mechanism, per the non-blocking Heartbeat policy (never hold a tool call open, never block user input). The timer is a bare, fire-once delay that re-engages your judgment — never a condition test, never a tighter interval.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER IDLES:
+  Call telec todo design creative-work. The state machine emits the next action.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Human requested art changes. Dispatch artist with feedback for revision.
+  '''
+# ---

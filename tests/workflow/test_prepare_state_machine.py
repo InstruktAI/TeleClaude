@@ -325,6 +325,50 @@ async def _prepare_dispatch_for_substantive_drift_stamp(
     return output
 
 
+async def test_plan_review_dispatch_reuses_live_prepare_reviewer(
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    slug = "reuse-plan-reviewer"
+    state = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_REVIEW.value).model_dump(exclude_none=True)
+
+    _, output = await _prepare_dispatch(
+        db=cast(Db, _CapturingDb([_Session("plan-reviewer-session", f"/next-review-plan {slug}")])),
+        todos_db=todos_db,
+        slug=slug,
+        cwd=_PROJECT_ROOT,
+        phase=PreparePhase.PLAN_REVIEW,
+        state=state,
+    )
+
+    assert output == snapshot
+
+
+async def test_plan_review_dispatch_spawns_without_live_prepare_reviewer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    slug = "spawn-plan-reviewer"
+    state = TodoState(kind=KIND_CHANGE, lifecycle_phase=LifecyclePhase.PLAN_REVIEW.value).model_dump(exclude_none=True)
+    monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", _test_guidance)
+
+    _, output = await _prepare_dispatch(
+        db=cast(Db, _CapturingDb([])),
+        todos_db=todos_db,
+        slug=slug,
+        cwd=_PROJECT_ROOT,
+        phase=PreparePhase.PLAN_REVIEW,
+        state=state,
+    )
+
+    assert output == snapshot
+
+
 def test_bug_kind_routes_through_diagnose_not_fast_track() -> None:
     assert KIND_BUG in BUG_DIAGNOSE_KINDS
     assert KIND_BUG not in FAST_TRACK_PREPARED_KINDS
