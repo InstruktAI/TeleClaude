@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import Counter
 from operator import itemgetter
@@ -67,12 +68,26 @@ VALID_CLASSIFICATIONS: set[str] = {"patch", "minor", "none"}
 ARBITER_PREFERENCE = ("claude", "codex", "gemini")
 
 
+def runtime_config_path() -> Path | None:
+    """Host runtime config location, independent of the caller's cwd.
+
+    Resolves from ``$TELECLAUDE_HOME`` — the platform's runtime-home authority,
+    the same env ``teleclaude.paths`` reads — so the arbiter sees the host's
+    installed config, never a file that happens to sit in the working directory.
+    Returns ``None`` when the env is unset: a portable script must not hardcode
+    ``~/.teleclaude`` (that default belongs to ``teleclaude.paths``).
+    """
+    home = os.environ.get("TELECLAUDE_HOME")
+    return Path(home) / "config.yml" if home else None
+
+
 def get_enabled_agents(config_path: Path | None = None) -> list[str]:
     """Read enabled agents from config.yml in arbiter preference order."""
     if config_path is None:
-        config_path = Path.cwd() / "config.yml"
-    if not config_path.exists():
-        print(f"WARNING: config not found at {config_path}, defaulting to all agents", file=sys.stderr)
+        config_path = runtime_config_path()
+    if config_path is None or not config_path.exists():
+        where = config_path or "$TELECLAUDE_HOME unset and no --config"
+        print(f"WARNING: config not found ({where}), defaulting to all agents", file=sys.stderr)
         return list(ARBITER_PREFERENCE)
 
     with open(config_path, encoding="utf-8") as f:
@@ -293,9 +308,15 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("arbiter-decision.json"),
         help="Output path for the decision JSON",
     )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Explicit config.yml path (default: $TELECLAUDE_HOME/config.yml)",
+    )
     args = parser.parse_args(argv)
 
-    enabled_agents = get_enabled_agents()
+    enabled_agents = get_enabled_agents(args.config)
     print(f"Enabled agents: {', '.join(enabled_agents)}", file=sys.stderr)
     print(f"Quorum required: {_required_quorum(len(enabled_agents))}/{len(enabled_agents)}", file=sys.stderr)
 

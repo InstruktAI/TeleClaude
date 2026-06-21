@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --quiet
 """Run release inspection lanes in parallel and consolidate results.
 
 Reads enabled agents from config.yml, runs each as a parallel lane,
@@ -8,6 +8,12 @@ Exit codes:
   0 — decision written (release authorized or not)
   1 — quorum failure or fatal error
 """
+# Repo-bound exception to project/policy/scripts-standalone-execution: this entry
+# imports teleclaude.* for agent invocation, so it cannot run in uv's isolated
+# PEP 723 environment. It carries no inline metadata, so `uv run` executes it in
+# the project environment (where teleclaude is editable-installed) — the form the
+# release workflow uses. The sibling `release_consolidator` resolves from the
+# script's own directory (sys.path[0]); no path manipulation is required.
 
 from __future__ import annotations
 
@@ -15,13 +21,6 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-
-# Anchor at repo root and scripts dir for imports.
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-for _p in (_REPO_ROOT, _SCRIPTS_DIR):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
 
 from release_consolidator import ARBITER_PREFERENCE, load_report, resolve_consensus  # type: ignore[import-not-found]
 

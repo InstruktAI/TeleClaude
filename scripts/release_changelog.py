@@ -37,6 +37,11 @@ from datetime import UTC
 from pathlib import Path
 from typing import TypedDict
 
+# Anchor git operations to this script's own repository, so commit history is
+# read from the repo the tool ships in regardless of the caller's cwd (the
+# script-location resolution the standalone-execution policy mandates).
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
 # ---------------------------------------------------------------------------
 # Commit parsing
 # ---------------------------------------------------------------------------
@@ -98,6 +103,7 @@ def git_log_subjects(since: str, until: str = "HEAD") -> list[str]:
         capture_output=True,
         text=True,
         check=True,
+        cwd=_REPO_ROOT,
     )
     return [line for line in result.stdout.strip().split("\n") if line.strip()]
 
@@ -109,6 +115,7 @@ def git_tag_date(tag: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        cwd=_REPO_ROOT,
     )
     date = result.stdout.strip()
     if not date:
@@ -344,11 +351,17 @@ def cmd_from_reports(args: argparse.Namespace) -> int:
 
     highlights, contract_cats = merge_lane_reports(report_paths)
 
-    # Also parse git log for commit-level detail
+    # Also parse git log for commit-level detail. A git failure (e.g. run from
+    # outside the repo, or a missing ref) degrades to report-only notes — but it
+    # is surfaced, never silently swallowed.
     try:
         subjects = git_log_subjects(args.since, args.tag)
         commit_cats = categorize_commits(subjects)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"WARNING: git log {args.since}..{args.tag} failed ({exc}); release notes will omit commit-level detail",
+            file=sys.stderr,
+        )
         commit_cats = {}
 
     # Merge: contract changes first, then commit-level entries
