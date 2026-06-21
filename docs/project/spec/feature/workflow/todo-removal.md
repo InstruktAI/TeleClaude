@@ -13,7 +13,15 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:fix-telec-sync-hard-blocks-on-an-orphaned-pl -->
+
 `telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive scans snippet `delivered_by` references inside the project-scoped lock and transaction. If the candidate slug is the sole live deliverer of any snippet, removal is refused and no todo-list, state, dependency, or filesystem mutation is committed.
+
+<!-- change:fix-telec-sync-hard-blocks-on-an-orphaned-pl -->
+
+`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive scans, inside the project-scoped lock and transaction, every place a live snippet still references the candidate slug: both its `delivered_by` frontmatter and its in-body `planned` / `planned-change` markers. Removal is refused when the candidate slug is the sole live deliverer of any snippet, or when any snippet body carries a `planned` / `planned-change` marker naming it — in either case no todo-list, state, dependency, or filesystem mutation is committed. The refusal is what keeps a removed slug from orphaning an in-body marker, which the `telec sync` liveness gate would otherwise reject for every caller.
+
+<!-- /planned-change:fix-telec-sync-hard-blocks-on-an-orphaned-pl -->
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
@@ -42,6 +50,20 @@ Then the shared soft-remove primitive refuses removal before any workflow state 
 And the receipt-backed operation stores a structured "remove_refused_orphan" payload
 And the CLI renders the affected snippet path, slug role, and live-deliverer count from that structured payload
 ```
+
+<!-- planned:fix-telec-sync-hard-blocks-on-an-orphaned-pl -->
+
+```
+Given a live snippet body carries an in-body planned or planned-change marker naming Todo "feature-x"
+And "feature-x" is not listed in any snippet's delivered_by frontmatter
+When the operator runs "telec todo remove feature-x"
+Then the shared soft-remove primitive refuses removal before any workflow state mutation
+And the receipt-backed operation stores a structured "remove_refused_orphan" payload
+And the blocking-snippet entry reports the affected snippet path and an in-body-marker reference kind
+And no todo-list, state, dependency, or filesystem mutation is committed
+```
+
+<!-- /planned:fix-telec-sync-hard-blocks-on-an-orphaned-pl -->
 
 ```
 Given a Todo that has not yet received a worktree or feature branch
