@@ -127,31 +127,20 @@ stateDiagram-v2
 
 ### States reference
 
-| State                | Description                                                | Agent Action Required                   | Auto-advance |
-| -------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------ |
-| `IDLE`               | No candidate in progress. Pop next from queue or complete. | No                                      | Yes          |
-| `CANDIDATE_DEQUEUED` | Candidate popped. Route to merge or skip.                  | No                                      | Yes          |
-| `MERGE_CLEAN`        | Squash merge succeeded. Staged changes await commit.       | **Yes** — compose squash commit message | No           |
-| `MERGE_CONFLICTED`   | Squash merge produced conflicts.                           | **Yes** — resolve conflicts + commit    | No           |
-| `AWAITING_COMMIT`    | Re-entry check: did the agent commit?                      | No                                      | Yes          |
-| `COMMITTED`          | Agent committed. Run delivery bookkeeping.                 | No                                      | Yes          |
-
-<!-- planned-change:gate-integration-delivery-on-confirmed-push -->
-
-| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin. | No | Yes |
-| `PUSH_SUCCEEDED` | Push landed. Proceed to cleanup. | No | Yes |
-
-<!-- change:gate-integration-delivery-on-confirmed-push -->
-
-| `DELIVERY_BOOKKEEPING` | Push the squash merge to origin. | No | Yes |
-| `PUSH_SUCCEEDED` | Push confirmed. Record delivery (ancestry-gated), then cleanup. | No | Yes |
-
-<!-- /planned-change:gate-integration-delivery-on-confirmed-push -->
-
-| `PUSH_REJECTED` | Push rejected (non-fast-forward). | **Yes** — rebase + push | No |
-| `CLEANUP` | Remove worktree, branch, todo dir. | No | Yes |
-| `CANDIDATE_DELIVERED` | Candidate fully integrated. Mark and reset. | No | Yes |
-| `COMPLETED` | Queue empty. Terminal state. | **Yes** — self-end session | — |
+| State                  | Description                                                | Agent Action Required                   | Auto-advance |
+| ---------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------ |
+| `IDLE`                 | No candidate in progress. Pop next from queue or complete. | No                                      | Yes          |
+| `CANDIDATE_DEQUEUED`   | Candidate popped. Route to merge or skip.                  | No                                      | Yes          |
+| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.       | **Yes** — compose squash commit message | No           |
+| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                           | **Yes** — resolve conflicts + commit    | No           |
+| `AWAITING_COMMIT`      | Re-entry check: did the agent commit?                      | No                                      | Yes          |
+| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                 | No                                      | Yes          |
+| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin.                          | No                                      | Yes          |
+| `PUSH_SUCCEEDED`       | Push landed. Proceed to cleanup.                           | No                                      | Yes          |
+| `PUSH_REJECTED`        | Push rejected (non-fast-forward).                          | **Yes** — rebase + push                 | No           |
+| `CLEANUP`              | Remove worktree, branch, todo dir.                         | No                                      | Yes          |
+| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark and reset.                | No                                      | Yes          |
+| `COMPLETED`            | Queue empty. Terminal state.                               | **Yes** — self-end session              | —            |
 
 ### Single candidate flow
 
@@ -450,8 +439,6 @@ flowchart TD
 
 Both guards emit `integration.candidate.already_merged` lifecycle events.
 
-<!-- planned-change:gate-integration-delivery-on-confirmed-push -->
-
 ### Delivery bookkeeping
 
 After the agent commits the squash merge, the machine runs bookkeeping on the **repo root** (not the integration worktree):
@@ -478,18 +465,6 @@ flowchart TD
 ```
 
 Only bookkeeping files are staged (`git add` by path, not `git add -A`), preserving any dirty state on main.
-
-<!-- change:gate-integration-delivery-on-confirmed-push -->
-
-### Delivery bookkeeping
-
-The agent commits the squash merge inside the integration worktree (`trees/_integration/`); `DELIVERY_BOOKKEEPING` then pushes that worktree to `origin/main`. The delivery record lives in the untracked `todos.db` — local daemon state, never part of the pushed commit — so it is never staged into the merge.
-
-`core.todos_db.deliver_sync(slug)` stamps the todo `delivered`, records the delivered commit, and sets the todo-state delivery phase in a single transaction. It runs only after the push is confirmed on `origin/main`, on the `PUSH_SUCCEEDED` convergence path reached by both a direct push and a recovered one. Entry to that path re-fetches `origin` and asserts the integration-worktree HEAD is an ancestor of `origin/main`; on failure the candidate returns to `PUSH_REJECTED` and no delivery record is written. The recorded delivered commit is the integration-worktree HEAD that landed on `main`, not the candidate-branch commit.
-
-Dependency-edge cleanup for the delivered slug runs on the same confirmed-push path.
-
-<!-- /planned-change:gate-integration-delivery-on-confirmed-push -->
 
 ### Blueprint regeneration
 

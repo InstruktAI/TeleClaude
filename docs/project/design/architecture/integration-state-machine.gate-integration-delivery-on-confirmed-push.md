@@ -1,0 +1,597 @@
+---
+description: 'Phase C state machine: lease-serialized, crash-recoverable integration from feature branches to canonical main.'
+visibility: 'public'
+---
+
+# Integration State Machine — Design
+
+## Purpose
+
+The Integration state machine is the **only role authorized to push canonical `main`**. It takes finalized feature branches from a durable FIFO queue, squash-merges them into an isolated integration worktree (`trees/_integration/`), pushes to origin, and cleans up. It is:
+
+- **Serialized** by a lease (only one integrator at a time)
+- **Crash-recoverable** via durable checkpoint
+- **Queue-backed** (processes candidates in FIFO order by `ready_at`)
+- **Self-ending** (exits when the queue is drained)
+
+**Entry point:** `telec todo integrate [slug]`
+**Implementation:** [`IntegrationPhase`](../../../../teleclaude/core/integration/state_machine.py) enum (12 states)
+**Terminal state:** `COMPLETED`
+
+### Referenced files
+
+| File                                                                                                       | Purpose                                                                    |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [`teleclaude/core/integration/state_machine.py`](../../../../teleclaude/core/integration/state_machine.py) | State machine implementation (`IntegrationPhase` enum, `next_integrate()`) |
+| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py)                 | Durable FIFO queue for integration candidates                              |
+| [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py)                 | Singleton lease for serialized integration                                 |
+
+### Referenced doc snippets
+
+| Snippet ID                                             | Content                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------- |
+| `software-development/procedure/lifecycle/integration` | Integration procedure with agent actions                   |
+| `project/spec/integration-orchestrator`                | Full integrator contract (events, lease, queue, lifecycle) |
+| `software-development/policy/version-control-safety`   | Git safety rules for all agents                            |
+| `software-development/policy/commits`                  | Commit format and attribution                              |
+
+## Inputs/Outputs
+
+**Inputs:**
+
+- Integration FIFO queue — candidates `(slug, branch, sha, ready_at)` enqueued by Phase B handoff
+- Integration lease — singleton lock ensuring only one integrator processes at a time
+- Durable checkpoint at `{state_dir}/integrate-state.json` — enables crash recovery
+- `origin/main` — canonical branch (fetched fresh before each merge)
+- Feature branches on `origin/<slug>` — pushed by finalizer workers in Phase B
+
+**Outputs:**
+
+- Updated `origin/main` with squash-merged feature content (pushed from `trees/_integration/`)
+- Delivery record (todo-list delivery transition) written only after the push is confirmed on `origin/main`, plus cleanup
+- Cleanup: worktree removal, branch deletion, todo directory removal
+- `integration.*` lifecycle events at each state transition
+- Final status with metrics (`items_processed`, `items_blocked`, `duration_ms`)
+
+### Checkpoint structure
+
+The checkpoint enables crash recovery. Written atomically (temp file + `os.replace`) at every state transition:
+
+```json
+{
+  "version": 1,
+  "phase": "merge_clean",
+  "candidate_slug": "my-feature",
+  "candidate_branch": "my-feature",
+  "candidate_sha": "abc123def...",
+  "lease_token": "tok-xyz",
+  "items_processed": 2,
+  "items_blocked": 0,
+  "started_at": "2026-03-08T10:00:00+00:00",
+  "last_updated_at": "2026-03-08T10:05:00+00:00",
+  "error_context": { "merge_type": "clean" },
+  "pre_merge_head": "deadbeef..."
+}
+```
+
+- `pre_merge_head` — SHA of main before merge, used to detect agent commits (HEAD advancement)
+- `error_context` — phase-specific metadata (merge type, conflicted files, push rejection reason)
+
+## Invariants
+
+- **Singleton execution**: only one integrator session processes the queue at any time, enforced by an atomic lease with TTL=120s and 30s renewal.
+- **FIFO ordering**: candidates processed in `ready_at` order. Deduplication by `(slug, branch, sha)`.
+- **Isolation**: all merges happen in the persistent integration worktree `trees/_integration/`, reset to `origin/main` before each merge. Repo root cleanliness is irrelevant.
+- **Crash safety**: every phase is recoverable. Re-calling `telec todo integrate` reads the durable checkpoint and resumes from the last persisted phase.
+- **Already-integrated detection**: two guards prevent re-integrating content already on main (ancestry check + empty-merge guard).
+- **Self-end authorization**: the integrator is the only governed session type allowed to self-end (when queue empty, no in-progress candidate, lease released, checkpoint written).
+- **Workers cannot push main**: only the integrator pushes `origin/main`. Workers push only their feature branches.
+
+## Primary flows
+
+### State diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+
+    IDLE --> CANDIDATE_DEQUEUED: pop from queue
+    IDLE --> COMPLETED: queue empty
+
+    CANDIDATE_DEQUEUED --> MERGE_CLEAN: clean squash merge
+    CANDIDATE_DEQUEUED --> MERGE_CONFLICTED: conflicted merge
+    CANDIDATE_DEQUEUED --> CANDIDATE_DELIVERED: already integrated (skip)
+
+    MERGE_CLEAN --> COMMITTED: HEAD advanced (commit detected)
+    MERGE_CLEAN --> MERGE_CLEAN: no commit yet (re-prompt agent)
+
+    MERGE_CONFLICTED --> COMMITTED: HEAD advanced (conflicts resolved + committed)
+    MERGE_CONFLICTED --> MERGE_CONFLICTED: no commit yet (re-prompt agent)
+
+    COMMITTED --> DELIVERY_BOOKKEEPING: bookkeeping complete
+
+    DELIVERY_BOOKKEEPING --> PUSH_SUCCEEDED: git push OK
+    DELIVERY_BOOKKEEPING --> PUSH_REJECTED: git push rejected
+
+    PUSH_SUCCEEDED --> CLEANUP: proceed to cleanup
+
+    PUSH_REJECTED --> PUSH_SUCCEEDED: agent recovered (heads match)
+    PUSH_REJECTED --> PUSH_REJECTED: still diverged (re-prompt agent)
+
+    CLEANUP --> CANDIDATE_DELIVERED: cleanup done
+
+    CANDIDATE_DELIVERED --> IDLE: reset for next candidate
+
+    COMPLETED --> [*]
+```
+
+### States reference
+
+| State                  | Description                                                     | Agent Action Required                   | Auto-advance |
+| ---------------------- | --------------------------------------------------------------- | --------------------------------------- | ------------ |
+| `IDLE`                 | No candidate in progress. Pop next from queue or complete.      | No                                      | Yes          |
+| `CANDIDATE_DEQUEUED`   | Candidate popped. Route to merge or skip.                       | No                                      | Yes          |
+| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.            | **Yes** — compose squash commit message | No           |
+| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                                | **Yes** — resolve conflicts + commit    | No           |
+| `AWAITING_COMMIT`      | Re-entry check: did the agent commit?                           | No                                      | Yes          |
+| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                      | No                                      | Yes          |
+| `DELIVERY_BOOKKEEPING` | Push the squash merge to origin.                                | No                                      | Yes          |
+| `PUSH_SUCCEEDED`       | Push confirmed. Record delivery (ancestry-gated), then cleanup. | No                                      | Yes          |
+| `PUSH_REJECTED`        | Push rejected (non-fast-forward).                               | **Yes** — rebase + push                 | No           |
+| `CLEANUP`              | Remove worktree, branch, todo dir.                              | No                                      | Yes          |
+| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark and reset.                     | No                                      | Yes          |
+| `COMPLETED`            | Queue empty. Terminal state.                                    | **Yes** — self-end session              | —            |
+
+### Single candidate flow
+
+```mermaid
+flowchart TD
+    Pop["Pop candidate from queue<br/>(slug, branch, sha)"]
+
+    AncestryCheck{"SHA already<br/>ancestor of main?"}
+
+    SetupWorktree["Reset integration worktree<br/>to origin/main"]
+
+    SquashMerge["git merge --squash branch"]
+
+    MergeResult{"Merge result?"}
+
+    EmptyCheck{"Staged changes<br/>(git diff --cached)?"}
+
+    CleanMerge["MERGE_CLEAN<br/>Return: compose commit message"]
+    ConflictMerge["MERGE_CONFLICTED<br/>Return: resolve + commit"]
+
+    CommitCheck{"HEAD advanced?<br/>(new commit detected)"}
+
+    Bookkeeping["DELIVERY_BOOKKEEPING<br/>push squash to origin"]
+
+    Push["git push origin HEAD:main"]
+
+    PushResult{"Push result?"}
+
+    PushOK["PUSH_SUCCEEDED<br/>- confirm HEAD ancestor of origin/main<br/>- core.todos_db.deliver_sync slug"]
+    PushFail["PUSH_REJECTED<br/>Return: rebase + retry"]
+
+    RecoveryCheck{"Local HEAD ==<br/>remote main?"}
+
+    DoCleanup["CLEANUP<br/>- Remove worktree<br/>- Delete branch<br/>- Remove todo dir"]
+
+    Delivered["CANDIDATE_DELIVERED<br/>- Mark integrated in queue"]
+
+    AlreadyMerged["Already integrated<br/>(skip candidate)"]
+    EmptyMerge["Empty merge<br/>(content already on main)"]
+
+    Pop --> AncestryCheck
+    AncestryCheck -->|"Is ancestor"| AlreadyMerged
+    AncestryCheck -->|"Not ancestor"| SetupWorktree
+
+    SetupWorktree --> SquashMerge
+    SquashMerge --> MergeResult
+
+    MergeResult -->|"rc=0"| EmptyCheck
+    MergeResult -->|"rc!=0"| ConflictMerge
+
+    EmptyCheck -->|"No changes"| EmptyMerge
+    EmptyCheck -->|"Has changes"| CleanMerge
+
+    CleanMerge --> CommitCheck
+    ConflictMerge --> CommitCheck
+
+    CommitCheck -->|"Yes"| Bookkeeping
+    CommitCheck -->|"No"| CleanMerge
+
+    Bookkeeping --> Push
+    Push --> PushResult
+
+    PushResult -->|"rc=0"| PushOK
+    PushResult -->|"rc!=0"| PushFail
+
+    PushFail --> RecoveryCheck
+    RecoveryCheck -->|"Yes"| PushOK
+    RecoveryCheck -->|"No"| PushFail
+
+    PushOK --> DoCleanup
+    DoCleanup --> Delivered
+
+    AlreadyMerged --> Delivered
+    EmptyMerge --> Delivered
+```
+
+### Queue processing loop
+
+```mermaid
+flowchart TD
+    Start(["telec todo integrate"])
+
+    AcquireLease{"Acquire<br/>integration lease?"}
+    LeaseBusy(["LEASE_BUSY:<br/>another integrator active"])
+
+    CheckQueue{"Queue has<br/>candidates?"}
+
+    ProcessCandidate["Process next candidate<br/>(see single candidate flow)"]
+
+    MarkIntegrated["Mark candidate<br/>as integrated"]
+
+    MoreCandidates{"More candidates<br/>in queue?"}
+
+    Complete(["COMPLETED:<br/>queue drained<br/>release lease<br/>self-end session"])
+
+    Start --> AcquireLease
+    AcquireLease -->|"No"| LeaseBusy
+    AcquireLease -->|"Yes"| CheckQueue
+
+    CheckQueue -->|"No"| Complete
+    CheckQueue -->|"Yes"| ProcessCandidate
+
+    ProcessCandidate --> MarkIntegrated
+    MarkIntegrated --> MoreCandidates
+
+    MoreCandidates -->|"Yes"| ProcessCandidate
+    MoreCandidates -->|"No"| Complete
+```
+
+### Clean merge (sequence diagram)
+
+```mermaid
+sequenceDiagram
+    participant Agent as Integrator Agent
+    participant SM as Integration Machine
+    participant WT as trees/_integration/
+    participant Origin as origin/main
+
+    Agent->>SM: telec todo integrate
+    SM->>SM: Acquire lease
+    SM->>SM: Pop candidate (my-feature, sha=abc123)
+    SM->>WT: git fetch origin, git reset --hard origin/main
+    SM->>WT: git merge --squash origin/my-feature
+    Note over WT: Merge succeeds (rc=0)
+    SM->>WT: git diff --cached (non-empty)
+    SM-->>Agent: MERGE_CLEAN: compose commit message
+
+    Note over Agent: Agent reads diff stats,<br/>PRD, prepared context, plan,<br/>composes commit message
+    Agent->>WT: git commit -m "feat(my-feature): deliver ..."
+    Agent->>SM: telec todo integrate
+
+    SM->>SM: Detect HEAD advanced - COMMITTED
+    SM->>SM: DELIVERY_BOOKKEEPING
+    SM->>WT: git push origin HEAD:main
+    Note over Origin: Push succeeds
+    SM->>SM: PUSH_SUCCEEDED
+    Note over SM: Confirm HEAD ancestor of origin/main<br/>core.todos_db.deliver_sync(my-feature)
+
+    SM->>SM: CLEANUP
+    Note over SM: Remove worktree branch<br/>Delete todo dir
+    SM->>SM: Mark candidate integrated - IDLE
+    SM->>SM: Check queue - empty - COMPLETED
+    SM-->>Agent: COMPLETED - self-end
+    Agent->>Agent: telec sessions end self
+```
+
+### Conflict resolution (sequence diagram)
+
+```mermaid
+sequenceDiagram
+    participant Agent as Integrator Agent
+    participant SM as Integration Machine
+    participant WT as trees/_integration/
+
+    Agent->>SM: telec todo integrate
+    SM->>WT: git merge --squash origin/my-feature
+    Note over WT: Merge conflicts (rc!=0)
+    SM->>SM: Detect conflicted files
+    SM-->>Agent: MERGE_CONFLICTED:<br/>conflicted files: [src/foo.py, src/bar.py]
+
+    Note over Agent: Agent reads each conflicted file,<br/>understands both sides,<br/>resolves conflict markers
+    Agent->>WT: Edit conflicted files
+    Agent->>WT: git add src/foo.py src/bar.py
+    Agent->>WT: git commit -m "feat(my-feature): deliver ..."
+    Agent->>SM: telec todo integrate
+
+    SM->>SM: Detect HEAD advanced - COMMITTED
+    Note over SM: Continue with bookkeeping - push - cleanup
+```
+
+### Push rejection recovery (sequence diagram)
+
+```mermaid
+sequenceDiagram
+    participant Agent as Integrator Agent
+    participant SM as Integration Machine
+    participant WT as trees/_integration/
+    participant Origin as origin/main
+
+    SM->>WT: git push origin HEAD:main
+    Origin-->>SM: rejected (non-fast-forward)
+    SM-->>Agent: PUSH_REJECTED:<br/>reason: "non-fast-forward update"
+
+    Note over Agent: Another push landed while<br/>integrator was processing
+    Agent->>WT: git fetch origin
+    Agent->>WT: git rebase origin/main
+    Note over Agent: Resolve rebase conflicts if any
+    Agent->>WT: git push origin HEAD:main
+    Agent->>SM: telec todo integrate
+
+    SM->>SM: Check: local HEAD == remote main?
+    Note over SM: Yes - PUSH_SUCCEEDED
+    SM->>SM: Continue with CLEANUP
+```
+
+### Architecture overview
+
+```mermaid
+flowchart TB
+    subgraph "Event Sources"
+        ReviewApproved["review_approved event"]
+        FinalizeReady["finalize_ready event"]
+        BranchPushed["branch_pushed event"]
+    end
+
+    subgraph "Readiness Projection"
+        Predicate["Readiness Predicate:<br/>1. review_approved exists<br/>2. finalize_ready exists<br/>3. branch_pushed exists<br/>4. SHA reachable on remote<br/>5. Not superseded<br/>6. Not already on main"]
+    end
+
+    subgraph "Serialization Layer"
+        Queue["Integration Queue<br/>(FIFO, durable)"]
+        Lease["Integration Lease<br/>(singleton, TTL=120s)"]
+    end
+
+    subgraph "Integration Worktree"
+        IWT["trees/_integration/<br/>(persistent, reset to origin/main)"]
+    end
+
+    subgraph "State Machine"
+        SM["IntegrationPhase<br/>12 states, checkpoint-backed"]
+    end
+
+    subgraph "Outputs"
+        Main["origin/main<br/>(canonical)"]
+        Cleanup2["Cleanup<br/>(worktree + branch + todo)"]
+        Events["Lifecycle Events<br/>(fire-and-forget)"]
+    end
+
+    ReviewApproved --> Predicate
+    FinalizeReady --> Predicate
+    BranchPushed --> Predicate
+
+    Predicate -->|"ALL conditions met"| Queue
+    Queue --> Lease
+    Lease -->|"acquired"| SM
+    SM --> IWT
+    IWT --> Main
+    SM --> Cleanup2
+    SM --> Events
+```
+
+### Lease and queue mechanics
+
+The integration lease enforces singleton execution — only one integrator session processes the queue at any time:
+
+```mermaid
+flowchart LR
+    subgraph "Lease Lifecycle"
+        Acquire["Acquire<br/>(compare-and-swap)"]
+        Hold["Hold<br/>(renew every 30s)"]
+        Release["Release<br/>(queue drained)"]
+        Expire["Expire<br/>(TTL=120s)"]
+        Break["Break<br/>(new session acquires<br/>after expiry)"]
+    end
+
+    Acquire --> Hold
+    Hold --> Release
+    Hold --> Expire
+    Expire --> Break
+    Break --> Acquire
+```
+
+| Property            | Value                                                              |
+| ------------------- | ------------------------------------------------------------------ |
+| Lease key           | `integration/main`                                                 |
+| TTL                 | 120 seconds                                                        |
+| Renew interval      | 30 seconds                                                         |
+| Acquisition         | Atomic compare-and-swap                                            |
+| Stale break         | Allowed after expiry                                               |
+| Queue order         | FIFO by `ready_at` timestamp                                       |
+| Queue deduplication | By `(slug, branch, sha)`                                           |
+| Queue item states   | `queued` → `in_progress` → `integrated` / `blocked` / `superseded` |
+
+### Already-integrated detection
+
+Two guards prevent re-integrating content already on main:
+
+```mermaid
+flowchart TD
+    Candidate["Candidate<br/>(slug, branch, sha)"]
+
+    Guard1{"Guard 1: Ancestry<br/>git merge-base<br/>--is-ancestor sha HEAD"}
+    Guard2{"Guard 2: Empty merge<br/>git diff --cached --quiet<br/>(after squash merge)"}
+
+    Skip["CANDIDATE_DELIVERED<br/>(skip - already integrated)"]
+    Proceed["Continue with merge"]
+
+    Candidate --> Guard1
+    Guard1 -->|"Is ancestor"| Skip
+    Guard1 -->|"Not ancestor"| Guard2
+    Guard2 -->|"No staged changes"| Skip
+    Guard2 -->|"Has changes"| Proceed
+```
+
+- **Guard 1 (ancestry):** fast path for regular merges where git maintains ancestry links.
+- **Guard 2 (empty merge):** catches squash merges — squash commits don't create ancestry links, so Guard 1 misses them. After `git merge --squash`, if `git diff --cached` shows no changes, the content is already on main.
+
+Both guards emit `integration.candidate.already_merged` lifecycle events.
+
+### Delivery bookkeeping
+
+The agent commits the squash merge inside the integration worktree (`trees/_integration/`); `DELIVERY_BOOKKEEPING` then pushes that worktree to `origin/main`. The delivery record lives in the untracked `todos.db` — local daemon state, never part of the pushed commit — so it is never staged into the merge.
+
+```mermaid
+flowchart TD
+    Committed["COMMITTED"]
+    Push["DELIVERY_BOOKKEEPING<br/>git push origin HEAD:main"]
+    PushResult{"Push confirmed on<br/>origin/main?"}
+    Deliver["PUSH_SUCCEEDED<br/>- confirm HEAD ancestor of origin/main<br/>- core.todos_db.deliver_sync(slug)<br/>- clean dependency edges"]
+    Reject["PUSH_REJECTED<br/>(no delivery record)"]
+
+    Committed --> Push
+    Push --> PushResult
+    PushResult -->|"Yes"| Deliver
+    PushResult -->|"No / not ancestor"| Reject
+```
+
+`core.todos_db.deliver_sync(slug)` stamps the todo `delivered`, records the delivered commit, and sets the todo-state delivery phase in a single transaction. It runs only after the push is confirmed on `origin/main`, on the `PUSH_SUCCEEDED` convergence path reached by both a direct push and a recovered one. Entry to that path re-fetches `origin` and asserts the integration-worktree HEAD is an ancestor of `origin/main`; on failure the candidate returns to `PUSH_REJECTED` and no delivery record is written. The recorded delivered commit is the integration-worktree HEAD that landed on `main`, not the candidate-branch commit.
+
+### Blueprint regeneration
+
+After a successful integration brings the repo root's `main` current (delivery bookkeeping complete), the integrator regenerates the project **codebase Blueprint** — the structural map agents consult at plan time (specced in `project/spec/codebase-blueprint`; the `context` bounded context owns the contract). It runs the pinned no-LLM code refresh `graphify update <repo-root>` and writes two files at the project root (gitignored): `.teleclaude/blueprint/graph.json` and a freshness manifest `.teleclaude/blueprint/manifest.json` carrying `baseline_sha` (the `origin/main` commit it was built from), `generated_at`, and `status`. This is the single refresh point: the baseline always reflects the remote-main that worktrees branch from, so there is no per-step drift handling.
+
+**Freshness contract.** Consumers never trust the Blueprint blindly. They compare the manifest's `baseline_sha` against the current `origin/main` baseline; on mismatch, missing manifest, or `status != ok`, the Blueprint is stale and the consumer falls back to manual exploration. Regeneration is best-effort: a failure records a non-`ok` `status` (or leaves the prior manifest in place) and does NOT fail the integration — staleness is detected by consumers via the manifest, never silently consumed.
+
+**Ownership boundary (intentional cross-context write).** `context` owns the Blueprint _contract_ — its location, the `manifest.json` schema, supported languages, and the query/affected surface. `integration` is the single permitted _writer_, because the Blueprint is a generated cache (not authoritative domain state) and the integrator is the one actor that knows when `main` became current; routing the write through a context dispatch would add a round-trip for no invariant gain. This is a deliberate divergence from the single-state-owner default, justified by the cache-not-state nature of the artifact.
+
+### Crash recovery
+
+Every phase is recoverable. Re-calling `telec todo integrate` reads the checkpoint and resumes:
+
+```mermaid
+flowchart LR
+    subgraph "Crash Points"
+        C1["After dequeue,<br/>before merge"]
+        C2["After merge,<br/>before commit"]
+        C3["After commit,<br/>before push"]
+        C4["After push<br/>rejection"]
+        C5["During cleanup"]
+        C6["After candidate<br/>delivered"]
+    end
+
+    subgraph "Recovery Behavior"
+        R1["Resume at merge.<br/>No work lost."]
+        R2["Re-prompt for commit.<br/>Git index persists."]
+        R3["Re-run bookkeeping<br/>(idempotent). Push."]
+        R4["Re-check if heads match.<br/>Re-prompt if not."]
+        R5["Re-run cleanup<br/>(idempotent)."]
+        R6["Mark integrated.<br/>Reset to IDLE."]
+    end
+
+    C1 --> R1
+    C2 --> R2
+    C3 --> R3
+    C4 --> R4
+    C5 --> R5
+    C6 --> R6
+```
+
+| Crash Point                 | Checkpoint Phase                   | Recovery                                                                                                        |
+| --------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| After dequeue, before merge | `CANDIDATE_DEQUEUED`               | Routes to merge. No work lost.                                                                                  |
+| After merge, before commit  | `MERGE_CLEAN` / `MERGE_CONFLICTED` | Re-prompts agent. Staged changes persist in git index.                                                          |
+| After commit, before push   | `COMMITTED`                        | Re-enters `DELIVERY_BOOKKEEPING` and pushes (idempotent); delivery is recorded only once the push is confirmed. |
+| After push rejection        | `PUSH_REJECTED`                    | Re-checks if heads match. Re-prompts if not.                                                                    |
+| During cleanup              | `CLEANUP`                          | Re-runs cleanup (idempotent). Missing worktrees are no-ops.                                                     |
+| After candidate delivered   | `CANDIDATE_DELIVERED`              | Marks integrated, resets to IDLE, loops for next.                                                               |
+
+### Lifecycle events
+
+| Event                                  | Emitted When                                |
+| -------------------------------------- | ------------------------------------------- |
+| `integration.started`                  | First candidate dequeued in a session       |
+| `integration.candidate.dequeued`       | Candidate popped from queue                 |
+| `integration.candidate.already_merged` | Candidate skipped (ancestry or empty merge) |
+| `integration.merge.succeeded`          | Clean squash merge completed                |
+| `integration.merge.conflicted`         | Squash merge produced conflicts             |
+| `integration.candidate.committed`      | Agent commit detected (HEAD advanced)       |
+| `integration.push.succeeded`           | Push to origin succeeded                    |
+| `integration.push.rejected`            | Push to origin rejected                     |
+| `integration.candidate.delivered`      | Candidate fully integrated and cleaned up   |
+| `integration.candidate.blocked`        | Candidate blocked (via queue mark)          |
+
+### Internal loop
+
+`_dispatch_sync` runs a capped loop (50 iterations) that reads the checkpoint, dispatches to the appropriate phase handler, and either loops internally (for autonomous transitions like COMMITTED → BOOKKEEPING → PUSH → CLEANUP) or returns an instruction string (for agent decision points like MERGE_CLEAN, MERGE_CONFLICTED, PUSH_REJECTED). This enables multi-phase advancement in a single `telec todo integrate` call.
+
+## Failure modes
+
+- **Lease already held**: returns `LEASE_BUSY` — exit immediately. Do not attempt to break the lease.
+- **Queue empty**: returns `COMPLETED` — self-end the session.
+- **Merge conflicts (unresolvable)**: agent leaves uncommitted, machine re-prompts. If genuinely unresolvable, call `telec todo integrate` without committing — the machine detects no HEAD advancement and re-prompts.
+- **Push repeatedly rejected**: agent fetches, rebases, resolves rebase conflicts, pushes in integration worktree. If the problem persists, check for concurrent integrators (should not happen with lease, but may indicate stale lease).
+- **Candidate already integrated**: silent skip to CANDIDATE_DELIVERED. No agent action needed. Emits `integration.candidate.already_merged`.
+- **Checkpoint corrupt or missing**: resets to IDLE, starts fresh. No manual editing needed.
+- **Integration worktree missing**: created on first use, reused after. Missing worktree is auto-created.
+- **Auto-enqueue fallback**: when called with explicit slug not in queue, auto-enqueues from local branch (branch name == slug convention), provided SHA is not already ancestor of main.
+
+### Repo root sync recovery
+
+After pushing to origin/main, `_step_push_succeeded` syncs local main via `git pull --ff-only origin main`. When dirty local files conflict with incoming changes, the pull fails.
+
+**Why it happens:** Other agents may have in-progress work on local main (dirty working tree). The `--ff-only` pull cannot proceed with uncommitted changes that conflict with incoming files.
+
+**Recovery flow:**
+
+1. The machine advances the checkpoint to CLEANUP (delivery is already safe on origin).
+2. Returns a `REPO ROOT SYNC BLOCKED` instruction to the agent.
+3. The agent informs the user and waits for confirmation (other agent sessions may be active).
+4. After confirmation, the agent runs:
+   ```bash
+   git stash
+   git pull --ff-only origin main
+   git stash pop
+   ```
+5. If stash pop succeeds, the agent calls `telec todo integrate` — the machine resumes at CLEANUP.
+6. If stash pop produces conflicts, the agent resolves them (files deleted by delivery with local edits are obsolete), then calls `telec todo integrate`.
+
+**System role permissions:** Integrator sessions have `TELECLAUDE_SYSTEM_ROLE=integrator` set by the daemon from `session_metadata.system_role`. Stash operations are permitted for integrators during push rejection recovery.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Integrator Agent
+    participant SM as Integration Machine
+    participant Root as Repo Root (local main)
+    participant Origin as origin/main
+
+    SM->>Origin: git push origin HEAD:main (from worktree)
+    Note over Origin: Push succeeds
+
+    SM->>Root: git pull --ff-only origin main
+    Root-->>SM: FAILED (dirty files conflict)
+
+    SM->>SM: Advance checkpoint to CLEANUP
+    SM-->>Agent: REPO ROOT SYNC BLOCKED
+
+    Note over Agent: Agent informs user,<br/>waits for confirmation
+
+    Agent->>Root: git stash
+    Agent->>Root: git pull --ff-only origin main
+    Note over Root: Pull succeeds
+    Agent->>Root: git stash pop
+
+    alt Clean pop
+        Agent->>SM: telec todo integrate
+        SM->>SM: Resume at CLEANUP → COMPLETED
+    else Conflicts
+        Note over Agent: Resolve conflicts<br/>(obsolete files = accept delivered)
+        Agent->>Root: git add resolved files
+        Agent->>Root: git stash drop
+        Agent->>SM: telec todo integrate
+        SM->>SM: Resume at CLEANUP → COMPLETED
+    end
+```
