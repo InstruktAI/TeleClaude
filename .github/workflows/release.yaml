@@ -2,7 +2,7 @@ name: Release Automation
 
 on:
   workflow_run:
-    workflows: ["Lint and Test"]
+    workflows: ['Lint and Test']
     branches: [main]
     types:
       - completed
@@ -150,7 +150,7 @@ jobs:
 
       - name: Run Release Lanes and Consolidate
         run: |
-          ./.venv/bin/python scripts/release_lanes.py \
+          uv run scripts/release_lanes.py \
             --prompt-file release-prompt.txt \
             --schema-file docs/project/spec/release-report-schema.md
 
@@ -238,7 +238,7 @@ jobs:
           set -euo pipefail
           LAST_TAG="${{ steps.version.outputs.last_tag }}"
           NEXT_TAG="${{ steps.version.outputs.next_tag }}"
-          ./.venv/bin/python scripts/release_changelog.py from-reports \
+          uv run scripts/release_changelog.py from-reports \
             --tag "$NEXT_TAG" --since "$LAST_TAG" \
             --claude-report claude-report.json \
             --codex-report codex-report.json \

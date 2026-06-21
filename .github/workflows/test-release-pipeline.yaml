@@ -21,10 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      # uv reads each script's PEP 723 header and provisions deps in an
+      # ephemeral env (it also fetches the requires-python interpreter), so the
+      # scripts run self-sufficiently without a project install on this runner.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
 
       - name: Stage Fixtures
         run: |
@@ -34,7 +35,7 @@ jobs:
 
       - name: Run Arbiter
         run: |
-          python scripts/release_consolidator.py \
+          uv run scripts/release_consolidator.py \
             --claude-report claude-report.json \
             --codex-report codex-report.json \
             --gemini-report gemini-report.json \
@@ -85,7 +86,7 @@ jobs:
           # The changelog script needs git history for commit-level detail.
           # In test mode we don't have real tags, so use from-git fallback
           # with a synthetic date. The script gracefully handles missing git refs.
-          python scripts/release_changelog.py from-reports \
+          uv run scripts/release_changelog.py from-reports \
             --tag "$NEXT_TAG" --since v0.1.5 --date 2026-01-01 \
             --claude-report claude-report.json \
             --codex-report codex-report.json \

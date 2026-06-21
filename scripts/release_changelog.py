@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """Generate changelog sections from git commits or AI lane reports.
 
 Produces Keep a Changelog formatted sections for GitHub releases
@@ -6,13 +10,13 @@ and CHANGELOG.md maintenance.
 
 Usage:
   # From lane reports (CI — primary path)
-  python scripts/release_changelog.py from-reports \\
+  uv run scripts/release_changelog.py from-reports \\
     --tag v0.6.0 --since v0.5.0 \\
     --claude-report claude-report.json \\
     --output release-notes.md --prepend CHANGELOG.md
 
   # From git log only (backfill / fallback)
-  python scripts/release_changelog.py from-git \\
+  uv run scripts/release_changelog.py from-git \\
     --tag v0.5.0 --since v0.4.0 \\
     --output release-notes.md
 
@@ -31,8 +35,7 @@ import sys
 from collections import defaultdict
 from datetime import UTC
 from pathlib import Path
-
-from typing_extensions import TypedDict
+from typing import TypedDict
 
 # ---------------------------------------------------------------------------
 # Commit parsing

@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml"]
+# ///
 """Consensus arbiter for multi-lane release reports.
 
 Consumes AI lane reports, resolves classification conflicts via majority
@@ -21,10 +25,9 @@ import sys
 from collections import Counter
 from operator import itemgetter
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, TypedDict, cast
 
 import yaml
-from typing_extensions import TypedDict
 
 
 class ContractChange(TypedDict, total=False):
