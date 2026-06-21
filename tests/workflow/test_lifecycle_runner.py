@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import pytest
+from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.sessions_actions_routes import _prepare_run_session
@@ -17,7 +18,7 @@ from teleclaude.api_models import CreateSessionResponseDTO, RunSessionRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.config import WorkflowRunnerMode
 from teleclaude.config import config as tc_config
-from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER, WORKTREE_DIR
 from teleclaude.core import db as db_mod
 from teleclaude.core import session_listeners as session_listeners_mod
 from teleclaude.core.db import Db
@@ -594,6 +595,33 @@ def test_run_session_infers_working_slug_without_downgrading_orchestrator_role(t
 
     assert plan.working_slug == _WORK_SLUG
     assert plan.system_role == ROLE_ORCHESTRATOR
+
+
+def test_integrator_may_dispatch_worker_review(tmp_path: Path) -> None:
+    request = RunSessionRequest(
+        command="/next-review-commits",
+        args="7670dcbd9",
+        project=str(tmp_path / "project"),
+        agent="claude",
+    )
+
+    plan = _prepare_run_session(request, _caller_identity(system_role=ROLE_INTEGRATOR))
+
+    assert plan.system_role == ROLE_WORKER
+
+
+def test_integrator_may_not_dispatch_orchestrator(tmp_path: Path) -> None:
+    request = RunSessionRequest(
+        command="/next-prepare",
+        args=_WORK_SLUG,
+        project=str(tmp_path / "project"),
+        agent="claude",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        _prepare_run_session(request, _caller_identity(system_role=ROLE_INTEGRATOR))
+
+    assert exc.value.status_code == 403
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

@@ -117,6 +117,13 @@ And the target role is NOT in the caller's allowed dispatch set
 Then it is rejected with "role '<caller>' cannot dispatch /<command> (requires dispatch privilege for '<target>')"
 ```
 
+```
+Given a caller carrying the integrator system role
+When it dispatches a worker-role command (e.g. /next-review-commits for the commits it merged)
+Then dispatch is permitted — the integrator may spawn worker sessions
+And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
+```
+
 #### Initiator binding
 
 ```
