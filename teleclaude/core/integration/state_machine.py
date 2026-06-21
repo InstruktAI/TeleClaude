@@ -32,13 +32,13 @@ from teleclaude.core.integration.formatters import (
     _format_queue_empty,
     _format_repo_root_diverged,
 )
+from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
     _do_merge,
     _get_candidate_key,
     _integration_worktree_path,
-    _run_git,
     _step_awaiting_commit,
     _step_cleanup,
     _step_committed,
