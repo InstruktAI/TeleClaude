@@ -79,8 +79,7 @@ Classify each setting and target, then steward toward the best outcome:
 Do not add a `teleclaude.yml` guardrails section, and do not seed guardrails
 defaults into the project. Guardrails are TeleClaude-owned and run automatically
 as the always-run lane of `telec code lint`; they reach a project simply by the
-project being run under `telec code`, with no per-project quality-config surface
-(`docs/project/adr/0040-guardrails-teleclaude-owned-slimmed.md`).
+project being run under `telec code`, with no per-project quality-config surface.
 
 ### 5. Re-run safely
 
