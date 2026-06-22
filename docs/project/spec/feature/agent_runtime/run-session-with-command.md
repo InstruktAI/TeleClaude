@@ -124,6 +124,36 @@ Then dispatch is permitted — the integrator may spawn worker sessions
 And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
 ```
 
+<!-- planned:guard-duplicate-driver-start -->
+
+#### Lifecycle driver-start dedup
+
+```
+Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
+And a run-session request whose normalized command is a slug-bound lifecycle command (in the slug-bound lifecycle command set) with args resolving to slug X
+And the request originates from a session that is neither the holder nor a sanctioned dispatcher spawn
+When the run-session preparation checks driver-start dedup before creating the session
+Then the request is refused with a driver-start conflict
+And no second session is created for X
+And the refusal surfaces the holding session id (HTTP 409 detail on the run-session door; an operation-failure toast carrying the holder on the operator work/prepare op door)
+```
+
+```
+Given a run-session request for a slug-bound lifecycle command on slug X
+And the calling session is itself the live holder of X (an orchestrator continuing or adopting its own slug)
+When the driver-start dedup check runs
+Then the caller is exempt and the session is created
+```
+
+```
+Given a run-session request for a slug-bound lifecycle command on slug X
+And a dispatch claim for X is held (the autonomous runner or a dispatcher is mid-spawn for X)
+When the driver-start dedup check runs
+Then the held claim marks the spawn as sanctioned and the session is created
+```
+
+<!-- /planned:guard-duplicate-driver-start -->
+
 #### Initiator binding
 
 ```
