@@ -107,10 +107,15 @@ live holder.
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
 A write from any session other than the live holder — including a dispatched
-worker that shares the slug — is a claim conflict. The write boundary does not
-enforce the convention that a work-phase defect in a prepare artifact is routed
-back through prepare. Work artifacts (`review-findings`, `deferrals`,
-`quality-checklist`) carry no claim gate.
+worker that shares the slug — is a claim conflict. Independently of the holder
+check and of lifecycle phase, a prepare artifact is writable only by a
+prepare-phase writer: a prepare-orchestrator session or a human-identity session.
+A session whose role is anything else — a work orchestrator, a create
+orchestrator, the integrator, or any worker — is refused by role with HTTP 403,
+evaluated before the holder check. The write boundary does not enforce the
+convention that a work-phase defect in a prepare artifact is routed back through
+prepare. Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
+carry no claim gate.
 
 #### UC-WAV9: Worker write to a held slug is refused as a claim conflict
 
@@ -167,24 +172,17 @@ Then the slug has no live holder
 And another session may write a prepare artifact and become the holder
 ```
 
-#### UC-WAV15: Work-orchestrator write to a prepare artifact is refused by role
+#### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
 
 ```gherkin
-Given an active todo whose work-orchestrator session is bound to the slug
-When the work orchestrator attempts to write a prepare artifact at any lifecycle phase
-Then the workflow service refuses the write as an authorization denial by role before any state mutation
-And the refusal is independent of whether the work orchestrator holds the slug
+Given a live work-orchestrator session
+When it attempts to write a prepare artifact for any slug at any lifecycle phase
+Then the workflow service refuses the write by role before any state mutation
+And the response status is HTTP 403
+And the artifact's current version is unchanged
 ```
 
-#### UC-WAV16: Human-identity write to an unclaimed slug is accepted without claiming
-
-```gherkin
-Given a slug with no live session driving it
-When a direct human-identity session writes a prepare artifact
-Then the workflow service accepts the write
-And records the resolved human principal as updated_by
-And the slug acquires no driver
-```
+<!-- /planned-change:prepare-artifact-claim-on-write -->
 
 ### Cross-context references
 
