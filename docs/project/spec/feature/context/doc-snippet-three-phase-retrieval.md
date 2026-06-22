@@ -41,7 +41,7 @@ When they run telec docs index --areas policy --domains software-development
 <!-- planned-change:fix-artifact-doc-ordering -->
 Then phase 1 returns matching snippet metadata sorted by scope then ID
 <!-- change:fix-artifact-doc-ordering -->
-Then phase 1 returns matching snippet metadata sorted by scope, then taxonomy type general-to-specific (principle, concept, policy, procedure, design, spec, adr), then ID
+Then phase 1 returns matching snippet metadata sorted by taxonomy type general-to-specific (principle, concept, policy, procedure, design, spec, adr), then scope, then ID
 <!-- /planned-change:fix-artifact-doc-ordering -->
 
 And each entry shows its ID and one-line description
