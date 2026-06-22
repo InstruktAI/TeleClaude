@@ -370,10 +370,10 @@ Replacement body.
         assert not get_errors()
 
     @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
-    def test_full_run_tolerates_removed_but_reports_missing_planned_add_marker_slug(self, tmp_path: Path) -> None:
-        # A removed todo is retained and reactivatable for its grace window, so its
-        # in-body marker is tolerated (and self-heals at hard-purge); a slug that
-        # resolves to nothing is still a dangling reference and is reported.
+    def test_full_run_tolerates_removed_and_unknown_planned_add_marker_slug(self, tmp_path: Path) -> None:
+        # A removed todo is retained (reactivatable, self-heals at hard-purge). A slug
+        # with no local row is expected too — todos are machine-local, so a git-carried
+        # snippet routinely names a todo that lives on another computer. Both tolerated.
         _write_todos_db(tmp_path, {"removed-owner": "removed"})
         snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
         snippet.parent.mkdir(parents=True)
@@ -383,9 +383,9 @@ Replacement body.
 Removed owner content.
 <!-- /planned:removed-owner -->
 
-<!-- planned:missing-owner -->
-Missing owner content.
-<!-- /planned:missing-owner -->"""
+<!-- planned:foreign-owner -->
+Foreign owner content.
+<!-- /planned:foreign-owner -->"""
             ),
             encoding="utf-8",
         )
@@ -393,19 +393,12 @@ Missing owner content.
         clear_errors()
         validate_all_snippets(tmp_path)
 
-        assert _normalized_findings(tmp_path) == [
-            {
-                "code": "snippet_planned_marker_invalid_slug",
-                "path": "docs/project/concept/planned-change-validation.md",
-                "reason": "no such todo — check `telec history search missing-owner`; maybe authored ahead, renamed, or gone",
-                "slug": "missing-owner",
-            },
-        ]
+        assert not get_errors()
 
     @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
-    def test_full_run_tolerates_removed_delivered_by_slug_but_reports_missing(self, tmp_path: Path) -> None:
-        # delivered_by shares the same liveness set as in-body markers: a removed
-        # deliverer is tolerated (retained, reactivatable), a missing one is reported.
+    def test_full_run_tolerates_removed_and_unknown_delivered_by_slug(self, tmp_path: Path) -> None:
+        # delivered_by shares the liveness set with in-body markers: a removed deliverer
+        # is tolerated, and a deliverer with no local row is expected (machine-local todos).
         _write_todos_db(tmp_path, {"removed-deliverer": "removed"})
         removed_snippet = tmp_path / "docs" / "project" / "concept" / "removed-deliverer-fixture.md"
         removed_snippet.parent.mkdir(parents=True)
@@ -427,14 +420,45 @@ Body.
 """,
             encoding="utf-8",
         )
-        missing_snippet = tmp_path / "docs" / "project" / "concept" / "missing-deliverer-fixture.md"
-        missing_snippet.write_text(
+        foreign_snippet = tmp_path / "docs" / "project" / "concept" / "foreign-deliverer-fixture.md"
+        foreign_snippet.write_text(
             """---
-description: Delivered-by missing fixture.
-delivered_by: [missing-deliverer]
+description: Delivered-by foreign fixture.
+delivered_by: [foreign-deliverer]
 ---
 
-# Missing Deliverer Fixture — Concept
+# Foreign Deliverer Fixture — Concept
+
+## What
+
+Body.
+
+## Why
+
+Body.
+""",
+            encoding="utf-8",
+        )
+
+        clear_errors()
+        validate_all_snippets(tmp_path)
+
+        assert not get_errors()
+
+    @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
+    def test_full_run_reports_delivered_delivered_by_slug(self, tmp_path: Path) -> None:
+        # Only a deliverer resolving to a delivered todo is a real stale marker:
+        # delivery should have folded it.
+        _write_todos_db(tmp_path, {"delivered-deliverer": "delivered"})
+        snippet = tmp_path / "docs" / "project" / "concept" / "delivered-deliverer-fixture.md"
+        snippet.parent.mkdir(parents=True)
+        snippet.write_text(
+            """---
+description: Delivered-by delivered fixture.
+delivered_by: [delivered-deliverer]
+---
+
+# Delivered Deliverer Fixture — Concept
 
 ## What
 
@@ -453,15 +477,15 @@ Body.
         assert _normalized_findings(tmp_path) == [
             {
                 "code": "snippet_delivered_by_invalid_slug",
-                "path": "docs/project/concept/missing-deliverer-fixture.md",
-                "reason": "no such todo — check `telec history search missing-deliverer`; maybe authored ahead, renamed, or gone",
-                "slug": "missing-deliverer",
+                "path": "docs/project/concept/delivered-deliverer-fixture.md",
+                "reason": "todo is delivered, not in flight",
+                "slug": "delivered-deliverer",
             },
         ]
 
     @pytest.mark.spec("project/spec/feature/context/snippet-frontmatter-validation", "UC-SFV1b")
     def test_marker_liveness_ignores_code_examples_but_reports_bare_marker(self, tmp_path: Path) -> None:
-        _write_todos_db(tmp_path, {})
+        _write_todos_db(tmp_path, {"bare-owner": "delivered"})
         snippet = tmp_path / "docs" / "project" / "concept" / "planned-change-validation.md"
         snippet.parent.mkdir(parents=True)
         snippet.write_text(
@@ -490,7 +514,7 @@ Bare content.
             {
                 "code": "snippet_planned_marker_invalid_slug",
                 "path": "docs/project/concept/planned-change-validation.md",
-                "reason": "no such todo — check `telec history search bare-owner`; maybe authored ahead, renamed, or gone",
+                "reason": "todo is delivered, not in flight",
                 "slug": "bare-owner",
             }
         ]

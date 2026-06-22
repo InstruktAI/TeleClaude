@@ -25,13 +25,16 @@ there is no id-to-path check.
 Frontmatter shape is always validated: `delivered_by`, when present, must be a
 non-empty list of slug strings; absence means the snippet is current. No
 `status` field is validated or required. On a full `telec sync` run with the
-todos DB reachable, relationship state is additionally validated: every
-`delivered_by` slug and every in-body planned / planned-change marker slug must
-resolve to a retained todo — active, icebox, or soft-removed. A soft-removed
-todo is retained and reactivatable for its grace window (and its pending
-references self-heal when it is hard-purged), so it is tolerated; only a slug
-that resolves to a delivered or non-existent todo is reported. Scoped per-file
-runs and runs without a reachable todos DB validate shape only.
+todos DB reachable, relationship state is additionally validated against the
+**local** todos store: every `delivered_by` slug and every in-body planned /
+planned-change marker slug is checked. A slug resolving to a retained todo —
+active, icebox, or soft-removed — is tolerated. A slug that names **no todo in
+the local store is expected and not reported**: todos are machine-local, so a
+snippet carried in git routinely references an in-flight todo that lives on
+another computer, or one already hard-purged with its markers folded by
+maintenance. Only a slug resolving to a **delivered** todo is reported — a
+marker that delivery should have folded but did not. Scoped per-file runs and
+runs without a reachable todos DB validate shape only.
 
 ## Canonical fields
 
@@ -63,6 +66,11 @@ Scenario: delivered_by naming a soft-removed todo is tolerated
   And the todos DB reports "removed-slug" as removed (full run)
   When snippet validation runs
   Then no relationship finding is reported
+Scenario: delivered_by naming a slug absent from the local store is tolerated
+  Given a snippet with delivered_by ["unknown-slug"]
+  And the todos DB has no todo "unknown-slug" (full run)
+  When snippet validation runs
+  Then no relationship finding is reported
 Scenario: delivered_by relationship state is not checked on a scoped run
   Given a snippet with delivered_by ["already-delivered-slug"]
   And validation runs per-file without the todos DB
@@ -84,11 +92,11 @@ Then a planned-change marker finding is reported
 #### UC-SFV1b: In-body marker slug liveness is validated on full runs
 
 ```
-Given a snippet contains an in-body planned or planned-change marker whose slug resolves to a delivered or non-existent todo
+Given a snippet contains an in-body planned or planned-change marker whose slug resolves to a delivered todo
 And the todos DB is reachable (full run)
 When snippet validation runs
 Then a "snippet_planned_marker_invalid_slug" finding is reported for that slug
-Given the marker slug resolves to a retained todo (active, icebox, or soft-removed)
+Given the marker slug resolves to a retained todo (active, icebox, or soft-removed), or names no todo in the local store
 When snippet validation runs
 Then no marker-liveness finding is reported
 Given the marker appears only inside an inline code span or a fenced code block (a syntax example)

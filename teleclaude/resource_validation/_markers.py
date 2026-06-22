@@ -26,12 +26,12 @@ _PLANNED_CHANGE_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 # matters: ``planned-change`` precedes ``planned`` so the longer literal wins.
 _MARKER_RE = re.compile(r"<!--[ \t]*(?P<closing>/)?(?P<kind>planned-change|planned|change):(?P<slug>[^>\s]+)[ \t]*-->")
 
-# A pending in-body marker (or delivered_by entry) is an orphan only when its slug
-# resolves to nothing or to an already-delivered todo. A *removed* todo is retained
-# and reactivatable for its grace window, so its pending references are tolerated
-# here and self-heal when the todo is hard-purged (see docs_reconcile purge fold).
+# A pending in-body marker (or delivered_by entry) is reported only when its slug
+# resolves to an already-delivered todo — a marker delivery should have folded but
+# did not. An active/icebox/removed todo is in flight and tolerated; a slug absent
+# from the local store is expected and skipped, since todos are machine-local and a
+# git-carried snippet routinely names a todo that lives on another computer.
 _RESOLVABLE_TODO_STATUSES = frozenset({TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value, TodoStatus.REMOVED.value})
-_NO_SUCH_TODO_HINT = "no such todo — check `telec history search {slug}`; maybe authored ahead, renamed, or gone"
 
 
 def _inside_any_span(position: int, spans: list[tuple[int, int]]) -> bool:
@@ -82,10 +82,13 @@ def _validate_planned_marker_liveness(
             continue
         checked_slugs.add(slug)
         status = todo_status_map.get(slug)
-        if status in _RESOLVABLE_TODO_STATUSES:
+        # Unknown slug (no local row) is expected — todos are machine-local; only a
+        # delivered slug is a real stale marker (delivery should have folded it).
+        if status in _RESOLVABLE_TODO_STATUSES or status is None:
             continue
-        reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
-        _error("snippet_planned_marker_invalid_slug", path=str(path), slug=slug, reason=reason)
+        _error(
+            "snippet_planned_marker_invalid_slug", path=str(path), slug=slug, reason=f"todo is {status}, not in flight"
+        )
 
 
 def validate_planned_change_markers(

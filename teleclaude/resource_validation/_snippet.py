@@ -15,7 +15,6 @@ from teleclaude.constants import (
 from teleclaude.core.todos_db import todos_db_path
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.resource_validation._markers import (
-    _NO_SUCH_TODO_HINT,
     _RESOLVABLE_TODO_STATUSES,
     validate_marker_structure,
     validate_planned_change_markers,
@@ -236,21 +235,23 @@ def _validate_delivered_by_todo(
     meta: Mapping[str, object],
     todo_status_map: Mapping[str, str],
 ) -> None:
-    """Flag any delivered_by slug that does not resolve to a retained todo.
+    """Flag a delivered_by slug only when it resolves to a delivered todo.
 
-    A valid pending marker names a todo that still exists: active, icebox, or
-    soft-removed (retained and reactivatable for its grace window, and self-healed
-    at hard-purge). A delivered slug should have been folded on delivery; a slug
-    resolving to nothing is not auto-stale — investigate via
-    `telec history search <slug>` (authored-ahead, renamed, or gone).
+    A slug resolving to a retained todo (active, icebox, soft-removed) is in flight
+    and tolerated. A slug absent from the local store is expected and skipped —
+    todos are machine-local, so a git-carried snippet routinely names an in-flight
+    todo that lives on another computer (or one already hard-purged with its markers
+    folded by maintenance). Only a delivered slug is a real stale marker: delivery
+    should have folded it.
     """
     delivered_by = _as_str_list(meta.get("delivered_by"))
     for slug in delivered_by:
         status = todo_status_map.get(slug)
-        if status in _RESOLVABLE_TODO_STATUSES:
+        if status in _RESOLVABLE_TODO_STATUSES or status is None:
             continue
-        reason = _NO_SUCH_TODO_HINT.format(slug=slug) if status is None else f"todo is {status}, not in flight"
-        _error("snippet_delivered_by_invalid_slug", path=str(path), slug=slug, reason=reason)
+        _error(
+            "snippet_delivered_by_invalid_slug", path=str(path), slug=slug, reason=f"todo is {status}, not in flight"
+        )
 
 
 def validate_snippet(
