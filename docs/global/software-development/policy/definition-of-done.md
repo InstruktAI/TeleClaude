@@ -38,7 +38,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Removed scenarios' tests are deleted; no orphan bindings remain
 - [ ] No spec-bound assertion was weakened or deleted
 - [ ] Bug fixes bind a regression scenario reproducing the defect at a real boundary
-- [ ] Coverage tool reports no duplicate, orphan, or stale bindings for in-scope specs
+- [ ] No duplicate or orphan bindings for in-scope specs (reviewer-checked; `tools/lint/spec_coverage.py` may be run on demand to surface them)
 - [ ] Tests are deterministic (no flaky tests)
 - [ ] Test names are descriptive behavioral specifications
 - [ ] Tests verify behavior, not implementation

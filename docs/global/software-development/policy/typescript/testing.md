@@ -22,7 +22,9 @@ visibility: 'public'
 4. **Run through `package.json`** — invoke the declared `test` script (`npm test`), never `npx`
    directly, so the runner and its config have a single source of truth. Snapshots use vitest's
    built-in `toMatchSnapshot` / `toMatchInlineSnapshot` (`vitest -u` to update; CI never updates).
-5. **Coverage and drift** are reported by the spec-coverage tool against the scenario inventory.
+5. **Coverage** is checked at review against the scenario inventory; the on-demand
+   `tools/lint/spec_coverage.py` report parses Python bindings only, so TypeScript binding
+   completeness and drift are a review judgment.
 
 ## Rationale
 
@@ -36,7 +38,7 @@ visibility: 'public'
 
 ## Enforcement
 
-- The spec-coverage tool reports bound / unbound / duplicate / orphan / stale.
+- TypeScript spec bindings are checked at review; `tools/lint/spec_coverage.py` does not parse them.
 - The reviewer rejects agent-authored unit tests.
 - `tools/lint/forbid_ts_unit_tests.py` (pre-commit) structurally blocks agent-authored TypeScript
   unit tests, mirroring the Python ban's exit-code contract. It resolves the TypeScript surface from

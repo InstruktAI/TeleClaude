@@ -86,8 +86,8 @@ First read the software-development principles as listed in the software-develop
 1. All tasks in `implementation-plan.md` are `[x]`.
 2. Tests pass: `telec code test`.
 3. Every in-scope added or changed scenario is bound and passing; removed scenarios' tests are deleted.
-4. No spec-bound assertion weakened or deleted; the coverage tool reports no orphan or stale bindings
-   for in-scope specs.
+4. No spec-bound assertion weakened or deleted; no in-scope spec has orphan bindings (run
+   `tools/lint/spec_coverage.py` on demand to check).
 5. Lint passes: `telec code lint`.
 6. User-facing verification:
    - For browser-based frontend or web UI changes, run a Playwright smoke test in a real browser that exercises the changed path. Record the path exercised and the observed result in `quality-checklist.md` under the Build section.

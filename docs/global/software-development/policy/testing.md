@@ -1,5 +1,5 @@
 ---
-description: 'Testing doctrine: tests bind human-authored feature-spec scenarios; functional + smoke as the levels; coverage measured against the scenario inventory; spec-mirrored test files; spec-driven RED-GREEN delivery with drift detection. Language specifics live in the per-language testing policy.'
+description: 'Testing doctrine: tests bind human-authored feature-spec scenarios; functional + smoke as the levels; coverage measured against the scenario inventory; spec-mirrored test files; spec-driven RED-GREEN delivery; drift caught by the spec → test → code change process. Language specifics live in the per-language testing policy.'
 visibility: 'public'
 ---
 
@@ -63,30 +63,32 @@ visibility: 'public'
    source-to-test file mapping. Bind `@critical`-tagged scenarios first; the remainder is a measured
    backlog. A scenario bound by two tests is a duplicate; a binding to a non-existent scenario is an
    orphan; both fail the coverage check.
-9. **Each binding records its scenario's content fingerprint.** When a scenario's normalized Gherkin
-   changes, its binding is flagged stale until re-verified. This is the spec-drift guard: a behavior
-   contract cannot change without forcing its test to be revisited.
+9. **A changed scenario forces its bound test to be revisited.** When a scenario's Gherkin changes,
+   the bound test is re-derived from the new contract before the change is done (rule 10) — the
+   spec-drift guard. This is carried by the change process and the reviewer, not by an automated
+   fingerprint: a behavior contract cannot change without its test being revisited.
 
 ### The change process
 
 10. **Behavior changes start in the spec, then flow spec → test → code.** The Product Owner edits
-    the feature snippet; the lifecycle computes the scenario delta and hands the build agent exactly
-    what changed:
+    the feature snippet; the build agent reads the current spec against the existing bindings and
+    works the delta:
     - **Removed scenario** → delete its bound test, then the code it exclusively covered.
     - **Added scenario** → bind it (write the test), confirm it fails, implement, confirm it passes.
     - **Changed scenario** → update the bound test to the new contract, confirm it fails against
       current code, update the code, confirm it passes.
-      The agent works from the delta it is handed; it does not re-derive what to test.
+      The agent derives the delta by reading the spec against what is already bound; the reviewer
+      checks the delta was honored.
 
 ### Spec structure (so scenarios have stable identity)
 
 11. A feature spec's scenarios live under a `### Use cases` heading. A scenario with a stable id is a
     `#### UC-<area><n>:` subsection containing exactly one fenced Gherkin block; ids are unique within
     a spec. A Gherkin block not yet under a `#### UC-` header is an **anonymous scenario** — the
-    measured id-assignment backlog: the validator reports it, it does not reject it. The validator
-    enforces the structure of what exists (the `### Use cases` section, well-formed and unique
-    `#### UC-` ids, one Gherkin block per id, no orphan bindings) — anonymous scenarios are the
-    backlog worked down as scenarios get bound, never a hard gate failure.
+    id-assignment backlog, worked down as scenarios get bound. This structure is upheld by the
+    authoring discipline and the reviewer; `tools/lint/spec_coverage.py` is an on-demand report that
+    surfaces the `#### UC-` inventory, anonymous scenarios, and orphan/duplicate bindings — not a
+    hard gate.
 
 ### Assertion craft (all languages)
 
@@ -145,10 +147,11 @@ visibility: 'public'
 
 ## Enforcement
 
-- The coverage tool reports bound / unbound / duplicate / orphan / stale against the scenario
-  inventory.
-- A spec-structure validator (run in `telec sync` and pre-commit) rejects non-conforming feature
-  specs.
+- `tools/lint/spec_coverage.py` is an on-demand report (not a gate): bound / unbound / duplicate /
+  orphan against the scenario inventory. It parses Python `@pytest.mark.spec` bindings; bindings in
+  other languages are checked at review.
+- Spec structure (the `### Use cases` section, well-formed unique `#### UC-` ids, one Gherkin block
+  per id) and binding completeness are upheld at review, not by an automated gate.
 - Per-language checks enforce the unit-test stance for each language.
 - The reviewer judges binding honesty: does the test drive the real system for its scenario without
   mocking the thing under test.

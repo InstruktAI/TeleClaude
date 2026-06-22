@@ -48,8 +48,9 @@ visibility: 'public'
    wrapped in harness code.
 5. **Snapshots use `syrupy`** (`uv run pytest --snapshot-update`; CI never updates snapshots). The
    string-assertion paradigm is the generic policy's.
-6. **Coverage and drift** are reported by `tools/lint/spec_coverage.py` against the scenario
-   inventory.
+6. **Coverage** is reported on demand by `tools/lint/spec_coverage.py` against the scenario
+   inventory; drift is handled by the spec → test → code change process (generic policy rule 10),
+   not by an automated detector.
 
 ## Rationale
 
@@ -64,7 +65,7 @@ visibility: 'public'
 ## Enforcement
 
 - `tools/lint/forbid_unit_tests.py` (pre-commit) blocks the `tests/unit/` path only — it is a path guard, not a unit-test detector. Functional-versus-unit structure anywhere else is enforced at review against `software-development/concept/functional-test-boundary`.
-- `tools/lint/spec_coverage.py` reports bound / unbound / duplicate / orphan / stale.
+- `tools/lint/spec_coverage.py` is an on-demand report of bound / unbound / duplicate / orphan; it is not wired into a gate.
 
 ## Exceptions
 
