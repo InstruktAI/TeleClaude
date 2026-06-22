@@ -38,7 +38,12 @@ resolved identity; the same gate applies to any phase-3 follow-up fetch.
 ```
 Given a logged-in operator with the default terminal role
 When they run telec docs index --areas policy --domains software-development
+<!-- planned-change:fix-artifact-doc-ordering -->
 Then phase 1 returns matching snippet metadata sorted by scope then ID
+<!-- change:fix-artifact-doc-ordering -->
+Then phase 1 returns matching snippet metadata sorted by scope, then taxonomy type general-to-specific (principle, concept, policy, procedure, design, spec, adr), then ID
+<!-- /planned-change:fix-artifact-doc-ordering -->
+
 And each entry shows its ID and one-line description
 And pending snippets (those with delivered_by) append " (delivered by: slug1,slug2)" to their line
 And current snippets (no delivered_by) render with no suffix
