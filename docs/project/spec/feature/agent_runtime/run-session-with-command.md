@@ -131,7 +131,7 @@ And dispatching an orchestrator-role command is still rejected, because the inte
 ```
 Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
 And a driver-start request that would bind slug X — a run-session request whose normalized command is a slug-bound lifecycle command resolving to X, a generic session-create request on a "trees/X" worktree, or an operator work/prepare operation on X
-And the request originates from a session that is neither the holder nor a sanctioned dispatcher spawn
+And the request originates from a session other than the holder
 When the shared driver-start dedup check runs before the session is created
 Then the request is refused with a driver-start conflict
 And no second session is created for X
@@ -147,9 +147,17 @@ Then the caller is exempt and the session is created
 
 ```
 Given a driver-start request that would bind slug X
-And a dispatch claim for X is held (the autonomous runner or a dispatcher is mid-spawn for X)
+And no live driver yet holds X (the autonomous runner is mid-spawn establishing the first driver, before active_runner is written and before the orchestrator session exists)
 When the shared driver-start dedup check runs
-Then the held claim marks the spawn as sanctioned and the session is created
+Then no live-holder conflict is found and the session is created
+```
+
+```
+Given slug X already has a live holder
+And a dispatch claim for X is still held (retained briefly after the holder's active_runner was written)
+And a second driver-start request for X arrives from a session other than the holder
+When the shared driver-start dedup check runs
+Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
 ```
 
 <!-- /planned:guard-duplicate-driver-start -->
