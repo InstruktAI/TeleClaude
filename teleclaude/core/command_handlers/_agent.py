@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
-from teleclaude.core.agent_readiness import wait_for_agent_ready
+from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -42,54 +42,6 @@ def _get_session_profile(session: Session) -> str:
     if session.human_role == HUMAN_ROLE_ADMIN:
         return "default"
     return "restricted"
-
-
-async def _await_restart_readiness(
-    *,
-    agent: str,
-    session: Session,
-    ready_future: asyncio.Future[None],
-) -> None:
-    """Wait for an agent restart to become ready: race pane-quiet vs native hook.
-
-    Uniform across every agent. CLIs differ in readiness signalling — Claude
-    fires a reliable AGENT_READY hook, Codex fires it late, agy never fires one —
-    so the `wait_for_agent_ready` pane-quiet detector always races the hook
-    subscription and the gate opens on whichever wins.
-
-    Raises TimeoutError when neither detector wins within
-    ``AGENT_PROMPT_READY_TIMEOUT_S``.
-    """
-    pane_task = asyncio.create_task(
-        wait_for_agent_ready(
-            agent,
-            session,
-            AGENT_PROMPT_READY_TIMEOUT_S,
-            _RESTART_QUIET_S,
-        ),
-        name=f"agent-restart-readiness-pane:{session.session_id}",
-    )
-    # Shield ready_future from cancellation when hook_task is cancelled.
-    hook_task = asyncio.create_task(
-        asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S),
-        name=f"agent-restart-readiness-hook:{session.session_id}",
-    )
-    try:
-        done, _pending = await asyncio.wait(
-            {pane_task, hook_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-    finally:
-        for task in (pane_task, hook_task):
-            if not task.done():
-                task.cancel()
-    hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
-    pane_won = False
-    if pane_task in done and not pane_task.cancelled() and pane_task.exception() is None:
-        ready, _tail = pane_task.result()
-        pane_won = ready
-    if not (hook_won or pane_won):
-        raise TimeoutError(f"agent restart readiness: pane and hook both failed within timeout (agent={agent})")
 
 
 @with_session
@@ -432,10 +384,18 @@ async def agent_restart(
         async def _inject_after_restart() -> None:
             try:
                 try:
-                    await _await_restart_readiness(
-                        agent=target_agent,
+                    # Shared start/restart readiness combiner: races the pane-quiet
+                    # detector against the native hook and synthesizes AGENT_READY on
+                    # a pane-win (start-path parity). The gate winner is logged inside
+                    # the helper.
+                    gate_winner = await await_agent_readiness(
+                        agent_name=target_agent,
                         session=session,
+                        session_id=session.session_id,
                         ready_future=ready_future,
+                        coordinator=client.agent_coordinator,
+                        quiet_s=_RESTART_QUIET_S,
+                        timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
                     )
                 except TimeoutError:
                     logger.warning(
@@ -455,10 +415,45 @@ async def agent_restart(
                     return
             finally:
                 event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+
+            # Start-path parity: confirm the process is live before injecting.
+            if not await tmux_io.is_process_running(session):
+                logger.error(
+                    "agent_restart: process not running after readiness session=%s — continuation stimulus not sent",
+                    session.session_id,
+                )
+                await client.send_message(
+                    session,
+                    "Agent process exited after restart before the continuation stimulus could be sent; session kept alive for inspection.",
+                )
+                return
+
             # The agent has full context via --resume; it just needs a stimulus.
-            await tmux_bridge.send_keys_existing_tmux(
-                session_name=session.tmux_session_name or "",
-                text=RESTART_CONTINUATION_STIMULUS,
+            logger.info(
+                "agent_restart: sending continuation stimulus session=%s gate=%s",
+                session.session_id,
+                gate_winner.value,
+            )
+            delivered = await tmux_io.inject_user_turn(
+                session,
+                RESTART_CONTINUATION_STIMULUS,
+                active_agent=target_agent,
+            )
+            if delivered:
+                logger.info("agent_restart: continuation stimulus delivered session=%s", session.session_id)
+                return
+            logger.warning(
+                "agent_restart: continuation stimulus not confirmed after retries session=%s",
+                session.session_id,
+            )
+            event_bus.emit(
+                TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
+                SessionLifecycleContext(session_id=session.session_id),
+                visibility=EventVisibility.LOCAL,
+            )
+            await client.send_message(
+                session,
+                "Restart continuation stimulus could not be confirmed delivered. Session kept alive for inspection.",
             )
 
         asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")

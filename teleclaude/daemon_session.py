@@ -15,14 +15,13 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
-from teleclaude.core.agent_readiness import wait_for_agent_ready
+from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
-    AgentSessionStartPayload,
     ErrorEventContext,
     SessionLifecycleContext,
     SessionStatusContext,
@@ -456,81 +455,15 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         Raises TimeoutError if both detectors fail within `AGENT_PROMPT_READY_TIMEOUT_S`.
         """
-        pane_task = asyncio.create_task(
-            wait_for_agent_ready(
-                agent_name,
-                session,
-                AGENT_PROMPT_READY_TIMEOUT_S,
-                AGENT_START_STABILIZE_QUIET_S,
-            ),
-            name=f"agent-start-readiness-pane:{session_id}",
-        )
-        # Shield ready_future from cancellation: when pane_task wins and we cancel
-        # hook_task in the finally, `asyncio.wait_for` would otherwise cancel the
-        # underlying ready_future too, which then breaks our post-synthesis re-wait.
-        hook_task = asyncio.create_task(
-            asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S),
-            name=f"agent-start-readiness-hook:{session_id}",
-        )
-        try:
-            done, _pending = await asyncio.wait(
-                {pane_task, hook_task},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-        finally:
-            for task in (pane_task, hook_task):
-                if not task.done():
-                    task.cancel()
-
-        hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
-        if hook_won:
-            logger.debug("agent readiness: native hook won the race agent=%s session=%s", agent_name, session_id)
-            return
-
-        pane_won = False
-        if pane_task in done and not pane_task.cancelled() and pane_task.exception() is None:
-            ready, _tail = pane_task.result()
-            pane_won = ready
-            logger.debug(
-                "agent readiness: pane task completed ready=%s agent=%s session=%s",
-                ready,
-                agent_name,
-                session_id,
-            )
-
-        if not pane_won:
-            raise TimeoutError(f"agent readiness: pane and hook both failed within timeout (agent={agent_name})")
-
-        logger.info(
-            "Synthetic session_start emitted via pane-quiet detector agent=%s session=%s",
-            agent_name,
-            session_id,
-        )
-        synthetic_payload = AgentSessionStartPayload(
-            raw={"cwd": session.project_path or "", "source": "startup"},
-            transcript_path=None,
-            session_id=None,
-        )
-        synthetic_ctx = AgentEventContext(
+        await await_agent_readiness(
+            agent_name=agent_name,
+            session=session,
             session_id=session_id,
-            data=synthetic_payload,
-            event_type=AgentHookEvents.AGENT_SESSION_START,
+            ready_future=ready_future,
+            coordinator=self.agent_coordinator,
+            quiet_s=AGENT_START_STABILIZE_QUIET_S,
+            timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
         )
-        await self.agent_coordinator.handle_session_start(synthetic_ctx)
-        # Wait briefly for the bootstrap subscriber (set up in _handle_agent_then_message)
-        # to observe the AGENT_READY emitted by handle_session_start. Catch both
-        # TimeoutError (no emission) and CancelledError (future was previously
-        # cancelled by a cancelled wrapper) and proceed — pane readiness is verified.
-        try:
-            await asyncio.wait_for(asyncio.shield(ready_future), timeout=2.0)
-            logger.debug("agent readiness: synthetic AGENT_READY observed agent=%s session=%s", agent_name, session_id)
-        except (TimeoutError, asyncio.CancelledError) as exc:
-            logger.debug(
-                "agent readiness: synthetic AGENT_READY not observed (%s) — proceeding agent=%s session=%s",
-                type(exc).__name__,
-                agent_name,
-                session_id,
-            )
 
     async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
         output = await tmux_bridge.capture_pane(session.tmux_session_name)

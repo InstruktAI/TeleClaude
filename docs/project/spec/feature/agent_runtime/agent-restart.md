@@ -61,46 +61,39 @@ And the agent CLI replays its own transcript on startup so the resumed agent obs
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
 
-<!-- planned-change:restart-stimulus-lost-to-premature-readiness -->
-
-#### Self-restart and the continuation stimulus
+#### UC-AR1: Self-restart delivers the continuation stimulus on a confirmed turn start
 
 ```
 Given the request carries the self-restart flag
 When the handler enters the relaunch phase
 Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the agent's session start event can fire before a post-hoc subscriber would attach)
-And after the relaunch, it awaits readiness for the session within a bounded timeout
-And on readiness, it injects a fixed continuation stimulus ("Session restarted. Continue pending work or remain idle.") into the host pane as a user-turn message
-And on readiness timeout, it emits a readiness-timeout event and posts a message to the user but does NOT inject the stimulus
-And the readiness subscription is released in a finalizer
-```
-
-```
-Given the request does NOT set the self-restart flag
-When the handler enters the relaunch phase
-Then the relaunch is issued without subscribing to the readiness signal
-And no continuation stimulus is injected
-And the resumed agent acts on whatever its replayed transcript dictates
-```
-
-<!-- change:restart-stimulus-lost-to-premature-readiness -->
-
-#### UC-AR1: Self-restart continuation stimulus
-
-```
-Given the request carries the self-restart flag
-When the handler enters the relaunch phase
-Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the agent's session start event can fire before a post-hoc subscriber would attach)
-And after the relaunch, it awaits readiness for the session within a bounded timeout
+And after the relaunch, it awaits readiness for the session within a bounded timeout, releasing the subscription in a finalizer
 And on readiness, it injects the fixed continuation stimulus ("Session restarted. Continue pending work or remain idle.") into the host pane as a user-turn message
-And it confirms the resumed agent actually started a turn from that stimulus, observed through the agent-activity signal the runtime already tracks
-And when no turn start is observed, it idempotently re-injects the stimulus (clearing the input line, re-pasting, and submitting, so a landed-but-unsubmitted paste is not duplicated), bounded by a retry cap
-And on retry exhaustion it reports failure and keeps the session alive, never silently dropping the stimulus
+And it confirms the resumed agent started a turn from that stimulus, observed through the agent-activity signal the runtime already tracks
+And when the turn start is confirmed on the first attempt, the stimulus is delivered exactly once with no re-injection
 And on readiness timeout, it emits a readiness-timeout event and posts a message to the user but does NOT inject the stimulus
-And the readiness subscription is released in a finalizer
 ```
 
-#### UC-AR2: Non-self restart skips the continuation stimulus
+#### UC-AR2: Self-restart re-injects idempotently when the turn start is deferred
+
+```
+Given a self-restart has injected the continuation stimulus but no turn start is observed within the per-attempt window
+When the handler retries delivery
+Then it clears the input line, re-pastes the stimulus, and resubmits, so a landed-but-unsubmitted paste is not duplicated
+And the retries are bounded by a retry cap
+And once a turn start is observed, exactly one turn has started (no double-start)
+```
+
+#### UC-AR3: Self-restart fails loud on retry exhaustion
+
+```
+Given a self-restart's continuation stimulus is repeatedly swallowed so no turn start is ever observed
+When the retry cap is exhausted
+Then the handler does NOT report the stimulus as delivered on the input box emptying alone
+And it reports failure and keeps the session alive, never silently dropping the stimulus
+```
+
+#### UC-AR4: Non-self restart skips the continuation stimulus
 
 ```
 Given the request does NOT set the self-restart flag
@@ -109,8 +102,6 @@ Then the relaunch is issued without subscribing to the readiness signal
 And no continuation stimulus is injected
 And the resumed agent acts on whatever its replayed transcript dictates
 ```
-
-<!-- /planned-change:restart-stimulus-lost-to-premature-readiness -->
 
 #### Closed / detached / headless recovery
 

@@ -10,6 +10,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import AgentActivityEvent, AgentHookEvents, TeleClaudeEvents
 from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
@@ -17,6 +19,15 @@ from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
+
+# Confirmed user-turn delivery. A single blind paste+submit is lost when the
+# readiness race resolves before the agent is listening (swallowed paste) or the
+# submit Enter lands inside the bracketed-paste span (text sits unsubmitted). The
+# wrapper below observes a positive turn-start signal — the `user_prompt_submit`
+# agent-activity event the runtime already tracks — and idempotently re-injects
+# until the turn starts or the cap is reached.
+INJECT_TURN_START_TIMEOUT_S = 8.0
+INJECT_MAX_ATTEMPTS = 3
 
 
 async def _revive_headless_and_send(
@@ -122,6 +133,78 @@ async def process_text(
         active_agent=active_agent,
         working_dir=working_dir,
     )
+
+
+async def inject_user_turn(
+    session: Session,
+    text: str,
+    *,
+    active_agent: str | None = None,
+) -> bool:
+    """Inject a user-turn message and confirm the agent actually started a turn.
+
+    Pastes ``text`` via the shared submit path, then waits for a positive
+    turn-start signal — the ``user_prompt_submit`` agent-activity event the
+    runtime already emits when the agent accepts a turn. "Input left the box" is
+    NOT treated as success: a swallowed paste also empties the input line. When no
+    turn start is observed within the per-attempt window, the input line is
+    cleared (so a landed-but-unsubmitted paste is not duplicated) and the text is
+    re-pasted and resubmitted, bounded by ``INJECT_MAX_ATTEMPTS``.
+
+    Returns True when a turn start is confirmed, False when the retry cap is
+    exhausted with no started turn (the caller fails loudly — no silent drop).
+    """
+    tmux_name = session.tmux_session_name or ""
+    loop = asyncio.get_running_loop()
+    turn_started: asyncio.Future[None] = loop.create_future()
+
+    async def _on_activity(_event_type: str, ctx: AgentActivityEvent) -> None:
+        if (
+            ctx.session_id == session.session_id
+            and ctx.event_type == AgentHookEvents.USER_PROMPT_SUBMIT
+            and not turn_started.done()
+        ):
+            turn_started.set_result(None)
+
+    handler = event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, _on_activity)
+    try:
+        for attempt in range(1, INJECT_MAX_ATTEMPTS + 1):
+            if attempt > 1:
+                # Clear any landed-but-unsubmitted paste before re-injecting so a
+                # swallowed-Enter does not accumulate duplicated content.
+                await tmux_bridge.send_ctrl_key(tmux_name, "u")
+            sent = await tmux_bridge.send_keys_existing_tmux(
+                session_name=tmux_name,
+                text=text,
+                active_agent=active_agent,
+            )
+            if not sent:
+                logger.warning(
+                    "inject_user_turn: paste failed session=%s attempt=%d/%d",
+                    session.session_id,
+                    attempt,
+                    INJECT_MAX_ATTEMPTS,
+                )
+            try:
+                await asyncio.wait_for(asyncio.shield(turn_started), timeout=INJECT_TURN_START_TIMEOUT_S)
+            except TimeoutError:
+                logger.warning(
+                    "inject_user_turn: no turn start session=%s attempt=%d/%d",
+                    session.session_id,
+                    attempt,
+                    INJECT_MAX_ATTEMPTS,
+                )
+                continue
+            logger.info(
+                "inject_user_turn: turn started session=%s attempt=%d/%d",
+                session.session_id,
+                attempt,
+                INJECT_MAX_ATTEMPTS,
+            )
+            return True
+        return False
+    finally:
+        event_bus.unsubscribe(TeleClaudeEvents.AGENT_ACTIVITY, handler)
 
 
 async def send_escape(session: Session) -> bool:
