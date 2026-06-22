@@ -45,15 +45,15 @@ Document structure:
 
 ### Required H2 sections per taxonomy
 
-| Taxonomy  | Required sections                                                      |
-| --------- | ---------------------------------------------------------------------- |
-| principle | Principle, Rationale, Implications, Tensions                           |
-| concept   | What, Why                                                              |
-| policy    | Rules, Rationale, Scope, Enforcement, Exceptions                       |
-| procedure | Goal, Preconditions, Steps, Outputs, Recovery                          |
-| design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes      |
-| spec      | What it is, Canonical fields (optional: Allowed values, Known caveats) |
-| adr       | Context, Decision, Consequences (optional: Alternatives Considered)    |
+| Taxonomy  | Required sections                                                           |
+| --------- | --------------------------------------------------------------------------- |
+| principle | Principle, Rationale, Implications, Tensions                                |
+| concept   | What, Why                                                                   |
+| policy    | Rules, Rationale, Scope, Enforcement, Exceptions                            |
+| procedure | Goal, Preconditions, Steps, Outputs, Recovery                               |
+| design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes           |
+| spec      | What it is, Canonical fields (optional: Allowed values, Known caveats)      |
+| adr       | Context, Decision, Consequences (optional: Alternatives Considered, Status) |
 
 Procedure sections may also include optional: `Pre-completion checklist`, `Report format`, `Required tools`, `Discipline`.
 
@@ -72,7 +72,7 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
 - `<stem>.<slug>.md` (sibling to any `<stem>.md`) — a **companion**: the complete next version of `<stem>.md`, where `<slug>` is the delivering todo. A full snippet that shares the parent's derived `id` (the validator detects it by the sibling filename and exempts the id↔path / id-collision checks). The link lives entirely in the filename, the index never lists the companion, and default readers see the parent. On delivery the companion **replaces** the parent file and is deleted. Bounded additions use in-body `&lt;!-- planned:slug --&gt;` blocks; bounded replacements and removals use in-body `&lt;!-- planned-change:slug --&gt;` blocks. All three live-parent carriers contribute to the parent's `(superseded by: <slugs>)` index suffix.
-- `docs/project/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date` and `number` are required additional frontmatter fields. ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`. An `adr` snippet carries no `delivered_by`, no `supersedes`, and no companion file — ADRs sit outside the pending/delivery machinery and do not cross-reference each other via frontmatter; a backward in-prose reference to an earlier ADR is the only inter-ADR link.
+- `docs/project/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date` and `number` are required additional frontmatter fields. ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`. An `adr` snippet carries no `delivered_by`, no `supersedes`, and no companion file — ADRs sit outside the pending/delivery machinery and do not cross-reference each other via frontmatter. The ADR body references earlier ADRs only (a backward in-prose reference); the one forward link is the optional `## Status` section's supersession pointer (`Superseded by ADR-NNNN` / `Superseded in part by ADR-NNNN` / `Deprecated`), added to an existing ADR when a later one supersedes it. `## Status` is the only part of an ADR that may change after authoring; the body is immutable.
 - **In-body marker grammar.** The `planned`, `planned-change`, and `change` markers are **whole-line**: each occupies its own line, with only whitespace before its opening `<!--` and after its closing `-->`. Markers **never nest** — an in-body block holds only plain content between its own markers, never another `planned`/`planned-change` block, and two carriers never overlap. `telec sync` rejects inline (mid-prose) and nested markers as malformed, so every accepted marker is one the delivery fold can resolve.
 - `docs/project/baseline.md` — project baseline manifest (curated required reads).
 

@@ -100,11 +100,11 @@ broken:
 - The body references no work — no todo, slug, `delivered_by`, delivery, or TBD.
 - Decision is stated as a decision, not a question or a narrative.
 - Consequences cover both directions (positive and negative).
-- No prior ADR was modified.
+- No prior ADR's body was modified (the only permitted change to an existing ADR is setting its `## Status` supersession pointer).
 
 ## Discipline
 
-Two failure modes dominate. The first is **authoring an ADR as something it is not** — a work log that names todos, slugs, or deliveries, or a node in a cross-linked graph that points forward to decisions not yet made. An ADR is one decision, frozen in time, looking only backward (see § What an ADR is); when the impulse arises to cite a sibling ADR or a delivering slug in the body, that is the warning sign. The second is **dishonesty about alternatives and consequences**: agents writing after the fact construct retroactive justifications — listing alternatives only to dismiss them, naming only positive consequences. Future agents need an honest record so they can fairly re-evaluate the decision when context changes. If the decision was made under pressure, say so; if the chosen path has known costs, name them. Write for the future agent who does not have the present's context, not for self-defense.
+Two failure modes dominate. The first is **authoring an ADR as something it is not** — a work log that names todos, slugs, or deliveries, or a node in a cross-linked graph that points forward to decisions not yet made. An ADR is one decision whose body is frozen in time, looking only backward (see § What an ADR is); the lone forward link is the `## Status` supersession pointer added later, never a body citation. When the impulse arises to cite a sibling ADR or a delivering slug in the body, that is the warning sign. The second is **dishonesty about alternatives and consequences**: agents writing after the fact construct retroactive justifications — listing alternatives only to dismiss them, naming only positive consequences. Future agents need an honest record so they can fairly re-evaluate the decision when context changes. If the decision was made under pressure, say so; if the chosen path has known costs, name them. Write for the future agent who does not have the present's context, not for self-defense.
 
 ## Recovery
 
