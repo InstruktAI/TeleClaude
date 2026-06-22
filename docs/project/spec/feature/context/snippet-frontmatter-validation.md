@@ -1,7 +1,6 @@
 ---
 description: 'Schema, path, ref, and section-shape validation enforced on every taxonomy source snippet during telec sync.'
 visibility: 'public'
-delivered_by: [host-scoped-pending-markers]
 ---
 
 # Snippet Frontmatter Validation — Spec

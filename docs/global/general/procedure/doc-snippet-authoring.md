@@ -2,7 +2,6 @@
 activation_trigger: 'Use when creating or updating documentation snippets'
 description: 'Author documentation snippets according to the taxonomy, schema and policies. Read this as soon as doc authoring is required, before writing any snippet.'
 visibility: 'public'
-delivered_by: [host-scoped-pending-markers]
 ---
 
 # Snippet Authoring — Procedure

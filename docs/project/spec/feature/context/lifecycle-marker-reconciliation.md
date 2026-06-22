@@ -1,7 +1,6 @@
 ---
 description: 'Integration-time clearing of delivered_by slugs from pending snippets when a delivery slug reaches delivered todo status.'
 visibility: 'public'
-delivered_by: [host-scoped-pending-markers]
 ---
 
 # Lifecycle Marker Reconciliation — Spec
