@@ -192,6 +192,116 @@ def _phase2_output(project_root: Path, *, target_slug: str | None) -> str:
     )
 
 
+@pytest.mark.spec(_SPEC, "UC-3PR1")
+def test_phase1_orders_by_taxonomy_type_then_scope_then_id(tmp_path: Path) -> None:
+    """Phase-1 lists every snippet in taxonomy general-to-specific order, scope then ID within a type."""
+
+    def _meta(snippet_id: str, snippet_type: str, scope: str) -> SnippetMeta:
+        return SnippetMeta(
+            snippet_id=snippet_id,
+            description=f"{snippet_id} description.",
+            snippet_type=snippet_type,
+            scope=scope,
+            domain="general" if scope == "global" else "project",
+            path=tmp_path / f"{snippet_id.replace('/', '_')}.md",
+        )
+
+    # Deliberately unsorted input spanning differing types and scopes, including
+    # two same-(type, scope) entries to pin the ID tiebreak.
+    principle_global_a = _meta("general/principle/aaa", "principle", "global")
+    principle_global_b = _meta("general/principle/bbb", "principle", "global")
+    principle_project = _meta("project/principle/zzz", "principle", "project")
+    concept_global = _meta("general/concept/ccc", "concept", "global")
+    policy_project = _meta("project/policy/ppp", "policy", "project")
+    spec_global = _meta("general/spec/sss", "spec", "global")
+    unordered = [
+        spec_global,
+        policy_project,
+        principle_project,
+        concept_global,
+        principle_global_b,
+        principle_global_a,
+    ]
+
+    output = _build_phase1_output(
+        unordered,
+        [],
+        areas=[],
+        test_agent=None,
+        test_mode=None,
+        test_request=None,
+        test_csv_path=None,
+    )
+
+    expected_order = [
+        principle_global_a,
+        principle_global_b,
+        principle_project,
+        concept_global,
+        policy_project,
+        spec_global,
+    ]
+    positions = [output.index(snippet.snippet_id) for snippet in expected_order]
+    assert positions == sorted(positions)
+
+
+@pytest.mark.spec(_SPEC, "UC-3PR1")
+def test_phase2_orders_resolved_snippets_by_taxonomy_type_then_id(tmp_path: Path) -> None:
+    """Phase-2 renders the resolved snippets in taxonomy general-to-specific order, ID within a type."""
+    docs_dir = tmp_path / "docs" / "project"
+
+    def _entry(snippet_id: str, snippet_type: str) -> _IndexEntry:
+        snippet_path = docs_dir / f"{snippet_id.replace('/', '_')}.md"
+        snippet_path.parent.mkdir(parents=True, exist_ok=True)
+        snippet_path.write_text(
+            f"---\nid: {snippet_id}\ntype: {snippet_type}\ndomain: project\nscope: project\n"
+            f"description: {snippet_id} snippet.\n---\n# {snippet_id}\n\nBody.\n",
+            encoding="utf-8",
+        )
+        return {
+            "id": snippet_id,
+            "description": f"{snippet_id} snippet.",
+            "type": snippet_type,
+            "scope": "project",
+            "domain": "project",
+            "visibility": "public",
+            "path": str(snippet_path.relative_to(tmp_path)),
+        }
+
+    # Two specs pin the ID tiebreak within a single taxonomy type.
+    entries = [
+        _entry("project/spec/feature/context/beta", "spec"),
+        _entry("project/principle/core", "principle"),
+        _entry("project/policy/rules", "policy"),
+        _entry("project/concept/overview", "concept"),
+        _entry("project/spec/feature/context/alpha", "spec"),
+    ]
+    index_path = docs_dir / "index.yaml"
+    index_path.write_text(
+        json.dumps({"project_root": str(tmp_path), "snippets": entries}, indent=2),
+        encoding="utf-8",
+    )
+
+    output = build_context_output(
+        areas=[],
+        project_root=tmp_path,
+        snippet_ids=[entry["id"] for entry in entries],
+        target_slug=None,
+    )
+
+    # Each id is echoed in the "# Requested:" header and again in its rendered
+    # block; rindex locates the body occurrence, so positions track block order.
+    expected_order = [
+        "project/principle/core",
+        "project/concept/overview",
+        "project/policy/rules",
+        "project/spec/feature/context/alpha",
+        "project/spec/feature/context/beta",
+    ]
+    positions = [output.rindex(snippet_id) for snippet_id in expected_order]
+    assert positions == sorted(positions)
+
+
 @pytest.mark.spec(_SPEC, "UC-3PR2")
 def test_phase2_resolves_planned_change_lens_and_default_awareness(tmp_path: Path, snapshot: object) -> None:
     snippet_path = tmp_path / "docs" / "project" / "spec" / "feature" / "context" / "target-lens.md"

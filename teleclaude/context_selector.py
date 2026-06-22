@@ -446,7 +446,7 @@ def _resolve_requires(
             if req_snippet:
                 stack.append(req_snippet)
 
-    resolved.sort(key=lambda s: (_scope_rank(s.scope), s.snippet_id))
+    resolved.sort(key=lambda s: (TAXONOMY_TYPES.index(s.snippet_type), _scope_rank(s.scope), s.snippet_id))
     return resolved
 
 
@@ -635,7 +635,7 @@ def _build_phase1_output(
     ]
     ordered = sorted(
         snippets_for_selection,
-        key=lambda s: (_scope_rank(s.scope), s.snippet_id),
+        key=lambda s: (TAXONOMY_TYPES.index(s.snippet_type), _scope_rank(s.scope), s.snippet_id),
     )
     _write_test_output(
         phase="phase1",
