@@ -58,8 +58,13 @@ LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = [
     LifecyclePhase.DIAGNOSE,
     LifecyclePhase.PLAN_DRAFTING,
     LifecyclePhase.PLAN_REVIEW,
-    LifecyclePhase.PREPARED,
+    # BLOCKED is a prepare-lane phase (unresolved blockers / pending drift), so it
+    # orders before PREPARED. The prepare/work lane boundary is keyed off
+    # ``index >= PREPARED``; placing BLOCKED below PREPARED keeps it in the prepare
+    # lane (dispatchable, not ready-for-work) instead of being misread as a
+    # past-prepared work phase that no dispatcher will advance.
     LifecyclePhase.BLOCKED,
+    LifecyclePhase.PREPARED,
     LifecyclePhase.BUILD_STARTED,
     LifecyclePhase.BUILD_COMPLETE,
     LifecyclePhase.REVIEW_CHANGES_REQUESTED,

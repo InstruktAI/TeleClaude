@@ -322,6 +322,37 @@ def test_preparation_runs_regardless_of_autostart_only_work_is_gated() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_blocked_dispatches_to_prepare_not_work() -> None:
+    """BLOCKED is a prepare-lane phase: it must dispatch to PREPARE so the prepare
+    machine can re-derive and clear the blockers — even with autostart off and a
+    dependency that is prepared but not yet delivered. The prepare lane keys deps
+    off prepared (met here), so it is neither policy-disabled (work-lane gate) nor
+    dependency-blocked (work-lane delivered-dep gate)."""
+    decision = decide_dispatches(
+        {
+            "blocked-a": RunnerTodo(
+                slug="blocked-a",
+                status="active",
+                kind=_FEATURE,
+                lifecycle_phase=LifecyclePhase.BLOCKED.value,
+                hold=False,
+                active_runner=None,
+                after=("dep-a",),
+            ),
+        },
+        prepared_slugs={"dep-a"},
+        delivered_slugs=set(),
+        autostart={_FEATURE: False, _CHANGE: False, "bug": False, _TASK: False},
+        live_session_ids=set(),
+    )
+
+    lanes = {intent.slug: intent.lane for intent in decision.intents}
+    assert lanes["blocked-a"] == RunnerLane.PREPARE
+    skipped = [slug for slugs in decision.skips.values() for slug in slugs]
+    assert "blocked-a" not in skipped
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
 def test_task_without_plan_dispatches_to_task_prepare() -> None:
     decision = decide_dispatches(
         {
