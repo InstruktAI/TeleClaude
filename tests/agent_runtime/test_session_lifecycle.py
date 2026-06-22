@@ -780,6 +780,154 @@ async def test_delete_self_close_by_agent_does_not_hold(
     close.assert_awaited_once_with(CloseSessionCommand(session_id=session_id))
 
 
+_SELF_END_SPEC = "project/spec/feature/identity/self-end-authorization-bypass"
+
+
+@pytest.mark.spec(_SELF_END_SPEC, "UC-SE1")
+async def test_self_end_parentless_driver_accepted(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cluster_event_bus: None,
+) -> None:
+    """A parentless worker driver may end its own session past the verb band."""
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    # working_slug derives system_role=worker; initiator_session_id stays None (driver).
+    await api.db.update_session(session_id, working_slug="some-slug")
+    token = await api.db.issue_session_token(session_id, f"system:{session_id}", ROLE_WORKER)
+    close = AsyncMock()
+    service = SimpleNamespace(close_session=close)
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+
+    response = await api.delete(f"/sessions/{session_id}", headers={"x-session-token": token})
+
+    assert response.status_code == 202
+    close.assert_awaited_once_with(CloseSessionCommand(session_id=session_id))
+
+
+@pytest.mark.spec(_SELF_END_SPEC, "UC-SE2")
+async def test_self_end_sub_worker_rejected(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cluster_event_bus: None,
+) -> None:
+    """A worker self-end with an orchestrating parent falls through to a 403."""
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    # initiator_session_id set → the session has an orchestrating parent (sub-worker).
+    await api.db.update_session(session_id, working_slug="some-slug", initiator_session_id="parent-session")
+    token = await api.db.issue_session_token(session_id, f"system:{session_id}", ROLE_WORKER)
+    close = AsyncMock()
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: SimpleNamespace(close_session=close))
+
+    response = await api.delete(f"/sessions/{session_id}", headers={"x-session-token": token})
+
+    assert response.status_code == 403
+    close.assert_not_awaited()
+
+
+@pytest.mark.spec(_SELF_END_SPEC, "UC-SE3")
+async def test_self_end_worker_ending_other_rejected(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cluster_event_bus: None,
+) -> None:
+    """A worker ending a DIFFERENT session is rejected by the standard rule."""
+    caller = await _create_session(api)
+    caller_id = caller["session_id"]
+    target = await _create_session(api)
+    target_id = target["session_id"]
+    await api.db.update_session(caller_id, working_slug="some-slug")
+    token = await api.db.issue_session_token(caller_id, f"system:{caller_id}", ROLE_WORKER)
+    close = AsyncMock()
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: SimpleNamespace(close_session=close))
+
+    response = await api.delete(f"/sessions/{target_id}", headers={"x-session-token": token})
+
+    assert response.status_code == 403
+    close.assert_not_awaited()
+
+
+@pytest.mark.spec(_SELF_END_SPEC, "UC-SE4")
+async def test_self_end_integrator_ending_other_accepted(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cluster_event_bus: None,
+) -> None:
+    """An in-band system role ending a DIFFERENT session passes the standard rule."""
+    caller = await _create_session(api)
+    caller_id = caller["session_id"]
+    target = await _create_session(api)
+    target_id = target["session_id"]
+    await api.db.update_session(caller_id, system_role="integrator")
+    token = await api.db.issue_session_token(caller_id, f"system:{caller_id}", "integrator")
+    close = AsyncMock()
+    service = SimpleNamespace(close_session=close)
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+
+    response = await api.delete(f"/sessions/{target_id}", headers={"x-session-token": token})
+
+    assert response.status_code == 202
+    close.assert_awaited_once_with(CloseSessionCommand(session_id=target_id))
+
+
+@pytest.mark.spec(_SELF_END_SPEC, "UC-SE5")
+async def test_self_end_terminal_caller_uses_human_band(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A terminal caller (empty session_id) is evaluated against the human band."""
+    session = await _create_session(api)
+    session_id = session["session_id"]
+    close = AsyncMock()
+    service = SimpleNamespace(close_session=close)
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: service)
+
+    # No session token → single-user terminal admin via the human band.
+    response = await api.delete(f"/sessions/{session_id}")
+
+    assert response.status_code == 202
+    close.assert_awaited_once_with(CloseSessionCommand(session_id=session_id))
+
+
+@pytest.mark.spec(_SELF_END_SPEC, "UC-SE5")
+async def test_self_end_terminal_caller_outside_band_rejected(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A terminal caller whose role is outside the end human band is rejected."""
+    session = await _create_session(api)
+    session_id = session["session_id"]
+
+    class _ContributorIdentityResolver:
+        registered_people_count = 1
+
+        @staticmethod
+        def resolve_by_email(email: str) -> IdentityContext:
+            return IdentityContext(
+                person_name="Contributor",
+                person_email=email.strip().lower(),
+                person_role="contributor",
+            )
+
+    monkeypatch.setattr(auth_mod, "get_identity_resolver", lambda: _ContributorIdentityResolver())
+    close = AsyncMock()
+    monkeypatch.setattr(sessions_routes, "hold_todo_for_manual_session_close", AsyncMock())
+    monkeypatch.setattr(sessions_routes, "get_command_service", lambda: SimpleNamespace(close_session=close))
+
+    # Terminal caller (no token → empty session_id) resolving to contributor,
+    # which is outside the `telec sessions end` human band {admin, member}.
+    response = await api.delete(f"/sessions/{session_id}", headers={"x-web-user-email": "contrib@example.com"})
+
+    assert response.status_code == 403
+    close.assert_not_awaited()
+
+
 async def test_delete_remote_session_rejects_requested_computer_mismatch(
     api: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,

@@ -386,6 +386,33 @@ async def clearance_sessions_agent_restart(
     return identity
 
 
+async def clearance_sessions_end(
+    session_id: str,
+    identity: CallerIdentity = Depends(verify_caller),
+) -> CallerIdentity:
+    """Authorize session ends, allowing a parentless session to end itself.
+
+    A caller may end its OWN session past the standard verb band when the target
+    has no orchestrating parent (``initiator_session_id is None``) — the
+    runner-dispatched driver case. ``initiator_session_id`` is daemon-set session
+    state, never caller-supplied, so a sub-worker cannot forge a parentless row.
+    Every other shape (cross-session end, sub-worker self-end) falls through to
+    the standard rule.
+    """
+    if identity.session_id and identity.session_id == session_id:
+        session = await _get_verified_session(session_id)
+        if session.initiator_session_id is None:
+            return identity
+    tool_name = "telec sessions end"
+    if _is_tool_denied(tool_name, identity):
+        role_desc = identity.system_role or identity.human_role or "unauthorized"
+        raise HTTPException(
+            status_code=403,
+            detail=f"role '{role_desc}' is not permitted to call {tool_name}",
+        )
+    return identity
+
+
 clearance_sessions_start = require_clearance("telec sessions start")
 clearance_sessions_list = require_clearance("telec sessions list")
 clearance_sessions_run = require_clearance("telec sessions run")
@@ -399,7 +426,6 @@ clearance_sessions_result = require_clearance("telec sessions result")
 clearance_sessions_file = require_clearance("telec sessions file")
 clearance_sessions_widget = require_clearance("telec sessions widget")
 clearance_sessions_escalate = require_clearance("telec sessions escalate")
-clearance_sessions_end = require_clearance("telec sessions end")
 clearance_todos_create = require_clearance("telec todo design")
 clearance_todos_prepare = require_clearance("telec todo prepare")
 clearance_todos_work = require_clearance("telec todo work")
