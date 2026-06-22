@@ -46,9 +46,7 @@ The workflow service emits the event with this payload:
     <!-- /planned:task-lane -->
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
-<!-- planned:human-lineage-on-todos -->
 - `created_by_principal` — the resolved principal of the creating caller (`human:<email>` or `system:<session_id>`), read from the roadmap row's persisted owner.
-  <!-- /planned:human-lineage-on-todos -->
   <!-- planned:task-lane -->
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
 <!-- /planned:task-lane -->
@@ -226,8 +224,6 @@ And the lifecycle router consumes the event and dispatches /next-prepare for the
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
-<!-- planned:human-lineage-on-todos -->
-
 #### UC-WTC8: Creator principal captured and emitted at creation
 
 ```gherkin
@@ -255,8 +251,6 @@ Then the dispatched session's resolved principal is `human:<email>`, not `system
 And the orchestrator → worker → integrator chain shares that one human root
 And the dispatched session's authorization is unchanged — lineage is audit-only
 ```
-
-<!-- /planned:human-lineage-on-todos -->
 
 ### Dependency gate at create-time
 
@@ -315,8 +309,4 @@ And the router dispatches /next-prepare for "child" as usual
 - `telec todo design` (and the deprecated `co-create` alias) is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
 - The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` and the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
-<!-- planned-change:human-lineage-on-todos -->
-- The `workflow.todo.created` payload's `todo_id`, `project_id`, and `created_by_principal` may not be populated by every emitter; downstream consumers fill them via serde defaults.
-<!-- change:human-lineage-on-todos -->
 - The `workflow.todo.created` payload's `created_by_principal` is populated from the roadmap row's persisted owner. `todo_id` and `project_id` may still not be populated by every emitter; downstream consumers fill those via serde defaults.
-<!-- /planned-change:human-lineage-on-todos -->

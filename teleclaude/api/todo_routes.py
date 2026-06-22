@@ -28,6 +28,7 @@ from teleclaude.api.auth import (
     clearance_todos_remove,
     clearance_todos_update,
     clearance_todos_work,
+    optional_caller_identity,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
 from teleclaude.api.todo_create_support import seed_plan_drafting
@@ -508,6 +509,23 @@ def _resolved_write_principal(identity: CallerIdentity) -> str:
     raise HTTPException(status_code=403, detail="caller identity required to write artifact")
 
 
+def _optional_capture_principal(identity: CallerIdentity | None) -> str | None:
+    """Derive the creator principal for the open create route, non-raising.
+
+    Mirrors ``_resolved_write_principal`` but returns ``None`` instead of raising
+    when no identity resolves — capture is audit-only and never gates the create.
+    For an agent caller the already-resolved principal transparently records the
+    chain-root human; for a session-id-authed human it is derived from ``email``.
+    """
+    if identity is None:
+        return None
+    if identity.principal:
+        return identity.principal
+    if identity.email:
+        return f"human:{identity.email}"
+    return None
+
+
 @router.post("/artifacts/{slug}/{name}")
 async def write_artifact(
     slug: str,
@@ -676,7 +694,10 @@ async def diff_artifact(
 
 
 @router.post("/dump")
-async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
+async def todo_content_create(
+    request: TodoDumpRequest,
+    identity: CallerIdentity | None = Depends(optional_caller_identity),
+) -> _SlugStatusResponse:
     """Create a todo: state + artifact + todo entry in todos.db.
 
     Kind selects the entry point (see TodoDumpRequest):
@@ -710,6 +731,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 status_code=400,
                 detail="--plan supplies a complete implementation-plan and is only valid with --kind change",
             )
+        created_by_principal = _optional_capture_principal(identity)
         state = initial_todo_state_for_kind(request.kind)
         force_silent = request.kind == TODO_KIND_TASK
         pickup_requested = not (request.icebox or force_silent)
@@ -723,6 +745,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                     after=request.after if request.after else None,
                     group_slug=request.group,
                     status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
+                    created_by_principal=created_by_principal,
                     session=session,
                 )
                 await todos_db.write_state(slug, state, session=session)
@@ -783,6 +806,7 @@ async def todo_content_create(request: TodoDumpRequest) -> _SlugStatusResponse:
                 "lifecycle_phase": event_lifecycle_phase,
                 "created_at": datetime.now(UTC).isoformat(),
                 "project_path": effective_cwd,
+                "created_by_principal": created_by_principal,
             },
         )
 

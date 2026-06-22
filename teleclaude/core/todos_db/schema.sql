@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS todo (
     delivered_at    TEXT,
     delivered_commit TEXT,
     children        TEXT,
+    created_by_principal TEXT,       -- resolved principal of the creating caller (audit/attribution)
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );

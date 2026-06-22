@@ -47,6 +47,7 @@ def _todo_row(model: Todo) -> TodoRow:
         delivered_commit=model.delivered_commit,
         removed_at=model.removed_at,
         children=children if isinstance(children, list) else None,
+        created_by_principal=model.created_by_principal,
     )
 
 
@@ -240,12 +241,16 @@ class TodosDbTodoMixin:
         after: list[str] | None = None,
         description: str | None = None,
         status: TodoStatus = TodoStatus.ACTIVE,
+        created_by_principal: str | None = None,
         session: SqlAsyncSession | None = None,
     ) -> bool:
         """Add or update a slug in the todo. Idempotent — returns True on success.
 
         ``status`` sets the new entry's todo status (``TodoStatus.ICEBOX``
         parks it at creation); re-adding an existing slug never re-parks it.
+        ``created_by_principal`` records the creating caller's resolved principal
+        on the new entry (audit/attribution only); it is set on insert and is not
+        part of the idempotent update value set.
         """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
@@ -276,6 +281,7 @@ class TodosDbTodoMixin:
                     group_slug=group_slug,
                     description=description,
                     status=status.value,
+                    created_by_principal=created_by_principal,
                     created_at=now,
                     updated_at=now,
                 )
@@ -294,6 +300,12 @@ class TodosDbTodoMixin:
         finally:
             if owns_session:
                 await db_session.close()
+
+    async def read_created_by_principal(self, slug: str) -> str | None:
+        """Return the live entry's persisted creator principal, or None."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await self._active_entry(session, slug)
+            return entry.created_by_principal if entry is not None else None
 
     async def resolve_id(self, slug: str) -> str | None:
         """Resolve an active/icebox slug to its todo id. Returns None if not found."""

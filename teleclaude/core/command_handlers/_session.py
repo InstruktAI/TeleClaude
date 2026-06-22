@@ -29,6 +29,7 @@ from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_title import initial_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
+from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
@@ -41,6 +42,20 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+
+async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
+    """Read a todo's persisted creator principal for the resolved project.
+
+    Returns the owner principal, or ``None`` only when a successful read proves
+    the todo has no recorded owner. Read failures are NOT swallowed: human-root
+    lineage is a required invariant for a slug-bound runner session, so a failed
+    lookup must surface and stop session creation rather than silently degrade to
+    ``system:<session_id>``. The caller establishes the human root only from a
+    proven owner; an unreadable owner is an error, never a license to fall back.
+    """
+    todos_db = await get_todos_db(project_path)
+    return await todos_db.read_created_by_principal(slug)
 
 
 async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
@@ -171,6 +186,17 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         if not working_dir_path.exists():
             working_dir_path.mkdir(parents=True, exist_ok=True)
         working_dir = str(working_dir_path)
+
+    # Runner-dispatched lifecycle sessions have no human caller and may inherit
+    # the daemon's system principal. Establish the chain-root human from the
+    # todo's persisted owner so the resolved principal is the owning human, not
+    # system:<session>. Audit-only: system_role (the authorization band) is left
+    # untouched, and a manual start (human_email already set) is never overridden.
+    if not human_email and working_slug:
+        owner_principal = await _read_todo_owner_principal(project_path, working_slug)
+        if owner_principal and owner_principal.startswith("human:"):
+            principal = owner_principal
+            human_email = owner_principal.removeprefix("human:")
 
     title = initial_session_title(cmd.initial_input)
 

@@ -293,6 +293,34 @@ async def verify_caller(
     )
 
 
+async def optional_caller_identity(
+    x_session_token: Annotated[str | None, Header()] = None,
+    x_caller_session_id: Annotated[str | None, Header()] = None,
+    x_telec_email: Annotated[str | None, Header()] = None,
+    x_web_user_email: Annotated[str | None, Header()] = None,
+    x_tmux_session: Annotated[str | None, Header()] = None,
+) -> CallerIdentity | None:
+    """Resolve caller identity for an OPEN route without ever gating it.
+
+    For routes that accept anonymous callers today (e.g. ``POST /todos/dump``),
+    identity is captured as pure attribution. Any identity-resolution failure
+    ``verify_caller`` would raise — the unknown-credential 401s, the multi-user
+    ``"login required"`` 401, and the dual-factor tmux-mismatch 403 — is swallowed
+    to ``None`` so a caller that creates successfully today still succeeds. The
+    route stores ``None`` when no identity resolves; it never rejects.
+    """
+    try:
+        return await verify_caller(
+            x_session_token=x_session_token,
+            x_caller_session_id=x_caller_session_id,
+            x_telec_email=x_telec_email,
+            x_web_user_email=x_web_user_email,
+            x_tmux_session=x_tmux_session,
+        )
+    except HTTPException:
+        return None
+
+
 def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
     """Check if a tool (mapped from endpoint) is denied for this identity."""
     human_role = identity.human_role
@@ -430,6 +458,7 @@ __all__ = [
     "clearance_todos_work",
     "invalidate_session_cache",
     "invalidate_token_cache",
+    "optional_caller_identity",
     "require_clearance",
     "verify_caller",
 ]

@@ -158,11 +158,7 @@ kind mutation is refused.
 #### Todo (aggregate)
 
 - **Root:** `Todo`
-<!-- planned-change:human-lineage-on-todos -->
-- **Contains:** a durable row identity (the persistent key); the Slug as its active alias; current StageState (which stage, which phase, in_progress vs awaiting); the Artifact collection (each artifact has version history); dependency edges (`after` slugs); kind; optional grouping; optional description.
-<!-- change:human-lineage-on-todos -->
 - **Contains:** a durable row identity (the persistent key); the Slug as its active alias; current StageState (which stage, which phase, in_progress vs awaiting); the Artifact collection (each artifact has version history); dependency edges (`after` slugs); kind; optional grouping; optional description; `created_by_principal` — the resolved principal (`human:<email>` or `system:<session_id>`) of the caller that created the row.
-<!-- /planned-change:human-lineage-on-todos -->
 - **Invariants:**
   - A todo has exactly one current `(stage, phase)` at any moment.
   - Stage progression is strictly forward: `draft → prepare → work → integrate → delivered`. No backwards transitions; recovery from failure happens within the current stage's machine.
@@ -206,9 +202,7 @@ kind mutation is refused.
     `workflow.todo.renamed` event. Slug mutation is refused after build starts.
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
-  <!-- planned:human-lineage-on-todos -->
   - **Creator lineage is captured at creation and is audit-only.** The roadmap row records `created_by_principal` — the resolved principal of the creating caller — at the moment of creation, and the field is immutable thereafter. When the creator is itself an agent session, the recorded principal is that session's resolved principal: the chain-root human (`human:<email>`) whenever the chain originates at a human entry point, and `system:<session_id>` only for a chain with no human root. Lineage is attribution only — it never widens authorization, which remains governed by role × project independently of the recorded principal.
-  <!-- /planned:human-lineage-on-todos -->
   - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
   - **Hold is the only persisted manual-dispatch brake, and it acts only on a todo that is effectively held.** A held todo is skipped by the lifecycle runner only when its `hold` flag is set, its kind's autostart is active (`workflow.runner` is `autostart` and the kind's toggle is on), and its phase is past `prepared`; the effective brake is that single derived predicate, so a stored flag is inert whenever any condition fails — autostart off, runner `manual`, or anywhere in the prepare lane through `prepared`. A residual flag is never auto-cleared; it simply does not act. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
   - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.
@@ -333,18 +327,6 @@ extra because the v1 runtime has no `project_id`; the canonical producer
 schema uses `project_id` from which bridge consumers derive `project_path`
 via the existing `project_id → project_path` map.
 
-<!-- planned-change:human-lineage-on-todos -->
-
-The three canonical fields absent on v1-emitted events are `todo_id`,
-`project_id`, and `created_by_principal`.
-
-Consumers MUST treat those three fields as optional and apply safe defaults
-when ingesting events that may originate from a v1 emitter. The Rust v2
-`WorkflowService` handles this via serde defaults on the `TodoCreated` struct
-so v2 code can consume v1 events without panicking on missing fields.
-
-<!-- change:human-lineage-on-todos -->
-
 The two canonical fields absent on v1-emitted events are `todo_id` and
 `project_id`. `created_by_principal` is populated on v1-emitted events from the
 roadmap row's persisted owner — the resolved principal of the creating caller.
@@ -353,8 +335,6 @@ Consumers MUST treat `todo_id` and `project_id` as optional and apply safe
 defaults when ingesting events that may originate from a v1 emitter. The Rust
 v2 `WorkflowService` handles this via serde defaults on the `TodoCreated`
 struct so v2 code can consume v1 events without panicking on missing fields.
-
-<!-- /planned-change:human-lineage-on-todos -->
 
 This partial shape is a transitional constraint, not the target contract. The
 `v2-workflow-cutover` delivery retires it: the v2 route emits the full

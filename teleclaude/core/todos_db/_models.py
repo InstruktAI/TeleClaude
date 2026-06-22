@@ -21,6 +21,10 @@ class Todo(SQLModel, table=True):
     delivered_at: str | None = None
     delivered_commit: str | None = None
     children: str | None = None
+    # Resolved principal of the creating caller (human:<email> or system:<id>).
+    # Audit/attribution only; never widens authorization. Captured once at
+    # creation and read back by the runner to establish the chain-root human.
+    created_by_principal: str | None = Field(default=None)
     # Soft-delete tombstone. Set only while status == 'removed'; cleared on
     # reactivation. removed_deps is the row-id-keyed JSON snapshot of the
     # entry's outgoing dependency slugs (same TEXT/JSON convention as children),

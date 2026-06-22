@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from collections.abc import AsyncGenerator, Mapping
 from pathlib import Path
@@ -12,20 +13,35 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from teleclaude.api import auth as auth_mod
 from teleclaude.api import todo_routes
+from teleclaude.api.auth import CallerIdentity, optional_caller_identity
 from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
 from teleclaude.cli.telec.handlers import todo as todo_handlers
-from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT, TodoStatus
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT, ROLE_ORCHESTRATOR, TodoStatus
+from teleclaude.core import db as db_mod
+from teleclaude.core.command_handlers import _session as session_handler_mod
+from teleclaude.core.command_handlers._session import create_session
+from teleclaude.core.db import Db
+from teleclaude.core.db._sync import resolve_session_principal
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todo import assemble_todo_from_db
-from teleclaude.core.todos_db import HolderWriteRefused, TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db import (
+    HolderWriteRefused,
+    TodosDb,
+    close_todos_db_instances,
+    get_todos_db,
+    todos_db_path,
+)
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.types.commands import CreateSessionCommand
 
 pytestmark = pytest.mark.functional
 
@@ -204,7 +220,8 @@ async def test_kindless_create_persists_no_phase_and_dispatches_analyzer(
     _CapturingTelecAPIClient.calls = []
 
     await todo_routes.todo_content_create(
-        TodoDumpRequest(slug=_KINDLESS, content="Classify this raw dump.", cwd=str(project_root))
+        TodoDumpRequest(slug=_KINDLESS, content="Classify this raw dump.", cwd=str(project_root)),
+        identity=None,
     )
 
     todos_db = await get_todos_db(project_root)
@@ -249,7 +266,8 @@ async def test_icebox_create_parks_todo_and_suppresses_dispatch(
             kind=_KIND_CHANGE,
             cwd=str(project_root),
             icebox=True,
-        )
+        ),
+        identity=None,
     )
 
     todos_db = await get_todos_db(project_root)
@@ -295,7 +313,8 @@ async def test_group_create_attaches_child_and_derives_parent_holder(
             kind=_KIND_CHANGE,
             cwd=str(project_root),
             group=_PARENT,
-        )
+        ),
+        identity=None,
     )
 
     child_state = await todos_db.read_state(_CHILD)
@@ -343,7 +362,8 @@ async def test_group_create_refuses_to_holderify_parent_past_prepare(
                 kind=_KIND_CHANGE,
                 cwd=str(project_root),
                 group=_PARENT,
-            )
+            ),
+            identity=None,
         )
 
     assert exc.value.status_code == 409
@@ -385,7 +405,8 @@ async def test_holder_artifact_write_returns_clean_409_not_500(
             kind=_KIND_CHANGE,
             cwd=str(project_root),
             group=_PARENT,
-        )
+        ),
+        identity=None,
     )
 
     assert await todos_db.is_holder(_PARENT) is True
@@ -446,7 +467,8 @@ async def test_project_root_create_targets_explicit_project(
             content="Targeted create.",
             kind=_KIND_CHANGE,
             cwd=str(target_project),
-        )
+        ),
+        identity=None,
     )
 
     target_db = await get_todos_db(target_project)
@@ -530,7 +552,8 @@ async def test_create_with_plan_seeds_plan_drafting_and_dispatches_prepare(
             kind=_KIND_CHANGE,
             cwd=str(event_project),
             plan=True,
-        )
+        ),
+        identity=None,
     )
 
     todos_db = await get_todos_db(event_project)
@@ -561,3 +584,253 @@ async def test_create_with_plan_seeds_plan_drafting_and_dispatches_prepare(
     assert call["command"] == _NEXT_PREPARE
     assert call["args"] == slug
     assert call["project_path"] == str(event_project)
+
+
+_HUMAN_EMAIL = "alice@example.com"
+_HUMAN_PRINCIPAL = f"human:{_HUMAN_EMAIL}"
+_ROOT_EMAIL = "root@example.com"
+_ROOT_PRINCIPAL = f"human:{_ROOT_EMAIL}"
+_HUMAN_SLUG = "human-owned"
+_SYSTEM_SLUG = "system-owned"
+_HUMAN_SESSION = "sess-human"
+_SYSTEM_SESSION = "sess-system"
+_FAIL_SESSION = "sess-fail"
+_SYSTEM_PRINCIPAL = f"system:{_SYSTEM_SESSION}"
+_LEGACY_SLUG = "legacy-todo"
+_LEGACY_DESC = "Pre-column row."
+
+
+def _human_identity(email: str = _HUMAN_EMAIL) -> CallerIdentity:
+    return CallerIdentity(
+        session_id="",
+        system_role=None,
+        human_role="admin",
+        tmux_session_name=None,
+        email=email,
+    )
+
+
+def _agent_identity(principal: str) -> CallerIdentity:
+    return CallerIdentity(
+        session_id="agent-session",
+        system_role="worker",
+        human_role=None,
+        tmux_session_name=None,
+        principal=principal,
+    )
+
+
+async def _create_via_route(
+    project_root: Path,
+    slug: str,
+    identity: CallerIdentity | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> _EmittedEvent:
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(slug=slug, content="Lineage content.", kind=_KIND_CHANGE, cwd=str(project_root)),
+        identity=identity,
+    )
+    [event_kwargs] = emitted
+    return event_kwargs
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC8")
+async def test_human_create_records_recovers_and_emits_creator_principal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    event_kwargs = await _create_via_route(project_root, "owned-change", _human_identity(), monkeypatch)
+
+    # Persisted on the todo entry and recoverable from the record for later audit.
+    todos_db = await get_todos_db(project_root)
+    assert await todos_db.read_created_by_principal("owned-change") == _HUMAN_PRINCIPAL
+    [row] = [r for r in await todos_db.list_todo() if r["slug"] == "owned-change"]
+    assert row["created_by_principal"] == _HUMAN_PRINCIPAL
+
+    # Emitted on workflow.todo.created with the same persisted owner.
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["created_by_principal"] == _HUMAN_PRINCIPAL
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC9")
+async def test_agent_with_human_root_create_records_chain_root_human(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    # An agent session whose own resolved principal is the chain-root human.
+    await _create_via_route(project_root, "agent-owned", _agent_identity(_ROOT_PRINCIPAL), monkeypatch)
+
+    todos_db = await get_todos_db(project_root)
+    # Records the chain-root human, not the agent session id.
+    assert await todos_db.read_created_by_principal("agent-owned") == _ROOT_PRINCIPAL
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC8")
+async def test_create_capture_is_non_gating_in_multi_user_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    # Multi-user mode: a header-less caller makes verify_caller raise the
+    # "login required" 401. optional_caller_identity must swallow it to None
+    # so the open create route is never converted into a rejection.
+    monkeypatch.setattr(auth_mod, "_requires_terminal_login", lambda: True)
+    resolved = await optional_caller_identity()
+    assert resolved is None
+
+    event_kwargs = await _create_via_route(project_root, "anon-change", resolved, monkeypatch)
+
+    # The create still succeeds and stores None — capture never gates.
+    todos_db = await get_todos_db(project_root)
+    assert await todos_db.read_state("anon-change") is not None
+    assert await todos_db.read_created_by_principal("anon-change") is None
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["created_by_principal"] is None
+
+
+async def _dispatch_runner_session(
+    runtime_db: Db,
+    project_root: Path,
+    slug: str,
+    session_id: str,
+) -> object:
+    """Drive create_session as the runner would: no human caller, slug-bound,
+    system-role set. Returns the persisted session row."""
+    await create_session(
+        CreateSessionCommand(
+            project_path=str(project_root),
+            origin=InputOrigin.TERMINAL.value,
+            session_id=session_id,
+            working_slug=slug,
+            system_role=ROLE_ORCHESTRATOR,
+            headless=True,
+            skip_listener_registration=True,
+        ),
+        cast("object", None),  # client is unused by the handler
+    )
+    return await runtime_db.get_session(session_id)
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC10")
+async def test_runner_dispatched_session_inherits_owning_human(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_todo(_HUMAN_SLUG, created_by_principal=_HUMAN_PRINCIPAL)
+    await todos_db.add_to_todo(_SYSTEM_SLUG, created_by_principal="system:some-session")
+
+    runtime_db = Db(":memory:")
+    await runtime_db.initialize()
+    monkeypatch.setattr(db_mod, "db", runtime_db)
+    monkeypatch.setattr(session_handler_mod, "db", runtime_db)
+
+    # Human-owned todo: the runner-dispatched session resolves to the human root.
+    human_session = await _dispatch_runner_session(runtime_db, project_root, _HUMAN_SLUG, _HUMAN_SESSION)
+    assert human_session is not None
+    principal, _role = resolve_session_principal(human_session)
+    assert principal == _HUMAN_PRINCIPAL
+    # Authorization band is untouched — lineage is audit-only.
+    assert human_session.system_role == ROLE_ORCHESTRATOR
+
+    # System-owned todo: no human root to inherit; resolves to system:<session>.
+    system_session = await _dispatch_runner_session(runtime_db, project_root, _SYSTEM_SLUG, _SYSTEM_SESSION)
+    assert system_session is not None
+    system_principal, _ = resolve_session_principal(system_session)
+    assert system_principal == _SYSTEM_PRINCIPAL
+
+
+# Pre-column ``todo`` table: every column the substrate carried right before
+# created_by_principal was introduced (post-rename, post-tombstone migrations).
+_OLD_SHAPE_TODO_DDL = """
+CREATE TABLE todo (
+    id TEXT PRIMARY KEY, slug TEXT NOT NULL, ready_since TEXT, group_slug TEXT,
+    description TEXT, status TEXT NOT NULL DEFAULT 'active', delivered_at TEXT,
+    delivered_commit TEXT, children TEXT, removed_at TEXT, prev_status TEXT,
+    removed_deps TEXT, pending_purge_paths TEXT, created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC8")
+async def test_old_shape_todo_row_upgrades_with_null_creator_principal(tmp_path: Path) -> None:
+    """Golden old-shape fixture: a pre-column ``todo`` row survives the additive
+    migration intact, reading back ``created_by_principal is None``."""
+    project_root = tmp_path / "project"
+    db_path = todos_db_path(project_root)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    await close_todos_db_instances()
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(_OLD_SHAPE_TODO_DDL)
+        conn.execute(
+            "INSERT INTO todo (id, slug, status, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "row-1",
+                _LEGACY_SLUG,
+                TodoStatus.ACTIVE.value,
+                _LEGACY_DESC,
+                "2026-01-01T00:00:00",
+                "2026-01-01T00:00:00",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Bootstrap runs the additive migration; the existing row loads through the
+    # current TodoRow shape with the new field defaulted to None, intact otherwise.
+    todos_db = await get_todos_db(project_root)
+    [row] = await todos_db.list_todo()
+    assert row["slug"] == _LEGACY_SLUG
+    assert row["status"] == TodoStatus.ACTIVE.value
+    assert row["description"] == _LEGACY_DESC
+    assert row["created_by_principal"] is None
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC10")
+async def test_runner_dispatch_stops_when_owner_read_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A failed owner read for a slug-bound runner session surfaces and stops
+    creation — never silently degrades the required human root to system:<session>."""
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_todo(_HUMAN_SLUG, created_by_principal=_HUMAN_PRINCIPAL)
+
+    runtime_db = Db(":memory:")
+    await runtime_db.initialize()
+    monkeypatch.setattr(db_mod, "db", runtime_db)
+    monkeypatch.setattr(session_handler_mod, "db", runtime_db)
+
+    async def _raise(_self: TodosDb, _slug: str) -> str | None:
+        raise RuntimeError("owner read failed")
+
+    monkeypatch.setattr(TodosDb, "read_created_by_principal", _raise)
+
+    with pytest.raises(RuntimeError):
+        await _dispatch_runner_session(runtime_db, project_root, _HUMAN_SLUG, _FAIL_SESSION)
+    # No mis-attributed session row was persisted.
+    assert await runtime_db.get_session(_FAIL_SESSION) is None

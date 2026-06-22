@@ -18,6 +18,7 @@ class TodoRow(TypedDict):
     delivered_commit: str | None
     removed_at: str | None
     children: list[str] | None
+    created_by_principal: str | None
 
 
 class ArtifactVersionRow(TypedDict):
