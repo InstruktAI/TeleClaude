@@ -22,7 +22,7 @@ The fleet is permanently multi-version (ADR-0026), so introducing a new cross-no
 - **Reuse the localhost API server behind a mandatory same-host reverse proxy.** The ingress mounts its webhook routes on the existing FastAPI app served on loopback; it never binds to a LAN or promiscuous address. The proxy owns TLS, source restriction, and path routing, forwarding only the webhook path prefix to the localhost endpoint. A node cannot be an ingress without a local proxy; there is no no-proxy / LAN-bind fallback.
 - **Per-route trust.** Webhook routes authenticate by provider HMAC signature alone and inherit no loopback identity-trust, so co-locating them with the loopback-trusted control routes on one app adds no privilege path.
 - **Relay as a feature-ID-gated capability.** The verified, normalized event is published onto `cluster.webhook.<provider>` on the cluster bus, gated behind an ignorable feature-ID (ADR-0027). Unaware nodes drop it cleanly. The ingress also dispatches the event locally; the bus drops its own echo at dispatch (ADR-0013 self-origin), so each node reacts exactly once. A publish failure fails the request so the provider retries — a verified event is never silently lost.
-- **The legacy deployment fan-out is the expand-phase bridge.** The `version_available` Redis-stream fan-out is retained so nodes that do not yet carry the feature keep converging; it is retired in a later contract step only once the reconciliation capability map shows the slowest channel carries the feature.
+- **The legacy deployment fan-out is the expand-phase bridge.** The `version_available` Redis-stream fan-out is retained so nodes that do not yet carry the feature keep converging, and is removed only once the reconciliation capability map shows the slowest channel carries the feature.
 
 This supersedes ADR-0028's LAN-bind and in-process source-restriction decision. The single-public-node, verify–normalize–relay, unconditional-relay, and provider-agnostic contract of ADR-0028 is retained.
 
@@ -38,7 +38,7 @@ This supersedes ADR-0028's LAN-bind and in-process source-restriction decision. 
 
 - An ingress now has a hard prerequisite — a local reverse proxy — that the operator must install and configure (path routing for the webhook prefix, the provider secret).
 - Webhook routes share an app and port with the loopback-trusted control API; the per-route HMAC-only trust must be preserved by every future change to the inbound path.
-- The expand/contract discipline keeps the legacy fan-out alive until the slowest channel carries the feature, retired by a separate later todo.
+- The expand/contract discipline keeps the legacy fan-out alive until the capability map shows the slowest channel carries the feature.
 
 ## Alternatives Considered
 
@@ -46,4 +46,4 @@ This supersedes ADR-0028's LAN-bind and in-process source-restriction decision. 
 
 **Rebind the existing API server to a LAN address.** Rejected: that LAN-exposes the loopback-identity-trusted control API, not just the webhook routes.
 
-**Remove the deployment fan-out in this delivery.** Rejected: the fleet is permanently multi-version (ADR-0026); removing the fan-out before the slowest channel carries the new relay strands un-upgraded nodes (ADR-0027 contraction gate). The fan-out is retired only after the capability map confirms universal carriage.
+**Remove the deployment fan-out at the same time as introducing the relay.** Rejected: the fleet is permanently multi-version (ADR-0026); removing the fan-out before the slowest channel carries the new relay strands un-upgraded nodes (ADR-0027 contraction gate). The fan-out is removed only after the capability map confirms universal carriage.

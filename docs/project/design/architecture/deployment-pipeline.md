@@ -18,9 +18,21 @@ two responsibilities, owned by two bounded contexts on different change axes:
   state: the newest version its channel admits, applied exactly once, ending
   healthy.
 
+<!-- planned-change:webhook-ingress -->
+
 The ingress decides nothing about the reaction; the reaction is
 subscriber-driven. This separation is the recorded decision in ADR-0028 (single
 LAN-bound ingress) and ADR-0024 (reconciliation as its own bounded context).
+
+<!-- change:webhook-ingress -->
+
+The ingress decides nothing about the reaction; the reaction is
+subscriber-driven. This separation is the recorded decision in ADR-0028
+(single-ingress termination) and ADR-0024 (reconciliation as its own bounded
+context); ADR-0055 supersedes ADR-0028's bind topology with proxy-fronted reuse
+of the localhost API server.
+
+<!-- /planned-change:webhook-ingress -->
 
 ### Ingress — `teleclaude/hooks/inbound.py`
 
@@ -180,5 +192,8 @@ flowchart TD
 - docs/project/spec/feature/reconciliation/fleet-cross-version-interop.md
 - docs/project/spec/domain/reconciliation.md
 - docs/project/adr/0028-single-lan-bound-ingress.md
+<!-- planned:webhook-ingress -->
+- docs/project/adr/0055-proxy-fronted-ingress-reuse.md
+<!-- /planned:webhook-ingress -->
 - docs/project/adr/0024-reconciliation-bounded-context.md
 - docs/project/spec/teleclaude-config.md — config schema for deployment

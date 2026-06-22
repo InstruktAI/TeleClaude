@@ -88,7 +88,11 @@ And adding a new provider does not require a second public endpoint
 
 - Owned by `integration` (`@docs/project/spec/domain/integration.md`); the inbound-boundary concern.
 - The relay target and cluster delivery are the event-bus CLUSTER scope; the reaction is owned by subscribers, chiefly `reconciliation` (`@docs/project/spec/feature/reconciliation/channel-gated-self-update.md`).
+<!-- planned-change:webhook-ingress -->
 - The topology decision (LAN bind, router source-restriction, single public node, unconditional relay) is a recorded architectural decision.
+<!-- change:webhook-ingress -->
+- The topology decision (proxy-fronted reuse of the localhost API server, single public node, unconditional relay) is a recorded architectural decision (ADR-0055, superseding ADR-0028's bind topology).
+<!-- /planned-change:webhook-ingress -->
 - Supersedes the v1 expression in `@docs/project/spec/feature/integration/deployment-version-fanout.md` (a bespoke deployment-only fan-out that relayed only when the receiver itself updated).
 
 ## Known caveats
@@ -100,3 +104,6 @@ And adding a new provider does not require a second public endpoint
 ## See Also
 
 - docs/project/adr/0028-single-lan-bound-ingress.md
+<!-- planned:webhook-ingress -->
+- docs/project/adr/0055-proxy-fronted-ingress-reuse.md
+<!-- /planned:webhook-ingress -->
