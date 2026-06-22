@@ -270,25 +270,44 @@ The default roadmap order is derived, not manually positioned. The dependency tr
 
 - **Producer:** `workflow`
 - **Emitted when:** a new todo is added to the todo list (via `create`, the
-  `dump` compatibility alias, `split`, `bugs report`). Always
-  emitted on successful creation regardless of `creation_mode` — silent mode
-  suppresses pickup dispatch, not the state-change event.
+`dump` compatibility alias, `split`, `bugs report`). Always
+emitted on successful creation regardless of `creation_mode` — silent mode
+suppresses pickup dispatch, not the state-change event.
+<!-- planned-change:task-lane -->
 - **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
-  row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
-  initially for ordinary feature/change creates; `null` for kind-less
-  creates; `prepared` for task creates, `diagnose` for bug creates, `plan_drafting` for `--plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
-  new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
-  and `pickup_requested` (boolean). The v1 daemon bridge derives the
-  consumer-facing `project_path` from `project_id` via its existing
-  `project_id → project_path` map (the bridge is payload-agnostic and reads
-  the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
-  Existing v2 Rust event consumers continue to see every prior field; the
-  contract is strict-additive. `kind` is **nullable**: a kind-less dump
-  (created without `--kind`) emits `kind = null` and `lifecycle_phase = null`
-  (v1 is authoritative for the nullable pre-classification state),
-  and the pickup routers dispatch `/analyze-todo-input`
-  (classification — it assigns a kind autonomously, it does not execute)
-  instead of an SDLC orchestrator.
+row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
+initially for ordinary feature/change creates; `null` for kind-less
+creates; `prepared` for task creates, `diagnose` for bug creates, `plan_drafting` for `--plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
+new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
+and `pickup_requested` (boolean). The v1 daemon bridge derives the
+consumer-facing `project_path` from `project_id` via its existing
+`project_id → project_path` map (the bridge is payload-agnostic and reads
+the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
+Existing v2 Rust event consumers continue to see every prior field; the
+contract is strict-additive. `kind` is **nullable**: a kind-less dump
+(created without `--kind`) emits `kind = null` and `lifecycle_phase = null`
+(v1 is authoritative for the nullable pre-classification state),
+and the pickup routers dispatch `/analyze-todo-input`
+(classification — it assigns a kind autonomously, it does not execute)
+instead of an SDLC orchestrator.
+<!-- change:task-lane -->
+- **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
+row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
+initially for ordinary feature/change creates; `null` for kind-less
+creates; `task_plan_drafting` for bare `--kind task` creates, `prepared` for `--kind task --plan` creates, `diagnose` for bug creates, `plan_drafting` for `--kind change --plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
+new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
+and `pickup_requested` (boolean). The v1 daemon bridge derives the
+consumer-facing `project_path` from `project_id` via its existing
+`project_id → project_path` map (the bridge is payload-agnostic and reads
+the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
+Existing v2 Rust event consumers continue to see every prior field; the
+contract is strict-additive. `kind` is **nullable**: a kind-less dump
+(created without `--kind`) emits `kind = null` and `lifecycle_phase = null`
+(v1 is authoritative for the nullable pre-classification state),
+and the pickup routers dispatch `/analyze-todo-input`
+(classification — it assigns a kind autonomously, it does not execute)
+instead of an SDLC orchestrator.
+<!-- /planned-change:task-lane -->
 - **Visibility:** CLUSTER
 - **Known consumers:** `integration` (subscription notifications for
   "todo created"), audit log consumers, autonomous pickup consumers (the
