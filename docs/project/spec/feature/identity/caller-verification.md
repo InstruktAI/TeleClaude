@@ -94,7 +94,8 @@ And a gate that requires a human principal refuses the caller
 
 Given a call with no session-token signal and a caller-session-id whose session record has no inherited principal, no human_email, and no system_role
 When caller verification runs
-Then caller verification rejects the call as authentication-required
+Then the returned CallerIdentity carries principal=None, preserving authorization for callers that clear on human_role or system_role
+And a gate that requires a human principal refuses the caller
 ```
 
 <!-- /planned:prd-approval-gate-drops-session-principal -->
