@@ -93,8 +93,8 @@ When the handler enters the relaunch phase
 Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the agent's session start event can fire before a post-hoc subscriber would attach)
 And after the relaunch, it awaits readiness for the session within a bounded timeout
 And on readiness, it injects the fixed continuation stimulus ("Session restarted. Continue pending work or remain idle.") into the host pane as a user-turn message
-And it confirms the resumed agent actually started a turn from that stimulus
-And when no turn start is observed, it re-injects the full stimulus, bounded by a retry cap
+And it confirms the resumed agent actually started a turn from that stimulus, observed through the agent-activity signal the runtime already tracks
+And when no turn start is observed, it idempotently re-injects the stimulus (clearing the input line, re-pasting, and submitting, so a landed-but-unsubmitted paste is not duplicated), bounded by a retry cap
 And on retry exhaustion it reports failure and keeps the session alive, never silently dropping the stimulus
 And on readiness timeout, it emits a readiness-timeout event and posts a message to the user but does NOT inject the stimulus
 And the readiness subscription is released in a finalizer

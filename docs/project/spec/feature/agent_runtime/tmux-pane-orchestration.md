@@ -90,8 +90,6 @@ And on subprocess timeout or OS error the exception is re-raised
 And the same default fallback applies when the budget is omitted
 ```
 
-<!-- planned-change:restart-stimulus-lost-to-premature-readiness -->
-
 #### Send-keys uses the load-buffer / paste / submit pipeline
 
 ```
@@ -106,25 +104,6 @@ And the paste buffer is always cleaned up in a finalizer (cleanup errors are log
 And if the active agent is Gemini, every literal '!' in text is replaced with '\!' (Gemini CLI bug workaround)
 And the call returns success on every stage success, failure on any stage failure
 ```
-
-<!-- change:restart-stimulus-lost-to-premature-readiness -->
-
-#### Send-keys uses the load-buffer / paste / submit pipeline
-
-```
-Given the send-keys primitive is called with (host pane name, text, session id, working_dir, active agent)
-When the host pane is ensured (creating it fresh on miss — previous state is lost; this is NOT recovery)
-Then text is delivered through the pipeline:
-    1. Load a uniquely-named paste buffer from stdin (bypasses multiplexer argument-length limits)
-    2. Paste the buffer with bracketed-paste markers, preserving LF
-    3. Wait until the multiplexer has flushed the bracketed-paste close marker through the host pane, bounded by a timeout, so the discrete submit cannot fall inside the paste span under host load
-    4. Send a discrete submit keystroke (treated as submit by all three agent CLIs)
-And the paste buffer is always cleaned up in a finalizer (cleanup errors are logged but never override the operation result)
-And if the active agent is Gemini, every literal '!' in text is replaced with '\!' (Gemini CLI bug workaround)
-And the call returns success on every stage success, failure on any stage failure
-```
-
-<!-- /planned-change:restart-stimulus-lost-to-premature-readiness -->
 
 #### send-keys-existing-host-pane skips the auto-create
 
