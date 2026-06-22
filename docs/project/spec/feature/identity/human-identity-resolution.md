@@ -120,6 +120,8 @@ Because the context is in an invalid state with no resolvable display name
 
 <!-- planned:person-slug -->
 
+#### UC-HIR-PERSON-SLUG: Resolved IdentityContext carries the canonical person_slug
+
 ```
 Given the global config lists a person with email maurice@instrukt.ai, name "Maurice Faber", slug "maurice-faber"
 And the per-person workspace folder ~/.teleclaude/people/maurice-faber/ holds the per-person config
