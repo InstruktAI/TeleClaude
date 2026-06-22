@@ -59,16 +59,27 @@ Additionally, load the language-specific policy for the code you are touching:
 - TypeScript: `telec docs get software-development/policy/typescript/core software-development/policy/typescript/testing`
 - Rust: `telec docs get software-development/policy/rust/core software-development/policy/rust/testing`
 
-**Documentation snippets** (create or edit):
+**Reading documentation in `docs/`**:
+
+It is NOT allowed to read `docs/` with ANY other tool than `telec docs`! This is a hard rule.
+Why? The tool filters out undelivered content that should NOT be read when grounding in CURRENT TRUTH. To read planned documentation edits and additions delivered by a todo, you MUST use `telec docs index --target <todo_slug>`.
+
+(This does NOT negate the need to list or INSPECT files under `docs/` for any other purpose than gaining knowledge as intended by its publication.)
+
+**Documentation snippets authoring**:
 
 ```
+
 telec docs get general/procedure/doc-snippet-authoring general/spec/snippet-authoring-schema
+
 ```
 
 **Agent artifacts** (create or edit):
 
 ```
+
 telec docs get general/procedure/agent-artifact-authoring general/spec/agent-artifacts
+
 ```
 
 ### Conditional
@@ -83,3 +94,7 @@ Load when you sense the trigger condition. If the condition applies, the load is
 | Security-sensitive code paths               | `telec docs get software-development/policy/security-awareness`                         |
 | Public API or interface changes             | `telec docs get software-development/policy/backward-compatibility-hygiene`             |
 | Owned data, config, or schema shape changes | `telec docs get software-development/policy/backward-compatibility-hygiene`             |
+
+```
+
+```
