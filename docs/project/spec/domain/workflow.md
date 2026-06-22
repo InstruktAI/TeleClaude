@@ -20,7 +20,17 @@ visibility: public
 
 The `workflow` bounded context owns the platform's todos, roadmap, and the state machines that drive a todo from idea to delivered. It owns the preparation artifacts (PRD, a thin architecture index/log, implementation plan, etc.), the stage and phase progressions per todo, the dependency graph between todos, and the bookkeeping that makes the work visible. Architectural design is authored directly into domain/design doc snippets; the `architecture` artifact only logs which snippets a todo touched.
 
-This context does NOT own: the live agent sessions doing the work (`agent_runtime`), the transcript history of those sessions (`session_ledger`), the doc snippet content (`knowledge`), or the integration that delivers outbound notifications (`integration`). Workflow is local-first and authoritative for the per-project todo store; it operates without daemon dependency for its core operations.
+This context does NOT own: the live agent sessions doing the work (`agent_runtime`), the transcript history of those sessions (`session_ledger`), the doc snippet content (`knowledge`), or the integration that delivers outbound notifications (`integration`).
+
+<!-- planned-change:distributed-todo-postgres -->
+
+Workflow is local-first and authoritative for the per-project todo store; it operates without daemon dependency for its core operations.
+
+<!-- change:distributed-todo-postgres -->
+
+Workflow's todo store is the fleet's single authoritative store: one shared store reached by every computer through one connection, so a project's lifecycle state is identical wherever it is read and per-computer copies can no longer diverge. Centralized storage is unconditional — a project with no git remote and no project configuration is first-class and stores and runs its todos in the shared store the same way. Only cross-machine execution handoff is remote-gated: it exists when the project has a git remote to carry work between machines and degrades to a clean no-op when it does not. Core read and write operations connect directly to the shared store rather than through the daemon.
+
+<!-- /planned-change:distributed-todo-postgres -->
 
 ## Canonical fields
 
@@ -145,6 +155,19 @@ kind mutation is refused.
 **Delivery commit**
 : The git commit SHA on `main` that materialized the todo's outcome. Non-empty when stage is `delivered`. The audit trail anchor.
 
+<!-- planned:distributed-todo-postgres -->
+
+**Project identity (ProjectRef)**
+: The durable identity of a project in the shared store, resolved in priority order: a minted, repo-tracked id when present (carried in the project's `teleclaude.yml`); otherwise the project's local absolute path (valid because a folder with no configuration is local-only and single-machine by construction). The git origin URL is optional metadata hanging off the identity, never the key. A project is a first-class row in the shared store, and slug uniqueness is `(project, slug)` — per-project, not global, with no cross-project queries by default. Every todo read and write and the shared-store project key resolve identity through this one seam; no call site derives identity from a path or origin URL inline.
+
+**Execution host**
+: The durable field on a Todo naming the computer that owns its execution. It is released only by its owner — a graceful handoff that pushes the branch and clears the field — or on delivery; never by expiry, heartbeat, or another machine. A todo whose execution host is offline ("dark") parks with that host, its worktree and unpushed local commits intact, until the host returns. It is distinct from `active_runner`: `active_runner` is the live driving session (transient, per-session), while `execution_host` is the durable cross-machine owner that survives session end and host absence. Taking over a dark host's todo is an explicit human action; there is no automatic, liveness-guessing failover.
+
+**Storage regime**
+: The closed distinction between a remote-backed project (has a git remote) and a local-only project (none), carried as a closed-vocabulary value. Storage is centralized for both. Only execution handoff differs: remote-backed work is transferable across machines via the branch on the remote; local-only work is pinned to the one machine holding the checkout, and the handoff machinery resolves to a clean no-op. The regime is resolved once, inside each owning seam (project identity, git transport, execution ownership) — never as a scattered "does a remote exist?" conditional at call sites.
+
+<!-- /planned:distributed-todo-postgres -->
+
 ### Aggregates
 
 #### Todo (aggregate)
@@ -205,6 +228,13 @@ kind mutation is refused.
   - **Dependency readiness uses PRD-approved ground for prepare and delivered ground for work.** Dependent prepare may unblock when every direct dependency has a human-approved PRD or stronger evidence; stronger evidence includes `prepared`, work-lane, or delivered states only when the dependency's PRD approval remains human-authored. Dependent work remains blocked until all `after` dependencies are delivered. The v1 dependency-prepared predicate is currently phase-only, so this delivery changes that predicate instead of treating current prepared-ground as sufficient.
   - **Icebox and removed entries are never runner candidates.** Icebox remains an independent operator parking state; removing/re-activating entries follows the existing soft-delete contract and does not imply hold.
   - **The human gate-control surface derives two independent controls.** A todo row's approval control and hold control are each computed from current todo state and never stored; they are orthogonal — no mutual exclusion and no precedence between them. The approval control governs progression within prepare and requires a human-authenticated caller; the hold control is the unhold control, offered exactly when a todo is effectively held — its `hold` flag is set, its kind's autostart is active (`workflow.runner` is `autostart` and the kind's toggle on), and its phase is past `prepared` — and it clears the flag (manual start still takes any todo forward and never reads hold). It renders as a gate/lock icon in the row's last column whenever effectively held, and renders nothing and offers no control while autostart is off, the runner is `manual`, or the todo is in the prepare lane through `prepared`. The same derived predicate decides the lifecycle runner's auto-dispatch skips.
+  <!-- planned:distributed-todo-postgres -->
+  - **The todo store is the fleet's single authoritative store.** Every project's todos live in one shared store reached by every computer; there is no per-computer copy that can diverge. Storage is unconditional — a project with no git remote and no configuration stores and runs its todos in the shared store. When a computer cannot reach the shared store, a todo write fails closed with an operator-visible error; there is no local fallback and no queued local write, because either reintroduces the divergence the shared store exists to remove.
+  - **A todo's execution is owned by a durable `execution_host`, and dispatch is a filter on that ownership.** A computer's lifecycle runner sees every todo but auto-dispatches only those whose `execution_host` is itself, or is unset — in which case it atomically claims ownership as it materializes the worktree. Claim-and-materialize is one serialized critical section over the shared store: an unexpired foreign claim refuses; absent, mine, or expired takes, and two simultaneous takeovers serialize to one winner. Ownership releases only by its owner (graceful handoff) or on delivery; takeover of another host's todo is explicit and human-gated, never automatic.
+  - **The dispatch claim is cluster-wide and project-scoped.** The boot-gap dispatch claim is keyed by `(project, slug, lane)` over the shared store rather than by per-computer path, so a live session anywhere in the fleet blocks a duplicate. It still guards only the spawn race; durable cross-machine ownership lives in `execution_host` and the live driver link in `active_runner`.
+  - **Git push semantics are the cross-machine enforcement backstop.** The per-slug branch on the remote is fast-forward-only; if two hosts ever materialize the same todo, the non-fast-forward rejection prevents history corruption — one lineage advances and the superseded host yields, resetting to the remote branch on its next push. `execution_host` is intent; git push is enforcement, and the branch is never force-pushed. For a local-only project there is no remote and this backstop is inert.
+  - **Workflow events fire unchanged on shared-store mutation.** A todo mutation in the shared store emits the same `workflow.*` events on the existing transport, so every daemon's caches stay current. Centralizing storage changes the store, not the event contract.
+  <!-- /planned:distributed-todo-postgres -->
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
 - **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind optional only at the intake boundary) or `telec todo create <child> "<content>" --kind <k> --group <parent>` (grouped child of a container). Kind-less creation starts with `kind=None` and no `lifecycle_phase` and routes to `/analyze-todo-input`, which assigns the kind autonomously through the `--kind-assign` stamp boundary. Advances through stages via the per-stage state machine. Reaches `delivered` via integration for SDLC kinds. Frozen aggregates move to icebox.
 

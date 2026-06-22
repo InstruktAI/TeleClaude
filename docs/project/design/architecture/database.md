@@ -24,6 +24,19 @@ visibility: 'public'
 - Schema bootstraps from `teleclaude/core/schema.sql`.
 - Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
 
+<!-- planned:distributed-todo-postgres -->
+
+### Todo store distribution
+
+The workflow todo store is the single store that lives outside the per-machine SQLite layout: it is centralized in one shared Postgres instance for the whole fleet. Every other store this document covers — `teleclaude.db`, `events.db`, `mirrors.db`, `hook_outbox.db`, and the memory tables — stays local SQLite, unchanged. The boundary is exact: only the todo store moves.
+
+- **Master topology.** One node — by convention the cluster's single ingress node — hosts the shared Postgres and is designated the todo-database master in config. Postgres binds loopback plus the cluster's private network interface only and is never publicly exposed. Every node connects through one DSN (loopback on the master, the master's private-network address elsewhere). After migration a non-master node holds no live todo database; its local `.teleclaude/todos.db` becomes archival.
+- **Dual-engine connection factory.** `teleclaude/core/db/connection_factory.py` gains a Postgres engine path driven by the master DSN, used by the todo store alone; every other store keeps the existing SQLite factory. The store is already SQLAlchemy/SQLModel, so this is an engine/dialect swap plus reconciling the SQLite-isms in the raw `teleclaude/core/todos_db/schema.sql` (PRAGMAs, `AUTOINCREMENT`, the partial unique index, file-path target), not a new data layer.
+- **Schema port, project-scoped from migration 0001.** The live todo schema (`todo`, `todo_state`, `todo_artifacts`, `todo_artifact_versions`, `todo_deps`, `todo_dispatch_claims`) ports to Postgres renaming nothing, in one initial migration. It adds exactly: a `project` row keyed by the `ProjectRef` identity (origin URL nullable metadata) with a `project_id` foreign key on every todo row and `(project_id, slug)` replacing the implicit per-database slug uniqueness; an `execution_host` column for durable execution ownership; and the promotion of `todo_dispatch_claims` to a cluster-wide, project-scoped atomic claim. Queryable lifecycle fields stay as they are; the JSON `state` blob stays a JSONB column with no premature column promotion; any new value sets reconcile against the live `LifecyclePhaseValue` and todo-kind vocabularies so no follow-on migration is needed.
+- **Idempotent, reconciling migration.** Per-computer todo SQLite databases are reconciled — not blindly copied — into one authoritative row per `(project, slug)`. The migration runs once per (project, source computer), is SHA-tracked so re-runs are safe no-ops, and preserves slugs and the whole JSON state blob. Conflict resolution: for remote-backed projects git is the tiebreaker — the row consistent with `origin/<slug>` wins and sets `execution_host` to the computer holding that validated worktree (or NULL when merged/clean); for local-only projects the single source wins trivially. Verification is per-project pre/post counts plus a dry run against a copy of real data before the cutover commit.
+- **Coordinated cutover.** Every todo read/write path — the chokepoint accessors `get_todos_db` / `get_todos_db_sync` / `todos_db_path` and all callers through them (HTTP API, integration, operations, roadmap, the orchestrator state machines, CLI handlers) — moves onto the Postgres-backed store in one coordinated step, with no dual source of truth and no per-file staging that leaves some callers on SQLite. The cutover is staged so it does not self-destruct the running orchestrator (whose own session imports the store).
+<!-- /planned:distributed-todo-postgres -->
+
 ### Core tables
 
 ```mermaid

@@ -87,6 +87,18 @@ The checkpoint enables crash recovery. Written atomically (temp file + `os.repla
 - **Self-end authorization**: the integrator is the only governed session type allowed to self-end (when queue empty, no in-progress candidate, lease released, checkpoint written).
 - **Workers cannot push main**: only the integrator pushes `origin/main`. Workers push only their feature branches.
 
+<!-- planned:distributed-todo-postgres -->
+
+### Unified git transport
+
+Every git push in the platform flows through one transport gateway built on `teleclaude/git.py` (the existing logged GitPython funnel — no raw subprocess, no shell-out). The gateway is the only thing that can push: the inline pushes in `step_functions.py` and the two duplicated runners (`run_git_command`, `_run_git`) collapse into one shared runner and one shared push helper, so a consumer physically cannot push without going through classification.
+
+- **Typed push outcomes.** The push helper returns a closed-vocabulary outcome — `ok | superseded | transient | blocked | skipped_no_remote` — owned once and referenced by member, never a `(rc, stdout, stderr)` tuple a caller can ignore. `superseded` means a dead fork (stop); `transient` syncs on the next push (continue; push is cumulative, no retry queue); `blocked` escalates; `skipped_no_remote` is the expected silent no-op for a local-only project. Stack traces are never surfaced as control flow.
+- **`telec code commit` is the single commit+push front door for both lanes.** After the commit, under the main-branch lock, a successful worktree commit auto-pushes with its target resolved from the worktree: a feature worktree (`trees/<slug>`, branch == slug) pushes `HEAD:<slug>`; the integration worktree (`trees/_integration`, detached) pushes `HEAD:main`. Build commits therefore push per-commit instead of accumulating until finalize, making git the live cross-machine carrier. The commit's exit reflects the commit; the push outcome is reported as a distinct, agent-readable status using the typed buckets.
+- **Fleet-singleton serialization.** The integrator is a true fleet singleton: serialization that today is a per-computer flock (`main_branch_lock()`) plus the integration lease must hold across the whole fleet keyed on the project, so two integrators on two computers cannot both advance `origin/main`. For a local-only project there is no `origin/main` — the integrator merges to the local main, records delivery against the local merge commit, and the serialization still serializes within the single owning machine.
+- **Retained integrator responsibilities.** The post-push delivery-confirmation gate (`merge-base --is-ancestor` before recording delivery), the `PUSH_REJECTED` recovery phase, and multi-turn conflict resolution are unchanged; the residual-marker cleanliness gate (`assert_clean_before_push`) moves to pre-commit alongside format+lint so the squash-merged result is linted before it can land on main. The agent-deferring `_format_push_rejected` path is replaced by the shared classifier.
+<!-- /planned:distributed-todo-postgres -->
+
 ## Primary flows
 
 ### State diagram
