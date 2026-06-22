@@ -27,7 +27,7 @@ def _require_origin() -> str:
     raise ValueError("MessageMetadata.origin is required - caller must set it")
 
 
-_KEY_COMMANDS = {
+KEY_COMMANDS = {
     "cancel",
     "cancel2x",
     "kill",
@@ -56,7 +56,7 @@ class CommandMapper:
         session_id: str | None = None,
     ) -> InternalCommand:
         """Map Telegram adapter input to internal command."""
-        if event in _KEY_COMMANDS:
+        if event in KEY_COMMANDS:
             return KeysCommand(
                 session_id=session_id or "",
                 key=event,
@@ -142,7 +142,7 @@ class CommandMapper:
         elif isinstance(launch_intent, SessionLaunchIntent):
             launch_intent_obj = launch_intent
 
-        if cmd_name in _KEY_COMMANDS:
+        if cmd_name in KEY_COMMANDS:
             return KeysCommand(
                 session_id=session_id or "",
                 key=cmd_name,

@@ -3,20 +3,22 @@
 from __future__ import annotations
 
 import json
+import shlex
 from typing import TYPE_CHECKING, cast
 
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.codex_startup_message import _rewrite_codex_next_startup_message
 from teleclaude.api.session_create_launch import (
     effective_launch_agent,
     resolve_enabled_agent,
     resolve_launch_kind,
 )
-from teleclaude.api.sessions_actions_routes import _rewrite_codex_next_startup_message
 from teleclaude.api_models import CreateSessionRequest, CreateSessionResponseDTO
 from teleclaude.constants import EVENT_END_SESSION, EVENT_NEW_SESSION
 from teleclaude.core.adapter_client._remote import RemoteDispatchError
+from teleclaude.core.command_mapper import KEY_COMMANDS
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.shell_identity import require_shell_safe_identifier
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
 
 REMOTE_CREATE_TIMEOUT_SECONDS = 30.0
 REMOTE_CLOSE_TIMEOUT_SECONDS = 30.0
+REMOTE_KEYS_TIMEOUT_SECONDS = 10.0
 
 logger = get_logger(__name__)
 
@@ -220,3 +223,64 @@ async def dispatch_session_close_to_peer(
             error=str(exc),
         )
         raise HTTPException(status_code=503, detail="Remote session close transport unavailable") from exc
+
+
+async def dispatch_session_keys_to_peer(
+    client: AdapterClient | None,
+    target_computer: str,
+    session_id: str,
+    key: str,
+    args: list[str],
+) -> None:
+    """Forward a key command to the owning peer through Redis request/response.
+
+    The peer parses the command string (the key name followed by its args, e.g.
+    ``enter 1``) back into the same ``KeysCommand`` its local API path builds and
+    runs it against its own session store — the authority for sessions it owns.
+    This daemon never holds the peer's session row, so the key must be forwarded
+    rather than resolved locally.
+
+    ``key`` becomes the command name the peer parses, so it is constrained to the
+    key-command vocabulary before the command string is formed: without this gate
+    a send-keys-cleared caller could forward an arbitrary command name (e.g.
+    ``end_session``) that the peer mapper would resolve into a privileged command.
+    """
+    if key not in KEY_COMMANDS:
+        raise HTTPException(status_code=400, detail=f"Unsupported key command: {key}")
+    if client is None:
+        raise HTTPException(status_code=503, detail="Remote send-keys is unavailable")
+
+    command_str = shlex.join([key, *args])
+    metadata = MessageMetadata(origin=InputOrigin.TERMINAL.value)
+    try:
+        await client.dispatch_remote_command(
+            target_computer,
+            command_str,
+            metadata,
+            session_id=session_id,
+            timeout=REMOTE_KEYS_TIMEOUT_SECONDS,
+        )
+    except RemoteDispatchError as exc:
+        logger.warning(
+            "Remote send-keys rejected",
+            target_computer=target_computer,
+            session_id=session_id,
+            detail=str(exc),
+        )
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        logger.warning(
+            "Remote send-keys timed out",
+            target_computer=target_computer,
+            session_id=session_id,
+            timeout=REMOTE_KEYS_TIMEOUT_SECONDS,
+        )
+        raise HTTPException(status_code=504, detail="Remote send-keys timed out") from exc
+    except (RuntimeError, OSError) as exc:
+        logger.error(
+            "Remote send-keys transport unavailable",
+            target_computer=target_computer,
+            session_id=session_id,
+            error=str(exc),
+        )
+        raise HTTPException(status_code=503, detail="Remote send-keys transport unavailable") from exc

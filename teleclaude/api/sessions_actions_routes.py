@@ -29,7 +29,9 @@ from teleclaude.api.auth import (
     clearance_sessions_voice,
     clearance_sessions_widget,
 )
+from teleclaude.api.codex_startup_message import _rewrite_codex_next_startup_message
 from teleclaude.api.session_access import check_session_access
+from teleclaude.api.session_remote import dispatch_session_keys_to_peer, is_remote_target
 from teleclaude.api_models import (
     CreateSessionResponseDTO,
     EscalateRequest,
@@ -350,33 +352,6 @@ def _infer_working_slug(normalized_cmd: str, normalized_args: str) -> str | None
     return slug.strip() or None
 
 
-def _build_codex_loader_message(command_name: str, args: str) -> str:
-    """Build the generic Codex loader message for a compiled prompt file."""
-    prompt_path = COMMANDS_DIR / f"{command_name}.md"
-    return (
-        f"Read {prompt_path} and follow it exactly as the active instruction set for this session.\n\n"
-        "Treat the following as provided inputs to that instruction set:\n"
-        f"{args}"
-    )
-
-
-def _rewrite_codex_next_startup_message(startup_message: str, *, effective_agent: str) -> str:
-    """Rewrite Codex `/next-*` startup messages to the loader prompt instruction."""
-    if effective_agent != "codex":
-        return startup_message
-
-    stripped_message = startup_message.lstrip()
-    if not stripped_message.startswith("/next-"):
-        return startup_message
-
-    command_token, _, remainder = stripped_message.partition(" ")
-    normalized_cmd = command_token.lstrip("/")
-    normalized_args = remainder.strip()
-    if not normalized_args:
-        raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
-    return _build_codex_loader_message(normalized_cmd, normalized_args)
-
-
 def _prepare_run_session(
     request: RunSessionRequest,
     identity: CallerIdentity,
@@ -446,16 +421,19 @@ async def send_keys_endpoint(
     http_request: Request,
     session_id: str,
     request: KeysRequest,
-    _computer: str | None = Query(None),
+    computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_keys),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send key command to session."""
     await check_session_access(http_request, session_id)
     try:
-        metadata = _build_metadata()
         args: list[str] = []
         if request.count:
             args = [str(request.count)]
+        if computer and is_remote_target(computer, config.computer.name):
+            await dispatch_session_keys_to_peer(_STATE.client, computer, session_id, request.key, args)
+            return {"status": "success"}
+        metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
             "keys",
             {"session_id": session_id, "key": request.key, "args": args},
@@ -463,6 +441,8 @@ async def send_keys_endpoint(
         )
         await get_command_service().keys(cmd)
         return {"status": "success"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("send_keys failed (session=%s): %s", session_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to send keys: {e}") from e

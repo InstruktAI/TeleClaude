@@ -18,6 +18,7 @@ from teleclaude.api.auth import (
     clearance_sessions_send,
     clearance_sessions_start,
 )
+from teleclaude.api.codex_startup_message import _rewrite_codex_next_startup_message
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_create_launch import (
     effective_launch_agent,
@@ -31,7 +32,7 @@ from teleclaude.api.session_remote import (
     is_remote_create_target,
     is_remote_target,
 )
-from teleclaude.api.sessions_actions_routes import _infer_role_from_message, _rewrite_codex_next_startup_message
+from teleclaude.api.sessions_actions_routes import _infer_role_from_message
 from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -42,10 +43,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import (
-    HUMAN_ROLE_ADMIN,
-    HUMAN_ROLE_MEMBER,
-)
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core import command_handlers
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service

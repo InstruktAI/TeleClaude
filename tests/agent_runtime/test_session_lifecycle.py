@@ -21,9 +21,9 @@ from httpx import AsyncClient
 
 import teleclaude.core.agent_coordinator._coordinator as coordinator_mod
 from teleclaude.api import auth as auth_mod
-from teleclaude.api import sessions_routes
+from teleclaude.api import sessions_actions_routes, sessions_routes
 from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
-from teleclaude.api.session_remote import dispatch_session_close_to_peer
+from teleclaude.api.session_remote import dispatch_session_close_to_peer, dispatch_session_keys_to_peer
 from teleclaude.cli import api_client as api_client_mod
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.constants import EVENT_END_SESSION, ROLE_WORKER, WORKTREE_DIR, JobRole, SlashCommand
@@ -479,6 +479,157 @@ async def test_dispatch_session_close_to_peer_maps_timeout_to_gateway_timeout() 
         await dispatch_session_close_to_peer(client, "PeerComputer", "session-1")
 
     assert exc_info.value.status_code == 504
+
+
+# ---------------------------------------------------------------------------
+# Remote send-keys API helper
+# ---------------------------------------------------------------------------
+
+
+async def test_dispatch_session_keys_to_peer_forwards_key_command_string() -> None:
+    client = _RemoteCloseClient()
+
+    await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
+
+    assert client.dispatches == [
+        {
+            "target_computer": "PeerComputer",
+            "command": "enter 1",
+            "origin": InputOrigin.TERMINAL.value,
+            "session_id": "session-1",
+            "timeout": 10.0,
+            "wait_for_response": True,
+        }
+    ]
+
+
+async def test_dispatch_session_keys_to_peer_maps_target_error_to_bad_gateway() -> None:
+    client = _RemoteCloseClient(RemoteDispatchError("peer rejected keys"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
+
+    assert exc_info.value.status_code == 502
+
+
+async def test_dispatch_session_keys_to_peer_maps_transport_error_to_unavailable() -> None:
+    client = _RemoteCloseClient(RuntimeError("redis unavailable"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
+
+    assert exc_info.value.status_code == 503
+
+
+async def test_dispatch_session_keys_to_peer_maps_timeout_to_gateway_timeout() -> None:
+    client = _RemoteCloseClient(TimeoutError())
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "enter", ["1"])
+
+    assert exc_info.value.status_code == 504
+
+
+async def test_dispatch_session_keys_to_peer_rejects_non_key_command_before_dispatch() -> None:
+    """A key outside the key-command vocabulary is rejected before forming the peer command.
+
+    Guards against forwarding an arbitrary command name (e.g. ``end_session``) that the
+    peer mapper would resolve into a privileged command the keys clearance never granted.
+    """
+    client = _RemoteCloseClient()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await dispatch_session_keys_to_peer(client, "PeerComputer", "session-1", "end_session", [])
+
+    assert exc_info.value.status_code == 400
+    assert client.dispatches == []
+
+
+# ---------------------------------------------------------------------------
+# Remote send-keys API boundary
+# ---------------------------------------------------------------------------
+
+
+async def test_send_keys_for_peer_targeted_session_dispatches_remote_and_does_not_run_locally(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adopting a peer-owned headless session forwards the key to the owning peer.
+
+    Regression for the reported 500 ("Session ... not found - this should not happen"):
+    the endpoint must dispatch to the owning peer instead of resolving the key against
+    the local DB, which never holds a peer-owned session row.
+    """
+    client = _RemoteCloseClient()
+    local_keys = AsyncMock()
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+    monkeypatch.setattr(sessions_actions_routes, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
+
+    response = await api.post(
+        "/sessions/remote-session/keys",
+        params={"computer": "PeerComputer"},
+        json={"key": "enter", "count": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "success"}
+    local_keys.assert_not_awaited()
+    assert client.dispatches == [
+        {
+            "target_computer": "PeerComputer",
+            "command": "enter 1",
+            "origin": InputOrigin.TERMINAL.value,
+            "session_id": "remote-session",
+            "timeout": 10.0,
+            "wait_for_response": True,
+        }
+    ]
+
+
+async def test_send_keys_for_local_target_runs_locally_and_does_not_dispatch_remote(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A send-keys request with no remote target executes against the local session store."""
+    client = _RemoteCloseClient()
+    local_keys = AsyncMock()
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+    monkeypatch.setattr(sessions_actions_routes, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
+
+    response = await api.post(
+        "/sessions/local-session/keys",
+        json={"key": "enter", "count": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "success"}
+    local_keys.assert_awaited_once()
+    assert client.dispatches == []
+
+
+async def test_send_keys_for_peer_rejects_non_key_command_without_dispatch(
+    api: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A peer-targeted request whose key is not a key command is rejected before peer dispatch.
+
+    Regression guard: the keys route is cleared for send-keys, not session close, so it must
+    not forward ``end_session`` (which the peer mapper resolves to CloseSessionCommand).
+    """
+    client = _RemoteCloseClient()
+    local_keys = AsyncMock()
+    monkeypatch.setattr(sessions_actions_routes._STATE, "client", client)
+    monkeypatch.setattr(sessions_actions_routes, "get_command_service", lambda: SimpleNamespace(keys=local_keys))
+
+    response = await api.post(
+        "/sessions/remote-session/keys",
+        params={"computer": "PeerComputer"},
+        json={"key": "end_session"},
+    )
+
+    assert response.status_code == 400
+    local_keys.assert_not_awaited()
+    assert client.dispatches == []
 
 
 # ---------------------------------------------------------------------------
