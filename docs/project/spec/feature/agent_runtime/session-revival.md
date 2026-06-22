@@ -101,14 +101,18 @@ And then proceeds with the restart-agent flow against the newly minted session i
 
 <!-- planned:revive-wrong-project-root -->
 
+#### UC-SR1: Fresh adoption recovers the recorded project from the originating prior row
+
 ```
 Given a caller invokes `telec sessions revive <native_id> --agent claude` from a directory other than where <native_id> was recorded
-And the only prior session row bound to <native_id> is closed and recorded project path P with subdir S
+And the earliest prior session row bound to <native_id> is closed and recorded project path P with subdir S
+And a later closed row bound to <native_id> recorded a different project path Q
 When the service resolves the revive request
 Then the new session row's project path is P and its subdir is S
-And neither value is taken from the caller's invocation directory
-And the resumed agent launches with the working directory the native session was recorded under
+And the project path is P rather than Q or the caller's invocation directory
 ```
+
+#### UC-SR2: Fresh adoption with no prior row falls back to the provided project argument
 
 ```
 Given a caller invokes revive with `--agent <name>` for a <native_id> that no prior session row records
