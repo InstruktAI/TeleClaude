@@ -1,6 +1,7 @@
 ---
 description: 'Integration-time clearing of delivered_by slugs from pending snippets when a delivery slug reaches delivered todo status.'
 visibility: 'public'
+delivered_by: [host-scoped-pending-markers]
 ---
 
 # Lifecycle Marker Reconciliation — Spec
@@ -89,6 +90,36 @@ And all three marker lines for the current candidate are removed
 And the other slug's planned-change block is left unchanged
 And a second reconciliation run makes no further change
 ```
+
+<!-- planned:host-scoped-pending-markers -->
+
+#### UC-LMR2: Reconciliation is host-scoped — foreign tokens survive a local transition
+
+A marker token is `<slug>@<host>`; a bare token (no `@`) is local/legacy. A delivery,
+abandon, orphan-scan, or rename matches a token only when its stripped slug equals the
+target slug AND its host is absent or equals the local computer name. A token whose host
+names another computer is left byte-for-byte untouched, because that pending todo lives on
+another machine and has no local row to drive its deletion.
+
+```
+Given a live parent snippet contains a planned block for "feat-x@LocalHost"
+And the same parent contains a planned block for "feat-x@RemoteHost"
+And the local computer name is "LocalHost"
+When delivery reconciliation runs for the local candidate "feat-x"
+Then the "feat-x@LocalHost" block is folded into the live contract
+And the "feat-x@RemoteHost" block is left unchanged
+And no residual-marker error is raised
+```
+
+```
+Given a snippet carries delivered_by ["feat-x@RemoteHost"]
+And the local computer name is "LocalHost"
+When the local todo "feat-x" is hard-purged and purge reconciliation runs
+Then the "feat-x@RemoteHost" entry is left unchanged
+And no snippet write that touches the foreign token is produced
+```
+
+<!-- /planned:host-scoped-pending-markers -->
 
 ### Cross-context references
 
