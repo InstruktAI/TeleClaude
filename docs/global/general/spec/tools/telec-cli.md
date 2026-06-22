@@ -80,6 +80,24 @@ No framework stash, no working-tree reset outside the pathspec. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
 partial-staging check as a backstop for raw `git commit` invocations.
 
+<!-- planned:distributed-todo-postgres -->
+
+`telec code commit` is the single commit+push front door for both worktree lanes.
+After a successful worktree commit, under the main-branch lock, it auto-pushes
+through the shared git transport gateway with the target resolved from the
+worktree: a feature worktree (`trees/<slug>`, branch == slug) pushes
+`HEAD:<slug>`; the integration worktree (`trees/_integration`, detached) pushes
+`HEAD:main`. Build commits therefore push per-commit rather than accumulating
+until finalize, so git carries in-progress work across machines. The command's
+exit status reflects the commit; the push result is reported separately as a
+closed-vocabulary, agent-readable outcome — `ok | superseded | transient |
+blocked | skipped_no_remote`. `superseded` is a dead fork (stop); `transient`
+syncs on the next push (push is cumulative, no retry queue); `blocked` escalates;
+`skipped_no_remote` is the expected silent no-op for a local-only project. Stack
+traces are never surfaced as control flow.
+
+<!-- /planned:distributed-todo-postgres -->
+
 ## Known caveats
 
 - Removing or renaming a subcommand is a breaking change.

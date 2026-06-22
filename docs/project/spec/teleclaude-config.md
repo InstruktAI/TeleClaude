@@ -332,6 +332,10 @@ remote_computers:
     host: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
     ip: string | null
     teleclaude_path: string | null
+<!-- planned:distributed-todo-postgres -->
+todo_db:
+  dsn: string # connection string for the fleet's shared todo-store Postgres. The store is hosted on the single master node (computer.is_master); the master binds Postgres to loopback plus the cluster's private network and is never publicly exposed. Every node resolves this to reach the master — loopback on the master, the master's private-network address elsewhere. Only the todo store uses this engine; every other store stays local SQLite. Absent/unreachable → todo writes fail closed with an operator-visible error (no local fallback, no queued local write).
+<!-- /planned:distributed-todo-postgres -->
 telegram:
   enabled: boolean
 email:
