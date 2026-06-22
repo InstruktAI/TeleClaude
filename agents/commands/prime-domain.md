@@ -1,6 +1,6 @@
 ---
 argument-hint: '[domain]'
-description: Load the platform's process-enforcement baseline for the named domain before producing or reviewing artifacts evaluated under platform policy.
+description: Load the platform's process-enforcement baseline for the named domain (software-development, creative, erp) before producing or reviewing artifacts evaluated under platform policy.
 ---
 
 # Prime Domain
@@ -13,7 +13,7 @@ Load the platform's process-enforcement baseline for the named domain into the a
 
 ## Inputs
 
-- `domain` argument: one of `software-development`, `creative`.
+- `domain` argument: one of `software-development`, `creative`, `erp`.
 
 ## Outputs
 
@@ -22,8 +22,9 @@ Load the platform's process-enforcement baseline for the named domain into the a
 ## Steps
 
 1. Resolve the `domain` argument to its deployed baseline path:
-   - `software-development` → `~/.teleclaude/docs/software-development/baseline.md`
-   - `creative` → `~/.teleclaude/docs/creative/baseline.md`
+   - `software-development` → `~/.teleclaude/docs/software-development/domain-baseline.md`
+   - `creative` → `~/.teleclaude/docs/creative/domain-baseline.md`
+   - `erp` → `~/.teleclaude/docs/erp/domain-baseline.md`
 2. Read the file in full.
 3. Treat its contents as mandatory context for the rest of the session.
 
