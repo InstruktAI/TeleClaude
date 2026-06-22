@@ -118,7 +118,7 @@ And an agent never messages itself about an approval it just recorded
 ```gherkin
 Given a Todo has kind="task", lifecycle_phase="prepared", and a current `task-plan` artifact
 When a human authorizes the task from the TUI or runs `telec todo stamp my-slug --task-approved`
-Then workflow records a task authorization stamp with caller_session_id and approved_at
+Then workflow records a task authorization stamp with caller_session_id, approved_at, and approved_digest set to the current `task-plan` digest
 And the state-write boundary re-validates the full Todo state before commit
 And workflow emits `workflow.todo.updated` so the lifecycle runner re-evaluates task eligibility
 ```
@@ -128,6 +128,13 @@ Given a Todo is not kind="task", is not prepared, or lacks a `task-plan`
 When a caller attempts the task authorization stamp
 Then workflow refuses before mutating state
 And no runner wake-up is emitted
+```
+
+```gherkin
+Given a task has a `task_approved` stamp whose `approved_digest` was recorded against an earlier `task-plan`
+When the `task-plan` is edited so its current digest no longer equals the stamped `approved_digest`
+Then the lifecycle runner treats the task as unauthorized and does not dispatch `/next-run-task`
+And the task stays unauthorized until a fresh `task_approved` stamp re-binds `approved_digest` to the current `task-plan`
 ```
 
 <!-- /planned:task-lane -->

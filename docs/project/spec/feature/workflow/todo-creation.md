@@ -23,8 +23,14 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
   - `--after <slugs>` — comma-separated dependency slugs (trimmed; empties dropped); validated against the todo list at insert time.
   <!-- planned:task-lane -->
   - `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
-    <!-- /planned:task-lane -->
+      <!-- /planned:task-lane -->
+    <!-- planned-change:task-lane -->
   - `--plan` — valid only with `--kind change`. The supplied content is a complete implementation plan, so the route writes it as the `implementation-plan` artifact and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
+  <!-- change:task-lane -->
+  - `--plan` — valid with `--kind change` or `--kind task`; rejected for `--kind feature` and `--kind bug`. The supplied content is the complete plan for that kind, written as the kind's plan artifact so drafting is skipped:
+    - `--kind change --plan` writes the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
+    - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
+    <!-- /planned-change:task-lane -->
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
@@ -206,6 +212,24 @@ And the schedule is persisted as the task execution eligibility
 And the task still requires a prepared `task-plan` and human authorization before runner dispatch
 ```
 
+#### UC-WTC17: Task --plan creation seeds a pre-authorized task
+
+```gherkin
+Given a caller runs `telec todo create my-task "<task-plan-content>" --kind task --plan`
+When the create request is accepted
+Then workflow writes the content as the `task-plan` artifact prefixed `# my-task — Task Plan`
+And the todo lands at lifecycle_phase="prepared" without dispatching `/next-prepare-task`
+And workflow records a `task_approved` stamp whose `approved_digest` equals the seeded `task-plan` digest
+And the lifecycle runner dispatches `/next-run-task` once the dependency or schedule gate passes, with no separate human authorization
+```
+
+```gherkin
+Given a caller runs `telec todo create my-x "<content>" --plan` with `--kind feature` or `--kind bug`
+When the create request is validated
+Then workflow rejects it before writing roadmap, state, artifact, or event rows
+And the diagnostic names `--plan` as valid only with `--kind change` or `--kind task`
+```
+
 <!-- /planned:task-lane -->
 
 ```
@@ -298,7 +322,11 @@ And the router dispatches /next-prepare for "child" as usual
 ## Known caveats
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
+<!-- planned-change:task-lane -->
 - `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review.
+<!-- change:task-lane -->
+- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). `task` is created silent and carries a living `task-plan` artifact. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes.
+<!-- /planned-change:task-lane -->
 - A created todo enters its kind's lifecycle; nothing holds it back at creation. `--icebox` is the only flag that parks it instead (`status="icebox"`, `pickup_requested=false`), and the lifecycle runner skips iceboxed entries. The route always emits `workflow.todo.created` after a successful create.
 - `--group <parent-slug>` is the create-time path to a grouped child. It threads `group_slug` through the create transaction's existing `add_to_todo` call. Holder status for the parent is **derived** from the live child reference, never stored — `create --group` mutates no holder row; the same transaction strips the parent's non-`input` payload via the holder-purge, and refuses the create when the parent already carries a non-`input` artifact (it is past prepare — see UC-WTC16). `--hold` and `--release` are not accepted on create.
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
@@ -308,5 +336,9 @@ And the router dispatches /next-prepare for "child" as usual
 
 - `telec todo design` (and the deprecated `co-create` alias) is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
+<!-- planned-change:task-lane -->
 - The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` and the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
+<!-- change:task-lane -->
+- The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` for `--kind change` and `# <slug> — Task Plan\n\n` for `--kind task`; the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
+<!-- /planned-change:task-lane -->
 - The `workflow.todo.created` payload's `created_by_principal` is populated from the roadmap row's persisted owner. `todo_id` and `project_id` may still not be populated by every emitter; downstream consumers fill those via serde defaults.
