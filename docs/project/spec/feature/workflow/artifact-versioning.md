@@ -109,20 +109,6 @@ session id that could hold the slug.
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
 
-<!-- planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
-
-A write from any session other than the live holder — including a dispatched
-worker that shares the slug — is a claim conflict. Independently of the holder
-check and of lifecycle phase, a prepare artifact is writable only by a
-prepare-phase writer: a prepare-orchestrator session or a human-identity session.
-A session whose role is anything else — a work orchestrator, a create
-orchestrator, the integrator, or any worker — is refused by role with HTTP 403,
-evaluated before the holder check. The write boundary does not enforce the
-convention that a work-phase defect in a prepare artifact is routed back through
-prepare.
-
-<!-- change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
-
 A write from any session other than the live holder — including a dispatched
 worker that shares the slug — is a claim conflict. Independently of the holder
 check and of lifecycle phase, a prepare artifact is writable only by a
@@ -137,25 +123,8 @@ refused only as a claim conflict against a different live holder. The write
 boundary does not enforce the convention that a work-phase defect in a prepare
 artifact is routed back through prepare.
 
-<!-- /planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
-
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
 carry no claim gate.
-
-<!-- planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
-
-#### UC-WAV9: Worker write to a held slug is refused as a claim conflict
-
-```gherkin
-Given a slug held by a live orchestrator session
-And a worker session that shares the slug
-When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
-Then the workflow service refuses the write as a claim conflict naming the holder before any state mutation
-And the response status is HTTP 409
-And the artifact's current version is unchanged
-```
-
-<!-- change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
 
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
 
@@ -165,8 +134,6 @@ When the worker attempts to write a prepare artifact (input, prd, architecture, 
 Then the workflow service refuses the write by role with HTTP 403, evaluated before the holder check
 And the artifact's current version is unchanged
 ```
-
-<!-- /planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
 
 #### UC-WAV10: Write to a slug held by a different live session is refused
 
@@ -232,8 +199,6 @@ And records the resolved human principal as updated_by
 And the slug acquires no live active-runner
 ```
 
-<!-- planned:fix-unclaimed-todo-not-claimed-by-invoking-a -->
-
 #### UC-WAV17: A roleless session write to an unheld slug is accepted and claims the slug
 
 ```gherkin
@@ -254,8 +219,6 @@ When the caller attempts to write a prepare artifact
 Then the workflow service refuses the write as a claim conflict naming the holder
 And the response status is HTTP 409
 ```
-
-<!-- /planned:fix-unclaimed-todo-not-claimed-by-invoking-a -->
 
 ### Cross-context references
 
