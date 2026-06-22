@@ -15,6 +15,7 @@ class Todo(SQLModel, table=True):
     id: str = Field(primary_key=True)
     slug: str
     ready_since: str | None = Field(default=None)
+    schedule: str | None = Field(default=None)
     group_slug: str | None = None
     description: str | None = None
     status: str = "active"

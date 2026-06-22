@@ -19,6 +19,7 @@ from teleclaude.constants import (
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
+    STATE_KEY_TASK_PLAN,
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import provenance
@@ -372,11 +373,19 @@ async def test_plan_review_dispatch_spawns_without_live_prepare_reviewer(
 def test_bug_kind_routes_through_diagnose_not_fast_track() -> None:
     assert KIND_BUG in BUG_DIAGNOSE_KINDS
     assert KIND_BUG not in FAST_TRACK_PREPARED_KINDS
-    assert KIND_TASK in FAST_TRACK_PREPARED_KINDS
+    assert KIND_TASK not in FAST_TRACK_PREPARED_KINDS
     arch_review = LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.ARCHITECTURE_REVIEW)
     diagnose = LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.DIAGNOSE)
     plan_drafting = LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.PLAN_DRAFTING)
     assert arch_review < diagnose < plan_drafting
+    assert LifecyclePhase.TASK_PLAN_DRAFTING not in LIFECYCLE_PHASE_ORDER
+    assert LifecyclePhase.TASK_RUNNING not in LIFECYCLE_PHASE_ORDER
+
+
+def test_task_derives_task_plan_drafting_until_task_plan_exists() -> None:
+    model = TodoState(kind=KIND_TASK, schema_version=5)
+    assert adopt_prepare_handoff_phase(model, artifact_presence={}) == LifecyclePhase.TASK_PLAN_DRAFTING
+    assert adopt_prepare_handoff_phase(model, artifact_presence={STATE_KEY_TASK_PLAN: True}) == LifecyclePhase.PREPARED
 
 
 def test_bug_derives_diagnose_until_diagnosis_then_flows_like_a_plan() -> None:

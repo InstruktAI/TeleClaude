@@ -63,7 +63,6 @@ from teleclaude.core.next_machine.state_mutation import (
 )
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 
 logger = get_logger(__name__)
@@ -80,8 +79,7 @@ def initial_todo_state_for_kind(kind: str | None) -> dict[str, StateValue]:
     canonical = canonical_kind(kind)
     state["kind"] = canonical
     entry_phase = KIND_ENTRY_PHASE[canonical]
-    if entry_phase in (LifecyclePhase.DIAGNOSE, LifecyclePhase.PREPARED):
-        state["lifecycle_phase"] = entry_phase.value
+    state["lifecycle_phase"] = entry_phase.value
     return state
 
 

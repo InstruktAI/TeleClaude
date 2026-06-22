@@ -1,8 +1,9 @@
 ---
-activation_trigger: 'Use when the lifecycle runner dispatches an authorized task for execution'
-description: "Execute an authorized task against its durable task-plan, carry continuity through the log, deliver outputs to the predictable workspace, and stay alive for human follow-up and the task's next scheduled firing. Non-SDLC; no commit."
-delivered_by:
-  - task-lane
+activation_trigger: Use when the lifecycle runner dispatches an authorized task for
+  execution
+description: Execute an authorized task against its durable task-plan, carry continuity
+  through the log, deliver outputs to the predictable workspace, and stay alive for
+  human follow-up and the task's next scheduled firing. Non-SDLC; no commit.
 ---
 
 # Run Task — Procedure

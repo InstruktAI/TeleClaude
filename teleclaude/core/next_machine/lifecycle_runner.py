@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
-from enum import StrEnum
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol, Unpack
 
@@ -13,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import WorkflowRunnerMode, config
+from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.dispatch_claims import (
     acquire_dispatch_claim,
@@ -26,6 +26,18 @@ from teleclaude.core.next_machine.lifecycle import (
     lifecycle_phase_index,
     pending_approval_gate,
 )
+from teleclaude.core.next_machine.runner_order import dependency_first_order
+from teleclaude.core.next_machine.runner_types import (
+    DispatchIntent,
+    DispatchOrigin,
+    ManualLifecycleSessionResult,
+    ManualLifecycleStatus,
+    RunnerDecision,
+    RunnerLane,
+    RunnerResult,
+    RunnerSkipReason,
+    RunnerTodo,
+)
 from teleclaude.core.next_machine.runtime.sessions import (
     is_live_session_id,
     live_orchestrator_owned_slugs,
@@ -36,6 +48,7 @@ from teleclaude.core.next_machine.slug_resolution import (
     effective_prepared_slugs_for_dependencies,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.task_wake import wake_due_recurring_tasks
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.project_root import resolve_state_root
@@ -45,46 +58,6 @@ from teleclaude.types.state_value import StateValue
 logger = get_logger(__name__)
 
 _ADDITIONAL_CONTEXT = "human_in_loop: false\n"
-
-
-class RunnerLane(StrEnum):
-    ANALYZE = "analyze"
-    PREPARE = "prepare"
-    WORK = "work"
-
-
-class DispatchOrigin(StrEnum):
-    """Who initiated a driver dispatch through the single dispatch primitive.
-
-    The origin decides the durable ``manually_started`` marker: the autonomous
-    runner loop is the only non-manual origin; an operator START and a headless
-    adoption are both manual and excluded from the concurrency cap.
-    """
-
-    RUNNER = "runner"
-    MANUAL = "manual"
-
-    @property
-    def manually_started(self) -> bool:
-        return self is DispatchOrigin.MANUAL
-
-
-class RunnerSkipReason(StrEnum):
-    ALREADY_DRIVEN = "already-driven"
-    APPROVAL_PENDING = "approval-pending"
-    AT_CAPACITY = "at-capacity"
-    CLAIMED = "claim-conflict"
-    DELIVERED = "delivered"
-    DEPENDENCY_BLOCKED = "dependency-blocked"
-    FINALIZE_READY = "finalize-ready"
-    HELD = "held"
-    ICEBOX = "icebox"
-    INVALID_KIND = "invalid-kind"
-    MISSING_STATE = "missing-state"
-    POLICY_DISABLED = "policy-disabled"
-    REMOVED = "removed"
-    TASK_AUTHORIZATION_MISSING = "task-authorization-missing"
-    UNKNOWN_PHASE = "unknown-phase"
 
 
 # Steady-state terminal reasons carry the entire backlog and never change
@@ -98,65 +71,6 @@ _TERMINAL_SKIP_REASONS: frozenset[RunnerSkipReason] = frozenset(
 )
 
 
-class ManualLifecycleStatus(StrEnum):
-    ADOPTED = "adopted"
-    ALREADY_ACTIVE = "already-active"
-    ALREADY_DRIVEN = "already-driven"
-    DISPATCHED = "dispatched"
-    NOT_BOUND = "not-bound"
-    SKIPPED = "skipped"
-
-
-@dataclass(frozen=True)
-class RunnerTodo:
-    slug: str
-    status: str
-    kind: str | None
-    lifecycle_phase: str | None
-    hold: bool
-    active_runner: str | None
-    manually_started: bool = False
-    after: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class DispatchIntent:
-    slug: str
-    lane: RunnerLane
-    command: str
-    thinking_mode: str | None
-    additional_context: str
-
-
-@dataclass
-class RunnerDecision:
-    evaluated: int = 0
-    intents: list[DispatchIntent] = field(default_factory=list)
-    skips: dict[RunnerSkipReason, list[str]] = field(default_factory=dict)
-
-    def skip(self, reason: RunnerSkipReason, slug: str) -> None:
-        self.skips.setdefault(reason, []).append(slug)
-
-
-@dataclass
-class RunnerResult:
-    project_path: str
-    trigger: str
-    evaluated: int
-    dispatched: list[DispatchIntent]
-    skips: dict[RunnerSkipReason, list[str]]
-    reconciled: list[str]
-
-
-@dataclass(frozen=True)
-class ManualLifecycleSessionResult:
-    slug: str
-    lane: RunnerLane
-    status: ManualLifecycleStatus
-    session_id: str | None = None
-    reason: RunnerSkipReason | str | None = None
-
-
 class SessionRunner(Protocol):
     async def connect(self) -> None: ...
     async def close(self) -> None: ...
@@ -167,34 +81,13 @@ def default_session_runner() -> SessionRunner:
     return TelecAPIClient()
 
 
-def _dependency_first_order(todos: Mapping[str, RunnerTodo]) -> list[str]:
-    ordered: list[str] = []
-    seen: set[str] = set()
-    visiting: set[str] = set()
-
-    def visit(slug: str) -> None:
-        if slug in seen:
-            return
-        if slug in visiting:
-            return
-        visiting.add(slug)
-        todo = todos.get(slug)
-        if todo is not None:
-            for dep in todo.after:
-                if dep in todos:
-                    visit(dep)
-        visiting.remove(slug)
-        seen.add(slug)
-        ordered.append(slug)
-
-    for slug in todos:
-        visit(slug)
-    return ordered
-
-
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str | None, str]:
     if lane is RunnerLane.ANALYZE:
         return "/analyze-todo-input", None, _ADDITIONAL_CONTEXT
+    if lane is RunnerLane.TASK_PREPARE:
+        return "/next-prepare-task", "med", _ADDITIONAL_CONTEXT
+    if lane is RunnerLane.TASK_RUN:
+        return "/next-run-task", "med", ""
     if lane is RunnerLane.WORK:
         return "/next-work", "med", ""
     return "/next-prepare", "slow", _ADDITIONAL_CONTEXT
@@ -234,12 +127,20 @@ def _resolve_kinded_dispatch(
     prepared_slugs: set[str],
     delivered_slugs: set[str],
     autostart: Mapping[str, bool],
+    now: datetime | None = None,
 ) -> tuple[RunnerLane | None, RunnerSkipReason | None]:
     """Resolve the dispatch lane (or skip reason) for a kinded todo."""
     if kind == KIND_TASK:
-        if not _autostart_enabled(kind, autostart):
-            return None, RunnerSkipReason.POLICY_DISABLED
-        return None, RunnerSkipReason.TASK_AUTHORIZATION_MISSING
+        if not todo.task_plan_digest:
+            return RunnerLane.TASK_PREPARE, None
+        if not todo.task_approved or todo.task_approved_digest != todo.task_plan_digest:
+            return None, RunnerSkipReason.TASK_AUTHORIZATION_MISSING
+        if not task_schedule_due(todo.schedule, now=now):
+            return None, RunnerSkipReason.SCHEDULE_BLOCKED
+        unmet = [dep for dep in todo.after if dep not in delivered_slugs]
+        if unmet:
+            return None, RunnerSkipReason.DEPENDENCY_BLOCKED
+        return RunnerLane.TASK_RUN, None
     if kind not in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
         return None, RunnerSkipReason.INVALID_KIND
     phase = coerce_lifecycle_phase(todo.lifecycle_phase)
@@ -275,6 +176,7 @@ def decide_dispatches(
     max_dispatch: int = 5,
     live_driver_count: int = 0,
     runner_mode: WorkflowRunnerMode = WorkflowRunnerMode.AUTOSTART,
+    now: datetime | None = None,
 ) -> RunnerDecision:
     decision = RunnerDecision(evaluated=len(todos))
     # Manual mode is the operator's runaway brake: the runner performs no
@@ -294,7 +196,7 @@ def decide_dispatches(
     def _at_capacity() -> bool:
         return remaining_budget - len(decision.intents) <= 0
 
-    for slug in _dependency_first_order(todos):
+    for slug in dependency_first_order(todos):
         todo = todos[slug]
         if todo.status == "removed":
             decision.skip(RunnerSkipReason.REMOVED, slug)
@@ -317,7 +219,7 @@ def decide_dispatches(
         # runner_mode and the autostart map it already receives — never global
         # config, so the decision stays pure over its parameters. (runner_mode is
         # AUTOSTART here: MANUAL returned early above.)
-        autostart_active = (
+        autostart_active = held_kind == KIND_TASK or (
             runner_mode is WorkflowRunnerMode.AUTOSTART
             and held_kind is not None
             and held_kind in autostart
@@ -358,6 +260,7 @@ def decide_dispatches(
             prepared_slugs=prepared_slugs,
             delivered_slugs=delivered_slugs,
             autostart=autostart,
+            now=now,
         )
         if lane is None:
             decision.skip(skip_reason or RunnerSkipReason.INVALID_KIND, slug)
@@ -386,6 +289,7 @@ async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> RunnerTodo | Non
             hold=False,
             active_runner=None,
             after=(),
+            schedule=row["schedule"],
         )
     state = await todos_db.read_state(row["slug"])
     if state is None:
@@ -397,6 +301,8 @@ def _todo_from_state(row: TodoRow, state: Mapping[str, StateValue]) -> RunnerTod
     kind = state.get("kind")
     phase = state.get("lifecycle_phase")
     active_runner = state.get("active_runner")
+    task_plan_digest = _artifact_digest_from_state(state, "task_plan")
+    task_approval = _approval_from_state(state, "task_approved")
     return RunnerTodo(
         slug=row["slug"],
         status=row["status"],
@@ -406,7 +312,33 @@ def _todo_from_state(row: TodoRow, state: Mapping[str, StateValue]) -> RunnerTod
         active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
         manually_started=state.get("manually_started") is True,
         after=(),
+        schedule=row["schedule"],
+        task_plan_digest=task_plan_digest,
+        task_approved=task_approval[0],
+        task_approved_digest=task_approval[1],
     )
+
+
+def _artifact_digest_from_state(state: Mapping[str, StateValue], artifact_key: str) -> str:
+    artifacts = state.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        return ""
+    artifact = artifacts.get(artifact_key)
+    if not isinstance(artifact, Mapping):
+        return ""
+    digest = artifact.get("digest")
+    return digest if isinstance(digest, str) else ""
+
+
+def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> tuple[bool, str]:
+    approvals = state.get("approvals")
+    if not isinstance(approvals, Mapping):
+        return False, ""
+    approval = approvals.get(approval_key)
+    if not isinstance(approval, Mapping):
+        return False, ""
+    approved_digest = approval.get("approved_digest")
+    return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
 
 
 async def _clear_active_runner(todos_db: TodosDb, slug: str) -> None:
@@ -419,7 +351,14 @@ async def _clear_active_runner(todos_db: TodosDb, slug: str) -> None:
     await writer.commit(todos_db, slug)
 
 
-async def _set_active_runner(todos_db: TodosDb, slug: str, session_id: str, *, manually_started: bool) -> None:
+async def _set_active_runner(
+    todos_db: TodosDb,
+    slug: str,
+    session_id: str,
+    *,
+    lane: RunnerLane,
+    manually_started: bool,
+) -> None:
     """Write the driver link and its manual marker as one guarded mutation.
 
     ``active_runner`` and ``manually_started`` are always written together so a
@@ -431,6 +370,8 @@ async def _set_active_runner(todos_db: TodosDb, slug: str, session_id: str, *, m
     writer = StateWriter(state)
     writer.state.active_runner = session_id
     writer.state.manually_started = manually_started
+    if lane is RunnerLane.TASK_RUN:
+        writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING.value
     await writer.commit(todos_db, slug)
 
 
@@ -485,6 +426,10 @@ async def _load_todos(
             active_runner=todo.active_runner,
             manually_started=todo.manually_started,
             after=tuple(deps.get(todo.slug, [])),
+            schedule=todo.schedule,
+            task_plan_digest=todo.task_plan_digest,
+            task_approved=todo.task_approved,
+            task_approved_digest=todo.task_approved_digest,
         )
         # Do not reconcile-clear a slug whose dispatch claim is still outstanding:
         # the spawn->live boot window is bridged by the claim lease, and the
@@ -502,6 +447,10 @@ async def _load_todos(
                 active_runner=None,
                 manually_started=False,
                 after=todo.after,
+                schedule=todo.schedule,
+                task_plan_digest=todo.task_plan_digest,
+                task_approved=todo.task_approved,
+                task_approved_digest=todo.task_approved_digest,
             )
         loaded[todo.slug] = todo
     return loaded, reconciled
@@ -568,7 +517,13 @@ async def dispatch_lifecycle_session(
         # so the next pass sees the live active_runner and skips ALREADY_DRIVEN.
         await release_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
         raise
-    await _set_active_runner(todos_db, intent.slug, response.session_id, manually_started=origin.manually_started)
+    await _set_active_runner(
+        todos_db,
+        intent.slug,
+        response.session_id,
+        lane=intent.lane,
+        manually_started=origin.manually_started,
+    )
     return response.session_id
 
 
@@ -599,7 +554,7 @@ async def adopt_headless_session(
     if state is None:
         await release_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
         return False
-    await _set_active_runner(todos_db, slug, session_id, manually_started=True)
+    await _set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True)
     return True
 
 
@@ -719,9 +674,15 @@ async def adopt_manual_lifecycle_session(
         check_dependencies=False,
         caller_session_id=caller_session_id,
     )
-    lane = RunnerLane.WORK if todo and todo.lifecycle_phase == LifecyclePhase.PREPARED.value else RunnerLane.PREPARE
+    lane = RunnerLane.PREPARE
+    task_skip_reason: RunnerSkipReason | None = None
+    if todo is not None:
+        if todo.kind == KIND_TASK:
+            lane, task_skip_reason = _manual_task_lane(todo)
+        elif todo.lifecycle_phase == LifecyclePhase.PREPARED.value:
+            lane = RunnerLane.WORK
     if todo is not None and todo.active_runner == caller_session_id:
-        await _set_active_runner(todos_db, slug, caller_session_id, manually_started=True)
+        await _set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True)
         return ManualLifecycleSessionResult(
             slug=slug,
             lane=lane,
@@ -742,6 +703,13 @@ async def adopt_manual_lifecycle_session(
             lane=lane,
             status=ManualLifecycleStatus.SKIPPED,
             reason=reason,
+        )
+    if task_skip_reason is not None:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.SKIPPED,
+            reason=task_skip_reason,
         )
 
     session = await runtime_db.get_session(caller_session_id)
@@ -795,6 +763,7 @@ async def resolve_manual_dispatch_intent(
     deps = await todos_db.load_deps()
     raw_phase = state.get("lifecycle_phase")
     lifecycle_phase = raw_phase if isinstance(raw_phase, str) else None
+    task_approval = _approval_from_state(state, "task_approved")
     todo = RunnerTodo(
         slug=slug,
         status="active",
@@ -803,6 +772,10 @@ async def resolve_manual_dispatch_intent(
         hold=state.get("hold") is True,
         active_runner=None,
         after=tuple(deps.get(slug, [])),
+        schedule=await todos_db.get_schedule(slug),
+        task_plan_digest=_artifact_digest_from_state(state, "task_plan"),
+        task_approved=task_approval[0],
+        task_approved_digest=task_approval[1],
     )
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
@@ -823,6 +796,14 @@ async def resolve_manual_dispatch_intent(
     if requested_lane is RunnerLane.PREPARE and lane is RunnerLane.WORK:
         lane = RunnerLane.PREPARE
     return _intent(slug, lane), None
+
+
+def _manual_task_lane(todo: RunnerTodo) -> tuple[RunnerLane, RunnerSkipReason | None]:
+    if not todo.task_plan_digest:
+        return RunnerLane.TASK_PREPARE, None
+    if not todo.task_approved or todo.task_approved_digest != todo.task_plan_digest:
+        return RunnerLane.TASK_PREPARE, RunnerSkipReason.TASK_AUTHORIZATION_MISSING
+    return RunnerLane.TASK_RUN, None
 
 
 async def run_lifecycle_runner(
@@ -872,9 +853,17 @@ async def run_lifecycle_runner(
     )
 
     dispatched: list[DispatchIntent] = []
+    woken: list[str] = []
     client = client_factory()
     await client.connect()
     try:
+        woken = await wake_due_recurring_tasks(
+            client=client,
+            todos=todos,
+            already_driven=decision.skips.get(RunnerSkipReason.ALREADY_DRIVEN, []),
+            live_session_ids=live_session_ids,
+            trigger=trigger,
+        )
         for intent in decision.intents:
             session_id = await dispatch_lifecycle_session(
                 client=client,
@@ -895,6 +884,7 @@ async def run_lifecycle_runner(
         trigger=trigger,
         evaluated=decision.evaluated,
         dispatched=dispatched,
+        woken=woken,
         skips=decision.skips,
         reconciled=reconciled,
     )
@@ -904,6 +894,7 @@ async def run_lifecycle_runner(
         trigger=trigger,
         evaluated=result.evaluated,
         dispatched=[(intent.slug, intent.lane.value) for intent in dispatched],
+        woken=woken,
         skip_counts={reason.value: len(slugs) for reason, slugs in result.skips.items()},
         skips={reason.value: slugs for reason, slugs in result.skips.items() if reason not in _TERMINAL_SKIP_REASONS},
         reconciled=reconciled,

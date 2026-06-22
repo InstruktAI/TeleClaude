@@ -31,6 +31,9 @@ class TodoItem:
     held: bool = False
     hold_source: str | None = None
     active_runner: str | None = None
+    schedule: str | None = None
+    task_plan_digest: str | None = None
+    task_approved_digest: str | None = None
     project_path: str | None = None
     is_holder: bool = False
     todo_id: str | None = None

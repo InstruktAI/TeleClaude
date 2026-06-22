@@ -96,6 +96,32 @@ def _non_empty_str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _artifact_digest(state: dict[str, StateValue] | None, artifact_key: str) -> str | None:
+    if not isinstance(state, dict):
+        return None
+    artifacts = state.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return None
+    artifact = artifacts.get(artifact_key)
+    if not isinstance(artifact, dict):
+        return None
+    digest = artifact.get("digest")
+    return digest if isinstance(digest, str) and digest else None
+
+
+def _approval_digest(state: dict[str, StateValue] | None, approval_key: str) -> str | None:
+    if not isinstance(state, dict):
+        return None
+    approvals = state.get("approvals")
+    if not isinstance(approvals, dict):
+        return None
+    approval = approvals.get(approval_key)
+    if not isinstance(approval, dict) or approval.get("approved") is not True:
+        return None
+    digest = approval.get("approved_digest")
+    return digest if isinstance(digest, str) and digest else None
+
+
 def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
     """Override each holder's status with the aggregate of its leaf children.
 
@@ -369,7 +395,7 @@ def assemble_todo_from_db(
         where = conditions[0] if conditions else "1=1"
         todo_started_at = time.perf_counter()
         rows = conn.execute(
-            "SELECT id, slug, ready_since, group_slug, description, status, "  # guard: raw-sql
+            "SELECT id, slug, ready_since, schedule, group_slug, description, status, "  # guard: raw-sql
             f"delivered_at, updated_at, created_at, removed_at FROM todo WHERE {where} ORDER BY id",
         ).fetchall()
         todo_dt = time.perf_counter() - todo_started_at
@@ -389,7 +415,7 @@ def assemble_todo_from_db(
         for dr in dep_rows:
             deps_map.setdefault(dr[0], []).append(dr[1])
 
-        holder_slugs = {row[3] for row in rows if row[3] and row[3] != row[1]}
+        holder_slugs = {row[4] for row in rows if row[4] and row[4] != row[1]}
 
         todos: list[TodoDTO] = []
         raw_status_by_id: dict[str, str] = {}
@@ -399,7 +425,7 @@ def assemble_todo_from_db(
         for row in rows:
             row_id = row[0]
             slug = row[1]
-            raw_status = row[5]
+            raw_status = row[6]
             raw_status_by_id[str(row_id)] = raw_status
             state_query_started_at = time.perf_counter()
             state_row = conn.execute(
@@ -485,18 +511,21 @@ def assemble_todo_from_db(
                 TodoDTO(
                     slug=slug,
                     status=projection.todo_status,
-                    description=row[4] or "",
+                    description=row[5] or "",
                     has_requirements=has_req_row is not None,
                     has_impl_plan=has_plan_row is not None,
                     kind=projection.kind,
                     ready_since=row[2],
-                    updated_at=row[7],
-                    created_at=row[8],
+                    schedule=row[3],
+                    task_plan_digest=_artifact_digest(state, "task_plan"),
+                    task_approved_digest=_approval_digest(state, "task_approved"),
+                    updated_at=row[8],
+                    created_at=row[9],
                     build_status=projection.build_status,
                     review_status=projection.review_status,
                     after=deps_map.get(slug, []),
-                    group=row[3],
-                    delivered_at=row[6],
+                    group=row[4],
+                    delivered_at=row[7],
                     lifecycle_phase=projection.lifecycle_phase,
                     integration_phase=projection.integration_phase,
                     finalize_status=projection.finalize_status,
@@ -515,7 +544,7 @@ def assemble_todo_from_db(
                     files=[ar[0] for ar in artifact_rows],
                     version_total=version_total,
                     todo_id=str(row_id),
-                    removed_at=row[9],
+                    removed_at=row[10],
                 )
             )
             todo_build_total_dt += time.perf_counter() - todo_build_started_at

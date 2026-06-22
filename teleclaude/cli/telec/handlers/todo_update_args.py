@@ -12,6 +12,7 @@ class ParsedTodoUpdate(TypedDict):
     new_slug: str | None
     raw_after: list[str]
     after_present: bool
+    schedule: str | None
     kind: str | None
     force: bool
     hold: bool
@@ -23,6 +24,7 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
     new_slug: str | None = None
     raw_after: list[str] = []
     after_present = False
+    schedule: str | None = None
     kind: str | None = None
     force = False
     hold = False
@@ -37,6 +39,9 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
         elif arg == "--after" and i + 1 < len(args):
             raw_after.append(args[i + 1])
             after_present = True
+            i += 2
+        elif arg == "--schedule" and i + 1 < len(args):
+            schedule = args[i + 1]
             i += 2
         elif arg == "--kind" and i + 1 < len(args):
             kind = args[i + 1]
@@ -70,6 +75,7 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
         "new_slug": new_slug,
         "raw_after": raw_after,
         "after_present": after_present,
+        "schedule": schedule,
         "kind": kind,
         "force": force,
         "hold": hold,

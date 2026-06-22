@@ -244,8 +244,6 @@ Additional runner subscriptions:
 | `config.effective.updated`     | `workflow.lifecycle_runner` (invalidate autostart policy and re-evaluate affected project/global scope; v1 config watcher is the seam)                                                                                       |
 | `agent_runtime.session.ended`  | `workflow.lifecycle_runner` (wake-up: re-evaluate the closed session's todo and clear the now-stale `active_runner` link; a manual close's hold is set at the close command, not inferred here; v1 `SESSION_CLOSED` bridged) |
 
-<!-- planned:task-lane -->
-
 Task-lane runner subscriptions:
 
 | Event                   | Consumers                                                                                                                                                                        |
@@ -254,8 +252,6 @@ Task-lane runner subscriptions:
 | `scheduler.tick.minute` | `workflow.lifecycle_runner` (re-evaluate tasks whose optional schedule may now be due; the tick never carries task identity and never creates a persisted timer claim by itself) |
 
 The task schedule flow is wake-up-driven rather than timer-state-driven: the daemon scheduler clock emits the generic minute tick, workflow reloads the project todo set, and the lifecycle runner dispatches only tasks that still pass authorization, hold, live-session/claim, and schedule/dependency eligibility at evaluation time. For a recurring task that already has a live run session, the runner wakes that session for the next firing rather than dispatching a second one.
-
-<!-- /planned:task-lane -->
 
 ### v1 → v2 event-name mapping
 

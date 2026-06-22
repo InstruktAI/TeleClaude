@@ -159,6 +159,49 @@ def test_todo_row_renders_pending_approval_distinct_from_hold(snapshot: object) 
     assert [row.render().plain for row in rows] == snapshot
 
 
+def test_todo_row_renders_task_authorization_and_schedule_state(snapshot: object) -> None:
+    items = [
+        TodoItem(
+            slug="task-pending",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="task",
+            lifecycle_phase="prepared",
+            task_plan_digest="digest-a",
+        ),
+        TodoItem(
+            slug="task-authorized",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="task",
+            lifecycle_phase="prepared",
+            task_plan_digest="digest-b",
+            task_approved_digest="digest-b",
+        ),
+        TodoItem(
+            slug="task-stale",
+            status=TodoStatus.IN_PROGRESS,
+            description=None,
+            has_requirements=False,
+            has_impl_plan=False,
+            kind="task",
+            lifecycle_phase="prepared",
+            schedule="cron:* * * * *",
+            task_plan_digest="digest-c",
+            task_approved_digest="old-digest",
+        ),
+    ]
+    slug_width = max(len(i.slug) for i in items)
+    col_widths = TodoRow.compute_col_widths(items)
+    rows = [TodoRow(item, slug_width=slug_width, col_widths=col_widths) for item in items]
+
+    assert [row.render().plain for row in rows] == snapshot
+
+
 def test_todo_row_suppresses_hold_glyph_when_not_effectively_held(snapshot: object) -> None:
     # A residual ``hold`` flag whose derived verdict is not effectively held
     # (autostart off, runner manual, or still in the prepare lane) renders no

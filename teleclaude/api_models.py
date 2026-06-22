@@ -227,6 +227,9 @@ class TodoDTO(BaseModel):
     delivered_at: str | None = None
     kind: str | None = None
     ready_since: str | None = None
+    schedule: str | None = None
+    task_plan_digest: str | None = None
+    task_approved_digest: str | None = None
     updated_at: str | None = None
     created_at: str | None = None
     band: str | None = None
@@ -366,6 +369,7 @@ class TodoDumpRequest(BaseModel):
     content: str = Field(..., min_length=1)
     kind: TodoDumpKind | None = None
     after: list[str] | None = None
+    schedule: str | None = None
     cwd: str | None = None
     icebox: bool = False
     group: str | None = None

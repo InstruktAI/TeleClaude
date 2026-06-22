@@ -40,6 +40,7 @@ def _todo_row(model: Todo) -> TodoRow:
         id=model.id,
         slug=model.slug,
         ready_since=model.ready_since,
+        schedule=model.schedule,
         group_slug=model.group_slug,
         description=model.description,
         status=model.status,
@@ -240,6 +241,7 @@ class TodosDbTodoMixin:
         group_slug: str | None = None,
         after: list[str] | None = None,
         description: str | None = None,
+        schedule: str | None = None,
         status: TodoStatus = TodoStatus.ACTIVE,
         created_by_principal: str | None = None,
         session: SqlAsyncSession | None = None,
@@ -280,6 +282,7 @@ class TodosDbTodoMixin:
                     slug=slug,
                     group_slug=group_slug,
                     description=description,
+                    schedule=schedule,
                     status=status.value,
                     created_by_principal=created_by_principal,
                     created_at=now,
@@ -306,6 +309,12 @@ class TodosDbTodoMixin:
         async with self._session() as session:  # type: ignore[attr-defined]
             entry = await self._active_entry(session, slug)
             return entry.created_by_principal if entry is not None else None
+
+    async def get_schedule(self, slug: str) -> str | None:
+        """Return the live entry's task schedule, or None."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await self._active_entry(session, slug)
+            return entry.schedule if entry is not None else None
 
     async def resolve_id(self, slug: str) -> str | None:
         """Resolve an active/icebox slug to its todo id. Returns None if not found."""
@@ -582,6 +591,30 @@ class TodosDbTodoMixin:
             await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.slug == slug))
             for dep in after:
                 db_session.add(TodoDep(slug=slug, depends_on=dep))
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation("todo_updated", None)
+        finally:
+            if owns_session:
+                await db_session.close()
+
+    async def set_schedule(
+        self,
+        slug: str,
+        *,
+        schedule: str | None,
+        session: SqlAsyncSession | None = None,
+    ) -> None:
+        """Set or clear the task schedule for a slug."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            entry = await self._active_entry(db_session, slug)
+            if entry is None:
+                raise ValueError(f"no active/icebox todo for slug: {slug}")
+            entry.schedule = schedule
+            entry.updated_at = datetime.now(UTC).isoformat()
+            db_session.add(entry)
             if owns_session:
                 await db_session.commit()
                 self._on_mutation("todo_updated", None)

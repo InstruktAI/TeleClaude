@@ -56,12 +56,22 @@ def _pending_gate_stamp_type(row: TodoRow) -> str | None:
     """Return the explicit stamp type for the row's pending human gate, if any."""
     if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
         return None
+    if _task_authorization_pending(row):
+        return "task_approved"
     state: _ApprovalGateState = {
         "kind": row.todo.kind,
         "lifecycle_phase": row.todo.lifecycle_phase,
     }
     gate = pending_approval_gate(state)
     return _APPROVAL_GATE_STAMP_TYPE.get(gate) if gate is not None else None
+
+
+def _task_authorization_pending(row: TodoRow) -> bool:
+    if row.todo.kind != "task" or row.todo.lifecycle_phase != "prepared":
+        return False
+    if not row.todo.task_plan_digest:
+        return False
+    return row.todo.task_approved_digest != row.todo.task_plan_digest
 
 
 def _approval_gate_pending(row: TodoRow) -> bool:

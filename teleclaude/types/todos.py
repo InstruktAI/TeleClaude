@@ -19,6 +19,7 @@ LifecyclePhaseValue = Literal[
     "diagnose",
     "plan_drafting",
     "plan_review",
+    "task_plan_drafting",
     "prepared",
     "blocked",
     "build_started",
@@ -26,6 +27,7 @@ LifecyclePhaseValue = Literal[
     "review_changes_requested",
     "review_approved",
     "finalize_ready",
+    "task_running",
 ]
 
 TodoStatusLiteral = Literal["active", "icebox", "delivered"]
@@ -115,6 +117,7 @@ class ApprovalsState(BaseModel):
     prd_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     architecture_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     plan_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
+    task_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     architecture_skipped: SkipStamp | None = None
     drift_reviewed: dict[str, DriftReviewedStamp] = Field(default_factory=dict)
 

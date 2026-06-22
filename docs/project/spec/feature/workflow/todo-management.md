@@ -163,8 +163,6 @@ Then the dependency leg validates every parent slug, rejects cycles, and
 replaces the todo's dependency set with the supplied parents
 ```
 
-<!-- planned:task-lane -->
-
 ```gherkin
 Given an active task todo
 When the operator runs "telec todo update my-task --schedule 2026-06-12T09:00:00Z"
@@ -179,8 +177,6 @@ When the operator runs 'telec todo update my-task --schedule ""'
 Then the update leg clears the schedule
 And keeps the rest of the todo state unchanged
 ```
-
-<!-- /planned:task-lane -->
 
 ```
 Given an active todo

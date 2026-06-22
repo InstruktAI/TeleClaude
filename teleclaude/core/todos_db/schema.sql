@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS todo (
     id              TEXT PRIMARY KEY,       -- UUID, stable identifier
     slug            TEXT NOT NULL,
     ready_since     TEXT,
+    schedule        TEXT,
     group_slug      TEXT,
     description     TEXT,
     status          TEXT NOT NULL DEFAULT 'active',

@@ -486,6 +486,15 @@ def _migrate_todo_created_by_principal(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_todo_schedule(conn: sqlite3.Connection) -> None:
+    """Additively add the task schedule column to the todo table."""
+    if not _table_exists(conn, "todo"):
+        return
+    if "schedule" not in _table_columns(conn, "todo"):
+        conn.execute("ALTER TABLE todo ADD COLUMN schedule TEXT")  # guard: raw-sql
+    conn.commit()
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -503,6 +512,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_bug_artifact_to_input(conn)
         _migrate_roadmap_to_todo_substrate(conn)
         _migrate_todo_created_by_principal(conn)
+        _migrate_todo_schedule(conn)
         conn.commit()
     finally:
         conn.close()

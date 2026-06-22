@@ -470,10 +470,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
+                    Flag(
+                        "--schedule",
+                        desc="Task-only schedule: ISO-8601 instant or cron:<minute hour day month weekday> (0/7=Sunday)",
+                    ),
                     Flag(
                         "--kind",
                         desc=(
@@ -487,7 +491,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--group", desc="Attach the new todo as a child of <parent-slug>, making the parent a holder"),
                     Flag(
                         "--plan",
-                        desc="Content seeds the implementation-plan as a draft basis (not an approved artifact): the todo enters at plan-drafting for a full plan-draft pass, then plan-review, before build (--kind change only).",
+                        desc="For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.",
                     ),
                 ],
                 notes=[
@@ -510,7 +514,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where "
                     "human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI "
                     "shortcut to skip classifying work you understand.",
-                    "--plan is valid only with --kind change and treats content as a complete implementation plan.",
+                    "--plan is valid with --kind change or --kind task.",
                     "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
                 ],
@@ -597,7 +601,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "update": CommandDef(
                 desc="Update a todo slug, dependencies, or kind",
-                args=f"<slug> [--slug <new>] [--after <dep>]... [--kind <{TODO_KIND_USAGE}>] [--hold] [--release] [--force]",
+                args=f"<slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <{TODO_KIND_USAGE}>] [--hold] [--release] [--force]",
                 flags=[
                     _H,
                     Flag("--slug", desc="New todo slug; delegates to the durable rename engine"),
@@ -609,6 +613,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Repeated flags accepted for compatibility: --after parent-a --after parent-b. "
                             'Use --after "" to clear all dependencies.'
                         ),
+                    ),
+                    Flag(
+                        "--schedule", desc="Task-only schedule; pass an empty value to clear (cron weekday 0/7=Sunday)"
                     ),
                     Flag("--kind", desc=f"New todo kind: {TODO_KIND_USAGE}"),
                     Flag("--hold", desc="Set the per-todo automatic dispatch brake"),
@@ -731,6 +738,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Stamp a verdict or readiness marker into todo state",
                 args=(
                     "<slug> [--verdict <v> --phase <p>] [--prd-approved]"
+                    " [--task-approved]"
                     " [--architecture-skipped <reason>]"
                     " [--drift-reviewed <artifact> <verdict> <reason>]"
                     f" [--kind-assign <{TODO_KIND_USAGE}> [<content>]]"
@@ -744,6 +752,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc=("Review phase the verdict belongs to (architecture_review, plan_review, build_review)"),
                     ),
                     Flag("--prd-approved", desc="Mark PRD as approved by the human"),
+                    Flag("--task-approved", desc="Authorize the current task-plan for a task"),
                     Flag("--architecture-skipped", desc="Skip architecture phase with a reason"),
                     Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
                     Flag(
@@ -758,6 +767,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
+                    "telec todo stamp my-task --task-approved",
                     'telec todo stamp my-slug --kind-assign task "actionable task"',
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",

@@ -20,7 +20,13 @@ from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.cli.telec import main
 from teleclaude.cli.telec.handlers import todo as todo_handlers
-from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_INPUT, ROLE_ORCHESTRATOR, TodoStatus
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
+    ARTIFACT_TASK_PLAN,
+    ROLE_ORCHESTRATOR,
+    TodoStatus,
+)
 from teleclaude.core import db as db_mod
 from teleclaude.core.command_handlers import _session as session_handler_mod
 from teleclaude.core.command_handlers._session import create_session
@@ -51,6 +57,7 @@ _SOURCE = "api.todo.create"
 _DOMAIN = "software-development"
 _KIND_CHANGE = "change"
 _KIND_BUG = "bug"
+_KIND_TASK = "task"
 _PARENT = "parent"
 _CHILD = "child"
 _KINDLESS = "kindless"
@@ -122,6 +129,10 @@ class _CapturingTelecAPIClient:
 
 class _EmittedEvent(TypedDict, total=False):
     payload: object
+
+
+async def _noop_emit_event(**_kwargs: object) -> None:
+    return None
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC1")
@@ -584,6 +595,129 @@ async def test_create_with_plan_seeds_plan_drafting_and_dispatches_prepare(
     assert call["command"] == _NEXT_PREPARE
     assert call["args"] == slug
     assert call["project_path"] == str(event_project)
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC6")
+async def test_create_task_enters_task_plan_drafting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+    monkeypatch.setattr(todo_routes, "emit_event", _noop_emit_event)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="bare-task",
+            content="Notify the team.",
+            kind=_KIND_TASK,
+            cwd=str(project_root),
+        ),
+        identity=None,
+    )
+
+    todos_db = await get_todos_db(project_root)
+    state = await todos_db.read_state("bare-task")
+    assert state is not None
+    assert state["kind"] == _KIND_TASK
+    assert state["lifecycle_phase"] == LifecyclePhase.TASK_PLAN_DRAFTING.value
+    assert await todos_db.artifact_exists("bare-task", ARTIFACT_INPUT)
+    assert not await todos_db.artifact_exists("bare-task", ARTIFACT_TASK_PLAN)
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC8")
+async def test_create_task_with_plan_writes_pre_authorized_task_plan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+    monkeypatch.setattr(todo_routes, "emit_event", _noop_emit_event)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="planned-task",
+            content="1. Check the deployment.",
+            kind=_KIND_TASK,
+            cwd=str(project_root),
+            plan=True,
+        ),
+        identity=_human_identity(),
+    )
+
+    todos_db = await get_todos_db(project_root)
+    task_plan_digest = await todos_db.artifact_digest("planned-task", ARTIFACT_TASK_PLAN)
+    state = await todos_db.read_state("planned-task")
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.lifecycle_phase == LifecyclePhase.PREPARED.value
+    assert writer.state.approvals.task_approved.approved is True
+    assert writer.state.approvals.task_approved.approved_digest == task_plan_digest
+    assert writer.state.artifacts.task_plan.digest == task_plan_digest
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC7")
+async def test_create_task_refuses_schedule_with_dependencies(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(
+                slug="conflicted-task",
+                content="Run later.",
+                kind=_KIND_TASK,
+                after=["parent"],
+                schedule="2099-01-01T00:00:00Z",
+                cwd=str(project_root),
+            ),
+            identity=None,
+        )
+
+    assert exc_info.value.status_code == 400
+    todos_db = await get_todos_db(project_root)
+    assert await todos_db.read_state("conflicted-task") is None
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC7")
+async def test_create_task_persists_recurring_schedule(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, snapshot: object
+) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+    monkeypatch.setattr(todo_routes, "emit_event", _noop_emit_event)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug="recurring-task",
+            content="Run every Sunday morning.",
+            kind=_KIND_TASK,
+            schedule="cron:15 9 * * 7",
+            cwd=str(project_root),
+        ),
+        identity=None,
+    )
+
+    todos_db = await get_todos_db(project_root)
+    assert await todos_db.get_schedule("recurring-task") == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC7")
+async def test_create_task_rejects_malformed_recurring_schedule(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await _project_db(project_root)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(
+                slug="bad-recurring-task",
+                content="Run on an impossible weekday.",
+                kind=_KIND_TASK,
+                schedule="cron:15 9 * * 8",
+                cwd=str(project_root),
+            ),
+            identity=None,
+        )
+
+    assert exc_info.value.status_code == 400
+    todos_db = await get_todos_db(project_root)
+    assert await todos_db.read_state("bad-recurring-task") is None
 
 
 _HUMAN_EMAIL = "alice@example.com"

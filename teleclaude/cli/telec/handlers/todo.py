@@ -6,6 +6,7 @@ import asyncio
 import json as _json
 import sys
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
@@ -37,6 +38,7 @@ class _TodoUpdateBody(TypedDict):
     client_request_id: str
     new_slug: NotRequired[str]
     after: NotRequired[list[str]]
+    schedule: NotRequired[str]
     kind: NotRequired[str]
     force: NotRequired[bool]
     hold: NotRequired[bool]
@@ -49,6 +51,19 @@ class _TodoStampBody(TypedDict):
     value: str
     phase: str | None
     cwd: str
+
+
+@dataclass(frozen=True)
+class _ParsedTodoCreate:
+    slug: str | None
+    content: str | None
+    after: list[str] | None
+    schedule: str | None
+    icebox: bool
+    group: str | None
+    project_root: str | None
+    plan: bool
+    kind_value: str | None
 
 
 __all__ = [
@@ -235,7 +250,7 @@ def _handle_todo_deliver(args: list[str]) -> None:
     print(f"Delivered {slug} (cleanup complete)")
 
 
-def _handle_todo_create(args: list[str]) -> None:
+def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
@@ -243,6 +258,7 @@ def _handle_todo_create(args: list[str]) -> None:
     group: str | None = None
     project_root: str | None = None
     plan = False
+    schedule: str | None = None
     kind_value: str | None = None
 
     _VALID_KINDS_STR = TODO_KIND_USAGE
@@ -270,6 +286,13 @@ def _handle_todo_create(args: list[str]) -> None:
             print("Error: --group requires a value")
             print(_usage("todo", "create"))
             raise SystemExit(1)
+        elif arg == "--schedule" and i + 1 < len(args):
+            schedule = args[i + 1]
+            i += 2
+        elif arg == "--schedule":
+            print("Error: --schedule requires a value")
+            print(_usage("todo", "create"))
+            raise SystemExit(1)
         elif arg == "--plan":
             plan = True
             i += 1
@@ -295,6 +318,25 @@ def _handle_todo_create(args: list[str]) -> None:
                 raise SystemExit(1)
             i += 1
 
+    return _ParsedTodoCreate(
+        slug=slug,
+        content=content,
+        after=after,
+        schedule=schedule,
+        icebox=icebox,
+        group=group,
+        project_root=project_root,
+        plan=plan,
+        kind_value=kind_value,
+    )
+
+
+def _handle_todo_create(args: list[str]) -> None:
+    parsed = _parse_todo_create_args(args)
+    _VALID_KINDS_STR = TODO_KIND_USAGE
+
+    slug = parsed.slug
+    content = parsed.content
     if not slug:
         print(_usage("todo", "create"))
         raise SystemExit(1)
@@ -304,21 +346,22 @@ def _handle_todo_create(args: list[str]) -> None:
         print(_usage("todo", "create"))
         raise SystemExit(1)
 
-    if kind_value is not None and kind_value not in ALL_DUMP_KINDS:
-        print(f"Error: invalid --kind '{kind_value}'. Valid values: {_VALID_KINDS_STR}")
+    if parsed.kind_value is not None and parsed.kind_value not in ALL_DUMP_KINDS:
+        print(f"Error: invalid --kind '{parsed.kind_value}'. Valid values: {_VALID_KINDS_STR}")
         print(_usage("todo", "create"))
         raise SystemExit(1)
-    dump_kind = cast(TodoDumpKind, kind_value) if kind_value is not None else None
+    dump_kind = cast(TodoDumpKind, parsed.kind_value) if parsed.kind_value is not None else None
 
     request = TodoDumpRequest(
         slug=slug,
         content=content,
-        after=after,
+        after=parsed.after,
+        schedule=parsed.schedule,
         kind=dump_kind,
-        cwd=project_root if project_root is not None else str(resolve_invocation_cwd()),
-        icebox=icebox,
-        group=group,
-        plan=plan,
+        cwd=parsed.project_root if parsed.project_root is not None else str(resolve_invocation_cwd()),
+        icebox=parsed.icebox,
+        group=parsed.group,
+        plan=parsed.plan,
     )
     result = tool_api_request(
         "POST",
@@ -466,6 +509,7 @@ def _handle_todo_update(args: list[str]) -> None:
     new_slug = parsed["new_slug"]
     after_present = parsed["after_present"]
     kind = parsed["kind"]
+    schedule = parsed["schedule"]
     force = parsed["force"]
     hold = parsed["hold"]
     release = parsed["release"]
@@ -489,6 +533,8 @@ def _handle_todo_update(args: list[str]) -> None:
         body["new_slug"] = new_slug
     if after_present:
         body["after"] = after
+    if schedule is not None:
+        body["schedule"] = schedule
     if kind is not None:
         body["kind"] = kind
     if force:
@@ -740,7 +786,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if not stamp_type:
         print(
             "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
-            "--drift-reviewed, --kind-assign, --build-complete, "
+            "--task-approved, --drift-reviewed, --kind-assign, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
             "--art-approved, --visuals-approved)"
         )
@@ -824,6 +870,7 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
 
 _STAMP_BOOLEAN_FLAGS = {
     "--prd-approved": "prd_approved",
+    "--task-approved": "task_approved",
     "--requirements-ready": "requirements_ready",
     "--plan-ready": "plan_ready",
     "--deferrals-processed": "deferrals_processed",

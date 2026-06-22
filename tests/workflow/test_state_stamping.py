@@ -202,7 +202,7 @@ async def test_creative_design_spec_confirmed_stamp_sets_flag(tmp_path: Path) ->
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS1")
-async def test_kind_assign_task_writes_task_plan_and_prepared_phase(tmp_path: Path, snapshot: object) -> None:
+async def test_kind_assign_task_routes_to_task_plan_drafting_without_plan(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_kindless_todo(todos_db, _SLUG)
@@ -218,9 +218,70 @@ async def test_kind_assign_task_writes_task_plan_and_prepared_phase(tmp_path: Pa
     state = await todos_db.read_state(_SLUG)
     assert state is not None
     assert state["kind"] == TODO_KIND_TASK
-    assert state["lifecycle_phase"] == LifecyclePhase.PREPARED.value
-    task_plan = await todos_db.read_artifact(_SLUG, ARTIFACT_TASK_PLAN)
-    assert _ISO_TIMESTAMP_RE.sub("<timestamp>", task_plan) == snapshot
+    assert state["lifecycle_phase"] == LifecyclePhase.TASK_PLAN_DRAFTING.value
+    assert not await todos_db.artifact_exists(_SLUG, ARTIFACT_TASK_PLAN)
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS9")
+async def test_task_approval_records_current_task_plan_digest(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_todo(_SLUG)
+    await todos_db.write_state(
+        _SLUG,
+        {
+            "schema_version": 4,
+            "kind": TODO_KIND_TASK,
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.PREPARED.value,
+        },
+    )
+    await todos_db.write_artifact(_SLUG, ARTIFACT_TASK_PLAN, "# Task Plan\n\nRun this task.", updated_by="test")
+    current_digest = await todos_db.artifact_digest(_SLUG, ARTIFACT_TASK_PLAN)
+
+    await apply_todo_stamp(
+        cwd=str(project_root),
+        slug=_SLUG,
+        stamp_type="task_approved",
+        caller_session_id="human:test@example.com",
+    )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.approvals.task_approved.approved is True
+    assert _ISO_TIMESTAMP_RE.fullmatch(writer.state.approvals.task_approved.approved_at)
+    assert writer.state.approvals.task_approved.approved_digest == current_digest
+    assert writer.state.artifacts.task_plan.digest == current_digest
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS10")
+async def test_task_approval_refuses_invalid_targets_without_mutation(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_todo(_SLUG)
+    await todos_db.write_state(
+        _SLUG,
+        {
+            "schema_version": 4,
+            "kind": TODO_KIND_TASK,
+            "phase": "pending",
+            "lifecycle_phase": LifecyclePhase.TASK_PLAN_DRAFTING.value,
+        },
+    )
+
+    with pytest.raises(StateMutationError):
+        await apply_todo_stamp(
+            cwd=str(project_root),
+            slug=_SLUG,
+            stamp_type="task_approved",
+            caller_session_id="human:test@example.com",
+        )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.approvals.task_approved.approved is False
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS3")

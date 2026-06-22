@@ -19,12 +19,12 @@ KIND_TASK = TODO_KIND_TASK
 #   feature → author a PRD (full prepare)
 #   change  → draft a plan directly (no PRD; intent is the input artifact)
 #   bug     → verify a diagnosis first, then draft a plan (same plan→review pipeline)
-#   task    → non-SDLC; no automatic pickup, but prepared for task-plan work
+#   task    → non-SDLC; task-plan drafting lane, outside SDLC prepare/work
 KIND_ENTRY_PHASE: dict[str, LifecyclePhase] = {
     KIND_FEATURE: LifecyclePhase.PRD_DRAFTING,
     KIND_CHANGE: LifecyclePhase.PLAN_DRAFTING,
     KIND_BUG: LifecyclePhase.DIAGNOSE,
-    KIND_TASK: LifecyclePhase.PREPARED,
+    KIND_TASK: LifecyclePhase.TASK_PLAN_DRAFTING,
 }
 
 # Projections of KIND_ENTRY_PHASE for membership checks. Derived, never edited directly.

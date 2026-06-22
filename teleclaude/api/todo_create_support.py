@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateWriter
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -34,5 +34,28 @@ async def seed_plan_drafting(todos_db: TodosDb, slug: str, *, repo_root: str) ->
     writer.state.artifacts.implementation_plan.seeded = True
     phase = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root)
     writer.state.lifecycle_phase = phase.value
+    await writer.commit(todos_db, slug)
+    return phase.value
+
+
+async def seed_task_plan_authorization(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    caller_session_id: str,
+) -> str:
+    """Mark a supplied ``--kind task --plan`` task-plan as pre-authorized."""
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        msg = f"Todo state missing after --kind task --plan creation for {slug!r}"
+        raise RuntimeError(msg)
+    writer = StateWriter(raw_state)
+    phase = adopt_prepare_handoff_phase(writer.state)
+    writer.state.lifecycle_phase = phase.value
+    ApprovalsManager(writer).approve(
+        "task_approved",
+        caller_session_id=caller_session_id,
+        approved_digest=writer.state.artifacts.task_plan.digest,
+    )
     await writer.commit(todos_db, slug)
     return phase.value

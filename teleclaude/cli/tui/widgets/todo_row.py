@@ -50,8 +50,10 @@ _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.DIAGNOSE: "diagnose",
     LifecyclePhase.PLAN_DRAFTING: "plan draft",
     LifecyclePhase.PLAN_REVIEW: "plan revw",
+    LifecyclePhase.TASK_PLAN_DRAFTING: "task plan",
     LifecyclePhase.PREPARED: "prepared",
     LifecyclePhase.BLOCKED: "blocked",
+    LifecyclePhase.TASK_RUNNING: "task run",
 }
 
 _KIND_DISPLAY: dict[str, str] = {
@@ -78,7 +80,26 @@ _HOLD_ICON_CELLS = 2
 def _approval_pending(todo: TodoItem) -> bool:
     if todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
         return False
+    if _task_authorization_pending(todo):
+        return True
     return pending_approval_gate({"kind": todo.kind, "lifecycle_phase": todo.lifecycle_phase}) is not None
+
+
+def _task_authorization_pending(todo: TodoItem) -> bool:
+    if todo.kind != "task" or todo.lifecycle_phase != "prepared":
+        return False
+    if not todo.task_plan_digest:
+        return False
+    return todo.task_approved_digest != todo.task_plan_digest
+
+
+def _task_authorized(todo: TodoItem) -> bool:
+    return bool(
+        todo.kind == "task"
+        and todo.task_plan_digest
+        and todo.task_approved_digest
+        and todo.task_approved_digest == todo.task_plan_digest
+    )
 
 
 def _is_held(todo: TodoItem) -> bool:
@@ -202,10 +223,11 @@ _GOLD_LIGHT = "color(136)"
 # Column gap between aligned properties
 _COL_GAP = 2
 
-# Cell width reserved for the dedicated held column: a two-dot gap (like every
-# other column) plus the 2-cell glyph slot. Held and not-held rows both occupy
-# this exact cell width so the right edge aligns.
-_HELD_COL_WIDTH = _COL_GAP + _HOLD_ICON_CELLS
+# Cell width reserved for the dedicated state column: a two-dot gap (like every
+# other column), two one-cell task badges, and the 2-cell hold glyph slot. Every
+# row occupies this exact cell width so the right edge aligns.
+_STATE_BADGE_CELLS = 2
+_STATE_COL_WIDTH = _COL_GAP + _STATE_BADGE_CELLS + _HOLD_ICON_CELLS
 
 # Horizontal padding from CSS `padding: 0 1` (1 left + 1 right)
 _WIDGET_PADDING_HORZ = 2
@@ -372,10 +394,9 @@ class TodoRow(TelecMixin, Widget):
         path_prepare = k + sized["P"]
         path_integration = k + sized["P"]  # I renders in P slot
         path_work = k + sized["B"] + sized["R"] + sized["D"]
-        # The held glyph occupies its own dedicated last column, reserved on every
-        # row (blank when not held) so the right edge aligns. It is grouped with
-        # the property columns, so its cell width is part of the canonical block.
-        sized["_max"] = max(path_prepare, path_integration, path_work) + 1 + _HELD_COL_WIDTH  # +1 trailing dot
+        # Task auth/schedule and the held glyph occupy one dedicated last column,
+        # reserved on every row so the right edge aligns.
+        sized["_max"] = max(path_prepare, path_integration, path_work) + 1 + _STATE_COL_WIDTH  # +1 trailing dot
         return sized
 
     @property
@@ -410,22 +431,23 @@ class TodoRow(TelecMixin, Widget):
         return self._col_widths.get("_max", 0)
 
     def _finish_columns(self, result: Text) -> Text:
-        """Dot-pad the property columns, then render the dedicated held column last.
-
-        The held glyph is the block's last column, sitting after the property
-        columns and the inter-column slack, separated by the standard two-dot gap.
-        The property block is first padded to ``_max - _HELD_COL_WIDTH`` so the held
-        column always occupies the trailing ``_HELD_COL_WIDTH`` cells. When the todo
-        is not held the slot renders blank (dot-filled). Width is measured in display
-        cells, so the held row (two-dot gap + 2-cell glyph) and the not-held row
-        (four dots) align to the same right edge.
-        """
-        result = _pad(result, self._total_col_width() - _HELD_COL_WIDTH)
+        """Dot-pad property columns, then render the fixed-width state column."""
+        result = _pad(result, self._total_col_width() - _STATE_COL_WIDTH)
+        result.append("·" * _COL_GAP, style=Style(color=_muted_color()))
+        if _task_authorization_pending(self.todo):
+            result.append("!", style=Style(color=_gold_color(), bold=True))
+        elif _task_authorized(self.todo):
+            result.append("A", style=Style(color=_ok_color(), bold=True))
+        else:
+            result.append("·", style=Style(color=_muted_color()))
+        if self.todo.schedule:
+            result.append("S", style=Style(color=_gold_color(), bold=True))
+        else:
+            result.append("·", style=Style(color=_muted_color()))
         if _is_held(self.todo):
-            result.append("·" * _COL_GAP, style=Style(color=_muted_color()))
             result.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
         else:
-            result.append("·" * _HELD_COL_WIDTH, style=Style(color=_muted_color()))
+            result.append("·" * _HOLD_ICON_CELLS, style=Style(color=_muted_color()))
         return result
 
     def _build_columns(self) -> Text:

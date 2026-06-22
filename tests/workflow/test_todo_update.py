@@ -38,6 +38,7 @@ _MY_TODO = "my-todo"
 _NEW_SLUG = "new-slug"
 _PARENT_A = "parent-a"
 _PARENT_B = "parent-b"
+_NORMALIZED_FUTURE_SCHEDULE = "2099-01-01T00:00:00+00:00"
 _OPERATION_ID = "op-1"
 _ARTIFACT_FIRST = "first"
 _ARTIFACT_SECOND = "second"
@@ -287,6 +288,27 @@ def test_todo_stamp_cli_posts_boolean_flag_to_stamp_route(monkeypatch: pytest.Mo
     }
 
 
+@pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS9")
+def test_todo_stamp_cli_posts_task_approved_flag_to_stamp_route(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "project"
+    tool_api_call = MagicMock(return_value={"status": _STATUS_OK, "slug": _MY_TODO})
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: project_root)
+    monkeypatch.setattr(todo_handlers, "tool_api_call", tool_api_call)
+
+    todo_handlers._handle_todo_stamp([_MY_TODO, "--task-approved"])
+
+    assert tool_api_call.call_args.args[:2] == ("POST", "/todos/stamp")
+    assert tool_api_call.call_args.kwargs["json_body"] == {
+        "slug": _MY_TODO,
+        "stamp_type": "task_approved",
+        "value": "true",
+        "phase": None,
+        "cwd": str(project_root),
+    }
+
+
 @pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS1")
 def test_todo_stamp_cli_posts_verdict_with_phase_to_stamp_route(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -376,6 +398,100 @@ async def test_todo_update_after_replaces_dependencies_and_validates_cycles(tmp_
         )
     assert cycle.value.status_code == 409
     assert cycle.value.detail == snapshot
+
+
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG4")
+async def test_todo_update_schedule_and_dependencies_are_mutually_exclusive(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "scheduled-task", kind=TODO_KIND_TASK)
+    await _add_todo(todos_db, "parent")
+
+    schedule_response = await todo_routes.todo_update(
+        slug="scheduled-task",
+        schedule="2099-01-01T00:00:00Z",
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    assert cast(todo_routes._TodoUpdateResponse, schedule_response).status == _STATUS_OK
+    assert await todos_db.get_schedule("scheduled-task") == _NORMALIZED_FUTURE_SCHEDULE
+
+    with pytest.raises(HTTPException) as dep_conflict:
+        await todo_routes.todo_update(
+            slug="scheduled-task",
+            after=["parent"],
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+    assert dep_conflict.value.status_code == 400
+
+    clear_response = await todo_routes.todo_update(
+        slug="scheduled-task",
+        schedule="",
+        after=["parent"],
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    assert cast(todo_routes._TodoUpdateResponse, clear_response).status == _STATUS_OK
+    assert await todos_db.get_schedule("scheduled-task") is None
+    assert (await todos_db.load_deps())["scheduled-task"] == ["parent"]
+
+
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG4")
+async def test_todo_update_persists_recurring_schedule(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "recurring-task", kind=TODO_KIND_TASK)
+
+    response = await todo_routes.todo_update(
+        slug="recurring-task",
+        schedule="cron:30 8 * * 0",
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+
+    assert cast(todo_routes._TodoUpdateResponse, response).status == _STATUS_OK
+    assert await todos_db.get_schedule("recurring-task") == snapshot
+
+
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG4")
+async def test_todo_update_rejects_malformed_recurring_schedule(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "recurring-task", kind=TODO_KIND_TASK)
+    await todos_db.set_schedule("recurring-task", schedule="cron:30 8 * * 0")
+    existing_schedule = await todos_db.get_schedule("recurring-task")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await todo_routes.todo_update(
+            slug="recurring-task",
+            schedule="cron:30 8 * * 8",
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert await todos_db.get_schedule("recurring-task") == existing_schedule
+
+
+@pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG4")
+async def test_todo_update_refuses_schedule_on_non_task(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "change-a", kind=TODO_KIND_CHANGE)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await todo_routes.todo_update(
+            slug="change-a",
+            schedule="2099-01-01T00:00:00Z",
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert await todos_db.get_schedule("change-a") is None
 
 
 @pytest.mark.spec(_DEPENDENCY_GRAPH_SPEC, "UC-WDG5")
@@ -635,7 +751,7 @@ async def test_todo_update_kind_folds_seeded_plan_for_task(tmp_path: Path, snaps
     state = await todos_db.read_state("planned-change")
     assert state is not None
     assert state["kind"] == TODO_KIND_TASK
-    assert state["lifecycle_phase"] == LifecyclePhase.PREPARED.value
+    assert state["lifecycle_phase"] == LifecyclePhase.TASK_PLAN_DRAFTING.value
     assert await todos_db.read_artifact("planned-change", ARTIFACT_INPUT) == snapshot
     assert not await todos_db.artifact_exists("planned-change", ARTIFACT_IMPLEMENTATION_PLAN)
     sync_response = cast(todo_routes._TodoUpdateResponse, response)

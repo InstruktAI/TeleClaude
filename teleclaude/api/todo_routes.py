@@ -31,7 +31,7 @@ from teleclaude.api.auth import (
     optional_caller_identity,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
-from teleclaude.api.todo_create_support import seed_plan_drafting
+from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
@@ -48,6 +48,7 @@ from teleclaude.constants import (
     PREPARE_ARTIFACT_NAMES,
     TodoStatus,
 )
+from teleclaude.core.dates import normalize_task_schedule
 from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
@@ -55,6 +56,7 @@ from teleclaude.core.next_machine.kind_migration import (
     KindMigrationResult,
     migrate_todo_kind,
 )
+from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
@@ -151,14 +153,24 @@ def _validate_update_request(
     kind: str | None,
     hold: bool,
     release: bool,
+    schedule: str | None,
 ) -> None:
     """Validate the todo update facade's patch shape."""
-    if new_slug is None and after is None and kind is None and not hold and not release:
+    if new_slug is None and after is None and kind is None and schedule is None and not hold and not release:
         raise HTTPException(
-            status_code=400, detail="at least one of new_slug, after, kind, hold, or release is required"
+            status_code=400, detail="at least one of new_slug, after, kind, schedule, hold, or release is required"
         )
     if hold and release:
         raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
+
+
+def _normalize_schedule_request(schedule: str | None) -> str | None:
+    if schedule is None:
+        return None
+    try:
+        return normalize_task_schedule(schedule)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 async def _apply_hold_update(
@@ -295,6 +307,7 @@ async def todo_update(  # pyright: ignore
     slug: Annotated[str, Body()],
     new_slug: Annotated[str | None, Body()] = None,
     after: Annotated[list[str] | None, Body()] = None,
+    schedule: Annotated[str | None, Body()] = None,
     kind: Annotated[str | None, Body()] = None,
     hold: Annotated[bool, Body()] = False,
     release: Annotated[bool, Body()] = False,
@@ -306,7 +319,7 @@ async def todo_update(  # pyright: ignore
     """Update a todo slug, dependencies, or kind through one mutation facade."""
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    _validate_update_request(new_slug=new_slug, after=after, kind=kind, hold=hold, release=release)
+    _validate_update_request(new_slug=new_slug, after=after, kind=kind, schedule=schedule, hold=hold, release=release)
 
     _validate_slug_for_update(slug, field_name="slug")
     if new_slug is not None:
@@ -315,6 +328,7 @@ async def todo_update(  # pyright: ignore
         raise HTTPException(status_code=400, detail=f"unknown todo kind: {kind!r}")
 
     requested_after = after
+    normalized_schedule = _normalize_schedule_request(schedule)
     if requested_after is not None:
         for dep in requested_after:
             _validate_slug_for_update(dep, field_name="dependency")
@@ -327,6 +341,20 @@ async def todo_update(  # pyright: ignore
 
     if not await todos_db.slug_in_todo(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
+    raw_state = await todos_db.read_state(slug)
+    current_kind = raw_state.get("kind") if isinstance(raw_state, dict) else None
+    schedule_kind = kind if kind is not None else current_kind
+    if schedule is not None and schedule_kind != TODO_KIND_TASK:
+        raise HTTPException(status_code=400, detail="schedule is valid only for kind='task'")
+    existing_schedule = await todos_db.get_schedule(slug)
+    existing_deps = await todos_db.get_deps(slug)
+    if normalized_schedule is not None and requested_after:
+        raise HTTPException(status_code=400, detail="schedule and dependencies are mutually exclusive")
+    if normalized_schedule is not None and requested_after is None and existing_deps:
+        raise HTTPException(status_code=400, detail="clear dependencies before setting schedule")
+    clearing_schedule = schedule is not None and normalized_schedule is None
+    if requested_after and (normalized_schedule is not None or (existing_schedule and not clearing_schedule)):
+        raise HTTPException(status_code=400, detail="clear schedule before setting dependencies")
 
     if (new_slug is not None or kind is not None) and await _todo_build_started(todos_db, slug):
         raise HTTPException(
@@ -352,6 +380,8 @@ async def todo_update(  # pyright: ignore
             raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
 
         await todos_db.set_deps(slug, after=requested_after)
+    if schedule is not None:
+        await todos_db.set_schedule(slug, schedule=normalized_schedule)
 
     hold_value = await _apply_hold_update(
         todos_db,
@@ -466,6 +496,8 @@ async def _sync_artifact_provenance_state(
         artifact_body=artifact_body,
         snippet_digest_fn=snippet_body_digest,
     )
+    if artifact_name == ARTIFACT_TASK_PLAN:
+        writer.state.lifecycle_phase = adopt_prepare_handoff_phase(writer.state).value
     await writer.commit(todos_db, slug)
 
 
@@ -709,7 +741,8 @@ async def todo_content_create(
         plan-draft pass grounds and reviews it before `prepared`.
       - "bug": content is the "input" artifact; enters the diagnose-then-plan
         prepare flow.
-      - "task": content is the "input" artifact; enters prepared and is unheld.
+      - "task": content is the "input" artifact; enters task-plan drafting unless --plan supplies
+        the pre-authorized task-plan.
     ``icebox`` creates the todo parked in the icebox (no prepare auto-spawn).
     ``group`` attaches the new todo as a child of the named parent slug,
     making the parent a structural holder via the existing derivation.
@@ -726,15 +759,19 @@ async def todo_content_create(
         if not request.content.strip():
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
 
-        if request.plan and request.kind != TODO_KIND_CHANGE:
+        normalized_schedule = _normalize_schedule_request(request.schedule)
+        if request.schedule is not None and request.kind != TODO_KIND_TASK:
+            raise HTTPException(status_code=400, detail="schedule is valid only for kind='task'")
+        if normalized_schedule is not None and request.after:
+            raise HTTPException(status_code=400, detail="schedule and dependencies are mutually exclusive")
+        if request.plan and request.kind not in {TODO_KIND_CHANGE, TODO_KIND_TASK}:
             raise HTTPException(
                 status_code=400,
-                detail="--plan supplies a complete implementation-plan and is only valid with --kind change",
+                detail="--plan is valid only with --kind change or --kind task",
             )
         created_by_principal = _optional_capture_principal(identity)
         state = initial_todo_state_for_kind(request.kind)
-        force_silent = request.kind == TODO_KIND_TASK
-        pickup_requested = not (request.icebox or force_silent)
+        pickup_requested = not request.icebox
 
         written_artifact_name = ""
         written_artifact_body = ""
@@ -743,6 +780,7 @@ async def todo_content_create(
                 await todos_db.add_to_todo(
                     slug,
                     after=request.after if request.after else None,
+                    schedule=normalized_schedule,
                     group_slug=request.group,
                     status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
                     created_by_principal=created_by_principal,
@@ -751,14 +789,19 @@ async def todo_content_create(
                 await todos_db.write_state(slug, state, session=session)
 
                 if request.plan:
-                    plan_content = f"# {slug} — Implementation Plan\n\n{request.content}\n"
-                    written_artifact_name = ARTIFACT_IMPLEMENTATION_PLAN
+                    is_task_plan = request.kind == TODO_KIND_TASK
+                    plan_content = (
+                        f"# {slug} — Task Plan\n\n{request.content}\n"
+                        if is_task_plan
+                        else f"# {slug} — Implementation Plan\n\n{request.content}\n"
+                    )
+                    written_artifact_name = ARTIFACT_TASK_PLAN if is_task_plan else ARTIFACT_IMPLEMENTATION_PLAN
                     written_artifact_body = plan_content
                     await todos_db.write_artifact(
                         slug,
-                        ARTIFACT_IMPLEMENTATION_PLAN,
+                        written_artifact_name,
                         plan_content,
-                        updated_by="api.todo.create.plan",
+                        updated_by="api.todo.create.task-plan" if is_task_plan else "api.todo.create.plan",
                         session=session,
                     )
                 else:
@@ -784,11 +827,18 @@ async def todo_content_create(
                 artifact_body=written_artifact_body,
             )
 
-        if request.plan:
+        if request.plan and request.kind == TODO_KIND_CHANGE:
             # Seed the supplied plan as a plan-drafting basis (see
             # seed_plan_drafting); it must run after the seeding write's
             # provenance sync above, which would otherwise clear the seed.
             state["lifecycle_phase"] = await seed_plan_drafting(todos_db, slug, repo_root=effective_cwd)
+            todos_db.on_committed("todo_updated")
+        elif request.plan and request.kind == TODO_KIND_TASK:
+            state["lifecycle_phase"] = await seed_task_plan_authorization(
+                todos_db,
+                slug,
+                caller_session_id=created_by_principal or "system:todo-create-plan",
+            )
             todos_db.on_committed("todo_updated")
 
         lifecycle_phase = state.get("lifecycle_phase")
@@ -815,7 +865,7 @@ async def todo_content_create(
             slug=slug,
             kind=request.kind,
             cwd=effective_cwd,
-            artifact=ARTIFACT_IMPLEMENTATION_PLAN if request.plan else ARTIFACT_INPUT,
+            artifact=written_artifact_name,
         )
 
         return _SlugStatusResponse(status="ok", slug=slug)

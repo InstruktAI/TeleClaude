@@ -109,6 +109,9 @@ def _todo_row(
     status: TodoStatus = TodoStatus.IN_PROGRESS,
     lifecycle_phase: str = "plan_drafting",
     active_runner: str | None = None,
+    kind: str = "change",
+    task_plan_digest: str | None = None,
+    task_approved_digest: str | None = None,
 ) -> TodoRow:
     item = TodoItem(
         slug="selected",
@@ -116,11 +119,13 @@ def _todo_row(
         description=None,
         has_requirements=False,
         has_impl_plan=False,
-        kind="change",
+        kind=kind,
         lifecycle_phase=lifecycle_phase,
         hold=hold,
         held=held,
         active_runner=active_runner,
+        task_plan_digest=task_plan_digest,
+        task_approved_digest=task_approved_digest,
     )
     return TodoRow(item, slug_width=len(item.slug), col_widths=TodoRow.compute_col_widths([item]))
 
@@ -203,6 +208,41 @@ def test_no_human_gate_controls_for_running_or_work_ready_todos(tmp_path: Path) 
     harness._current = _todo_row(active_runner="runner-session", lifecycle_phase="plan_drafting")
     assert harness.check_action("approve_gate", ()) is False
     assert harness.check_action("hold", ()) is False
+
+
+def test_task_authorization_uses_task_approved_stamp(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    tool_api_request = MagicMock(return_value={"status": "ok"})
+    monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+    harness = _Harness(tmp_path)
+    harness._current = _todo_row(
+        kind="task",
+        lifecycle_phase="prepared",
+        task_plan_digest="plan-digest",
+        task_approved_digest=None,
+    )
+
+    assert harness.check_action("approve_gate", ()) is True
+    harness.action_approve_gate()
+
+    assert tool_api_request.call_args.args[:2] == (_METHOD_POST, "/todos/stamp")
+    assert tool_api_request.call_args.kwargs["json_body"] == {
+        "slug": "selected",
+        "cwd": str(tmp_path),
+        "stamp_type": "task_approved",
+        "notify_runner": True,
+    }
+
+
+def test_task_authorization_action_suppressed_when_digest_current(tmp_path: Path) -> None:
+    harness = _Harness(tmp_path)
+    harness._current = _todo_row(
+        kind="task",
+        lifecycle_phase="prepared",
+        task_plan_digest="plan-digest",
+        task_approved_digest="plan-digest",
+    )
+
+    assert harness.check_action("approve_gate", ()) is False
 
 
 def test_computer_header_action_gating(tmp_path: Path) -> None:

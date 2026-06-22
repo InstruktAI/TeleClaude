@@ -17,7 +17,6 @@ from teleclaude.git import GIT_EXECUTABLE
 from teleclaude.project_setup.git_filters import ensure_git_filters
 
 _SPEC = "general/spec/tools/telec-cli"
-_HOME = str(Path.home())
 _DOC = "docs/spec/teleclaude-config.md"
 
 
@@ -54,6 +53,7 @@ def _init_repo(project_root: Path, committed_body: str) -> None:
 @pytest.mark.spec(_SPEC, "code-quality-delegation")
 def test_residue_reconciled_to_committed_form(tmp_path: Path) -> None:
     """A bare-absolute home path left by a prior filter pattern is reset to source."""
+    home = str(Path.home())
     committed = "See `~/.teleclaude/teleclaude.yml` for config.\n"
     _init_repo(tmp_path, committed)
     ensure_git_filters(tmp_path)  # install the anchored driver; tree already consistent
@@ -61,7 +61,7 @@ def test_residue_reconciled_to_committed_form(tmp_path: Path) -> None:
 
     # A tree last smudged under the historical bare driver carries the portable
     # token expanded to a bare-absolute home path the anchored clean cannot contract.
-    residue = committed.replace("~/.teleclaude", f"{_HOME}/.teleclaude")
+    residue = committed.replace("~/.teleclaude", f"{home}/.teleclaude")
     (tmp_path / _DOC).write_text(residue, encoding="utf-8")
     assert _git(tmp_path, "status", "--porcelain").strip()
 
@@ -75,11 +75,12 @@ def test_residue_reconciled_to_committed_form(tmp_path: Path) -> None:
 @pytest.mark.spec(_SPEC, "code-quality-delegation")
 def test_genuine_edit_preserved(tmp_path: Path) -> None:
     """A real content edit that also carries the home-path form is left untouched."""
+    home = str(Path.home())
     committed = "See `~/.teleclaude/teleclaude.yml` for config.\n"
     _init_repo(tmp_path, committed)
     ensure_git_filters(tmp_path)
 
-    edited = f"See `{_HOME}/.teleclaude/teleclaude.yml` for config.\nA real new prose line.\n"
+    edited = f"See `{home}/.teleclaude/teleclaude.yml` for config.\nA real new prose line.\n"
     (tmp_path / _DOC).write_text(edited, encoding="utf-8")
 
     ensure_git_filters(tmp_path)
@@ -92,12 +93,13 @@ def test_genuine_edit_preserved(tmp_path: Path) -> None:
 @pytest.mark.spec(_SPEC, "code-quality-delegation")
 def test_anchored_token_lane_resmudges(tmp_path: Path) -> None:
     """The portable token on disk (fresh clone) is still expanded by the self-heal."""
+    home = str(Path.home())
     committed = "Ref @~/.teleclaude/docs/x.md here.\n"
     _init_repo(tmp_path, committed)
     assert (tmp_path / _DOC).read_text(encoding="utf-8") == committed
 
     ensure_git_filters(tmp_path)
 
-    expected = committed.replace("@~/.teleclaude", f"@{_HOME}/.teleclaude")
+    expected = committed.replace("@~/.teleclaude", f"@{home}/.teleclaude")
     assert (tmp_path / _DOC).read_text(encoding="utf-8") == expected
     assert not _git(tmp_path, "status", "--porcelain").strip()

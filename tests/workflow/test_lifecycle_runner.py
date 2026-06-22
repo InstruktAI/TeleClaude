@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -40,8 +40,10 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     decide_dispatches,
     dispatch_lifecycle_session,
     manual_start_lifecycle_session,
+    resolve_manual_dispatch_intent,
     run_lifecycle_runner,
 )
+from teleclaude.core.next_machine.runtime.clock import SCHEDULER_TICK_MINUTE
 from teleclaude.core.next_machine.runtime.sessions import (
     live_orchestrator_owned_slugs,
     live_orchestrator_owner,
@@ -88,6 +90,8 @@ _CLOSE_HOLD_SESSION = "close-hold-session"
 _CLOSE_END_SESSION = "close-end-session"
 _NEXT_WORK = "/next-work"
 _NEXT_PREPARE = "/next-prepare"
+_NEXT_PREPARE_TASK = "/next-prepare-task"
+_NEXT_RUN_TASK = "/next-run-task"
 _CONTINUED = "continued"
 _HOLD_SOURCE_SESSION_CLOSE = "session_close"
 _DOMAIN = "software-development"
@@ -139,6 +143,7 @@ class _FakeDb:
 class _RunnerClient:
     def __init__(self) -> None:
         self.requests: list[RunSessionArgs] = []
+        self.messages: list[tuple[str, str, str]] = []
         self.connected = False
 
     async def connect(self) -> None:
@@ -154,6 +159,10 @@ class _RunnerClient:
             session_id=_SPAWN_SESSION,
             tmux_session_name="tmux-spawn-1",
         )
+
+    async def send_message(self, session_id: str, computer: str, message: str) -> bool:
+        self.messages.append((session_id, computer, message))
+        return True
 
 
 class _WakePayload(TypedDict, total=False):
@@ -193,8 +202,9 @@ async def _add_todo(
     active_runner: str | None = None,
     manually_started: bool = False,
     hold: bool = False,
+    schedule: str | None = None,
 ) -> None:
-    await todos_db.add_to_todo(slug, after=after)
+    await todos_db.add_to_todo(slug, after=after, schedule=schedule)
     await todos_db.write_state(
         slug,
         TodoState(
@@ -206,6 +216,24 @@ async def _add_todo(
             hold=hold,
         ).model_dump(exclude_none=True),
     )
+
+
+async def _authorize_task_plan(todos_db: TodosDb, slug: str, body: str = "Do the task.") -> str:
+    state = await todos_db.read_state(slug)
+    assert state is not None
+    await todos_db.write_artifact(slug, "task-plan", body)
+    task_plan_digest = await todos_db.artifact_digest(slug, "task-plan")
+    assert task_plan_digest
+    state["artifacts"] = {"task_plan": {"digest": task_plan_digest}}
+    state["approvals"] = {
+        "task_approved": {
+            "approved": True,
+            "approved_digest": task_plan_digest,
+            "approved_at": datetime.now(UTC).isoformat(),
+        }
+    }
+    await todos_db.write_state(slug, state)
+    return task_plan_digest
 
 
 async def _add_kindless_todo(todos_db: TodosDb, slug: str) -> None:
@@ -280,6 +308,245 @@ def test_preparation_runs_regardless_of_autostart_only_work_is_gated() -> None:
     assert lanes["prepare-a"] == RunnerLane.PREPARE
     assert "work-a" not in lanes
     assert decision.skips[RunnerSkipReason.POLICY_DISABLED] == ["work-a"]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_task_without_plan_dispatches_to_task_prepare() -> None:
+    decision = decide_dispatches(
+        {
+            "task-a": RunnerTodo(
+                slug="task-a",
+                status="active",
+                kind=_TASK,
+                lifecycle_phase=LifecyclePhase.TASK_PLAN_DRAFTING.value,
+                hold=False,
+                active_runner=None,
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: False},
+        live_session_ids=set(),
+    )
+
+    assert [(intent.slug, intent.lane, intent.command) for intent in decision.intents] == [
+        ("task-a", RunnerLane.TASK_PREPARE, _NEXT_PREPARE_TASK)
+    ]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_task_with_plan_requires_current_authorization() -> None:
+    decision = decide_dispatches(
+        {
+            "missing-approval": RunnerTodo(
+                slug="missing-approval",
+                status="active",
+                kind=_TASK,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+                task_plan_digest="plan-a",
+            ),
+            "stale-approval": RunnerTodo(
+                slug="stale-approval",
+                status="active",
+                kind=_TASK,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+                task_plan_digest="plan-b",
+                task_approved=True,
+                task_approved_digest="old-plan",
+            ),
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: True},
+        live_session_ids=set(),
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.TASK_AUTHORIZATION_MISSING] == ["missing-approval", "stale-approval"]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_authorized_task_dispatches_to_task_run_after_dependencies() -> None:
+    blocked = RunnerTodo(
+        slug="blocked",
+        status="active",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        hold=False,
+        active_runner=None,
+        after=("dep-a",),
+        task_plan_digest="plan-a",
+        task_approved=True,
+        task_approved_digest="plan-a",
+    )
+    ready = RunnerTodo(
+        slug="ready",
+        status="active",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        hold=False,
+        active_runner=None,
+        after=("dep-a",),
+        task_plan_digest="plan-b",
+        task_approved=True,
+        task_approved_digest="plan-b",
+    )
+
+    before_dep = decide_dispatches(
+        {"blocked": blocked},
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: False},
+        live_session_ids=set(),
+    )
+    after_dep = decide_dispatches(
+        {"ready": ready},
+        prepared_slugs=set(),
+        delivered_slugs={"dep-a"},
+        autostart={_TASK: False},
+        live_session_ids=set(),
+    )
+
+    assert before_dep.intents == []
+    assert before_dep.skips[RunnerSkipReason.DEPENDENCY_BLOCKED] == ["blocked"]
+    assert [(intent.slug, intent.lane, intent.command) for intent in after_dep.intents] == [
+        ("ready", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
+    ]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_authorized_task_with_future_schedule_is_not_dispatched() -> None:
+    future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    decision = decide_dispatches(
+        {
+            "scheduled": RunnerTodo(
+                slug="scheduled",
+                status="active",
+                kind=_TASK,
+                lifecycle_phase=LifecyclePhase.PREPARED.value,
+                hold=False,
+                active_runner=None,
+                schedule=future,
+                task_plan_digest="plan-a",
+                task_approved=True,
+                task_approved_digest="plan-a",
+            )
+        },
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: False},
+        live_session_ids=set(),
+    )
+
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.SCHEDULE_BLOCKED] == ["scheduled"]
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM4")
+def test_authorized_recurring_task_dispatches_only_at_matching_cron_time() -> None:
+    task = RunnerTodo(
+        slug="weekly-task",
+        status="active",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        hold=False,
+        active_runner=None,
+        schedule="cron:15 9 * * 0",
+        task_plan_digest="plan-a",
+        task_approved=True,
+        task_approved_digest="plan-a",
+    )
+
+    matching = decide_dispatches(
+        {"weekly-task": task},
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: False},
+        live_session_ids=set(),
+        now=datetime(2026, 6, 21, 9, 15, tzinfo=UTC),
+    )
+    non_matching = decide_dispatches(
+        {"weekly-task": task},
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: False},
+        live_session_ids=set(),
+        now=datetime(2026, 6, 22, 9, 15, tzinfo=UTC),
+    )
+
+    assert [(intent.slug, intent.lane, intent.command) for intent in matching.intents] == [
+        ("weekly-task", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
+    ]
+    assert non_matching.intents == []
+    assert non_matching.skips[RunnerSkipReason.SCHEDULE_BLOCKED] == ["weekly-task"]
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM4")
+async def test_due_recurring_task_with_live_runner_is_woken_not_redispatched(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        "task-a",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner=_LIVE_SESSION,
+        schedule="cron:* * * * *",
+    )
+    await _authorize_task_plan(todos_db, "task-a", "Do the scheduled thing.")
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger=SCHEDULER_TICK_MINUTE,
+        db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(session_id=_LIVE_SESSION)})),
+        client_factory=lambda: client,
+    )
+
+    assert result.dispatched == []
+    assert result.skips[RunnerSkipReason.ALREADY_DRIVEN] == ["task-a"]
+    assert result.woken == ["task-a"]
+    assert client.requests == []
+    assert client.messages == [
+        (
+            _LIVE_SESSION,
+            tc_config.computer.name,
+            "Scheduled recurring firing is due for task `task-a`. Execute the next firing from the "
+            "current task-plan, append the result to the log, and stay alive for follow-up.",
+        )
+    ]
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM4")
+async def test_live_one_shot_task_is_not_rewoken_by_scheduler_tick(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    await _add_todo(
+        todos_db,
+        "task-a",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        active_runner=_LIVE_SESSION,
+        schedule=past,
+    )
+    await _authorize_task_plan(todos_db, "task-a", "Do the one-shot thing.")
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger=SCHEDULER_TICK_MINUTE,
+        db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(session_id=_LIVE_SESSION)})),
+        client_factory=lambda: client,
+    )
+
+    assert result.dispatched == []
+    assert result.woken == []
+    assert client.messages == []
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-27")
@@ -664,6 +931,44 @@ def test_integrator_may_dispatch_worker_review(tmp_path: Path) -> None:
     assert plan.system_role == ROLE_WORKER
 
 
+@pytest.mark.spec(_SPEC, "UC-WSM4")
+@pytest.mark.parametrize(
+    ("command", "expected_job"),
+    [
+        ("/next-prepare-task", "task-preparer"),
+        ("/next-run-task", "task-runner"),
+    ],
+)
+def test_task_commands_are_worker_slug_bound(command: str, expected_job: str, tmp_path: Path) -> None:
+    request = RunSessionRequest(
+        command=command,
+        args=_WORK_SLUG,
+        project=str(tmp_path / "project"),
+        agent="claude",
+    )
+
+    plan = _prepare_run_session(request, _caller_identity())
+
+    assert plan.system_role == ROLE_WORKER
+    assert plan.working_slug == _WORK_SLUG
+    assert plan.job == expected_job
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM4")
+def test_task_commands_require_slug(tmp_path: Path) -> None:
+    request = RunSessionRequest(
+        command="/next-run-task",
+        args="",
+        project=str(tmp_path / "project"),
+        agent="claude",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        _prepare_run_session(request, _caller_identity())
+
+    assert exc.value.status_code == 400
+
+
 def test_integrator_may_not_dispatch_orchestrator(tmp_path: Path) -> None:
     request = RunSessionRequest(
         command="/next-prepare",
@@ -801,6 +1106,33 @@ async def test_manual_start_refuses_live_claimant(tmp_path: Path) -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_dispatch_intent_routes_unplanned_task_to_task_prepare(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "task-a", kind=_TASK, lifecycle_phase=LifecyclePhase.TASK_PLAN_DRAFTING.value)
+
+    intent, reason = await resolve_manual_dispatch_intent(todos_db, "task-a")
+
+    assert reason is None
+    assert intent is not None
+    assert (intent.slug, intent.lane, intent.command) == ("task-a", RunnerLane.TASK_PREPARE, _NEXT_PREPARE_TASK)
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_dispatch_intent_routes_authorized_task_to_task_run(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "task-a", kind=_TASK, lifecycle_phase=LifecyclePhase.PREPARED.value)
+    await _authorize_task_plan(todos_db, "task-a")
+
+    intent, reason = await resolve_manual_dispatch_intent(todos_db, "task-a")
+
+    assert reason is None
+    assert intent is not None
+    assert (intent.slug, intent.lane, intent.command) == ("task-a", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_manual_adoption_requires_matching_working_slug(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
@@ -819,6 +1151,30 @@ async def test_manual_adoption_requires_matching_working_slug(tmp_path: Path) ->
     assert state is not None
     assert state["active_runner"] == caller.session_id
     assert state["manually_started"] is True
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_adoption_marks_authorized_task_as_task_run(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "task-a", kind=_TASK, lifecycle_phase=LifecyclePhase.PREPARED.value)
+    await _authorize_task_plan(todos_db, "task-a")
+    caller = _Session(session_id="caller-session", working_slug="task-a")
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        "task-a",
+        caller.session_id,
+        db=cast(Db, _FakeDb({caller.session_id: caller})),
+    )
+
+    assert result.status is ManualLifecycleStatus.ADOPTED
+    assert result.lane is RunnerLane.TASK_RUN
+    state = await todos_db.read_state("task-a")
+    assert state is not None
+    assert state["active_runner"] == caller.session_id
+    assert state["manually_started"] is True
+    assert state["lifecycle_phase"] == LifecyclePhase.TASK_RUNNING.value
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1112,10 +1468,34 @@ async def test_adoption_refusal_reports_registry_owner_without_active_runner(tmp
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_runner_skips_task_as_policy_disabled_not_hold(tmp_path: Path) -> None:
+async def test_runner_dispatches_task_prepare_regardless_of_task_autostart(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, "task-a", kind=_TASK)
+    await _add_todo(todos_db, "task-a", kind=_TASK, lifecycle_phase=LifecyclePhase.TASK_PLAN_DRAFTING.value)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert [(intent.slug, intent.lane) for intent in result.dispatched] == [("task-a", RunnerLane.TASK_PREPARE)]
+    assert client.requests[0]["command"] == _NEXT_PREPARE_TASK
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_runner_hold_blocks_task_prepare(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        "task-a",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.TASK_PLAN_DRAFTING.value,
+        hold=True,
+    )
     client = _RunnerClient()
 
     result = await run_lifecycle_runner(
@@ -1126,8 +1506,7 @@ async def test_runner_skips_task_as_policy_disabled_not_hold(tmp_path: Path) -> 
     )
 
     assert result.dispatched == []
-    assert result.skips[RunnerSkipReason.POLICY_DISABLED] == ["task-a"]
-    assert RunnerSkipReason.HELD not in result.skips
+    assert result.skips[RunnerSkipReason.HELD] == ["task-a"]
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1294,6 +1673,7 @@ def test_removed_planning_events_are_not_registered() -> None:
 
     for event_name in _REMOVED_PLANNING_TRIGGERS:
         assert catalog.get(event_name) is None
+    assert catalog.get(SCHEDULER_TICK_MINUTE) is not None
     assert catalog.get("domain.software-development.planning.todo_finalize_ready") is not None
 
 

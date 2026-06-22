@@ -40,23 +40,10 @@ single owner of the slug cascade.
 **Removal tombstone**
 : Durable, row-id-keyed metadata captured on the roadmap row at soft-remove time, alongside `removed_at`. It holds `prev_status` — the status the entry held immediately before removal (`active` or `icebox`) — and `removed_deps` — a snapshot of the entry's own outgoing `after` edges as they were at removal. Both exist only so reactivation can restore the entry's own footprint exactly. The snapshot is necessary because `todo_deps` is slug-keyed with no row identity: the live outgoing edges MUST be scrubbed at soft-remove (or a same-slug recreate would inherit/collide with them), so they can only survive for reactivation by being parked here. Legacy rows removed before this metadata existed have neither; reactivation falls back to `prev_status=icebox` and no outgoing-edge restore.
 
-<!-- planned-change:task-lane -->
-
-**Kind**
-: Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
-
-<!-- change:task-lane -->
-
 **Kind**
 : Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` (on a `change`, seeding the `implementation-plan`; or on a `task`, seeding a pre-authorized `task-plan`), not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
 
-<!-- /planned-change:task-lane -->
-
-<!-- planned:task-lane -->
-
 A bare `task` does not enter `prepared` at creation or kind assignment. It enters `task_plan_drafting`; `/next-prepare-task` converts the raw `input` into a `task-plan` artifact and requests human authorization, dispatched by the lifecycle runner rather than the SDLC prepare state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence, and an authorized, scheduled, unheld task is dispatched to `/next-run-task`. Creation via `--kind task --plan` is the exception: the supplied content is the complete `task-plan`, so the task is born `prepared` and pre-authorized (the digest-bound `task_approved` stamp is written at creation), skipping `/next-prepare-task` and the human authorization step — the runner routes it straight to `/next-run-task` once its gate passes. Execution is non-SDLC: no PRD, architecture, implementation-plan, build review, finalize, or commit is required.
-
-<!-- /planned:task-lane -->
 
 Kind is mutable only before build starts
 through `telec todo update <slug> --kind <kind>`. The mutation re-routes
@@ -72,8 +59,6 @@ kind mutation is refused.
 **Artifact** (workflow artifact — per glossary)
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
 
-<!-- planned:task-lane -->
-
 **Task authorization**
 : Human approval for a prepared task to be run. It is recorded in workflow state, not inferred from `task-plan` existence, and it is the per-task autostart opt-in: the default autostart policy leaves `task=false`, and authorization flips that one task to runnable. The stamp is **digest-bound**: it records `approved_digest` = the `task-plan` digest the human saw at authorization, so authorization attaches to that exact plan. The lifecycle runner may dispatch `/next-run-task` only when the task is prepared, has a `task-plan`, is authorized with `approved_digest` equal to the current `task-plan` digest, is not held, has no live task runner/claim, and satisfies either its dependency gate or its schedule gate. A `task-plan` edited after approval changes its digest, so the stamp no longer matches and the task is unauthorized until re-authorized — no explicit clear is needed, the mismatch is the invalidation. Creation via `--kind task --plan` writes this stamp up front, digest-bound to the seeded plan, so the task is pre-authorized by construction.
 
@@ -82,8 +67,6 @@ kind mutation is refused.
 
 **Task log**
 : The `log` artifact for a `kind=task` Todo — the agent's work diary and run-integrity record, appended on every run and read on wake (`general/principle/continuity`). Dated, concise entries of what the run did and encountered — including failures and which scheduled run completed — carry continuity across firings and restart revivals and the restart-idempotency signal. It is durable on the Todo; the run's filesystem deliverables live under `{project_root}/workspace/<slug>/`, never archived for a task.
-
-<!-- /planned:task-lane -->
 
 **Roadmap**
 : Internal ordering/dependency storage for todos: rows, dependency edges, groupings, and statuses. It is surfaced to users as the ordered `telec todo list` view of "what's being worked on and what's next."
@@ -179,12 +162,10 @@ kind mutation is refused.
     and writes `lifecycle_phase = KIND_ENTRY_PHASE[target]`. The mutation is
     refused after build starts.
   - An SDLC todo cannot reach `delivered` stage without a non-empty `delivery_commit` and a successful integrate-state-machine terminal state. A `task` todo is non-SDLC; its durable evidence is the groomed `task-plan` and any recorded results.
-  <!-- planned:task-lane -->
   - A `task` Todo MUST NOT be dispatched before `task-plan` exists, the task is in `prepared`, and the task authorization stamp is present with its `approved_digest` equal to the current `task-plan` digest. Authorization is human-owned and digest-bound; artifact writes and analyzer classification never imply execution approval, and a `task-plan` edited after approval leaves the stamp stale (digest mismatch) until re-authorization. Creation via `--kind task --plan` writes the digest-bound stamp at creation, so the seeded task is pre-authorized.
   - A `task` Todo MAY carry a `schedule` (a one-shot instant or a recurring rule), but `schedule` and `after` dependencies are mutually exclusive at create/update boundaries. Clearing one side is allowed; persisting both in the same live entry is refused.
   - A due schedule is an eligibility input, not a phase transition. The scheduler tick wakes the lifecycle runner; the runner reads current state and dispatches only after all task gates still pass.
   - A `task` Todo's `workspace/<slug>/` directory is durable evidence: unlike an SDLC slug it has no delivery teardown and is never archived; it persists for the life of the Todo, and runs read and grow it over time.
-  <!-- /planned:task-lane -->
   - Dependency cycles are forbidden — the dependency graph MUST be a DAG.
   - A todo's slug is immutable across its lifetime EXCEPT via the atomic
     rename operation (`telec todo rename`), which is the only sanctioned slug
@@ -270,44 +251,25 @@ The default roadmap order is derived, not manually positioned. The dependency tr
 
 - **Producer:** `workflow`
 - **Emitted when:** a new todo is added to the todo list (via `create`, the
-`dump` compatibility alias, `split`, `bugs report`). Always
-emitted on successful creation regardless of `creation_mode` — silent mode
-suppresses pickup dispatch, not the state-change event.
-<!-- planned-change:task-lane -->
+  `dump` compatibility alias, `split`, `bugs report`). Always
+  emitted on successful creation regardless of `creation_mode` — silent mode
+  suppresses pickup dispatch, not the state-change event.
 - **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
-row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
-initially for ordinary feature/change creates; `null` for kind-less
-creates; `prepared` for task creates, `diagnose` for bug creates, `plan_drafting` for `--plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
-new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
-and `pickup_requested` (boolean). The v1 daemon bridge derives the
-consumer-facing `project_path` from `project_id` via its existing
-`project_id → project_path` map (the bridge is payload-agnostic and reads
-the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
-Existing v2 Rust event consumers continue to see every prior field; the
-contract is strict-additive. `kind` is **nullable**: a kind-less dump
-(created without `--kind`) emits `kind = null` and `lifecycle_phase = null`
-(v1 is authoritative for the nullable pre-classification state),
-and the pickup routers dispatch `/analyze-todo-input`
-(classification — it assigns a kind autonomously, it does not execute)
-instead of an SDLC orchestrator.
-<!-- change:task-lane -->
-- **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
-row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
-initially for ordinary feature/change creates; `null` for kind-less
-creates; `task_plan_drafting` for bare `--kind task` creates, `prepared` for `--kind task --plan` creates, `diagnose` for bug creates, `plan_drafting` for `--kind change --plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
-new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
-and `pickup_requested` (boolean). The v1 daemon bridge derives the
-consumer-facing `project_path` from `project_id` via its existing
-`project_id → project_path` map (the bridge is payload-agnostic and reads
-the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
-Existing v2 Rust event consumers continue to see every prior field; the
-contract is strict-additive. `kind` is **nullable**: a kind-less dump
-(created without `--kind`) emits `kind = null` and `lifecycle_phase = null`
-(v1 is authoritative for the nullable pre-classification state),
-and the pickup routers dispatch `/analyze-todo-input`
-(classification — it assigns a kind autonomously, it does not execute)
-instead of an SDLC orchestrator.
-<!-- /planned-change:task-lane -->
+  row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
+  initially for ordinary feature/change creates; `null` for kind-less
+  creates; `task_plan_drafting` for bare `--kind task` creates, `prepared` for `--kind task --plan` creates, `diagnose` for bug creates, `plan_drafting` for `--kind change --plan` creates), `kind`, `created_at`, `created_by_principal` — and adds two
+  new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
+  and `pickup_requested` (boolean). The v1 daemon bridge derives the
+  consumer-facing `project_path` from `project_id` via its existing
+  `project_id → project_path` map (the bridge is payload-agnostic and reads
+  the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
+  Existing v2 Rust event consumers continue to see every prior field; the
+  contract is strict-additive. `kind` is **nullable**: a kind-less dump
+  (created without `--kind`) emits `kind = null` and `lifecycle_phase = null`
+  (v1 is authoritative for the nullable pre-classification state),
+  and the pickup routers dispatch `/analyze-todo-input`
+  (classification — it assigns a kind autonomously, it does not execute)
+  instead of an SDLC orchestrator.
 - **Visibility:** CLUSTER
 - **Known consumers:** `integration` (subscription notifications for
   "todo created"), audit log consumers, autonomous pickup consumers (the
@@ -1129,13 +1091,9 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - `kind`: `feature`, `change`, `bug`, `task`; nullable only before classification (`kind=None` with no `lifecycle_phase`).
 - `stage`: `draft`, `prepare`, `work`, `integrate`, `delivered`.
 - `prepare phases`: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `diagnose`, `prepared`. (A kind-less todo has no `lifecycle_phase`; classification assigns the kind and routes straight to that kind's entry phase.)
-  <!-- planned:task-lane -->
   `task_plan_drafting` is the kind=`task` entry phase, owned by the task lane rather than the SDLC prepare state machine.
-  <!-- /planned:task-lane -->
 - `work phases`: `pending`, `building`, `review_pending`, `review_complete`, `fixing`, `finalize_pending`, `finalize_ready`.
-  <!-- planned:task-lane -->
   `task_running` is the task lane's live-execution phase for a `/next-run-task` session. It is non-SDLC and does not participate in build/review/finalize gates.
-  <!-- /planned:task-lane -->
 - `integrate phases`: per `integration-state-machine` design doc (squash, conflict-resolve, lint, test, push, deliver).
 - `roadmap status` (persisted): `active`, `icebox`, `delivered`, `removed`.
 - `todo-list display state` (derived for the todo-list view from persisted roadmap status + lifecycle phase): `pending`, `ready`, `in_progress`, `delivered`, `icebox`. (`removed` is persisted-only — excluded from the default view, surfaced only via the recovery UI.)

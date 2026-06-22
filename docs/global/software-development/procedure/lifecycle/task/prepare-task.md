@@ -1,8 +1,8 @@
 ---
-activation_trigger: 'Use when the lifecycle runner dispatches task-plan drafting for a kind=task todo'
-description: "Convert a task todo's raw input into a durable, repeatable task-plan and request human authorization. Non-SDLC: no prepare state machine, no PRD/architecture/plan/review."
-delivered_by:
-  - task-lane
+activation_trigger: Use when the lifecycle runner dispatches task-plan drafting for
+  a kind=task todo
+description: "Convert a task todo's raw input into a durable, repeatable task-plan
+  and request human authorization. Non-SDLC: no prepare state machine, no PRD/architecture/plan/review."
 ---
 
 # Prepare Task — Procedure

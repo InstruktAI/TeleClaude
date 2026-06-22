@@ -22,11 +22,7 @@ The graph has two responsibilities:
 
 Dependency mutations land via `telec todo update <slug> --after <dep>...`, which converges on the workflow service's set-deps capability after existence validation and cycle detection. The public `set-deps` verb is retired. To clear all dependencies, pass `--after ""`; omitting `--after` leaves deps untouched.
 
-<!-- planned:task-lane -->
-
 For kind=`task`, dependency edges and a task `schedule` are mutually exclusive execution gates. A task may use `after` dependencies to wait for delivered parents, or a `schedule` (a one-shot instant or a recurring rule) to wait for a clock instant, but not both. The create/update boundary refuses any live state that would persist both a non-empty `after` set and a `schedule`.
-
-<!-- /planned:task-lane -->
 
 ### Phase-specific gates (two gates, both directions)
 
@@ -149,8 +145,6 @@ And the router does not auto-dispatch /next-prepare for "child"
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
 ```
 
-<!-- planned:task-lane -->
-
 #### UC-WDG4: Task schedule excludes dependency edges
 
 ```gherkin
@@ -172,8 +166,6 @@ Given a task has a schedule
 When the caller clears schedule and sets `--after parent` in the same accepted mutation
 Then workflow persists the dependency edge and leaves schedule empty
 ```
-
-<!-- /planned:task-lane -->
 
 #### UC-WDG5: A group member cannot depend on its own holder
 

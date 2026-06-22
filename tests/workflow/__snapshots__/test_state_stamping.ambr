@@ -31,7 +31,7 @@
     'stderr': '',
     'stdout': '''
       Usage:
-        telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready]
+        telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready]
       
         Stamp a verdict or readiness marker into todo state
       
@@ -39,6 +39,7 @@
         --verdict               approve | changes_requested | needs_work | needs_decision
         --phase                 Review phase the verdict belongs to (architecture_review, plan_review, build_review)
         --prd-approved          Mark PRD as approved by the human
+        --task-approved         Authorize the current task-plan for a task
         --architecture-skipped  Skip architecture phase with a reason
         --drift-reviewed        Record drift review: <artifact> <substantive|cosmetic> <reason>
         --kind-assign           Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]
@@ -50,6 +51,7 @@
       
       Examples:
         telec todo stamp my-slug --verdict approve --phase plan_review
+        telec todo stamp my-task --task-approved
         telec todo stamp my-slug --kind-assign task "actionable task"
         telec todo stamp my-slug --verdict changes_requested --phase build_review
         telec todo stamp my-slug --finalize-ready

@@ -22,6 +22,7 @@ from teleclaude.constants import (
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TASK_PLAN,
 )
 from teleclaude.core.db import SessionIdentityError, get_session_field_sync, resolve_session_principal
 from teleclaude.core.models import Session
@@ -44,6 +45,7 @@ from teleclaude.core.next_machine.kinds import (
     BUG_DIAGNOSE_KINDS,
     FAST_TRACK_PREPARED_KINDS,
     FEATURE_PREPARE_KINDS,
+    KIND_TASK,
     PLAN_ONLY_PREPARE_KINDS,
 )
 from teleclaude.paths import MAIN_DB_PATH
@@ -189,10 +191,13 @@ def is_work_lifecycle_phase(phase: LifecyclePhase) -> bool:
 
 def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple[bool, str]:
     """Authoritative gate for entering or resuming the work lane."""
-    _ = kind
+    if kind == KIND_TASK:
+        return False, "task todos are executed by the task lane, not the SDLC work lane"
     phase = coerce_lifecycle_phase(lifecycle_phase)
     if phase is None:
         return False, f"unknown lifecycle_phase {lifecycle_phase!r}"
+    if phase not in LIFECYCLE_PHASE_ORDER:
+        return False, f"lifecycle_phase {phase.value!r} is outside the SDLC work lane"
     if lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED):
         return False, f"lifecycle_phase {phase.value!r} is before 'prepared'"
     return True, ""
@@ -588,6 +593,12 @@ def _plan_only_phase(
     return LifecyclePhase.PREPARED
 
 
+def _task_phase(model: TodoState, *, artifact_presence: _ArtifactPresence | None) -> LifecyclePhase:
+    if _artifact_present(model, STATE_KEY_TASK_PLAN, artifact_presence=artifact_presence):
+        return LifecyclePhase.PREPARED
+    return LifecyclePhase.TASK_PLAN_DRAFTING
+
+
 def _diagnose_phase(
     model: TodoState,
     *,
@@ -652,6 +663,8 @@ def adopt_prepare_handoff_phase(
     repo_root: str | None = None,
 ) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts."""
+    if model.kind == KIND_TASK:
+        return _task_phase(model, artifact_presence=artifact_presence)
     if model.kind in FAST_TRACK_PREPARED_KINDS:
         return LifecyclePhase.PREPARED
     if _non_drift_prepare_blockers(model):
@@ -688,6 +701,7 @@ def apply_authoritative_signal(
         "architecture_approved",
         "plan_approved",
         "architecture_skipped",
+        "task_approved",
     }:
         return _move_to(model, adopt_prepare_handoff_phase(model))
 
@@ -751,6 +765,8 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
         return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:
         return _review_current(model.plan_review, _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN))
+    if phase == LifecyclePhase.TASK_PLAN_DRAFTING:
+        return _artifact_exists(model, STATE_KEY_TASK_PLAN)
     if phase == LifecyclePhase.BUILD_STARTED:
         return bool(model.build_completed_at)
     if phase == LifecyclePhase.BUILD_COMPLETE:

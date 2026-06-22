@@ -11,6 +11,7 @@ class TodoRow(TypedDict):
     id: str
     slug: str
     ready_since: str | None
+    schedule: str | None
     group_slug: str | None
     description: str | None
     status: str

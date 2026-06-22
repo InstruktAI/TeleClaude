@@ -21,21 +21,6 @@ The same state-write boundary owns artifact-write provenance capture. On every `
 
 ### Use cases
 
-<!-- planned-change:task-lane -->
-
-#### UC-WSS1: Task kind assignment writes a task plan and enters prepared
-
-```
-Given a kind-less Todo whose kind is unset, whose lifecycle_phase is absent, and whose input artifact holds the raw dump
-When the analyzer runs "telec todo stamp my-slug --kind-assign task '<task-plan content>'"
-Then the kind-assignment handler validates the todo is still kind-less and the assigned kind is canonical
-And it fixes kind="task" exactly once, writes the task-plan artifact from the supplied content
-And it sets lifecycle_phase=KIND_ENTRY_PHASE["task"] ("prepared")
-And the state-write boundary re-validates the full state and persists atomically
-```
-
-<!-- change:task-lane -->
-
 #### UC-WSS1: Task kind assignment routes to task-plan drafting
 
 ```
@@ -47,8 +32,6 @@ And it sets lifecycle_phase=KIND_ENTRY_PHASE["task"] ("task_plan_drafting")
 And `/next-prepare-task` owns converting the input into a task-plan
 And the state-write boundary re-validates the full state and persists atomically
 ```
-
-<!-- /planned-change:task-lane -->
 
 #### UC-WSS2: SDLC kind assignment fixes kind and enters its lane
 
@@ -123,8 +106,6 @@ Then no notification is delivered into any session
 And an agent never messages itself about an approval it just recorded
 ```
 
-<!-- planned:task-lane -->
-
 #### UC-WSS9: Human task authorization stamps execution approval
 
 ```gherkin
@@ -148,8 +129,6 @@ When the `task-plan` is edited so its current digest no longer equals the stampe
 Then the lifecycle runner treats the task as unauthorized and does not dispatch `/next-run-task`
 And the task stays unauthorized until a fresh `task_approved` stamp re-binds `approved_digest` to the current `task-plan`
 ```
-
-<!-- /planned:task-lane -->
 
 ```
 Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
@@ -208,11 +187,7 @@ And no commit happens — the stamp call exits before any partial mutation lands
 
 - The stamp is the **natural worker-completion authority** for build and finalize phases. The state machine does not advance into review or integration until the stamp lands; conversely, the stamp does not run the gates itself — it records the claim and lets the state machine run gates on its next dispatch. This split prevents long-running stamp calls and the zombie processes a synchronous gate run would create.
 - Kind assignment is **autonomous and one-shot**. `--kind-assign <kind>` fixes `kind` exactly once and moves the todo straight to that kind's `KIND_ENTRY_PHASE`; there is no proposal phase and no human approval stamp between classification and the lane. A Todo whose kind is already fixed refuses the stamp.
-<!-- planned-change:task-lane -->
-- `--kind-assign task` is the only kind-assignment stamp that writes `task-plan`. SDLC assignments record kind + entry phase only and let their normal lane author PRD/implementation artifacts.
-<!-- change:task-lane -->
 - No kind-assignment stamp writes a plan artifact. `--kind-assign task` records kind + entry phase only (routing to `task_plan_drafting`); `/next-prepare-task` authors the `task-plan`. SDLC assignments likewise record kind + entry phase only and let their normal lane author PRD/implementation artifacts.
-<!-- /planned-change:task-lane -->
 - `--build-complete` is **worker- or orchestrator-owned and locked**: the caller must be either the owning worker (`working_slug == <slug>`) or a work orchestrator (`system_role == orchestrator`). Operators still cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the caller is neither accepted shape.
 - `--build-started` is **machine-owned**: the stamp rejects this flag explicitly and instructs the caller to run `telec todo work <slug>` so the work state machine owns the transition.
 - The approvals manager clears downstream approvals when an upstream artifact is re-opened. Refining the PRD invalidates the chain of architecture, plan, and finalize-ready approvals that depended on it — the state machine then re-runs the affected review and approval gates on next dispatch.

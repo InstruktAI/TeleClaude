@@ -245,6 +245,7 @@ def _derive_todo_block(row: Todo | None, deps: dict[str, list[str]], slug: str) 
         {
             "status": row.status,
             "ready_since": row.ready_since,
+            "schedule": row.schedule,
             "group_slug": row.group_slug,
             "description": row.description,
             "delivered_at": row.delivered_at,

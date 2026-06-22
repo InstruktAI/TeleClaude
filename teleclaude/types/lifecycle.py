@@ -38,6 +38,7 @@ class LifecyclePhase(str, Enum):
     DIAGNOSE = "diagnose"
     PLAN_DRAFTING = "plan_drafting"
     PLAN_REVIEW = "plan_review"
+    TASK_PLAN_DRAFTING = "task_plan_drafting"
     PREPARED = "prepared"
     BLOCKED = "blocked"
     BUILD_STARTED = "build_started"
@@ -45,9 +46,26 @@ class LifecyclePhase(str, Enum):
     REVIEW_CHANGES_REQUESTED = "review_changes_requested"
     REVIEW_APPROVED = "review_approved"
     FINALIZE_READY = "finalize_ready"
+    TASK_RUNNING = "task_running"
 
 
-LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = list(LifecyclePhase)
+LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = [
+    LifecyclePhase.DRAFT,
+    LifecyclePhase.PRD_DRAFTING,
+    LifecyclePhase.PRD_HUMAN_APPROVAL,
+    LifecyclePhase.ARCHITECTURE_DRAFTING,
+    LifecyclePhase.ARCHITECTURE_REVIEW,
+    LifecyclePhase.DIAGNOSE,
+    LifecyclePhase.PLAN_DRAFTING,
+    LifecyclePhase.PLAN_REVIEW,
+    LifecyclePhase.PREPARED,
+    LifecyclePhase.BLOCKED,
+    LifecyclePhase.BUILD_STARTED,
+    LifecyclePhase.BUILD_COMPLETE,
+    LifecyclePhase.REVIEW_CHANGES_REQUESTED,
+    LifecyclePhase.REVIEW_APPROVED,
+    LifecyclePhase.FINALIZE_READY,
+]
 
 PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
     {

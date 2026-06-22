@@ -17,6 +17,7 @@ from teleclaude.config.loader import load_project_config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
+from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
     configure_deployment_handler,
@@ -104,6 +105,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _event_processor_task: asyncio.Task[object] | None
         _internal_event_bus_task: asyncio.Task[object] | None
         _ingest_scheduler_task: asyncio.Task[object] | None
+        _task_schedule_clock_task: asyncio.Task[object] | None
         webhook_delivery_task: asyncio.Task[object] | None
         channel_subscription_worker_task: asyncio.Task[object] | None
 
@@ -354,6 +356,15 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
         logger.info("Event 'system.daemon.restarted' emitted")
 
+    def _start_task_schedule_clock(self, event_producer: EventProducer) -> None:
+        """Start the workflow schedule minute clock."""
+        self._task_schedule_clock_task = asyncio.create_task(
+            TaskScheduleClock(event_producer).run(self.shutdown_event),
+            name="task-schedule-clock",
+        )
+        self._task_schedule_clock_task.add_done_callback(self._log_background_task_exception("task_schedule_clock"))
+        logger.info("Task schedule minute clock started")
+
     def _configure_signal_context(
         self,
         context: PipelineContext,
@@ -468,6 +479,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             pending_recovery_progress=self._event_platform_status.pending_recovery_progress,
         )
         await self._emit_daemon_restarted_event(event_producer, computer_label)
+        self._start_task_schedule_clock(event_producer)
         self._start_signal_pipeline(pipeline, context, event_producer)
 
     async def _init_webhook_service(self) -> None:

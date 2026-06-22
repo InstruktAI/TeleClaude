@@ -15,11 +15,7 @@ visibility: 'public'
 
 The prepare state machine is the workflow capability that drives a Todo through its preparation Phases — from the initial `draft` Phase, through `prd_drafting`, `prd_human_approval`, optionally `architecture_drafting` / `architecture_review`, then `plan_drafting` / `plan_review`, and finally `prepared`. Each call by the orchestrator advances exactly one logical step: it reads the persisted Todo state, derives the current Phase from artifact presence and review verdicts, and returns a verbatim instruction telling the orchestrator what to do next — load a drafting procedure inline, dispatch a reviewer worker, request a human approval Stamp, or recognize that the Todo is now `prepared`.
 
-<!-- planned:task-lane -->
-
 A `kind=task` Todo does not enter this machine. Task preparation is a separate non-SDLC lane: `/next-prepare-task` reads `input`, writes the `task-plan`, and requests human authorization — dispatched by the lifecycle runner, never by this state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence without any PRD, architecture, implementation-plan, or reviewer verdict.
-
-<!-- /planned:task-lane -->
 
 Preparation is local-first and runs on the project's `main` branch with no worktree, which is what authorizes it to write artifacts and snippets to the canonical doc layer. The machine itself owns no UI or worker code; it owns the invariants on transitions and the resolution of which next instruction matches the current evidence. When the entrypoint is a structural holder, prepare refuses to operate on the holder directly and routes the operator to the runnable direct children instead. When tracked artifacts have drifted along any of the classes enumerated in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, age), the machine surfaces drift as a blocker and routes to a drift-analyzer worker before the Todo may reach `prepared`; the per-artifact collapsed status follows the `substantive > pending > cosmetic > fresh` priority rule. A loop guard bounds in-call internal transitions so a misconfigured state always surfaces an explicit error rather than spinning silently.
 
@@ -107,8 +103,6 @@ And when no implementation-plan Artifact is present the header reads "Dispatch r
 And a non-plan drafting phase (e.g. diagnose) dispatch carries no dispatch-reason header
 ```
 
-<!-- planned:task-lane -->
-
 #### UC-WPS6: Task todos bypass the prepare machine
 
 ```gherkin
@@ -118,8 +112,6 @@ Then the prepare state machine does not own task preparation
 And it routes the operator to the task lane (`/next-prepare-task`, dispatched by the lifecycle runner)
 And it requires no PRD, architecture, implementation-plan, or reviewer verdict for the task
 ```
-
-<!-- /planned:task-lane -->
 
 ```
 Given an entrypoint slug is a structural holder with direct children child-a and child-b

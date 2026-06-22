@@ -15,6 +15,15 @@ def register_software_development(catalog: EventCatalog) -> None:
     """Register software-development domain event schemas."""
     catalog.register(
         EventSchema(
+            event_type="scheduler.tick.minute",
+            description="Daemon minute wake-up for schedule-gated workflow evaluation",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            lifecycle=NotificationLifecycle(updates=True, meaningful_fields=["ticked_at", "computer"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="workflow.todo.created",
             description="A workflow todo was created and may require lifecycle-runner evaluation",
             default_level=EventLevel.WORKFLOW,

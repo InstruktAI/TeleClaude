@@ -13,6 +13,7 @@ from teleclaude.events.pipeline import PipelineContext
 logger = get_logger(__name__)
 
 _TRIGGER_EVENTS = {
+    "scheduler.tick.minute",
     "workflow.todo.created",
     "workflow.todo.delivered",
     "workflow.todo.phase_advanced",
@@ -47,6 +48,19 @@ class LifecycleRouterCartridge:
             if not pickup_requested:
                 logger.info("workflow.todo.created skipped: pickup_requested=False", slug=slug)
                 return event
+        if event.event == "scheduler.tick.minute":
+            _ = context
+            client = TelecAPIClient()
+            await client.connect()
+            try:
+                projects = await client.list_projects()
+            finally:
+                await client.close()
+            for project in projects:
+                if project.computer and project.computer != config.computer.name:
+                    continue
+                await run_lifecycle_runner(project.path, trigger=event.event, client_factory=lambda: TelecAPIClient())
+            return event
         project_path = project_path_from_event_payload(event.payload)
         if not project_path:
             logger.warning("workflow runner wake-up skipped: missing project identity", event=event.event)

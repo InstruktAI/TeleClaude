@@ -78,6 +78,7 @@ _READINESS_ARTIFACT_KEY: dict[str, str] = {
     ARTIFACT_DIAGNOSIS: STATE_KEY_DIAGNOSIS,
     ARTIFACT_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+    ARTIFACT_TASK_PLAN: STATE_KEY_TASK_PLAN,
 }
 _STATE_KEY_TO_ARTIFACT_NAME: dict[str, str] = {
     STATE_KEY_INPUT: ARTIFACT_INPUT,
@@ -96,6 +97,8 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
     STATE_KEY_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     STATE_KEY_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
+    ARTIFACT_TASK_PLAN: STATE_KEY_TASK_PLAN,
+    STATE_KEY_TASK_PLAN: STATE_KEY_TASK_PLAN,
 }
 _KIND_ASSIGN_VALUE = "kind_assign"
 
@@ -178,6 +181,15 @@ async def apply_todo_stamp(
             repo_root=cwd,
             snippet_digest_fn=snippet_body_digest,
         )
+    elif stamp_type == "task_approved":
+        await _apply_task_approval_stamp(
+            todos_db,
+            writer,
+            slug,
+            caller_session_id,
+            repo_root=cwd,
+            snippet_digest_fn=snippet_body_digest,
+        )
     elif stamp_type == "architecture_skipped":
         ApprovalsManager(writer).skip("architecture_skipped", reason=value, caller_session_id=caller_session_id or "")
     elif stamp_type == "drift_reviewed":
@@ -225,38 +237,10 @@ async def _apply_kind_assign_stamp(
     if writer.state.kind is not None:
         raise StateMutationError("cannot assign kind after kind is already fixed")
 
-    now = datetime.now(UTC).isoformat()
     writer.state.kind = assigned_kind
     writer.state.lifecycle_phase = KIND_ENTRY_PHASE[assigned_kind].value
 
-    if assigned_kind != KIND_TASK:
-        return await writer.commit(todos_db, slug)
-    if not content.strip():
-        raise StateMutationError("--kind-assign task requires task-plan content")
-
-    task_plan = _render_task_plan(slug=slug, content=content.strip(), assigned_at=now)
-    async with todos_db._session() as session:  # pylint: disable=protected-access
-        async with session.begin():
-            await todos_db.write_artifact(
-                slug,
-                ARTIFACT_TASK_PLAN,
-                task_plan,
-                updated_by="todo.kind_assign",
-                session=session,
-            )
-            return await writer.commit(todos_db, slug, session=session)
-
-
-def _render_task_plan(*, slug: str, content: str, assigned_at: str) -> str:
-    return (
-        f"# {slug} — Task Plan\n\n"
-        "## Intent\n\n"
-        f"{content}\n\n"
-        "## Steps\n\n"
-        "1. [todo] Refine this task-plan into executable steps.\n\n"
-        "## Log\n\n"
-        f"- {assigned_at}: Assigned task kind.\n"
-    )
+    return await writer.commit(todos_db, slug)
 
 
 def _validate_verdict_stamp(phase: str | None, verdict: str) -> None:
@@ -329,6 +313,37 @@ async def _apply_approval_stamp(
         field_name,
         caller_session_id=caller_session_id or "",
         approved_digest=approved_digest,
+    )
+
+
+async def _apply_task_approval_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    caller_session_id: str | None,
+    *,
+    repo_root: str,
+    snippet_digest_fn: Callable[[str], str],
+) -> None:
+    if writer.state.kind != KIND_TASK:
+        raise StateMutationError("cannot stamp task_approved: todo is not kind='task'")
+    if writer.state.lifecycle_phase != LifecyclePhase.PREPARED.value:
+        raise StateMutationError("cannot stamp task_approved: task is not prepared")
+    if not await todos_db.artifact_exists(slug, ARTIFACT_TASK_PLAN):
+        raise StateMutationError("cannot stamp task_approved: task-plan artifact missing")
+    await _apply_readiness_stamp(
+        todos_db,
+        writer,
+        slug,
+        ARTIFACT_TASK_PLAN,
+        "task_approved",
+        repo_root=repo_root,
+        snippet_digest_fn=snippet_digest_fn,
+    )
+    ApprovalsManager(writer).approve(
+        "task_approved",
+        caller_session_id=caller_session_id or "",
+        approved_digest=writer.state.artifacts.task_plan.digest,
     )
 
 
@@ -451,6 +466,7 @@ async def _validate_stamp_authority(
     if caller_session_id and caller_session_id.startswith("human:"):
         if stamp_type in {
             "prd_approved",
+            "task_approved",
             "creative_design_spec_confirmed",
             "creative_art_approved",
             "creative_visuals_approved",
