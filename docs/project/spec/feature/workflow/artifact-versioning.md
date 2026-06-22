@@ -108,6 +108,9 @@ session id that could hold the slug.
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
+
+<!-- planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
+
 A write from any session other than the live holder — including a dispatched
 worker that shares the slug — is a claim conflict. Independently of the holder
 check and of lifecycle phase, a prepare artifact is writable only by a
@@ -116,7 +119,27 @@ A session whose role is anything else — a work orchestrator, a create
 orchestrator, the integrator, or any worker — is refused by role with HTTP 403,
 evaluated before the holder check. The write boundary does not enforce the
 convention that a work-phase defect in a prepare artifact is routed back through
-prepare. Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
+prepare.
+
+<!-- change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
+
+A write from any session other than the live holder — including a dispatched
+worker that shares the slug — is a claim conflict. Independently of the holder
+check and of lifecycle phase, a prepare artifact is writable only by a
+prepare-phase writer: a prepare-orchestrator session, a human-identity session,
+or a roleless session — a TeleClaude session that carries no job role, the shape
+of a human-originated, operator-driven session. A session that carries a
+non-prepare job role — a work orchestrator, a create orchestrator, the
+integrator, or any worker — is refused by role with HTTP 403, evaluated before
+the holder check. A roleless session is exempt from the role gate, and its write
+is governed by the live-holder claim alone — it claims an unheld slug and is
+refused only as a claim conflict against a different live holder. The write
+boundary does not enforce the convention that a work-phase defect in a prepare
+artifact is routed back through prepare.
+
+<!-- /planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
+
+Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
 carry no claim gate.
 
 #### UC-WAV9: Worker write to a held slug is refused as a claim conflict
@@ -193,6 +216,31 @@ Then the workflow service accepts the write
 And records the resolved human principal as updated_by
 And the slug acquires no live active-runner
 ```
+
+<!-- planned:fix-unclaimed-todo-not-claimed-by-invoking-a -->
+
+#### UC-WAV17: A roleless session write to an unheld slug is accepted and claims the slug
+
+```gherkin
+Given a slug with no live holder
+And a caller whose TeleClaude session carries no job role
+When the caller writes a prepare artifact
+Then the workflow service accepts the write
+And records the writing session as the slug's live active-runner
+And records the resolved caller principal as updated_by
+```
+
+#### UC-WAV18: A roleless session write to a slug held by a different live session is refused
+
+```gherkin
+Given a slug held by a different live session
+And a caller whose TeleClaude session carries no job role
+When the caller attempts to write a prepare artifact
+Then the workflow service refuses the write as a claim conflict naming the holder
+And the response status is HTTP 409
+```
+
+<!-- /planned:fix-unclaimed-todo-not-claimed-by-invoking-a -->
 
 ### Cross-context references
 
