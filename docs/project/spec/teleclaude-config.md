@@ -317,6 +317,9 @@ These keys are loaded by the daemon runtime config parser in `teleclaude/config/
 computer:
   name: string
   is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
+<!-- planned:webhook-ingress -->
+  is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the cluster.webhook relay (default: false)
+<!-- /planned:webhook-ingress -->
   user: string # remote attach identity; must match [A-Za-z0-9._-]+
   role: string
   default_working_dir: string

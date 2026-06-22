@@ -25,7 +25,11 @@ The behavioral contract for how external webhooks reach the cluster. Exactly one
 ### Ingress contract
 
 - **Single public node.** One computer is the ingress; it need not be the cluster master. No other computer accepts external webhooks.
+<!-- planned-change:webhook-ingress -->
 - **Narrow reachability.** The ingress accepts forwarded traffic from the network boundary it is placed behind, and rejects other sources. It is not promiscuously open.
+<!-- change:webhook-ingress -->
+- **Narrow reachability.** The ingress endpoint is localhost-only and never directly reachable. A mandatory same-host reverse proxy is the public surface: it terminates TLS, restricts source, and forwards only the webhook path to the localhost endpoint. The endpoint authenticates each request by provider signature alone and inherits no host-loopback trust.
+<!-- /planned-change:webhook-ingress -->
 - **Verify, normalize, relay.** Every inbound payload is verified (provider signature), normalized into the unified event shape, then relayed to the whole cluster.
 - **Unconditional relay.** The ingress relays every verified inbound event to the cluster regardless of its own configuration or whether it would itself act. The ingress decides nothing about the reaction.
 - **Provider-agnostic.** The ingress terminates webhooks for any external provider; adding a provider does not change the ingress contract.
