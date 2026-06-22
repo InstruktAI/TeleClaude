@@ -46,10 +46,11 @@ The workflow service emits the event with this payload:
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
 - `creation_mode` — `"pickup"` when pickup is requested, otherwise `"silent"`; derived from `pickup_requested`.
 - `pickup_requested` — boolean, false when the caller passed `--icebox` or the kind is `task`.
+<!-- planned-change:task-lane -->
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"prepared"` for `task`, `"plan_drafting"` for `--plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
-    <!-- planned:task-lane -->
-  Task creation emits `"task_plan_drafting"`.
-    <!-- /planned:task-lane -->
+<!-- change:task-lane -->
+- `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"task_plan_drafting"` for a bare `--kind task`, `"prepared"` for `--kind task --plan`, `"plan_drafting"` for `--kind change --plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
+<!-- /planned-change:task-lane -->
 - `created_at` — UTC ISO-8601 timestamp.
 - `project_path` — effective cwd used to resolve the project's workflow state.
 - `created_by_principal` — the resolved principal of the creating caller (`human:<email>` or `system:<session_id>`), read from the roadmap row's persisted owner.

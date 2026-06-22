@@ -40,8 +40,17 @@ single owner of the slug cascade.
 **Removal tombstone**
 : Durable, row-id-keyed metadata captured on the roadmap row at soft-remove time, alongside `removed_at`. It holds `prev_status` — the status the entry held immediately before removal (`active` or `icebox`) — and `removed_deps` — a snapshot of the entry's own outgoing `after` edges as they were at removal. Both exist only so reactivation can restore the entry's own footprint exactly. The snapshot is necessary because `todo_deps` is slug-keyed with no row identity: the live outgoing edges MUST be scrubbed at soft-remove (or a same-slug recreate would inherit/collide with them), so they can only survive for reactivation by being parked here. Legacy rows removed before this metadata existed have neither; reactivation falls back to `prev_status=icebox` and no outgoing-edge restore.
 
+<!-- planned-change:task-lane -->
+
 **Kind**
 : Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` on a `change`, not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
+
+<!-- change:task-lane -->
+
+**Kind**
+: Categorical label for the lifecycle entry point. SDLC kinds — `feature` enters PRD/intake, `change` enters plan drafting without a PRD, `bug` enters the fix lane; a complete-plan creation is expressed by `--plan` (on a `change`, seeding the `implementation-plan`; or on a `task`, seeding a pre-authorized `task-plan`), not a separate kind. `task` is a **non-SDLC** kind: a fuzzy but actionable unit an agent performs directly, whose work need not touch the codebase (notify a stakeholder, hit an API on a schedule, run an operation, or spawn other todos). A `task` is created silent (never auto-dispatched) and carries its actionable, living bookkeeping in a `task-plan` artifact. Kind is **optional at creation**: a kind-less dump is stored as `input` with `kind=None` and no `lifecycle_phase`, then routed to `/analyze-todo-input`, which classifies it and assigns a kind autonomously through the `--kind-assign` stamp — no proposal and no human approval gate. Kind is fixed once assigned.
+
+<!-- /planned-change:task-lane -->
 
 <!-- planned:task-lane -->
 
