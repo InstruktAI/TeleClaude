@@ -1,6 +1,7 @@
 ---
-description: 'State-driven layout model for the Telec TUI sessions and preparation views.'
-visibility: 'public'
+description: State-driven layout model for the Telec TUI sessions and preparation
+  views.
+visibility: public
 ---
 
 # Tui State Layout — Design
@@ -71,6 +72,7 @@ The Sessions view is the single owner of layout state:
 - `preview_id`: the single previewed session (or doc), or `null`. Held by the
   reactive `preview_session_id`; never equal to a member of `sticky_ids` (I1).
 - `collapsed`: set of collapsed session ids (session-level row fold)
+- Default fold for new rows: a session row that appears in the tree renders **collapsed by default**. Expanding a row persists that choice in the session fold state, so user-expanded rows stay expanded across tree rebuilds and process restarts; a row the user never expanded stays collapsed when it reappears.
 - `collapsed_computers` / `collapsed_projects`: structural fold of whole computers (keyed by computer name) and projects (keyed by computer + path, since the same path can exist on multiple computers). Persisted per view via `get_persisted_state` / `load_persisted_state`, in both the Sessions and Preparation trees. A collapsed computer hides its project headers and all their descendants; a collapsed project hides its sessions/todos while keeping its own header.
 - `selection`: currently selected tree item
 - `focus`: computer/project focus stack

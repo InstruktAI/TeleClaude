@@ -127,9 +127,6 @@ class SessionsView(
         self._nav_items: list[Widget] = []
         # Timers for auto-clearing highlights on preview sessions
         self._highlight_timers: dict[str, Timer] = {}
-        # Track sessions already mounted this process — new sessions
-        # auto-expand only on first mount, not on tree rebuilds
-        self._ever_mounted_sessions: set[str] = set()
         # Pending auto-select: session to select+preview once it appears
         # in the tree with a tmux pane ready
         self._pending_select: _PendingSelect | None = None
@@ -429,11 +426,6 @@ class SessionsView(
                 display_index=session_data.display_index,
                 depth=node.depth,
             )
-            # Auto-expand new sessions on first mount
-            if session.session_id not in self._ever_mounted_sessions:
-                self._collapsed_sessions.add(session.session_id)
-            self._ever_mounted_sessions.add(session.session_id)
-
             # Apply persisted/reactive state
             row.collapsed = session.session_id not in self._collapsed_sessions
             row.is_sticky = session.session_id in self._sticky_session_ids

@@ -139,6 +139,43 @@ async def test_out_line_retention_does_not_touch_highlight() -> None:
 
 
 @pytest.mark.asyncio
+async def test_new_session_collapsed_by_default() -> None:
+    app = _SessionsTestApp()
+    async with app.run_test(size=(100, 40)) as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(computers=[], projects=[], sessions=[_session(SID)])
+        await pilot.pause()
+
+        # A session that appears in the tree renders collapsed by default.
+        assert _only_row(view, SID).collapsed is True
+
+
+@pytest.mark.asyncio
+async def test_user_expanded_session_survives_rebuild() -> None:
+    app = _SessionsTestApp()
+    async with app.run_test(size=(100, 40)) as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(computers=[], projects=[], sessions=[_session(SID)])
+        await pilot.pause()
+
+        # Drive expansion through the real key binding: move the cursor onto the
+        # session row, then press → (action_expand). No private state is set up.
+        view.focus()
+        target_index = view._nav_items.index(_only_row(view, SID))
+        for _ in range(target_index):
+            await pilot.press("down")
+        await pilot.press("right")
+        await pilot.pause()
+        assert _only_row(view, SID).collapsed is False
+
+        # A second session forces a full tree rebuild; the user-expanded session
+        # stays expanded across it.
+        view.update_data(computers=[], projects=[], sessions=[_session(SID), _session(OTHER_SID)])
+        await pilot.pause()
+        assert _only_row(view, SID).collapsed is False
+
+
+@pytest.mark.asyncio
 async def test_expanded_and_collapsed_row_rendering(utc_timezone: None, snapshot: object) -> None:
     # utc_timezone pins TZ so the rendered timestamps are deterministic.
     app = _SessionsTestApp()
