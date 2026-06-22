@@ -9,7 +9,12 @@ import pytest
 
 from teleclaude.transport.cluster_bridge import (
     CLUSTER_ENVELOPE_SCHEMA_VERSION,
+    COMPUTER_PREFIX,
+    PROJECT_PREFIX,
     SESSION_PREFIX,
+    TODO_PREFIX,
+    WEBHOOK_PREFIX,
+    ClusterCategory,
     MalformedClusterEnvelopeError,
     decode_envelope,
 )
@@ -89,6 +94,32 @@ def test_decode_envelope_still_rejects_missing_required_field() -> None:
 
     with pytest.raises(MalformedClusterEnvelopeError):
         decode_envelope(json.dumps(raw))
+
+
+def test_decoded_envelope_routes_known_cluster_categories() -> None:
+    raw = _raw_envelope()
+
+    raw["channel"] = f"{SESSION_PREFIX}created"
+    assert decode_envelope(json.dumps(raw)).category == ClusterCategory.SESSION
+
+    raw["channel"] = f"{PROJECT_PREFIX}updated"
+    assert decode_envelope(json.dumps(raw)).category == ClusterCategory.PROJECT
+
+    raw["channel"] = f"{TODO_PREFIX}updated"
+    assert decode_envelope(json.dumps(raw)).category == ClusterCategory.TODO
+
+    raw["channel"] = f"{COMPUTER_PREFIX}updated"
+    assert decode_envelope(json.dumps(raw)).category == ClusterCategory.COMPUTER
+
+    raw["channel"] = f"{WEBHOOK_PREFIX}github"
+    assert decode_envelope(json.dumps(raw)).category == ClusterCategory.WEBHOOK
+
+
+def test_decoded_envelope_leaves_unknown_cluster_channel_unrouted() -> None:
+    raw = _raw_envelope()
+    raw["channel"] = "cluster.unknown.updated"
+
+    assert decode_envelope(json.dumps(raw)).category is None
 
 
 async def test_cluster_publisher_stamps_schema_version_that_decodes_round_trip() -> None:

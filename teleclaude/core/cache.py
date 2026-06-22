@@ -165,6 +165,11 @@ class DaemonCache:
         self._cluster_publisher = publisher
         logger.info("Cluster publisher attached to DaemonCache")
 
+    @property
+    def cluster_publisher(self) -> ClusterPublisher | None:
+        """Return the attached cross-computer publisher, when cluster mode is active."""
+        return self._cluster_publisher
+
     def _publish_cluster(
         self,
         channel: str,

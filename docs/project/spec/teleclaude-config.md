@@ -317,9 +317,7 @@ These keys are loaded by the daemon runtime config parser in `teleclaude/config/
 computer:
   name: string
   is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
-<!-- planned:webhook-ingress -->
   is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the cluster.webhook relay (default: false)
-<!-- /planned:webhook-ingress -->
 <!-- planned:distributed-todo-postgres -->
   is_cluster_db_host: boolean # designates this node as the host of the shared cluster database (Postgres); exactly one per fleet; default false. Independent of is_master and is_ingress_node — it is its own role. Currently this is usually the ingress node by deployment convention (no secure cross-node transport yet), but that is convention, not a requirement: the host may relocate once secure inter-node transport exists.
 <!-- /planned:distributed-todo-postgres -->

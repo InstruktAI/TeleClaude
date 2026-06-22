@@ -600,6 +600,7 @@ def _build_config(
             ),
             host=str(comp_raw["host"] or detect_lan_ip()),  # type: ignore[index]
             tmux_binary=resolve_tmux_binary(),
+            is_ingress_node=bool(comp_raw["is_ingress_node"]),  # type: ignore[index]
         ),
         polling=PollingConfig(
             directory_check_interval=DIRECTORY_CHECK_INTERVAL,

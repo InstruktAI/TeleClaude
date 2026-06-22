@@ -4,6 +4,7 @@ import asyncio
 import atexit
 import fcntl
 import inspect
+import json
 import os
 import signal
 import sys
@@ -11,7 +12,7 @@ import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -21,6 +22,9 @@ from teleclaude import __version__
 _MODULE_IMPORT_STARTED_AT = time.perf_counter()
 _IMPORT_TIMINGS: list[tuple[str, float, float]] = []
 logger = get_logger("teleclaude.daemon")
+
+if TYPE_CHECKING:
+    from teleclaude.hooks.dispatcher import HookDispatcher
 
 
 def _record_import_timing(label: str, started_at: float) -> None:
@@ -175,6 +179,7 @@ _t = time.perf_counter()
 from teleclaude.events import EventDB
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
+from teleclaude.hooks.webhook_models import HookEvent
 
 _record_import_timing("teleclaude.events", _t)
 
@@ -214,7 +219,7 @@ from teleclaude.tts.manager import TTSManager
 _record_import_timing("teleclaude.tts.manager", _t)
 
 _t = time.perf_counter()
-from teleclaude.transport.cluster_bridge import ClusterBridge, ClusterEnvelope
+from teleclaude.transport.cluster_bridge import ClusterBridge, ClusterCategory, ClusterEnvelope
 from teleclaude.transport.cluster_publisher import ClusterPublisher
 from teleclaude.transport.identity_bridge import IdentityBridge, IdentityEnvelope
 from teleclaude.transport.workflow_bridge import WorkflowBridge, WorkflowEnvelope
@@ -428,6 +433,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._identity_bridge: IdentityBridge | None = None
         self._cluster_bridge_task: asyncio.Task[object] | None = None
         self._cluster_bridge: ClusterBridge | None = None
+        self._hook_dispatcher: HookDispatcher | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
         self.lifecycle = DaemonLifecycle(
@@ -1295,8 +1301,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             return
 
         category = envelope.category
-        if category == "session":
+        if category == ClusterCategory.SESSION:
             self._apply_session_envelope(envelope)
+            return
+        if category == ClusterCategory.WEBHOOK:
+            self._dispatch_webhook_envelope(envelope)
             return
         if category is not None:
             # Project / todo / computer categories land in subsequent commits.
@@ -1306,6 +1315,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 category=category,
                 origin=envelope.origin,
             )
+
+    def _dispatch_webhook_envelope(self, envelope: ClusterEnvelope) -> None:
+        """Schedule delivery of a relayed webhook event through the hook dispatcher."""
+        dispatcher = self._hook_dispatcher
+        if dispatcher is None:
+            raise RuntimeError("Webhook cluster event received before webhook dispatcher initialized")
+        event = HookEvent.from_json(json.dumps(envelope.payload))
+        task = asyncio.create_task(dispatcher.dispatch(event), name="cluster-webhook-dispatch")
+        task.add_done_callback(self._log_background_task_exception("cluster_webhook_dispatch"))
 
     def _apply_session_envelope(self, envelope: ClusterEnvelope) -> None:
         """Translate a ``cluster.session.*`` envelope into a cache mutation."""

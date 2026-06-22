@@ -5,6 +5,7 @@ computer:
   name: Mac # Unique computer identifier for multi-computer MCP communication
   role: development # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
   is_master: true # Master computer in a multi-computer mesh; exactly one. Provisions shared Discord channels (Operations, Help Desk, Team); non-masters resolve them by name.
+  is_ingress_node: false # Set true only on the node whose local reverse proxy forwards external provider webhooks to the localhost API server.
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
   # host: 192.168.1.50 # Optional LAN address for this computer; auto-detected when unset.
   # user, default_working_dir, and help_desk_dir are derived at runtime

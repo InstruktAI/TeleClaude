@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
+from teleclaude.core.reconciliation import WEBHOOK_INGRESS_FEATURE_ID
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
     configure_deployment_handler,
@@ -59,17 +61,21 @@ from teleclaude.hooks.handlers import HandlerRegistry
 from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
 from teleclaude.hooks.normalizers import register_builtin_normalizers
 from teleclaude.hooks.registry import ContractRegistry
-from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
+from teleclaude.hooks.webhook_models import Contract, HookEvent, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.paths import PEOPLE_DIR
+from teleclaude.transport.cluster_bridge import WEBHOOK_PREFIX
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
     from teleclaude.config.schema import PersonConfig
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.cache import DaemonCache
     from teleclaude.core.lifecycle import DaemonLifecycle
 
 logger = get_logger(__name__)
+
+type ClusterWebhookPayload = dict[str, object]  # guard: loose-dict - HookEvent JSON payload for cluster envelope
 
 
 def daemon_project_config_path() -> Path:
@@ -108,6 +114,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _task_schedule_clock_task: asyncio.Task[object] | None
         webhook_delivery_task: asyncio.Task[object] | None
         channel_subscription_worker_task: asyncio.Task[object] | None
+        _hook_dispatcher: HookDispatcher | None
+        cache: DaemonCache
 
         def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]: ...
 
@@ -489,6 +497,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
         dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)  # type: ignore[arg-type]
+        self._hook_dispatcher = dispatcher
         bridge = EventBusBridge(dispatcher)
         delivery_worker = WebhookDeliveryWorker()
         project_config = load_project_config(daemon_project_config_path())
@@ -548,7 +557,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         app = getattr(lifecycle_api_server, "app", None)
         inbound_registry = None
         if app is not None:
-            inbound_registry = InboundEndpointRegistry(app, normalizer_registry, dispatcher.dispatch)
+            inbound_registry = InboundEndpointRegistry(
+                app,
+                normalizer_registry,
+                lambda event: self._dispatch_inbound_webhook_event(dispatcher, event),
+            )
         else:
             logger.warning("API server app unavailable; inbound webhooks will not be registered")
         await load_hooks_config(
@@ -602,6 +615,23 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._contract_sweep_task.add_done_callback(self._log_background_task_exception("contract_sweep"))
 
         logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
+
+    async def _dispatch_inbound_webhook_event(self, dispatcher: HookDispatcher, event: HookEvent) -> None:
+        """Relay verified ingress webhooks to the cluster before local dispatch."""
+        if config.computer.is_ingress_node:
+            publisher = self.cache.cluster_publisher
+            if publisher is None:
+                raise RuntimeError("Ingress webhook relay requires an attached cluster publisher")
+            event_payload = cast(ClusterWebhookPayload, json.loads(event.to_json()))
+            published = await publisher.publish(
+                f"{WEBHOOK_PREFIX}{event.source}",
+                event_payload,
+                feature_id=WEBHOOK_INGRESS_FEATURE_ID,
+            )
+            if not published:
+                raise RuntimeError("Ingress webhook relay publish failed")
+
+        await dispatcher.dispatch(event)
 
     async def _deployment_fanout_consumer(self, dispatcher: HookDispatcher, redis_transport: RedisTransport) -> None:
         """Consume deployment version_available events from Redis Stream and dispatch locally.

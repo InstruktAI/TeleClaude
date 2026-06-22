@@ -49,6 +49,7 @@ class ComputerConfig:
     trusted_dirs: list[TrustedDir] = field(metadata={"exclude_from_tui": True})
     host: str | None = None  # Optional LAN address override; auto-detected when unset
     tmux_binary: str = field(default="tmux", metadata={"exclude_from_tui": True})
+    is_ingress_node: bool = False
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:
         """Get all trusted directories from config, deduplicated by path."""

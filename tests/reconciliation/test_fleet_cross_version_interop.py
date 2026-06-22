@@ -13,10 +13,12 @@ from teleclaude.core.cache import DaemonCache
 from teleclaude.core.models import ComputerInfo
 from teleclaude.core.reconciliation import FeatureID, FeatureIDRegistry, FeatureMark
 from teleclaude.core.reconciliation.capability_map import FleetCapabilityEntry, FleetCapabilityMap
+from teleclaude.core.reconciliation.feature_ids import WEBHOOK_INGRESS_FEATURE_ID
 from teleclaude.daemon import TeleClaudeDaemon
 from teleclaude.transport.cluster_bridge import (
     CLUSTER_ENVELOPE_SCHEMA_VERSION,
     SESSION_PREFIX,
+    WEBHOOK_PREFIX,
     ClusterBridge,
     decode_envelope,
 )
@@ -108,6 +110,7 @@ def _registry_for_tests(*, carried_feature_ids: Iterable[str]) -> FeatureIDRegis
         (
             FeatureID(_IGNORABLE_FEATURE_ID, FeatureMark.IGNORABLE),
             FeatureID(_FEATURE_ID, FeatureMark.MUST_NEGOTIATE),
+            FeatureID(WEBHOOK_INGRESS_FEATURE_ID, FeatureMark.IGNORABLE),
         ),
         carried_feature_ids=carried_feature_ids,
     )
@@ -339,6 +342,51 @@ async def test_ignorable_feature_id_round_trips_on_cluster_envelope() -> None:
     [(_channel, message)] = redis.messages
     envelope = decode_envelope(message)
     assert envelope.feature_id == _IGNORABLE_FEATURE_ID
+
+
+async def test_webhook_ingress_feature_id_publishes_on_webhook_cluster_channel() -> None:
+    redis = _FakeRedis()
+
+    async def redis_provider() -> _FakeRedis:
+        return redis
+
+    publisher = ClusterPublisher(origin="ingress-node", redis_provider=redis_provider)
+
+    accepted = await publisher.publish(
+        f"{WEBHOOK_PREFIX}github",
+        {"source": "github", "type": "push"},
+        feature_id=WEBHOOK_INGRESS_FEATURE_ID,
+    )
+
+    assert accepted is True
+    [(_channel, message)] = redis.messages
+    envelope = decode_envelope(message)
+    assert envelope.feature_id == WEBHOOK_INGRESS_FEATURE_ID
+
+
+def test_unsupported_webhook_ingress_feature_id_is_dropped_cleanly() -> None:
+    dispatched = []
+    bridge = ClusterBridge(
+        redis_factory=lambda: object(),
+        dispatch=dispatched.append,
+        registry=_registry_for_tests(carried_feature_ids=()),
+    )
+    envelope = decode_envelope(
+        json.dumps(
+            {
+                "schema_version": CLUSTER_ENVELOPE_SCHEMA_VERSION,
+                "channel": f"{WEBHOOK_PREFIX}github",
+                "idempotency_key": "idem-webhook-unsupported-ignorable",
+                "emitted_at": "2026-06-11T00:00:00+00:00",
+                "origin": "ingress-node",
+                "feature_id": WEBHOOK_INGRESS_FEATURE_ID,
+                "payload": {"source": "github", "type": "push"},
+            }
+        )
+    )
+
+    assert bridge.process_envelope(envelope) is False
+    assert dispatched == []
 
 
 @pytest.mark.spec(_SPEC, "UC-FXI-4")

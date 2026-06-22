@@ -25,11 +25,7 @@ The behavioral contract for how external webhooks reach the cluster. Exactly one
 ### Ingress contract
 
 - **Single public node.** One computer is the ingress; it need not be the cluster master. No other computer accepts external webhooks.
-<!-- planned-change:webhook-ingress -->
-- **Narrow reachability.** The ingress accepts forwarded traffic from the network boundary it is placed behind, and rejects other sources. It is not promiscuously open.
-<!-- change:webhook-ingress -->
 - **Narrow reachability.** The ingress endpoint is localhost-only and never directly reachable. A mandatory same-host reverse proxy is the public surface: it terminates TLS, restricts source, and forwards only the webhook path to the localhost endpoint. The endpoint authenticates each request by provider signature alone and inherits no host-loopback trust.
-<!-- /planned-change:webhook-ingress -->
 - **Verify, normalize, relay.** Every inbound payload is verified (provider signature), normalized into the unified event shape, then relayed to the whole cluster.
 - **Unconditional relay.** The ingress relays every verified inbound event to the cluster regardless of its own configuration or whether it would itself act. The ingress decides nothing about the reaction.
 - **Provider-agnostic.** The ingress terminates webhooks for any external provider; adding a provider does not change the ingress contract.
@@ -88,11 +84,7 @@ And adding a new provider does not require a second public endpoint
 
 - Owned by `integration` (`@docs/project/spec/domain/integration.md`); the inbound-boundary concern.
 - The relay target and cluster delivery are the event-bus CLUSTER scope; the reaction is owned by subscribers, chiefly `reconciliation` (`@docs/project/spec/feature/reconciliation/channel-gated-self-update.md`).
-<!-- planned-change:webhook-ingress -->
-- The topology decision (LAN bind, router source-restriction, single public node, unconditional relay) is a recorded architectural decision.
-<!-- change:webhook-ingress -->
 - The topology decision (proxy-fronted reuse of the localhost API server, single public node, unconditional relay) is a recorded architectural decision (ADR-0055, superseding ADR-0028's bind topology).
-<!-- /planned-change:webhook-ingress -->
 - Supersedes the v1 expression in `@docs/project/spec/feature/integration/deployment-version-fanout.md` (a bespoke deployment-only fan-out that relayed only when the receiver itself updated).
 
 ## Known caveats
@@ -104,6 +96,4 @@ And adding a new provider does not require a second public endpoint
 ## See Also
 
 - docs/project/adr/0028-single-lan-bound-ingress.md
-<!-- planned:webhook-ingress -->
 - docs/project/adr/0055-proxy-fronted-ingress-reuse.md
-<!-- /planned:webhook-ingress -->

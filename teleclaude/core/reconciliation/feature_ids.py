@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 FLEET_CROSS_VERSION_INTEROP_FEATURE_ID = "project/spec/feature/reconciliation/fleet-cross-version-interop"
+WEBHOOK_INGRESS_FEATURE_ID = "project/spec/feature/integration/single-ingress-webhook-termination"
 
 
 class FeatureMark(StrEnum):
@@ -90,6 +91,10 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         FeatureID(
             identifier=FLEET_CROSS_VERSION_INTEROP_FEATURE_ID,
             mark=FeatureMark.MUST_NEGOTIATE,
+        ),
+        FeatureID(
+            identifier=WEBHOOK_INGRESS_FEATURE_ID,
+            mark=FeatureMark.IGNORABLE,
         ),
     )
 )

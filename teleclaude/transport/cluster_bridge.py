@@ -28,7 +28,8 @@ import json
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast
+from enum import StrEnum
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
@@ -51,8 +52,15 @@ SESSION_PREFIX = "cluster.session."
 PROJECT_PREFIX = "cluster.project."
 TODO_PREFIX = "cluster.todo."
 COMPUTER_PREFIX = "cluster.computer."
+WEBHOOK_PREFIX = "cluster.webhook."
 
-ClusterCategory = Literal["session", "project", "todo", "computer"]
+
+class ClusterCategory(StrEnum):
+    SESSION = "session"
+    PROJECT = "project"
+    TODO = "todo"
+    COMPUTER = "computer"
+    WEBHOOK = "webhook"
 
 
 @dataclass(frozen=True)
@@ -77,13 +85,15 @@ class ClusterEnvelope:
     def category(self) -> ClusterCategory | None:
         """Return the routing category, or ``None`` for unknown channels."""
         if self.channel.startswith(SESSION_PREFIX):
-            return "session"
+            return ClusterCategory.SESSION
         if self.channel.startswith(PROJECT_PREFIX):
-            return "project"
+            return ClusterCategory.PROJECT
         if self.channel.startswith(TODO_PREFIX):
-            return "todo"
+            return ClusterCategory.TODO
         if self.channel.startswith(COMPUTER_PREFIX):
-            return "computer"
+            return ClusterCategory.COMPUTER
+        if self.channel.startswith(WEBHOOK_PREFIX):
+            return ClusterCategory.WEBHOOK
         return None
 
 

@@ -18,38 +18,13 @@ two responsibilities, owned by two bounded contexts on different change axes:
   state: the newest version its channel admits, applied exactly once, ending
   healthy.
 
-<!-- planned-change:webhook-ingress -->
-
-The ingress decides nothing about the reaction; the reaction is
-subscriber-driven. This separation is the recorded decision in ADR-0028 (single
-LAN-bound ingress) and ADR-0024 (reconciliation as its own bounded context).
-
-<!-- change:webhook-ingress -->
-
 The ingress decides nothing about the reaction; the reaction is
 subscriber-driven. This separation is the recorded decision in ADR-0028
 (single-ingress termination) and ADR-0024 (reconciliation as its own bounded
 context); ADR-0055 supersedes ADR-0028's bind topology with proxy-fronted reuse
 of the localhost API server.
 
-<!-- /planned-change:webhook-ingress -->
-
 ### Ingress — `teleclaude/hooks/inbound.py`
-
-<!-- planned-change:webhook-ingress -->
-
-`InboundEndpointRegistry` mounts dynamic inbound webhook routes on the FastAPI
-app. For each registered provider path it verifies the payload signature
-(HMAC-SHA256, constant-time), normalizes the body into the unified `HookEvent`
-shape via a registered normalizer, and hands each event to its `dispatch`
-callable — the relay onto the cluster event bus (CLUSTER visibility). The
-ingress binds to a LAN/router address (not localhost, not promiscuous); the
-router port-forwards public traffic and the accepted source is restricted to
-the router. It is provider-agnostic: one ingress terminates webhooks for every
-provider and project. See
-`docs/project/spec/feature/integration/single-ingress-webhook-termination.md`.
-
-<!-- change:webhook-ingress -->
 
 `InboundEndpointRegistry` mounts dynamic inbound webhook routes on the existing
 localhost API server's FastAPI app. For each registered provider path it
@@ -64,16 +39,12 @@ identity-trust. It is provider-agnostic: one ingress terminates webhooks for
 every provider and project. See
 `docs/project/spec/feature/integration/single-ingress-webhook-termination.md`.
 
-<!-- /planned-change:webhook-ingress -->
-
 ### Cluster relay
 
 The verified, normalized event is published onto the event bus at CLUSTER
 scope. Every computer consumes it through its own subscription; only the
 ingress is publicly exposed. The relay is stateless, so a second ingress can be
 added without redesign.
-
-<!-- planned:webhook-ingress -->
 
 The relay is a new cross-node capability gated behind an ignorable feature-ID
 (ADR-0027): a node that does not carry it drops `cluster.webhook.*` cleanly and
@@ -83,8 +54,6 @@ map shows the slowest channel carries the feature. The ingress publishes the
 normalized event onto `cluster.webhook.<provider>` and also dispatches it
 locally; the bus drops the ingress's own echo at dispatch (ADR-0013 self-origin),
 so each node — including the ingress — reacts exactly once.
-
-<!-- /planned:webhook-ingress -->
 
 ### Convergence — `reconciliation`
 
@@ -192,8 +161,6 @@ flowchart TD
 - docs/project/spec/feature/reconciliation/fleet-cross-version-interop.md
 - docs/project/spec/domain/reconciliation.md
 - docs/project/adr/0028-single-lan-bound-ingress.md
-<!-- planned:webhook-ingress -->
 - docs/project/adr/0055-proxy-fronted-ingress-reuse.md
-<!-- /planned:webhook-ingress -->
 - docs/project/adr/0024-reconciliation-bounded-context.md
 - docs/project/spec/teleclaude-config.md — config schema for deployment

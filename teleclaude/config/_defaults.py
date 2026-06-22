@@ -19,6 +19,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "timezone": "Europe/Amsterdam",
         "default_working_dir": "",
         "is_master": False,
+        "is_ingress_node": False,
         "trusted_dirs": [],
         "host": None,
     },

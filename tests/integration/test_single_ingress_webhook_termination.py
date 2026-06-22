@@ -24,17 +24,23 @@ Spec: docs/project/spec/feature/integration/single-ingress-webhook-termination.m
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 from collections.abc import Mapping
+from typing import Any, cast
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from teleclaude.core.reconciliation import WEBHOOK_INGRESS_FEATURE_ID
+from teleclaude.daemon import TeleClaudeDaemon
+from teleclaude.daemon_event_platform import _DaemonEventPlatformMixin
 from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
 from teleclaude.hooks.webhook_models import HookEvent
+from teleclaude.transport.cluster_bridge import CLUSTER_ENVELOPE_SCHEMA_VERSION, WEBHOOK_PREFIX, ClusterEnvelope
 
 pytestmark = pytest.mark.integration
 
@@ -57,6 +63,8 @@ _STRIPE_TYPE = "invoice.paid"
 
 _SIGNATURE_HEADER = "X-Hub-Signature-256"
 
+type ClusterWebhookPayload = dict[str, object]  # guard: loose-dict - dynamic HookEvent JSON carried by cluster envelope
+
 
 class _CapturingDispatch:
     """Stands in for the cluster-relay boundary; records every relayed event."""
@@ -66,6 +74,34 @@ class _CapturingDispatch:
 
     async def __call__(self, event: HookEvent) -> None:
         self.relayed.append(event)
+
+    async def dispatch(self, event: HookEvent) -> None:
+        self.relayed.append(event)
+
+
+class _FakePublisher:
+    def __init__(self, *, accepted: bool = True) -> None:
+        self.accepted = accepted
+        self.published: list[tuple[str, ClusterWebhookPayload, str | None]] = []
+
+    async def publish(
+        self,
+        channel: str,
+        payload: ClusterWebhookPayload,
+        *,
+        feature_id: str | None = None,
+    ) -> bool:
+        self.published.append((channel, payload, feature_id))
+        return self.accepted
+
+
+class _FakeCache:
+    def __init__(self, publisher: _FakePublisher | None) -> None:
+        self._publisher = publisher
+
+    @property
+    def cluster_publisher(self) -> _FakePublisher | None:
+        return self._publisher
 
 
 def _github_normalizer(
@@ -99,6 +135,34 @@ def _build_ingress(*registrations: tuple[str, str]) -> tuple[FastAPI, _Capturing
     return app, dispatch
 
 
+def _build_relaying_ingress(
+    *registrations: tuple[str, str],
+    publisher: _FakePublisher | None = None,
+) -> tuple[FastAPI, _CapturingDispatch, _FakePublisher | None]:
+    app = FastAPI()
+    normalizers = NormalizerRegistry()
+    normalizers.register(_GITHUB_KEY, _github_normalizer)
+    normalizers.register(_STRIPE_KEY, _stripe_normalizer)
+    dispatch = _CapturingDispatch()
+    harness = cast(Any, object.__new__(_DaemonEventPlatformMixin))
+    harness.cache = _FakeCache(publisher)
+    ingress = InboundEndpointRegistry(
+        app,
+        normalizers,
+        lambda event: harness._dispatch_inbound_webhook_event(dispatch, event),
+    )
+    for path, normalizer_key in registrations:
+        ingress.register(path, normalizer_key, verify_config={"secret": _SECRET})
+    return app, dispatch, publisher
+
+
+def _daemon_with_hook_dispatcher(dispatch: _CapturingDispatch) -> TeleClaudeDaemon:
+    daemon = cast(Any, object.__new__(TeleClaudeDaemon))
+    daemon._hook_dispatcher = dispatch
+    daemon._log_background_task_exception = lambda _task_name: lambda _task: None
+    return cast(TeleClaudeDaemon, daemon)
+
+
 def _signed(payload: Mapping[str, object]) -> tuple[bytes, dict[str, str]]:
     """Serialize a payload and produce a valid provider signature header."""
     body = json.dumps(payload).encode()
@@ -112,11 +176,14 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 @pytest.mark.spec(_SPEC, "UC-SIT-1")
-async def test_signed_external_webhook_is_verified_normalized_and_relayed() -> None:
+async def test_signed_external_webhook_is_verified_normalized_and_relayed(monkeypatch: pytest.MonkeyPatch) -> None:
     # Given the ingress is reachable and a provider sends a signed webhook,
     # When it arrives at the ingress,
     # Then the ingress accepts it and relays the normalized event to the cluster.
-    app, dispatch = _build_ingress((_GITHUB_PATH, _GITHUB_KEY))
+    monkeypatch.setattr("teleclaude.daemon.config.computer.name", "subscriber-node")
+    monkeypatch.setattr("teleclaude.daemon_event_platform.config.computer.is_ingress_node", True)
+    publisher = _FakePublisher()
+    app, dispatch, relay = _build_relaying_ingress((_GITHUB_PATH, _GITHUB_KEY), publisher=publisher)
     body, headers = _signed({"action": _RELEASE_ACTION, "release": {"tag_name": "v1.2.3"}})
 
     async with _client(app) as client:
@@ -127,15 +194,64 @@ async def test_signed_external_webhook_is_verified_normalized_and_relayed() -> N
     assert relayed.source == _GITHUB_SOURCE
     assert relayed.type == _GITHUB_TYPE
     assert relayed.payload["action"] == _RELEASE_ACTION
+    assert relay is publisher
+    [(channel, payload, feature_id)] = publisher.published
+    assert channel == f"{WEBHOOK_PREFIX}{_GITHUB_SOURCE}"
+    assert payload["source"] == _GITHUB_SOURCE
+    assert payload["type"] == _GITHUB_TYPE
+    assert feature_id == WEBHOOK_INGRESS_FEATURE_ID
+
+    subscriber_dispatch = _CapturingDispatch()
+    subscriber = _daemon_with_hook_dispatcher(subscriber_dispatch)
+    subscriber._dispatch_cluster_event(
+        ClusterEnvelope(
+            schema_version=CLUSTER_ENVELOPE_SCHEMA_VERSION,
+            channel=channel,
+            idempotency_key="idem-webhook-github",
+            emitted_at=relayed.timestamp,
+            origin="ingress-node",
+            payload=payload,
+            feature_id=feature_id,
+        )
+    )
+    await asyncio.sleep(0)
+
+    [subscriber_event] = subscriber_dispatch.relayed
+    assert subscriber_event.source == _GITHUB_SOURCE
+    assert subscriber_event.type == _GITHUB_TYPE
+    assert subscriber_event.payload["action"] == _RELEASE_ACTION
+
+
+async def test_cluster_webhook_echo_from_local_origin_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("teleclaude.daemon.config.computer.name", "ingress-node")
+    subscriber_dispatch = _CapturingDispatch()
+    daemon = _daemon_with_hook_dispatcher(subscriber_dispatch)
+
+    daemon._dispatch_cluster_event(
+        ClusterEnvelope(
+            schema_version=CLUSTER_ENVELOPE_SCHEMA_VERSION,
+            channel=f"{WEBHOOK_PREFIX}{_GITHUB_SOURCE}",
+            idempotency_key="idem-webhook-self",
+            emitted_at="2026-06-22T00:00:00+00:00",
+            origin="ingress-node",
+            payload={"source": _GITHUB_SOURCE, "type": _GITHUB_TYPE, "timestamp": "2026-06-22T00:00:00+00:00"},
+            feature_id=WEBHOOK_INGRESS_FEATURE_ID,
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert subscriber_dispatch.relayed == []
 
 
 @pytest.mark.spec(_SPEC, "UC-SIT-2")
-async def test_verified_event_is_relayed_without_any_role_or_channel_gate() -> None:
+async def test_verified_event_is_relayed_without_any_role_or_channel_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     # Given a low-power appliance ingress that would not itself act on the event,
     # When it receives and verifies that event,
     # Then it relays the event to the cluster anyway — the registry holds no gate
     # deciding whether to relay; a verified event is always dispatched.
-    app, dispatch = _build_ingress((_GITHUB_PATH, _GITHUB_KEY))
+    monkeypatch.setattr("teleclaude.daemon_event_platform.config.computer.is_ingress_node", True)
+    publisher = _FakePublisher()
+    app, dispatch, _relay = _build_relaying_ingress((_GITHUB_PATH, _GITHUB_KEY), publisher=publisher)
     body, headers = _signed({"action": "published", "for_project": "a-repo-this-node-does-not-host"})
 
     async with _client(app) as client:
@@ -145,14 +261,19 @@ async def test_verified_event_is_relayed_without_any_role_or_channel_gate() -> N
     [relayed] = dispatch.relayed
     assert relayed.source == _GITHUB_SOURCE
     assert relayed.type == _GITHUB_TYPE
+    [(channel, _payload, feature_id)] = publisher.published
+    assert channel == f"{WEBHOOK_PREFIX}{_GITHUB_SOURCE}"
+    assert feature_id == WEBHOOK_INGRESS_FEATURE_ID
 
 
 @pytest.mark.spec(_SPEC, "UC-SIT-3")
-async def test_unverified_payload_is_rejected_and_nothing_is_relayed() -> None:
+async def test_unverified_payload_is_rejected_and_nothing_is_relayed(monkeypatch: pytest.MonkeyPatch) -> None:
     # Given a payload arrives without a valid provider signature,
     # When the ingress verifies it,
     # Then verification fails, the sender is rejected, and no event reaches the cluster.
-    app, dispatch = _build_ingress((_GITHUB_PATH, _GITHUB_KEY))
+    monkeypatch.setattr("teleclaude.daemon_event_platform.config.computer.is_ingress_node", True)
+    publisher = _FakePublisher()
+    app, dispatch, _relay = _build_relaying_ingress((_GITHUB_PATH, _GITHUB_KEY), publisher=publisher)
     body = json.dumps({"action": "published"}).encode()
     forged = {_SIGNATURE_HEADER: "sha256=deadbeef", "content-type": "application/json"}
 
@@ -161,6 +282,56 @@ async def test_unverified_payload_is_rejected_and_nothing_is_relayed() -> None:
 
     assert response.status_code == 401
     assert dispatch.relayed == []
+    assert publisher.published == []
+
+
+async def test_ingress_publish_failure_returns_retryable_error_without_local_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("teleclaude.daemon_event_platform.config.computer.is_ingress_node", True)
+    publisher = _FakePublisher(accepted=False)
+    app, dispatch, _relay = _build_relaying_ingress((_GITHUB_PATH, _GITHUB_KEY), publisher=publisher)
+    body, headers = _signed({"action": _RELEASE_ACTION})
+
+    async with _client(app) as client:
+        response = await client.post(_GITHUB_PATH, content=body, headers=headers)
+
+    assert response.status_code == 502
+    assert dispatch.relayed == []
+    assert len(publisher.published) == 1
+
+
+async def test_non_ingress_node_dispatches_locally_without_cluster_publish(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("teleclaude.daemon_event_platform.config.computer.is_ingress_node", False)
+    publisher = _FakePublisher()
+    app, dispatch, _relay = _build_relaying_ingress((_GITHUB_PATH, _GITHUB_KEY), publisher=publisher)
+    body, headers = _signed({"action": _RELEASE_ACTION})
+
+    async with _client(app) as client:
+        response = await client.post(_GITHUB_PATH, content=body, headers=headers)
+
+    assert response.status_code == 200
+    [relayed] = dispatch.relayed
+    assert relayed.source == _GITHUB_SOURCE
+    assert publisher.published == []
+
+
+async def test_signed_webhook_without_identity_headers_carries_no_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("teleclaude.daemon_event_platform.config.computer.is_ingress_node", True)
+    publisher = _FakePublisher()
+    app, dispatch, _relay = _build_relaying_ingress((_GITHUB_PATH, _GITHUB_KEY), publisher=publisher)
+    body, headers = _signed({"action": _RELEASE_ACTION})
+
+    async with _client(app) as client:
+        response = await client.post(_GITHUB_PATH, content=body, headers=headers)
+
+    assert response.status_code == 200
+    [relayed] = dispatch.relayed
+    assert relayed.properties == {}
+    [(_channel, payload, _feature_id)] = publisher.published
+    assert payload["properties"] == {}
 
 
 @pytest.mark.spec(_SPEC, "UC-SIT-4")
