@@ -173,7 +173,7 @@ And no person-entry parsing is attempted; loading fails first
 #### UC-CFG-PERSON-13: Well-formed slug accepted and stripped
 
 ```
-Given a the global overlay's people list entry with slug = "  alice-smith  "
+Given the global overlay's people list entry with slug = "  alice-smith  "
 When PersonEntry validation runs
 Then the value is stripped to "alice-smith"
 And validate_slug("alice-smith") matches the shared slug pattern and returns without error
@@ -183,7 +183,7 @@ And the stored slug is "alice-smith"
 #### UC-CFG-PERSON-14: Empty or absent slug normalizes to None for legacy load
 
 ```
-Given a the global overlay's people list entry that omits slug, or sets it to "" or "   "
+Given the global overlay's people list entry that omits slug, or sets it to "" or "   "
 When PersonEntry validation runs
 Then the slug validator returns None
 And the entry is accepted so a pre-slug config still loads
@@ -193,7 +193,7 @@ And the stored slug is None until slug migration fills it
 #### UC-CFG-PERSON-15: Invalid slug format rejected
 
 ```
-Given a the global overlay's people list entry with slug = "Alice_Smith"
+Given the global overlay's people list entry with slug = "Alice_Smith"
 When PersonEntry validation runs
 Then validate_slug("Alice_Smith") fails the shared slug pattern
 And a validation error is raised: "Invalid slug. Use lowercase letters, numbers, and hyphens only"
