@@ -36,6 +36,7 @@ from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
+from teleclaude.config import config
 
 if TYPE_CHECKING:
     from textual.timer import Timer
@@ -167,6 +168,8 @@ class SessionsView(
         ]
         old_ids = {s.session_id for s in self._sessions}
         new_ids = {s.session_id for s in visible_sessions}
+        old_computer_order = tuple(c.name for c in self._computers)
+        new_computer_order = tuple(c.name for c in computers)
         self._computers = computers
         self._projects = projects
         self._sessions = visible_sessions
@@ -186,8 +189,11 @@ class SessionsView(
             for sid in stale_retained:
                 del self._retained_out[sid]
 
-        if old_ids != new_ids or not self._nav_items:
-            # Session list changed — full rebuild (includes _apply_pending_selection)
+        if old_ids != new_ids or old_computer_order != new_computer_order or not self._nav_items:
+            # Session list or computer set/order changed — full rebuild. The
+            # authoritative local-first computer list can arrive after a
+            # partial-state render with the session set unchanged; rebuilding on
+            # computer-sequence change lets the deterministic order take effect.
             self._rebuild_tree()
         else:
             # Same sessions — just update data on existing rows
@@ -333,7 +339,12 @@ class SessionsView(
         # Sort sessions by creation time for stable tree positions (the API
         # returns them sorted by last_activity which causes sessions to jump).
         sorted_sessions = sorted(self._sessions, key=lambda s: s.created_at or "", reverse=True)
-        tree = build_tree(computer_display, self._projects, sorted_sessions)
+        tree = build_tree(
+            computer_display,
+            self._projects,
+            sorted_sessions,
+            local_computer_name=config.computer.name,
+        )
 
         for node in tree:
             self._mount_node(container, node)

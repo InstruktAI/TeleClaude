@@ -16,7 +16,13 @@ from textual.widget import Widget
 from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged
 from teleclaude.cli.tui.todos import TodoItem
-from teleclaude.cli.tui.tree import ComputerDisplayInfo, parse_collapsed_projects, project_collapse_key
+from teleclaude.cli.tui.tree import (
+    ComputerDisplayInfo,
+    _computer_order_key,
+    _is_local_name,
+    parse_collapsed_projects,
+    project_collapse_key,
+)
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
@@ -28,6 +34,7 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow, row_content_width
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
+from teleclaude.config import config
 from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
 
@@ -106,6 +113,17 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     _logger = get_logger(__name__)
 
     @staticmethod
+    def _project_fingerprint(projects: list[ProjectWithTodosDTO]) -> tuple[tuple[str, str], ...]:
+        """Identity + order of the projects/computers, independent of todo content.
+
+        ``_todo_fingerprint`` skips empty-todo projects, so an authoritative
+        full project/computer set arriving after a partial-state render would
+        not repaint on todo content alone. This captures each project's owning
+        computer and path in order so a changed set or order forces a rebuild.
+        """
+        return tuple((p.computer or "local", p.path) for p in projects)
+
+    @staticmethod
     def _todo_fingerprint(projects: list[ProjectWithTodosDTO]) -> tuple[tuple[str, ...], ...]:
         """Build a lightweight fingerprint of all todo data for change detection."""
         return tuple(
@@ -151,8 +169,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             self._availability = availability
         old_fp = self._todo_fingerprint(self._projects_with_todos)
         new_fp = self._todo_fingerprint(projects_with_todos)
+        old_proj_fp = self._project_fingerprint(self._projects_with_todos)
+        new_proj_fp = self._project_fingerprint(projects_with_todos)
         self._projects_with_todos = projects_with_todos
-        if old_fp != new_fp or not self._nav_items:
+        if old_fp != new_fp or old_proj_fp != new_proj_fp or not self._nav_items:
             self._rebuild()
 
     def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
@@ -274,7 +294,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         def _sep_width() -> int:
             return row_content_width(slug_width, max_depth, col_widths.get("_max", 0)) - 3
 
-        # Group projects by computer, preserving trusted_dirs order from config
+        # Group projects by computer, then pin the display order: local first,
+        # then case-insensitive alphabetical. ``comp_name`` is the ``"local"``
+        # sentinel for absent computers, which the key's three-encoding local
+        # check sorts first.
         computer_order: list[str] = []
         computer_to_projects: dict[str, list[ProjectWithTodosDTO]] = {}
         for project in self._projects_with_todos:
@@ -283,6 +306,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 computer_order.append(comp_name)
                 computer_to_projects[comp_name] = []
             computer_to_projects[comp_name].append(project)
+        computer_order.sort(key=lambda name: _computer_order_key(name, config.computer.name))
 
         # Collect all widgets first, then batch-mount to minimize layout reflows
         widgets_to_mount: list[Widget] = []
@@ -298,7 +322,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 status="online",
                 user="",
                 host=comp_name,
-                is_local=(comp_name == "local"),
+                is_local=_is_local_name(comp_name, config.computer.name),
             )
             comp_display = ComputerDisplayInfo(
                 computer=comp_info,

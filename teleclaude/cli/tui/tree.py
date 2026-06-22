@@ -9,6 +9,21 @@ from teleclaude.cli.tui.types import NodeType
 from teleclaude.constants import WORKTREE_DIR
 
 
+def _is_local_name(name: str, local_name: str | None) -> bool:
+    """Return True when a computer label denotes the local machine.
+
+    A label reaches a render site in three encodings: the empty string (an
+    absent computer), the literal ``"local"`` sentinel, or the authoritative
+    machine name (e.g. ``MozBook``). All three are local.
+    """
+    return name in ("", "local") or (local_name is not None and name == local_name)
+
+
+def _computer_order_key(name: str, local_name: str | None) -> tuple[bool, str]:
+    """Pinned display order: local computer first, then case-insensitive by name."""
+    return (not _is_local_name(name, local_name), name.casefold())
+
+
 def project_collapse_key(computer: str | None, path: str) -> tuple[str, str]:
     """Identity of a project for collapse state and persistence.
 
@@ -143,6 +158,7 @@ def build_tree(
     computers: list[ComputerDisplayInfo],
     projects: list[ProjectDTO],
     sessions: list[SessionDTO],
+    local_computer_name: str | None = None,
 ) -> list[TreeNode]:
     """Build hierarchical tree for display.
 
@@ -152,6 +168,9 @@ def build_tree(
         computers: List of online computers
         projects: List of projects
         sessions: List of sessions
+        local_computer_name: Authoritative local machine name, used to detect
+            local-ness during the session-feed synthesis window and to pin the
+            local computer first in the display order.
 
     Returns:
         List of root tree nodes
@@ -175,12 +194,17 @@ def build_tree(
                     status="reconnecting",
                     user=None,
                     host=None,
-                    is_local=(computer_name == "local"),
+                    is_local=_is_local_name(computer_name, local_computer_name),
                 ),
                 session_count=0,
                 recent_activity=False,
             )
         )
+
+    # Pin the display order: local computer first, then case-insensitive
+    # alphabetical. This makes order independent of list-assembly order (API
+    # order, session-feed synthesis order), so it stops shifting with activity.
+    all_computers.sort(key=lambda c: _computer_order_key(c.computer.name, local_computer_name))
 
     # Index sessions by initiator for AI-to-AI nesting.
     # Only nest when child belongs to the same project as the initiator;

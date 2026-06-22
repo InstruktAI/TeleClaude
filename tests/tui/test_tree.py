@@ -15,6 +15,7 @@ from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     TreeNode,
     build_tree,
+    is_computer_node,
     is_session_node,
 )
 
@@ -31,6 +32,7 @@ def _session(
     initiator: str | None = None,
     detached: bool = False,
     project_path: str = _PROJECT,
+    computer: str = _COMPUTER,
 ) -> SessionDTO:
     return SessionDTO(
         session_id=session_id,
@@ -40,16 +42,21 @@ def _session(
         initiator_session_id=initiator,
         detached=detached,
         project_path=project_path,
-        computer=_COMPUTER,
+        computer=computer,
     )
 
 
-def _computer_info(name: str = _COMPUTER) -> ComputerDisplayInfo:
+def _computer_info(name: str = _COMPUTER, *, is_local: bool = True) -> ComputerDisplayInfo:
     return ComputerDisplayInfo(
-        computer=ComputerDTO(name=name, status="online", user=None, host=None, is_local=True),
+        computer=ComputerDTO(name=name, status="online", user=None, host=None, is_local=is_local),
         session_count=0,
         recent_activity=False,
     )
+
+
+def _computer_names(tree: list[TreeNode]) -> list[str]:
+    """Return computer-node names in top-to-bottom render order."""
+    return [node.data.computer.name for node in tree if is_computer_node(node)]
 
 
 def _project(path: str = _PROJECT, computer: str = _COMPUTER) -> ProjectDTO:
@@ -128,3 +135,51 @@ def test_project_with_newest_session_surfaces_first() -> None:
 
     # Project B holds the newest session, so its session renders before A's.
     assert _flatten_session_ids(tree) == ["in-b", "in-a"]
+
+
+def test_local_computer_renders_first_among_authoritative_computers() -> None:
+    # Authoritative list arrives remote-first; the local machine name pins it first.
+    computers = [
+        _computer_info("Raspi", is_local=False),
+        _computer_info("MozBook", is_local=True),
+    ]
+    tree = build_tree(computers, [], [], local_computer_name="MozBook")
+
+    assert _computer_names(tree) == ["MozBook", "Raspi"]
+
+
+def test_remotes_render_case_insensitive_alphabetical_after_local() -> None:
+    computers = [
+        _computer_info("zebra", is_local=False),
+        _computer_info("Apple", is_local=False),
+        _computer_info("MozBook", is_local=True),
+        _computer_info("mango", is_local=False),
+    ]
+    tree = build_tree(computers, [], [], local_computer_name="MozBook")
+
+    assert _computer_names(tree) == ["MozBook", "Apple", "mango", "zebra"]
+
+
+def test_synthesized_computers_pin_local_first_over_newer_remote() -> None:
+    # A newer remote session and an older local session, synthesized from the feed
+    # (no authoritative computers). The feed is newest-first, so the remote would
+    # land above local without the pin; the local name pins it first.
+    local = _session("local-old", "2026-06-18T01:00:00", computer="MozBook")
+    remote = _session("remote-new", "2026-06-18T05:00:00", computer="Raspi")
+
+    tree = build_tree([], [], _sorted_newest_first([local, remote]), local_computer_name="MozBook")
+
+    assert _computer_names(tree) == ["MozBook", "Raspi"]
+
+
+def test_synthesized_local_via_local_sentinel_is_flagged_local() -> None:
+    # A session whose computer is the "local" sentinel synthesizes a computer node
+    # flagged is_local, even when the authoritative local name differs.
+    session = _session("s1", "2026-06-18T01:00:00", computer="local")
+
+    tree = build_tree([], [], [session], local_computer_name="MozBook")
+
+    computer_nodes = [node for node in tree if is_computer_node(node)]
+    assert len(computer_nodes) == 1
+    assert computer_nodes[0].data.computer.name == _COMPUTER
+    assert computer_nodes[0].data.computer.is_local is True

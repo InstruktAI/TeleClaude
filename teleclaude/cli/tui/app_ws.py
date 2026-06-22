@@ -37,6 +37,7 @@ from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+from teleclaude.config import config
 
 logger = get_logger(__name__)
 
@@ -89,10 +90,10 @@ class TelecAppWsMixin:
         if isinstance(event, ProjectsInitialEventDTO):
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
-            computers, _projects = self._get_sessions_view_data(sessions_view)
+            computers = self._get_sessions_view_data(sessions_view)[0]
             sessions = getattr(sessions_view, "_sessions", [])
             availability = getattr(sessions_view, "_availability", {})
-            projects_with_todos = [
+            incoming = [
                 ProjectWithTodosDTO(
                     computer=p.computer,
                     name=p.name,
@@ -102,6 +103,11 @@ class TelecAppWsMixin:
                 )
                 for p in event.data.projects
             ]
+            projects_with_todos = self._merge_projects(
+                existing=getattr(prep_view, "_projects_with_todos", []),
+                incoming=incoming,
+                computer=event.data.computer,
+            )
             prep_view.update_data(projects_with_todos)
             sessions_view.update_data(
                 computers=computers,
@@ -291,6 +297,33 @@ class TelecAppWsMixin:
             # No computer label — fall back to the legacy replace semantics.
             return incoming
         retained = [session for session in existing if session.computer != computer]
+        return retained + incoming
+
+    @staticmethod
+    def _merge_projects(
+        *,
+        existing: list[ProjectWithTodosDTO],
+        incoming: list[ProjectWithTodosDTO],
+        computer: str | None,
+    ) -> list[ProjectWithTodosDTO]:
+        """Replace the computers the snapshot is authoritative for, retaining the rest.
+
+        The local subscription's event is multi-computer (its payload is all
+        cached computers' projects, each DTO stamped with its own computer) and
+        carries the ``"local"`` label; a per-computer subscription carries one
+        remote's projects under that remote's label. The replacement set is
+        every computer the incoming DTOs carry, plus the scoped event label
+        itself — so a per-computer snapshot that is authoritatively *empty*
+        (e.g. label ``Raspi`` with no projects) still clears that computer's
+        stale rows. The full snapshot replaces every computer it carries, a
+        per-remote event replaces only that remote and keeps the others, with no
+        duplicated or stranded rows.
+        """
+        local_name = config.computer.name
+        replaced = {(p.computer or local_name) for p in incoming}
+        if computer is not None:
+            replaced.add(local_name if computer in ("", "local") else computer)
+        retained = [p for p in existing if (p.computer or local_name) not in replaced]
         return retained + incoming
 
     @staticmethod
