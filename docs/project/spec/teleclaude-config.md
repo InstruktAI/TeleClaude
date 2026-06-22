@@ -36,7 +36,15 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 
 <!-- /planned-change:config-public-surface-contract -->
 
+<!-- planned-change:person-slug -->
+
 | **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
+
+<!-- change:person-slug -->
+
+| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
+
+<!-- /planned-change:person-slug -->
 
 <!-- planned:config-public-surface-contract -->
 
@@ -178,7 +186,15 @@ for repository-specific names.
 
 ### Per-person keys (`PersonConfig`)
 
+<!-- planned-change:person-slug -->
+
 Valid **only** in `~/.teleclaude/people/{name}/teleclaude.yml`.
+
+<!-- change:person-slug -->
+
+Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
+
+<!-- /planned-change:person-slug -->
 
 ```yaml
 creds:
@@ -194,9 +210,19 @@ settings:
     tool_calls: null | off | mobile | web | both
 ```
 
+<!-- planned-change:person-slug -->
+
 `creds.discord.nick` is optional. When present, it is the Discord-facing display name for
 reflected human input; canonical identity, authorization, and personal workspace resolution still
 use `people[].name`.
+
+<!-- change:person-slug -->
+
+`creds.discord.nick` is optional. When present, it is the Discord-facing display name for
+reflected human input. Personal workspace resolution uses the canonical `people[].slug`;
+`people[].name` is a display field, and identity/authorization resolve on `email` and `role`.
+
+<!-- /planned-change:person-slug -->
 
 `invite_token` is relocated out of `PersonConfig` into ephemeral invitation
 state under `~/.teleclaude/state/` — the invitation handshake is an identity
