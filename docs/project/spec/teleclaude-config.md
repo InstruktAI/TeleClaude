@@ -162,9 +162,12 @@ company_profile: # REJECTED at project and per-person level
 
 `company_profile` is the operator's organization identity (the company-profile
 analog of `people`). A configured profile requires a non-empty `git_org`;
-`git_host` defaults to `github.com`. It is read by the hook receiver to surface
-the organization into agent session-start context (like the human profile) and
-by project setup to derive a project's git remote (`<git_org>/<project_slug>` on
+`git_host` defaults to `github.com`. It is authored at setup via `telec config
+company set` and read back via `telec config company show` — the company-profile
+analog of `telec config people`, persisted to this global overlay through the
+same global-overlay writer. It is read by the hook receiver to surface the
+organization into agent session-start context (like the human profile) and by
+project setup to derive a project's git remote (`<git_org>/<project_slug>` on
 `<git_host>`). The value-object contract lives in `project/spec/domain/config`.
 
 <!-- /planned:ensure-project-remote -->
