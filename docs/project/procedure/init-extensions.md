@@ -48,8 +48,9 @@ Behavior:
 - **Idempotent.** If an `origin` remote already exists, the step does nothing.
 - **Target derivation.** The target repository is `<git_org>/<project_slug>` on
   `<git_host>`, drawn from the global company profile (see
-  `project/spec/feature/config/company-profile`) and the project's
-  `project_slug`. When no company profile (or no `git_org`) is configured, the
+  `project/spec/domain/config` and `project/spec/teleclaude-config`) and the
+  project's `project_slug`. When no company profile (or no `git_org`) is
+  configured, the
   step skips and the project stays local-only.
 - **Prefer automation.** When the GitHub CLI `gh` is available and
   authenticated for the host, the repository is created automatically and the

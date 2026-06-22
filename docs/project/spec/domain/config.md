@@ -148,6 +148,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - A configured company profile requires a non-empty `git_org`; absence is a hard validation error, not a silent default.
   - `git_host` defaults to `github.com` when unset.
   - `git_host` and `git_org` combined with a project's `project_slug` name the canonical project repository (`<git_org>/<project_slug>` on `<git_host>`).
+  - When a company profile is configured, the hook receiver emits an organization block into the agent session-start additional context; when none is configured, no organization block is emitted and the rest of the session-start context is unaffected.
 - **Identifier:** the operator's global configuration (one company profile per operator).
 - **Lifecycle:** authored on the global overlay through the wizard / config patch surfaces alongside the rest of global configuration; read by the hook receiver to surface the organization into agent sessions and by project setup to derive a project's git remote.
 

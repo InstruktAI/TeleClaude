@@ -151,6 +151,24 @@ event_domains:
   domains: mapping[string, DomainConfig]
 ```
 
+<!-- planned:ensure-project-remote -->
+
+```yaml
+company_profile: # REJECTED at project and per-person level
+  name: string | null # optional organization display name
+  git_host: string # remote host; defaults to github.com
+  git_org: string # required organization/owner, e.g. InstruktAI
+```
+
+`company_profile` is the operator's organization identity (the company-profile
+analog of `people`). A configured profile requires a non-empty `git_org`;
+`git_host` defaults to `github.com`. It is read by the hook receiver to surface
+the organization into agent session-start context (like the human profile) and
+by project setup to derive a project's git remote (`<git_org>/<project_slug>` on
+`<git_host>`). The value-object contract lives in `project/spec/domain/config`.
+
+<!-- /planned:ensure-project-remote -->
+
 Global `env_allow_list` is the normal place to authorize env vars needed by
 global agent skills or CLI integrations. Project `env_allow_list` is additive
 for repository-specific names.
