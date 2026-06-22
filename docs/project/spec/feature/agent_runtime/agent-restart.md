@@ -61,6 +61,8 @@ And the agent CLI replays its own transcript on startup so the resumed agent obs
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
 
+<!-- planned-change:restart-stimulus-lost-to-premature-readiness -->
+
 #### Self-restart and the continuation stimulus
 
 ```
@@ -80,6 +82,35 @@ Then the relaunch is issued without subscribing to the readiness signal
 And no continuation stimulus is injected
 And the resumed agent acts on whatever its replayed transcript dictates
 ```
+
+<!-- change:restart-stimulus-lost-to-premature-readiness -->
+
+#### UC-AR1: Self-restart continuation stimulus
+
+```
+Given the request carries the self-restart flag
+When the handler enters the relaunch phase
+Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the agent's session start event can fire before a post-hoc subscriber would attach)
+And after the relaunch, it awaits readiness for the session within a bounded timeout
+And on readiness, it injects the fixed continuation stimulus ("Session restarted. Continue pending work or remain idle.") into the host pane as a user-turn message
+And it confirms the resumed agent actually started a turn from that stimulus
+And when no turn start is observed, it re-injects the full stimulus, bounded by a retry cap
+And on retry exhaustion it reports failure and keeps the session alive, never silently dropping the stimulus
+And on readiness timeout, it emits a readiness-timeout event and posts a message to the user but does NOT inject the stimulus
+And the readiness subscription is released in a finalizer
+```
+
+#### UC-AR2: Non-self restart skips the continuation stimulus
+
+```
+Given the request does NOT set the self-restart flag
+When the handler enters the relaunch phase
+Then the relaunch is issued without subscribing to the readiness signal
+And no continuation stimulus is injected
+And the resumed agent acts on whatever its replayed transcript dictates
+```
+
+<!-- /planned-change:restart-stimulus-lost-to-premature-readiness -->
 
 #### Closed / detached / headless recovery
 
