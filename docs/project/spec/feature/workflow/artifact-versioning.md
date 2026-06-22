@@ -99,10 +99,12 @@ Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
 driver-start dedup uses (a live orchestrator bound to the slug, or a live
 active-runner recorded for it). A write is refused only when a different live
 session holds the slug; the refusal is a claim conflict naming the holder,
-returned as HTTP 409. When no live session holds the slug, the write is accepted
-and records the writing session as the slug's live active-runner. The claim is
-scoped to the life of the holding session; when that session ends the slug has no
-live holder.
+returned as HTTP 409. When no live session holds the slug, the write is accepted.
+A write by a TeleClaude session records that session as the slug's live
+active-runner — the claim is scoped to the life of that session, so when it ends
+the slug has no live holder. A write by a direct human-identity session is
+accepted without acquiring a claim, because a human-identity caller carries no
+session id that could hold the slug.
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
@@ -180,6 +182,16 @@ When it attempts to write a prepare artifact for any slug at any lifecycle phase
 Then the workflow service refuses the write by role before any state mutation
 And the response status is HTTP 403
 And the artifact's current version is unchanged
+```
+
+#### UC-WAV16: A human-identity write to an unheld slug is accepted without acquiring a claim
+
+```gherkin
+Given a slug with no live holder
+When a direct human-identity session writes a prepare artifact
+Then the workflow service accepts the write
+And records the resolved human principal as updated_by
+And the slug acquires no live active-runner
 ```
 
 <!-- /planned-change:prepare-artifact-claim-on-write -->
