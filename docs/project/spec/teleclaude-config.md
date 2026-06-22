@@ -334,8 +334,9 @@ remote_computers:
     ip: string | null
     teleclaude_path: string | null
 <!-- planned:distributed-todo-postgres -->
-cluster_db:
-  dsn: string # connection string every node uses to reach the shared cluster database (Postgres), hosted on the node with computer.is_cluster_db_host. The host binds Postgres to loopback plus the cluster's private network only and never the public interface. Each node resolves the DSN to reach the host — loopback on the host itself, the host's private-network address from every other node. The todo store is the first store to use the cluster DB (more may follow); every other store stays local SQLite. Absent/unreachable → todo writes fail closed with an operator-visible error (no local fallback, no queued local write).
+services:
+  cluster_db:
+    dsn: string # connection string every node uses to reach the shared cluster database (Postgres), hosted on the node with computer.is_cluster_db_host. The host binds Postgres to loopback plus the cluster's private network only and never the public interface. Each node resolves the DSN to reach the host — loopback on the host itself, the host's private-network address from every other node. The todo store is the first store to use the cluster DB (more may follow); every other store stays local SQLite. Absent/unreachable → todo writes fail closed with an operator-visible error (no local fallback, no queued local write). Editable in the TUI config tab's Infra subtab (alongside the Redis connection).
 <!-- /planned:distributed-todo-postgres -->
 telegram:
   enabled: boolean
