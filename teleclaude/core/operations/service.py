@@ -26,7 +26,6 @@ from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.lifecycle_runner import (
     DispatchOrigin,
-    ManualLifecycleSessionResult,
     ManualLifecycleStatus,
     RunnerLane,
     RunnerSkipReason,
@@ -43,7 +42,7 @@ from teleclaude.core.operation_caller_identity import reset_caller_session_id, s
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.core.todos_db._exceptions import OperationErrorPayload, OperationFailure
+from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
@@ -761,9 +760,10 @@ class OperationsService:
         if adoption.status in {ManualLifecycleStatus.ADOPTED, ManualLifecycleStatus.ALREADY_ACTIVE}:
             return await state_machine(operation)
         if adoption.status is ManualLifecycleStatus.ALREADY_DRIVEN:
-            return self._format_manual_lifecycle_result(adoption)
+            raise ClaimConflict(slug=slug, holder=adoption.session_id)
         if adoption.status is ManualLifecycleStatus.SKIPPED:
-            return self._format_manual_lifecycle_result(adoption)
+            reason = self._format_manual_lifecycle_reason(adoption.reason)
+            return f"RUNNER_NOT_DISPATCHED: {slug} {reason}"
 
         intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug, requested_lane=lane)
         if intent is None:
@@ -784,18 +784,6 @@ class OperationsService:
         if session_id is None:
             return f"RUNNER_NOT_DISPATCHED: {slug} claim-conflict"
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
-
-    @staticmethod
-    def _format_manual_lifecycle_result(result: ManualLifecycleSessionResult) -> str:
-        if result.status is ManualLifecycleStatus.DISPATCHED:
-            return f"RUNNER_DISPATCHED: {result.slug} {result.lane.value} {result.session_id}"
-        if result.status is ManualLifecycleStatus.ALREADY_DRIVEN:
-            return f"ALREADY_DRIVEN: {result.slug} is already driven by active runner {result.session_id}"
-        if result.status is ManualLifecycleStatus.SKIPPED:
-            reason = OperationsService._format_manual_lifecycle_reason(result.reason)
-            return f"RUNNER_NOT_DISPATCHED: {result.slug} {reason}"
-        reason = OperationsService._format_manual_lifecycle_reason(result.reason)
-        return f"RUNNER_NOT_DISPATCHED: {result.slug} {result.status.value} {reason}"
 
     @staticmethod
     def _format_manual_lifecycle_reason(reason: RunnerSkipReason | str | None) -> str:

@@ -124,25 +124,39 @@ Then dispatch is permitted — the integrator may spawn worker sessions
 And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
 ```
 
-<!-- planned:guard-duplicate-driver-start -->
-
 #### Lifecycle driver-start dedup
 
 ```
 Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
-And a driver-start request that would bind slug X — a run-session request whose normalized command is a slug-bound lifecycle command resolving to X, a generic session-create request on a "trees/X" worktree, or an operator work/prepare operation on X
-And the request originates from a session other than the holder
-When the shared driver-start dedup check runs before the session is created
-Then the request is refused with a driver-start conflict
+And an orchestrator-class create request that would bind X — a run-session request whose command is "/next-prepare" or "/next-work" resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
+When the create-door dedup check runs before the session is created
+Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
 And no second session is created for X
-And the refusal surfaces the holding session id — HTTP 409 detail on the run-session and generic create doors, and an operation-failure completion event toast carrying the holder on the operator work/prepare op door
+And the refusal holds even when the requesting session is itself the holder — continuation happens in place via the operator door, never by creating a second orchestrator row
 ```
 
 ```
-Given a driver-start request that would bind slug X
-And the calling session is itself the live holder of X (an orchestrator continuing or adopting its own slug)
-When the shared driver-start dedup check runs
-Then the caller is exempt and the session is created
+Given a todo slug X with a live active-runner recorded for X
+And a task-lane create request that would bind X — a run-session or generic session-create launching "/next-run-task" for X
+When the create-door dedup check runs before the session is created
+Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
+And no second session is created for X
+```
+
+```
+Given a todo slug X already driven by a live driver
+And a non-driver worker child-spawn that would bind X — a run-session or generic session-create launching a worker command such as "/next-build" or "/next-review-build" for X
+When the create-door dedup check runs
+Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the workers it spawns legitimately share the slug
+```
+
+```
+Given a todo slug X already driven by a live driver from a session other than the caller
+And an operator work or prepare operation on X
+When the operation's shared dedup check runs
+Then the operation fails with a driver-start conflict whose completion-event error carries the holder, surfacing as an operator toast
+And no second session is created for X
+And the caller's own slug — when the caller is itself the holder — continues in place with no new session
 ```
 
 ```
@@ -155,12 +169,10 @@ Then no live-holder conflict is found and the session is created
 ```
 Given slug X already has a live holder
 And a dispatch claim for X is still held (retained briefly after the holder's active_runner was written)
-And a second driver-start request for X arrives from a session other than the holder
+And a second orchestrator-class request for X arrives
 When the shared driver-start dedup check runs
 Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
 ```
-
-<!-- /planned:guard-duplicate-driver-start -->
 
 #### Initiator binding
 

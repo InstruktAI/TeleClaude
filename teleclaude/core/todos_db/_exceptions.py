@@ -28,6 +28,13 @@ class RemoveRefusalErrorPayload(OperationErrorPayload):
     blocking_snippets: list[RemoveRefusalSnippetPayload]
 
 
+class ClaimConflictErrorPayload(OperationErrorPayload):
+    """Structured driver-start conflict payload."""
+
+    slug: str
+    holder: str | None
+
+
 class OperationFailure(Exception):
     """Base class for operation failures with structured API payloads."""
 
@@ -69,3 +76,28 @@ class RemoveRefused(OperationFailure):
     def summary(self) -> str:
         count = len(self.blocking_snippets)
         return f"RemoveRefused: {count} snippet(s) would be orphaned"
+
+
+class ClaimConflict(OperationFailure):
+    """Driver-start refused because a live driver already holds the slug.
+
+    Raised by the create-door dedup guard and the operator op door when a second
+    lifecycle driver would be started for a slug a live driver already holds. The
+    holder session id is carried so the operator toast and the HTTP 409 detail can
+    name who is in the way.
+    """
+
+    error_kind = "driver_start_conflict"
+
+    def __init__(self, *, slug: str, holder: str | None) -> None:
+        self.slug = slug
+        self.holder = holder
+        super().__init__(slug)
+
+    def to_error_payload(self) -> ClaimConflictErrorPayload:
+        return {"kind": self.error_kind, "slug": self.slug, "holder": self.holder}
+
+    def summary(self) -> str:
+        if self.holder:
+            return f"ClaimConflict: {self.slug} is already driven by session {self.holder}"
+        return f"ClaimConflict: {self.slug} is already driven"

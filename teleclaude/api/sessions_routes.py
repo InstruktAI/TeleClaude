@@ -32,7 +32,7 @@ from teleclaude.api.session_remote import (
     is_remote_create_target,
     is_remote_target,
 )
-from teleclaude.api.sessions_actions_routes import _infer_role_from_message
+from teleclaude.api.sessions_actions_routes import _infer_role_from_message, guard_generic_create_session
 from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -593,6 +593,8 @@ async def create_session(
         },
         metadata,
     )
+
+    await guard_generic_create_session(request, cmd, identity)
 
     try:
         data = await get_command_service().create_session(cmd)

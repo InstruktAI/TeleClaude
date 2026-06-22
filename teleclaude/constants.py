@@ -68,6 +68,27 @@ ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
 ROLE_INTEGRATOR = "integrator"
 
+
+class DriverLaunchClass(StrEnum):
+    """How a session-create launch is treated by the driver-start dedup guard.
+
+    A create door always writes a new session row, so the guard keys on what the
+    requested launch IS — classified from its slash command:
+
+    - ``ORCHESTRATOR``: a lifecycle orchestrator driver (``/next-prepare``,
+      ``/next-work``). Refused against ANY live holder, caller-independent — a
+      second orchestrator row for a driven slug is never legitimate.
+    - ``TASK_LANE``: the task-lane driver (``/next-run-task``). Refused against a
+      live ``active_runner`` for the slug.
+    - ``WORKER_CHILD``: every other launch. An orchestrator and the workers it
+      spawns legitimately share ``working_slug``, so these are never deduped.
+    """
+
+    ORCHESTRATOR = "orchestrator"
+    TASK_LANE = "task_lane"
+    WORKER_CHILD = "worker_child"
+
+
 # Human identity roles
 HUMAN_ROLE_ADMIN = "admin"
 HUMAN_ROLE_MEMBER = "member"

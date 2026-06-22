@@ -26,7 +26,7 @@ from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, re
 from teleclaude.api.session_remote import dispatch_session_close_to_peer, dispatch_session_keys_to_peer
 from teleclaude.cli import api_client as api_client_mod
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.constants import EVENT_END_SESSION, ROLE_WORKER, WORKTREE_DIR, JobRole, SlashCommand
+from teleclaude.constants import EVENT_END_SESSION, ROLE_ORCHESTRATOR, ROLE_WORKER, WORKTREE_DIR, JobRole, SlashCommand
 from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.command_handlers import _session as session_handler_mod
@@ -37,7 +37,11 @@ from teleclaude.core.models._session import Session
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.todos_db import get_todos_db
+from teleclaude.project_root import resolve_state_root
 from teleclaude.types.commands import CloseSessionCommand
+from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.todos import TodoState
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
@@ -1502,3 +1506,139 @@ async def test_worker_class_dispatch_is_tagged_and_contained(
         headers=worker_headers,
     )
     assert start_resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle driver-start dedup — create-door boundary
+# ---------------------------------------------------------------------------
+
+
+async def _seed_driven_todo(
+    api: AsyncClient,
+    project_root: Path,
+    slug: str,
+    holder_id: str,
+    *,
+    as_orchestrator: bool,
+) -> None:
+    """Seed a live driver for ``slug`` in ``project_root``: a live holder session
+    plus a todo whose ``active_runner`` points at it. An orchestrator holder also
+    registers as the registry owner; a worker holder is seen only via active_runner.
+    """
+    await api.db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name=f"tmux-{holder_id}",
+        last_input_origin="terminal",
+        title=f"holder {slug}",
+        session_id=holder_id,
+        system_role=ROLE_ORCHESTRATOR if as_orchestrator else ROLE_WORKER,
+        project_path=str(project_root),
+        working_slug=slug,
+        emit_session_started=False,
+    )
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_todo(slug, after=None)
+    await todos_db.write_state(
+        slug,
+        TodoState(
+            schema_version=5,
+            kind="change",
+            lifecycle_phase=LifecyclePhase.PREPARED.value,
+            active_runner=holder_id,
+        ).model_dump(exclude_none=True),
+    )
+
+
+async def _bound_session_ids(api: AsyncClient, slug: str) -> list[str]:
+    sessions = await api.db.list_sessions(include_closed=True)
+    return [s.session_id for s in sessions if s.working_slug == slug]
+
+
+async def test_run_session_refuses_duplicate_orchestrator_driver(api: AsyncClient, tmp_path: Path) -> None:
+    project = tmp_path / "orch-conflict"
+    project.mkdir()
+    holder = "holder-orch"
+    await _seed_driven_todo(api, resolve_state_root(project), "orch-slug", holder, as_orchestrator=True)
+
+    resp = await api.post(
+        "/sessions/run",
+        json={
+            "computer": "TestComputer",
+            "command": "/next-work",
+            "args": "orch-slug",
+            "project": str(project),
+            "agent": "claude",
+        },
+    )
+
+    assert resp.status_code == 409, resp.text
+    assert holder in resp.text
+    assert await _bound_session_ids(api, "orch-slug") == [holder]
+
+
+async def test_run_session_refuses_duplicate_task_runner(api: AsyncClient, tmp_path: Path) -> None:
+    project = tmp_path / "task-conflict"
+    project.mkdir()
+    holder = "holder-task"
+    await _seed_driven_todo(api, resolve_state_root(project), "task-slug", holder, as_orchestrator=False)
+
+    resp = await api.post(
+        "/sessions/run",
+        json={
+            "computer": "TestComputer",
+            "command": "/next-run-task",
+            "args": "task-slug",
+            "project": str(project),
+            "agent": "claude",
+        },
+    )
+
+    assert resp.status_code == 409, resp.text
+    assert holder in resp.text
+    assert await _bound_session_ids(api, "task-slug") == [holder]
+
+
+async def test_run_session_allows_worker_child_spawn_for_held_slug(api: AsyncClient, tmp_path: Path) -> None:
+    project = tmp_path / "worker-allow"
+    project.mkdir()
+    holder = "holder-w"
+    await _seed_driven_todo(api, resolve_state_root(project), "held-slug", holder, as_orchestrator=True)
+
+    resp = await api.post(
+        "/sessions/run",
+        json={
+            "computer": "TestComputer",
+            "command": "/next-build",
+            "args": "held-slug",
+            "project": str(project),
+            "agent": "claude",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    bound = await _bound_session_ids(api, "held-slug")
+    assert holder in bound
+    assert len(bound) == 2
+
+
+async def test_create_session_refuses_duplicate_driver_on_worktree(api: AsyncClient, tmp_path: Path) -> None:
+    project = tmp_path / "tree-conflict"
+    project.mkdir()
+    holder = "holder-tree"
+    await _seed_driven_todo(api, resolve_state_root(project), "tree-slug", holder, as_orchestrator=True)
+
+    resp = await api.post(
+        "/sessions",
+        json={
+            "computer": "TestComputer",
+            "project_path": str(project),
+            "agent": "claude",
+            "thinking_mode": "fast",
+            "subdir": f"{WORKTREE_DIR}/tree-slug",
+            "message": "/next-work tree-slug",
+        },
+    )
+
+    assert resp.status_code == 409, resp.text
+    assert holder in resp.text
+    assert await _bound_session_ids(api, "tree-slug") == [holder]

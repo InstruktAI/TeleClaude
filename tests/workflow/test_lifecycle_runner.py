@@ -18,7 +18,7 @@ from teleclaude.api_models import CreateSessionResponseDTO, RunSessionRequest
 from teleclaude.cli.api_client import RunSessionArgs
 from teleclaude.config import WorkflowRunnerMode
 from teleclaude.config import config as tc_config
-from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER, WORKTREE_DIR
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER, WORKTREE_DIR, DriverLaunchClass
 from teleclaude.core import db as db_mod
 from teleclaude.core import session_listeners as session_listeners_mod
 from teleclaude.core.db import Db
@@ -39,6 +39,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     adopt_manual_lifecycle_session,
     decide_dispatches,
     dispatch_lifecycle_session,
+    guard_driver_start,
     manual_start_lifecycle_session,
     resolve_manual_dispatch_intent,
     run_lifecycle_runner,
@@ -57,6 +58,7 @@ from teleclaude.core.operations.service import OperationsService
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
+from teleclaude.core.todos_db._exceptions import ClaimConflict
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.catalog import EventCatalog
@@ -1468,6 +1470,152 @@ async def test_adoption_refusal_reports_registry_owner_without_active_runner(tmp
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_guard_driver_start_refuses_orchestrator_self_create(tmp_path: Path) -> None:
+    """An orchestrator-class create is refused against a live holder even when the
+    requesting session IS the holder — a second orchestrator row is never created."""
+    project_root = (tmp_path / "project").resolve()
+    await _project_db(project_root)
+    todos_db = await get_todos_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION)
+
+    with pytest.raises(ClaimConflict) as exc:
+        await guard_driver_start(
+            project_root,
+            _WORK_SLUG,
+            launch_class=DriverLaunchClass.ORCHESTRATOR,
+            caller_session_id=_LIVE_SESSION,
+            db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(session_id=_LIVE_SESSION)})),
+        )
+
+    assert exc.value.holder == _LIVE_SESSION
+    assert _LIVE_SESSION in exc.value.summary()
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_guard_driver_start_refuses_orchestrator_against_registry_owner(tmp_path: Path) -> None:
+    """An orchestrator-class create is refused against a live registry orchestrator
+    owner from a different session, even without a live active_runner."""
+    project_root = (tmp_path / "project").resolve()
+    await _project_db(project_root)
+    todos_db = await get_todos_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    owner = _Session(
+        session_id=_ORCH_SESSION,
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(project_root),
+    )
+
+    with pytest.raises(ClaimConflict) as exc:
+        await guard_driver_start(
+            project_root,
+            _WORK_SLUG,
+            launch_class=DriverLaunchClass.ORCHESTRATOR,
+            caller_session_id="caller-session",
+            db=cast(Db, _FakeDb({_ORCH_SESSION: owner})),
+        )
+
+    assert exc.value.holder == _ORCH_SESSION
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_guard_driver_start_refuses_duplicate_task_runner(tmp_path: Path) -> None:
+    """A task-lane create self-exempts the dispatching orchestrator on the registry
+    path but is still refused by a live active_runner for the slug."""
+    project_root = (tmp_path / "project").resolve()
+    await _project_db(project_root)
+    todos_db = await get_todos_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION)
+    orchestrator = _Session(
+        session_id=_ORCH_SESSION,
+        working_slug=_WORK_SLUG,
+        system_role=ROLE_ORCHESTRATOR,
+        project_path=str(project_root),
+    )
+
+    with pytest.raises(ClaimConflict) as exc:
+        await guard_driver_start(
+            project_root,
+            _WORK_SLUG,
+            launch_class=DriverLaunchClass.TASK_LANE,
+            caller_session_id=_ORCH_SESSION,
+            db=cast(
+                Db,
+                _FakeDb({_ORCH_SESSION: orchestrator, _LIVE_SESSION: _Session(session_id=_LIVE_SESSION)}),
+            ),
+        )
+
+    assert exc.value.holder == _LIVE_SESSION
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_guard_driver_start_allows_worker_child_spawn(tmp_path: Path) -> None:
+    """A non-driver worker child-spawn shares working_slug with its orchestrator and
+    is never deduped, even against a live holder."""
+    project_root = (tmp_path / "project").resolve()
+    await _project_db(project_root)
+    todos_db = await get_todos_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION)
+
+    await guard_driver_start(
+        project_root,
+        _WORK_SLUG,
+        launch_class=DriverLaunchClass.WORKER_CHILD,
+        caller_session_id="caller-session",
+        db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(session_id=_LIVE_SESSION)})),
+    )
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_guard_driver_start_allows_first_spawn_without_holder(tmp_path: Path) -> None:
+    """An orchestrator-class create is allowed when no live driver holds the slug —
+    the autonomous runner's sanctioned first spawn."""
+    project_root = (tmp_path / "project").resolve()
+    await _project_db(project_root)
+    todos_db = await get_todos_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+
+    await guard_driver_start(
+        project_root,
+        _WORK_SLUG,
+        launch_class=DriverLaunchClass.ORCHESTRATOR,
+        caller_session_id="caller-session",
+        db=cast(Db, _FakeDb()),
+    )
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_operation_bridge_refuses_live_driver_from_other_session(tmp_path: Path) -> None:
+    """The operator op door fails the operation with a ClaimConflict carrying the
+    holder when a live driver from another session already holds the slug."""
+    project_root = (tmp_path / "project").resolve()
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION)
+    service = OperationsService(
+        db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(session_id=_LIVE_SESSION)})),
+        task_registry=cast(TaskRegistry, object()),
+    )
+    operation = _operation(caller_session_id="caller-session")
+    operation.cwd = str(project_root)
+
+    async def _never_continues(_op: Operation) -> str:
+        raise AssertionError("state machine must not run on a driver-start conflict")
+
+    with pytest.raises(ClaimConflict) as exc:
+        await service._run_todo_lifecycle_operation(
+            operation,
+            lane=RunnerLane.WORK,
+            state_machine=_never_continues,
+        )
+
+    assert exc.value.holder == _LIVE_SESSION
+    assert _LIVE_SESSION in exc.value.summary()
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == _LIVE_SESSION
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_runner_dispatches_task_prepare_regardless_of_task_autostart(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
@@ -1996,26 +2144,6 @@ async def test_operation_bridge_work_lane_on_prepared_todo_stays_work(tmp_path: 
 
     assert result == snapshot
     assert client.requests[0]["command"] == _NEXT_WORK
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_operation_bridge_reports_already_driven_for_repeated_operator_start(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION, manually_started=True)
-    service = OperationsService(
-        db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(_LIVE_SESSION)})),
-        task_registry=TaskRegistry(),
-        lifecycle_client_factory=lambda: _RunnerClient(),
-    )
-
-    result = await service._run_todo_lifecycle_operation(
-        _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.WORK,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
-    )
-
-    assert result == f"ALREADY_DRIVEN: {_WORK_SLUG} is already driven by active runner {_LIVE_SESSION}"
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")

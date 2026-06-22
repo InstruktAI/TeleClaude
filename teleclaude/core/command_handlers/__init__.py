@@ -37,6 +37,7 @@ from ._session import (
     list_projects_with_todos,
     list_sessions,
     list_todos,
+    resolve_working_slug_from_subdir,
 )
 from ._utils import (
     EndSessionHandlerResult,
@@ -76,6 +77,7 @@ __all__ = [
     "list_sessions",
     "list_todos",
     "process_message",
+    "resolve_working_slug_from_subdir",
     "resume_agent",
     "run_agent_command",
     "shift_tab_command",

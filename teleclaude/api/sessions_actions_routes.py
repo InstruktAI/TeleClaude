@@ -33,6 +33,7 @@ from teleclaude.api.codex_startup_message import _rewrite_codex_next_startup_mes
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_remote import dispatch_session_keys_to_peer, is_remote_target
 from teleclaude.api_models import (
+    CreateSessionRequest,
     CreateSessionResponseDTO,
     EscalateRequest,
     FileUploadRequest,
@@ -49,16 +50,19 @@ from teleclaude.constants import SlashCommand
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
+from teleclaude.core.command_handlers import resolve_working_slug_from_subdir
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.command_service import COMMAND_ROLE_MAP, DISPATCH_ALLOWED
+from teleclaude.core.command_service import COMMAND_ROLE_MAP, DISPATCH_ALLOWED, classify_driver_launch
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
+from teleclaude.core.next_machine.lifecycle_runner import guard_driver_start
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.core.todos_db._exceptions import ClaimConflict
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
@@ -350,6 +354,59 @@ def _infer_working_slug(normalized_cmd: str, normalized_args: str) -> str | None
         return None
     slug, _, _rest = normalized_args.partition(" ")
     return slug.strip() or None
+
+
+def _leading_command(message: str | None) -> str | None:
+    """Return the leading slash command of a launch message, if any."""
+    return message.split()[0] if message and message.startswith("/") else None
+
+
+async def enforce_driver_start_guard(
+    *,
+    project_path: str,
+    working_slug: str | None,
+    command: str | None,
+    caller_session_id: str | None,
+) -> None:
+    """Refuse a create-door driver start that would duplicate a live driver.
+
+    Shared by both create doors (run-session and generic create): it classifies
+    the requested launch and runs the two-signal dedup guard, mapping a conflict
+    to HTTP 409 naming the holder. A non-driver launch or an unheld slug passes
+    through silently.
+    """
+    if not working_slug:
+        return
+    try:
+        await guard_driver_start(
+            project_path,
+            working_slug,
+            launch_class=classify_driver_launch(command),
+            caller_session_id=caller_session_id,
+        )
+    except ClaimConflict as conflict:
+        raise HTTPException(status_code=409, detail=conflict.summary()) from conflict
+
+
+async def guard_generic_create_session(
+    request: CreateSessionRequest,
+    cmd: object,
+    identity: CallerIdentity,
+) -> None:
+    """Guard the generic ``POST /sessions`` create door against a duplicate driver.
+
+    Resolves the would-be ``working_slug`` from the request the same way the
+    create-session primitive does (the "trees/<slug>" worktree subdir, else the
+    command's own slug) and runs the shared driver-start guard.
+    """
+    if not isinstance(cmd, CreateSessionCommand):
+        return
+    await enforce_driver_start_guard(
+        project_path=request.project_path,
+        working_slug=resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug,
+        command=_leading_command(request.message),
+        caller_session_id=identity.session_id,
+    )
 
 
 def _prepare_run_session(
@@ -710,6 +767,12 @@ async def run_session(
     )
     if isinstance(cmd, CreateSessionCommand):
         cmd.working_slug = plan.working_slug
+    await enforce_driver_start_guard(
+        project_path=request.project,
+        working_slug=plan.working_slug,
+        command=request.command,
+        caller_session_id=plan.initiator_session_id,
+    )
     try:
         data = await get_command_service().create_session(cmd)
         session_id = data.get("session_id")

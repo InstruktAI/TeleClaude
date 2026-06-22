@@ -13,7 +13,7 @@ from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
 from teleclaude.config.loader import load_project_config
-from teleclaude.constants import EVENT_END_SESSION, HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+from teleclaude.constants import EVENT_END_SESSION, HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -42,6 +42,24 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+
+def resolve_working_slug_from_subdir(subdir: str | None) -> str | None:
+    """Derive a todo slug from a ``<WORKTREE_DIR>/<slug>`` worktree subdir.
+
+    Git worktrees live at ``{project}/{WORKTREE_DIR}/{slug}``, so a session opened
+    on such a subdir is bound to ``<slug>``. Returns the slug, or ``None`` when the
+    subdir is absent or is not a direct worktree child. Keyed on ``WORKTREE_DIR``
+    so the single literal lives in ``constants``; both the create-session primitive
+    and the generic create-door guard share this one resolver.
+    """
+    if not subdir:
+        return None
+    prefix = f"{WORKTREE_DIR}/"
+    if not subdir.startswith(prefix):
+        return None
+    slug = subdir[len(prefix) :].strip("/")
+    return slug or None
 
 
 async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
@@ -89,9 +107,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     tmux_name = "" if cmd.headless else f"{TMUX_SESSION_PREFIX}{session_id}"
 
     subfolder = cmd.subdir
-    working_slug: str | None = cmd.working_slug
-    if subfolder and subfolder.startswith("trees/"):
-        working_slug = subfolder.removeprefix("trees/")
+    working_slug: str | None = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
     initiator_session_id = cmd.initiator_session_id
     cmd_system_role = cmd.system_role
     cmd_job = cmd.job

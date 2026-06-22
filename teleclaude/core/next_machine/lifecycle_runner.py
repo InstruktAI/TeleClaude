@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.config import WorkflowRunnerMode, config
+from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.dispatch_claims import (
@@ -50,6 +51,7 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.task_wake import wake_due_recurring_tasks
 from teleclaude.core.todos_db import TodosDb, get_todos_db
+from teleclaude.core.todos_db._exceptions import ClaimConflict
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.lifecycle import LifecyclePhase
@@ -602,6 +604,56 @@ async def _target_for_manual_start(
         if unmet:
             return todo, RunnerSkipReason.DEPENDENCY_BLOCKED, None
     return todo, None, None
+
+
+async def guard_driver_start(
+    project_path: str | Path,
+    slug: str,
+    *,
+    launch_class: DriverLaunchClass,
+    caller_session_id: str | None,
+    db: Db | None = None,
+) -> None:
+    """Refuse a create-door driver start that would duplicate a live driver.
+
+    A create door always writes a new session row, so the self-caller exemption
+    that is correct for in-place adoption (the op door) is wrong here. The guard
+    keys on the requested launch class and routes each to the matching signal of
+    ADR-0052's two-signal model via the one shared :func:`_target_for_manual_start`
+    check:
+
+    - ``WORKER_CHILD`` → return without checking. An orchestrator and the workers
+      it spawns legitimately share ``working_slug``; deduping them would
+      false-refuse the orchestrator-spawns-its-worker pattern.
+    - ``ORCHESTRATOR`` → run the dedup with ``caller_session_id=None`` so the
+      registry self-caller exemption is disabled; any live holder (registry owner
+      or live ``active_runner``) refuses, INCLUDING the caller itself — a second
+      orchestrator row for a driven slug is never legitimate.
+    - ``TASK_LANE`` → run the dedup with the real ``caller_session_id`` so a
+      dispatching orchestrator self-exempts on the registry path, while the
+      caller-independent ``active_runner`` check refuses a duplicate task runner.
+
+    Raises :class:`ClaimConflict` (carrying the holder) when a live driver already
+    holds the slug; returns silently when the start is allowed (no live holder, or
+    a worker child-spawn).
+    """
+    if launch_class is DriverLaunchClass.WORKER_CHILD:
+        return
+    project_root = resolve_state_root(project_path)
+    runtime_db = db or await get_db()
+    todos_db = await get_todos_db(project_root)
+    effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
+    _todo, reason, holder = await _target_for_manual_start(
+        todos_db,
+        runtime_db,
+        slug,
+        RunnerLane.PREPARE,
+        project_root,
+        check_dependencies=False,
+        caller_session_id=effective_caller,
+    )
+    if reason is RunnerSkipReason.ALREADY_DRIVEN:
+        raise ClaimConflict(slug=slug, holder=holder)
 
 
 async def manual_start_lifecycle_session(

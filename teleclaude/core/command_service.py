@@ -13,7 +13,15 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_SYSTEM, ROLE_WORKER, JobRole, SlashCommand
+from teleclaude.constants import (
+    ROLE_INTEGRATOR,
+    ROLE_ORCHESTRATOR,
+    ROLE_SYSTEM,
+    ROLE_WORKER,
+    DriverLaunchClass,
+    JobRole,
+    SlashCommand,
+)
 from teleclaude.core.command_handlers import (
     EndSessionHandlerResult,
     SessionDataPayload,
@@ -89,6 +97,31 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_RUN_TASK: (ROLE_WORKER, JobRole.TASK_RUNNER),
     SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
 }
+
+
+def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchClass:
+    """Classify a session-create launch by its requested command for driver-start dedup.
+
+    The create-door guard keys on what the requested launch IS (`DriverLaunchClass`):
+    a lifecycle orchestrator command is an ``ORCHESTRATOR`` driver, ``/next-run-task``
+    is the ``TASK_LANE`` driver, and every other command (including non-driver
+    ``ROLE_WORKER`` workers and non-lifecycle launches) is a ``WORKER_CHILD`` that an
+    orchestrator may legitimately spawn against a shared ``working_slug``.
+    """
+    if isinstance(command, str):
+        try:
+            command = SlashCommand(command.lstrip("/"))
+        except ValueError:
+            return DriverLaunchClass.WORKER_CHILD
+    if command is None:
+        return DriverLaunchClass.WORKER_CHILD
+    if command is SlashCommand.NEXT_RUN_TASK:
+        return DriverLaunchClass.TASK_LANE
+    role_info = COMMAND_ROLE_MAP.get(command)
+    if role_info is not None and role_info[0] == ROLE_ORCHESTRATOR:
+        return DriverLaunchClass.ORCHESTRATOR
+    return DriverLaunchClass.WORKER_CHILD
+
 
 # Which target roles each caller system_role may dispatch via sessions/run.
 # Callers without a system_role (terminal, TUI, web, daemon lifecycle_router)
