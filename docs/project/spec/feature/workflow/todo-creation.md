@@ -173,6 +173,8 @@ And the lifecycle router dispatches /analyze-todo-input, which classifies the du
 And the assignment fixes the kind exactly once and routes the todo to that kind's entry phase, with no human approval gate in between
 ```
 
+<!-- planned-change:task-lane -->
+
 ```
 Given a human (or an agent on their behalf) wants to park agreed future work that need not touch the codebase
 When they run `telec todo create call-supplier-api "<what to do, when, and any waits>" --kind task`
@@ -181,6 +183,9 @@ And the workflow service writes state + `input`, sets lifecycle_phase="prepared"
 And the lifecycle router does not auto-dispatch; the task waits durably until a human or a dependency/time trigger starts it
 And when worked, an agent grooms the `task-plan` (ticking off steps, appending results) rather than producing a code commit
 ```
+
+<!-- change:task-lane -->
+<!-- /planned-change:task-lane -->
 
 <!-- planned:task-lane -->
 
