@@ -20,12 +20,27 @@ capability is exposed both through `telec history search` on the command
 line and through the session_mirrors service's search capability that the
 cross-computer federation layer calls.
 
+<!-- planned-change:clean-mirror-search-index -->
+
 The search composes three filters: free-text terms (AND-combined), an agent
 filter (`claude`, `codex`, `gemini`, comma-separated, or `all`), and an
 optional computer filter. Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
 store query runs. Results sort by `timestamp_start` falling back to
 `updated_at`, descending, with a configurable limit (default 20).
+
+<!-- change:clean-mirror-search-index -->
+
+The search composes free-text terms (AND-combined), an agent filter
+(`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
+computer filter, and a default exclusion of agent-spawn mirrors
+(`is_agent_spawn = 0`) so dispatched worker/orchestrator/integrator
+sessions never appear in human search. Role-scoped access (see
+`role-scoped-history-access`) further constrains visibility before the
+store query runs. Results sort by `timestamp_start` falling back to
+`updated_at`, descending, with a configurable limit (default 20).
+
+<!-- /planned-change:clean-mirror-search-index -->
 
 ## Canonical fields
 
@@ -63,6 +78,20 @@ Then the response is a sequence of rows with fields
 And an unknown agent value is rejected with a validation error referencing the unknown value
 And limit is clamped to the inclusive range [1, 100]
 ```
+
+<!-- planned:clean-mirror-search-index -->
+
+#### Agent-spawn sessions excluded by default
+
+```
+Given the mirror store holds both human sessions and agent-spawn mirrors (is_agent_spawn = 1)
+When a search executes
+Then only mirrors with is_agent_spawn = 0 are eligible for results
+And dispatched worker/orchestrator/integrator sessions never appear
+And the exclusion applies identically to the CLI path and the service search wire path
+```
+
+<!-- /planned:clean-mirror-search-index -->
 
 #### Recency ordering and missing-store tolerance
 

@@ -45,6 +45,8 @@ And on any other exception it logs at error level and continues to the next slee
 
 #### Per-pass discovery and skip-unchanged
 
+<!-- planned-change:clean-mirror-search-index -->
+
 ```
 Given the mirror store holds rows for known transcript paths
 When a reconciliation pass starts
@@ -54,6 +56,23 @@ For each discovered candidate:
   When the existing mirror's updated_at is greater than or equal to the candidate file's mtime
   Then the candidate is counted as skipped_unchanged and skipped
 ```
+
+<!-- change:clean-mirror-search-index -->
+
+```
+Given the mirror store holds rows for known transcript paths
+When a reconciliation pass starts
+Then the worker enumerates candidate transcript files under the per-agent session roots
+And reads each known transcript's last known source_identity, updated_at, and derivation_version
+For each discovered candidate:
+  When the existing mirror's updated_at is greater than or equal to the candidate file's mtime
+    And the existing mirror's derivation_version equals the current derivation version
+  Then the candidate is counted as skipped_unchanged and skipped
+  When the existing mirror's derivation_version is older than the current derivation version
+  Then the candidate is re-derived regardless of mtime so the row converges to the current derivation rules
+```
+
+<!-- /planned-change:clean-mirror-search-index -->
 
 #### Tombstone short-circuit
 
@@ -77,6 +96,22 @@ And on "no conversation extracted"
   And the corresponding mirror record is deleted by session_id + source_identity
   And the candidate is counted as processed
 ```
+
+<!-- planned:clean-mirror-search-index -->
+
+#### Orphan re-derivation sweep
+
+```
+Given mirror rows whose transcript file no longer exists on disk
+And whose derivation_version is older than the current derivation version
+When a reconciliation pass runs the orphan sweep
+Then each such row is re-derived in place from its stored title and conversation_text
+And its title, command, slug, and is_agent_spawn are recomputed by the same detection used at extraction
+And the row is never deleted and its transcript is never required
+And its derivation_version is advanced to the current version so the sweep is idempotent
+```
+
+<!-- /planned:clean-mirror-search-index -->
 
 #### Failure isolation and counters
 
