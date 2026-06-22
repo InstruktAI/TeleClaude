@@ -224,12 +224,23 @@ the briefing instead.
 Apply the DoD-driven review-awareness rule from the preparation artifact quality
 policy. The plan must pre-satisfy what the reviewer will check — the reviewer's
 lanes are the review-lanes catalog
-(`software-development/policy/definition-of-done-lanes`). For each PRD success
-criterion, identify which lanes (DoD gates) it triggers and verify those
-implications are reflected as task verification steps.
+(`software-development/policy/definition-of-done-lanes`). Produce a complete
+lane-coverage report in the plan: one line per lane in the catalog, marking it
+triggered (naming how the plan satisfies it) or `N/A` (with reason). No lane is
+omitted — silence is not coverage.
 
-A plan that does not anticipate review lanes will produce review findings that cost
-more to fix than they cost to prevent.
+- Deliverable-producing lanes (tests, security, docs, config, browser/UI, ADR)
+  are ticked by naming the task and the artifact it produces (the doc lane via
+  step 4b).
+- Lanes that produce no artifact — `code` Duplication, `paradigm` Component
+  reuse, and `simplify` — are ticked against the plan's own `referenced-paths`:
+  confirm no task re-derives, mirrors, or re-implements logic an existing cited
+  symbol already provides; where shared logic is needed, one task extracts it
+  once and the others call it. A task that duplicates an existing symbol instead
+  of reusing it is a defect to fix before the plan is complete.
+
+A plan that does not tick every lane will produce review findings that cost more
+to fix than they cost to prevent.
 
 ### 4b. Reflect the behavioral delta in doc snippets (mandatory)
 

@@ -162,13 +162,13 @@ Read `telec todo artifacts read {slug} investigation` and
 
 Apply the DoD-driven review-awareness rule from the preparation artifact
 quality policy. Produce a `Lane anticipation` section in
-`plan-review-findings.md` with one entry per requirement, per triggered lane.
-
-The authoritative lane set is the review-lanes catalog
-(`software-development/policy/definition-of-done-lanes`) — anticipate every lane
-it lists that this work triggers. Each entry names the specific artifact the
-build-review lane will validate and the plan task that produces it; the key lanes
-to pre-satisfy:
+`plan-review-findings.md` that verdicts **every** lane in the review-lanes
+catalog (`software-development/policy/definition-of-done-lanes`): one line per
+lane, marking it satisfied (naming how), triggered-but-unmet (a finding), or
+`N/A` (with reason). A catalog lane with no line is itself an Important finding —
+silence is not coverage. For deliverable-producing lanes the line names the
+specific artifact the build-review lane will validate and the plan task that
+produces it; the key ones to pre-satisfy:
 
 - **Tests**: name the test file and the specific behavior each task observes at
   a meaningful boundary. "Tests" as a category is not compliance. Logger,
@@ -197,10 +197,17 @@ to pre-satisfy:
   and the spec section — each with the task that delivers it.
 - **Browser-based frontend or web UI**: name the Playwright smoke path and
   the task that records evidence for build and review.
+- **Reuse / duplication** (`code` Duplication #4, `paradigm` Component reuse #2,
+  `simplify`): these produce no deliverable artifact, so verdict them against the
+  plan's `referenced-paths` — does any task re-derive, mirror, or re-implement
+  logic an existing cited symbol already provides? A task that duplicates an
+  existing symbol instead of extracting it once and reusing it is an Important
+  finding (it ships a duplicate code path build-review would otherwise catch a
+  cycle later).
 
-A lane triggered by any requirement but not addressed by a named deliverable
-per that requirement is an Important finding. Record the finding and mark
-`needs_work`; the plan drafter owns the missing task.
+A catalog lane left without a verdict line — or triggered but unmet — is an
+Important finding. Record it and mark `needs_work`; the plan drafter owns the
+corrective task.
 
 ### 7. Policy compliance
 

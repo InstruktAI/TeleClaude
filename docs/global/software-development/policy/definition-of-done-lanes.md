@@ -43,6 +43,23 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 | doc-hygiene             | § Doc-snippet hygiene (when any `docs/**` snippet changed)                  | Verify changed snippet bodies state present-tense contract — no narration              |
 | simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                      |
 
+### Lane coverage is reported in full — no silent skips
+
+Lane coverage is a complete checklist, not a best-effort scan. The planner, the
+plan reviewer, and the build reviewer each report **one line per lane in the
+catalog above** — marking it satisfied (naming how), unmet (a finding), or `N/A`
+(with reason). A catalog lane with no line is itself a defect: silence is not
+coverage.
+
+Deliverable-producing lanes (tests, security, docs, config, browser/UI, ADR) are
+reported by naming the artifact and the task or diff that delivers it. The lanes
+that produce no artifact — `code` Duplication, `paradigm` Component reuse, and
+`simplify` — are reported against the changed surface itself: the plan's
+`referenced-paths` at plan time, the diff at build time. A task or change that
+re-derives, mirrors, or re-implements logic an existing symbol already provides,
+instead of extracting it once and reusing it, is a duplication finding on this
+checklist.
+
 ### Lane catalog
 
 #### Scope verification
