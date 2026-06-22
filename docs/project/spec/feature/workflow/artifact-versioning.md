@@ -142,6 +142,8 @@ artifact is routed back through prepare.
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
 carry no claim gate.
 
+<!-- planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
+
 #### UC-WAV9: Worker write to a held slug is refused as a claim conflict
 
 ```gherkin
@@ -152,6 +154,19 @@ Then the workflow service refuses the write as a claim conflict naming the holde
 And the response status is HTTP 409
 And the artifact's current version is unchanged
 ```
+
+<!-- change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
+
+#### UC-WAV9: Worker write to a prepare artifact is refused by role
+
+```gherkin
+Given a worker session that carries a non-prepare job role
+When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
+Then the workflow service refuses the write by role with HTTP 403, evaluated before the holder check
+And the artifact's current version is unchanged
+```
+
+<!-- /planned-change:fix-unclaimed-todo-not-claimed-by-invoking-a -->
 
 #### UC-WAV10: Write to a slug held by a different live session is refused
 

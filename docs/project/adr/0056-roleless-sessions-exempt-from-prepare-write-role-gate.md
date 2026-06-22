@@ -25,10 +25,10 @@ already-PREPARED todo nor refine it. The same role/binding premise leaked into t
 lifecycle-operation door: a manual `telec todo prepare <slug>` from an unbound
 operator session failed the `working_slug == slug` adoption check and fell through
 to dispatching a brand-new orchestrator session, rather than claiming the unheld
-todo in-process. Both behaviors contradict the claim-on-write model
-(`prepare-artifact-claim-on-write`) and the audit-only stance on lineage
-(`human-lineage-on-todos`): authorization derived from a role/identity premise
-rather than from the live-holder claim.
+todo in-process. Both behaviors contradict the claim-on-write authority model
+documented in the workflow artifact write-authority contract — and the audit-only
+treatment of creation lineage — under which authorization derives from the
+live-holder claim, never from a role or identity premise.
 
 ## Decision
 
