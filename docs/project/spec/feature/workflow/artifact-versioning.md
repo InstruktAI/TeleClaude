@@ -94,6 +94,8 @@ Then the workflow service refuses with a "delivered (read-only)" error
 
 ### Write authority
 
+<!-- planned-change:prepare-artifact-claim-on-write -->
+
 Prepare artifacts (`input`, `prd`, `architecture`, `diagnosis`,
 `implementation-plan`) are writable only by the prepare-orchestrator session
 bound to the slug — the session executing the prepare lifecycle. The work
@@ -142,6 +144,85 @@ When the workflow service persists the new version
 Then updated_by is the resolved caller principal, not a constant placeholder
 ```
 
+<!-- change:prepare-artifact-claim-on-write -->
+
+Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
+`implementation-plan`) are governed by a single claim-conflict rule, not by role
+ownership. A write is refused only when a **different live session is already
+driving the slug**; the refusal names that session so the human knows who to
+talk to. When no live session is driving the slug, the write is accepted **and
+the writing session becomes the slug's driver** — it claims the slug, so any
+subsequent dispatch for that slug is told it is already driven. The claim is held
+only for the life of the driving session: when that session ends the slug is free
+again, so a session that died after writing leaves no stale lock.
+
+The write path resolves the caller's identity, with parity to the stamp and
+artifact-remove boundaries, and records the resolved principal as `updated_by`.
+A dispatched worker cannot poison a prepare artifact: while its orchestrator is
+live, that orchestrator is the driver, so the worker's write hits the conflict.
+Routing a prepare-artifact change back through prepare when a work-phase defect
+is found is the workflow convention the driving session follows, not a gate the
+write boundary enforces. Work artifacts (`review-findings`, `deferrals`,
+`quality-checklist`) carry no claim gate.
+
+#### UC-WAV9: Worker write to a driven slug is refused as a claim conflict
+
+```gherkin
+Given a slug driven by a live orchestrator session
+And a worker session dispatched for that slug
+When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
+Then the workflow service refuses the write as a claim conflict before any state mutation
+And the refusal names the driving session
+And the artifact's current version is unchanged
+```
+
+#### UC-WAV10: Write to a slug driven by a different live session is refused
+
+```gherkin
+Given a slug already driven by a live session
+When a different session attempts to write a prepare artifact
+Then the workflow service refuses the write as a claim conflict before any state mutation
+And the refusal names the driving session
+```
+
+#### UC-WAV11: Write to an unclaimed slug is accepted and claims the slug
+
+```gherkin
+Given a slug with no live session driving it
+When a session writes a prepare artifact
+Then the workflow service accepts the write
+And the writing session becomes the slug's driver
+And records the resolved caller principal as updated_by
+```
+
+#### UC-WAV12: Artifact write records the resolved principal
+
+```gherkin
+Given a permitted prepare-artifact write
+When the workflow service persists the new version
+Then updated_by is the resolved caller principal, not a constant placeholder
+```
+
+#### UC-WAV13: A claim acquired by writing blocks a subsequent dispatch
+
+```gherkin
+Given a live session that became a slug's driver by writing a prepare artifact
+When a dispatch is attempted for that slug
+Then the dispatch is refused as already driven
+And the existing driving session is identified
+```
+
+#### UC-WAV14: The write-acquired claim releases when the driving session ends
+
+```gherkin
+Given a slug driven by a session that claimed it by writing
+When that session ends
+Then the slug has no live driver
+And another session may write its prepare artifacts and become the driver
+```
+
+<!-- /planned-change:prepare-artifact-claim-on-write -->
+
 ### Cross-context references
 
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.
@@ -150,7 +231,11 @@ Then updated_by is the resolved caller principal, not a constant placeholder
 ## Known caveats
 
 - The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `implementation-plan`).
+<!-- planned-change:prepare-artifact-claim-on-write -->
 - The `input` artifact is writable only by the prepare orchestrator (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+<!-- change:prepare-artifact-claim-on-write -->
+- The `input` artifact follows the claim-conflict write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+<!-- /planned-change:prepare-artifact-claim-on-write -->
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.
