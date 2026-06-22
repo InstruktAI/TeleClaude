@@ -68,22 +68,6 @@ And no new session is created
 
 #### Native form with no existing TeleClaude binding (fresh adoption)
 
-<!-- planned-change:revive-wrong-project-root -->
-
-```
-Given a caller invokes `telec sessions revive <native_id> --agent <name>`
-And no row in the session ledger references <native_id>
-When the service resolves the revive request
-Then the service validates that <native_id> resolves to a transcript on disk for that agent
-And on success, the service mints a fresh TeleClaude session id (UUID4)
-And creates a new session row with native_session_id = <native_id>, headless = true, launch intent kind = AGENT, launch intent native_session_id = <native_id>
-And associates the row with the caller's identity (initiator session id, email, origin = TERMINAL)
-And, if a project path was provided, splits it against trusted directories and stores project path and subdir on the row
-And then proceeds with the restart-agent flow against the newly minted session id
-```
-
-<!-- change:revive-wrong-project-root -->
-
 ```
 Given a caller invokes `telec sessions revive <native_id> --agent <name>`
 And no live session row references <native_id>
@@ -96,10 +80,6 @@ And derives the new row's project path and subdir from the native session's reco
 And falls back to splitting the provided project argument against trusted directories only when no prior row records <native_id>
 And then proceeds with the restart-agent flow against the newly minted session id
 ```
-
-<!-- /planned-change:revive-wrong-project-root -->
-
-<!-- planned:revive-wrong-project-root -->
 
 #### UC-SR1: Fresh adoption recovers the recorded project from the originating prior row
 
@@ -120,8 +100,6 @@ And a project argument is provided
 When the service resolves the revive request
 Then it splits the provided project argument against trusted directories and stores the result on the new row
 ```
-
-<!-- /planned:revive-wrong-project-root -->
 
 ```
 Given a caller invokes revive with `--agent <name>`
@@ -174,9 +152,7 @@ And the response payload reports a successful create with session id, host-pane 
 ## Known caveats
 
 - **Native-form revival without an existing binding always mints a new session row.** There is no "promote this orphan native id back into the original TeleClaude session" path — if the original row was deleted or was never created, revival creates a new row with a new session id.
-<!-- planned:revive-wrong-project-root -->
 - **A freshly-minted revival row inherits the native session's recorded project.** When a prior row — even a closed one — recorded where <native_id> ran, the new row reuses that project path and subdir; the caller's invocation directory is consulted only when no prior row records <native_id>. The earliest prior row wins, so a project recorded by an earlier buggy revive cannot override the original recording.
-<!-- /planned:revive-wrong-project-root -->
 
 - **The transcript continuity is the agent CLI's own.** TeleClaude does not splice transcript files; resumption relies on the agent CLI's native resume semantics. For Codex this maps to a rollout-file path; for Claude/Gemini it maps to transcript files indexed by directory layout.
 - **Agent mismatch on an existing native binding is rejected, not switched.** If a native id was first launched as Claude and a revive request asks for Gemini against the same id, the service rejects rather than relaunch the transcript under a different agent.

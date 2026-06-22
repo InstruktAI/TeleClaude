@@ -209,10 +209,14 @@ async def _resolve_revive_session_id(
     new_session_id = str(uuid.uuid4())
     project_path: str | None = None
     subdir: str | None = None
-    raw_project = http_request.query_params.get("project")
-    if raw_project:
-        trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
-        project_path, subdir = split_project_path_and_subdir(raw_project, trusted_dirs)
+    origin_project = await db.get_origin_project_for_native_session(session_id)
+    if origin_project is not None:
+        project_path, subdir = origin_project
+    else:
+        raw_project = http_request.query_params.get("project")
+        if raw_project:
+            trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
+            project_path, subdir = split_project_path_and_subdir(raw_project, trusted_dirs)
 
     cmd = CreateSessionCommand(
         session_id=new_session_id,

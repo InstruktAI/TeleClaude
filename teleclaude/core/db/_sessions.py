@@ -210,6 +210,29 @@ class DbSessionsMixin:
                 return None
             return self._to_core_session(row)
 
+    async def get_origin_project_for_native_session(
+        self, native_session_id: str
+    ) -> tuple[str | None, str | None] | None:
+        """Return the originating (project_path, subdir) for a native session id.
+
+        Selects the earliest-created session row bound to ``native_session_id``,
+        including closed rows, so the recorded project survives session closure
+        and resists pollution from later caller-cwd revive rows. Returns ``None``
+        when no row records the native id.
+        """
+        if not native_session_id:
+            return None
+        async with self._session() as db_session:
+            result = await db_session.exec(
+                select(db_models.Session)
+                .where(db_models.Session.native_session_id == native_session_id)
+                .order_by(db_models.Session.created_at.asc())
+            )
+            row = result.first()
+            if row is None:
+                return None
+            return (row.project_path, row.subdir)
+
     async def find_open_sessions_bound_to_todo(self, *, old_slug: str, cwd: str) -> list[db_models.Session]:
         """Return open session rows that still point at the source todo."""
         worktree_subdir = f"trees/{old_slug}"
