@@ -25,6 +25,20 @@ separate per-person config files (see the global-level disallowed-keys rule).
 Validation strips whitespace from `email` and persists the stripped value, so
 downstream consumers can rely on the stored email being canonicalized.
 
+<!-- planned:person-slug -->
+
+A canonical, stable, kebab-case `slug` is the single reference key for a
+person. The per-person workspace folder (`~/.teleclaude/people/<slug>/`) and
+every folder-keyed lookup resolve through `slug`; `name` is display and `email`
+is the contact identifier. The slug is validated at load time with the shared
+slug validator — the same format the project slug enforces — so empty,
+whitespace-only, or absent normalizes to `None` and any non-empty value must be
+kebab-case. A legacy entry authored before slugs derives its slug from the
+current name (or username) on load, persists it, and renames its workspace
+folder to the slug; the slug never changes thereafter.
+
+<!-- /planned:person-slug -->
+
 ## Canonical fields
 
 ### Use cases
@@ -154,6 +168,52 @@ And a validation error is raised: "Keys not allowed at global level: creds"
 And no person-entry parsing is attempted; loading fails first
 ```
 
+<!-- planned:person-slug -->
+
+#### UC-CFG-PERSON-13: Well-formed slug accepted and stripped
+
+```
+Given a the global overlay's people list entry with slug = "  alice-smith  "
+When PersonEntry validation runs
+Then the value is stripped to "alice-smith"
+And validate_slug("alice-smith") matches the shared slug pattern and returns without error
+And the stored slug is "alice-smith"
+```
+
+#### UC-CFG-PERSON-14: Empty or absent slug normalizes to None for legacy load
+
+```
+Given a the global overlay's people list entry that omits slug, or sets it to "" or "   "
+When PersonEntry validation runs
+Then the slug validator returns None
+And the entry is accepted so a pre-slug config still loads
+And the stored slug is None until slug migration fills it
+```
+
+#### UC-CFG-PERSON-15: Invalid slug format rejected
+
+```
+Given a the global overlay's people list entry with slug = "Alice_Smith"
+When PersonEntry validation runs
+Then validate_slug("Alice_Smith") fails the shared slug pattern
+And a validation error is raised: "Invalid slug. Use lowercase letters, numbers, and hyphens only"
+And the global overlay loader raises on the slug field before the app config is returned
+```
+
+#### UC-CFG-PERSON-16: Legacy person without slug is migrated on load
+
+```
+Given the global config lists a person { name: "Alice Smith", email: "alice@example.com" } with no slug
+And a workspace folder for the legacy name key exists under ~/.teleclaude/people/
+When person-slug migration runs
+Then a slug is derived from the name via normalize_slug ("alice-smith")
+And the slug is persisted on the person entry in global config
+And the workspace folder is renamed to ~/.teleclaude/people/alice-smith/
+And re-running the migration leaves the already-slugged entry and its folder unchanged
+```
+
+<!-- /planned:person-slug -->
+
 ### Cross-context references
 
 - Consumed by the identity bounded context — the principal resolver reads
@@ -175,11 +235,18 @@ And no person-entry parsing is attempted; loading fails first
 - `role` — `"admin" | "member" | "contributor" | "newcomer"`. Default: `"member"`.
 - `expertise` — optional `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]`. Default: `None`.
 - `proficiency` — optional `ProficiencyLevel`. **Deprecated** — use `expertise` instead. Default: `None`.
+<!-- planned:person-slug -->
+- `slug` — `None`, or a non-empty kebab-case string matching the shared slug pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$` after stripping. Empty, whitespace-only, or absent normalize to `None`. The canonical, stable reference key for the person; populated by slug migration or by `telec config people add`, and immutable thereafter.
+<!-- /planned:person-slug -->
 
 ## Known caveats
 
 - **No format validation on `email`.** The validator only enforces non-emptiness after strip; any non-empty string passes (no `@` requirement, no domain validation). Consumers receive whatever the operator wrote, minus surrounding whitespace.
+<!-- planned-change:person-slug -->
 - **`name` is unique by convention, not by schema.** Two `PersonEntry` rows with the same `name` are both accepted; downstream resolution must decide how to disambiguate.
+<!-- change:person-slug -->
+- **`slug` is the stable reference key; `name` is display only.** `slug` is the canonical, immutable key the workspace folder and every folder-keyed lookup resolve through. `name` may change freely and is unique only by convention; renaming a person updates `name` without touching `slug` or the workspace folder. Uniqueness of `slug` is enforced at creation (`ensure_unique_slug`), not by the schema — two on-disk entries with the same `slug` each load, and the collision matters only at folder resolution.
+<!-- /planned-change:person-slug -->
 - **`proficiency` and `expertise` are not jointly validated.** A `PersonEntry` may carry both fields at once; the schema accepts the combination without warning. Consumers choosing to honor `expertise` over `proficiency` must implement that preference themselves.
 - **Expertise nesting depth is fixed at two.** The type `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]` permits a domain to map either directly to a level or to a sub-dict; the sub-dict cannot itself nest further. Three-level taxonomies are unrepresentable.
 - **`extra="allow"` admits unknown keys.** Additional YAML keys on a `PersonEntry` land on the model silently; typos in field names will not fail validation.

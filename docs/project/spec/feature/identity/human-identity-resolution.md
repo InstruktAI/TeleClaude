@@ -14,6 +14,17 @@ visibility: 'public'
 
 The single lookup capability that maps any inbound human signal onto the operator's configured people. Every channel that surfaces a human — a terminal email login, a web session, a Telegram message, a Discord message, a WhatsApp message — funnels through human-identity resolution to answer "who is this, and what role do they hold?" The resolver indexes the configured `people` list (the source-of-truth list in global config) plus per-person config bindings for platform credentials. It builds lookup maps over email, username, Telegram user id, Discord user id, and WhatsApp phone, plus Discord display-name overrides, and refreshes them automatically when the underlying config changes on disk. The resolver returns an `IdentityContext` carrying the canonical `person_name`, `person_email`, `person_role`, and a platform-specific `display_name_override`. For platforms that route unknown users into the system (Discord, WhatsApp), the resolver returns a partial `IdentityContext` with `person_role` set to `customer` so the platform identity is preserved for downstream notification routing even though no configured person matched. The terminal and web paths return an empty `IdentityContext` on miss — callers without a configured person are not auto-customer-promoted on those channels.
 
+<!-- planned:person-slug -->
+
+The resolved `IdentityContext` also carries the person's canonical `slug` as
+`person_slug`. The resolver discovers each person's per-person config binding by
+their slug-named workspace folder (`~/.teleclaude/people/<slug>/`) rather than
+by a name-derived key, and channels that scaffold or bind a workspace — Discord
+and Telegram onboarding — thread `person_slug` through to those folder-keyed
+operations.
+
+<!-- /planned:person-slug -->
+
 ## Canonical fields
 
 ### Use cases
@@ -106,6 +117,18 @@ When the identity context's display name is read
 Then an identity error is raised
 Because the context is in an invalid state with no resolvable display name
 ```
+
+<!-- planned:person-slug -->
+
+```
+Given the global config lists a person with email maurice@instrukt.ai, name "Maurice Faber", slug "maurice-faber"
+And the per-person workspace folder ~/.teleclaude/people/maurice-faber/ holds the per-person config
+When the resolver is queried by email "maurice@instrukt.ai"
+Then it returns IdentityContext with person_slug="maurice-faber" alongside person_name and person_email
+And the per-person config binding is located by the slug-named folder, not by a name-derived key
+```
+
+<!-- /planned:person-slug -->
 
 ### Cross-context references
 
