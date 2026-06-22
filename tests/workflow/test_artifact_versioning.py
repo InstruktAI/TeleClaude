@@ -39,6 +39,7 @@ _PREPARE_ORCHESTRATOR = "prepare-orchestrator-session"
 _OTHER_DRIVER = "other-driver-session"
 _WORKER_SESSION = "dispatched-worker-session"
 _WORK_ORCHESTRATOR = "work-orchestrator-session"
+_ROLELESS_SESSION = "roleless-operator-session"
 _ORIGINAL_PRD = "# Original PRD"
 _POISONED_PRD = "# Poisoned PRD"
 _APPROVED_PRD = "# Approved PRD"
@@ -338,6 +339,99 @@ async def test_human_identity_write_to_unclaimed_slug_is_accepted_without_claimi
     assert not await _active_runner(todos_db, slug)
     metadata = {row["name"]: row["updated_by"] for row in await todos_db.artifact_metadata(slug)}
     assert metadata[ARTIFACT_INPUT] == _HUMAN_PRINCIPAL
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(_SPEC, "UC-WAV17")
+async def test_roleless_session_write_to_unheld_slug_claims_the_slug(tmp_path: Path, runtime_db: Db) -> None:
+    project_root = tmp_path / "project"
+    slug = "guard-wav17"
+    todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
+    # A registered TeleClaude session that carries no job role — the operator-driven shape.
+    await _register_session(
+        runtime_db,
+        _ROLELESS_SESSION,
+        job=None,
+        system_role=None,
+        working_slug="some-other-slug",
+        project_root=project_root,
+    )
+
+    response = await write_artifact(
+        slug=slug,
+        name=ARTIFACT_PRD,
+        content=_APPROVED_PRD,
+        cwd=str(project_root),
+        identity=_agent_identity(_ROLELESS_SESSION),
+    )
+
+    assert response.status == _OK_STATUS
+    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _APPROVED_PRD
+    assert await _active_runner(todos_db, slug) == _ROLELESS_SESSION
+    metadata = {row["name"]: row["updated_by"] for row in await todos_db.artifact_metadata(slug)}
+    assert metadata[ARTIFACT_PRD] == _ROLELESS_SESSION
+
+
+@pytest.mark.asyncio
+async def test_unregistered_session_write_to_prepare_artifact_is_refused(tmp_path: Path, runtime_db: Db) -> None:
+    project_root = tmp_path / "project"
+    slug = "guard-unknown"
+    todos_db = await _todo_in_stage(project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value)
+    # No session row is registered for this id — an unknown caller, not a roleless session.
+
+    with pytest.raises(HTTPException) as exc_info:
+        await write_artifact(
+            slug=slug,
+            name=ARTIFACT_PRD,
+            content=_POISONED_PRD,
+            cwd=str(project_root),
+            identity=_agent_identity("ghost-session"),
+        )
+
+    assert exc_info.value.status_code == 403
+    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) != _POISONED_PRD
+    assert not await _active_runner(todos_db, slug)
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(_SPEC, "UC-WAV18")
+async def test_roleless_session_write_to_slug_held_by_other_is_refused(tmp_path: Path, runtime_db: Db) -> None:
+    project_root = tmp_path / "project"
+    slug = "guard-wav18"
+    todos_db = await _todo_in_stage(
+        project_root, slug, lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value, active_runner=_OTHER_DRIVER
+    )
+    await todos_db.write_artifact(slug, ARTIFACT_PRD, _ORIGINAL_PRD, updated_by=_OTHER_DRIVER)
+    # A different live session holds the slug via its active_runner claim.
+    await _register_session(
+        runtime_db,
+        _OTHER_DRIVER,
+        job=None,
+        system_role=None,
+        working_slug=slug,
+        project_root=project_root,
+    )
+    await _register_session(
+        runtime_db,
+        _ROLELESS_SESSION,
+        job=None,
+        system_role=None,
+        working_slug="some-other-slug",
+        project_root=project_root,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await write_artifact(
+            slug=slug,
+            name=ARTIFACT_PRD,
+            content=_POISONED_PRD,
+            cwd=str(project_root),
+            identity=_agent_identity(_ROLELESS_SESSION),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert await todos_db.read_artifact(slug, ARTIFACT_PRD) == _ORIGINAL_PRD
+    assert await _active_runner(todos_db, slug) == _OTHER_DRIVER
 
 
 @pytest.mark.asyncio

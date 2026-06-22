@@ -82,6 +82,7 @@ pytestmark = pytest.mark.functional
 _SPEC = "project/spec/domain/workflow"
 _STAMPING_SPEC = "project/spec/feature/workflow/state-stamping"
 _VERSIONING_SPEC = "project/spec/feature/workflow/artifact-versioning"
+_PREPARE_SPEC = "project/spec/feature/workflow/prepare-state-machine"
 _FEATURE = "feature"
 _CHANGE = "change"
 _TASK = "task"
@@ -1143,11 +1144,12 @@ async def test_manual_dispatch_intent_routes_authorized_task_to_task_run(tmp_pat
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_adoption_requires_matching_working_slug(tmp_path: Path) -> None:
+async def test_manual_adoption_claims_unheld_slug_for_caller_bound_to_other_slug(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG)
-    caller = _Session(session_id="caller-session", working_slug=_WORK_SLUG)
+    # The operator session is bound to a different slug; it still claims the unheld todo in-process.
+    caller = _Session(session_id="caller-session", working_slug=_OTHER_SLUG)
 
     result = await adopt_manual_lifecycle_session(
         project_root,
@@ -1242,6 +1244,41 @@ async def test_operation_bridge_unbound_caller_dispatches_dedicated_runner(tmp_p
 
     assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} work {_SPAWN_SESSION}"
     assert client.requests[0]["command"] == _NEXT_WORK
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS11")
+async def test_operation_bridge_caller_bound_to_other_slug_claims_in_place_without_dispatch(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    # A live operator session bound to a different slug invokes on the unheld todo.
+    caller = _Session(session_id="caller-session", working_slug=_OTHER_SLUG)
+    client = _RunnerClient()
+    service = OperationsService(
+        db=cast(Db, _FakeDb({caller.session_id: caller})),
+        task_registry=cast(TaskRegistry, object()),
+        lifecycle_client_factory=lambda: client,
+    )
+    operation = _operation(caller_session_id=caller.session_id)
+    operation.cwd = str(project_root)
+
+    async def _continue_in_place(op: Operation) -> str:
+        assert op is operation
+        return _CONTINUED
+
+    result = await service._run_todo_lifecycle_operation(
+        operation,
+        lane=RunnerLane.WORK,
+        state_machine=_continue_in_place,
+    )
+
+    assert result == _CONTINUED
+    assert client.requests == []
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == caller.session_id
+    assert state["manually_started"] is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

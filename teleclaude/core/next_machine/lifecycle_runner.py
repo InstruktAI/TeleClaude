@@ -715,6 +715,16 @@ async def adopt_manual_lifecycle_session(
     *,
     db: Db | None = None,
 ) -> ManualLifecycleSessionResult:
+    """Claim an unheld slug in-process for a by-hand operator invocation.
+
+    A manual invocation on an unheld todo (no live holder; earlier branches
+    return ``ALREADY_DRIVEN`` when a different live session holds it) claims the
+    slug in-process for the calling session — ``active_runner = caller``,
+    ``manually_started = True`` — regardless of which slug the caller's session is
+    bound to. The only binding requirement is a live caller session: a session id
+    with no registry row returns ``NOT_BOUND``. The operation bridge then runs the
+    state machine in the calling session; no separate orchestrator is dispatched.
+    """
     project_root = resolve_state_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
@@ -766,12 +776,12 @@ async def adopt_manual_lifecycle_session(
         )
 
     session = await runtime_db.get_session(caller_session_id)
-    if session is None or session.working_slug != slug:
+    if session is None:
         return ManualLifecycleSessionResult(
             slug=slug,
             lane=lane,
             status=ManualLifecycleStatus.NOT_BOUND,
-            reason="caller-working-slug-mismatch",
+            reason="caller-session-missing",
         )
     adopted = await adopt_headless_session(todos_db=todos_db, slug=slug, session_id=caller_session_id, lane=lane)
     if not adopted:

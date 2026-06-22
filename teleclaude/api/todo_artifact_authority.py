@@ -50,23 +50,36 @@ def optional_capture_principal(identity: CallerIdentity | None) -> str | None:
 
 
 async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:
-    """Enforce the prepare-artifact caller-role allowlist before any holder check.
+    """Refuse a role-bearing non-prepare writer before any holder check.
 
-    A prepare artifact is writable only by a prepare-phase writer: a direct
-    human-identity session (empty session id) or a prepare-orchestrator
-    TeleClaude session. Every other persisted job — work orchestrator, create
-    orchestrator, integrator, and all worker jobs — is refused by role with a
-    403, independent of lifecycle phase and of whether the caller holds the slug.
+    A prepare artifact is writable by a prepare-phase writer — a direct
+    human-identity session (empty session id), a registered prepare-orchestrator
+    TeleClaude session, or a registered roleless session that carries no job (the
+    human-originated, operator-driven shape). The roleless write is then governed
+    by the live-holder claim alone. A session id with no registry row is an
+    unknown caller and is refused before it can claim; every registered session
+    that carries a non-prepare job — work orchestrator, create orchestrator,
+    integrator, and all worker jobs — is refused by role with a 403, independent
+    of lifecycle phase and of whether the caller holds the slug.
     """
     if not identity.session_id:
         return
     session = await runtime_db.get_session(identity.session_id)
-    job = session.job if session else None
-    if job != JobRole.PREPARE_ORCHESTRATOR.value:
+    if session is None:
         raise HTTPException(
             status_code=403,
             detail=(
-                f"prepare artifact '{name}' for '{slug}' is writable only by a "
-                f"prepare-orchestrator or human session; caller job '{job or '<none>'}' is refused"
+                f"prepare artifact '{name}' for '{slug}' is not writable by an "
+                f"unknown caller; session '{identity.session_id}' is not registered"
+            ),
+        )
+    if session.job is None:
+        return
+    if session.job != JobRole.PREPARE_ORCHESTRATOR.value:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"prepare artifact '{name}' for '{slug}' is not writable by a "
+                f"role-bearing session; caller job '{session.job}' is refused"
             ),
         )
