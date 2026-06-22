@@ -320,6 +320,9 @@ computer:
 <!-- planned:webhook-ingress -->
   is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the cluster.webhook relay (default: false)
 <!-- /planned:webhook-ingress -->
+<!-- planned:distributed-todo-postgres -->
+  is_cluster_db_host: boolean # designates this node as the host of the shared cluster database (Postgres); exactly one per fleet; default false. Independent of is_master and is_ingress_node — it is its own role. Currently this is usually the ingress node by deployment convention (no secure cross-node transport yet), but that is convention, not a requirement: the host may relocate once secure inter-node transport exists.
+<!-- /planned:distributed-todo-postgres -->
   user: string # remote attach identity; must match [A-Za-z0-9._-]+
   role: string
   default_working_dir: string
@@ -333,8 +336,8 @@ remote_computers:
     ip: string | null
     teleclaude_path: string | null
 <!-- planned:distributed-todo-postgres -->
-todo_db:
-  dsn: string # connection string for the fleet's shared todo-store Postgres, co-located on the single ingress node (computer.is_ingress_node — the one internet-facing node), NOT the is_master workhorse. Postgres binds loopback plus the cluster's private network only and is never on the public interface. Every node resolves this to reach the ingress node — loopback on the ingress node itself, the ingress node's private-network address elsewhere. Only the todo store uses this engine; every other store stays local SQLite. Absent/unreachable → todo writes fail closed with an operator-visible error (no local fallback, no queued local write).
+cluster_db:
+  dsn: string # connection string every node uses to reach the shared cluster database (Postgres), hosted on the node with computer.is_cluster_db_host. The host binds Postgres to loopback plus the cluster's private network only and never the public interface. Each node resolves the DSN to reach the host — loopback on the host itself, the host's private-network address from every other node. The todo store is the first store to use the cluster DB (more may follow); every other store stays local SQLite. Absent/unreachable → todo writes fail closed with an operator-visible error (no local fallback, no queued local write).
 <!-- /planned:distributed-todo-postgres -->
 telegram:
   enabled: boolean
