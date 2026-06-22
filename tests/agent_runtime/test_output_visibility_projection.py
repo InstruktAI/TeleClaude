@@ -206,6 +206,25 @@ def test_output_visibility_resolver_loads_matched_person_overlay(tmp_path: Path)
     assert settings.notifications == OUTPUT_VISIBILITY_WEB
 
 
+def test_output_visibility_resolver_matches_by_person_slug(tmp_path: Path) -> None:
+    person_dir = tmp_path / "mor-riz"
+    person_dir.mkdir()
+    (person_dir / "teleclaude.yml").write_text(
+        "\n".join(["settings:", "  output_visibility:", "    notifications: web", ""]),
+        encoding="utf-8",
+    )
+    people = [PersonEntry(name="Mor Riz", email="morriz@example.test", role=HUMAN_ROLE_ADMIN, slug="mor-riz")]
+
+    settings = resolve_person_output_visibility_settings(
+        person_slug="mor-riz",
+        people=people,
+        people_dir=tmp_path,
+    )
+
+    assert settings is not None
+    assert settings.notifications == OUTPUT_VISIBILITY_WEB
+
+
 def test_admin_output_visibility_defaults_include_system_messages_and_tool_calls() -> None:
     mobile_policy = visibility_policy_for_recipient(
         human_role=HUMAN_ROLE_ADMIN,

@@ -153,7 +153,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 continue
             if person_cfg is None:
                 continue
-            admin_configs.append((person.name, person_cfg))
+            admin_configs.append((person.slug or person.name, person_cfg))
         return admin_configs
 
     def _build_push_callbacks(self) -> list[Callable[..., object]]:
@@ -181,7 +181,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         from teleclaude.services.telegram import send_telegram_dm  # startup boundary
 
         try:
-            for person_name, person_cfg in self._iter_admin_people_configs():
+            for person_slug, person_cfg in self._iter_admin_people_configs():
                 chat_id = person_cfg.creds.telegram.chat_id if person_cfg.creds.telegram else None
                 if not chat_id:
                     continue
@@ -191,7 +191,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                     shutdown_check=self.shutdown_event.is_set,
                 )
                 push_callbacks.append(adapter.on_notification)
-                logger.info("TelegramDeliveryAdapter registered for admin %s", person_name)
+                logger.info("TelegramDeliveryAdapter registered for admin %s", person_slug)
         except Exception:
             logger.warning("Could not load people config for Telegram delivery adapter")
 
@@ -204,7 +204,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         from teleclaude.services.discord import send_discord_dm  # startup boundary
 
         try:
-            for person_name, person_cfg in self._iter_admin_people_configs():
+            for person_slug, person_cfg in self._iter_admin_people_configs():
                 user_id = person_cfg.creds.discord.user_id if person_cfg.creds.discord else None
                 if not user_id:
                     continue
@@ -214,7 +214,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                     shutdown_check=self.shutdown_event.is_set,
                 )
                 push_callbacks.append(adapter.on_notification)
-                logger.info("DiscordDeliveryAdapter registered for admin %s", person_name)
+                logger.info("DiscordDeliveryAdapter registered for admin %s", person_slug)
         except Exception:
             logger.warning("Could not load people config for Discord delivery adapter")
 
@@ -229,7 +229,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         from teleclaude.services.whatsapp import send_whatsapp_message  # startup boundary
 
         try:
-            for person_name, person_cfg in self._iter_admin_people_configs():
+            for person_slug, person_cfg in self._iter_admin_people_configs():
                 phone_number = person_cfg.creds.whatsapp.phone_number if person_cfg.creds.whatsapp else None
                 if not phone_number:
                     continue
@@ -245,7 +245,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                     shutdown_check=self.shutdown_event.is_set,
                 )
                 push_callbacks.append(adapter.on_notification)
-                logger.info("WhatsAppDeliveryAdapter registered for admin %s", person_name)
+                logger.info("WhatsAppDeliveryAdapter registered for admin %s", person_slug)
         except Exception:
             logger.warning("Could not load people config for WhatsApp delivery adapter")
 

@@ -11,7 +11,6 @@ from teleclaude.cli.config_handlers import (
     EnvVarStatus,
     get_global_config,
     get_person_config,
-    rename_person,
     save_global_config,
     save_person_config,
     save_raw_machine_config,
@@ -202,7 +201,8 @@ class ConfigContentEditingMixin:
                 if self._people_data:  # type: ignore[attr-defined]
                     cursor = self._current_cursor()  # type: ignore[attr-defined]
                     if 0 <= cursor < len(self._people_data):  # type: ignore[attr-defined]
-                        self._expanded_person = self._people_data[cursor].name  # type: ignore[attr-defined]
+                        selected_person = self._people_data[cursor]  # type: ignore[attr-defined]
+                        self._expanded_person = selected_person.slug or selected_person.name  # type: ignore[attr-defined]
                         self._person_field_cursor = 0  # type: ignore[attr-defined]
                         self._status_message = (
                             f"Expanded {self._expanded_person}. Press Esc to collapse / navigate to other people."  # type: ignore[attr-defined]
@@ -490,9 +490,9 @@ class ConfigContentEditingMixin:
                 save_raw_machine_config(self._raw_config)  # type: ignore[attr-defined]
             elif f.owning_source == "global":
                 global_config = get_global_config()
-                person_name = self._expanded_person  # type: ignore[attr-defined]
+                person_key = self._expanded_person  # type: ignore[attr-defined]
                 for p in global_config.people:
-                    if p.name == person_name:
+                    if (p.slug or p.name) == person_key:
                         key_without_prefix = key.split(".", 1)[1]
                         if ":" in key_without_prefix:
                             parent, child = key_without_prefix.split(":", 1)
@@ -502,15 +502,14 @@ class ConfigContentEditingMixin:
                                 setattr(p, parent, raw_parent)
                             raw_parent[child] = deserialized
                         else:
-                            if key_without_prefix == "name" and deserialized != person_name:
-                                rename_person(person_name, deserialized)
-                                self._expanded_person = deserialized  # type: ignore[attr-defined]
+                            # Editing the name updates the display field only; the
+                            # slug and the workspace folder are immutable.
                             setattr(p, key_without_prefix, deserialized)
                         break
                 save_global_config(global_config)
             elif f.owning_source == "per-person":
-                person_name = self._expanded_person  # type: ignore[attr-defined]
-                person_config = get_person_config(person_name)
+                person_key = self._expanded_person  # type: ignore[attr-defined]
+                person_config = get_person_config(person_key)
 
                 key_without_prefix = key.split(".", 1)[1]
                 parts = key_without_prefix.split(".")
@@ -538,7 +537,7 @@ class ConfigContentEditingMixin:
                     self._status_is_error = True  # type: ignore[attr-defined]
                     return
 
-                save_person_config(person_name, person_config)
+                save_person_config(person_key, person_config)
 
             self._editing_var_name = None  # type: ignore[attr-defined]
             self._edit_buffer = ""  # type: ignore[attr-defined]

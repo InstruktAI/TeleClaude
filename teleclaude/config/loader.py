@@ -1,11 +1,15 @@
 """Configuration file loading and validation."""
 
+import fcntl
 import os
+from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import yaml
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
+from ruamel.yaml import YAML
 
 from teleclaude.config.schema import (
     AppConfig,
@@ -89,6 +93,96 @@ def save_project_config(path: Path, config: ProjectConfig) -> None:
         raise
 
 
+def _represent_enum(representer: Any, data: Enum) -> Any:
+    """Serialize any Enum (incl. StrEnum) as its underlying value for YAML."""
+    return representer.represent_data(data.value)
+
+
+def _atomic_yaml_write(path: Path, data: dict[str, Any]) -> None:  # guard: loose-dict - YAML serialization boundary
+    """Atomic YAML write using tmp file + os.replace.
+
+    Preserves existing formatting when possible by using ruamel.yaml
+    round-trip mode. Falls back to fresh write if file doesn't exist.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(".lock")
+    tmp_path = path.with_suffix(".tmp")
+
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.default_flow_style = False
+    yaml_rt.representer.add_multi_representer(Enum, _represent_enum)
+
+    with open(lock_path, "w", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            pass
+
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                yaml_rt.dump(data, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, path)
+        except Exception:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise
+        finally:
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+
+
+def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - Pydantic model_dump output
+    """Convert a Pydantic model to a dict suitable for YAML serialization."""
+    return model.model_dump(mode="json", exclude_defaults=True)
+
+
+def _deep_merge(
+    base: dict[str, Any],  # guard: loose-dict - recursive merge of arbitrary YAML
+    overlay: dict[str, Any],  # guard: loose-dict - recursive merge of arbitrary YAML
+) -> dict[str, Any]:  # guard: loose-dict - recursive merge of arbitrary YAML
+    """Recursively merge overlay into base, returning a new dict."""
+    result = dict(base)
+    for key, value in overlay.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
+    """Atomic merge-write of global config.
+
+    Reads the existing file first and merges model fields on top, preserving
+    keys that are not part of the GlobalConfig schema (e.g. jobs, deployment).
+    """
+    target = path or GLOBAL_CONFIG_PATH
+    existing: dict[str, Any] = {}  # guard: loose-dict - raw YAML config
+    if target.exists():
+        yaml_rt = YAML()
+        with open(target, encoding="utf-8") as f:
+            existing = yaml_rt.load(f) or {}
+    overlay = _model_to_dict(config)
+    merged = _deep_merge(existing, overlay)
+    _atomic_yaml_write(target, merged)
+    logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
+
+
+def save_person_config(slug: str, config: PersonConfig) -> None:
+    """Atomic write of per-person config keyed by slug. Creates directory if needed."""
+    person_dir = PEOPLE_DIR / slug
+    person_dir.mkdir(parents=True, exist_ok=True)
+    target = person_dir / "teleclaude.yml"
+    data = _model_to_dict(config)
+    _atomic_yaml_write(target, data)
+    logger.info("Saved person config for %s to %s", slug, target)
+
+
 def load_global_config(path: Path | None = None) -> GlobalConfig:
     """Load global-level configuration."""
     if path is None:
@@ -110,11 +204,21 @@ def _person_config_keys(person: PersonEntry) -> set[str]:
     keys = {normalize_person_config_key(person.name)}
     if person.username:
         keys.add(normalize_person_config_key(person.username))
+    if person.slug:
+        keys.add(normalize_person_config_key(person.slug))
     return keys
 
 
 def find_person_config_path(person: PersonEntry, people_dir: Path = PEOPLE_DIR) -> Path | None:
-    """Find a per-person config file by scanning known person directories."""
+    """Find a per-person config file by slug, falling back to legacy name/username keys.
+
+    The slug-named folder is the canonical location; the legacy scan covers the
+    transition window before a person's folder has been renamed to its slug.
+    """
+    if person.slug:
+        slug_path = people_dir / person.slug / "teleclaude.yml"
+        if slug_path.exists():
+            return slug_path
     person_keys = _person_config_keys(person)
     for person_config_path in sorted(people_dir.glob("*/teleclaude.yml")):
         if normalize_person_config_key(person_config_path.parent.name) in person_keys:
@@ -135,10 +239,13 @@ def _find_person_entry(
     people: list[PersonEntry],
     person_email: str | None = None,
     person_name: str | None = None,
+    person_slug: str | None = None,
 ) -> PersonEntry | None:
     normalized_email = person_email.lower() if person_email else None
     normalized_name = normalize_person_config_key(person_name) if person_name else None
     for person in people:
+        if person_slug and person.slug == person_slug:
+            return person
         if normalized_email and person.email.lower() == normalized_email:
             return person
         if normalized_name and normalized_name in _person_config_keys(person):
@@ -150,12 +257,18 @@ def resolve_person_output_visibility_settings(
     *,
     person_email: str | None = None,
     person_name: str | None = None,
+    person_slug: str | None = None,
     people: list[PersonEntry] | None = None,
     people_dir: Path = PEOPLE_DIR,
 ) -> OutputVisibilitySettings | None:
     """Resolve optional per-person output visibility settings for a recipient."""
     known_people = people if people is not None else load_global_config().people
-    person = _find_person_entry(people=known_people, person_email=person_email, person_name=person_name)
+    person = _find_person_entry(
+        people=known_people,
+        person_email=person_email,
+        person_name=person_name,
+        person_slug=person_slug,
+    )
     if person is None:
         return None
     person_config = load_person_config_for_entry(person, people_dir)

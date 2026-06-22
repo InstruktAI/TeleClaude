@@ -112,25 +112,29 @@ def generate_invite_links(
 # --- Workspace Scaffolding ---
 
 
-def scaffold_personal_workspace(person_name: str) -> Path:
+def scaffold_personal_workspace(person_slug: str, display_name: str | None = None) -> Path:
     """Ensure personal workspace directory exists and is ready.
 
-    Returns the person's folder (~/.teleclaude/people/{name}/).
+    Returns the person's slug-keyed folder (~/.teleclaude/people/{slug}/).
+    ``display_name`` seeds the default AGENTS.master.md greeting; it falls back
+    to the slug when omitted.
     """
-    person_path = _PEOPLE_DIR / person_name
+    person_path = _PEOPLE_DIR / person_slug
     person_path.mkdir(parents=True, exist_ok=True)
+
+    greeting_name = display_name or person_slug
 
     # Create default AGENTS.master.md only if absent (it normally lives here already)
     agents_master = person_path / "AGENTS.master.md"
     if not agents_master.exists():
-        agents_master.write_text(f"You are the personal assistant of {person_name}.\n", encoding="utf-8")
-        logger.info("Created default AGENTS.master.md for %s", person_name)
+        agents_master.write_text(f"You are the personal assistant of {greeting_name}.\n", encoding="utf-8")
+        logger.info("Created default AGENTS.master.md for %s", person_slug)
 
     # Create minimal teleclaude.yml if not present
     workspace_config = person_path / "teleclaude.yml"
     if not workspace_config.exists():
         workspace_config.write_text("# Personal workspace config\n", encoding="utf-8")
-        logger.info("Created teleclaude.yml for %s workspace", person_name)
+        logger.info("Created teleclaude.yml for %s workspace", person_slug)
 
     return person_path
 
@@ -138,15 +142,15 @@ def scaffold_personal_workspace(person_name: str) -> Path:
 # --- Credential Binding ---
 
 
-def bind_discord_credentials(person_name: str, discord_user_id: str) -> None:
-    """Bind Discord credentials to person config."""
-    person_config = get_person_config(person_name)
+def bind_discord_credentials(person_slug: str, discord_user_id: str) -> None:
+    """Bind Discord credentials to a person config keyed by slug."""
+    person_config = get_person_config(person_slug)
     if not person_config.creds.discord:
         person_config.creds.discord = DiscordCreds(user_id=discord_user_id)
     else:
         person_config.creds.discord.user_id = discord_user_id
-    save_person_config(person_name, person_config)
-    logger.info("Bound Discord user_id for %s", person_name)
+    save_person_config(person_slug, person_config)
+    logger.info("Bound Discord user_id for slug %s", person_slug)
 
 
 # --- Email Delivery ---

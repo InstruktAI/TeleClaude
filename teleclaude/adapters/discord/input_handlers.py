@@ -31,6 +31,7 @@ from teleclaude.core.models import (
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.invite import scaffold_personal_workspace
+from teleclaude.slug import normalize_slug
 from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, KeysCommand
 
 logger = get_logger(__name__)
@@ -208,7 +209,8 @@ class InputHandlersMixin:
                 project_path = teleclaude_config.config.computer.help_desk_dir
 
             if identity.person_name:
-                project_path = str(scaffold_personal_workspace(identity.person_name))
+                person_slug = identity.person_slug or normalize_slug(identity.person_name)
+                project_path = str(scaffold_personal_workspace(person_slug, identity.person_name))
             else:
                 # Ensure a deterministic workspace path exists for legacy team channels.
                 if project_path:

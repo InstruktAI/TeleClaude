@@ -9,6 +9,7 @@ from ruamel.yaml import YAML
 
 import teleclaude.cli.config_handlers as handlers
 import teleclaude.config as _tc_config_module
+import teleclaude.config.loader as loader
 from teleclaude.cli.tui.views._config_constants import _SUBTABS, Subtab
 from teleclaude.cli.tui.views.config import ConfigContent
 from teleclaude.cli.tui.views.config_render import _MASKED_VALUE
@@ -117,6 +118,8 @@ def machine_tui(tmp_path, monkeypatch):
 
         monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
         monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
+        monkeypatch.setattr(loader, "GLOBAL_CONFIG_PATH", global_config_path)
+        monkeypatch.setattr(loader, "PEOPLE_DIR", people_dir)
         monkeypatch.setattr(handlers, "_DEFAULT_ENV_PATH", env_file_path)
         monkeypatch.setattr(handlers, "list_person_dirs", lambda: [])
         monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
@@ -425,10 +428,13 @@ def test_tui_source_aware_persistence(tmp_path, monkeypatch):
     )
 
     # Global config (requires email, role must be admin/member/contributor/newcomer)
-    yaml.dump({"people": [{"name": "Alice", "email": "alice@example.com", "role": "member"}]}, global_config_path)
+    yaml.dump(
+        {"people": [{"name": "Alice", "email": "alice@example.com", "role": "member", "slug": "alice"}]},
+        global_config_path,
+    )
 
-    # Per-person config for Alice
-    alice_dir = people_dir / "Alice"
+    # Per-person config for Alice, in her slug-named folder
+    alice_dir = people_dir / "alice"
     alice_dir.mkdir()
     yaml.dump(
         {"interests": [], "settings": {"output_visibility": {"notifications": "both"}}, "unknown_key": "preserve_me"},
@@ -441,10 +447,12 @@ def test_tui_source_aware_persistence(tmp_path, monkeypatch):
     # Monkeypatch paths in handlers and config module
     monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
     monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
+    monkeypatch.setattr(loader, "GLOBAL_CONFIG_PATH", global_config_path)
+    monkeypatch.setattr(loader, "PEOPLE_DIR", people_dir)
     monkeypatch.setattr(handlers, "_DEFAULT_ENV_PATH", env_file_path)
     monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
     monkeypatch.setattr(_tc_config_module, "config_path", machine_config_path)
-    monkeypatch.setattr(handlers, "list_person_dirs", lambda: ["Alice"])
+    monkeypatch.setattr(handlers, "list_person_dirs", lambda: ["alice"])
 
     # Setup temporary RuntimeConfig singleton
     old_rc = get_runtime_config()
@@ -486,7 +494,7 @@ def test_tui_source_aware_persistence(tmp_path, monkeypatch):
 
         # 2. Edit global identity field (owning_source="global")
         content.active_subtab = 1  # Subtab.PEOPLE
-        content._expanded_person = "Alice"
+        content._expanded_person = "alice"
         content._save_reflected_field("identity.role", "admin")
 
         # Verify global config updated
@@ -555,17 +563,22 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
         machine_config_path,
     )
 
-    # Global config: Bob exists with valid email and role
-    yaml.dump({"people": [{"name": "Bob", "email": "bob@example.com", "role": "member"}]}, global_config_path)
+    # Global config: Bob exists with valid email, role, and slug
+    yaml.dump(
+        {"people": [{"name": "Bob", "email": "bob@example.com", "role": "member", "slug": "bob"}]},
+        global_config_path,
+    )
 
     # Bob's directory and teleclaude.yml do NOT exist!
 
     # Monkeypatch paths
     monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
     monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
+    monkeypatch.setattr(loader, "GLOBAL_CONFIG_PATH", global_config_path)
+    monkeypatch.setattr(loader, "PEOPLE_DIR", people_dir)
     monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
     monkeypatch.setattr(_tc_config_module, "config_path", machine_config_path)
-    monkeypatch.setattr(handlers, "list_person_dirs", lambda: ["Bob"])
+    monkeypatch.setattr(handlers, "list_person_dirs", lambda: ["bob"])
 
     # Setup temporary RuntimeConfig singleton
     old_rc = get_runtime_config()
@@ -590,7 +603,7 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
 
         # Set active tab and expanded person to Bob
         content.active_subtab = 1  # Subtab.PEOPLE
-        content._expanded_person = "Bob"
+        content._expanded_person = "bob"
 
         fields_by_key = {field.key: field for field in content.person_reflected_fields}
         identity_sections = {field.section for field in fields_by_key.values() if field.key.startswith(IDENTITY_PREFIX)}
@@ -610,7 +623,7 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
         assert overlay_discord_user_id.owning_source == PER_PERSON_SOURCE
 
         # Verify overlay path doesn't exist yet
-        bob_config_path = people_dir / "Bob" / "teleclaude.yml"
+        bob_config_path = people_dir / "bob" / "teleclaude.yml"
         assert not bob_config_path.exists()
 
         # Save overlay setting (output_visibility.notifications)

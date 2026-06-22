@@ -16,7 +16,6 @@ import os
 import secrets
 import shutil
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -27,14 +26,19 @@ from ruamel.yaml.error import YAMLError
 
 import teleclaude.config as _tc_config_module
 from teleclaude.config.invitations import load_invitations, save_invitations
-from teleclaude.config.loader import load_global_config, load_person_config
+from teleclaude.config.loader import (
+    _atomic_yaml_write,
+    load_global_config,
+    load_person_config,
+)
+from teleclaude.config.loader import save_global_config as save_global_config
+from teleclaude.config.loader import save_person_config as save_person_config
 from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.paths import INVITATIONS_PATH, TELECLAUDE_HOME
 from teleclaude.runtime.config import get_runtime_config
 
 logger = get_logger(__name__)
 
-_TELECLAUDE_DIR = TELECLAUDE_HOME
 _GLOBAL_CONFIG_PATH = TELECLAUDE_HOME / "teleclaude.yml"
 _PEOPLE_DIR = TELECLAUDE_HOME / "people"
 _DEFAULT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
@@ -242,9 +246,9 @@ def get_global_config(path: Path | None = None) -> GlobalConfig:
     return load_global_config(path or _GLOBAL_CONFIG_PATH)
 
 
-def get_person_config(name: str) -> PersonConfig:
-    """Load per-person config from ~/.teleclaude/people/{name}/teleclaude.yml."""
-    person_path = _PEOPLE_DIR / name / "teleclaude.yml"
+def get_person_config(slug: str) -> PersonConfig:
+    """Load per-person config from ~/.teleclaude/people/{slug}/teleclaude.yml."""
+    person_path = _PEOPLE_DIR / slug / "teleclaude.yml"
     return load_person_config(person_path)
 
 
@@ -263,96 +267,10 @@ def list_person_dirs() -> list[str]:
 
 
 # --- Writing (atomic) ---
-
-
-def _represent_enum(representer: Any, data: Enum) -> Any:
-    """Serialize any Enum (incl. StrEnum) as its underlying value for YAML."""
-    return representer.represent_data(data.value)
-
-
-def _atomic_yaml_write(path: Path, data: dict[str, Any]) -> None:  # guard: loose-dict - YAML serialization boundary
-    """Atomic YAML write using tmp file + os.replace.
-
-    Preserves existing formatting when possible by using ruamel.yaml
-    round-trip mode. Falls back to fresh write if file doesn't exist.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_suffix(".lock")
-    tmp_path = path.with_suffix(".tmp")
-
-    yaml = YAML()
-    yaml.preserve_quotes = True
-    yaml.default_flow_style = False
-    yaml.representer.add_multi_representer(Enum, _represent_enum)
-
-    with open(lock_path, "w", encoding="utf-8") as lock_file:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        except OSError:
-            pass
-
-        try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                yaml.dump(data, f)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_path, path)
-        except Exception:
-            if tmp_path.exists():
-                tmp_path.unlink()
-            raise
-        finally:
-            try:
-                lock_path.unlink()
-            except OSError:
-                pass
-
-
-def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - Pydantic model_dump output
-    """Convert a Pydantic model to a dict suitable for YAML serialization."""
-    return model.model_dump(mode="json", exclude_defaults=True)
-
-
-def _deep_merge(
-    base: dict[str, Any],  # guard: loose-dict - recursive merge of arbitrary YAML
-    overlay: dict[str, Any],  # guard: loose-dict - recursive merge of arbitrary YAML
-) -> dict[str, Any]:  # guard: loose-dict - recursive merge of arbitrary YAML
-    """Recursively merge overlay into base, returning a new dict."""
-    result = dict(base)
-    for key, value in overlay.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
-    """Atomic merge-write of global config.
-
-    Reads the existing file first and merges model fields on top, preserving
-    keys that are not part of the GlobalConfig schema (e.g. jobs, deployment).
-    """
-    target = path or _GLOBAL_CONFIG_PATH
-    existing: dict[str, Any] = {}  # guard: loose-dict - raw YAML config
-    if target.exists():
-        yaml = YAML()
-        with open(target, encoding="utf-8") as f:
-            existing = yaml.load(f) or {}
-    overlay = _model_to_dict(config)
-    merged = _deep_merge(existing, overlay)
-    _atomic_yaml_write(target, merged)
-    logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
-
-
-def save_person_config(name: str, config: PersonConfig) -> None:
-    """Atomic write of per-person config. Creates directory if needed."""
-    person_dir = _PEOPLE_DIR / name
-    person_dir.mkdir(parents=True, exist_ok=True)
-    target = person_dir / "teleclaude.yml"
-    data = _model_to_dict(config)
-    _atomic_yaml_write(target, data)
-    logger.info("Saved person config for %s to %s", name, target)
+#
+# The global/person config writers and their YAML helpers live in
+# teleclaude.config.loader (the config domain). They are re-exported above so
+# every existing importer of config_handlers is unaffected.
 
 
 def save_machine_config(config: _tc_config_module.Config, path: Path | None = None) -> None:
@@ -379,47 +297,51 @@ def save_raw_machine_config(
 
 
 def add_person(entry: PersonEntry) -> None:
-    """Add person to global people list and create per-person directory."""
+    """Add person to global people list and create their slug-keyed directory."""
     config = get_global_config()
 
-    if any(p.name == entry.name for p in config.people):
-        raise ValueError(f"Person '{entry.name}' already exists")
+    if not entry.slug:
+        raise ValueError(f"Person '{entry.name}' must have a slug before being added")
+    if any(p.slug == entry.slug for p in config.people):
+        raise ValueError(f"Person with slug '{entry.slug}' already exists")
 
     config.people.append(entry)
     save_global_config(config)
 
     person_config = PersonConfig()
-    save_person_config(entry.name, person_config)
-    logger.info("Added person '%s' with role '%s'", entry.name, entry.role)
+    save_person_config(entry.slug, person_config)
+    logger.info("Added person '%s' (slug '%s') with role '%s'", entry.name, entry.slug, entry.role)
 
 
 def rename_person(old_name: str, new_name: str) -> None:
-    """Rename a person's configuration directory."""
-    old_dir = _PEOPLE_DIR / old_name
-    new_dir = _PEOPLE_DIR / new_name
-    if old_dir.exists() and not new_dir.exists():
-        old_dir.rename(new_dir)
-        logger.info("Renamed person directory from '%s' to '%s'", old_name, new_name)
+    """Update a person's display name. The slug and workspace folder are immutable."""
+    config = get_global_config()
+    for person in config.people:
+        if person.name == old_name:
+            person.name = new_name
+            save_global_config(config)
+            logger.info("Renamed person display name from '%s' to '%s'", old_name, new_name)
+            return
 
 
-def remove_person(name: str, delete_directory: bool = False) -> None:
-    """Remove person from global list. Optionally remove their config directory."""
+def remove_person(slug: str, delete_directory: bool = False) -> None:
+    """Remove person from global list by slug. Optionally remove their config directory."""
     config = get_global_config()
     original_count = len(config.people)
-    config.people = [p for p in config.people if p.name != name]
+    config.people = [p for p in config.people if p.slug != slug]
 
     if len(config.people) == original_count:
-        raise ValueError(f"Person '{name}' not found")
+        raise ValueError(f"Person with slug '{slug}' not found")
 
     save_global_config(config)
 
     if delete_directory:
-        person_dir = _PEOPLE_DIR / name
+        person_dir = _PEOPLE_DIR / slug
         if person_dir.exists():
             shutil.rmtree(person_dir)
-            logger.info("Removed person directory for '%s'", name)
+            logger.info("Removed person directory for slug '%s'", slug)
 
-    logger.info("Removed person '%s' from global config", name)
+    logger.info("Removed person with slug '%s' from global config", slug)
 
 
 _migration_done = False
@@ -463,44 +385,44 @@ def generate_invite_token() -> str:
     return f"inv_{secrets.token_hex(8)}"
 
 
-def set_invite_token(name: str) -> str:
-    """Generate and persist a new invite token for the person. Returns the token."""
+def set_invite_token(slug: str) -> str:
+    """Generate and persist a new invite token for the person slug. Returns the token."""
     _migrate_invitations_if_needed()
     token = generate_invite_token()
 
     invitations = load_invitations()
     # Remove any existing tokens mapped to this person
-    for t, n in list(invitations.items()):
-        if n == name:
+    for t, holder in list(invitations.items()):
+        if holder == slug:
             del invitations[t]
 
-    invitations[token] = name
+    invitations[token] = slug
     save_invitations(invitations)
 
     # Also clean up any lingering invite_token from per-person config model_extra
     try:
-        person_config = get_person_config(name)
+        person_config = get_person_config(slug)
         if person_config.model_extra is not None and "invite_token" in person_config.model_extra:
             person_config.model_extra.pop("invite_token")
-            save_person_config(name, person_config)
+            save_person_config(slug, person_config)
     except (OSError, ValueError) as e:
-        logger.warning("Failed to clean up invite_token in per-person config for '%s': %s", name, e)
+        logger.warning("Failed to clean up invite_token in per-person config for '%s': %s", slug, e)
 
-    logger.info("Set invite token for '%s'", name)
+    logger.info("Set invite token for slug '%s'", slug)
     return token
 
 
 def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
-    """Find a person by their invite token using the O(1) invitations store. Returns (person_name, config) or None."""
+    """Find a person by their invite token using the O(1) invitations store. Returns (person_slug, config) or None."""
     _migrate_invitations_if_needed()
     invitations = load_invitations()
     if token in invitations:
-        person_name = invitations[token]
+        person_slug = invitations[token]
         try:
-            person_config = get_person_config(person_name)
-            return (person_name, person_config)
+            person_config = get_person_config(person_slug)
+            return (person_slug, person_config)
         except (OSError, ValueError, KeyError) as e:
-            logger.warning("Failed to load config for person '%s': %s", person_name, e)
+            logger.warning("Failed to load config for slug '%s': %s", person_slug, e)
             return None
     return None
 

@@ -25,6 +25,7 @@ class IdentityContext:
 
     person_name: str | None = None
     person_email: str | None = None
+    person_slug: str | None = None
     person_role: str | None = None
     display_name_override: str | None = None
     platform: str | None = None
@@ -135,6 +136,8 @@ class IdentityResolver:
             people_by_key[self._normalize_key(person.name)] = person
             if person.username:
                 people_by_key[self._normalize_key(person.username)] = person
+            if person.slug:
+                people_by_key[self._normalize_key(person.slug)] = person
 
         for person_config_path in sorted(PEOPLE_DIR.glob("*/teleclaude.yml")):
             person_key = self._normalize_key(person_config_path.parent.name)
@@ -173,6 +176,7 @@ class IdentityResolver:
             return IdentityContext(
                 person_name=person.name,
                 person_email=person.email,
+                person_slug=person.slug,
                 person_role=self._normalize_role(person.role),
                 display_name_override=self._display_name_override_for(person),
             )
@@ -204,6 +208,7 @@ class IdentityResolver:
                     return IdentityContext(
                         person_name=person.name,
                         person_email=person.email,
+                        person_slug=person.slug,
                         person_role=self._normalize_role(person.role),
                         display_name_override=self._display_name_override_for(person),
                         platform="terminal",
@@ -220,6 +225,7 @@ class IdentityResolver:
                         return IdentityContext(
                             person_name=person.name,
                             person_email=person.email,
+                            person_slug=person.slug,
                             person_role=self._normalize_role(person.role),
                             display_name_override=self._display_name_override_for(person),
                             platform="telegram",
@@ -236,6 +242,7 @@ class IdentityResolver:
                     return IdentityContext(
                         person_name=person.name,
                         person_email=person.email,
+                        person_slug=person.slug,
                         person_role=self._normalize_role(person.role),
                         display_name_override=self._display_name_override_for(person),
                         platform="web",
@@ -251,6 +258,7 @@ class IdentityResolver:
                     return IdentityContext(
                         person_name=person.name,
                         person_email=person.email,
+                        person_slug=person.slug,
                         person_role=self._normalize_role(person.role),
                         display_name_override=self._discord_nick_by_user_id.get(discord_uid_str),
                         platform="discord",
@@ -271,6 +279,7 @@ class IdentityResolver:
                     return IdentityContext(
                         person_name=person.name,
                         person_email=person.email,
+                        person_slug=person.slug,
                         person_role=self._normalize_role(person.role),
                         display_name_override=self._display_name_override_for(person),
                         platform="whatsapp",

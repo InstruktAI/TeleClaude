@@ -34,15 +34,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 
 **Overlay**
 
-<!-- planned-change:person-slug -->
-
-: One layer in the effective-configuration computation. Three overlays exist: global (`~/.teleclaude/teleclaude.yml`), project (`<project>/teleclaude.yml`), person (`~/.teleclaude/people/<name>/teleclaude.yml`).
-
-<!-- change:person-slug -->
-
 : One layer in the effective-configuration computation. Three overlays exist: global (`~/.teleclaude/teleclaude.yml`), project (`<project>/teleclaude.yml`), person (`~/.teleclaude/people/<slug>/teleclaude.yml`).
-
-<!-- /planned-change:person-slug -->
 
 **Runtime configuration**
 

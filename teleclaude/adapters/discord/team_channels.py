@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
 from teleclaude.cli.config_handlers import get_person_config
 from teleclaude.paths import PEOPLE_DIR
+from teleclaude.slug import normalize_slug
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -85,12 +86,12 @@ class TeamChannelsMixin:
             name = getattr(person, "name", None)
             if not isinstance(name, str) or not name.strip():
                 continue
-            slug = name.lower().replace(" ", "-")
+            slug = getattr(person, "slug", None) or normalize_slug(name)
 
             # Resolve the person's Discord user ID from per-person config
             discord_user_id: int | None = None
             try:
-                person_cfg = get_person_config(name)
+                person_cfg = get_person_config(slug)
                 if person_cfg.creds.discord:
                     discord_user_id = self._parse_optional_int(person_cfg.creds.discord.user_id)
             except (AttributeError, OSError, TypeError, ValueError) as exc:
@@ -100,7 +101,7 @@ class TeamChannelsMixin:
                 guild, category, slug, discord_user_id, create=create
             )
             if ch_id is not None:
-                person_folder = str(PEOPLE_DIR / name)
+                person_folder = str(PEOPLE_DIR / slug)
                 self._team_channel_map[ch_id] = person_folder
                 logger.info("Team channel mapped: %s -> channel_id=%d discord_user=%s", name, ch_id, discord_user_id)
             else:

@@ -34,6 +34,7 @@ from teleclaude.cli.config_handlers import (
 )
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _maybe_show_help, _usage
+from teleclaude.config.migrations import migrate_person_slugs_if_needed
 from teleclaude.config.schema import PersonEntry, TelegramCreds
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.identity import get_identity_resolver
@@ -43,6 +44,8 @@ from teleclaude.invite import (
     resolve_telegram_bot_username,
     send_invite_email,
 )
+from teleclaude.paths import PEOPLE_DIR
+from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 logger = get_logger(__name__)
 
@@ -123,6 +126,9 @@ def _handle_people(args: list[str]) -> None:
     use_json = "--json" in rest
     rest = [a for a in rest if a != "--json"]
 
+    # Ensure every person has a slug before any folder-keyed access in non-daemon CLI usage.
+    migrate_person_slugs_if_needed()
+
     if action == "list":
         _people_list(use_json)
     elif action == "add":
@@ -149,7 +155,7 @@ def _people_list(use_json: bool) -> None:
                 expertise=getattr(p, "expertise", None),
             )
             try:
-                pc = get_person_config(p.name)
+                pc = get_person_config(p.slug or normalize_slug(p.name))
                 info.telegram = pc.creds.telegram.user_name if pc.creds.telegram else None
                 info.telegram_id = pc.creds.telegram.user_id if pc.creds.telegram else None
                 info.interests = list(pc.interests)
@@ -201,9 +207,14 @@ def _people_add(args: list[str], use_json: bool) -> None:
         except json.JSONDecodeError as e:
             print(f"Error: --expertise must be valid JSON: {e}")
             raise SystemExit(1)
+    existing_slugs = {p.slug for p in list_people() if p.slug}
+    base = normalize_slug(name) or "person"
+    slug = ensure_unique_slug(PEOPLE_DIR, base, reserved=existing_slugs)
+
     entry = PersonEntry(
         name=name,
         email=email,
+        slug=slug,
         username=opts.get("username"),
         role=opts.get("role", "member"),  # type: ignore[arg-type]
         expertise=expertise,
@@ -319,7 +330,7 @@ def _people_edit(args: list[str], use_json: bool) -> None:
 
     # Edit telegram creds
     if opts.get("telegram_user") or opts.get("telegram_id"):
-        _set_telegram_creds(name, opts.get("telegram_user"), opts.get("telegram_id"))
+        _set_telegram_creds(person.slug or normalize_slug(name), opts.get("telegram_user"), opts.get("telegram_id"))
         changed = True
 
     if not changed:
@@ -345,8 +356,11 @@ def _people_remove(args: list[str], use_json: bool) -> None:
     name = args[0]
     delete_dir = "--delete-dir" in args
 
+    person = next((p for p in list_people() if p.name == name), None)
+    slug = (person.slug if person else None) or normalize_slug(name)
+
     try:
-        remove_person(name, delete_directory=delete_dir)
+        remove_person(slug, delete_directory=delete_dir)
     except ValueError as e:
         if use_json:
             print(json.dumps({"error": str(e)}))
@@ -360,9 +374,9 @@ def _people_remove(args: list[str], use_json: bool) -> None:
         print(f"Removed {name}.{' Directory deleted.' if delete_dir else ''}")
 
 
-def _set_telegram_creds(name: str, user_name: str | None, user_id: str | None) -> None:
-    """Set telegram credentials for a person."""
-    pc = get_person_config(name)
+def _set_telegram_creds(slug: str, user_name: str | None, user_id: str | None) -> None:
+    """Set telegram credentials for a person keyed by slug."""
+    pc = get_person_config(slug)
     existing = pc.creds.telegram
 
     tg_user = user_name or (existing.user_name if existing else None)
@@ -370,7 +384,7 @@ def _set_telegram_creds(name: str, user_name: str | None, user_id: str | None) -
 
     if tg_user and tg_id:
         pc.creds.telegram = TelegramCreds(user_name=tg_user, user_id=int(tg_id))
-        save_person_config(name, pc)
+        save_person_config(slug, pc)
 
 
 # --- Env ---
@@ -528,6 +542,7 @@ def _handle_invite(args: list[str]) -> None:
     name = args_clean[0]
 
     # Verify person exists
+    migrate_person_slugs_if_needed()
     people = list_people()
     person = next((p for p in people if p.name == name), None)
     if not person:
@@ -548,9 +563,11 @@ def _handle_invite(args: list[str]) -> None:
         raise SystemExit(1)
 
     # Run async invite flow
+    person_slug = person.slug or normalize_slug(name)
+
     async def _run_invite() -> InviteResult:
         # Generate/rotate token
-        token = set_invite_token(name)
+        token = set_invite_token(person_slug)
 
         # Resolve bot usernames/IDs
         telegram_username = None

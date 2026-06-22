@@ -11,23 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:person-slug -->
-
-The user-facing configuration surface (`teleclaude.yml`) lives at three
-independent locations: a global file in the user's home directory, a project
-file at the repository root, and an optional per-person file under
-`~/.teleclaude/people/<name>/`. For any caller working with a workspace, the
-config bounded context composes an app config that holds whichever of these
-three files exist for that workspace, each validated against its layer schema.
-The composition is side-by-side, not merged — consumers read the layer they care
-about (e.g., `identity` reads the global `people` list, `context_selector`
-reads project `business.domains`, hook routing reads per-person `creds`).
-Workspace type drives which optional layer loads: a path under
-`<base>/.teleclaude/people/<name>` loads the per-person file; any other
-workspace path loads the project file; the global file is always loaded.
-
-<!-- change:person-slug -->
-
 The user-facing configuration surface (`teleclaude.yml`) lives at three
 independent locations: a global file in the user's home directory, a project
 file at the repository root, and an optional per-person file under
@@ -40,8 +23,6 @@ reads project `business.domains`, hook routing reads per-person `creds`).
 Workspace type drives which optional layer loads: a path under
 `<base>/.teleclaude/people/<slug>` loads the per-person file; any other
 workspace path loads the project file; the global file is always loaded.
-
-<!-- /planned-change:person-slug -->
 
 ## Canonical fields
 

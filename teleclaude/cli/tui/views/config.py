@@ -553,7 +553,7 @@ class ConfigContent(
         if cached is not None:
             return cached
 
-        person_entry = next((p for p in self._people_data if p.name == self._expanded_person), None)
+        person_entry = next((p for p in self._people_data if (p.slug or p.name) == self._expanded_person), None)
         if person_entry is None:
             return []
 

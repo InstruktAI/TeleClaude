@@ -17,7 +17,7 @@ import teleclaude.core.agents as agents_module
 import teleclaude.core.identity as identity_module
 import teleclaude.invite as invite_module
 from teleclaude.adapters.telegram.message_ops import MessageOperationsMixin
-from teleclaude.cli.config_handlers import find_person_by_invite_token, save_person_config
+from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config, save_person_config
 from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
@@ -25,6 +25,7 @@ from teleclaude.core.db import db
 from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind, TelegramAdapterMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
+from teleclaude.slug import normalize_slug
 from teleclaude.types.commands import CloseSessionCommand, CommandType, CreateSessionCommand, ProcessMessageCommand
 
 if TYPE_CHECKING:
@@ -127,7 +128,8 @@ class PrivateHandlersMixin:
             await update.effective_message.reply_text("I don't recognize this invite. Please contact your admin.")
             return
 
-        person_name, person_config = result
+        person_slug, person_config = result
+        display_name = next((p.name for p in get_global_config().people if p.slug == person_slug), person_slug)
         user_id = str(update.effective_user.id)
         user_name = update.effective_user.username or update.effective_user.first_name or "unknown"
 
@@ -145,11 +147,11 @@ class PrivateHandlersMixin:
         else:
             # Bind credentials
             person_config.creds.telegram = TelegramCreds(user_id=int(user_id), user_name=user_name)
-            save_person_config(person_name, person_config)
-            logger.info("Bound Telegram user %s to person %s", user_id, person_name)
+            save_person_config(person_slug, person_config)
+            logger.info("Bound Telegram user %s to person slug %s", user_id, person_slug)
 
         # Scaffold personal workspace and create session
-        workspace_path = invite_module.scaffold_personal_workspace(person_name)
+        workspace_path = invite_module.scaffold_personal_workspace(person_slug, display_name)
 
         # Create session in personal workspace
         create_cmd = CreateSessionCommand(
@@ -170,18 +172,18 @@ class PrivateHandlersMixin:
         result_dict = await get_command_service().create_session(create_cmd)
         session_id = str(result_dict.get("session_id", ""))
         if not session_id:
-            logger.error("Private chat session creation returned empty session_id for %s", person_name)
+            logger.error("Private chat session creation returned empty session_id for slug %s", person_slug)
             await update.effective_message.reply_text("Failed to create session. Please contact your admin.")
             return
 
         session = await db.get_session(session_id)
         if not session:
-            logger.error("Session %s not found after creation for %s", session_id, person_name)
+            logger.error("Session %s not found after creation for slug %s", session_id, person_slug)
             return
 
         # Send greeting
         await update.effective_message.reply_text(
-            f"Hi {person_name}, I'm your personal assistant. What would you like to work on?"
+            f"Hi {display_name}, I'm your personal assistant. What would you like to work on?"
         )
 
     async def _handle_private_text(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -210,14 +212,16 @@ class PrivateHandlersMixin:
             # agent_then_message waits for the agent TUI to stabilize before injecting
             # the message, preventing the race where the message is sent to tmux before
             # the agent is ready to accept input.
+            person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
             result_dict = await self._create_private_session_for_identity(
                 user_id,
+                person_slug,
                 identity.person_name,
                 update.effective_message.text or "",
             )
             session_id = str(result_dict.get("session_id", ""))
             if not session_id:
-                logger.error("Private chat session creation failed for %s", identity.person_name)
+                logger.error("Private chat session creation failed for slug %s", person_slug)
             return
 
         # Existing session — deliver message through inbound queue
@@ -322,11 +326,12 @@ class PrivateHandlersMixin:
     async def _create_private_session_for_identity(
         self,
         user_id: str,
-        person_name: str,
+        person_slug: str,
+        display_name: str | None,
         text: str,
     ) -> dict[str, str]:
         """Create a private-chat session with the initial message bundled into launch_intent."""
-        workspace_path = invite_module.scaffold_personal_workspace(person_name)
+        workspace_path = invite_module.scaffold_personal_workspace(person_slug, display_name)
         create_cmd = CreateSessionCommand(
             project_path=str(workspace_path),
             initial_input=text,

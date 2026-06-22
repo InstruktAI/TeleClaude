@@ -39,13 +39,16 @@ def discover_job_recipients(
     for person in global_cfg.people:
         people_by_email[person.email] = person.role
 
-    # Build person directory name -> email lookup
+    # Build person directory name -> email lookup. The folder is slug-named; the
+    # legacy normalized name/username keys cover the transition window.
     email_by_dir: dict[str, str] = {}
     for person in global_cfg.people:
         key = person.name.lower().replace(" ", "")
         email_by_dir[key] = person.email
         if person.username:
             email_by_dir[person.username.lower()] = person.email
+        if person.slug:
+            email_by_dir[person.slug] = person.email
 
     people_dir = root / "people"
     if not people_dir.is_dir():

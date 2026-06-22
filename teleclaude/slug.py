@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -29,11 +30,31 @@ def normalize_slug(text: str) -> str:
     return slugified
 
 
-def ensure_unique_slug(base_dir: Path, slug: str) -> str:
-    """Return *slug* if ``base_dir/slug`` does not exist, otherwise append -2, -3, … until free."""
-    if not (base_dir / slug).exists():
-        return slug
-    counter = 2
-    while (base_dir / f"{slug}-{counter}").exists():
+def ensure_unique_slug(
+    base_dir: Path,
+    slug: str,
+    *,
+    reserved: AbstractSet[str] | None = None,
+    exclude_dir: Path | None = None,
+) -> str:
+    """Return *slug* if free, otherwise append -2, -3, … until free.
+
+    A slug is free when it is not in *reserved* (slugs already taken in memory,
+    e.g. earlier in the same pass) and ``base_dir/slug`` does not exist —
+    except ``exclude_dir`` (the caller's own existing folder, due to be renamed
+    to the slug), which never counts as a collision.
+    """
+    reserved = reserved or frozenset()
+    candidate = slug
+    counter = 1
+    while candidate in reserved or _folder_taken(base_dir / candidate, exclude_dir):
         counter += 1
-    return f"{slug}-{counter}"
+        candidate = f"{slug}-{counter}"
+    return candidate
+
+
+def _folder_taken(target: Path, exclude_dir: Path | None) -> bool:
+    """Whether *target* is occupied by a folder other than the caller's own ``exclude_dir``."""
+    if exclude_dir is not None and target == exclude_dir:
+        return False
+    return target.exists()

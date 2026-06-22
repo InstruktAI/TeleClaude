@@ -181,6 +181,7 @@ class PersonEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
     email: str = Field(min_length=1)
+    slug: str | None = None
     username: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
     preferences: str | None = None  # Plain-text user preferences
@@ -194,6 +195,22 @@ class PersonEntry(BaseModel):
         if not value:
             raise ValueError("Person email must be non-empty")
         return value
+
+    @field_validator("slug")
+    @classmethod
+    def validate_person_slug(cls, value: str | None) -> str | None:
+        """Enforce slug format when the field is set.
+
+        Empty/missing values normalize to ``None`` so pre-slug configs still
+        load; slug migration fills the value. Mirrors ``validate_project_slug``.
+        """
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        validate_slug(stripped)
+        return stripped
 
 
 class OutputVisibilitySettings(BaseModel):

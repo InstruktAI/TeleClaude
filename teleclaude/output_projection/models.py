@@ -108,6 +108,7 @@ def visibility_policy_for_person(
     surface: ProjectionSurface | str,
     person_email: str | None = None,
     person_name: str | None = None,
+    person_slug: str | None = None,
     include_thinking: bool = False,
     visible_tool_names: frozenset[str] | None = None,
 ) -> VisibilityPolicy:
@@ -115,6 +116,7 @@ def visibility_policy_for_person(
     settings = resolve_person_output_visibility_settings(
         person_email=person_email,
         person_name=person_name,
+        person_slug=person_slug,
     )
     return visibility_policy_for_recipient(
         human_role=human_role,

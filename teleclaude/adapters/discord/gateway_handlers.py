@@ -26,13 +26,14 @@ if TYPE_CHECKING:
 import asyncio
 from datetime import datetime
 
-from teleclaude.cli.config_handlers import find_person_by_invite_token
+from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.origins import InputOrigin
 from teleclaude.invite import bind_discord_credentials, scaffold_personal_workspace
+from teleclaude.slug import normalize_slug
 from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
@@ -303,7 +304,8 @@ class GatewayHandlersMixin:
 
         if not session:
             # Create new session in personal workspace
-            workspace_path = scaffold_personal_workspace(identity.person_name)
+            person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
+            workspace_path = scaffold_personal_workspace(person_slug, identity.person_name)
 
             create_cmd = CreateSessionCommand(
                 project_path=str(workspace_path),
@@ -356,7 +358,8 @@ class GatewayHandlersMixin:
                 await channel.send("I don't recognize this invite. Please contact your admin.")
             return
 
-        person_name, person_config = result
+        person_slug, person_config = result
+        display_name = next((p.name for p in get_global_config().people if p.slug == person_slug), person_slug)
 
         # Check if credentials are already bound
         existing_user_id = person_config.creds.discord.user_id if person_config.creds.discord else None
@@ -373,11 +376,11 @@ class GatewayHandlersMixin:
                 return
         else:
             # Bind credentials
-            bind_discord_credentials(person_name, user_id)
-            logger.info("Bound Discord user %s to person %s", user_id, person_name)
+            bind_discord_credentials(person_slug, user_id)
+            logger.info("Bound Discord user %s to person slug %s", user_id, person_slug)
 
         # Scaffold personal workspace and create session
-        workspace_path = scaffold_personal_workspace(person_name)
+        workspace_path = scaffold_personal_workspace(person_slug, display_name)
 
         # Create session
         create_cmd = CreateSessionCommand(
@@ -397,7 +400,7 @@ class GatewayHandlersMixin:
         result = await get_command_service().create_session(create_cmd)  # type: ignore[assignment]
         session_id = str(result.get("session_id", ""))  # type: ignore[attr-defined]
         if not session_id:
-            logger.error("Discord DM session creation failed for %s", person_name)
+            logger.error("Discord DM session creation failed for slug %s", person_slug)
             channel = getattr(message, "channel", None)
             if channel:
                 await channel.send("Failed to create session. Please contact your admin.")
@@ -406,7 +409,7 @@ class GatewayHandlersMixin:
         # Send greeting
         channel = getattr(message, "channel", None)
         if channel:
-            await channel.send(f"Hi {person_name}, I'm your personal assistant. What would you like to work on?")
+            await channel.send(f"Hi {display_name}, I'm your personal assistant. What would you like to work on?")
 
     async def _handle_on_message(self, message: object) -> None:
         author = getattr(message, "author", None)

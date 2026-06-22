@@ -123,7 +123,8 @@ class ConfigContentRenderMixin:
             row_style = Style(reverse=True) if selected else _normal_style()
 
             row = result.plain.count("\n")
-            self._row_click_map[row] = ("person_select", person.name)  # type: ignore[attr-defined]
+            person_key = person.slug or person.name
+            self._row_click_map[row] = ("person_select", person_key)  # type: ignore[attr-defined]
 
             result.append(f"  {prefix} {person.name}", style=row_style)
             result.append(f" ({person.role})", style=_DIM)
@@ -131,7 +132,7 @@ class ConfigContentRenderMixin:
                 result.append(f" <{person.email}>", style=_DIM)
             result.append("\n")
 
-            if selected and self._expanded_person == person.name:  # type: ignore[attr-defined]
+            if selected and self._expanded_person == person_key:  # type: ignore[attr-defined]
                 person_fields = self.person_reflected_fields  # type: ignore[attr-defined]
 
                 # Render the overlay as an indented tree (root groups + branch
@@ -370,14 +371,14 @@ class ConfigContentRenderMixin:
                     self._begin_edit(status)  # type: ignore[attr-defined]
                     break
         elif action_type == "person_select":
-            person_name = action[1]
+            person_key = action[1]
             for i, p in enumerate(self._people_data):  # type: ignore[attr-defined]
-                if p.name == person_name:
+                if (p.slug or p.name) == person_key:
                     self._set_current_cursor(i)  # type: ignore[attr-defined]
-                    if self._expanded_person == person_name:  # type: ignore[attr-defined]
+                    if self._expanded_person == person_key:  # type: ignore[attr-defined]
                         self._expanded_person = None  # type: ignore[attr-defined]
                     else:
-                        self._expanded_person = person_name  # type: ignore[attr-defined]
+                        self._expanded_person = person_key  # type: ignore[attr-defined]
                         self._person_field_cursor = 0  # type: ignore[attr-defined]
                     self.refresh(layout=True)  # type: ignore[attr-defined]
                     break
