@@ -334,7 +334,7 @@ remote_computers:
     teleclaude_path: string | null
 <!-- planned:distributed-todo-postgres -->
 todo_db:
-  dsn: string # connection string for the fleet's shared todo-store Postgres. The store is hosted on the single master node (computer.is_master); the master binds Postgres to loopback plus the cluster's private network and is never publicly exposed. Every node resolves this to reach the master — loopback on the master, the master's private-network address elsewhere. Only the todo store uses this engine; every other store stays local SQLite. Absent/unreachable → todo writes fail closed with an operator-visible error (no local fallback, no queued local write).
+  dsn: string # connection string for the fleet's shared todo-store Postgres, co-located on the single ingress node (computer.is_ingress_node — the one internet-facing node), NOT the is_master workhorse. Postgres binds loopback plus the cluster's private network only and is never on the public interface. Every node resolves this to reach the ingress node — loopback on the ingress node itself, the ingress node's private-network address elsewhere. Only the todo store uses this engine; every other store stays local SQLite. Absent/unreachable → todo writes fail closed with an operator-visible error (no local fallback, no queued local write).
 <!-- /planned:distributed-todo-postgres -->
 telegram:
   enabled: boolean
