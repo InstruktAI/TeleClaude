@@ -137,6 +137,22 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the machine's runtime configuration.
 - **Lifecycle:** `chiptunes` is a hot-reloadable configuration section. Toggling `enabled` is applied live by the daemon's config watcher without a restart: enabling it provisions the corpus on demand — asynchronously, so the reload never blocks — and activates playback; disabling it stops playback. The daemon never fetches the corpus synchronously at startup; when `enabled` is set and the corpus is absent, startup triggers the same idempotent asynchronous provisioning.
 
+<!-- planned:ensure-project-remote -->
+
+#### Company Profile (value object)
+
+- **Root:** `CompanyProfile`
+- **Contains:** `name` (optional organization display name, default `None`), `git_host` (remote host, default `github.com`), and `git_org` (required organization/owner, whitespace-stripped and non-empty).
+- **Invariants:**
+  - The company profile is global-overlay configuration only: it belongs to `GlobalConfig.company_profile`. The project and per-person overlays reject a `company_profile` key via their disallowed-key validators, the same mechanism that keeps `people` global-only.
+  - A configured company profile requires a non-empty `git_org`; absence is a hard validation error, not a silent default.
+  - `git_host` defaults to `github.com` when unset.
+  - `git_host` and `git_org` combined with a project's `project_slug` name the canonical project repository (`<git_org>/<project_slug>` on `<git_host>`).
+- **Identifier:** the operator's global configuration (one company profile per operator).
+- **Lifecycle:** authored on the global overlay through the wizard / config patch surfaces alongside the rest of global configuration; read by the hook receiver to surface the organization into agent sessions and by project setup to derive a project's git remote.
+
+<!-- /planned:ensure-project-remote -->
+
 ### Domain events emitted
 
 #### `config.effective.updated`
