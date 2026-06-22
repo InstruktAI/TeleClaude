@@ -26,14 +26,13 @@ Defined in `teleclaude/config/schema.py` as `ProficiencyLevel`:
 
 ### Domains
 
-Four fixed domains. Adding a new domain requires a schema update and a change to this spec.
+Three fixed domains. Adding a new domain requires a schema update and a change to this spec.
 
-| Domain                 | Description                                    |
-| ---------------------- | ---------------------------------------------- |
-| `software-development` | Code, infrastructure, architecture, tooling.   |
-| `creative`             | Visual design, writing, UX, branding, media.   |
-| `marketing`            | Growth, content, analytics, campaigns, SEO.    |
-| `customer-relations`   | Support, sales, account management, community. |
+| Domain                 | Description                                  |
+| ---------------------- | -------------------------------------------- |
+| `software-development` | Code, infrastructure, architecture, tooling. |
+| `creative`             | Visual design, writing, UX, branding, media. |
+| `marketing`            | Growth, content, analytics, campaigns, SEO.  |
 
 ### Starter subdivisions
 
@@ -51,10 +50,6 @@ Subdivisions within each domain. New subdivisions can be added without a schema 
 
 `content-marketing`, `seo`, `social-media`, `analytics`, `email-campaigns`, `paid-ads`, `growth`
 
-**customer-relations**
-
-`support`, `sales`, `account-management`, `community`, `success`
-
 ### JSON shape
 
 The `PersonEntry.expertise` field type is `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]`.
@@ -65,8 +60,7 @@ Domain-level proficiency (flat):
 {
   "software-development": "expert",
   "creative": "intermediate",
-  "marketing": "novice",
-  "customer-relations": "advanced"
+  "marketing": "novice"
 }
 ```
 
@@ -81,11 +75,7 @@ Subdivision-level proficiency (nested):
     "architecture": "expert"
   },
   "creative": "novice",
-  "marketing": "novice",
-  "customer-relations": {
-    "support": "advanced",
-    "sales": "intermediate"
-  }
+  "marketing": "novice"
 }
 ```
 
@@ -101,8 +91,7 @@ Mixed (domain-level for some, subdivision-level for others):
     "architecture": "expert"
   },
   "creative": "intermediate",
-  "marketing": "novice",
-  "customer-relations": "advanced"
+  "marketing": "novice"
 }
 ```
 

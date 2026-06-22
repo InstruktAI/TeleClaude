@@ -49,11 +49,11 @@ This context does NOT own: domain business rules (each domain service owns its r
 
 <!-- planned-change:remove-rust-v2-implementation -->
 
-: The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Lives at `crates/integration/src/providers/<name>.rs`. MUST NOT import deployment or customer-relations modules.
+: The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Lives at `crates/integration/src/providers/<name>.rs`. MUST NOT import deployment modules.
 
 <!-- change:remove-rust-v2-implementation -->
 
-: The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Each provider has its own boundary module, which MUST NOT import deployment or customer-relations modules.
+: The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Each provider has its own boundary module, which MUST NOT import deployment modules.
 
 <!-- /planned-change:remove-rust-v2-implementation -->
 
@@ -395,7 +395,7 @@ Format: concept — path — one-line summary.
 
   The v2-integration prepare worker MUST preserve BOTH layers (not just the Contract side). Reading order: `inbound.py` first (the plug-in inbound architecture), then `webhook_models.py` + `registry.py` + `matcher.py` + `api_routes.py` (the contract-side subscription). The two layers compose into a fully data-driven webhook routing surface.
 
-- **NO cartridge pattern.** v1's domain cartridges are sunset for new work. Consumers subscribe via `event_bus.subscribe(...)` at daemon startup. Provider boundary modules MUST NOT import deployment or customer-relations modules.
+- **NO cartridge pattern.** v1's domain cartridges are sunset for new work. Consumers subscribe via `event_bus.subscribe(...)` at daemon startup. Provider boundary modules MUST NOT import deployment modules.
 - **Provider URL stability matters.** Webhook URLs registered with external providers (Telegram, GitHub) MUST remain stable across cutover — OR external system updates need to be coordinated (rare and expensive).
 - **Worker binaries are stateless.** All state lives in Postgres (inbox, outbox, DLQ, worker_state) + Redis (leases). Worker crashes and restarts are safe.
 - **No new external systems in this delivery.** Integration's scope is the supported provider set; adding a new provider requires a new boundary module + new event family + new allowlist entries — a separate delivery.

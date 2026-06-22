@@ -275,7 +275,6 @@ tests/unit/events/delivery/test_telegram.py
 tests/unit/events/delivery/test_whatsapp.py
 tests/unit/events/schemas/test_content.py
 tests/unit/events/schemas/test_creative_production.py
-tests/unit/events/schemas/test_customer_relations.py
 tests/unit/events/schemas/test_deployment.py
 tests/unit/events/schemas/test_marketing.py
 tests/unit/events/schemas/test_node.py

@@ -16,7 +16,6 @@ def register_all(catalog: EventCatalog) -> None:
         ("teleclaude.events.schemas.software_development", "register_software_development"),
         ("teleclaude.events.schemas.marketing", "register_marketing"),
         ("teleclaude.events.schemas.creative_production", "register_creative_production"),
-        ("teleclaude.events.schemas.customer_relations", "register_customer_relations"),
         ("teleclaude.events.schemas.node", "register_node"),
         ("teleclaude.events.schemas.deployment", "register_deployment"),
         ("teleclaude.events.schemas.content", "register_content"),

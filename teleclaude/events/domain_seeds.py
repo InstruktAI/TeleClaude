@@ -1,4 +1,4 @@
-"""Default event domain configuration for the four business pillars."""
+"""Default event domain configuration for the three business pillars."""
 
 from __future__ import annotations
 
@@ -65,29 +65,6 @@ DEFAULT_EVENT_DOMAINS: JsonDict = {
                 "by_cartridge": {
                     "creative-production/asset-lifecycle": "notify",
                     "creative-production/review-gatekeeper": "notify",
-                },
-            },
-        },
-        "customer-relations": {
-            "name": "customer-relations",
-            "enabled": True,
-            "guardian": {
-                "agent": "claude",
-                "mode": "med",
-                "enabled": True,
-                "trust_threshold": "strict",
-                "evaluation_prompt": (
-                    "Customer relations domain guardian: external input threat model, "
-                    "escalation decision criteria, customer data sensitivity. "
-                    "Require human confirmation for all escalation and satisfaction actions. "
-                    "Never act autonomously on external customer inputs."
-                ),
-            },
-            "autonomy": {
-                "by_cartridge": {
-                    "customer-relations/helpdesk-triage": "notify",
-                    "customer-relations/escalation-handler": "notify",
-                    "customer-relations/satisfaction-tracker": "notify",
                 },
             },
         },

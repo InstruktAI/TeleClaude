@@ -12,15 +12,6 @@ from teleclaude.events.domains.creative_production.handlers.asset_lifecycle.hand
 from teleclaude.events.domains.creative_production.handlers.review_gatekeeper.handler import (
     process as creative_review_gatekeeper,
 )
-from teleclaude.events.domains.customer_relations.handlers.escalation_handler.handler import (
-    process as customer_escalation_handler,
-)
-from teleclaude.events.domains.customer_relations.handlers.helpdesk_triage.handler import (
-    process as customer_helpdesk_triage,
-)
-from teleclaude.events.domains.customer_relations.handlers.satisfaction_tracker.handler import (
-    process as customer_satisfaction_tracker,
-)
 from teleclaude.events.domains.marketing.handlers.campaign_budget_monitor.handler import (
     process as marketing_campaign_budget_monitor,
 )
@@ -72,11 +63,6 @@ _DOMAIN_HANDLERS: dict[str, tuple[DomainHandlerSpec, ...]] = {
     "creative-production": (
         DomainHandlerSpec("asset-lifecycle", creative_asset_lifecycle),
         DomainHandlerSpec("review-gatekeeper", creative_review_gatekeeper, depends_on=("asset-lifecycle",)),
-    ),
-    "customer-relations": (
-        DomainHandlerSpec("helpdesk-triage", customer_helpdesk_triage),
-        DomainHandlerSpec("satisfaction-tracker", customer_satisfaction_tracker),
-        DomainHandlerSpec("escalation-handler", customer_escalation_handler, depends_on=("helpdesk-triage",)),
     ),
 }
 

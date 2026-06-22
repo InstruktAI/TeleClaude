@@ -333,14 +333,14 @@ Query documentation snippets
 
 List snippet IDs and metadata (phase 1)
 
-**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|customer-relations|erp>] [--target <slug>]`
+**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|erp>] [--target <slug>]`
 
 **Flags:**
 
 - `--baseline-only` (`-b`): Show only baseline snippets
 - `--third-party` (`-t`): Include third-party docs
 - `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec|adr); omit for all
-- `--domains` (`-d`): Filter by domain (software-development|creative|marketing|customer-relations|erp); omit for all
+- `--domains` (`-d`): Filter by domain (software-development|creative|marketing|erp); omit for all
 - `--target`: Filter to snippets delivered by slug
 
 **Notes:**

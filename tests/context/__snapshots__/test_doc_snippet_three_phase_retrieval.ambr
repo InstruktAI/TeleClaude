@@ -3,7 +3,7 @@
   '''
   # PHASE 1: Snippet Index (IDs + descriptions)
   # Review the snippets below and select the IDs you need.
-  # Filter with --areas <principle|concept|policy|procedure|design|spec|adr> and/or --domains <software-development|creative|marketing|customer-relations|erp> (omit for all)
+  # Filter with --areas <principle|concept|policy|procedure|design|spec|adr> and/or --domains <software-development|creative|marketing|erp> (omit for all)
   
   project/spec/feature/context/current-snippet: A current snippet with no pending state.
   project/spec/feature/context/pending-snippet: A pending snippet owned by two slugs.  (delivered by: slug-a, slug-b)
