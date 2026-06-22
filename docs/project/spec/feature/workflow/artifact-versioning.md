@@ -94,102 +94,67 @@ Then the workflow service refuses with a "delivered (read-only)" error
 
 ### Write authority
 
-<!-- planned-change:prepare-artifact-claim-on-write -->
-
-Prepare artifacts (`input`, `prd`, `architecture`, `diagnosis`,
-`implementation-plan`) are writable only by the prepare-orchestrator session
-bound to the slug — the session executing the prepare lifecycle. The work
-orchestrator and every dispatched worker (builders, reviewers, drift analyzers)
-cannot write them; the workflow service refuses the write before any state
-mutation. Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
-remain writable by the work-phase sessions that own them.
-
-The write path resolves the caller's identity, with parity to the stamp and
-artifact-remove boundaries, and records the resolved principal as `updated_by`.
-A work-phase session that needs a prepare artifact changed has no write path: it
-bounces the todo back to prepare, where the prepare orchestrator owns the edit
-and intent changes pass the human approval gate.
-
-#### UC-WAV9: Worker write to a prepare artifact is refused
-
-```gherkin
-Given an active todo with a dispatched worker session bound to the slug
-When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
-Then the workflow service refuses the write as unauthorized before any state mutation
-And the artifact's current version is unchanged
-```
-
-#### UC-WAV10: Work orchestrator write to a prepare artifact is refused
-
-```gherkin
-Given an active todo whose work-orchestrator session is bound to the slug
-When the work orchestrator attempts to write input
-Then the workflow service refuses the write as unauthorized before any state mutation
-```
-
-#### UC-WAV11: Prepare orchestrator write to a prepare artifact is accepted
-
-```gherkin
-Given an active todo whose prepare-orchestrator session is bound to the slug
-When the prepare orchestrator writes prd
-Then the workflow service accepts the write
-And records the resolved caller principal as updated_by
-```
-
-#### UC-WAV12: Artifact write records the resolved principal
-
-```gherkin
-Given a permitted prepare-artifact write
-When the workflow service persists the new version
-Then updated_by is the resolved caller principal, not a constant placeholder
-```
-
-<!-- change:prepare-artifact-claim-on-write -->
-
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
-`implementation-plan`) are governed by a single claim-conflict rule, not by role
-ownership. A write is refused only when a **different live session is already
-driving the slug**; the refusal names that session so the human knows who to
-talk to. When no live session is driving the slug, the write is accepted **and
-the writing session becomes the slug's driver** — it claims the slug, so any
-subsequent dispatch for that slug is told it is already driven. The claim is held
-only for the life of the driving session: when that session ends the slug is free
-again, so a session that died after writing leaves no stale lock.
+`implementation-plan`) are governed by two composing rules — a caller-role
+allowlist and a claim-conflict check — and a claim-on-write consequence.
+
+**Caller-role allowlist (phase-independent).** A prepare artifact is writable
+only by a **prepare-phase writer**: a prepare-orchestrator session or a direct
+human-identity session. A work orchestrator, a create orchestrator, the
+integrator, and every dispatched worker job are **refused by role** — an
+authorization denial evaluated before the claim-conflict check, independent of
+lifecycle phase and independent of whether the caller holds the slug. The
+refusal names the refused job. A work-orchestrator (`/next-work`) session can
+never write a prepare artifact. Phase is never consulted.
+
+**Claim-conflict.** Among role-permitted callers, a write is refused when a
+**different live session is already driving the slug** — a live orchestrator
+bound to the slug, or a live `active_runner` claim. The refusal names that
+session so the human knows who to talk to. A dispatched worker is already
+excluded by role.
+
+**Claim-on-write.** When the caller passes the role allowlist and no live
+session drives the slug, the write is accepted; if the caller is a
+**TeleClaude session** (the prepare orchestrator), that session **becomes the
+slug's driver** — it claims the slug, so any subsequent dispatch is told the
+slug is already driven. The claim is held only for the life of the driving
+session: when that session ends the slug is free again. A **human-identity write
+acquires no claim**. The claim is set atomically with the artifact write, so two
+role-permitted unclaimed writers cannot both claim: the loser re-reads the
+committed claim and is refused as a claim conflict.
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
-A dispatched worker cannot poison a prepare artifact: while its orchestrator is
-live, that orchestrator is the driver, so the worker's write hits the conflict.
 Routing a prepare-artifact change back through prepare when a work-phase defect
-is found is the workflow convention the driving session follows, not a gate the
-write boundary enforces. Work artifacts (`review-findings`, `deferrals`,
-`quality-checklist`) carry no claim gate.
+is found is the workflow convention the work-phase session follows; the write
+boundary makes the wrong write impossible by role. Work artifacts
+(`review-findings`, `deferrals`, `quality-checklist`) carry no role gate and no
+claim gate.
 
-#### UC-WAV9: Worker write to a driven slug is refused as a claim conflict
+#### UC-WAV9: Worker write to a prepare artifact is refused by role
 
 ```gherkin
-Given a slug driven by a live orchestrator session
-And a worker session dispatched for that slug
+Given an active todo and a dispatched worker session
 When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
-Then the workflow service refuses the write as a claim conflict before any state mutation
-And the refusal names the driving session
+Then the workflow service refuses the write as an authorization denial by role before any state mutation
+And the refusal names the refused job
 And the artifact's current version is unchanged
 ```
 
 #### UC-WAV10: Write to a slug driven by a different live session is refused
 
 ```gherkin
-Given a slug already driven by a live session
-When a different session attempts to write a prepare artifact
+Given a slug already driven by a different live session
+When a role-permitted session attempts to write a prepare artifact
 Then the workflow service refuses the write as a claim conflict before any state mutation
 And the refusal names the driving session
 ```
 
-#### UC-WAV11: Write to an unclaimed slug is accepted and claims the slug
+#### UC-WAV11: Prepare-orchestrator write to an unclaimed slug is accepted and claims the slug
 
 ```gherkin
 Given a slug with no live session driving it
-When a session writes a prepare artifact
+When a prepare-orchestrator session writes a prepare artifact
 Then the workflow service accepts the write
 And the writing session becomes the slug's driver
 And records the resolved caller principal as updated_by
@@ -221,7 +186,24 @@ Then the slug has no live driver
 And another session may write its prepare artifacts and become the driver
 ```
 
-<!-- /planned-change:prepare-artifact-claim-on-write -->
+#### UC-WAV15: Work-orchestrator write to a prepare artifact is refused by role
+
+```gherkin
+Given an active todo whose work-orchestrator session is bound to the slug
+When the work orchestrator attempts to write a prepare artifact at any lifecycle phase
+Then the workflow service refuses the write as an authorization denial by role before any state mutation
+And the refusal is independent of whether the work orchestrator holds the slug
+```
+
+#### UC-WAV16: Human-identity write to an unclaimed slug is accepted without claiming
+
+```gherkin
+Given a slug with no live session driving it
+When a direct human-identity session writes a prepare artifact
+Then the workflow service accepts the write
+And records the resolved human principal as updated_by
+And the slug acquires no driver
+```
 
 ### Cross-context references
 
@@ -231,11 +213,7 @@ And another session may write its prepare artifacts and become the driver
 ## Known caveats
 
 - The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `implementation-plan`).
-<!-- planned-change:prepare-artifact-claim-on-write -->
-- The `input` artifact is writable only by the prepare orchestrator (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
-<!-- change:prepare-artifact-claim-on-write -->
 - The `input` artifact follows the claim-conflict write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
-<!-- /planned-change:prepare-artifact-claim-on-write -->
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 - Diff lookup is digest-keyed, not chronological — callers must already know the two digests. The artifact-versions listing is the source for valid digests.
 - Removing an artifact is destructive: the full version history is lost atomically. There is no undo.

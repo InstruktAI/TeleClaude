@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR, SlashCommand
@@ -198,6 +199,57 @@ async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -
         if _same_project_root(session.project_path, project_root):
             return session.session_id
     return None
+
+
+@dataclass(frozen=True)
+class SlugHolders:
+    """The two live-holder signals for a slug, resolved but not yet exempted.
+
+    ``orchestrator_owner`` is a live orchestrator bound to the slug
+    (:func:`live_orchestrator_owner`); ``live_runner`` is the slug's
+    ``active_runner`` when it still names a live session. Either may be ``None``.
+    Caller-exemption — is a holder the caller itself? — is applied by each call
+    site, because the dispatch guard and the write boundary exempt the two
+    signals differently.
+    """
+
+    orchestrator_owner: str | None
+    live_runner: str | None
+
+
+async def resolve_slug_holders(
+    db: Db,
+    project_path: str | Path,
+    slug: str,
+    active_runner: str | None,
+) -> SlugHolders:
+    """Resolve the two live-holder signals for ``slug``.
+
+    The single source of the holder algorithm shared by the lifecycle dispatch
+    guard and the prepare-artifact write boundary: a live orchestrator bound to
+    the slug, and a live ``active_runner`` claim. Liveness is checked here;
+    precedence and caller-exemption are the caller's to apply.
+    """
+    owner = await live_orchestrator_owner(db, project_path, slug)
+    live_runner = active_runner if active_runner and await is_live_session_id(db, active_runner) else None
+    return SlugHolders(orchestrator_owner=owner, live_runner=live_runner)
+
+
+async def live_slug_holder(
+    db: Db,
+    project_path: str | Path,
+    slug: str,
+    active_runner: str | None,
+) -> str | None:
+    """Return the id of the live session currently holding (driving) ``slug``.
+
+    The write boundary's view of :func:`resolve_slug_holders`: a live
+    orchestrator owner takes precedence, then a live ``active_runner`` claim;
+    ``None`` when neither signal names a live session. Caller-exemption is
+    applied by the write boundary.
+    """
+    holders = await resolve_slug_holders(db, project_path, slug, active_runner)
+    return holders.orchestrator_owner or holders.live_runner
 
 
 async def live_orchestrator_owned_slugs(db: Db, project_path: str | Path) -> set[str]:

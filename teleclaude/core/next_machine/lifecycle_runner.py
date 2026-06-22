@@ -42,7 +42,7 @@ from teleclaude.core.next_machine.runner_types import (
 from teleclaude.core.next_machine.runtime.sessions import (
     is_live_session_id,
     live_orchestrator_owned_slugs,
-    live_orchestrator_owner,
+    resolve_slug_holders,
 )
 from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
@@ -582,15 +582,16 @@ async def _target_for_manual_start(
         return todo, RunnerSkipReason.ICEBOX, None
     if _pending_approval_gate_for_runner(todo):
         return todo, RunnerSkipReason.APPROVAL_PENDING, None
-    # Registry-authoritative orchestrator dedup: a live orchestrator bound to the
-    # slug blocks a second manual start regardless of active_runner. The caller's
-    # own session is exempt so an orchestrator adopting/continuing its own slug is
-    # not self-blocked.
-    owner = await live_orchestrator_owner(runtime_db, project_path, slug)
-    if owner is not None and owner != caller_session_id:
-        return todo, RunnerSkipReason.ALREADY_DRIVEN, owner
-    if todo.active_runner and await _is_live_runner(runtime_db, todo.active_runner):
-        return todo, RunnerSkipReason.ALREADY_DRIVEN, todo.active_runner
+    # Registry-authoritative dedup over the shared two-signal holder resolution.
+    # A live orchestrator bound to the slug blocks a second manual start, but the
+    # caller's own session is exempt so an orchestrator adopting/continuing its
+    # own slug is not self-blocked. The active_runner check is caller-independent
+    # so a live task runner refuses a duplicate even for the dispatching caller.
+    holders = await resolve_slug_holders(runtime_db, project_path, slug, todo.active_runner)
+    if holders.orchestrator_owner is not None and holders.orchestrator_owner != caller_session_id:
+        return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.orchestrator_owner
+    if holders.live_runner is not None:
+        return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.live_runner
     if not check_dependencies:
         return todo, None, None
     if lane is RunnerLane.WORK:

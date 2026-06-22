@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -31,6 +32,11 @@ from teleclaude.api.auth import (
     optional_caller_identity,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
+from teleclaude.api.todo_artifact_authority import (
+    optional_capture_principal,
+    refuse_non_prepare_writer,
+    resolved_write_principal,
+)
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
@@ -49,6 +55,7 @@ from teleclaude.constants import (
     TodoStatus,
 )
 from teleclaude.core.dates import normalize_task_schedule
+from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
@@ -58,12 +65,14 @@ from teleclaude.core.next_machine.kind_migration import (
 )
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance
+from teleclaude.core.next_machine.runtime.sessions import live_slug_holder
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import HolderTransitionRefused, HolderWriteRefused, get_todos_db
-from teleclaude.core.todos_db._show import assemble_show_payload, derive_active_todo_stage
+from teleclaude.core.todos_db._exceptions import ClaimConflict
+from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
@@ -523,41 +532,6 @@ async def read_artifact(
     return _ArtifactReadResponse(slug=slug, name=name, content=content)
 
 
-def _resolved_write_principal(identity: CallerIdentity) -> str:
-    """Resolve the caller principal recorded as an artifact's ``updated_by``.
-
-    Mirrors ``todo_stamp``: an agent session is recorded under its session id, a
-    human-driven terminal under its verified human principal. Caller-supplied
-    audit identity is never honored.
-    """
-    if identity.session_id:
-        return identity.session_id
-    if identity.principal and identity.principal.startswith("human:"):
-        return identity.principal
-    if identity.email:
-        return f"human:{identity.email}"
-    if identity.human_role:
-        return "human:terminal"
-    raise HTTPException(status_code=403, detail="caller identity required to write artifact")
-
-
-def _optional_capture_principal(identity: CallerIdentity | None) -> str | None:
-    """Derive the creator principal for the open create route, non-raising.
-
-    Mirrors ``_resolved_write_principal`` but returns ``None`` instead of raising
-    when no identity resolves — capture is audit-only and never gates the create.
-    For an agent caller the already-resolved principal transparently records the
-    chain-root human; for a session-id-authed human it is derived from ``email``.
-    """
-    if identity is None:
-        return None
-    if identity.principal:
-        return identity.principal
-    if identity.email:
-        return f"human:{identity.email}"
-    return None
-
-
 @router.post("/artifacts/{slug}/{name}")
 async def write_artifact(
     slug: str,
@@ -596,26 +570,25 @@ async def write_artifact(
             ),
         )
     if name in PREPARE_ARTIFACT_NAMES:
-        state = await todos_db.read_state(slug)
-        active_runner = state.get("active_runner") if state else None
-        stage = await derive_active_todo_stage(todos_db, slug, state) if state else None
-        is_bound_prepare_orchestrator = (
-            bool(identity.session_id)
-            and state is not None
-            and identity.session_id == active_runner
-            and stage == "prepare"
-        )
-        if not is_bound_prepare_orchestrator:
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    f"prepare artifact '{name}' for '{slug}' is writable only by the "
-                    "prepare-orchestrator session bound to the slug"
-                ),
-            )
-    effective_updated_by = _resolved_write_principal(identity)
+        await refuse_non_prepare_writer(identity, slug, name)
+    effective_updated_by = resolved_write_principal(identity)
     try:
-        await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
+        if name in PREPARE_ARTIFACT_NAMES:
+            holder = await todos_db.write_prepare_artifact_with_claim(
+                slug,
+                name,
+                content,
+                updated_by=effective_updated_by,
+                claimant_session_id=identity.session_id,
+                resolve_live_holder=partial(live_slug_holder, runtime_db, resolve_state_root(effective_cwd), slug),
+            )
+            if holder is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=ClaimConflict(slug=slug, holder=holder).summary(),
+                )
+        else:
+            await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
         _ = codebase_sha_at_write, referenced_paths
         if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
             await _sync_artifact_provenance_state(
@@ -769,7 +742,7 @@ async def todo_content_create(
                 status_code=400,
                 detail="--plan is valid only with --kind change or --kind task",
             )
-        created_by_principal = _optional_capture_principal(identity)
+        created_by_principal = optional_capture_principal(identity)
         state = initial_todo_state_for_kind(request.kind)
         pickup_requested = not request.icebox
 

@@ -34,7 +34,8 @@ from teleclaude.core.events import AgentEventContext, AgentHookEvents, build_age
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import MessageMetadata, SessionSnapshot
 from teleclaude.core.models._session import Session
-from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
+from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug, live_slug_holder
+from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import get_todos_db
@@ -1642,3 +1643,29 @@ async def test_create_session_refuses_duplicate_driver_on_worktree(api: AsyncCli
     assert resp.status_code == 409, resp.text
     assert holder in resp.text
     assert await _bound_session_ids(api, "tree-slug") == [holder]
+
+
+_VERSIONING_SPEC = "project/spec/feature/workflow/artifact-versioning"
+
+
+@pytest.mark.spec(_VERSIONING_SPEC, "UC-WAV14")
+async def test_write_acquired_claim_releases_when_driving_session_ends(api: AsyncClient, tmp_path: Path) -> None:
+    """A claim that a session acquired by writing releases when that session ends:
+    active_runner is cleared, leaving the slug with no live driver."""
+    project = tmp_path / "claim-release"
+    project.mkdir()
+    project_root = resolve_state_root(project)
+    holder = "holder-claim"
+    slug = "release-slug"
+    await _seed_driven_todo(api, project_root, slug, holder, as_orchestrator=False)
+
+    assert await live_slug_holder(api.db, project_root, slug, holder) == holder
+
+    result = await clear_active_runner_for_session_end(api.db, holder)
+
+    assert result.mutated is True
+    todos_db = await get_todos_db(project_root)
+    state = await todos_db.read_state(slug)
+    assert state is not None
+    assert not state.get("active_runner")
+    assert await live_slug_holder(api.db, project_root, slug, None) is None
