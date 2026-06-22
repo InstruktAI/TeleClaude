@@ -81,7 +81,7 @@ And limit is clamped to the inclusive range [1, 100]
 
 <!-- planned:clean-mirror-search-index -->
 
-#### Agent-spawn sessions excluded by default
+#### UC-HCS-4: Agent-spawn sessions excluded by default
 
 ```
 Given the mirror store holds both human sessions and agent-spawn mirrors (is_agent_spawn = 1)

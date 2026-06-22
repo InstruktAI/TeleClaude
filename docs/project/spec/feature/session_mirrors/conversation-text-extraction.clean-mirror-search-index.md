@@ -49,7 +49,7 @@ instead of writing a row.
 
 ### Use cases
 
-#### Filter to text-only user/assistant messages
+#### UC-CTE-1: Filter to text-only user/assistant messages
 
 ```
 Given a structured transcript with mixed message types (text, tool_use, tool_result, thinking)
@@ -58,7 +58,7 @@ Then only messages of type "text" with role "user" or "assistant" survive
 And tool blocks, thinking blocks, and tool_result blocks are excluded
 ```
 
-#### Strip injected machine-context from user text
+#### UC-CTE-2: Strip injected machine-context from user text
 
 ```
 Given a user message text containing injected machine-context — one or more <system-reminder>...</system-reminder> blocks, a leading "# AGENTS.md instructions for ..." block, an <environment_context>...</environment_context> block, or <command-message>/<command-name>/<command-args> launch tags (each may span newlines)
@@ -69,7 +69,7 @@ Given the cleaned user text is empty
 Then the message is dropped from the normalized list
 ```
 
-#### Assistant text passes through trimmed
+#### UC-CTE-3: Assistant text passes through trimmed
 
 ```
 Given an assistant message text
@@ -79,7 +79,7 @@ And no machine-context stripping is applied to assistant text
 And an assistant message that trims to empty is dropped
 ```
 
-#### Launch command detection and spawn classification
+#### UC-CTE-4: Launch command detection and spawn classification
 
 ```
 Given a normalized transcript before stripping
@@ -93,7 +93,7 @@ And when the matched command is a lifecycle worker/orchestrator/integrator comma
 And otherwise is_agent_spawn = false with command and slug null
 ```
 
-#### Title derivation
+#### UC-CTE-5: Title derivation
 
 ```
 Given a non-empty normalized message list
@@ -104,7 +104,7 @@ Given no user message exists in the normalized list
 Then the title is the empty string
 ```
 
-#### Rendered conversation_text format
+#### UC-CTE-6: Rendered conversation_text format
 
 ```
 Given a normalized message list
@@ -116,7 +116,7 @@ And messages are joined by a blank line
 And role is title-cased (User, Assistant)
 ```
 
-#### Empty extraction signals "no mirror"
+#### UC-CTE-7: Empty extraction signals "no mirror"
 
 ```
 Given normalization yields an empty list
@@ -126,7 +126,7 @@ And the generation call reports "no conversation extracted"
 And no mirror row is written
 ```
 
-#### Successful extraction upserts the mirror
+#### UC-CTE-8: Successful extraction upserts the mirror
 
 ```
 Given normalization yields one or more messages
@@ -140,7 +140,7 @@ And updated_at is set to the current UTC ISO timestamp
 And the generation call reports success
 ```
 
-#### Async surface
+#### UC-CTE-9: Async surface
 
 ```
 Given a caller awaits the async mirror generation entry point

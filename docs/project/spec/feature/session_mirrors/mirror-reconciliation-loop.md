@@ -43,7 +43,7 @@ And on cancellation it exits the loop cleanly
 And on any other exception it logs at error level and continues to the next sleep
 ```
 
-#### Per-pass discovery and skip-unchanged
+#### UC-MRL-2: Per-pass discovery and skip-unchanged
 
 <!-- planned-change:clean-mirror-search-index -->
 
@@ -99,7 +99,7 @@ And on "no conversation extracted"
 
 <!-- planned:clean-mirror-search-index -->
 
-#### Orphan re-derivation sweep
+#### UC-MRL-5: Orphan re-derivation sweep
 
 ```
 Given mirror rows whose transcript file no longer exists on disk

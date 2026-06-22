@@ -61,7 +61,7 @@ And the per-process compatibility migration runs (idempotent field-adds)
 And the path is recorded so subsequent calls skip bootstrap
 ```
 
-#### Idempotent compatibility migration
+#### UC-MSB-2: Idempotent compatibility migration
 
 <!-- planned-change:clean-mirror-search-index -->
 
