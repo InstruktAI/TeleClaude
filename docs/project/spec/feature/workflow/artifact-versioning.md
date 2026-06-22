@@ -194,8 +194,6 @@ And records the resolved human principal as updated_by
 And the slug acquires no live active-runner
 ```
 
-<!-- /planned-change:prepare-artifact-claim-on-write -->
-
 ### Cross-context references
 
 - `integration` — drift analysis reads each artifact's `codebase_sha_at_write` and `referenced_paths` from the Todo's lifecycle state (not from the artifact record) to detect codebase drift since the artifact was authored.
