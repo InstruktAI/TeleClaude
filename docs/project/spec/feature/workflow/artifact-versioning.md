@@ -95,68 +95,50 @@ Then the workflow service refuses with a "delivered (read-only)" error
 ### Write authority
 
 Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
-`implementation-plan`) are governed by two composing rules — a caller-role
-allowlist and a claim-conflict check — and a claim-on-write consequence.
-
-**Caller-role allowlist (phase-independent).** A prepare artifact is writable
-only by a **prepare-phase writer**: a prepare-orchestrator session or a direct
-human-identity session. A work orchestrator, a create orchestrator, the
-integrator, and every dispatched worker job are **refused by role** — an
-authorization denial evaluated before the claim-conflict check, independent of
-lifecycle phase and independent of whether the caller holds the slug. The
-refusal names the refused job. A work-orchestrator (`/next-work`) session can
-never write a prepare artifact. Phase is never consulted.
-
-**Claim-conflict.** Among role-permitted callers, a write is refused when a
-**different live session is already driving the slug** — a live orchestrator
-bound to the slug, or a live `active_runner` claim. The refusal names that
-session so the human knows who to talk to. A dispatched worker is already
-excluded by role.
-
-**Claim-on-write.** When the caller passes the role allowlist and no live
-session drives the slug, the write is accepted; if the caller is a
-**TeleClaude session** (the prepare orchestrator), that session **becomes the
-slug's driver** — it claims the slug, so any subsequent dispatch is told the
-slug is already driven. The claim is held only for the life of the driving
-session: when that session ends the slug is free again. A **human-identity write
-acquires no claim**. The claim is set atomically with the artifact write, so two
-role-permitted unclaimed writers cannot both claim: the loser re-reads the
-committed claim and is refused as a claim conflict.
+`implementation-plan`) are gated on the slug's live holder — the same signal the
+driver-start dedup uses (a live orchestrator bound to the slug, or a live
+active-runner recorded for it). A write is refused only when a different live
+session holds the slug; the refusal is a claim conflict naming the holder,
+returned as HTTP 409. When no live session holds the slug, the write is accepted
+and records the writing session as the slug's live active-runner. The claim is
+scoped to the life of the holding session; when that session ends the slug has no
+live holder.
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
-Routing a prepare-artifact change back through prepare when a work-phase defect
-is found is the workflow convention the work-phase session follows; the write
-boundary makes the wrong write impossible by role. Work artifacts
-(`review-findings`, `deferrals`, `quality-checklist`) carry no role gate and no
-claim gate.
+A write from any session other than the live holder — including a dispatched
+worker that shares the slug — is a claim conflict. The write boundary does not
+enforce the convention that a work-phase defect in a prepare artifact is routed
+back through prepare. Work artifacts (`review-findings`, `deferrals`,
+`quality-checklist`) carry no claim gate.
 
-#### UC-WAV9: Worker write to a prepare artifact is refused by role
+#### UC-WAV9: Worker write to a held slug is refused as a claim conflict
 
 ```gherkin
-Given an active todo and a dispatched worker session
+Given a slug held by a live orchestrator session
+And a worker session that shares the slug
 When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
-Then the workflow service refuses the write as an authorization denial by role before any state mutation
-And the refusal names the refused job
+Then the workflow service refuses the write as a claim conflict naming the holder before any state mutation
+And the response status is HTTP 409
 And the artifact's current version is unchanged
 ```
 
-#### UC-WAV10: Write to a slug driven by a different live session is refused
+#### UC-WAV10: Write to a slug held by a different live session is refused
 
 ```gherkin
-Given a slug already driven by a different live session
-When a role-permitted session attempts to write a prepare artifact
-Then the workflow service refuses the write as a claim conflict before any state mutation
-And the refusal names the driving session
+Given a slug held by a live session
+When a different session attempts to write a prepare artifact
+Then the workflow service refuses the write as a claim conflict naming the holder before any state mutation
+And the response status is HTTP 409
 ```
 
-#### UC-WAV11: Prepare-orchestrator write to an unclaimed slug is accepted and claims the slug
+#### UC-WAV11: Write to an unheld slug is accepted and records the writer as live holder
 
 ```gherkin
-Given a slug with no live session driving it
-When a prepare-orchestrator session writes a prepare artifact
+Given a slug with no live holder
+When a session writes a prepare artifact
 Then the workflow service accepts the write
-And the writing session becomes the slug's driver
+And records the writing session as the slug's live active-runner
 And records the resolved caller principal as updated_by
 ```
 
@@ -168,22 +150,21 @@ When the workflow service persists the new version
 Then updated_by is the resolved caller principal, not a constant placeholder
 ```
 
-#### UC-WAV13: A claim acquired by writing blocks a subsequent dispatch
+#### UC-WAV13: A write-acquired holder is honored by the driver-start dedup
 
 ```gherkin
-Given a live session that became a slug's driver by writing a prepare artifact
-When a dispatch is attempted for that slug
-Then the dispatch is refused as already driven
-And the existing driving session is identified
+Given a session that wrote a prepare artifact for a previously unheld slug
+When an orchestrator-class driver-start for that slug is attempted while the writer is live
+Then the driver-start is refused as a conflict naming the holder
 ```
 
-#### UC-WAV14: The write-acquired claim releases when the driving session ends
+#### UC-WAV14: The write-acquired claim releases when the holding session ends
 
 ```gherkin
-Given a slug driven by a session that claimed it by writing
+Given a slug whose live holder is a session that acquired it by writing
 When that session ends
-Then the slug has no live driver
-And another session may write its prepare artifacts and become the driver
+Then the slug has no live holder
+And another session may write a prepare artifact and become the holder
 ```
 
 #### UC-WAV15: Work-orchestrator write to a prepare artifact is refused by role
