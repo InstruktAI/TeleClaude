@@ -17,10 +17,12 @@ Capture a decision as a structured, discoverable record that future agents can f
 
 ### What an ADR is
 
-An ADR is one atomic, immutable reasoning report on the architecture's decision
-timeline. It records a single decision at the moment it was made: the context and
-forces then in play, the decision taken, and its consequences. It is history —
-never edited after the fact.
+An ADR is one atomic reasoning report on the architecture's decision timeline. It
+records a single decision at the moment it was made: the context and forces then in
+play, the decision taken, and its consequences. Its **body** is history — never
+edited after the fact. The one mutable element is its **`## Status`**: when a later
+ADR supersedes this one, this ADR's `## Status` is set to point forward at it; the
+body still stays exactly as written.
 
 Three constraints follow from that nature, and they are the rules most often
 broken:
@@ -28,10 +30,11 @@ broken:
 - **Atomic.** One ADR records one decision. A cohesive contract whose parts must
   cross-reference is a spec or domain doc; each constituent decision is still its
   own standalone ADR.
-- **Backward-only on the timeline.** As a fixed point in time, an ADR may rest on
-  decisions that already existed when it was written — referencing an _earlier_
-  ADR is fine. It may **never** reference a _later_ ADR, because at its moment
-  that decision did not exist. There is no forward link.
+- **Backward-only on the timeline.** As a fixed point in time, an ADR's body may
+  rest on decisions that already existed when it was written — referencing an
+  _earlier_ ADR is fine. The body may **never** reference a _later_ ADR, because at
+  its moment that decision did not exist. The sole forward link is the `## Status`
+  supersession pointer, added later when a newer ADR supersedes this one.
 - **Decisions, not work.** An ADR records a decision, never work: no todo, no
   slug, no `delivered_by`, no delivery, nothing TBD. Those are not points on the
   decision timeline, and the future is not knowable from a past entry.
@@ -67,20 +70,24 @@ broken:
    - `## Decision` — what we chose, stated as a decision. Active voice. One paragraph or a tight bullet list. The artifact this ADR justifies should reflect this decision.
    - `## Consequences` — what follows from this decision, positive and negative. What's now easier? What's harder? What's now precluded? What invariants must be honored going forward?
    - `## Alternatives Considered` (optional but encouraged) — what other paths were on the table and why they were rejected. Be honest; don't write retroactive justifications.
+   - `## Status` (optional) — omit on a fresh ADR (absence means live and accepted). It exists to be set later: when a newer ADR supersedes this one, set it to `Superseded by ADR-NNNN`, `Superseded in part by ADR-NNNN` (with one clause naming which part), or `Deprecated`. This is the only section ever edited after authoring.
 
 5. **Sanity check before commit:**
    - The decision is stated clearly enough that a future agent could re-evaluate it on its merits.
    - The consequences include the negative ones, not just the wins.
    - The ADR is discoverable: the path-derived id matches the filename; authored `number` matches the filename prefix; date is correct.
 
-6. **Never modify a prior ADR.** A decision that reverses an earlier one is its
-   own new ADR; the earlier ADR stays exactly as written. State the relationship,
-   if it matters, in this ADR's prose as a backward reference — there is no
-   supersession field.
+6. **Never modify a prior ADR's body.** A decision that reverses or narrows an
+   earlier one is its own new ADR; the earlier ADR's body stays exactly as written.
+   The one permitted change to the earlier ADR is its `## Status` section — set it to
+   `Superseded by ADR-NNNN` / `Superseded in part by ADR-NNNN` / `Deprecated` so a
+   reader of the old ADR is pointed forward. ADRs are superseded, never deleted.
+   When the relationship needs reasoning, state it in the new ADR's prose as a
+   backward reference.
 
 ## Outputs
 
-- A new file at `docs/project/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered).
+- A new file at `docs/project/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered). `## Status` is omitted on a fresh ADR and added only later when a newer ADR supersedes it.
 
 ## Pre-completion checklist
 

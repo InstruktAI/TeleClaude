@@ -26,3 +26,7 @@ The root cause is structural: **when an agent authors both the code and the asse
 - Retired: the 1:1-mapping and test-resource-discipline policies and the TDD-iron-law / required-unit / expected-failure doctrine inside the testing policy.
 - The testing policy is rewritten to the new doctrine, with per-language variants and the Rust carve-out, and the Definition-of-Done and context gates updated to match.
 - The same tech-agnostic scenarios bind to the v2 Rust re-implementation, so the suite doubles as the migration parity oracle.
+
+## Status
+
+Superseded in part by ADR-0057 — the per-scenario content-fingerprint drift mechanism and the automated spec-structure/coverage gate are descoped; the rest of this decision (spec-anchored binding, author≠binder role separation, functional+smoke levels, coverage by scenario inventory) stands.
