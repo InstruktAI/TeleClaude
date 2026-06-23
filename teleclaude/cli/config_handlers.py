@@ -273,7 +273,7 @@ def list_person_dirs() -> list[str]:
 # every existing importer of config_handlers is unaffected.
 
 
-def save_machine_config(config: _tc_config_module.Config, path: Path | None = None) -> None:
+def save_machine_config(config: _tc_config_module.TeleclaudeConfig, path: Path | None = None) -> None:
     """Atomic write of machine configuration (config.yml)."""
     target = path or _tc_config_module.config_path
     data = dataclasses.asdict(config)

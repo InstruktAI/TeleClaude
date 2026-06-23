@@ -7,7 +7,6 @@ import importlib
 import os
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import APIError, TelecAPIClient
@@ -34,15 +33,6 @@ __all__ = [
     "_revive_session_via_api",
     "_send_revive_enter_via_api",
 ]
-
-
-def _load_project_config() -> Any:
-    return importlib.import_module("teleclaude.config.loader").load_project_config
-
-
-def _resolve_project_config_path(project_root: Path) -> Path:
-    result: Path = importlib.import_module("teleclaude.utils").resolve_project_config_path(project_root)
-    return result
 
 
 def _teleclaude_version() -> str:
@@ -76,12 +66,10 @@ def _git_short_commit_hash() -> str:
 def _handle_version() -> None:
     """Print runtime version metadata."""
     commit_hash = _git_short_commit_hash()
-    project_root = Path(__file__).resolve().parents[4]
     try:
-        project_cfg_path = _resolve_project_config_path(project_root)
-        project_config = _load_project_config()(project_cfg_path)
-        channel = project_config.deployment.channel
-        pinned_minor = project_config.deployment.pinned_minor
+        deployment = importlib.import_module("teleclaude.config").config.deployment
+        channel = deployment.channel
+        pinned_minor = deployment.pinned_minor
     except (AttributeError, OSError, TypeError, ValueError):
         channel = "alpha"
         pinned_minor = ""

@@ -1,0 +1,72 @@
+# serializer version: 1
+# name: test_generated_sample_reflects_tiers_and_preserves_curated_content
+  '''
+  # Curated header comment
+  computer:
+    name: Mac # inline comment kept
+    trusted_dirs:
+      - name: Workspace
+        path: /tmp/ws
+    role: general
+    timezone: Europe/Amsterdam
+    is_master: false
+    host:
+    is_ingress_node: false
+  redis:
+    url: redis://localhost:6379
+    password:
+    max_connections: 50
+    socket_timeout: 60
+    message_stream_maxlen: 10000
+    output_stream_maxlen: 10000
+    output_stream_ttl: 3600
+  telegram:
+    enabled: false
+  discord:
+    enabled: false
+    token:
+    guild_id:
+  whatsapp:
+    enabled: false
+    phone_number_id:
+    access_token:
+    webhook_secret:
+    verify_token:
+    template_name:
+    template_language: en_US
+  tts:
+    enabled: false
+    events:
+      session_start:
+        enabled: false
+    services:
+      pyttsx3:
+        enabled: true
+        voices: []
+      macos:
+        enabled: false
+        voices: []
+      openai:
+        enabled: false
+        voices: []
+      elevenlabs:
+        enabled: false
+        voices: []
+  chiptunes:
+    enabled: false
+    music_dir:
+    volume: 1.0
+  workflow:
+    autostart:
+      feature: false
+      change: false
+      bug: false
+      task: false
+    runner: autostart
+    max_todo_dispatch: 5
+  deployment:
+    channel: alpha
+    pinned_minor: ''
+  
+  '''
+# ---

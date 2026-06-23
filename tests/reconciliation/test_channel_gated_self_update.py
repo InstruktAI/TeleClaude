@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from teleclaude import __version__
-from teleclaude.config.schema import DeploymentConfig
+from teleclaude.config import DeploymentConfig, ReleaseChannel
 from teleclaude.deployment import executor, handler
 from teleclaude.hooks.webhook_models import HookEvent
 
@@ -54,13 +54,6 @@ _PINNED_MINOR = "1.2"
 _BETA_TAG = "2.3.0"
 _IN_PINNED_TAG = "1.2.5"
 _OUT_OF_PINNED_TAG = "1.3.0"
-
-
-class _ProjectConfigStub:
-    """Minimal stand-in exposing the ``.deployment`` slice the handler reads."""
-
-    def __init__(self, deployment: DeploymentConfig) -> None:
-        self.deployment = deployment
 
 
 class _CapturedUpdate:
@@ -88,8 +81,8 @@ async def _run_decision(
 ) -> list[tuple[str, dict]]:
     """Drive the real channel-policy decision; return captured execute_update calls."""
     captured = _CapturedUpdate()
-    config_stub = _ProjectConfigStub(DeploymentConfig(channel=channel, pinned_minor=pinned_minor))
-    monkeypatch.setattr(handler, "load_project_config", lambda _path: config_stub)
+    deployment = DeploymentConfig(channel=ReleaseChannel(channel), pinned_minor=pinned_minor)
+    monkeypatch.setattr(handler._config, "deployment", deployment)
     monkeypatch.setattr(handler, "execute_update", captured)
 
     await handler.handle_deployment_event(event)

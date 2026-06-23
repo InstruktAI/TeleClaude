@@ -64,7 +64,6 @@ from teleclaude.config import (  # config.py loads .env at import time
     reload_config,
     restart_required_sections,
 )
-from teleclaude.config.loader import load_project_config
 from teleclaude.core.config_watcher import ConfigWatcher
 
 _record_import_timing("teleclaude.config", _t)
@@ -225,11 +224,6 @@ from teleclaude.transport.identity_bridge import IdentityBridge, IdentityEnvelop
 from teleclaude.transport.workflow_bridge import WorkflowBridge, WorkflowEnvelope
 
 _record_import_timing("teleclaude.transport.workflow_bridge", _t)
-
-_t = time.perf_counter()
-from teleclaude.utils import resolve_project_config_path
-
-_record_import_timing("teleclaude.utils", _t)
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -792,6 +786,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info("Starting TeleClaude daemon...")
         logger.info("[STARTUP] Bootstrapping daemon runtime (usually 10-25s)")
         try:
+            # Fold any legacy per-project/global `deployment:` block into the machine
+            # config before the deployment readers (`config.deployment`) fire, then
+            # reload so an existing install's channel reaches runtime rather than
+            # silently falling back to the seeded default.
+            from teleclaude.project_setup.init_flow import migrate_legacy_deployment_sources
+
+            if migrate_legacy_deployment_sources(Path(WORKING_DIR)):
+                reload_config()
+
             await self.lifecycle.startup()
 
             startup_elapsed = time.perf_counter() - daemon_start_started_at
@@ -1257,12 +1260,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             return await redis_adapter.get_redis()
 
         def _local_capability_entry() -> FleetCapabilityEntry:
-            project_config = load_project_config(resolve_project_config_path(Path(WORKING_DIR)))
             advertised_at = datetime.now(UTC)
             return FleetCapabilityEntry(
                 computer=config.computer.name,
                 version=__version__,
-                channel=project_config.deployment.channel,
+                channel=config.deployment.channel,
                 capability_set=DEFAULT_FEATURE_ID_REGISTRY.carried_set(),
                 last_advertised_at=advertised_at,
             )

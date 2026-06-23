@@ -1,8 +1,7 @@
 ---
-description: 'Config editability is code-led and opt-in: a per-field tier declares what reaches humans; default internal.'
-visibility: 'internal'
-delivered_by:
-  - config-public-surface-contract
+description: 'Config editability is code-led and opt-in: a per-field tier declares
+  what reaches humans; default internal.'
+visibility: internal
 needs_domain_baseline: true
 ---
 

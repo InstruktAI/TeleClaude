@@ -26,15 +26,7 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 | ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
 | **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests`, `event_domains` |
 
-<!-- planned-change:config-public-surface-contract -->
-
-| **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
-
-<!-- change:config-public-surface-contract -->
-
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions` |
-
-<!-- /planned-change:config-public-surface-contract -->
 
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
 
@@ -44,17 +36,11 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 
 <!-- /planned:companies-onboard -->
 
-<!-- planned:config-public-surface-contract -->
-
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not
 project-level keys. They govern TeleClaude's own self-update — a machine-wide
 concern — and live on the machine runtime `config.yml` (the `TeleclaudeConfig`
 aggregate), marked `tier=public` (present in the generated sample; wizard
 exposure stays a later refinement).
-
-<!-- /planned:config-public-surface-contract -->
-
-<!-- planned:config-public-surface-contract -->
 
 ### Configuration tiers — public vs internal
 
@@ -73,8 +59,6 @@ Machine-config fields (`config.yml` / `TeleclaudeConfig`) declare an editability
 tiers, so the sample cannot drift from the schema. The full rule lives in
 `project/policy/config-public-surface`.
 
-<!-- /planned:config-public-surface-contract -->
-
 **The project config is a regular file committed to the repository.** It is never a
 symlink. Replacing it with a symlink to the global config breaks validation because
 `ProjectConfig.reject_disallowed_keys` rejects `people`.
@@ -85,35 +69,6 @@ symlink. Replacing it with a symlink to the global config breaks validation beca
 
 Valid in both project and global configs.
 
-<!-- planned-change:config-public-surface-contract -->
-
-```yaml
-project_slug: string # canonical machine identity; required in project configs
-project_name: string # human-readable display name
-env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
-frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
-description: string
-business:
-  domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)
-jobs: mapping[string, JobScheduleConfig]
-hooks:
-  inbound: mapping[string, InboundSourceConfig]
-  subscriptions: list[SubscriptionConfig]
-git:
-  checkout_root: string
-integrator:
-  cutover:
-    enabled: boolean
-    parity_evidence_accepted: boolean
-    rollback_on_incomplete_parity: boolean
-deployment:
-  channel: string # alpha | beta | stable (default: alpha)
-  pinned_minor: string # required when channel=stable
-channel_subscriptions: list[ChannelSubscription]
-```
-
-<!-- change:config-public-surface-contract -->
-
 ```yaml
 project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
@@ -128,8 +83,6 @@ hooks:
   subscriptions: list[SubscriptionConfig]
 channel_subscriptions: list[ChannelSubscription]
 ```
-
-<!-- /planned-change:config-public-surface-contract -->
 
 <!-- planned:companies-onboard -->
 

@@ -21,8 +21,8 @@ from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
 from teleclaude.config._models import AgentConfig as AgentConfig
 from teleclaude.config._models import ComputerConfig as ComputerConfig
-from teleclaude.config._models import Config as Config
 from teleclaude.config._models import CredsConfig as CredsConfig
+from teleclaude.config._models import DeploymentConfig as DeploymentConfig
 from teleclaude.config._models import DiscordConfig as DiscordConfig
 from teleclaude.config._models import DiscordQoSConfig as DiscordQoSConfig
 from teleclaude.config._models import EmailConfig as EmailConfig
@@ -31,8 +31,10 @@ from teleclaude.config._models import ExperimentConfig as ExperimentConfig
 from teleclaude.config._models import PollingConfig as PollingConfig
 from teleclaude.config._models import ProcessJanitorConfig as ProcessJanitorConfig
 from teleclaude.config._models import RedisConfig as RedisConfig
+from teleclaude.config._models import ReleaseChannel as ReleaseChannel
 from teleclaude.config._models import STTConfig as STTConfig
 from teleclaude.config._models import STTServiceConfig as STTServiceConfig
+from teleclaude.config._models import TeleclaudeConfig as TeleclaudeConfig
 from teleclaude.config._models import TelegramConfig as TelegramConfig
 from teleclaude.config._models import TelegramCredsConfig as TelegramCredsConfig
 from teleclaude.config._models import TelegramQoSConfig as TelegramQoSConfig
@@ -406,6 +408,24 @@ def _parse_workflow_config(raw: dict[str, object] | None) -> WorkflowConfig:  # 
     return WorkflowConfig(autostart=autostart, runner=runner, max_todo_dispatch=max_todo_dispatch)
 
 
+def _parse_deployment_config(raw: dict[str, object] | None) -> DeploymentConfig:  # guard: loose-dict
+    """Parse the machine self-update release-channel config from raw dict.
+
+    Enforces the stable-channel-requires-pinned_minor rule (via the dataclass
+    ``__post_init__``) so an invalid ``config.yml:deployment`` block fails loudly at
+    load instead of silently shipping the wrong channel.
+    """
+    if not raw:
+        return DeploymentConfig()
+    channel_raw = raw.get("channel", "alpha")
+    try:
+        channel = ReleaseChannel(str(channel_raw))
+    except ValueError:
+        raise ValueError(f"deployment.channel must be one of {[c.value for c in ReleaseChannel]}") from None
+    pinned_minor = str(raw.get("pinned_minor", "") or "")
+    return DeploymentConfig(channel=channel, pinned_minor=pinned_minor)
+
+
 def parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
     """Parse STT config from raw dict."""
     if not raw_stt:
@@ -444,8 +464,8 @@ def _parse_optional_int(value: object) -> int | None:
 
 def _build_config(
     raw: dict[str, object],  # guard: loose-dict - YAML deserialization input
-) -> Config:
-    """Build typed Config from raw dict with proper type conversion."""
+) -> TeleclaudeConfig:
+    """Build typed TeleclaudeConfig from raw dict with proper type conversion."""
     comp_raw = raw["computer"]
     if not isinstance(comp_raw, dict):
         raise ValueError("Invalid config key `config.yml:computer`: expected a mapping.")
@@ -462,6 +482,7 @@ def _build_config(
     chiptunes_raw = raw.get("chiptunes", None)
     process_janitor_raw = raw.get("process_janitor", None)
     workflow_raw = raw.get("workflow", None)
+    deployment_raw = raw.get("deployment", None)
     summarizer_raw = raw.get("summarizer", None)
     experiments_raw = raw.get("experiments", [])
     agents_raw = dict(_require_agents_section(raw))
@@ -584,7 +605,7 @@ def _build_config(
     email_raw = raw.get("email")
     email_enabled = _as_bool(email_raw.get("enabled", False)) if isinstance(email_raw, dict) else False
 
-    return Config(
+    return TeleclaudeConfig(
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index]
             # Derived, not user-editable: system login, project dir, and the
@@ -681,6 +702,7 @@ def _build_config(
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
         process_janitor=_parse_process_janitor_config(process_janitor_raw),  # type: ignore[arg-type]
         workflow=_parse_workflow_config(workflow_raw),  # type: ignore[arg-type]
+        deployment=_parse_deployment_config(deployment_raw),  # type: ignore[arg-type]
         summarizer=_parse_summarizer_config(summarizer_raw),  # type: ignore[arg-type]
         experiments=experiments,
         remote_computers=remote_computers,
@@ -699,7 +721,7 @@ def restart_required_sections(changed: list[str]) -> list[str]:
     return [section for section in changed if section not in HOT_RELOADABLE_SECTIONS]
 
 
-def _load_config_from_disk(path: Path) -> Config:
+def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
     _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
     with open(path, encoding="utf-8") as f:
@@ -752,6 +774,6 @@ def reload_config() -> list[str]:
     any other changed section needs a daemon restart (see ``restart_required_sections``).
     """
     fresh = _load_config_from_disk(_config_path)
-    changed = [f.name for f in fields(Config) if getattr(config, f.name) != getattr(fresh, f.name)]
+    changed = [f.name for f in fields(TeleclaudeConfig) if getattr(config, f.name) != getattr(fresh, f.name)]
     config.__dict__.update(fresh.__dict__)
     return changed

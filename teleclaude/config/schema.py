@@ -8,6 +8,7 @@ from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from teleclaude.config.tiers import Tier
 from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import validate_slug
 
@@ -123,48 +124,6 @@ class BusinessConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     domains: dict[str, str] = {}
-
-
-class GitConfig(BaseModel):
-    """Git repository configuration."""
-
-    model_config = ConfigDict(extra="allow")
-
-
-class IntegratorCutoverConfig(BaseModel):
-    """Integrator cutover feature flags."""
-
-    model_config = ConfigDict(extra="allow")
-    enabled: bool = False
-    parity_evidence_accepted: bool = False
-    rollback_on_incomplete_parity: bool = True
-
-    @model_validator(mode="after")
-    def validate_cutover_enablement(self) -> IntegratorCutoverConfig:
-        """Require parity evidence before enabling cutover."""
-        if self.enabled and not self.parity_evidence_accepted:
-            raise ValueError(
-                "integrator.cutover.enabled requires parity_evidence_accepted=true; "
-                "disable cutover to rollback until parity is accepted"
-            )
-        return self
-
-
-class IntegratorConfig(BaseModel):
-    """Integrator subsystem configuration."""
-
-    model_config = ConfigDict(extra="allow")
-    cutover: IntegratorCutoverConfig = IntegratorCutoverConfig()
-
-
-class ProcessJanitorConfig(BaseModel):
-    """Process janitor timing and safety defaults."""
-
-    model_config = ConfigDict(extra="allow")
-    scan_interval_seconds: int = Field(default=300, ge=60)
-    default_signature_ttl_seconds: int = Field(default=3600, ge=60)
-    lease_ttl_seconds: int = Field(default=1800, ge=60)
-    dry_run_default: bool = True
 
 
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
@@ -362,23 +321,15 @@ class HooksConfig(BaseModel):
     subscriptions: list[SubscriptionConfig] = []
 
 
-class DeploymentConfig(BaseModel):
-    """Release channel and version pinning."""
-
-    model_config = ConfigDict(extra="allow")
-    channel: Literal["alpha", "beta", "stable"] = "alpha"
-    pinned_minor: str = ""
-
-    @model_validator(mode="after")
-    def validate_stable_requires_pinned_minor(self) -> DeploymentConfig:
-        """Require pinned_minor for stable channel."""
-        if self.channel == "stable" and not self.pinned_minor:
-            raise ValueError("pinned_minor is required and must be non-empty when channel=stable")
-        return self
-
-
 class ProjectConfig(BaseModel):
-    """Project-level configuration."""
+    """Project-level configuration: per-project ``teleclaude.yml`` overlay.
+
+    This is the project-scoped overlay, not the machine runtime config — the
+    public/editable machine surface is declared by the per-field ``tier`` markers
+    on ``TeleclaudeConfig`` (``project/policy/config-public-surface``). Keys that
+    belong machine-wide (the release channel, the workflow control plane) live on
+    the machine config, not here.
+    """
 
     model_config = ConfigDict(extra="allow")
     project_slug: str | None = None
@@ -389,11 +340,7 @@ class ProjectConfig(BaseModel):
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
     jobs: dict[str, JobScheduleConfig] = {}
-    git: GitConfig = GitConfig()
-    integrator: IntegratorConfig = IntegratorConfig()
-    process_janitor: ProcessJanitorConfig = ProcessJanitorConfig()
     channel_subscriptions: list[ChannelSubscription] = []
-    deployment: DeploymentConfig = DeploymentConfig()
 
     @field_validator("project_slug")
     @classmethod
@@ -431,7 +378,14 @@ class ProjectConfig(BaseModel):
 
 
 class GlobalConfig(BaseModel):
-    """Global-level configuration."""
+    """Global-level configuration: the cross-project overlay (people, interests, overlay roots).
+
+    Like ``ProjectConfig``, this is an overlay, not the machine runtime config; the
+    public/editable machine surface is the per-field ``tier`` markers on
+    ``TeleclaudeConfig`` (``project/policy/config-public-surface``). ``checkout_root``
+    is the surviving git overlay key, marked ``internal`` — not human-edited in the
+    wizard.
+    """
 
     model_config = ConfigDict(extra="allow")
     env_allow_list: list[str] = []
@@ -439,7 +393,7 @@ class GlobalConfig(BaseModel):
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
     event_domains: DomainsConfig | None = None
-    checkout_root: str | None = Field(default=None, json_schema_extra={"exclude_from_tui": True})
+    checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
 
     @field_validator("env_allow_list")
     @classmethod
@@ -485,7 +439,7 @@ class PersonConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     creds: CredsConfig = CredsConfig()
-    subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"exclude_from_tui": True})
+    subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
     settings: PersonSettings = PersonSettings()
 

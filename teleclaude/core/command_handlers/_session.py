@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
-from teleclaude.config.loader import load_project_config
 from teleclaude.constants import EVENT_END_SESSION, HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName
@@ -33,7 +32,7 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
-from teleclaude.utils import resolve_project_config_path, strip_ansi_codes
+from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
@@ -414,8 +413,6 @@ async def get_computer_info() -> ComputerInfo:
         "disk": disk_stats,
         "cpu": cpu_stats,
     }
-    project_config = load_project_config(resolve_project_config_path(Path(WORKING_DIR)))
-
     info = ComputerInfo(
         name=config.computer.name,
         status="online",
@@ -425,7 +422,7 @@ async def get_computer_info() -> ComputerInfo:
         is_local=True,
         system_stats=system_stats,
         version=__version__,
-        channel=project_config.deployment.channel,
+        channel=config.deployment.channel,
         capability_set=sorted(DEFAULT_FEATURE_ID_REGISTRY.carried_set()),
     )
 

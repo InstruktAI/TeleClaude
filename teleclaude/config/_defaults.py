@@ -1,4 +1,10 @@
-"""Default daemon configuration blueprint, merged under the user config."""
+"""Default daemon configuration blueprint, merged under the user config.
+
+``DEFAULT_CONFIG`` is the defaults/constants blob, not the public contract. What is
+public and human-editable is declared by the per-field ``tier`` markers on
+``TeleclaudeConfig`` (``project/policy/config-public-surface``); the generated
+``templates/config.yml`` sample follows from those markers, not from this blob.
+"""
 
 from __future__ import annotations
 
@@ -97,6 +103,10 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         },
         "runner": "autostart",
         "max_todo_dispatch": 5,
+    },
+    "deployment": {
+        "channel": "alpha",
+        "pinned_minor": "",
     },
     "experiments": [],
 }

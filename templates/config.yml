@@ -96,6 +96,7 @@ workflow:
     task: false
   max_todo_dispatch: 5
 
+  runner: autostart
 agents:
   default: claude
   claude:
@@ -286,3 +287,10 @@ tts:
     pyttsx3:
       enabled: true
       voices: []
+chiptunes:
+  enabled: false
+  music_dir:
+  volume: 1.0
+deployment:
+  channel: alpha
+  pinned_minor: ''

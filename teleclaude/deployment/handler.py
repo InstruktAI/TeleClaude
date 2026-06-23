@@ -4,19 +4,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.hooks.webhook_models import HookEvent
-from teleclaude.utils import resolve_project_config_path
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 from teleclaude import __version__
 from teleclaude.config import config as _config
-from teleclaude.config.loader import load_project_config
 from teleclaude.deployment import parse_version
 from teleclaude.deployment.executor import execute_update
 
@@ -24,8 +21,6 @@ logger = get_logger(__name__)
 
 # Well-known Redis Stream key for deployment fan-out across daemons.
 DEPLOYMENT_FANOUT_CHANNEL = "deployment:version_available"
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Module-level state injected by daemon at startup.
 _get_redis: Callable[[], Awaitable[Redis]] | None = None
@@ -84,15 +79,8 @@ async def handle_deployment_event(
         github source  → publish version_available to Redis + execute locally
         deployment source → execute locally only (prevents re-broadcast loops)
     """
-    project_cfg_path = resolve_project_config_path(_PROJECT_ROOT)
-    try:
-        project_config = load_project_config(project_cfg_path)
-    except Exception as exc:
-        logger.error("Deployment handler: failed to load project config: %s", exc)
-        return
-
-    channel = project_config.deployment.channel
-    pinned_minor = project_config.deployment.pinned_minor
+    channel = _config.deployment.channel
+    pinned_minor = _config.deployment.pinned_minor
 
     should_update = False
     version_info: dict = {}  # type: ignore[type-arg]

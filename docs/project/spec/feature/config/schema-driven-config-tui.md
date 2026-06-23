@@ -226,8 +226,6 @@ When the saved value differs from the default
 Then only that deviation is written to config.yml
 ```
 
-<!-- planned:config-public-surface-contract -->
-
 #### UC-CFG-TUI-SCHEMA-15: Visibility is opt-in via a per-field tier
 
 ```
@@ -248,8 +246,6 @@ the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to show,
 rather than a flag to hide — so the rendered set is the inverse of the retired
 exclusion list, not a reduction of it. The governing rule lives in
 `project/policy/config-public-surface`.
-
-<!-- /planned:config-public-surface-contract -->
 
 ### Current hand-patched surfaces to retire
 

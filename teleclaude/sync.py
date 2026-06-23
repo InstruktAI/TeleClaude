@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from teleclaude.config._blueprint import generate_sample_file
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -79,10 +80,27 @@ def sync(
         if path.exists():
             print(f"Index: {path}")
 
+    # Phase 3b: Regenerate the public config sample from the field tiers, so the
+    # sample is a consequence of the markers and cannot drift.
+    _regenerate_config_sample(project_root)
+
     # Phase 4: Build and deploy artifacts
     _run_distribute(project_root)
 
     return True
+
+
+def _regenerate_config_sample(project_root: Path) -> None:
+    """Reconcile ``templates/config.yml`` against the machine-config field tiers.
+
+    A no-op when the project carries no sample (adopting projects) or when the
+    sample already matches the tier map.
+    """
+    template_path = project_root / "templates" / "config.yml"
+    if not template_path.exists():
+        return
+    if generate_sample_file(template_path):
+        print(f"Config sample: {template_path}")
 
 
 def sync_bootstrap(project_root: Path) -> None:

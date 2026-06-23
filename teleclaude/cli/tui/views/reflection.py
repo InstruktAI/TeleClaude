@@ -11,6 +11,14 @@ from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
+from teleclaude.config.tiers import (
+    Tier,
+    dataclass_field_tier,
+    effective_tier,
+    pydantic_field_tier,
+    renders_in_tui,
+)
+
 
 @dataclass
 class ReflectedField:
@@ -96,6 +104,7 @@ def _reflect_field(
     annotation: Any,
     value: Any,
     description: str | None,
+    effective: Tier,
 ) -> list[ReflectedField]:
     """Recurse into a nested struct/dict/list, or emit a single leaf field.
 
@@ -104,22 +113,34 @@ def _reflect_field(
     ``Optional`` nested struct — so a structure renders to its leaves regardless of
     whether it is currently populated. A list of scalars stays a single editable
     leaf; a list of structs expands to one indexed subtree per element.
+
+    ``effective`` is this field's resolved editability tier. Containers are never
+    gated — they are walked, passing their effective tier down as the inherited
+    default for unmarked nested leaves. A leaf is emitted only when its effective
+    tier renders in the TUI (``tui``); any other tier hides it.
     """
     if _is_struct_value(value):
-        return reflect_schema(value, prefix=full_key, section=label, owning_source=owning_source)
+        return reflect_schema(
+            value, prefix=full_key, section=label, owning_source=owning_source, inherited_tier=effective
+        )
 
     if isinstance(value, list) and any(_is_struct_value(item) for item in value):
         items: list[ReflectedField] = []
         for index, item in enumerate(value):
             items.extend(
-                _reflect_field(f"{full_key}.{index}", f"{label} {index}", label, owning_source, None, item, None)
+                _reflect_field(
+                    f"{full_key}.{index}", f"{label} {index}", label, owning_source, None, item, None, effective
+                )
             )
         return items
 
     if value is None and annotation is not None:
         nested = _struct_type_from_annotation(annotation)
         if nested is not None:
-            return _reflect_type(nested, full_key, label, owning_source)
+            return _reflect_type(nested, full_key, label, owning_source, effective)
+
+    if not renders_in_tui(effective):
+        return []
 
     if annotation is not None:
         ftype, choices = _resolve_type_and_choices(annotation)
@@ -140,14 +161,14 @@ def _reflect_field(
     ]
 
 
-def _reflect_type(struct_type: Any, prefix: str, section: str, owning_source: str) -> list[ReflectedField]:
+def _reflect_type(
+    struct_type: Any, prefix: str, section: str, owning_source: str, inherited_tier: Tier
+) -> list[ReflectedField]:
     """Reflect an unset nested struct *type* into value-None leaf fields."""
     fields: list[ReflectedField] = []
     if isinstance(struct_type, type) and issubclass(struct_type, BaseModel):
         for name, field_info in struct_type.model_fields.items():
-            extra = field_info.json_schema_extra
-            if isinstance(extra, dict) and extra.get("exclude_from_tui"):
-                continue
+            effective = effective_tier(pydantic_field_tier(field_info), inherited_tier)
             fields.extend(
                 _reflect_field(
                     f"{prefix}.{name}" if prefix else name,
@@ -157,13 +178,13 @@ def _reflect_type(struct_type: Any, prefix: str, section: str, owning_source: st
                     field_info.annotation,
                     None,
                     field_info.description or "",
+                    effective,
                 )
             )
     elif isinstance(struct_type, type) and dataclasses.is_dataclass(struct_type):
         type_hints = get_type_hints(struct_type)
         for f in dataclasses.fields(struct_type):
-            if f.metadata and f.metadata.get("exclude_from_tui"):
-                continue
+            effective = effective_tier(dataclass_field_tier(f), inherited_tier)
             fields.extend(
                 _reflect_field(
                     f"{prefix}.{f.name}" if prefix else f.name,
@@ -173,22 +194,33 @@ def _reflect_type(struct_type: Any, prefix: str, section: str, owning_source: st
                     type_hints.get(f.name, f.type),
                     None,
                     f.metadata.get("description") if f.metadata else None,
+                    effective,
                 )
             )
     return fields
 
 
 def reflect_schema(
-    obj: Any, prefix: str = "", section: str = "General", owning_source: str = "global"
+    obj: Any,
+    prefix: str = "",
+    section: str = "General",
+    owning_source: str = "global",
+    inherited_tier: Tier = Tier.INTERNAL,
 ) -> list[ReflectedField]:
-    """Inspect a Pydantic model, dataclass instance, or dict and return its ReflectedFields."""
+    """Inspect a Pydantic model, dataclass instance, or dict and return its ReflectedFields.
+
+    Editability is opt-in: a leaf renders only when its effective tier is ``tui``.
+    The effective tier is the field's own ``tier`` marker when declared, else the
+    ``inherited_tier`` carried down from the enclosing container. A TUI caller
+    designates a rendered section by passing ``inherited_tier=Tier.TUI`` so the
+    section's unmarked leaves render while explicitly ``internal``/``public`` leaves
+    stay hidden.
+    """
     fields: list[ReflectedField] = []
 
     if isinstance(obj, BaseModel):
         for name, field_info in type(obj).model_fields.items():
-            extra = field_info.json_schema_extra
-            if isinstance(extra, dict) and extra.get("exclude_from_tui"):
-                continue
+            effective = effective_tier(pydantic_field_tier(field_info), inherited_tier)
             fields.extend(
                 _reflect_field(
                     f"{prefix}.{name}" if prefix else name,
@@ -198,14 +230,14 @@ def reflect_schema(
                     field_info.annotation,
                     getattr(obj, name),
                     field_info.description or "",
+                    effective,
                 )
             )
 
     elif dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         type_hints = get_type_hints(type(obj))
         for f in dataclasses.fields(obj):
-            if f.metadata and f.metadata.get("exclude_from_tui"):
-                continue
+            effective = effective_tier(dataclass_field_tier(f), inherited_tier)
             fields.extend(
                 _reflect_field(
                     f"{prefix}.{f.name}" if prefix else f.name,
@@ -215,6 +247,7 @@ def reflect_schema(
                     type_hints.get(f.name, f.type),
                     getattr(obj, f.name),
                     f.metadata.get("description") if f.metadata else None,
+                    effective,
                 )
             )
 
@@ -229,6 +262,7 @@ def reflect_schema(
                     None,
                     val,
                     None,
+                    inherited_tier,
                 )
             )
 

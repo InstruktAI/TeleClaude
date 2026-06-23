@@ -56,6 +56,7 @@ from teleclaude.config import (
 )
 from teleclaude.config._summarizer import parse_summarizer_config
 from teleclaude.config.schema import PersonEntry
+from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
 __all__ = ["ConfigContent", "ConfigView"]
@@ -423,14 +424,20 @@ class ConfigContent(
                 trusted_dirs=[],
                 host=filtered_computer.get("host", None),
             )
-            fields = reflect_schema(computer_obj, prefix="computer", section="Computer", owning_source="machine")
+            fields = reflect_schema(
+                computer_obj, prefix="computer", section="Computer", owning_source="machine", inherited_tier=Tier.TUI
+            )
 
             redis_data = self._raw_config.get("redis", {})
             merged_redis = deep_merge(_default_section("redis"), redis_data)
             redis_fields = {f.name for f in dataclasses.fields(RedisConfig)}
             filtered_redis = {k: v for k, v in merged_redis.items() if k in redis_fields}
             redis_obj = RedisConfig(**filtered_redis)
-            fields.extend(reflect_schema(redis_obj, prefix="redis", section="Redis", owning_source="machine"))
+            fields.extend(
+                reflect_schema(
+                    redis_obj, prefix="redis", section="Redis", owning_source="machine", inherited_tier=Tier.TUI
+                )
+            )
 
             chiptunes_data = self._raw_config.get("chiptunes", {})
             merged_chiptunes = deep_merge(_default_section("chiptunes"), chiptunes_data)
@@ -438,7 +445,13 @@ class ConfigContent(
             filtered_chiptunes = {k: v for k, v in merged_chiptunes.items() if k in chiptunes_fields}
             chiptunes_obj = ChiptunesConfig(**filtered_chiptunes)
             fields.extend(
-                reflect_schema(chiptunes_obj, prefix="chiptunes", section="Chiptunes", owning_source="machine")
+                reflect_schema(
+                    chiptunes_obj,
+                    prefix="chiptunes",
+                    section="Chiptunes",
+                    owning_source="machine",
+                    inherited_tier=Tier.TUI,
+                )
             )
             return fields
 
@@ -448,7 +461,9 @@ class ConfigContent(
             telegram_fields = {f.name for f in dataclasses.fields(TelegramConfig)}
             filtered_telegram = {k: v for k, v in merged_telegram.items() if k in telegram_fields}
             telegram_obj = TelegramConfig(**filtered_telegram)
-            fields = reflect_schema(telegram_obj, prefix="telegram", section="Telegram", owning_source="machine")
+            fields = reflect_schema(
+                telegram_obj, prefix="telegram", section="Telegram", owning_source="machine", inherited_tier=Tier.TUI
+            )
 
             # Add environment-backed Telegram bot token manually
             fields.append(
@@ -468,14 +483,26 @@ class ConfigContent(
             discord_fields = {f.name for f in dataclasses.fields(DiscordConfig)}
             filtered_discord = {k: v for k, v in merged_discord.items() if k in discord_fields}
             discord_obj = DiscordConfig(**filtered_discord)
-            fields.extend(reflect_schema(discord_obj, prefix="discord", section="Discord", owning_source="machine"))
+            fields.extend(
+                reflect_schema(
+                    discord_obj, prefix="discord", section="Discord", owning_source="machine", inherited_tier=Tier.TUI
+                )
+            )
 
             whatsapp_data = self._raw_config.get("whatsapp", {})
             merged_whatsapp = deep_merge(_default_section("whatsapp"), whatsapp_data)
             whatsapp_fields = {f.name for f in dataclasses.fields(WhatsAppConfig)}
             filtered_whatsapp = {k: v for k, v in merged_whatsapp.items() if k in whatsapp_fields}
             whatsapp_obj = WhatsAppConfig(**filtered_whatsapp)
-            fields.extend(reflect_schema(whatsapp_obj, prefix="whatsapp", section="WhatsApp", owning_source="machine"))
+            fields.extend(
+                reflect_schema(
+                    whatsapp_obj,
+                    prefix="whatsapp",
+                    section="WhatsApp",
+                    owning_source="machine",
+                    inherited_tier=Tier.TUI,
+                )
+            )
             return fields
 
         if tab == Subtab.PROVIDERS:
@@ -503,11 +530,17 @@ class ConfigContent(
                 ),
                 firecrawl=FirecrawlAdapterConfig(api_key="${FIRECRAWL_API_KEY}"),
             )
-            return reflect_schema(providers_obj, section="Providers", owning_source="machine")
+            return reflect_schema(providers_obj, section="Providers", owning_source="machine", inherited_tier=Tier.TUI)
 
         if tab == Subtab.SUMMARIZER:
             summarizer_obj = parse_summarizer_config(self._raw_config.get("summarizer", {})) or SummarizerConfig()
-            fields = reflect_schema(summarizer_obj, prefix="summarizer", section="Summarizer", owning_source="machine")
+            fields = reflect_schema(
+                summarizer_obj,
+                prefix="summarizer",
+                section="Summarizer",
+                owning_source="machine",
+                inherited_tier=Tier.TUI,
+            )
             # Map summarizer models to their correct YAML paths
             for f in fields:
                 if f.key.startswith("summarizer.models."):
@@ -521,8 +554,12 @@ class ConfigContent(
             stt_obj = parse_stt_config(merged_stt) or STTConfig(enabled=False)
             tts_obj = parse_tts_config(merged_tts) or TTSConfig(enabled=False)
 
-            fields = reflect_schema(stt_obj, prefix="stt", section="STT", owning_source="machine")
-            tts_fields = reflect_schema(tts_obj, prefix="tts", section="TTS", owning_source="machine")
+            fields = reflect_schema(
+                stt_obj, prefix="stt", section="STT", owning_source="machine", inherited_tier=Tier.TUI
+            )
+            tts_fields = reflect_schema(
+                tts_obj, prefix="tts", section="TTS", owning_source="machine", inherited_tier=Tier.TUI
+            )
             fields.extend(_apply_tts_applicability(tts_obj, tts_fields))
             return fields
 
@@ -561,10 +598,14 @@ class ConfigContent(
         person_config = get_person_config(self._expanded_person)
 
         entry_fields = reflect_schema(
-            person_entry, prefix="identity", section="Global Identity", owning_source="global"
+            person_entry, prefix="identity", section="Global Identity", owning_source="global", inherited_tier=Tier.TUI
         )
         overlay_fields = reflect_schema(
-            person_config, prefix="overlay", section="Overlay Settings", owning_source="per-person"
+            person_config,
+            prefix="overlay",
+            section="Overlay Settings",
+            owning_source="per-person",
+            inherited_tier=Tier.TUI,
         )
 
         fields = entry_fields + overlay_fields

@@ -40,6 +40,7 @@ COMPUTER_HOST = "computer.host"
 TELEGRAM_QOS_PREFIX = "telegram.qos"
 WHATSAPP_QOS_PREFIX = "whatsapp.qos"
 WHATSAPP_API_VERSION = "whatsapp.api_version"
+WHATSAPP_ENABLED = "whatsapp.enabled"
 COMPUTER_IS_INGRESS_NODE = "computer.is_ingress_node"
 CHIPTUNES_ENABLED = "chiptunes.enabled"
 CHIPTUNES_MUSIC_DIR = "chiptunes.music_dir"
@@ -447,6 +448,32 @@ def test_tui_field_exclusions():
     person_keys = {f.key for f in fields_person}
     assert OVERLAY_SUBSCRIPTIONS not in person_keys
     assert OVERLAY_CHECKOUT_ROOT not in person_keys
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-15")
+def test_visibility_is_opt_in_via_per_field_tier():
+    # Only fields declared tier=tui render; internal and public do not, and the
+    # decision is read from the field's tier declaration, not a TUI-local name list.
+    computer = ComputerConfig(
+        name="test-pc",
+        user="mock-user",
+        role="development",
+        timezone="Europe/Amsterdam",
+        is_master=True,
+        default_working_dir="/tmp/work",
+        help_desk_dir="/tmp/desk",
+        trusted_dirs=[],
+        tmux_binary="tmux",
+    )
+    computer_keys = {f.key for f in reflect_schema(computer, prefix="computer")}
+    assert COMPUTER_NAME_KEY in computer_keys  # tier=tui renders
+    assert COMPUTER_USER not in computer_keys  # tier=internal hidden
+    assert COMPUTER_TRUSTED_DIRS not in computer_keys  # tier=public is sampled, not rendered
+
+    # The tier defaults to internal when no declaration is present: an unmarked
+    # field stays hidden until deliberately declared tui.
+    whatsapp_keys = {f.key for f in reflect_schema(WhatsAppConfig(enabled=True), prefix="whatsapp")}
+    assert WHATSAPP_ENABLED not in whatsapp_keys
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-6")
