@@ -138,22 +138,41 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the machine's runtime configuration.
 - **Lifecycle:** `chiptunes` is a hot-reloadable configuration section. Toggling `enabled` is applied live by the daemon's config watcher without a restart: enabling it provisions the corpus on demand — asynchronously, so the reload never blocks — and activates playback; disabling it stops playback. The daemon never fetches the corpus synchronously at startup; when `enabled` is set and the corpus is absent, startup triggers the same idempotent asynchronous provisioning.
 
-<!-- planned:ensure-project-remote -->
+<!-- planned:companies-onboard -->
 
-#### Company Profile (value object)
+#### Company (aggregate)
 
-- **Root:** `CompanyProfile`
-- **Contains:** `name` (optional organization display name, default `None`), `git_host` (remote host, default `github.com`), and `git_org` (required organization/owner, whitespace-stripped and non-empty).
+- **Root:** `CompanyConfig`, folder-discovered under `~/.teleclaude/companies/<slug>/teleclaude.yml` (the `COMPANIES_ROOT` tree) — the company-scoped twin of the per-person tier. `extra="allow"`, so agent-handy fields are added later without a schema change.
+- **Contains (v1):** `name` (display), `slug` (the company ID = folder name), `git` (the org's host/org, e.g. `github.com/InstruktAI`), `description` (one-line summary — the substance of the injected company header), `erp_id` (the single connection to the company's ERPNext record), `owner` (the leading person, referenced by `PersonConfig.slug`). A company-level `.env` in the same folder holds service credentials.
 - **Invariants:**
-  - The company profile is global-overlay configuration only: it belongs to `GlobalConfig.company_profile`. The project and per-person overlays reject a `company_profile` key via their disallowed-key validators, the same mechanism that keeps `people` global-only.
-  - A configured company profile requires a non-empty `git_org`; absence is a hard validation error, not a silent default.
-  - `git_host` defaults to `github.com` when unset.
-  - `git_host` and `git_org` combined with a project's `project_slug` name the canonical project repository (`<git_org>/<project_slug>` on `<git_host>`).
-  - When a company profile is configured, the hook receiver emits an organization block into the agent session-start additional context; when none is configured, no organization block is emitted and the rest of the session-start context is unaffected.
-- **Identifier:** the operator's global configuration (one company profile per operator).
-- **Lifecycle:** authored on the global overlay via `telec config company` (the company-profile analog of `telec config people`, persisted through the global-overlay writer); read by the hook receiver to surface the organization into agent sessions and by project setup to derive a project's git remote.
+  - The company tier is its own scope: a dedicated model + folder-discovery loader. Company fields are NOT folded into `ProjectConfig`, and no existing config is promoted into a shared multi-level model.
+  - `CompanyConfig` composes into the effective configuration **alongside** `project` (both present at once) — resolved from the active project's `company:` field, NOT from workspace type (unlike person/project, which are mutually exclusive by workspace).
+  - A company declares **no** domains; domain consumption scoping stays at `ProjectConfig.business.domains`. A company is not an event-domain subscriber.
+  - ERP is the system of record; every "real" company detail resolves through `erp_id` and is never duplicated here. The profile is thin context-scaffolding.
+  - Discovery is by folder structure only (`COMPANIES_ROOT` is the registry); there is no separate registry file.
+  - Company credentials are read through one resolver seam — `load_company_credentials(slug)` — reading the company-folder `.env` (mode `0600`, **unprefixed** keys; the directory is the namespace) via the existing `${VAR}` mechanism; the seam is swappable to a secrets service without touching call sites. No new env var locates a company.
+- **Identifier:** the company `slug` (folder name).
+- **Lifecycle:** scaffolded and populated by `telec companies onboard` (see the company-scaffolding spec); read into the effective config when a project declares membership; read by the hook receiver to inject the company header and by project setup to derive a project's git remote. This supersedes and removes the prior single `GlobalConfig.company_profile` value object and its `telec config company` surface.
 
-<!-- /planned:ensure-project-remote -->
+#### Project company membership (value object)
+
+- **Root:** `ProjectConfig.company` — an optional, kebab-case, validated, at-most-one company slug, assigned at onboarding when the project sits under a company umbrella.
+- **Invariants:**
+  - It is the **single determinant of the project's company context**: it both scopes which company's doc snippets surface to the project AND selects the company profile injected into the project's sessions. A project belongs to exactly one company.
+  - Absent or unknown company → the project sees no company snippets and no company header is injected; the misconfiguration surfaces rather than leaking another company's data.
+- **Identifier:** the project (`project_path`).
+- **Lifecycle:** authored on the project overlay; resolved at config composition and at the session-start hook.
+
+#### Person company membership (value object)
+
+- **Root:** a `companies` set on the person overlay (`PersonConfig`), referencing company slugs.
+- **Invariants:**
+  - Many-to-many: one person may work for multiple companies; the value is a set, not a single slug.
+  - It is an **identity record only** — it does NOT select the company injected into a session (the project does). A person in several companies cannot disambiguate the session's company on their own.
+- **Identifier:** the person (`PersonConfig.slug`).
+- **Lifecycle:** authored on the person overlay and surfaced in the People config (TUI People tab); not read by the session-start company injection.
+
+<!-- /planned:companies-onboard -->
 
 ### Domain events emitted
 
