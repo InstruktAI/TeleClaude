@@ -62,7 +62,7 @@ When caller verification runs
 Then the terminal-identity branch returns a CallerIdentity with human_role=`admin` (Anonymous-admin fallback)
 ```
 
-#### UC-CV-SESSION-PRINCIPAL: The dual-factor session-id branch resolves and carries the session's principal
+#### UC-CV-SESSION-PRINCIPAL-HUMAN: A human-rooted session resolves to a human principal and clears the human gate
 
 ```
 Given a call with no session-token signal and a caller-session-id whose session record has human_email set and no inherited principal
@@ -70,15 +70,23 @@ When caller verification runs
 Then the dual-factor branch resolves the session through the principal-resolution capability
 And the returned CallerIdentity carries principal="human:<email>" and the session's human_role
 And a gate that requires a human principal accepts the caller
+```
 
+#### UC-CV-SESSION-PRINCIPAL-SYSTEM: A system-role session resolves to a system principal and the human gate refuses it
+
+```
 Given a call with no session-token signal and a caller-session-id whose session record has system_role set, no human_email, and no inherited principal
 When caller verification runs
 Then the returned CallerIdentity carries principal="system:<session_id>"
 And a gate that requires a human principal refuses the caller
+```
 
-Given a call with no session-token signal and a caller-session-id whose session record has no inherited principal, no human_email, and no system_role
+#### UC-CV-SESSION-PRINCIPAL-NONE: A human_role-only session keeps no principal yet stays authorized on its role
+
+```
+Given a call with no session-token signal and a caller-session-id whose session record carries only a human_role — no inherited principal, no human_email, and no system_role
 When caller verification runs
-Then the returned CallerIdentity carries principal=None, preserving authorization for callers that clear on human_role or system_role
+Then the returned CallerIdentity carries principal=None and retains the session's human_role as the authorization basis
 And a gate that requires a human principal refuses the caller
 ```
 
