@@ -32,42 +32,25 @@ plumbing.
 
 Source: `teleclaude/project_setup/help_desk_bootstrap.py:bootstrap_help_desk()`
 
-<!-- planned:ensure-project-remote -->
+<!-- planned:companies-onboard -->
 
-### 1a. Project remote provisioning
+### 1a. Project remote provisioning — an agent procedure, not an init step
 
-After the project's git repository and canonical `project_slug` are established,
-init ensures the project has a git `origin` remote so deliberately set-up
-projects preserve work remotely and participate in the distributed todo-handoff
-model. This is a quality enrichment for projects set up via `telec projects
-init` (and `telec projects onboard`, which wraps it); bare folders that never
-run init are never touched and keep working with local-only todos.
+`telec projects init` does **not** provision a git remote. It establishes the
+local repository and the canonical `project_slug` only; there is no
+`ensure_remote` code step branching on `gh`-availability, authentication, or TTY.
 
-Behavior:
+Remote provisioning is an **agent procedure** run during project onboarding. The
+agent resolves the project's company (the active project's `company:` field → the
+company profile's `git` org; see `project/spec/domain/config`), derives
+`<org>/<project_slug>`, and establishes `origin` by judgment — `gh repo create`
+when it can, otherwise handing the org link to the human conversationally — then
+`git remote add origin` (idempotent; skip when `origin` already exists). The
+agent handles authentication, interactivity, and confirmation as judgment, not
+code branches. A project with no company resolves no org and stays local-only;
+remote setup never gates project setup.
 
-- **Idempotent.** If an `origin` remote already exists, the step does nothing.
-- **Target derivation.** The target repository is `<git_org>/<project_slug>` on
-  `<git_host>`, drawn from the global company profile (see
-  `project/spec/domain/config` and `project/spec/teleclaude-config`) and the
-  project's `project_slug`. When no company profile (or no `git_org`) is
-  configured, the
-  step skips and the project stays local-only.
-- **Prefer automation.** When the GitHub CLI `gh` is available and
-  authenticated for the host, the repository is created automatically and the
-  `origin` remote is added.
-- **Human fallback with a link.** When auto-creation is not possible (no `gh`,
-  not authenticated, or a non-GitHub host) and the session is interactive, the
-  user is shown the organization URL and the proposed repository name, asked to
-  create the repository, and on confirmation the remote is added and verified to
-  resolve.
-- **Never blocks setup.** If the user declines, the session is non-interactive
-  (no TTY, e.g. CI), or the remote cannot be established, init completes and the
-  project stays local-only. The enrichment offers; it does not gate.
-
-Source: `teleclaude/project_setup/init_flow.py:init_project()` (the
-`ensure_remote` step).
-
-<!-- /planned:ensure-project-remote -->
+<!-- /planned:companies-onboard -->
 
 ### 2. macOS launcher installation (`make install`)
 

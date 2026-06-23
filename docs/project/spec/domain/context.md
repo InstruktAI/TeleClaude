@@ -168,6 +168,23 @@ When the agent runs `telec context docs get <id> [<id>...]`
 Then context returns the full snippet content for those ids, with any cross-snippet "Required reads (not loaded)" listed for explicit follow-up fetch
 ```
 
+<!-- planned:companies-onboard -->
+
+#### UC-CTX-7: Company-scoped doc selection with cross-company isolation
+
+Company snippets live under the company's folder (`companies/<slug>/docs/<taxonomy>/`); membership is keyed by the company slug in the snippet's source path — path-derived, consistent with path-derived classification, never an authored frontmatter field. The selection policy includes a company's snippet tree only when the active project's `ProjectConfig.company` equals that slug.
+
+```
+Given a project whose config declares `company: <slug>`
+When context's selection policy runs for a request in that project
+Then snippets under that company's folder are included in the candidate set
+And snippets belonging to any other company are excluded
+And a project that declares no company, or an unknown company, sees no company snippets
+And the misconfiguration surfaces rather than silently surfacing another company's snippets
+```
+
+<!-- /planned:companies-onboard -->
+
 #### v1 inventory
 
 The v1 implementation behavior is inventoried in concept-named feature specs under `docs/project/spec/feature/context/`. These describe what v1 actually does today across the knowledge surface and the agent_artifacts surface that v2 folds into this single bounded context. They are NOT a v2 target — they are the parity contract v2 work satisfies or intentionally sheds.
