@@ -133,45 +133,6 @@ When snippet validation runs
 Then no line-level, balance, or nesting finding is reported
 ```
 
-<!-- planned:host-scoped-pending-markers -->
-
-#### UC-SFV1d: Host-scoped tokens — foreign markers are skipped, token shape is validated
-
-A `delivered_by` entry and an in-body planned / planned-change marker slug is a token of the
-form `<slug>@<host>`; a bare token (no `@`) is local/legacy. On a full run the validator
-resolves a token's stripped slug against the todos DB only when the token's host is absent or
-equals the local computer name. A token whose host names another computer is skipped — that
-in-flight todo lives on another machine and is legitimately absent from the local DB.
-
-```
-Given a snippet carries delivered_by ["feat-x@RemoteHost"]
-And the local computer name is "LocalHost"
-And the todos DB is reachable (full run)
-When snippet validation runs
-Then no relationship finding is reported for "feat-x@RemoteHost"
-Given the same snippet carries an in-body planned marker "feat-x@RemoteHost"
-When snippet validation runs
-Then no marker-liveness finding is reported for it
-```
-
-```
-Given a snippet carries delivered_by ["feat-x@LocalHost"] and the local computer name is "LocalHost"
-And no todo "feat-x" exists in the reachable todos DB
-When snippet validation runs
-Then a "snippet_delivered_by_invalid_slug" finding is reported for the stripped slug "feat-x"
-```
-
-```
-Given a marker or delivered_by token "feat-x@LocalHost"
-When marker-shape validation runs
-Then the token is accepted
-Given a token "feat-x@bad host" or "feat_x"
-When marker-shape validation runs
-Then an invalid-slug finding is reported for that token
-```
-
-<!-- /planned:host-scoped-pending-markers -->
-
 #### UC-SFV2: H1 type suffix is validated from the path-derived type
 
 ```

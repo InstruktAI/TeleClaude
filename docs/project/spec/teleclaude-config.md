@@ -374,14 +374,6 @@ the channel resolves as a forum inside that machine's `Projects - {computer.name
 category. If that category cannot be resolved, project forum routing must be
 withheld rather than reusing stale local forum IDs.
 
-<!-- planned:host-scoped-pending-markers -->
-
-`computer.name` must match `[A-Za-z0-9._-]+`: it is used verbatim as the host suffix of
-pending doc-snippet marker tokens (`<slug>@<computer.name>`), so a name outside that charset
-is rejected when a marker is stamped.
-
-<!-- /planned:host-scoped-pending-markers -->
-
 ### Maintenance
 
 This spec must be updated whenever a documented config key or env var is added, renamed, or removed.
