@@ -160,16 +160,12 @@ invalidates the implementation-plan, so the phase derives back to `plan_drafting
 The orchestrator then re-enters `telec todo work [slug]`. The work machine treats a
 kickback-invalidated todo as terminal for this work session: it releases the slug's
 working resources — the worktree, its local and remote branch, and the workspace
-directory — and emits the cleanup script — end the slug's workers, then end the
-orchestrator itself — distinct from the in-line drift bounce that keeps the same
-session driving. Releasing the working resources matters because prepare runs on
-main and ignores the worktree; without release, the abandoned work-lane worktree
-lingers and a restarted work phase reuses it, rebuilding on stale branch state
-instead of fresh from the re-derived plan. The durable todo and its artifacts are
-kept — only the working resources are released. The orchestrator self-ending frees
-the slug's active runner; the runner then picks up the `plan_drafting` todo and
-dispatches a fresh prepare, which reads the kickback block in `input` as
-authoritative re-derivation context.
+directory, keeping the durable todo and its artifacts — and emits the cleanup script
+— end the slug's workers, then end the orchestrator itself — distinct from the
+in-line drift bounce that keeps the same session driving. The orchestrator
+self-ending frees the slug's active runner; the runner then picks up the
+`plan_drafting` todo and dispatches a fresh prepare, which reads the kickback block
+in `input` as authoritative re-derivation context.
 
 <!-- /planned:todo-kickback-stamp -->
 
