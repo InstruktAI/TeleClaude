@@ -28,9 +28,7 @@ schema-backed editable tree:
 - global `~/.teleclaude/teleclaude.yml`;
 - project `<project>/teleclaude.yml`;
 - per-person `~/.teleclaude/people/<name>/teleclaude.yml`;
-<!-- planned:companies-onboard -->
 - company `~/.teleclaude/companies/<slug>/teleclaude.yml` (`CompanyConfig`);
-<!-- /planned:companies-onboard -->
 - env-backed fields declared by the env-var registry.
 
 The TUI may still organize fields into operator-friendly tabs and sections, but
@@ -60,8 +58,6 @@ And the renderer derives type, choices, default value, and description from the 
 And no TUI-only shadow model is required for that field to appear
 ```
 
-<!-- planned:companies-onboard -->
-
 #### UC-CFG-TUI-SCHEMA-COMPANIES: Companies tab and People company multi-reference
 
 ```
@@ -71,8 +67,6 @@ Then a Companies tab appears as the second tab, after Infra, rendering CompanyCo
 And the People tab exposes a company multi-reference field — a person may belong to multiple companies — edited as a set of company slugs
 And both are schema-driven, requiring no TUI-only shadow model
 ```
-
-<!-- /planned:companies-onboard -->
 
 #### UC-CFG-TUI-SCHEMA-2: View sections are metadata, not alternate models
 

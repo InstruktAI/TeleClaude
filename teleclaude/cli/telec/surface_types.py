@@ -25,6 +25,7 @@ class TelecCommand(str, Enum):
     SESSIONS = "sessions"
     COMPUTERS = "computers"
     PROJECTS = "projects"
+    COMPANIES = "companies"
     AGENTS = "agents"
     CHANNELS = "channels"
     OPERATIONS = "operations"

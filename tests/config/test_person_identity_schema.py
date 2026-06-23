@@ -7,10 +7,13 @@ import yaml
 
 import teleclaude.config.loader as loader
 import teleclaude.config.migrations as migrations
-from teleclaude.config.schema import PersonEntry
+from teleclaude.config.schema import PersonConfig, PersonEntry
 from teleclaude.slug import normalize_slug
 
 SPEC = "project/spec/feature/config/person-identity-schema"
+
+_COMPANY_A = "instrukt-ai"
+_COMPANY_B = "acme-corp"
 
 
 def _setup_config(tmp_path, monkeypatch, people, invitations=None):
@@ -58,6 +61,34 @@ def test_empty_or_absent_slug_normalizes_to_none():
 def test_invalid_slug_format_rejected():
     with pytest.raises(ValueError, match="Invalid slug"):
         PersonEntry(name="Alice", email="alice@example.com", slug="Alice_Smith")
+
+
+@pytest.mark.functional
+def test_person_companies_accepts_multiple_slugs():
+    """A person's company membership is a many-to-many set of company slugs."""
+    config = PersonConfig(companies=[_COMPANY_A, _COMPANY_B])
+    assert config.companies == [_COMPANY_A, _COMPANY_B]
+
+
+@pytest.mark.functional
+def test_person_companies_absent_is_empty():
+    """An absent company membership is valid and resolves to an empty set."""
+    config = PersonConfig()
+    assert config.companies == []
+
+
+@pytest.mark.functional
+def test_person_companies_deduplicates():
+    """Repeated company slugs collapse to a single membership entry."""
+    config = PersonConfig(companies=[_COMPANY_A, _COMPANY_A])
+    assert config.companies == [_COMPANY_A]
+
+
+@pytest.mark.functional
+def test_person_companies_rejects_malformed_slug():
+    """A malformed company slug in the membership set is rejected."""
+    with pytest.raises(ValueError, match="Invalid slug"):
+        PersonConfig(companies=["Instrukt AI"])
 
 
 @pytest.mark.functional

@@ -335,6 +335,7 @@ class ProjectConfig(BaseModel):
     project_slug: str | None = None
     project_name: str | None = None
     description: str | None = None
+    company: str | None = None
     env_allow_list: list[str] = []
     frontend_root: str | None = None
     business: BusinessConfig = BusinessConfig()
@@ -349,6 +350,23 @@ class ProjectConfig(BaseModel):
 
         Empty/missing values are accepted here so legacy configs still load;
         ``telec projects init`` fills the value during registration.
+        """
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        validate_slug(stripped)
+        return stripped
+
+    @field_validator("company")
+    @classmethod
+    def validate_company_membership(cls, value: str | None) -> str | None:
+        """Enforce kebab-case slug format on the project's company membership.
+
+        Empty/missing values normalize to ``None`` — a project under no company
+        umbrella is valid. A malformed slug is rejected rather than silently
+        resolving to another company's context.
         """
         if value is None:
             return None
@@ -441,6 +459,7 @@ class PersonConfig(BaseModel):
     creds: CredsConfig = CredsConfig()
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
+    companies: list[str] = []
     settings: PersonSettings = PersonSettings()
 
     @field_validator("interests", mode="before")
@@ -450,6 +469,25 @@ class PersonConfig(BaseModel):
         if isinstance(v, dict) and "tags" in v:
             return v["tags"]
         return v
+
+    @field_validator("companies")
+    @classmethod
+    def validate_companies(cls, value: list[str]) -> list[str]:
+        """Validate and de-duplicate the person's company-membership slugs.
+
+        Many-to-many identity record: one person may work for several companies.
+        Each entry is a kebab-case company slug; a malformed entry is rejected.
+        """
+        result: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            stripped = item.strip()
+            validate_slug(stripped)
+            if stripped in seen:
+                continue
+            seen.add(stripped)
+            result.append(stripped)
+        return result
 
     @model_validator(mode="before")
     @classmethod
@@ -464,10 +502,53 @@ class PersonConfig(BaseModel):
         return data
 
 
+class CompanyConfig(BaseModel):
+    """Company-tier configuration: per-company ``teleclaude.yml`` overlay.
+
+    Folder-discovered under ``~/.teleclaude/companies/<slug>/`` (the
+    ``COMPANIES_ROOT`` tree) — the company-scoped twin of the per-person tier.
+    Composed into the effective config alongside ``project`` (not workspace-type
+    keyed): resolved from the active project's ``company`` membership. ERP is the
+    system of record; every real company detail resolves through ``erp_id`` and is
+    never duplicated here — the profile is thin context-scaffolding. ``extra=allow``
+    for additive growth.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    name: str | None = None
+    slug: str | None = None
+    git: str | None = None
+    description: str | None = None
+    erp_id: str | None = None
+    owner: str | None = None
+
+    @field_validator("slug", "owner")
+    @classmethod
+    def validate_company_slugs(cls, value: str | None) -> str | None:
+        """Enforce slug format on the company id and its ``PersonConfig.slug`` owner.
+
+        Empty/missing values normalize to ``None`` so partially-authored profiles
+        still load; a malformed slug is rejected at the model boundary.
+        """
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        validate_slug(stripped)
+        return stripped
+
+
 @dataclass(frozen=True)
 class AppConfig:
-    """Composed application config — global always present; project and person optional."""
+    """Composed application config — global always present; project, person, and company optional.
+
+    ``company`` is resolved from the active project's ``company`` membership and
+    composes alongside ``project`` (both present at once), unlike ``project`` and
+    ``person`` which are mutually exclusive by workspace type.
+    """
 
     global_: GlobalConfig
     project: ProjectConfig | None = None
     person: PersonConfig | None = None
+    company: CompanyConfig | None = None

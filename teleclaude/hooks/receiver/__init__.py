@@ -18,7 +18,7 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude import paths as tc_paths
-from teleclaude.config.loader import load_global_config
+from teleclaude.config.loader import load_company_config, load_global_config, load_project_config
 from teleclaude.constants import DOMAIN_SCOPES, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
@@ -60,7 +60,7 @@ from teleclaude.output_projection.visibility import is_hook_side_channel_artifac
 from teleclaude.utils.transcript import extract_workdir_from_transcript
 
 if TYPE_CHECKING:
-    from teleclaude.config.schema import PersonEntry
+    from teleclaude.config.schema import CompanyConfig, PersonEntry
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -323,6 +323,44 @@ def _render_person_header(person: PersonEntry) -> str:
     return "\n".join(lines)
 
 
+def _render_company_header(company: CompanyConfig) -> str:
+    """Render the company-profile header — the company-scoped twin of the person header."""
+    name = company.name or company.slug or "Company"
+    description = (company.description or "").strip()
+    if not description:
+        return f"Company: {name}"
+    return f"Company: {name}\n{description}"
+
+
+def _resolve_company_header(cwd: str | None) -> str | None:
+    """Resolve the active project's company-profile header, or ``None``.
+
+    The PROJECT determines the company (a project belongs to exactly one company),
+    not the owning human's company set. No project context, no project ``company``,
+    or an unknown company yields no header — never another company's profile.
+    """
+    if not cwd:
+        return None
+    project_yml = Path(cwd) / "teleclaude.yml"
+    if not project_yml.exists():
+        return None
+    company_slug = load_project_config(project_yml).company
+    if not company_slug:
+        return None
+    company_yml = tc_paths.COMPANIES_ROOT / company_slug / "teleclaude.yml"
+    if not company_yml.exists():
+        # A declared-but-unconfigured company is a misconfiguration, not a no-op:
+        # surface it visibly rather than silently injecting nothing (which reads as
+        # "no company"). No other company's profile is leaked.
+        logger.warning("project_company_unconfigured", company=company_slug)
+        return (
+            f"WARNING: this project declares company '{company_slug}', but no such company is "
+            f"configured under {tc_paths.COMPANIES_ROOT}. No company profile injected — fix the "
+            "project's `company:` membership or onboard the company."
+        )
+    return _render_company_header(load_company_config(company_yml))
+
+
 def _resolve_command_domain_for_session(session_id: str) -> str | None:
     """Return the `command_domain` recorded on a session's origin_metadata.
 
@@ -426,6 +464,12 @@ def _print_additional_context(
         except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
             logger.debug("Identity/person resolution failed for session %s", (session_id or ""))
 
+    company_header: str | None = None
+    try:
+        company_header = _resolve_company_header(cwd)
+    except (OSError, ValueError):
+        logger.debug("Company resolution failed for project %s", (project_name or ""))
+
     domain_baseline: str | None = None
     if session_id:
         domain = _resolve_command_domain_for_session(session_id)
@@ -450,12 +494,14 @@ def _print_additional_context(
                 )
 
     context = _get_memory_context(project_name, identity_key=identity_key)
-    if not context and not person_header and not domain_baseline:
+    if not context and not person_header and not company_header and not domain_baseline:
         return
 
     parts: list[str] = []
     if domain_baseline:
         parts.append(domain_baseline)
+    if company_header:
+        parts.append(company_header)
     if person_header:
         parts.append(person_header)
     if context:

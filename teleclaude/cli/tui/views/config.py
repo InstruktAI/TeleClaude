@@ -55,7 +55,8 @@ from teleclaude.config import (
     parse_tts_config,
 )
 from teleclaude.config._summarizer import parse_summarizer_config
-from teleclaude.config.schema import PersonEntry
+from teleclaude.config.loader import list_company_configs
+from teleclaude.config.schema import CompanyConfig, PersonEntry
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
@@ -372,6 +373,7 @@ class ConfigContent(
         super().__init__(**kwargs)
         self._env_data: list[EnvVarStatus] = []
         self._people_data: list[PersonEntry] = []
+        self._companies_data: list[tuple[str, CompanyConfig]] = []
         self._validation_results: list[ValidationResult] = []
         self._adapter_sections: list[AdapterSectionProjection] = []
         self._cursor_by_context: dict[str, int] = {}
@@ -408,6 +410,31 @@ class ConfigContent(
 
     def _build_reflected_fields(self, tab: Subtab) -> list[ReflectedField]:
         """Construct the reflected fields for a subtab from the current raw config."""
+        if tab == Subtab.COMPANIES:
+            # Folder-discovered companies, each rendered schema-driven from
+            # CompanyConfig (honoring tier markers). An empty companies tree still
+            # renders the schema fields so the tab is never blank.
+            if not self._companies_data:
+                return reflect_schema(
+                    CompanyConfig(),
+                    prefix="company",
+                    section="Company",
+                    owning_source="per-company",
+                    inherited_tier=Tier.TUI,
+                )
+            fields: list[ReflectedField] = []
+            for slug, company in self._companies_data:
+                fields.extend(
+                    reflect_schema(
+                        company,
+                        prefix=f"company:{slug}",
+                        section=company.name or slug,
+                        owning_source="per-company",
+                        inherited_tier=Tier.TUI,
+                    )
+                )
+            return fields
+
         if tab == Subtab.INFRA:
             computer_data = self._raw_config.get("computer", {})
             computer_fields = {f.name for f in dataclasses.fields(ComputerConfig)}
@@ -642,6 +669,13 @@ class ConfigContent(
         except Exception as exc:
             self._people_data = []
             self._status_message = f"Failed to load people: {exc}"
+            self._status_is_error = True
+
+        try:
+            self._companies_data = list_company_configs()
+        except Exception as exc:
+            self._companies_data = []
+            self._status_message = f"Failed to load companies: {exc}"
             self._status_is_error = True
 
         self._clamp_current_cursor()

@@ -21,7 +21,7 @@ from teleclaude.doc_body import (
     split_frontmatter,
 )
 from teleclaude.docs_index import extract_required_reads, get_project_slug
-from teleclaude.paths import GLOBAL_SNIPPETS_DIR, REPO_ROOT
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_SNIPPETS_DIR, REPO_ROOT
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
@@ -737,6 +737,20 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         current_project_slug=current_project_slug,
         manifest_projects=manifest_projects,
     )
+
+    # Company-scoped snippets: include only the active project's company tree,
+    # keyed by the company folder in the path. Other companies' indexes are never
+    # read, so cross-company isolation holds by construction — not by post-hoc
+    # filtering. A project with no company (or a foreign-project query) loads none.
+    company_slug = config.project.company if (config is not None and config.project is not None) else None
+    if not projects and company_slug:
+        company_docs_root = COMPANIES_ROOT / company_slug / "docs"
+        if not (COMPANIES_ROOT / company_slug).exists():
+            # Declared-but-unknown company: surface the misconfiguration rather than
+            # silently selecting no snippets (which is indistinguishable from a
+            # correctly no-company project). No other company's snippets are loaded.
+            logger.warning("project_company_unknown", company=company_slug, companies_root=str(COMPANIES_ROOT))
+        snippets.extend(_load_index(company_docs_root / "index.yaml", project_root=company_docs_root))
 
     # Build path-to-snippet mapping for baseline resolution
     snippets_by_path = {str(s.path): s for s in snippets}

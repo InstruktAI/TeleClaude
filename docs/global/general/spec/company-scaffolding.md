@@ -79,33 +79,7 @@ company/spec/service-inventory
 
 ### Frontmatter Template
 
-<!-- planned-change:companies-onboard -->
-
-Every generated snippet must include this frontmatter:
-
-```yaml
----
-id: 'company/{taxonomy}/{slug}'
-type: '{taxonomy}'
-scope: 'global'
-description: '{concise description}'
-generated_by: 'telec-init'
-generated_at: '{ISO8601 timestamp}'
-company: '{company-slug}'
----
-```
-
-Required fields: `id`, `type`, `scope`, `description`, `generated_by`,
-`generated_at`, `company`.
-
-- `scope` is `global` because company docs are available to all projects
-  belonging to that company.
-- `company` identifies which company the snippet belongs to, enabling the
-  context selector to filter by project membership.
-- `generated_by: telec-init` marks the snippet as auto-generated
-  by the onboard process.
-  <!-- change:companies-onboard -->
-  Every generated snippet authors only schema-permitted frontmatter:
+Every generated snippet authors only schema-permitted frontmatter:
 
 ```yaml
 ---
@@ -121,8 +95,6 @@ which is what lets the context selector filter by project membership; there is
 **no** authored `company` frontmatter field. `description` is the only required
 authored field; `visibility` is optional. No `generated_by`/`generated_at` fields
 are authored — they are not part of the snippet-authoring schema.
-
-<!-- /planned-change:companies-onboard -->
 
 ### Inbox Processing
 
@@ -171,12 +143,7 @@ snippets_preserved: []
 
 The same merge rules as init scaffolding apply:
 
-<!-- planned-change:companies-onboard -->
-
-1. Identify existing snippets by `generated_by: telec-init`.
-<!-- change:companies-onboard -->
 1. Identify existing snippets by their path under the company docs tree (recorded in `meta.yaml`); there is no authored `generated_by` field.
-<!-- /planned-change:companies-onboard -->
 1. Human-authored sections after `<!-- human -->` survive.
 1. Changed-file-only writes (preserve timestamps for unchanged content).
 1. No duplication — update by ID.
@@ -197,41 +164,22 @@ The enrichment writer validates all output before persistence:
 
 - Snippet IDs must match the pattern `company/{taxonomy}/{slug}`.
 - File destinations must resolve to paths under
-`~/.teleclaude/companies/{slug}/docs/`.
-<!-- planned-change:companies-onboard -->
-- Frontmatter must contain all required fields including `company`.
-- The `company` field must match the target company slug.
-<!-- change:companies-onboard -->
+  `~/.teleclaude/companies/{slug}/docs/`.
 - Frontmatter authors only `description`; classification (`id`/`type`/`scope`/`domain`) is path-derived, never authored.
 - Company membership is enforced by the snippet's path under `~/.teleclaude/companies/{slug}/docs/`, not a frontmatter field.
-<!-- /planned-change:companies-onboard -->
 
 ## Allowed values
 
-<!-- planned-change:companies-onboard -->
-
-- `company` slug: lowercase kebab-case, derived from the company name.
-- `generated_by`: `telec-init`.
-- `scope`: always `global` for company snippets.
-- `type`: any valid taxonomy type.
-<!-- change:companies-onboard -->
 - `company` slug: lowercase kebab-case (the company folder name; not an authored frontmatter field).
 - `scope`/`type`/`id`: path-derived by the index build, never authored.
-<!-- /planned-change:companies-onboard -->
 
 ## Known caveats
 
 - The inbox git repository is local-only — it is not pushed to any remote.
   Its sole purpose is enabling `git diff` for change detection.
 - PDF and other binary formats produce SHA changes on any byte modification,
-even for non-content changes (metadata updates). The analysis session
-handles this gracefully by comparing semantic content, not file diffs.
-<!-- planned-change:companies-onboard -->
-- Company snippets use `scope: global` but are filtered by the `company`
-frontmatter field. They are not truly global — they are global in reach
-but scoped in visibility.
-<!-- change:companies-onboard -->
+  even for non-content changes (metadata updates). The analysis session
+  handles this gracefully by comparing semantic content, not file diffs.
 - Company snippets are path-derived as `scope: global` but are filtered by the
-company folder in their path. They are global in reach but scoped in
-visibility to member projects.
-<!-- /planned-change:companies-onboard -->
+  company folder in their path. They are global in reach but scoped in
+  visibility to member projects.

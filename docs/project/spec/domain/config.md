@@ -94,6 +94,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Non-configurable categories:** tool results remain TUI-only; checkpoint messages and agent-CLI side-channel artifacts are dropped from projected surfaces; peer cross-share content remains visible on projected surfaces.
 
 <!-- planned:tui-todo-session-cross-navigation -->
+
 #### PersonConfig chip color (value object)
 
 - **Root:** `PersonChipColor`
@@ -152,8 +153,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the machine's runtime configuration.
 - **Lifecycle:** `chiptunes` is a hot-reloadable configuration section. Toggling `enabled` is applied live by the daemon's config watcher without a restart: enabling it provisions the corpus on demand — asynchronously, so the reload never blocks — and activates playback; disabling it stops playback. The daemon never fetches the corpus synchronously at startup; when `enabled` is set and the corpus is absent, startup triggers the same idempotent asynchronous provisioning.
 
-<!-- planned:companies-onboard -->
-
 #### Company (aggregate)
 
 - **Root:** `CompanyConfig`, folder-discovered under `~/.teleclaude/companies/<slug>/teleclaude.yml` (the `COMPANIES_ROOT` tree) — the company-scoped twin of the per-person tier. `extra="allow"` for additive growth.
@@ -185,8 +184,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - It is an **identity record only** — it does NOT select the company injected into a session (the project does). A person in several companies cannot disambiguate the session's company on their own.
 - **Identifier:** the person (`PersonConfig.slug`).
 - **Lifecycle:** authored on the person overlay and surfaced in the People config (TUI People tab); not read by the session-start company injection.
-
-<!-- /planned:companies-onboard -->
 
 ### Domain events emitted
 

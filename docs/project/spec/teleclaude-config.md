@@ -30,11 +30,7 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
 
-<!-- planned:companies-onboard -->
-
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `owner` (folder-discovered; composed alongside `project`) |
-
-<!-- /planned:companies-onboard -->
 
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not
 project-level keys. They govern TeleClaude's own self-update — a machine-wide
@@ -84,15 +80,11 @@ hooks:
 channel_subscriptions: list[ChannelSubscription]
 ```
 
-<!-- planned:companies-onboard -->
-
 `ProjectConfig` additionally carries an optional `company` key — `company: string`
 — an at-most-one, kebab-case, validated company slug. It is the project's company
 membership and the single determinant of its company context (doc-snippet
 surfacing and session-start injection). Ownership/validation is authoritative in
 `project/spec/domain/config`.
-
-<!-- /planned:companies-onboard -->
 
 `env_allow_list` is an explicit pass-through list for agent sessions. It is the
 authorization/filter surface: a name not listed in the effective allow list must
@@ -121,8 +113,6 @@ event_domains:
   domains: mapping[string, DomainConfig]
 ```
 
-<!-- planned:companies-onboard -->
-
 There is no `company_profile` key on the global overlay. Company configuration is
 its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
 the value-object contract lives in `project/spec/domain/config`), not a field of
@@ -145,8 +135,6 @@ the company-scoped twin of the human-profile header — rendered **before** the
 person header. The company is resolved from the **active project's `company:`
 field** (a project belongs to exactly one company); when the session has no
 project company, or no project context, no company header is injected.
-
-<!-- /planned:companies-onboard -->
 
 Global `env_allow_list` is the normal place to authorize env vars needed by
 global agent skills or CLI integrations. Project `env_allow_list` is additive

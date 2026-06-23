@@ -28,6 +28,7 @@ from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import (
     companion_slug,
+    derive_company_snippet_classification,
     derive_snippet_classification,
     is_companion,
     load_domains,
@@ -548,6 +549,73 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             snippets_root_str = snippets_root_str.replace(home, "~", 1)
 
     return {"project_root": root, "snippets_root": snippets_root_str, "snippets": snippets}
+
+
+_COMPANY_AUTHORED_CLASSIFICATION_KEYS = ("id", "type", "scope", "domain")
+
+
+def build_company_index_payload(company_dir: Path) -> IndexPayload:
+    """Build the index.yaml payload for a company docs tree (``companies/<slug>/docs``).
+
+    Classification is path-derived; the only authored frontmatter is ``description``
+    (``visibility`` optional). A snippet that authors ``id``/``type``/``scope``/``domain``
+    violates the no-authored-classification contract and fails the build loudly.
+    """
+    docs_root = company_dir / "docs"
+    if not docs_root.exists():
+        return {"project_root": str(docs_root), "snippets_root": str(docs_root), "snippets": []}
+
+    snippets: list[SnippetEntry] = []
+    for file_path in _eligible_snippet_files(docs_root, include_baseline=False):
+        post = frontmatter.load(file_path)
+        metadata: Mapping[str, object] = post.metadata or {}
+        authored = [key for key in _COMPANY_AUTHORED_CLASSIFICATION_KEYS if key in metadata]
+        if authored:
+            raise ValueError(
+                f"Company snippet {file_path} authors path-derived classification keys {authored}; "
+                "company snippets author only 'description'."
+            )
+        description = metadata.get("description")
+        if not isinstance(description, str):
+            raise ValueError(f"Company snippet {file_path} is missing a 'description'.")
+        classification, reason = derive_company_snippet_classification(file_path, company_docs_root=docs_root)
+        if classification is None:
+            raise ValueError(f"Cannot derive company snippet classification for {file_path}: {reason or 'unknown'}")
+        raw_visibility = metadata.get("visibility")
+        visibility = (
+            raw_visibility
+            if isinstance(raw_visibility, str) and raw_visibility in SNIPPET_VISIBILITY_VALUES
+            else SNIPPET_VISIBILITY_INTERNAL
+        )
+        snippets.append(
+            {
+                "id": classification.id,
+                "description": description,
+                "type": classification.type.value,
+                "scope": classification.scope.value,
+                "domain": classification.domain,
+                "activation_trigger": None,
+                "path": str(file_path.relative_to(docs_root)),
+                "visibility": visibility,
+            }
+        )
+
+    snippets.sort(key=lambda e: e["id"])
+    return {"project_root": str(docs_root), "snippets_root": str(docs_root), "snippets": snippets}
+
+
+def write_company_index(company_dir: Path) -> Path:
+    """Build and write the company docs index.yaml. Returns the target path."""
+    docs_root = company_dir / "docs"
+    target = docs_root / "index.yaml"
+    payload = build_company_index_payload(company_dir)
+    if not payload["snippets"]:
+        if target.exists():
+            target.unlink()
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=False), encoding="utf-8")
+    return target
 
 
 def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:

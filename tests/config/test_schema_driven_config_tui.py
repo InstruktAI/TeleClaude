@@ -23,8 +23,10 @@ from teleclaude.config import (
     reload_config,
 )
 from teleclaude.config.schema import (
+    CompanyConfig,
     PersonConfig,
 )
+from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.runtime.config import RuntimeConfig, get_runtime_config, set_runtime_config
 
@@ -581,7 +583,7 @@ def test_tui_source_aware_persistence(tmp_path, monkeypatch):
         assert global_data["people"][0]["name"] == ALICE
 
         # 2. Edit global identity field (owning_source="global")
-        content.active_subtab = 1  # Subtab.PEOPLE
+        content.active_subtab = _SUBTABS.index(Subtab.PEOPLE)
         content._expanded_person = "alice"
         content._save_reflected_field("identity.role", "admin")
 
@@ -601,7 +603,7 @@ def test_tui_source_aware_persistence(tmp_path, monkeypatch):
         assert alice_data["unknown_key"] == PRESERVE_ME
 
         # 4. Edit env-backed field (goes to .env)
-        content.active_subtab = 3  # Subtab.PROVIDERS
+        content.active_subtab = _SUBTABS.index(Subtab.PROVIDERS)
         content._save_reflected_field("firecrawl.api_key", "fc-new")
         env_content = env_file_path.read_text(encoding="utf-8")
         assert FC_NEW_ENV in env_content
@@ -690,7 +692,7 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
         content.refresh_data()
 
         # Set active tab and expanded person to Bob
-        content.active_subtab = 1  # Subtab.PEOPLE
+        content.active_subtab = _SUBTABS.index(Subtab.PEOPLE)
         content._expanded_person = "bob"
 
         fields_by_key = {field.key: field for field in content.person_reflected_fields}
@@ -752,5 +754,143 @@ def test_tui_people_overlay_creation_on_edit(tmp_path, monkeypatch):
         assert saved_after.creds.telegram is not None
         assert saved_after.creds.telegram.user_name == ALICE
         assert saved_after.creds.telegram.user_id == 0
+    finally:
+        set_runtime_config(old_rc)
+
+
+_COMPANY_NAME_KEY = "company.name"
+_COMPANY_GIT_KEY = "company.git"
+_DISCOVERED_COMPANY_NAME_KEY = "company:acme.name"
+_PERSON_COMPANIES_KEY = "overlay.companies"
+_INFRA_TAB_INDEX = 0
+_COMPANIES_TAB_INDEX = 1
+
+
+def test_companies_tab_is_second_and_renders_company_schema():
+    """The Companies tab sits right after Infra and renders the CompanyConfig schema fields."""
+    assert _SUBTABS.index(Subtab.INFRA) == _INFRA_TAB_INDEX
+    assert _SUBTABS.index(Subtab.COMPANIES) == _COMPANIES_TAB_INDEX
+
+    content = ConfigContent()
+    content.active_subtab = _COMPANIES_TAB_INDEX
+    keys = {field.key for field in content.reflected_fields}
+
+    assert _COMPANY_NAME_KEY in keys
+    assert _COMPANY_GIT_KEY in keys
+
+
+def test_companies_tab_renders_discovered_company():
+    """A folder-discovered company renders schema-driven, keyed by its slug."""
+    content = ConfigContent()
+    content._companies_data = [("acme", CompanyConfig(name="Acme", slug="acme"))]
+    content.active_subtab = _COMPANIES_TAB_INDEX
+
+    keys = {field.key for field in content.reflected_fields}
+
+    assert _DISCOVERED_COMPANY_NAME_KEY in keys
+
+
+def test_person_overlay_surfaces_company_multireference():
+    """The People overlay schema surfaces the person's company multi-reference for editing."""
+    fields = reflect_schema(
+        PersonConfig(companies=["acme"]),
+        prefix="overlay",
+        section="Overlay Settings",
+        owning_source="per-person",
+        inherited_tier=Tier.TUI,
+    )
+
+    assert _PERSON_COMPANIES_KEY in {field.key for field in fields}
+
+
+_ACME = "acme"
+_NEW_COMPANY_DESC = "Updated by the operator"
+_COMPANY_DESC_FIELD = "company:acme.description"
+_EDITED_PERSON_COMPANIES = ["acme", "beta-co"]
+
+
+def _isolated_config_content(tmp_path, monkeypatch):
+    """Build a ConfigContent over isolated machine/global/people/company config files."""
+    machine_config_path = tmp_path / "config.yml"
+    global_config_path = tmp_path / "teleclaude.yml"
+    people_dir = tmp_path / "people"
+    people_dir.mkdir()
+    env_file_path = tmp_path / ".env"
+    env_file_path.write_text("", encoding="utf-8")
+    companies_root = tmp_path / "companies"
+
+    yaml = YAML()
+    yaml.dump(
+        {
+            "computer": {"name": "Mac", "role": "development", "timezone": "Europe/Amsterdam", "is_master": True},
+            "agents": {"default": "claude", "claude": {"system_prompt": "hi"}},
+        },
+        machine_config_path,
+    )
+    yaml.dump(
+        {"people": [{"name": "Alice", "email": "alice@example.com", "role": "member", "slug": "alice"}]},
+        global_config_path,
+    )
+    (people_dir / "alice").mkdir()
+    yaml.dump({"interests": []}, people_dir / "alice" / "teleclaude.yml")
+    acme_dir = companies_root / _ACME
+    acme_dir.mkdir(parents=True)
+    yaml.dump({"name": "Acme", "slug": _ACME, "description": "original"}, acme_dir / "teleclaude.yml")
+
+    monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
+    monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
+    monkeypatch.setattr(loader, "GLOBAL_CONFIG_PATH", global_config_path)
+    monkeypatch.setattr(loader, "PEOPLE_DIR", people_dir)
+    monkeypatch.setattr(loader, "COMPANIES_ROOT", companies_root)
+    monkeypatch.setattr(handlers, "_DEFAULT_ENV_PATH", env_file_path)
+    monkeypatch.setattr(handlers, "list_person_dirs", lambda: ["alice"])
+    monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
+    monkeypatch.setattr(_tc_config_module, "config_path", machine_config_path)
+
+    old_rc = get_runtime_config()
+    set_runtime_config(
+        RuntimeConfig(
+            home=old_rc.home,
+            config_path=machine_config_path,
+            env_path=env_file_path,
+            project_config_path=old_rc.project_config_path,
+            tmpdir_base=old_rc.tmpdir_base,
+        )
+    )
+    reload_config()
+    content = ConfigContent()
+    monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+    content.refresh_data()
+    return content, people_dir, companies_root, old_rc
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-6")
+def test_company_field_edit_persists_through_tui(tmp_path, monkeypatch):
+    """Editing a CompanyConfig field through the real TUI save path writes the company overlay."""
+    content, _people_dir, companies_root, old_rc = _isolated_config_content(tmp_path, monkeypatch)
+    try:
+        content.active_subtab = _SUBTABS.index(Subtab.COMPANIES)
+        assert _COMPANY_DESC_FIELD in {field.key for field in content.reflected_fields}
+
+        content._save_reflected_field(_COMPANY_DESC_FIELD, _NEW_COMPANY_DESC)
+
+        saved = YAML().load((companies_root / _ACME / "teleclaude.yml").read_text(encoding="utf-8"))
+        assert saved["description"] == _NEW_COMPANY_DESC
+    finally:
+        set_runtime_config(old_rc)
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-6")
+def test_person_company_multireference_edit_persists_through_tui(tmp_path, monkeypatch):
+    """Editing the People company multi-reference through the real TUI save path writes the overlay."""
+    content, people_dir, _companies_root, old_rc = _isolated_config_content(tmp_path, monkeypatch)
+    try:
+        content.active_subtab = _SUBTABS.index(Subtab.PEOPLE)
+        content._expanded_person = "alice"
+
+        content._save_reflected_field(_PERSON_COMPANIES_KEY, _EDITED_PERSON_COMPANIES)
+
+        saved = YAML().load((people_dir / "alice" / "teleclaude.yml").read_text(encoding="utf-8"))
+        assert list(saved["companies"]) == _EDITED_PERSON_COMPANIES
     finally:
         set_runtime_config(old_rc)

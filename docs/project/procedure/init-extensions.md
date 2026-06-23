@@ -32,8 +32,6 @@ plumbing.
 
 Source: `teleclaude/project_setup/help_desk_bootstrap.py:bootstrap_help_desk()`
 
-<!-- planned:companies-onboard -->
-
 ### 1a. Project remote provisioning — an agent procedure, not an init step
 
 `telec projects init` does **not** provision a git remote. It establishes the
@@ -49,8 +47,6 @@ when it can, otherwise handing the org link to the human conversationally — th
 agent handles authentication, interactivity, and confirmation as judgment, not
 code branches. A project with no company resolves no org and stays local-only;
 remote setup never gates project setup.
-
-<!-- /planned:companies-onboard -->
 
 ### 2. macOS launcher installation (`make install`)
 

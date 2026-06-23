@@ -2,24 +2,28 @@
 
 import fcntl
 import os
+import stat
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import dotenv_values
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 from ruamel.yaml import YAML
 
 from teleclaude.config.schema import (
     AppConfig,
+    CompanyConfig,
     GlobalConfig,
     OutputVisibilitySettings,
     PersonConfig,
     PersonEntry,
     ProjectConfig,
 )
-from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR
+from teleclaude.slug import validate_slug
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -195,6 +199,104 @@ def load_person_config(path: Path) -> PersonConfig:
     return load_config(path, PersonConfig)
 
 
+def load_company_config(path: Path) -> CompanyConfig:
+    """Load company-tier configuration."""
+    return load_config(path, CompanyConfig)
+
+
+def _company_dir(slug: str, companies_root: Path | None) -> Path:
+    """Resolve a company folder, validating the slug *before* building the path.
+
+    The slug comes from config or a caller and is interpolated into a filesystem
+    path; validating it against the kebab-case slug contract first rejects path
+    traversal (``../``) and other malformed input before any path is constructed.
+    ``companies_root`` resolves at call time from the module global when not given,
+    so the location stays monkeypatchable (mirrors the per-person tier).
+    """
+    validate_slug(slug)
+    root = companies_root if companies_root is not None else COMPANIES_ROOT
+    return root / slug
+
+
+def save_company_config(slug: str, config: CompanyConfig, companies_root: Path | None = None) -> None:
+    """Atomic write of the company config keyed by slug. Creates the folder if needed."""
+    company_dir = _company_dir(slug, companies_root)
+    company_dir.mkdir(parents=True, exist_ok=True)
+    _atomic_yaml_write(company_dir / "teleclaude.yml", _model_to_dict(config))
+    logger.info("Saved company config for %s", slug)
+
+
+def list_company_configs(companies_root: Path | None = None) -> list[tuple[str, CompanyConfig]]:
+    """List folder-discovered companies as ``(slug, CompanyConfig)`` pairs, sorted by slug."""
+    root = companies_root if companies_root is not None else COMPANIES_ROOT
+    if not root.exists():
+        return []
+    pairs: list[tuple[str, CompanyConfig]] = []
+    for config_path in sorted(root.glob("*/teleclaude.yml")):
+        pairs.append((config_path.parent.name, load_company_config(config_path)))
+    return pairs
+
+
+def find_company_config_path(slug: str, companies_root: Path | None = None) -> Path | None:
+    """Find a company's ``teleclaude.yml`` by slug-named folder under ``COMPANIES_ROOT``.
+
+    Folder-discovery only: the slug is the company id and the folder name. No
+    registry file — the ``COMPANIES_ROOT`` tree is the registry. Mirrors the
+    per-person tier's discovery.
+    """
+    config_path = _company_dir(slug, companies_root) / "teleclaude.yml"
+    return config_path if config_path.exists() else None
+
+
+def load_company_config_for_slug(slug: str, companies_root: Path | None = None) -> CompanyConfig | None:
+    """Load the company config for a slug when its folder is present."""
+    company_config_path = find_company_config_path(slug, companies_root)
+    if company_config_path is None:
+        return None
+    return load_company_config(company_config_path)
+
+
+class CompanyCredentialsError(Exception):
+    """Raised when a company ``.env`` exists but cannot be read safely.
+
+    A missing ``.env`` is not an error — it means "no credentials". This error is
+    reserved for the loud-failure cases: a world/group-readable file (secret
+    exposure) or an unreadable file (the secret cannot be resolved). Failures are
+    explicit rather than silently returning empty credentials.
+    """
+
+
+def load_company_credentials(slug: str, companies_root: Path | None = None) -> dict[str, str]:
+    """Resolve a company's service credentials through the single resolver seam.
+
+    Reads the company-folder ``.env`` (``companies/<slug>/.env``; unprefixed keys —
+    the directory is the namespace) via the existing ``${VAR}`` mechanism. This is
+    the one seam every call site uses; it is swappable to a real secrets service
+    later without touching callers. The company is located by ``slug`` alone — no
+    environment variable names its location.
+
+    Security contract:
+
+    - A company with no ``.env`` has no credentials and yields an empty mapping.
+    - The ``.env`` must be owner-only (mode ``0600``); a group/world-readable file
+      exposes secrets and raises ``CompanyCredentialsError`` rather than loading.
+    - An unreadable ``.env`` raises ``CompanyCredentialsError`` rather than silently
+      returning empty credentials.
+    """
+    env_path = _company_dir(slug, companies_root) / ".env"
+    if not env_path.exists():
+        return {}
+    file_mode = env_path.stat().st_mode
+    if file_mode & (stat.S_IRWXG | stat.S_IRWXO):
+        raise CompanyCredentialsError(
+            f"Company '{slug}' .env is group/world-accessible ({stat.filemode(file_mode)}); "
+            f"expected owner-only 0600. Refusing to load exposed credentials: {env_path}"
+        )
+    if not os.access(env_path, os.R_OK):
+        raise CompanyCredentialsError(f"Company '{slug}' .env is not readable: {env_path}")
+    return {key: value for key, value in dotenv_values(env_path).items() if value is not None}
+
+
 def normalize_person_config_key(value: str) -> str:
     """Normalize a person name or username for tolerant config directory matching."""
     return "".join(ch for ch in value.lower() if ch.isalnum())
@@ -291,6 +393,7 @@ def load_app_config(workspace: Path) -> AppConfig:
     global_config = load_global_config()
     person_config: PersonConfig | None = None
     project_config: ProjectConfig | None = None
+    company_config: CompanyConfig | None = None
 
     if _is_person_workspace(workspace):
         teleclaude_yml = workspace / "teleclaude.yml"
@@ -301,7 +404,21 @@ def load_app_config(workspace: Path) -> AppConfig:
         if teleclaude_yml.exists():
             project_config = load_project_config(teleclaude_yml)
 
-    return AppConfig(global_=global_config, project=project_config, person=person_config)
+    # The company composes alongside the project — resolved from the project's
+    # company membership, not from workspace type. Absent membership leaves it None.
+    if project_config is not None and project_config.company:
+        company_config = load_company_config_for_slug(project_config.company, COMPANIES_ROOT)
+        if company_config is None:
+            # The project declares a company that does not resolve — surface the
+            # misconfiguration; the company layer stays None (no other company leaks).
+            logger.warning("project_company_unresolved", company=project_config.company)
+
+    return AppConfig(
+        global_=global_config,
+        project=project_config,
+        person=person_config,
+        company=company_config,
+    )
 
 
 def validate_config(path: Path, level: str) -> BaseModel:

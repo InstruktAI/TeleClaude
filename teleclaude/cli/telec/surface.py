@@ -336,6 +336,22 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
+    "companies": CommandDef(
+        desc="Manage company onboarding",
+        subcommands={
+            "onboard": CommandDef(
+                desc="Scaffold a company under ~/.teleclaude/companies, then dispatch doc-snippet analysis",
+                args="<name> [--slug <value>]",
+                flags=[_H, Flag("--slug", desc="Company slug (optional; derived from the name when omitted)")],
+                notes=[
+                    "Scaffolds companies/<slug>/{inbox (git), docs/<taxonomy>, teleclaude.yml, meta.yaml, .env} synchronously.",
+                    "Re-running reprocesses only changed inbox material (SHA-tracked in meta.yaml).",
+                    "The analysis session runs concurrently in tmux after dispatch — monitor via `telec sessions list`.",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+        },
+    ),
     "agents": CommandDef(
         desc="Manage agent dispatch status and availability",
         subcommands={

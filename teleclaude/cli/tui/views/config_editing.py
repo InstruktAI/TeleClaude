@@ -26,6 +26,7 @@ from teleclaude.cli.tui.views._config_constants import (
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
 from teleclaude.config import DEFAULT_CONFIG, config
 from teleclaude.config._coerce import as_bool
+from teleclaude.config.loader import load_company_config_for_slug, save_company_config
 from teleclaude.config.schema import PersonEntry
 from teleclaude.config.validation import missing_required_fields, validated_sections
 
@@ -458,6 +459,31 @@ class ConfigContentEditingMixin:
             return f"{section_name} is enabled but not configured: fill {', '.join(missing)} (or disable it)."
         return None
 
+    def _save_per_company_field(self, key: str, deserialized: Any) -> None:
+        """Write a reflected company field back to its ``companies/<slug>/teleclaude.yml``.
+
+        The key is ``company:<slug>.<dotted-field>``; the empty-tree schema render
+        carries no concrete slug and is a no-op.
+        """
+        prefix, _, field_path = key.partition(".")
+        if ":" not in prefix:
+            return
+        slug = prefix.split(":", 1)[1]
+        company_config = load_company_config_for_slug(slug)
+        if company_config is None:
+            return
+        parts = field_path.split(".")
+        obj: Any = company_config
+        for part in parts[:-1]:
+            val = getattr(obj, part)
+            if val is None:
+                field_info = type(obj).model_fields[part]
+                val = _instantiate_nested_config_model(field_info.annotation)
+                setattr(obj, part, val)
+            obj = val
+        setattr(obj, parts[-1], deserialized)
+        save_company_config(slug, company_config)
+
     def _save_reflected_field(self, key: str, raw_value: Any) -> None:
         """Parse, validate, and write a reflected field value back to its source."""
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
@@ -538,6 +564,8 @@ class ConfigContentEditingMixin:
                     return
 
                 save_person_config(person_key, person_config)
+            elif f.owning_source == "per-company":
+                self._save_per_company_field(key, deserialized)
 
             self._editing_var_name = None  # type: ignore[attr-defined]
             self._edit_buffer = ""  # type: ignore[attr-defined]

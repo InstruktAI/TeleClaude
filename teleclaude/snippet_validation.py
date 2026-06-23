@@ -208,6 +208,48 @@ def derive_snippet_classification(
     )
 
 
+COMPANY_SNIPPET_DOMAIN = "company"
+
+
+def derive_company_snippet_classification(
+    path: Path,
+    *,
+    company_docs_root: Path,
+) -> tuple[SnippetClassification | None, str | None]:
+    """Derive a company snippet's classification from its path under ``companies/<slug>/docs/``.
+
+    Path-derived, never authored: ``docs/<taxonomy>/<slug>.md`` →
+    ``company/<taxonomy>/<slug>``. Company snippets are ``scope: global`` (global in
+    reach) but filtered by their company folder in the path (scoped in visibility to
+    member projects); the literal ``company`` domain prefix is the company-tier marker.
+    """
+    try:
+        rel = path.resolve().relative_to(company_docs_root.resolve())
+    except (ValueError, OSError):
+        return None, "not_under_company_docs_root"
+    parts = rel.parts
+    if len(parts) < 2:
+        return None, "missing_taxonomy_or_slug"
+    raw_taxonomy = parts[0]
+    if raw_taxonomy not in ALLOWED_TAXONOMIES:
+        return None, "invalid_taxonomy"
+    rest = "/".join(parts[1:])
+    if rest.endswith(".md"):
+        rest = rest[: -len(".md")]
+    if not rest:
+        return None, "missing_slug"
+    snippet_id = SnippetIdParts(scope=COMPANY_SNIPPET_DOMAIN, taxonomy=raw_taxonomy, rest=rest).value()
+    return (
+        SnippetClassification(
+            id=snippet_id,
+            type=SnippetTaxonomy(raw_taxonomy),
+            scope=SnippetScope.GLOBAL,
+            domain=COMPANY_SNIPPET_DOMAIN,
+        ),
+        None,
+    )
+
+
 def _taxonomy_from_path(
     path: Path,
     *,
