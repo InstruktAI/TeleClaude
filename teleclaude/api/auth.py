@@ -31,7 +31,7 @@ from teleclaude.constants import (
     ROLE_WORKER,
 )
 from teleclaude.core import db_models
-from teleclaude.core.db import db
+from teleclaude.core.db import SessionIdentityError, db, resolve_session_principal
 from teleclaude.core.identity import get_identity_resolver
 
 if TYPE_CHECKING:
@@ -244,12 +244,22 @@ async def _verify_session_identity(
         raise HTTPException(status_code=403, detail="session identity mismatch")
 
     resolved_email = _normalize_email(x_telec_email) or getattr(session, "human_email", None)
+    # Carry the resolved principal so a human-rooted session surfaces human:<email>
+    # and a system session surfaces system:<id>. A session that carries only a
+    # human_role (no principal, no human_email, no system_role) has no resolvable
+    # principal and keeps principal=None, still authorizing on its human_role.
+    try:
+        principal, principal_role = resolve_session_principal(session)
+    except SessionIdentityError:
+        principal, principal_role = None, None
     return CallerIdentity(
         session_id=caller_session_id,
         system_role=_derive_session_system_role(session),
         human_role=_resolve_human_role(session, x_telec_email),
         tmux_session_name=session.tmux_session_name,
         email=resolved_email,
+        principal=principal,
+        principal_role=principal_role,
     )
 
 

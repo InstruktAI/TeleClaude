@@ -27,18 +27,6 @@ And the returned CallerIdentity carries the token's principal and principal_role
 And the dual-factor session-id branch is not taken
 ```
 
-<!-- planned-change:prd-approval-gate-drops-session-principal -->
-
-```
-Given a call with no session-token signal, with caller-session-id `8a2c1f4d-6e0b-4f3a-90ab-5cd7e9b21f3c` and tmux-session signal `worker-8a2c1f4d`
-And the identity context's session record stores `tmux_session_name: worker-8a2c1f4d`
-When caller verification runs
-Then the dual-factor branch confirms the tmux signal matches the stored name
-And the returned CallerIdentity carries session_id, derived system_role, and resolved human_role
-```
-
-<!-- change:prd-approval-gate-drops-session-principal -->
-
 ```
 Given a call with no session-token signal, with caller-session-id `8a2c1f4d-6e0b-4f3a-90ab-5cd7e9b21f3c` and tmux-session signal `worker-8a2c1f4d`
 And the identity context's session record stores `tmux_session_name: worker-8a2c1f4d`
@@ -47,8 +35,6 @@ Then the dual-factor branch confirms the tmux signal matches the stored name
 And the returned CallerIdentity carries session_id, derived system_role, and resolved human_role
 And the returned CallerIdentity carries the principal and principal_role resolved from the session record through the principal-resolution capability
 ```
-
-<!-- /planned-change:prd-approval-gate-drops-session-principal -->
 
 ```
 Given the same call with tmux-session signal `tc_tui` while the stored tmux_session_name is `worker-8a2c1f4d`
@@ -76,8 +62,6 @@ When caller verification runs
 Then the terminal-identity branch returns a CallerIdentity with human_role=`admin` (Anonymous-admin fallback)
 ```
 
-<!-- planned:prd-approval-gate-drops-session-principal -->
-
 #### UC-CV-SESSION-PRINCIPAL: The dual-factor session-id branch resolves and carries the session's principal
 
 ```
@@ -97,8 +81,6 @@ When caller verification runs
 Then the returned CallerIdentity carries principal=None, preserving authorization for callers that clear on human_role or system_role
 And a gate that requires a human principal refuses the caller
 ```
-
-<!-- /planned:prd-approval-gate-drops-session-principal -->
 
 ### Cross-context references
 
