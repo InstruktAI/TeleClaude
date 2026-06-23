@@ -28,6 +28,7 @@ import teleclaude.config as _tc_config_module
 from teleclaude.config.invitations import load_invitations, save_invitations
 from teleclaude.config.loader import (
     _atomic_yaml_write,
+    find_person_config_path,
     load_global_config,
     load_person_config,
 )
@@ -516,21 +517,24 @@ def validate_all() -> list[ValidationResult]:
             )
         )
 
-    # Validate each person config
+    # Validate each person config. Resolve the on-disk path by slug (the canonical
+    # person-overlay location, people/{slug}/teleclaude.yml), with the resolver's
+    # legacy name/username fallback for folders not yet renamed.
     for person in config.people:
-        person_path = _PEOPLE_DIR / person.name / "teleclaude.yml"
-        if not person_path.exists():
+        person_path = find_person_config_path(person, _PEOPLE_DIR)
+        if person_path is None:
+            expected_path = _PEOPLE_DIR / (person.slug or person.name) / "teleclaude.yml"
             results.append(
                 ValidationResult(
                     area=f"person:{person.name}",
                     passed=False,
-                    errors=[f"Config file missing: {person_path}"],
+                    errors=[f"Config file missing: {expected_path}"],
                     suggestions=[f"Run: telec config to create config for {person.name}"],
                 )
             )
             continue
         try:
-            get_person_config(person.name)
+            load_person_config(person_path)
             results.append(ValidationResult(area=f"person:{person.name}", passed=True))
         except (ValueError, ValidationError) as e:
             results.append(
