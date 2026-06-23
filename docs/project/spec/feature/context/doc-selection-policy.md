@@ -81,6 +81,42 @@ Then the cross-project Source is loaded
 And visibility gating still applies
 ```
 
+#### UC-DSP1: Scope filter keeps only global snippets
+
+```
+Given --scope global passed by the caller
+When the Selection policy applies the scope filter
+Then only snippets with scope global are returned
+And project-scoped snippets are excluded
+```
+
+#### UC-DSP2: Scope filter keeps only project snippets
+
+```
+Given --scope project passed by the caller
+When the Selection policy applies the scope filter
+Then only snippets with scope project are returned
+And global-scoped snippets are excluded
+```
+
+#### UC-DSP3: Project filter keeps only the queried project's snippets
+
+```
+Given --project <slug> matching a registered project in the cross-project catalog
+When the Selection policy applies the project filter
+Then only snippets whose source project is <slug> are returned
+And global snippets and the current project's snippets are excluded
+And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
+```
+
+#### UC-DSP4: Project filter on an unknown slug returns nothing
+
+```
+Given --project <slug> matching no project in the cross-project catalog
+When the Selection policy applies the project filter
+Then no snippets are returned
+```
+
 ### Cross-context references
 
 - **identity** — terminal-session role is resolved upstream by the CLI and

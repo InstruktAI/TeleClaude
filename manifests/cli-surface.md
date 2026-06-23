@@ -333,7 +333,7 @@ Query documentation snippets
 
 List snippet IDs and metadata (phase 1)
 
-**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|erp>] [--target <slug>]`
+**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <software-development|creative|marketing|erp>] [--scope <global|project>] [--project <slug>] [--target <slug>]`
 
 **Flags:**
 
@@ -341,6 +341,8 @@ List snippet IDs and metadata (phase 1)
 - `--third-party` (`-t`): Include third-party docs
 - `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec|adr); omit for all
 - `--domains` (`-d`): Filter by domain (software-development|creative|marketing|erp); omit for all
+- `--scope`: Filter to global or project snippets (global|project)
+- `--project`: Filter to a registered project's snippets by slug
 - `--target`: Filter to snippets delivered by slug
 
 **Notes:**
@@ -351,10 +353,12 @@ List snippet IDs and metadata (phase 1)
 
 Fetch full snippet content by ID (phase 2)
 
-**Usage:** `telec docs get <id> [id...] [--target <slug>]`
+**Usage:** `telec docs get <id> [id...] [--scope <global|project>] [--project <slug>] [--target <slug>]`
 
 **Flags:**
 
+- `--scope`: Filter to global or project snippets (global|project)
+- `--project`: Filter to a registered project's snippets by slug
 - `--target`: Include the slug's planned sections and companion replacement body (default: strip all)
 
 ## `telec todo`
@@ -365,16 +369,17 @@ Manage work items
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]`
+**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
+- `--schedule`: Task-only schedule: ISO-8601 instant or cron:<minute hour day month weekday> (0/7=Sunday)
 - `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only.
 - `--icebox`: Create the todo parked in the icebox; suppress prepare auto-spawn
 - `--project-root` (`-p`): Target an explicit project root instead of the invocation cwd
 - `--group`: Attach the new todo as a child of <parent-slug>, making the parent a holder
-- `--plan`: Content seeds the implementation-plan as a draft basis (not an approved artifact): the todo enters at plan-drafting for a full plan-draft pass, then plan-review, before build (--kind change only).
+- `--plan`: For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.
 
 **Notes:**
 
@@ -382,7 +387,7 @@ Create a todo with substantive content
 - Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
 - --icebox creates the todo parked in the icebox so the prepare auto-spawn is suppressed — the create-time parking flag for ideas known to be on hold. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent to its input alone, so a parent past prepare is refused.
 - ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
-- --plan is valid only with --kind change and treats content as a complete implementation plan.
+- --plan is valid with --kind change or --kind task.
 - Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
 
 ### `telec todo list`
@@ -449,12 +454,13 @@ Move todo to delivered
 
 Update a todo slug, dependencies, or kind
 
-**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--kind <feature|change|bug|task>] [--hold] [--release] [--force]`
+**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold] [--release] [--force]`
 
 **Flags:**
 
 - `--slug`: New todo slug; delegates to the durable rename engine
 - `--after`: Dependency slug(s); replaces the full set. CSV accepted: --after parent-a,parent-b. Repeated flags accepted for compatibility: --after parent-a --after parent-b. Use --after "" to clear all dependencies.
+- `--schedule`: Task-only schedule; pass an empty value to clear (cron weekday 0/7=Sunday)
 - `--kind`: New todo kind: feature|change|bug|task
 - `--hold`: Set the per-todo automatic dispatch brake
 - `--release`: Release the per-todo automatic dispatch brake
@@ -565,13 +571,14 @@ Restore a soft-removed todo
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready]`
 
 **Flags:**
 
 - `--verdict`: approve | changes_requested | needs_work | needs_decision
 - `--phase`: Review phase the verdict belongs to (architecture_review, plan_review, build_review)
 - `--prd-approved`: Mark PRD as approved by the human
+- `--task-approved`: Authorize the current task-plan for a task
 - `--architecture-skipped`: Skip architecture phase with a reason
 - `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
 - `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]

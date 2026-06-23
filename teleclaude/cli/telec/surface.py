@@ -1,15 +1,14 @@
 """CLI surface — CLI_SURFACE dict and HELP_SUBCOMMAND_EXPANSIONS."""
 
-from __future__ import annotations  # noqa: I001
+from __future__ import annotations
 
 from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
+from teleclaude.snippet_validation import SnippetScope
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
+_SCOPE_VALUES = "|".join(member.value for member in SnippetScope)
+
 from .surface_types import (
-    CommandAuth,
-    CommandDef,
-    Flag,
-    TelecCommand,
     _FLAG_AFTER_DEPS,
     _FLAG_AGENT,
     _FLAG_COMPUTER,
@@ -22,15 +21,19 @@ from .surface_types import (
     _FLAG_SESSION,
     _FLAG_THINKING,
     _H,
-    _SYS_ALL,
-    _SYS_INTG,
-    _SYS_ORCH,
     _HR_ADMIN,
     _HR_ALL,
     _HR_ALL_NON_ADMIN,
     _HR_MEMBER,
     _HR_MEMBER_CONTRIB,
     _HR_MEMBER_CONTRIB_NEWCOMER,
+    _SYS_ALL,
+    _SYS_INTG,
+    _SYS_ORCH,
+    CommandAuth,
+    CommandDef,
+    Flag,
+    TelecCommand,
     strip_hidden_flag_tokens,
 )
 
@@ -431,13 +434,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
-                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <{'|'.join(DOMAIN_SCOPES)}>] [--target <slug>]",
+                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <{'|'.join(DOMAIN_SCOPES)}>] [--scope <{_SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
                 flags=[
                     _H,
                     Flag("--baseline-only", "-b", "Show only baseline snippets"),
                     Flag("--third-party", "-t", "Include third-party docs"),
                     Flag("--areas", "-a", f"Filter by taxonomy type ({'|'.join(TAXONOMY_TYPES)}); omit for all"),
                     Flag("--domains", "-d", f"Filter by domain ({'|'.join(DOMAIN_SCOPES)}); omit for all"),
+                    Flag("--scope", desc=f"Filter to global or project snippets ({_SCOPE_VALUES})"),
+                    Flag("--project", desc="Filter to a registered project's snippets by slug"),
                     Flag("--target", desc="Filter to snippets delivered by slug"),
                 ],
                 notes=[
@@ -447,9 +452,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "get": CommandDef(
                 desc="Fetch full snippet content by ID (phase 2)",
-                args="<id> [id...] [--target <slug>]",
+                args=f"<id> [id...] [--scope <{_SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
                 flags=[
                     _H,
+                    Flag("--scope", desc=f"Filter to global or project snippets ({_SCOPE_VALUES})"),
+                    Flag("--project", desc="Filter to a registered project's snippets by slug"),
                     Flag(
                         "--target",
                         desc="Include the slug's planned sections and companion replacement body (default: strip all)",

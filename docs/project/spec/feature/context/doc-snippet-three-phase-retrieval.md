@@ -90,6 +90,15 @@ Then the output includes "ERROR: Unknown snippet IDs: unknown/id"
 And no content body is returned for that ID
 ```
 
+#### UC-3PR4: Unknown --project slug returns empty, not an error
+
+```
+Given a --project <slug> matching no project in the cross-project catalog
+When the caller runs telec docs index --project <slug> (or telec docs get with the same flag)
+Then no snippets match and the listing (or fetch) returns empty
+And the command does not hard-fail — an unknown slug yields an empty result, not an error
+```
+
 ```
 Given a snippet whose visibility excludes the caller's role
 When the caller runs telec docs get on that ID
@@ -110,7 +119,7 @@ And Required reads resolution is NOT applied to that ID
   terminal login to determine which visibility tier the caller may see; that
   role drives gating in both phases.
 - **selection** — both verbs delegate filter composition (areas, domains,
-  baseline, target) to the Selection policy.
+  baseline, scope, project, target) to the Selection policy.
 
 ## Known caveats
 
@@ -122,7 +131,10 @@ And Required reads resolution is NOT applied to that ID
   the existence of an `internal` snippet even though they cannot read it. This
   leaks identity information by design (so callers know to request a role
   lift) but is a real disclosure surface.
-- Phase 1 third-party output ignores `--baseline-only` and `--target` filters
-  entirely; third-party listings render on a separate track.
+- Phase 1 third-party output ignores `--baseline-only` and `--target` (third-party
+  renders on a separate track), but `--scope` and `--project` do apply to it:
+  `--scope` keeps only third-party entries of that scope, and `--project <slug>`
+  drops third-party entirely, since third-party indexes are loaded for the current
+  project and global only and are never cross-project-loaded.
 - The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
 docs *`. The verb rename is a known migration cleanup.

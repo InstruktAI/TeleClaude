@@ -25,7 +25,8 @@ from teleclaude.paths import GLOBAL_SNIPPETS_DIR, REPO_ROOT
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_validation import companion_slug
+from teleclaude.snippet_validation import SnippetScope, companion_slug
+from teleclaude.third_party_index import ThirdPartyMeta, load_third_party_index
 from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
@@ -46,16 +47,6 @@ class SnippetMeta:
     visibility: str = SNIPPET_VISIBILITY_INTERNAL
     delivered_by: tuple[str, ...] = ()
     superseded_by: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ThirdPartyMeta:
-    """Third-party doc entry - no type field (not part of taxonomy)."""
-
-    snippet_id: str
-    description: str
-    scope: str
-    path: Path
 
 
 def _scope_rank(scope: str | None) -> int:
@@ -352,56 +343,6 @@ def _load_baseline_ids(
             baseline_ids.add(snippet.snippet_id)
 
     return baseline_ids
-
-
-def _load_third_party_index(index_path: Path) -> list[ThirdPartyMeta]:
-    """Load third-party index.yaml (simpler schema: no type field)."""
-    if not index_path.exists():
-        return []
-
-    try:
-        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.exception("third_party_index_load_failed", path=str(index_path), error=str(exc))
-        return []
-
-    if not isinstance(payload, dict):
-        return []
-
-    snippets_root = payload.get("snippets_root")
-    snippets = payload.get("snippets")
-    if not isinstance(snippets_root, str) or not isinstance(snippets, list):
-        return []
-
-    root_path = Path(snippets_root).expanduser().resolve()
-    entries: list[ThirdPartyMeta] = []
-    for item in snippets:
-        if not isinstance(item, dict):
-            continue
-        snippet_id = item.get("id")
-        description = item.get("description")
-        scope = item.get("scope")
-        raw_path = item.get("path")
-        if (
-            not isinstance(snippet_id, str)
-            or not isinstance(description, str)
-            or not isinstance(scope, str)
-            or not isinstance(raw_path, str)
-        ):
-            continue
-        path = Path(raw_path).expanduser()
-        if not path.is_absolute():
-            path = (root_path / path).resolve()
-        entries.append(
-            ThirdPartyMeta(
-                snippet_id=snippet_id,
-                description=description,
-                scope=scope,
-                path=path,
-            )
-        )
-
-    return entries
 
 
 def _resolve_requires(
@@ -751,6 +692,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     test_request: str | None = None,
     test_csv_path: str | None = None,
     target_slug: str | None = None,
+    scope: SnippetScope | None = None,
 ) -> str:
     if list_projects:
         return _build_project_catalog_output()
@@ -806,13 +748,13 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     # Load third-party entries (separate from taxonomy, not filtered by areas)
     third_party_entries: list[ThirdPartyMeta] = []
     if include_third_party:
-        third_party_entries.extend(_load_third_party_index(global_third_party_index))
+        third_party_entries.extend(load_third_party_index(global_third_party_index))
         # In the mother repo the project IS the global source, so both indexes
         # resolve to the same file — load the project index only when it differs,
         # otherwise every third-party entry would be listed twice (phase-1 output
         # does not dedup).
         if project_third_party_index.resolve() != global_third_party_index.resolve():
-            third_party_entries.extend(_load_third_party_index(project_third_party_index))
+            third_party_entries.extend(load_third_party_index(project_third_party_index))
 
     # Use explicit domains if provided; else use config when available; else load from project config
     if domains:
@@ -853,6 +795,21 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         global_root=global_root,
         snippets_by_path=snippets_by_path,
     )
+    # Content-selection filters: narrow the assembled list by scope tier and/or
+    # queried project. Both suppress the otherwise-unconditional global include so
+    # the filter actually narrows. They apply to the single taxonomy list (feeding
+    # both phase-1 and phase-2) and to the parallel third-party track.
+    if scope is not None:
+        snippets = [snippet for snippet in snippets if snippet.scope == scope]
+        third_party_entries = [entry for entry in third_party_entries if entry.scope == scope]
+    if projects:
+        project_keys = {name.strip().lower() for name in projects if name.strip()}
+        snippets = [snippet for snippet in snippets if snippet.source_project.lower() in project_keys]
+        # Third-party indexes are loaded for the current project + global only and
+        # are never cross-project-loaded, so none belong to a queried foreign
+        # project (mirrors the target-slug branch below).
+        third_party_entries = []
+
     if not snippet_ids and target_slug is not None:
         # Index --target: focus on one todo's pending work — both the not-yet-live
         # NEW snippets it delivers and the LIVE snippets it reworks via planned

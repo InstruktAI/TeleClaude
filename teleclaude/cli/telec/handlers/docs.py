@@ -8,6 +8,7 @@ from teleclaude.config.loader import load_app_config
 from teleclaude.context_selector import build_context_output
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.project_root import resolve_invocation_project_root
+from teleclaude.snippet_validation import SnippetScope
 
 __all__ = [
     "_handle_docs",
@@ -21,6 +22,17 @@ def _current_terminal_role() -> str | None:
     if not email:
         return None
     return get_identity_resolver().resolve_by_email(email).person_role
+
+
+def _parse_scope(value: str, subcommand: str) -> SnippetScope:
+    """Parse a ``--scope`` value into ``SnippetScope`` or fail fast."""
+    try:
+        return SnippetScope(value)
+    except ValueError:
+        valid = ", ".join(member.value for member in SnippetScope)
+        print(f"Invalid --scope value: {value}. Valid values: {valid}.")
+        print(_usage("docs", subcommand))
+        raise SystemExit(1) from None
 
 
 def _handle_docs(args: list[str]) -> None:
@@ -51,6 +63,8 @@ def _handle_docs_index(args: list[str]) -> None:
     areas: list[str] = []
     domains: list[str] | None = None
     target_slug: str | None = None
+    scope: SnippetScope | None = None
+    projects: list[str] | None = None
 
     i = 0
     while i < len(args):
@@ -73,6 +87,20 @@ def _handle_docs_index(args: list[str]) -> None:
             i += 2
         elif arg in ("--domains", "-d"):
             print("Missing value for --domains.")
+            print(_usage("docs", "index"))
+            raise SystemExit(1)
+        elif arg == "--scope" and i + 1 < len(args):
+            scope = _parse_scope(args[i + 1].strip(), "index")
+            i += 2
+        elif arg == "--scope":
+            print("Missing value for --scope.")
+            print(_usage("docs", "index"))
+            raise SystemExit(1)
+        elif arg == "--project" and i + 1 < len(args):
+            projects = [args[i + 1].strip().lower()]
+            i += 2
+        elif arg == "--project":
+            print("Missing value for --project.")
             print(_usage("docs", "index"))
             raise SystemExit(1)
         elif arg == "--target" and i + 1 < len(args):
@@ -101,6 +129,8 @@ def _handle_docs_index(args: list[str]) -> None:
         include_third_party=third_party,
         domains=domains,
         target_slug=target_slug,
+        scope=scope,
+        projects=projects,
         effective_human_role=effective_role,
         config=config,
     )
@@ -112,6 +142,8 @@ def _handle_docs_get(args: list[str]) -> None:
     project_root = resolve_invocation_project_root()
     snippet_ids: list[str] = []
     target_slug: str | None = None
+    scope: SnippetScope | None = None
+    projects: list[str] | None = None
 
     i = 0
     while i < len(args):
@@ -122,6 +154,22 @@ def _handle_docs_get(args: list[str]) -> None:
             continue
         if arg == "--target":
             print("Missing value for --target.")
+            print(_usage("docs", "get"))
+            raise SystemExit(1)
+        if arg == "--scope" and i + 1 < len(args):
+            scope = _parse_scope(args[i + 1].strip(), "get")
+            i += 2
+            continue
+        if arg == "--scope":
+            print("Missing value for --scope.")
+            print(_usage("docs", "get"))
+            raise SystemExit(1)
+        if arg == "--project" and i + 1 < len(args):
+            projects = [args[i + 1].strip().lower()]
+            i += 2
+            continue
+        if arg == "--project":
+            print("Missing value for --project.")
             print(_usage("docs", "get"))
             raise SystemExit(1)
         if arg.startswith("-"):
@@ -149,6 +197,8 @@ def _handle_docs_get(args: list[str]) -> None:
         include_third_party=False,
         domains=None,
         target_slug=target_slug,
+        scope=scope,
+        projects=projects,
         effective_human_role=effective_role,
         config=config,
     )

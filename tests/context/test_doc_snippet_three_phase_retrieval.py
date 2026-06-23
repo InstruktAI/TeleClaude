@@ -11,6 +11,8 @@ from typing import TypedDict
 
 import pytest
 
+from teleclaude.cli.telec.handlers import docs as docs_handler
+from teleclaude.cli.telec.handlers.docs import _handle_docs_get, _handle_docs_index
 from teleclaude.context_selector import SnippetMeta, _build_phase1_output, build_context_output
 
 pytestmark = pytest.mark.functional
@@ -390,3 +392,70 @@ Planned replacement body.
         "target": _phase2_output(tmp_path, target_slug="fix-docs-get-target-companion-bodies"),
         "plain": _phase2_output(tmp_path, target_slug=None),
     } == snapshot
+
+
+_HANDLER_PROJECT_ID = "project/spec/feature/context/handler-thing"
+
+
+def _setup_handler_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Wire a controlled project tree and stub the handler's invocation boundary."""
+
+    gdocs = tmp_path / "ghome" / ".teleclaude" / "docs"
+    gdocs.mkdir(parents=True, exist_ok=True)
+    (gdocs / "index.yaml").write_text(
+        json.dumps({"project_root": str(gdocs), "snippets": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", gdocs)
+
+    project_root = tmp_path / "proj"
+    (project_root / "docs").mkdir(parents=True, exist_ok=True)
+    index_path = project_root / "docs" / "project" / "index.yaml"
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    entry: _IndexEntry = {
+        "id": _HANDLER_PROJECT_ID,
+        "description": "Handler thing snippet.",
+        "type": "spec",
+        "scope": "project",
+        "domain": "project",
+        "visibility": "public",
+        "path": "docs/project/spec/feature/context/handler-thing.md",
+    }
+    index_path.write_text(
+        json.dumps({"project_root": str(project_root), "snippets": [entry]}, indent=2),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(docs_handler, "resolve_invocation_project_root", lambda: project_root)
+    monkeypatch.setattr(docs_handler, "load_app_config", lambda *_: None)
+    monkeypatch.setattr(docs_handler, "read_current_session_email", lambda: None)
+    return project_root
+
+
+def test_index_invalid_scope_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An invalid --scope value fails loud with a non-zero exit (handler error-path, no spec scenario)."""
+    _setup_handler_project(tmp_path, monkeypatch)
+
+    with pytest.raises(SystemExit) as exc:
+        _handle_docs_index(["--scope", "bogus"])
+
+    assert exc.value.code == 1
+    assert capsys.readouterr().out  # an error message is surfaced, not a silent exit
+
+
+@pytest.mark.spec(_SPEC, "UC-3PR4")
+def test_unknown_project_returns_empty_without_hard_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unknown --project slug yields an empty result on both index and get, without raising."""
+    _setup_handler_project(tmp_path, monkeypatch)
+
+    # index: the project snippet is dropped → not listed.
+    _handle_docs_index(["--project", "does-not-exist"])
+    assert _HANDLER_PROJECT_ID not in capsys.readouterr().out
+
+    # get: the same flag drops the snippet; it is reported unresolved, never a crash.
+    _handle_docs_get([_HANDLER_PROJECT_ID, "--project", "does-not-exist"])
+    assert _HANDLER_PROJECT_ID in capsys.readouterr().out
