@@ -142,7 +142,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 
 #### Company (aggregate)
 
-- **Root:** `CompanyConfig`, folder-discovered under `~/.teleclaude/companies/<slug>/teleclaude.yml` (the `COMPANIES_ROOT` tree) — the company-scoped twin of the per-person tier. `extra="allow"`, so agent-handy fields are added later without a schema change.
+- **Root:** `CompanyConfig`, folder-discovered under `~/.teleclaude/companies/<slug>/teleclaude.yml` (the `COMPANIES_ROOT` tree) — the company-scoped twin of the per-person tier. `extra="allow"` for additive growth.
 - **Contains (v1):** `name` (display), `slug` (the company ID = folder name), `git` (the org's host/org, e.g. `github.com/InstruktAI`), `description` (one-line summary — the substance of the injected company header), `erp_id` (the single connection to the company's ERPNext record), `owner` (the leading person, referenced by `PersonConfig.slug`). A company-level `.env` in the same folder holds service credentials.
 - **Invariants:**
   - The company tier is its own scope: a dedicated model + folder-discovery loader. Company fields are NOT folded into `ProjectConfig`, and no existing config is promoted into a shared multi-level model.
@@ -152,7 +152,7 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - Discovery is by folder structure only (`COMPANIES_ROOT` is the registry); there is no separate registry file.
   - Company credentials are read through one resolver seam — `load_company_credentials(slug)` — reading the company-folder `.env` (mode `0600`, **unprefixed** keys; the directory is the namespace) via the existing `${VAR}` mechanism; the seam is swappable to a secrets service without touching call sites. No new env var locates a company.
 - **Identifier:** the company `slug` (folder name).
-- **Lifecycle:** scaffolded and populated by `telec companies onboard` (see the company-scaffolding spec); read into the effective config when a project declares membership; read by the hook receiver to inject the company header and by project setup to derive a project's git remote. This supersedes and removes the prior single `GlobalConfig.company_profile` value object and its `telec config company` surface.
+- **Lifecycle:** scaffolded and populated by `telec companies onboard` (see the company-scaffolding spec); read into the effective config when a project declares membership; read by the hook receiver to inject the company header and by project setup to derive a project's git remote.
 
 #### Project company membership (value object)
 
