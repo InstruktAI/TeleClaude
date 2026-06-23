@@ -953,6 +953,18 @@ And every dispatched orchestrator runs in the main checkout, never inside the tr
 And the same canonical root is resolved whether the runner is woken by an event, an operator `telec todo work`/`telec todo prepare`, or headless adoption
 ```
 
+<!-- planned:fix-manual-start-approval-gate-leak -->
+
+```gherkin
+Given a todo with no live holder is parked at a pending human-approval phase (its PRD human-approval gate, or a creative section awaiting its approval flag)
+When an operator manually starts its lifecycle — `telec todo prepare`/`telec todo work`, the TUI START, or headless adoption
+Then the manual start claims the slug in-process for the invoking session and runs the state machine, which parks at the human approval gate — an approval-pending phase never refuses a manual start
+And the manual start is refused only when a different live session already holds the slug (a claim conflict / already-driven)
+And the autonomous runner still skips an approval-pending entry for its own dispatch — the manual path's claim-only authority and the autonomous approval gate are independent
+```
+
+<!-- /planned:fix-manual-start-approval-gate-leak -->
+
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
 ```gherkin
