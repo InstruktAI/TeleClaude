@@ -137,15 +137,13 @@ When enrichment runs on a project that already has auto-generated snippets:
 5. **New snippets are additive.** If the re-analysis discovers aspects not covered
    by existing snippets, new snippets are created normally.
 6. **Removed snippets are preserved.** If a re-analysis no longer produces a
-snippet that previously existed, the existing file is kept (it may contain
-human edits). The metadata file tracks which snippets were generated vs. preserved.
-<!-- planned:onboard-docs-incremental-enrichment -->
+   snippet that previously existed, the existing file is kept (it may contain
+   human edits). The metadata file tracks which snippets were generated vs. preserved.
 7. **Diff-scoped re-analysis.** When `.telec-init-meta.yaml` records a
-`last_analyzed_commit`, re-analysis is scoped to the files changed in
-`git diff <last_analyzed_commit>..HEAD`; snippets whose source areas are
-unchanged are left untouched. Absent that commit, the analysis covers the
-full tree.
-<!-- /planned:onboard-docs-incremental-enrichment -->
+   `last_analyzed_commit`, re-analysis is scoped to the files changed in
+   `git diff <last_analyzed_commit>..HEAD`; snippets whose source areas are
+   unchanged are left untouched. Absent that commit, the analysis covers the
+   full tree.
 
 ### Agent Bootstrap Content
 
@@ -189,22 +187,6 @@ The enrichment writer validates all output before persistence:
 
 The enrichment writer persists `.telec-init-meta.yaml` in the project root:
 
-<!-- planned-change:onboard-docs-incremental-enrichment -->
-
-```yaml
-last_analyzed_at: '2024-01-15T10:30:00Z'
-analyzed_by: telec-init
-files_analyzed: 42
-snippets_generated:
-  - project/design/architecture
-  - project/policy/conventions
-  - project/spec/dependencies
-snippets_preserved:
-  - project/spec/entry-points
-```
-
-<!-- change:onboard-docs-incremental-enrichment -->
-
 ```yaml
 last_analyzed_at: '2024-01-15T10:30:00Z'
 last_analyzed_commit: '3f9a1c2'
@@ -218,14 +200,8 @@ snippets_preserved:
   - project/spec/entry-points
 ```
 
-<!-- /planned-change:onboard-docs-incremental-enrichment -->
-
 This file is read during re-analysis to inform merge decisions and is updated
 after each enrichment run.
 
-<!-- planned:onboard-docs-incremental-enrichment -->
-
 `last_analyzed_commit` records the HEAD commit the run analyzed; the next run
 diffs against it to scope enrichment to changed files.
-
-<!-- /planned:onboard-docs-incremental-enrichment -->
