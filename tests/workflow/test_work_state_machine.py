@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,11 +11,13 @@ from typing import cast
 
 import pytest
 
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import work as work_machine
 from teleclaude.core.next_machine import work_steps
 from teleclaude.core.next_machine._types import WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.types.todos import TodoState
@@ -25,6 +28,7 @@ _SPEC = "project/spec/feature/workflow/work-state-machine"
 _SLUG = "prepared-work"
 _FINALIZED_SLUG = "finalized-work"
 _UNKNOWN_SLUG = "unknown-work"
+_PLAN_BODY = "# Plan"
 
 
 @dataclass(frozen=True)
@@ -331,6 +335,69 @@ async def test_finalize_ready_terminal_output_ends_slug_workers_and_self(
     )
 
     assert output == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WSM0")
+async def test_kickback_releases_worktree_and_emits_terminal_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await todos_db.add_to_todo(_SLUG)
+    await todos_db.write_state(
+        _SLUG,
+        TodoState(
+            kind="change",
+            phase="in_progress",
+            lifecycle_phase=LifecyclePhase.BUILD_STARTED.value,
+            schema_version=5,
+            active_runner="orchestrator-session",
+        ).model_dump(exclude_none=True),
+    )
+    # A kickback marks the plan-review cleared-by-substantive-drift; reproduce that signal.
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    writer.state.plan_review.cleared_by_substantive_drift = True
+    await writer.commit(todos_db, _SLUG)
+    await todos_db.write_artifact(_SLUG, ARTIFACT_IMPLEMENTATION_PLAN, _PLAN_BODY, updated_by="test")
+
+    worktree_cwd = project_root / "trees" / _SLUG
+    worktree_cwd.mkdir(parents=True)
+
+    released: list[tuple[str, str]] = []
+
+    def _release(cwd: str, slug: str, **_kwargs: object) -> None:
+        released.append((cwd, slug))
+        shutil.rmtree(worktree_cwd)
+
+    dispatched: list[str] = []
+
+    async def _dispatch(**_kwargs: object) -> tuple[bool, str]:
+        dispatched.append("dispatched")
+        return False, "should-not-run"
+
+    monkeypatch.setattr(work_machine, "get_stash_entries", lambda _cwd: [])
+    monkeypatch.setattr(work_machine, "_check_work_entry_drift", _no_work_entry_drift)
+    monkeypatch.setattr(work_machine, "cleanup_delivered_slug", _release)
+    monkeypatch.setattr(work_machine, "get_session_id", lambda: "orchestrator-session")
+    monkeypatch.setattr(work_machine, "_work_dispatch", _dispatch)
+
+    output = await next_work(
+        cast(Db, _CapturingDb([_Session("builder-session", f"/next-build {_SLUG}", subdir=f"trees/{_SLUG}")])),
+        _SLUG,
+        str(project_root),
+    )
+
+    # The emitted terminal script (end the slug's worker, end self, do not re-enter work) is the contract.
+    assert output == snapshot
+    assert released == [(str(project_root), _SLUG)]
+    assert not worktree_cwd.exists()
+    assert dispatched == []
+    # The durable todo and its artifacts survive the working-resource release.
+    assert await todos_db.read_artifact(_SLUG, ARTIFACT_IMPLEMENTATION_PLAN) == _PLAN_BODY
 
 
 @pytest.mark.spec(_SPEC, "UC-WSM3")

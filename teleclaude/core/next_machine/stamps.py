@@ -27,6 +27,7 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
+    ROLE_ORCHESTRATOR,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
@@ -217,6 +218,14 @@ async def apply_todo_stamp(
             writer,
             cwd=cwd,
             slug=slug,
+        )
+    elif stamp_type == "kickback":
+        return await _apply_kickback_stamp(
+            todos_db,
+            writer,
+            slug,
+            reason=value,
+            repo_root=cwd,
         )
     else:
         raise ValueError(f"unknown stamp type: {stamp_type}")
@@ -456,6 +465,67 @@ async def _apply_build_complete_stamp(
     writer.state.build_gate_claim_at = datetime.now(UTC).isoformat()
 
 
+_KICKBACK_BLOCK_HEADER = "## Kickback to plan drafting"
+
+
+def _format_kickback_block(reason: str) -> str:
+    """Build the delimited, durable kickback block recorded to the input artifact."""
+    stamped_at = datetime.now(UTC).isoformat()
+    return (
+        "<!-- kickback:start -->\n"
+        f"{_KICKBACK_BLOCK_HEADER}\n\n"
+        f"- Stamped at: {stamped_at}\n"
+        f"- Reason: {reason.strip()}\n"
+        "<!-- kickback:end -->"
+    )
+
+
+async def _apply_kickback_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    *,
+    reason: str,
+    repo_root: str,
+) -> dict[str, StateValue]:
+    """Send an unbuildable todo back to plan drafting.
+
+    Records the reason as a durable, delimited kickback block appended to the input
+    artifact (creating input when the todo has none, e.g. a ``--plan`` todo) and
+    invalidates the implementation-plan with the exact substantive-drift clearing a
+    plan drift verdict produces, so phase derivation returns to ``plan_drafting``.
+
+    The input write commits first; provenance then reads the committed digest and the
+    state-write boundary persists the plan invalidation atomically. ``lifecycle_phase``
+    is left untouched — the prepare machine derives ``plan_drafting`` on its next
+    dispatch, and the work machine recognizes the kickback by the cleared plan-review
+    flag.
+    """
+    if not reason.strip():
+        raise StateMutationError("kickback requires a non-empty reason")
+
+    existing_input = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
+    block = _format_kickback_block(reason)
+    if existing_input.strip():
+        new_body = f"{existing_input.rstrip()}\n\n{block}\n"
+    else:
+        new_body = f"# {slug} — Input\n\n{block}\n"
+    await todos_db.write_artifact(slug, ARTIFACT_INPUT, new_body, updated_by="kickback")
+
+    artifact_body = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
+    await sync_artifact_provenance(
+        todos_db,
+        writer,
+        slug,
+        ARTIFACT_INPUT,
+        repo_root=repo_root,
+        artifact_body=artifact_body,
+        snippet_digest_fn=snippet_body_digest,
+    )
+    ApprovalsManager(writer).cascade_substantive_drift(ARTIFACT_IMPLEMENTATION_PLAN)
+    return await writer.commit(todos_db, slug)
+
+
 async def _validate_stamp_authority(
     *,
     slug: str,
@@ -473,6 +543,18 @@ async def _validate_stamp_authority(
         }:
             return
         raise PermissionError(f"{stamp_type} stamp for {slug} requires a TeleClaude session")
+
+    if stamp_type == "kickback":
+        system_role = (
+            get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "system_role") if caller_session_id else None
+        )
+        if system_role != ROLE_ORCHESTRATOR:
+            raise PermissionError(
+                f"kickback stamp for {slug} is work-orchestrator-only; caller session "
+                f"{caller_session_id or '<none>'} has system_role={system_role or '<none>'}. "
+                "A worker session or a plain operator shell cannot kick a todo back to plan drafting."
+            )
+        return
 
     live_claimant = active_runner if active_runner and await is_live_session_id(runtime_db, active_runner) else None
     working_slug = (

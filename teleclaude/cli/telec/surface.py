@@ -750,6 +750,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--drift-reviewed <artifact> <verdict> <reason>]"
                     f" [--kind-assign <{TODO_KIND_USAGE}> [<content>]]"
                     " [--build-complete] [--finalize-ready]"
+                    " [--kickback --reason <reason>]"
                 ),
                 flags=[
                     _H,
@@ -771,6 +772,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="Record the worker's build-complete claim; gates run on the next telec todo work dispatch",
                     ),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
+                    Flag(
+                        "--kickback",
+                        desc="Work-orchestrator-only: send an unbuildable todo back to plan drafting",
+                    ),
+                    Flag("--reason", desc="Reason recorded to input (required with --kickback)"),
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
@@ -778,6 +784,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec todo stamp my-slug --kind-assign task "actionable task"',
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
+                    'telec todo stamp my-slug --kickback --reason "<why the plan cannot be built>"',
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

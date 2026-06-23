@@ -29,6 +29,7 @@ __all__ = [
     "format_command_loader_message",
     "format_error",
     "format_finalize_handoff_complete",
+    "format_kickback_terminal",
     "format_pending_classes_for_dispatch",
     "format_prepared",
     "format_procedure_load",
@@ -497,6 +498,39 @@ INSTRUCTIONS FOR ORCHESTRATOR:
 {instructions}
 
 Work-stage responsibility for {slug} is complete. Do not call telec todo work {slug} again."""
+
+
+def format_kickback_terminal(slug: str, child_session_ids: list[str] | None = None) -> str:
+    """Format the terminal cleanup after a todo is kicked back to plan drafting.
+
+    The kickback stamp already invalidated the implementation-plan and recorded the
+    reason in the todo's input. The work machine has released the slug's working
+    resources (worktree + local/remote branch + workspace dir). All that remains is
+    to end the slug's workers and this orchestrator so the runner re-dispatches a
+    fresh prepare that re-derives the plan from the input kickback block.
+    """
+    steps: list[str] = []
+    steps.append(
+        f'1. Report: "Todo {slug} was kicked back to plan drafting. Its working resources '
+        f"(worktree + branch) were released; the runner will re-dispatch a fresh prepare "
+        f'that reads the input kickback block as re-derivation context."'
+    )
+
+    step = 2
+    if child_session_ids:
+        end_cmds = "\n   ".join(f"telec sessions end {sid}" for sid in child_session_ids)
+        steps.append(f"{step}. End child sessions:\n   {end_cmds}")
+        step += 1
+
+    steps.append(f"{step}. End this orchestrator session:\n   telec sessions end self")
+
+    instructions = "\n".join(steps)
+    return f"""KICKBACK TO PLAN DRAFTING: {slug}
+
+INSTRUCTIONS FOR ORCHESTRATOR:
+{instructions}
+
+Work-stage responsibility for {slug} is released. Do not call telec todo work {slug} again."""
 
 
 def format_stash_debt(slug: str, count: int) -> str:

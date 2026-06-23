@@ -788,7 +788,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
             "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
             "--task-approved, --drift-reviewed, --kind-assign, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
-            "--art-approved, --visuals-approved)"
+            "--art-approved, --visuals-approved, --kickback)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -796,6 +796,9 @@ def _handle_todo_stamp(args: list[str]) -> None:
         raise SystemExit(1)
     if stamp_type == "kind_assign" and not phase:
         print(f"--kind-assign requires <{TODO_KIND_USAGE}> [content]")
+        raise SystemExit(1)
+    if stamp_type == "kickback" and not value:
+        print("--kickback requires --reason <reason>")
         raise SystemExit(1)
 
     body: _TodoStampBody = {
@@ -859,6 +862,12 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             stamp_type = "finalize_ready"
             value = ""
             i += 1
+        elif arg == "--kickback":
+            stamp_type = "kickback"
+            i += 1
+        elif arg == "--reason" and i + 1 < len(args):
+            value = args[i + 1]
+            i += 2
         elif not arg.startswith("-"):
             slug = arg
             i += 1

@@ -244,9 +244,15 @@ class ApprovalsManager:
             snippet_digests_at_review=snippet_digests_at_review or {},
         )
         if typed_verdict == "substantive":
-            self._cascade_substantive_drift(artifact)
+            self.cascade_substantive_drift(artifact)
 
-    def _cascade_substantive_drift(self, artifact: str) -> None:
+    def cascade_substantive_drift(self, artifact: str) -> None:
+        """Clear the review verdicts an upstream artifact's substantive drift invalidates.
+
+        Marks each cascaded review ``cleared_by_substantive_drift`` so phase
+        derivation re-opens it (e.g. the implementation-plan derives back to
+        ``plan_drafting``). Shared by the drift-reviewed stamp and the kickback stamp.
+        """
         for review_field in _DRIFT_REVIEW_CASCADE.get(artifact, ()):
             review = self._writer.review(review_field)
             review.verdict = ""

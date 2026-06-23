@@ -137,8 +137,6 @@ Its post-completion bookkeeping matches the normal build path: the build worker
 stamps `telec todo stamp [slug] --build-complete`, then the orchestrator re-enters
 `telec todo work [slug]`.
 
-<!-- planned:todo-kickback-stamp -->
-
 ### 8. Kickback to prepare (human-gated)
 
 A build can stall on a plan defect that no fix resolves — the implementation plan
@@ -166,8 +164,6 @@ in-line drift bounce that keeps the same session driving. The orchestrator
 self-ending frees the slug's active runner; the runner then picks up the
 `plan_drafting` todo and dispatches a fresh prepare, which reads the kickback block
 in `input` as authoritative re-derivation context.
-
-<!-- /planned:todo-kickback-stamp -->
 
 ## Outputs
 

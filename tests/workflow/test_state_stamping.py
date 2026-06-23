@@ -14,6 +14,8 @@ import teleclaude.core.db as db_mod
 from teleclaude.cli.telec import main
 from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
     ARTIFACT_PRD,
     ARTIFACT_TASK_PLAN,
     LOCAL_COMPUTER,
@@ -38,6 +40,12 @@ _SLUG = "stamp-target"
 _NO_BUILD_GATE_CLAIM = ""
 _ISO_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T[0-9:.+-]+")
 _HUMAN_SESSION = "human-session"
+_KICKBACK_HEADER = "Kickback to plan drafting"
+_KICKBACK_WORD = "Kickback"
+_ORIGINAL_INPUT_MARKER = "original intent."
+_KICKBACK_REASON_USAGE = "--kickback requires --reason"
+_VERDICT_APPROVE = "approve"
+_VERDICT_CLEARED = ""
 
 
 @pytest.fixture(autouse=True)
@@ -447,6 +455,189 @@ async def test_manual_refusal_with_no_caller_surfaces_claimant(tmp_path: Path) -
 
     with pytest.raises(PermissionError, match=rf"{claimant_id}.*Give the human the claiming session id"):
         await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="build_complete", caller_session_id=None)
+
+
+async def _add_kickback_target_todo(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    active_runner: str | None = None,
+    with_input: bool = True,
+) -> None:
+    await todos_db.add_to_todo(slug)
+    await todos_db.write_state(
+        slug,
+        {
+            "schema_version": 4,
+            "kind": TODO_KIND_CHANGE,
+            "phase": "in_progress",
+            "lifecycle_phase": LifecyclePhase.BUILD_STARTED.value,
+            "active_runner": active_runner,
+            "plan_review": {"verdict": "approve", "reviewed_at": "2026-01-01T00:00:00+00:00"},
+        },
+    )
+    await todos_db.write_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN, "# Plan\n\nbuild this.", updated_by="test")
+    if with_input:
+        await todos_db.write_artifact(slug, ARTIFACT_INPUT, f"# {slug} — Input\n\noriginal intent.", updated_by="test")
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS11")
+async def test_kickback_appends_input_block_and_invalidates_plan(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    orchestrator_id = f"{tmp_path.name}-work-orchestrator"
+    await _add_kickback_target_todo(todos_db, _SLUG, active_runner=orchestrator_id)
+    await _create_runtime_session(
+        project_root,
+        session_id=orchestrator_id,
+        system_role=ROLE_ORCHESTRATOR,
+        working_slug=None,
+        job=JobRole.WORK_ORCHESTRATOR.value,
+    )
+
+    reason = "the plan references a module that does not exist"
+    await apply_todo_stamp(
+        cwd=str(project_root),
+        slug=_SLUG,
+        stamp_type="kickback",
+        value=reason,
+        caller_session_id=orchestrator_id,
+    )
+
+    input_body = await todos_db.read_artifact(_SLUG, ARTIFACT_INPUT)
+    assert _ORIGINAL_INPUT_MARKER in input_body
+    assert _KICKBACK_HEADER in input_body
+    assert reason in input_body
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.plan_review.cleared_by_substantive_drift is True
+    assert writer.state.plan_review.verdict == _VERDICT_CLEARED
+    assert writer.state.lifecycle_phase == LifecyclePhase.BUILD_STARTED.value
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS11")
+async def test_kickback_creates_input_when_absent(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    orchestrator_id = f"{tmp_path.name}-work-orchestrator"
+    await _add_kickback_target_todo(todos_db, _SLUG, active_runner=orchestrator_id, with_input=False)
+    await _create_runtime_session(
+        project_root,
+        session_id=orchestrator_id,
+        system_role=ROLE_ORCHESTRATOR,
+        working_slug=None,
+        job=JobRole.WORK_ORCHESTRATOR.value,
+    )
+
+    reason = "seeded plan is unbuildable"
+    await apply_todo_stamp(
+        cwd=str(project_root),
+        slug=_SLUG,
+        stamp_type="kickback",
+        value=reason,
+        caller_session_id=orchestrator_id,
+    )
+
+    input_body = await todos_db.read_artifact(_SLUG, ARTIFACT_INPUT)
+    assert _KICKBACK_HEADER in input_body
+    assert reason in input_body
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS11")
+async def test_kickback_refuses_worker_session_without_mutation(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_kickback_target_todo(todos_db, _SLUG)
+    session_id = await _create_runtime_session(
+        project_root,
+        session_id=f"{tmp_path.name}-owning-worker",
+        system_role=ROLE_WORKER,
+        working_slug=_SLUG,
+        job=JobRole.BUILDER.value,
+    )
+
+    with pytest.raises(PermissionError):
+        await apply_todo_stamp(
+            cwd=str(project_root),
+            slug=_SLUG,
+            stamp_type="kickback",
+            value="worker should not be able to do this",
+            caller_session_id=session_id,
+        )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.plan_review.verdict == _VERDICT_APPROVE
+    assert writer.state.plan_review.cleared_by_substantive_drift is False
+    assert _KICKBACK_WORD not in await todos_db.read_artifact(_SLUG, ARTIFACT_INPUT)
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS11")
+async def test_kickback_refuses_missing_session(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_kickback_target_todo(todos_db, _SLUG)
+
+    with pytest.raises(PermissionError):
+        await apply_todo_stamp(
+            cwd=str(project_root),
+            slug=_SLUG,
+            stamp_type="kickback",
+            value="no session means no authority",
+            caller_session_id=None,
+        )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    assert StateWriter(state).state.plan_review.cleared_by_substantive_drift is False
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS11")
+async def test_kickback_empty_reason_refused_without_mutation(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    orchestrator_id = f"{tmp_path.name}-work-orchestrator"
+    await _add_kickback_target_todo(todos_db, _SLUG, active_runner=orchestrator_id)
+    await _create_runtime_session(
+        project_root,
+        session_id=orchestrator_id,
+        system_role=ROLE_ORCHESTRATOR,
+        working_slug=None,
+        job=JobRole.WORK_ORCHESTRATOR.value,
+    )
+
+    with pytest.raises(StateMutationError):
+        await apply_todo_stamp(
+            cwd=str(project_root),
+            slug=_SLUG,
+            stamp_type="kickback",
+            value="   ",
+            caller_session_id=orchestrator_id,
+        )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    assert StateWriter(state).state.plan_review.cleared_by_substantive_drift is False
+    assert _KICKBACK_WORD not in await todos_db.read_artifact(_SLUG, ARTIFACT_INPUT)
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS11")
+def test_kickback_cli_requires_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(todo_handlers, "tool_api_call", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    with pytest.raises(SystemExit):
+        todo_handlers._handle_todo_stamp([_SLUG, "--kickback"])
+
+    captured = capsys.readouterr()
+    assert _KICKBACK_REASON_USAGE in captured.out
+    assert calls == []
 
 
 @pytest.mark.spec(_SPEC, "UC-WSS4")

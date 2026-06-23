@@ -28,6 +28,7 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
+from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
@@ -47,6 +48,7 @@ from teleclaude.core.next_machine.lifecycle import (
 from teleclaude.core.next_machine.output_formatting import (
     HEARTBEAT_RESET_INSTRUCTION,
     format_error,
+    format_kickback_terminal,
     format_send_command,
     format_stash_debt,
     format_work_entry_drift_bounce,
@@ -61,9 +63,10 @@ from teleclaude.core.next_machine.slug_resolution import (
     set_item_phase_db,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.next_machine.work_steps import _work_dispatch
+from teleclaude.core.next_machine.work_steps import _list_child_session_ids, _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 from teleclaude.project_root import resolve_state_root
+from teleclaude.session_identity import get_session_id
 from teleclaude.snippet_validation import snippet_body_digest
 
 if TYPE_CHECKING:
@@ -162,6 +165,10 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     drift_error = await _check_work_entry_drift(todos_db, resolved_slug, cwd, phase_slug)
     if drift_error is not None:
         return drift_error
+
+    kickback_terminal = await _check_work_entry_kickback(db, todos_db, resolved_slug, cwd)
+    if kickback_terminal is not None:
+        return kickback_terminal
 
     worktree_cwd, ensure_error = await _ensure_worktree_ready(cwd, resolved_slug, phase_slug)
     if ensure_error is not None:
@@ -364,6 +371,35 @@ async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: st
         return format_work_entry_drift_bounce(resolved_slug, drift)
     _log_next_work_phase(phase_slug, "drift_check", drift_started, "proceed", "fresh")
     return None
+
+
+async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: str, cwd: str) -> str | None:
+    """Recognize a human-gated kickback on work re-entry and terminate this work session.
+
+    A kickback (``telec todo stamp <slug> --kickback``) invalidates the implementation-plan
+    by marking ``plan_review.cleared_by_substantive_drift``. After a *work* call the stored
+    ``lifecycle_phase`` is still a work phase, so the cleared flag is the durable signal — and
+    it is unique to a kickback here (drift-analyze substantive verdicts occur only in the
+    prepare lane, where the plan is re-approved and the flag self-clears before work resumes).
+
+    Unlike the in-line code-drift bounce, this is terminal: it releases the slug's working
+    resources (worktree + local/remote branch + workspace dir, keeping the durable todo and
+    artifacts) so the re-derived plan's fresh work phase cannot reuse stale branch state, then
+    emits the cleanup script (end workers, end self) so the runner re-dispatches a fresh prepare.
+    """
+    kickback_started = perf_counter()
+    state = await todos_db.read_state(resolved_slug)
+    if state is None:
+        return None
+    writer = StateWriter(state)
+    if not writer.state.plan_review.cleared_by_substantive_drift:
+        return None
+
+    await asyncio.to_thread(cleanup_delivered_slug, cwd, resolved_slug)
+    session_id = get_session_id() or ""
+    child_session_ids = await _list_child_session_ids(db, session_id)
+    _log_next_work_phase(resolved_slug, "kickback_terminal", kickback_started, "terminal", "plan_review_cleared")
+    return format_kickback_terminal(resolved_slug, child_session_ids)
 
 
 def _has_work_entry_blocking_drift(drift: dict[str, ArtifactDriftStatus], phase: LifecyclePhase) -> bool:

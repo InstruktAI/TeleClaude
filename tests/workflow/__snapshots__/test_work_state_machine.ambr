@@ -100,6 +100,20 @@
   Work-stage responsibility for finalized-work is complete. Do not call telec todo work finalized-work again.
   '''
 # ---
+# name: test_kickback_releases_worktree_and_emits_terminal_cleanup
+  '''
+  KICKBACK TO PLAN DRAFTING: prepared-work
+  
+  INSTRUCTIONS FOR ORCHESTRATOR:
+  1. Report: "Todo prepared-work was kicked back to plan drafting. Its working resources (worktree + branch) were released; the runner will re-dispatch a fresh prepare that reads the input kickback block as re-derivation context."
+  2. End child sessions:
+     telec sessions end builder-session
+  3. End this orchestrator session:
+     telec sessions end self
+  
+  Work-stage responsibility for prepared-work is released. Do not call telec todo work prepared-work again.
+  '''
+# ---
 # name: test_merge_main_failure_after_build_complete_routes_recovery_completion
   '''
   MERGE MAIN RECOVERY REQUIRED: prepared-work
