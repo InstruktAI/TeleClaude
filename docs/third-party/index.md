@@ -36,6 +36,7 @@
 @docs/third-party/gemini-cli/policy-engine.md
 @docs/third-party/gemini-cli/skills.md
 @docs/third-party/gemini-cli/sub-agents.md
+@docs/third-party/github-api/issues-and-projects-v2.md
 @docs/third-party/github-cli/repo-and-auth.md
 @docs/third-party/graphify/overview.md
 @docs/third-party/image-generation/gemini-nano-banana.md
