@@ -163,6 +163,24 @@ And build_gate_claim_at is set to the current timestamp and persisted through th
 And the work machine runs the build-complete gates on its next dispatch
 ```
 
+<!-- planned:todo-kickback-stamp -->
+
+#### UC-WSS11: Work orchestrator kicks an unbuildable todo back to plan drafting
+
+```gherkin
+Given a Todo at a work phase whose implementation-plan cannot be executed as written
+And a work-orchestrator session whose durable system_role is "orchestrator"
+When the orchestrator runs "telec todo stamp my-slug --kickback --reason '<why the plan cannot be built>'"
+Then the kickback ownership check accepts the caller because system_role == orchestrator
+And a worker session, a plain operator shell, or a missing session id is refused before any write
+And the stamp creates the input artifact when the Todo has none or appends a delimited kickback block carrying the reason to the existing input
+And the stamp clears the implementation-plan review verdict and marks it cleared-by-substantive-drift, the same invalidation a substantive plan drift verdict produces
+And the state-write boundary re-validates the full state and persists atomically
+And the next prepare-machine dispatch derives lifecycle_phase plan_drafting and dispatches the planner, which reads the input kickback block as authoritative re-derivation context
+```
+
+<!-- /planned:todo-kickback-stamp -->
+
 ```
 Given a worker has produced a clean worktree ready for integration
 When the worker runs "telec todo stamp my-slug --finalize-ready"
@@ -197,3 +215,6 @@ And no commit happens — the stamp call exits before any partial mutation lands
 - Cosmetic drift-reviewed stamps are **anchor-scoped, not permanent**. The verdict expires lazily per drift class when current evidence has moved past the recorded anchor on any anchored dimension (HEAD/referenced-paths overlap, upstream digest, owned snippet digest, referenced snippet digest, dep-set). The class re-pends automatically on the next prepare or work-entry derivation; no manual stamp clearing is required. See `@spec/feature/workflow/drift-detection#stamp-scoping-the-evidence-anchor`.
 - Rewriting a drift-tracked artifact (via `telec todo artifacts write`) clears all of its drift-reviewed stamps so the next derivation establishes a fresh anchor against newly captured provenance. Substantive verdicts never need explicit expiry — re-derivation is the path back to a fresh stamp.
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/next-build`) is responsible for issuing it as the last act of the build flow.
+<!-- planned:todo-kickback-stamp -->
+- `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a session whose `system_role == orchestrator` may stamp it; a worker session or a plain operator shell is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo) and invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`. The stamp mutates state only; the session-cleanup script (end workers, end self) is emitted by the work machine on the orchestrator's next `telec todo work` re-entry, not by the stamp.
+<!-- /planned:todo-kickback-stamp -->

@@ -137,6 +137,36 @@ Its post-completion bookkeeping matches the normal build path: the build worker
 stamps `telec todo stamp [slug] --build-complete`, then the orchestrator re-enters
 `telec todo work [slug]`.
 
+<!-- planned:todo-kickback-stamp -->
+
+### 8. Kickback to prepare (human-gated)
+
+A build can stall on a plan defect that no fix resolves — the implementation plan
+cannot be executed as written and needs re-derivation, not a fix round. The builder
+surfaces the reason and idles; that idle session is the signal the human reads.
+
+The kickback is human-gated. The orchestrator never invokes it on its own
+initiative and a worker never invokes it at all. The orchestrator has already
+tailed the builder's blocking reason, so the human talks only to the orchestrator:
+they read the signal together, and only when re-preparation is judged resolvable
+does the human direct the orchestrator to invoke it. If the signal shows no way
+out, the kickback is not the move — the human handles it another way.
+
+On that direction the orchestrator runs
+`telec todo stamp [slug] --kickback --reason "<why the plan cannot be built>"`. The
+stamp appends the reason to `input` (creating `input` when the todo has none) and
+invalidates the implementation-plan, so the phase derives back to `plan_drafting`.
+
+The orchestrator then re-enters `telec todo work [slug]`. The work machine treats a
+kickback-invalidated todo as terminal for this work session and emits the cleanup
+script — end the slug's workers, then end the orchestrator itself — distinct from
+the in-line drift bounce that keeps the same session driving. The orchestrator
+self-ending frees the slug's active runner; the runner then picks up the
+`plan_drafting` todo and dispatches a fresh prepare, which reads the kickback block
+in `input` as authoritative re-derivation context.
+
+<!-- /planned:todo-kickback-stamp -->
+
 ## Outputs
 
 - Code changes implementing the plan, committed and reviewed.
