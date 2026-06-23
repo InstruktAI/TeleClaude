@@ -242,10 +242,11 @@ Then it is `internal` and does not render in the config TUI
 And it is absent from the generated config.yml public sample
 ```
 
-The headline (`tui`) tier is the render set: the config wizard shows the
-highest-profile human settings and nothing else. The `tier` marker is the opt-in
-form of the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to
-show, rather than a flag to hide. The governing rule lives in
+The `tui` tier is the wizard's render set: the operator-facing fields the config
+wizard shows, declared per field in code. The `tier` marker is the opt-in form of
+the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to show,
+rather than a flag to hide — so the rendered set is the inverse of the retired
+exclusion list, not a reduction of it. The governing rule lives in
 `project/policy/config-public-surface`.
 
 <!-- /planned:config-public-surface-contract -->
