@@ -40,6 +40,7 @@ COMPUTER_HOST = "computer.host"
 TELEGRAM_QOS_PREFIX = "telegram.qos"
 WHATSAPP_QOS_PREFIX = "whatsapp.qos"
 WHATSAPP_API_VERSION = "whatsapp.api_version"
+COMPUTER_IS_INGRESS_NODE = "computer.is_ingress_node"
 CHIPTUNES_ENABLED = "chiptunes.enabled"
 CHIPTUNES_MUSIC_DIR = "chiptunes.music_dir"
 CHIPTUNES_SECTION = "Chiptunes"
@@ -231,6 +232,66 @@ def test_nested_leaf_persists_to_its_dotted_path(machine_tui):
     with open(machine_config_path, encoding="utf-8") as f:
         data = YAML().load(f)
     assert data["tts"]["events"]["session_start"]["enabled"] is True
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-1")
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-6")
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [(True, True), (False, False)],
+)
+def test_is_ingress_node_reflects_stored_value_in_infra(machine_tui, stored, expected):
+    """Read (config -> TUI): the Infra subtab reflects the stored is_ingress_node value."""
+    content, _ = machine_tui(
+        {
+            "computer": {
+                "name": "PC",
+                "role": "development",
+                "timezone": "Europe/Amsterdam",
+                "is_master": True,
+                "is_ingress_node": stored,
+            },
+            "agents": {"default": "claude", "claude": {"system_prompt": "hi"}},
+        }
+    )
+
+    content.active_subtab = 0  # Subtab.INFRA
+    fields_by_key = {field.key: field for field in content.reflected_fields}
+    assert COMPUTER_IS_INGRESS_NODE in fields_by_key
+    assert fields_by_key[COMPUTER_IS_INGRESS_NODE].value is expected
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-1")
+def test_is_ingress_node_defaults_false_when_omitted_in_infra(machine_tui):
+    """Read (config -> TUI): an omitted is_ingress_node reflects as False, not absent."""
+    content, _ = machine_tui(
+        {
+            "computer": {"name": "PC", "role": "development", "timezone": "Europe/Amsterdam", "is_master": True},
+            "agents": {"default": "claude", "claude": {"system_prompt": "hi"}},
+        }
+    )
+
+    content.active_subtab = 0  # Subtab.INFRA
+    fields_by_key = {field.key: field for field in content.reflected_fields}
+    assert COMPUTER_IS_INGRESS_NODE in fields_by_key
+    assert fields_by_key[COMPUTER_IS_INGRESS_NODE].value is False
+
+
+@pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-6")
+def test_is_ingress_node_edit_persists_to_machine_config(machine_tui):
+    """Write (TUI -> config): toggling is_ingress_node from the Infra subtab persists to config.yml."""
+    content, _ = machine_tui(
+        {
+            "computer": {"name": "PC", "role": "development", "timezone": "Europe/Amsterdam", "is_master": True},
+            "agents": {"default": "claude", "claude": {"system_prompt": "hi"}},
+        }
+    )
+
+    content.active_subtab = 0  # Subtab.INFRA
+    content._save_reflected_field(COMPUTER_IS_INGRESS_NODE, True)
+
+    reload_config()
+    assert _tc_config_module.config.computer.is_ingress_node is True
 
 
 @pytest.mark.spec("project/spec/feature/config/schema-driven-config-tui", "UC-CFG-TUI-SCHEMA-13")

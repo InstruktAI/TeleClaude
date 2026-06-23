@@ -419,6 +419,7 @@ class ConfigContent(
                 default_working_dir=filtered_computer.get("default_working_dir", ""),
                 help_desk_dir=filtered_computer.get("help_desk_dir", ""),
                 is_master=filtered_computer.get("is_master", True),
+                is_ingress_node=filtered_computer.get("is_ingress_node", False),
                 trusted_dirs=[],
                 host=filtered_computer.get("host", None),
             )
