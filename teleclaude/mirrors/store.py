@@ -69,6 +69,10 @@ class MirrorRecord:
     summary: str | None = None
     human_email: str | None = None
     visibility: str = "private"
+    command: str | None = None
+    slug: str | None = None
+    is_agent_spawn: bool = False
+    derivation_version: int = 0
 
 
 @dataclass(frozen=True)
@@ -108,11 +112,15 @@ def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
 
 
 def _migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
-    """Idempotent migration: add summary, human_email, visibility to existing mirrors tables."""
+    """Idempotent migration: add derived-classification columns to existing mirrors tables."""
     for stmt in (
         "ALTER TABLE mirrors ADD COLUMN summary TEXT",
         "ALTER TABLE mirrors ADD COLUMN human_email TEXT",
         "ALTER TABLE mirrors ADD COLUMN visibility TEXT DEFAULT 'private'",
+        "ALTER TABLE mirrors ADD COLUMN command TEXT",
+        "ALTER TABLE mirrors ADD COLUMN slug TEXT",
+        "ALTER TABLE mirrors ADD COLUMN is_agent_spawn INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE mirrors ADD COLUMN derivation_version INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             conn.execute(stmt)
@@ -120,6 +128,7 @@ def _migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
             if "duplicate column" not in str(exc).lower():
                 raise
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mirrors_is_agent_spawn ON mirrors(is_agent_spawn)")
 
 
 _MIRRORS_SCHEMA = """\
@@ -140,7 +149,11 @@ CREATE TABLE IF NOT EXISTS mirrors (
     updated_at TEXT NOT NULL,
     summary TEXT,
     human_email TEXT,
-    visibility TEXT DEFAULT 'private'
+    visibility TEXT DEFAULT 'private',
+    command TEXT,
+    slug TEXT,
+    is_agent_spawn INTEGER NOT NULL DEFAULT 0,
+    derivation_version INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_mirrors_agent ON mirrors(agent);
 CREATE INDEX IF NOT EXISTS idx_mirrors_project ON mirrors(project);
@@ -348,6 +361,10 @@ def _mirror_record_from_row(row: RowMapping) -> MirrorRecord:
         summary=_optional_str(row.get("summary")),
         human_email=_optional_str(row.get("human_email")),
         visibility=str(row.get("visibility") or "private"),
+        command=_optional_str(row.get("command")),
+        slug=_optional_str(row.get("slug")),
+        is_agent_spawn=bool(_int_value(row.get("is_agent_spawn"))),
+        derivation_version=_int_value(row.get("derivation_version")),
     )
 
 
@@ -398,6 +415,7 @@ def search_mirrors(
             placeholders.append(f":{key}")
             params[key] = computer
         clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
+    clauses.append("mirrors.is_agent_spawn = 0")
     _apply_role_filter(clauses, params, caller_email, caller_role)
 
     sql = f"""
@@ -482,7 +500,11 @@ def get_mirror(
             updated_at,
             summary,
             human_email,
-            visibility
+            visibility,
+            command,
+            slug,
+            is_agent_spawn,
+            derivation_version
         FROM mirrors
         WHERE {" AND ".join(clauses)}
         ORDER BY
@@ -519,14 +541,18 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
     metadata_json = json.dumps(record.metadata, sort_keys=True)
     payload = {
         "agent": record.agent,
+        "command": record.command,
         "computer": record.computer,
         "content": record.conversation_text,
         "created_at": record.created_at,
+        "derivation_version": record.derivation_version,
         "human_email": record.human_email,
+        "is_agent_spawn": 1 if record.is_agent_spawn else 0,
         "message_count": record.message_count,
         "metadata": metadata_json,
         "project": record.project,
         "session_id": record.session_id,
+        "slug": record.slug,
         "source_identity": record.source_identity,
         "summary": record.summary,
         "timestamp_end": record.timestamp_end,
@@ -555,7 +581,11 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
                 updated_at,
                 summary,
                 human_email,
-                visibility
+                visibility,
+                command,
+                slug,
+                is_agent_spawn,
+                derivation_version
             )
             VALUES (
                 :session_id,
@@ -573,7 +603,11 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
                 :updated_at,
                 :summary,
                 :human_email,
-                :visibility
+                :visibility,
+                :command,
+                :slug,
+                :is_agent_spawn,
+                :derivation_version
             )
             ON CONFLICT(source_identity) DO UPDATE SET
                 session_id = :session_id,
@@ -589,7 +623,11 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
                 updated_at = :updated_at,
                 summary = :summary,
                 human_email = :human_email,
-                visibility = :visibility
+                visibility = :visibility,
+                command = :command,
+                slug = :slug,
+                is_agent_spawn = :is_agent_spawn,
+                derivation_version = :derivation_version
             """
             ),
             payload,
@@ -660,7 +698,8 @@ def list_mirrors(
         SELECT
             session_id, source_identity, computer, agent, project, title,
             timestamp_start, timestamp_end, conversation_text, message_count,
-            metadata, created_at, updated_at, summary, human_email, visibility
+            metadata, created_at, updated_at, summary, human_email, visibility,
+            command, slug, is_agent_spawn, derivation_version
         FROM mirrors
         {where}
         ORDER BY COALESCE(timestamp_start, updated_at) DESC
@@ -730,25 +769,135 @@ def get_session_context(
     )
 
 
-def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, tuple[str | None, str]]:
+@dataclass(frozen=True)
+class MirrorTranscriptState:
+    """Per-transcript mirror state consulted during reconciliation skip checks."""
+
+    source_identity: str | None
+    updated_at: str
+    derivation_version: int
+
+
+@dataclass(frozen=True)
+class OrphanMirror:
+    """A stored mirror whose transcript file is gone, eligible for in-place re-derivation."""
+
+    session_id: str
+    source_identity: str
+    agent: str
+    title: str
+    conversation_text: str
+    transcript_path: str | None
+    derivation_version: int
+
+
+def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, MirrorTranscriptState]:
     """Return transcript-path keyed mirror state for reconciliation."""
     try:
         with _get_ro_engine(db).connect() as conn:
-            rows = conn.execute(text("SELECT source_identity, metadata, updated_at FROM mirrors")).mappings().all()
+            rows = (
+                conn.execute(text("SELECT source_identity, metadata, updated_at, derivation_version FROM mirrors"))
+                .mappings()
+                .all()
+            )
     except SqlAlchemyOperationalError as exc:
         if _is_missing_table_error(exc):
             return {}
         raise
 
-    state: dict[str, tuple[str | None, str]] = {}
+    state: dict[str, MirrorTranscriptState] = {}
     for row in rows:
         metadata = _parse_metadata(row.get("metadata"))
         transcript_path = metadata.get("transcript_path")
         updated_at = _optional_str(row.get("updated_at"))
         if not isinstance(transcript_path, str) or not transcript_path or updated_at is None:
             continue
-        state[transcript_path] = (_optional_str(row.get("source_identity")), updated_at)
+        state[transcript_path] = MirrorTranscriptState(
+            source_identity=_optional_str(row.get("source_identity")),
+            updated_at=updated_at,
+            derivation_version=_int_value(row.get("derivation_version")),
+        )
     return state
+
+
+def get_stale_mirrors(derivation_version: int, *, db: str | Path | None = None) -> list[OrphanMirror]:
+    """Return mirrors whose derivation_version is older than the given version."""
+    try:
+        with _get_ro_engine(db).connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT session_id, source_identity, agent, title, conversation_text,
+                               metadata, derivation_version
+                        FROM mirrors
+                        WHERE derivation_version < :derivation_version
+                        """
+                    ),
+                    {"derivation_version": derivation_version},
+                )
+                .mappings()
+                .all()
+            )
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
+            return []
+        raise
+
+    stale: list[OrphanMirror] = []
+    for row in rows:
+        source_identity = _optional_str(row.get("source_identity"))
+        if source_identity is None:
+            continue
+        metadata = _parse_metadata(row.get("metadata"))
+        transcript_path = metadata.get("transcript_path")
+        stale.append(
+            OrphanMirror(
+                session_id=str(row["session_id"]),
+                source_identity=source_identity,
+                agent=str(row.get("agent") or ""),
+                title=str(row.get("title") or ""),
+                conversation_text=str(row.get("conversation_text") or ""),
+                transcript_path=transcript_path if isinstance(transcript_path, str) and transcript_path else None,
+                derivation_version=_int_value(row.get("derivation_version")),
+            )
+        )
+    return stale
+
+
+def update_mirror_derivation(
+    source_identity: str,
+    *,
+    title: str,
+    command: str | None,
+    slug: str | None,
+    is_agent_spawn: bool,
+    derivation_version: int,
+    db: str | Path | None = None,
+) -> None:
+    """Update an existing mirror's derived classification fields in place."""
+    with _get_rw_engine(db).begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE mirrors SET
+                    title = :title,
+                    command = :command,
+                    slug = :slug,
+                    is_agent_spawn = :is_agent_spawn,
+                    derivation_version = :derivation_version
+                WHERE source_identity = :source_identity
+                """
+            ),
+            {
+                "command": command,
+                "derivation_version": derivation_version,
+                "is_agent_spawn": 1 if is_agent_spawn else 0,
+                "slug": slug,
+                "source_identity": source_identity,
+                "title": title,
+            },
+        )
 
 
 def get_mirror_tombstone(source_identity: str, *, db: str | Path | None = None) -> MirrorTombstoneRecord | None:

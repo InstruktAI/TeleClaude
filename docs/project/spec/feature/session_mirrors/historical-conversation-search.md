@@ -20,17 +20,6 @@ capability is exposed both through `telec history search` on the command
 line and through the session_mirrors service's search capability that the
 cross-computer federation layer calls.
 
-<!-- planned-change:clean-mirror-search-index -->
-
-The search composes three filters: free-text terms (AND-combined), an agent
-filter (`claude`, `codex`, `gemini`, comma-separated, or `all`), and an
-optional computer filter. Role-scoped access (see
-`role-scoped-history-access`) further constrains visibility before the
-store query runs. Results sort by `timestamp_start` falling back to
-`updated_at`, descending, with a configurable limit (default 20).
-
-<!-- change:clean-mirror-search-index -->
-
 The search composes free-text terms (AND-combined), an agent filter
 (`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
 computer filter, and a default exclusion of agent-spawn mirrors
@@ -39,8 +28,6 @@ sessions never appear in human search. Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
 store query runs. Results sort by `timestamp_start` falling back to
 `updated_at`, descending, with a configurable limit (default 20).
-
-<!-- /planned-change:clean-mirror-search-index -->
 
 ## Canonical fields
 
@@ -79,8 +66,6 @@ And an unknown agent value is rejected with a validation error referencing the u
 And limit is clamped to the inclusive range [1, 100]
 ```
 
-<!-- planned:clean-mirror-search-index -->
-
 #### UC-HCS-4: Agent-spawn sessions excluded by default
 
 ```
@@ -90,8 +75,6 @@ Then only mirrors with is_agent_spawn = 0 are eligible for results
 And dispatched worker/orchestrator/integrator sessions never appear
 And the exclusion applies identically to the CLI path and the service search wire path
 ```
-
-<!-- /planned:clean-mirror-search-index -->
 
 #### Recency ordering and missing-store tolerance
 

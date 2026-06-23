@@ -24,13 +24,23 @@ from ..utils.transcript_discovery import (
     in_session_root,
 )
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
+from .derivation import (
+    DERIVATION_VERSION,
+    derive_human_title_from_rendered,
+    detect_launch_in_rendered,
+    is_worker_command,
+    render_title,
+)
 from .generator import generate_mirror_sync
 from .store import (
     MirrorTombstoneRecord,
+    OrphanMirror,
     delete_mirror,
     delete_mirror_tombstone,
     get_mirror_state_by_transcript,
     get_mirror_tombstone,
+    get_stale_mirrors,
+    update_mirror_derivation,
     upsert_mirror_tombstone,
 )
 
@@ -134,9 +144,9 @@ class MirrorWorker:
             try:
                 mtime_dt = datetime.fromtimestamp(candidate.mtime or candidate.path.stat().st_mtime, tz=UTC)
                 existing = state.get(transcript_path)
-                updated_at = existing[1] if existing else None
-                parsed_updated = self._parse_updated_at(updated_at)
-                if parsed_updated is not None and parsed_updated >= mtime_dt:
+                parsed_updated = self._parse_updated_at(existing.updated_at if existing else None)
+                version_current = existing is not None and existing.derivation_version >= DERIVATION_VERSION
+                if parsed_updated is not None and parsed_updated >= mtime_dt and version_current:
                     result.skipped_unchanged += 1
                     continue
 
@@ -174,10 +184,53 @@ class MirrorWorker:
                     exc_info=True,
                 )
 
+        self._rederive_orphans(result)
+
         result.duration_s = perf_counter() - started_at
         wal_after_kb = self._wal_size_kb()
         self._log_reconcile_result(result, wal_before_kb, wal_after_kb)
         return result
+
+    def _rederive_orphans(self, result: ReconcileResult) -> None:
+        """Re-derive stored mirrors whose transcript is gone but derivation is stale.
+
+        Transcript-present rows converge through the discovery loop's version
+        override; this sweep handles orphans in place from their stored text so
+        the whole fleet reaches the current derivation rules without the file.
+        """
+        for orphan in get_stale_mirrors(DERIVATION_VERSION, db=self.db_path):
+            if orphan.transcript_path is not None and Path(orphan.transcript_path).expanduser().exists():
+                continue
+            try:
+                self._rederive_orphan(orphan)
+                result.processed += 1
+            except Exception as exc:
+                result.failed += 1
+                logger.error(
+                    "Mirror orphan re-derivation failed for %s (%s): %s",
+                    orphan.source_identity,
+                    orphan.agent,
+                    exc,
+                    exc_info=True,
+                )
+
+    def _rederive_orphan(self, orphan: OrphanMirror) -> None:
+        launch = detect_launch_in_rendered(orphan.conversation_text, orphan.title)
+        is_agent_spawn = is_worker_command(launch.command)
+        title = (
+            render_title(launch.command, launch.slug)
+            if is_agent_spawn
+            else derive_human_title_from_rendered(orphan.conversation_text, orphan.title)
+        )
+        update_mirror_derivation(
+            orphan.source_identity,
+            title=title,
+            command=launch.command,
+            slug=launch.slug,
+            is_agent_spawn=is_agent_spawn,
+            derivation_version=DERIVATION_VERSION,
+            db=self.db_path,
+        )
 
     def backfill_sync(self) -> ReconcileResult:
         """Remove stale mirror rows and repopulate canonical rows from transcripts.

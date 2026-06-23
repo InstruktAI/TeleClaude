@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,37 +13,28 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.summarizer import SUMMARY_SCHEMA, _call_summarizer, _parse_summary_response
 from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
 
+from .derivation import (
+    DERIVATION_VERSION,
+    derive_human_title,
+    detect_launch,
+    is_worker_command,
+    render_title,
+    strip_injected_blocks,
+)
 from .store import JsonValue, MirrorRecord, delete_mirror, get_mirror, upsert_mirror
-
-_SYSTEM_REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", flags=re.DOTALL)
-_TITLE_MAX_CHARS = 120
-
-
-def _clean_user_text(text: str) -> str:
-    return _SYSTEM_REMINDER_RE.sub("", text).strip()
 
 
 def _normalize_conversation_messages(messages: list[StructuredMessage]) -> list[StructuredMessage]:
-    """Keep only conversation text and strip injected reminder blocks."""
+    """Keep only conversation text and strip injected machine-context blocks."""
     normalized: list[StructuredMessage] = []
     for message in messages:
         if message.type != "text" or message.role not in {"user", "assistant"}:
             continue
-        text = _clean_user_text(message.text) if message.role == "user" else message.text.strip()
+        text = strip_injected_blocks(message.text) if message.role == "user" else message.text.strip()
         if not text:
             continue
         normalized.append(replace(message, text=text))
     return normalized
-
-
-def _title_from_messages(messages: list[StructuredMessage]) -> str:
-    for message in messages:
-        if message.role == "user" and message.text.strip():
-            title = message.text.strip()
-            if len(title) <= _TITLE_MAX_CHARS:
-                return title
-            return title[: _TITLE_MAX_CHARS - 3].rstrip() + "..."
-    return ""
 
 
 def _render_conversation(messages: list[StructuredMessage]) -> str:
@@ -110,6 +100,8 @@ def generate_mirror_sync(
         include_tools=False,
         include_thinking=False,
     )
+    launch = detect_launch(structured)
+    is_agent_spawn = is_worker_command(launch.command)
     conversation_messages = _normalize_conversation_messages(structured)
     if not conversation_messages:
         delete_mirror(session_id=session_id, source_identity=source_identity, db=db)
@@ -120,6 +112,7 @@ def generate_mirror_sync(
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
     conversation_text = _render_conversation(conversation_messages)
+    title = render_title(launch.command, launch.slug) if is_agent_spawn else derive_human_title(conversation_messages)
 
     metadata: dict[str, JsonValue] = {"transcript_path": transcript_path, "agent": agent_name.value}
     if last_input_origin:
@@ -134,7 +127,7 @@ def generate_mirror_sync(
         computer=computer,
         agent=agent_name.value,
         project=project,
-        title=_title_from_messages(conversation_messages),
+        title=title,
         timestamp_start=timestamp_start,
         timestamp_end=timestamp_end,
         conversation_text=conversation_text,
@@ -146,6 +139,10 @@ def generate_mirror_sync(
         summary=summary,
         human_email=human_email,
         visibility=visibility,
+        command=launch.command,
+        slug=launch.slug,
+        is_agent_spawn=is_agent_spawn,
+        derivation_version=DERIVATION_VERSION,
     )
     upsert_mirror(record, db=db)
     return True

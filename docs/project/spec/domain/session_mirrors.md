@@ -61,11 +61,7 @@ This context does NOT own: live session state (`agent_runtime` owns that), the p
 #### Mirror (aggregate, eternal)
 
 - **Root:** `Mirror`
-<!-- planned-change:clean-mirror-search-index -->
-- **Contains:** `mirror_id` (UUID, own identity); identity fields (`agent`, `project_slug`, `human_email`, `started_at`); `summary`; `text_content` (search-indexed); `native_file_path` (at extraction time); `extracted_at`, `extraction_version`.
-<!-- change:clean-mirror-search-index -->
 - **Contains:** `mirror_id` (UUID, own identity); identity fields (`agent`, `project_slug`, `human_email`, `started_at`); launch classification (`command`, `slug`, `is_agent_spawn`); `summary`; `text_content` (search-indexed); `native_file_path` (at extraction time); `extracted_at`, `extraction_version`.
-<!-- /planned-change:clean-mirror-search-index -->
 - **Invariants:**
   - One mirror per logical session. Idempotent: re-extracting the same source produces the same content.
   - Mirror is IMMUTABLE after creation. Re-extraction creates a new mirror or replaces atomically based on extraction_version.
@@ -237,12 +233,9 @@ The following concept-named feature spec snippets document the v1 implementation
 
 - `extraction_version`: monotonic integer; starts at 1; bumps when extraction rules change (e.g., a new way to compute summary).
 
-<!-- planned:clean-mirror-search-index -->
-
 - `command` / `slug`: the lifecycle command and its argument that launched the session, parsed from the transcript at extraction; null for human-driven sessions.
 - `is_agent_spawn`: true when `command` is a lifecycle worker/orchestrator/integrator command. Agent-spawn mirrors are classified at extraction and excluded from default history search, so dispatched sessions never surface alongside human conversations.
 - An `extraction_version` bump re-derives existing mirrors so their derived classification fields converge to the current rules.
-<!-- /planned:clean-mirror-search-index -->
 
 ## Known caveats
 

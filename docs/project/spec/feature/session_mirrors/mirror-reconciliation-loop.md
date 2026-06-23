@@ -45,20 +45,6 @@ And on any other exception it logs at error level and continues to the next slee
 
 #### UC-MRL-2: Per-pass discovery and skip-unchanged
 
-<!-- planned-change:clean-mirror-search-index -->
-
-```
-Given the mirror store holds rows for known transcript paths
-When a reconciliation pass starts
-Then the worker enumerates candidate transcript files under the per-agent session roots
-And reads each known transcript's last known source_identity and updated_at
-For each discovered candidate:
-  When the existing mirror's updated_at is greater than or equal to the candidate file's mtime
-  Then the candidate is counted as skipped_unchanged and skipped
-```
-
-<!-- change:clean-mirror-search-index -->
-
 ```
 Given the mirror store holds rows for known transcript paths
 When a reconciliation pass starts
@@ -71,8 +57,6 @@ For each discovered candidate:
   When the existing mirror's derivation_version is older than the current derivation version
   Then the candidate is re-derived regardless of mtime so the row converges to the current derivation rules
 ```
-
-<!-- /planned-change:clean-mirror-search-index -->
 
 #### Tombstone short-circuit
 
@@ -97,8 +81,6 @@ And on "no conversation extracted"
   And the candidate is counted as processed
 ```
 
-<!-- planned:clean-mirror-search-index -->
-
 #### UC-MRL-5: Orphan re-derivation sweep
 
 ```
@@ -110,8 +92,6 @@ And its title, command, slug, and is_agent_spawn are recomputed by the same dete
 And the row is never deleted and its transcript is never required
 And its derivation_version is advanced to the current version so the sweep is idempotent
 ```
-
-<!-- /planned:clean-mirror-search-index -->
 
 #### Failure isolation and counters
 
@@ -159,3 +139,8 @@ And the returned result holds the counters for the pass
 - A failing summary or generator step is counted as `failed` and logged
   with traceback. The corresponding mirror is left in its previous state —
   there is no retry queue.
+- The orphan sweep re-derives from the row's stored rendered
+  `conversation_text`, which is lossier than a live transcript: detection and
+  title derivation parse the rendered "[<ts>] Role: …" blocks rather than the
+  original structured turns. A row whose transcript still exists is re-derived
+  through the full extraction path instead, which is exact.
