@@ -79,6 +79,8 @@ company/spec/service-inventory
 
 ### Frontmatter Template
 
+<!-- planned-change:companies-onboard -->
+
 Every generated snippet must include this frontmatter:
 
 ```yaml
@@ -102,6 +104,25 @@ Required fields: `id`, `type`, `scope`, `description`, `generated_by`,
   context selector to filter by project membership.
 - `generated_by: telec-init` marks the snippet as auto-generated
   by the onboard process.
+  <!-- change:companies-onboard -->
+  Every generated snippet authors only schema-permitted frontmatter:
+
+```yaml
+---
+description: '{concise description}'
+---
+```
+
+Classification (`id`, `type`, `scope`, `domain`) is **path-derived** by the index
+build from the snippet's location under the company docs tree — never authored,
+per the current snippet-authoring schema. Company membership is keyed by the
+company folder in the snippet's path (`companies/<slug>/docs/<taxonomy>/...`),
+which is what lets the context selector filter by project membership; there is
+**no** authored `company` frontmatter field. `description` is the only required
+authored field; `visibility` is optional. No `generated_by`/`generated_at` fields
+are authored — they are not part of the snippet-authoring schema.
+
+<!-- /planned-change:companies-onboard -->
 
 ### Inbox Processing
 

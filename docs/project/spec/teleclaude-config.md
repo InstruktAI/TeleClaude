@@ -158,6 +158,18 @@ its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
 the value-object contract lives in `project/spec/domain/config`), not a field of
 this global `teleclaude.yml`.
 
+The company config file (`~/.teleclaude/companies/<slug>/teleclaude.yml`, model
+`CompanyConfig`, `extra="allow"`) owns the company-tier keys: `name`, `slug`,
+`git`, `description`, `erp_id`, `owner` (a `PersonConfig.slug`). It is
+folder-discovered (the `COMPANIES_ROOT` tree) and composed into the effective
+config alongside `project`. A company-level `.env` in the same folder holds
+service credentials, read through the `load_company_credentials(slug)` seam.
+
+`ProjectConfig` gains an optional `company` key — a kebab-case, validated,
+at-most-one company slug — the single determinant of the project's company
+context (doc-snippet surfacing and session-start injection). Ownership, location,
+and validation are authoritative in `project/spec/domain/config`.
+
 The hook receiver injects a **company header** into agent session-start context —
 the company-scoped twin of the human-profile header — rendered **before** the
 person header. The company is resolved from the **active project's `company:`
