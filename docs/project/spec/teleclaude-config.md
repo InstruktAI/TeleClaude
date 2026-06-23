@@ -38,6 +38,12 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
 
+<!-- planned:companies-onboard -->
+
+| **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `owner` (folder-discovered; composed alongside `project`) |
+
+<!-- /planned:companies-onboard -->
+
 <!-- planned:config-public-surface-contract -->
 
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not
@@ -123,6 +129,16 @@ channel_subscriptions: list[ChannelSubscription]
 ```
 
 <!-- /planned-change:config-public-surface-contract -->
+
+<!-- planned:companies-onboard -->
+
+`ProjectConfig` additionally carries an optional `company` key — `company: string`
+— an at-most-one, kebab-case, validated company slug. It is the project's company
+membership and the single determinant of its company context (doc-snippet
+surfacing and session-start injection). Ownership/validation is authoritative in
+`project/spec/domain/config`.
+
+<!-- /planned:companies-onboard -->
 
 `env_allow_list` is an explicit pass-through list for agent sessions. It is the
 authorization/filter surface: a name not listed in the effective allow list must

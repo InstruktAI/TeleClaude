@@ -171,12 +171,17 @@ snippets_preserved: []
 
 The same merge rules as init scaffolding apply:
 
+<!-- planned-change:companies-onboard -->
+
 1. Identify existing snippets by `generated_by: telec-init`.
-2. Human-authored sections after `<!-- human -->` survive.
-3. Changed-file-only writes (preserve timestamps for unchanged content).
-4. No duplication — update by ID.
-5. New snippets are additive.
-6. Removed snippets are preserved.
+<!-- change:companies-onboard -->
+1. Identify existing snippets by their path under the company docs tree (recorded in `meta.yaml`); there is no authored `generated_by` field.
+<!-- /planned-change:companies-onboard -->
+1. Human-authored sections after `<!-- human -->` survive.
+1. Changed-file-only writes (preserve timestamps for unchanged content).
+1. No duplication — update by ID.
+1. New snippets are additive.
+1. Removed snippets are preserved.
 
 Additionally for re-onboarding:
 
@@ -192,24 +197,41 @@ The enrichment writer validates all output before persistence:
 
 - Snippet IDs must match the pattern `company/{taxonomy}/{slug}`.
 - File destinations must resolve to paths under
-  `~/.teleclaude/companies/{slug}/docs/`.
+`~/.teleclaude/companies/{slug}/docs/`.
+<!-- planned-change:companies-onboard -->
 - Frontmatter must contain all required fields including `company`.
 - The `company` field must match the target company slug.
+<!-- change:companies-onboard -->
+- Frontmatter authors only `description`; classification (`id`/`type`/`scope`/`domain`) is path-derived, never authored.
+- Company membership is enforced by the snippet's path under `~/.teleclaude/companies/{slug}/docs/`, not a frontmatter field.
+<!-- /planned-change:companies-onboard -->
 
 ## Allowed values
+
+<!-- planned-change:companies-onboard -->
 
 - `company` slug: lowercase kebab-case, derived from the company name.
 - `generated_by`: `telec-init`.
 - `scope`: always `global` for company snippets.
 - `type`: any valid taxonomy type.
+<!-- change:companies-onboard -->
+- `company` slug: lowercase kebab-case (the company folder name; not an authored frontmatter field).
+- `scope`/`type`/`id`: path-derived by the index build, never authored.
+<!-- /planned-change:companies-onboard -->
 
 ## Known caveats
 
 - The inbox git repository is local-only — it is not pushed to any remote.
   Its sole purpose is enabling `git diff` for change detection.
 - PDF and other binary formats produce SHA changes on any byte modification,
-  even for non-content changes (metadata updates). The analysis session
-  handles this gracefully by comparing semantic content, not file diffs.
+even for non-content changes (metadata updates). The analysis session
+handles this gracefully by comparing semantic content, not file diffs.
+<!-- planned-change:companies-onboard -->
 - Company snippets use `scope: global` but are filtered by the `company`
-  frontmatter field. They are not truly global — they are global in reach
-  but scoped in visibility.
+frontmatter field. They are not truly global — they are global in reach
+but scoped in visibility.
+<!-- change:companies-onboard -->
+- Company snippets are path-derived as `scope: global` but are filtered by the
+company folder in their path. They are global in reach but scoped in
+visibility to member projects.
+<!-- /planned-change:companies-onboard -->
