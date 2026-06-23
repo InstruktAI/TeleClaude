@@ -580,8 +580,6 @@ async def _target_for_manual_start(
         return todo, RunnerSkipReason.DELIVERED, None
     if todo.status == "icebox":
         return todo, RunnerSkipReason.ICEBOX, None
-    if _pending_approval_gate_for_runner(todo):
-        return todo, RunnerSkipReason.APPROVAL_PENDING, None
     # Registry-authoritative dedup over the shared two-signal holder resolution.
     # A live orchestrator bound to the slug blocks a second manual start, but the
     # caller's own session is exempt so an orchestrator adopting/continuing its

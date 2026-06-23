@@ -2286,7 +2286,11 @@ async def test_operation_bridge_dispatches_held_todo_as_manual_forward_path(tmp_
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_operation_bridge_does_not_dispatch_approval_pending_todo(tmp_path: Path) -> None:
+async def test_operation_bridge_claims_approval_pending_todo(tmp_path: Path) -> None:
+    # Claim-only manual start: an unclaimed todo parked at a pending human-approval
+    # phase is dispatched by the op door, not refused by the phase. The phase
+    # gate belongs to the autonomous runner alone
+    # (see test_pending_approval_gate_parks_runner_independently_of_hold).
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(
@@ -2308,11 +2312,41 @@ async def test_operation_bridge_does_not_dispatch_approval_pending_todo(tmp_path
         state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
     )
 
-    assert result == f"RUNNER_NOT_DISPATCHED: {_WORK_SLUG} approval-pending"
-    assert client.requests == []
+    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} prepare {_SPAWN_SESSION}"
+    assert client.requests[0]["command"] == _NEXT_PREPARE
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
-    assert "active_runner" not in state
+    assert state["active_runner"] == _SPAWN_SESSION
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_manual_adoption_claims_unheld_approval_pending_slug(tmp_path: Path) -> None:
+    # The claim-only contract holds at the door, at a pending human-approval phase:
+    # the manual door claims the unheld slug in-process (the state machine parks at
+    # the gate); the phase never refuses the start. Guards a re-introduction of the
+    # leaked gate at the shared chokepoint's nearest public surface.
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        kind=_FEATURE,
+        lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value,
+    )
+    caller = _Session(session_id="caller-session")
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        caller.session_id,
+        db=cast(Db, _FakeDb({caller.session_id: caller})),
+    )
+
+    assert result.status is ManualLifecycleStatus.ADOPTED
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == caller.session_id
+    assert state["manually_started"] is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
