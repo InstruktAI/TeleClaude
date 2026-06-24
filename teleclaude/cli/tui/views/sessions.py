@@ -32,6 +32,7 @@ from teleclaude.cli.tui.views.sessions_highlights import (
     PREVIEW_HIGHLIGHT_DURATION,
     SessionsViewHighlightsMixin,
 )
+from teleclaude.cli.tui.widgets.chip import ownership_surface_enabled
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
@@ -134,6 +135,8 @@ class SessionsView(
         self._initial_cursor_positioned = False
         # Track highlighted session by identity so cursor survives tree rebuilds
         self._highlighted_session_id: str | None = None
+        # The shared per-human filter (a resolved email key or None).
+        self._human_filter: str | None = None
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="sessions-scroll")
@@ -380,12 +383,38 @@ class SessionsView(
             self._initial_cursor_positioned = True
 
         self._update_cursor_highlight()
+        self._apply_human_filter()
         self._logger.trace(
             "[PERF] SessionsView._rebuild_tree done items=%d dt=%.3f", len(self._nav_items), time.monotonic() - _rt0
         )
 
         # Apply pending auto-select after tree rebuild
         self._apply_pending_selection()
+
+    def set_human_filter(self, human_filter: str | None) -> None:
+        """Set the shared human filter and apply it to the current rows."""
+        self._human_filter = human_filter
+        self._apply_human_filter()
+
+    def _apply_human_filter(self) -> None:
+        """Hide session rows that do not belong to the active human filter.
+
+        Each session row also learns the active filter so the filtered person's
+        chip renders inverted. Rows with no resolvable owner are hidden while a
+        filter is active. The filter is inert in single-user mode (the ownership
+        surface is suppressed), so every row stays visible.
+        """
+        active_filter = self._human_filter if ownership_surface_enabled() else None
+        for widget in self._nav_items:
+            if not isinstance(widget, SessionRow):
+                continue
+            widget._active_human_filter = active_filter
+            if active_filter is None:
+                widget.display = True
+            else:
+                owner = (widget.session.human_email or "").lower() or None
+                widget.display = owner is not None and owner == active_filter
+            widget.refresh()
 
     def _mount_node(self, container: VerticalScroll, node: TreeNode) -> None:
         """Recursively mount tree nodes as widgets."""
@@ -467,6 +496,22 @@ class SessionsView(
             widget.set_class(is_selected, "selected")
             if was_selected != is_selected:
                 widget.refresh()
+
+    def select_session(self, session_id: str, *, request_focus: bool = False) -> None:
+        """Select and preview a session by id for the cross-view jump.
+
+        Selects immediately when the session is already in the tree; otherwise
+        defers to the pending-selection path applied on the next rebuild.
+        """
+        for i, widget in enumerate(self._nav_items):
+            if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                self.cursor_index = i
+                self._update_cursor_highlight()
+                self._scroll_to_cursor()
+                self.preview_session_id = session_id
+                self.post_message(PreviewChanged(session_id, request_focus=request_focus))
+                return
+        self.request_select_session(session_id, request_focus=request_focus)
 
     def _current_session_row(self) -> SessionRow | None:
         """Get the SessionRow at the current cursor position, if any."""

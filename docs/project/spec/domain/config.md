@@ -93,8 +93,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - `tool_calls`: visible on `mobile` and `web` for admins; hidden for members, contributors, and newcomers.
 - **Non-configurable categories:** tool results remain TUI-only; checkpoint messages and agent-CLI side-channel artifacts are dropped from projected surfaces; peer cross-share content remains visible on projected surfaces.
 
-<!-- planned:tui-todo-session-cross-navigation -->
-
 #### PersonConfig chip color (value object)
 
 - **Root:** `PersonChipColor`
@@ -106,7 +104,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - No contrast validation: any color string is accepted per leaf; readability is the operator's responsibility.
   - Personalization lives in the person-owned overlay (`PersonConfig`), not the admin-governed global `people` list (`PersonEntry`).
 - **Lifecycle:** authored and mutated through the Configuration People subtab, which reflects the four color leaves as editable fields and persists edits to the person's overlay file. Behavioral contract and Gherkin live in `project/spec/feature/config/person-chip-color`; the chip render and theme-derived defaults live in `project/spec/feature/tui/todo-session-cross-navigation`.
-<!-- /planned:tui-todo-session-cross-navigation -->
 
 #### Runtime Configuration (aggregate)
 

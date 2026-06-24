@@ -894,3 +894,91 @@ def test_person_company_multireference_edit_persists_through_tui(tmp_path, monke
         assert list(saved["companies"]) == _EDITED_PERSON_COMPANIES
     finally:
         set_runtime_config(old_rc)
+
+
+CHIP_COLOR_SPEC = "project/spec/feature/config/person-chip-color"
+OVERLAY_COLOR_BACKGROUND_LIGHT = "overlay.color.background.light"
+OVERLAY_COLOR_BACKGROUND_DARK = "overlay.color.background.dark"
+OVERLAY_COLOR_TEXT_LIGHT = "overlay.color.text.light"
+OVERLAY_COLOR_TEXT_DARK = "overlay.color.text.dark"
+
+
+@pytest.mark.spec(CHIP_COLOR_SPEC, "UC-CHIP-COLOR-3")
+@pytest.mark.functional
+def test_chip_color_leaves_render_and_persist_in_people_subtab(tmp_path, monkeypatch):
+    chip_color = "#abcdef"
+    machine_config_path = tmp_path / "config.yml"
+    global_config_path = tmp_path / "teleclaude.yml"
+    people_dir = tmp_path / "people"
+    people_dir.mkdir()
+
+    yaml = YAML()
+    yaml.dump(
+        {
+            "computer": {
+                "name": "TestMac",
+                "role": "development",
+                "timezone": "Europe/Amsterdam",
+                "is_master": True,
+            },
+            "agents": {"default": "claude", "claude": {"system_prompt": "hello"}},
+            "stt": {"enabled": True, "service_priority": ["parakeet", "openai"], "services": {}},
+            "tts": {"enabled": False},
+        },
+        machine_config_path,
+    )
+    yaml.dump(
+        {"people": [{"name": "Bob", "email": "bob@example.com", "role": "member", "slug": "bob"}]},
+        global_config_path,
+    )
+    # Bob has no overlay file yet — color is entirely unset.
+
+    monkeypatch.setattr(handlers, "_GLOBAL_CONFIG_PATH", global_config_path)
+    monkeypatch.setattr(handlers, "_PEOPLE_DIR", people_dir)
+    monkeypatch.setattr(loader, "GLOBAL_CONFIG_PATH", global_config_path)
+    monkeypatch.setattr(loader, "PEOPLE_DIR", people_dir)
+    monkeypatch.setattr(_tc_config_module, "_config_path", machine_config_path)
+    monkeypatch.setattr(_tc_config_module, "config_path", machine_config_path)
+    monkeypatch.setattr(handlers, "list_person_dirs", lambda: ["bob"])
+
+    old_rc = get_runtime_config()
+    new_rc = RuntimeConfig(
+        home=old_rc.home,
+        config_path=machine_config_path,
+        env_path=old_rc.env_path,
+        project_config_path=old_rc.project_config_path,
+        tmpdir_base=old_rc.tmpdir_base,
+    )
+    set_runtime_config(new_rc)
+
+    try:
+        reload_config()
+        content = ConfigContent()
+        monkeypatch.setattr(content, "refresh", lambda *args, **kwargs: None)
+        content.refresh_data()
+        content.active_subtab = _SUBTABS.index(Subtab.PEOPLE)
+        content._expanded_person = "bob"
+
+        keys = {field.key for field in content.person_reflected_fields}
+        # The four color leaves appear as editable fields even when color is unset.
+        assert OVERLAY_COLOR_BACKGROUND_LIGHT in keys
+        assert OVERLAY_COLOR_BACKGROUND_DARK in keys
+        assert OVERLAY_COLOR_TEXT_LIGHT in keys
+        assert OVERLAY_COLOR_TEXT_DARK in keys
+
+        # Editing one leaf instantiates the nested color models and persists.
+        content._save_reflected_field(OVERLAY_COLOR_BACKGROUND_LIGHT, chip_color)
+
+        bob_config_path = people_dir / "bob" / "teleclaude.yml"
+        assert bob_config_path.exists()
+        with open(bob_config_path, encoding="utf-8") as f:
+            bob_data = yaml.load(f)
+        saved = PersonConfig.model_validate(bob_data)
+        assert saved.color is not None
+        assert saved.color.background.light == chip_color
+        # The sibling leaves stay unset.
+        assert saved.color.background.dark is None
+        assert saved.color.text.light is None
+        assert saved.color.text.dark is None
+    finally:
+        set_runtime_config(old_rc)

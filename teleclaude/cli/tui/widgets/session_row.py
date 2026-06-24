@@ -12,6 +12,7 @@ from textual.widget import Widget
 from teleclaude.api_models import SessionDTO
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToTodo
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
     get_selection_fg_hex,
@@ -20,10 +21,26 @@ from teleclaude.cli.tui.theme import (
     resolve_style,
 )
 from teleclaude.cli.tui.utils.formatters import DATE_SUFFIX_WIDTH, format_time, truncate_text
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.cli.tui.widgets.chip import resolve_person_chip
 from teleclaude.core.session_utils import session_display_title
 
 _DETAIL_PREFIX_OVERHEAD = 17  # │ + [HH:MM:SS] + label (" in: " / "out: ")
+
+# Textual injects the content (column, row) of a click into the click's style
+# meta under this key; the row maps it to the title line's sub-regions.
+_CLICK_OFFSET_META = "offset"
+
+
+def _strip_slug_token(title: str, slug: str | None) -> str:
+    """Drop the work-slug token from a session title so it is not duplicated.
+
+    The slug is rendered once as its own highlighted span; any standalone
+    occurrence in the title text is removed and the remaining tokens rejoin with
+    single spaces (no double-space before the command tail).
+    """
+    if not slug:
+        return title
+    return " ".join(token for token in title.split() if token != slug)
 
 
 class SessionRow(TelecMixin, Widget):
@@ -66,6 +83,14 @@ class SessionRow(TelecMixin, Widget):
         self.session = session
         self.display_index = display_index
         self.depth = depth
+        # Click sub-regions on the title line (row 0), recorded each render: the
+        # owner-chip cell span (and its email) and the work-slug cell span.
+        self._chip_region: tuple[int, int] | None = None
+        self._chip_email: str | None = None
+        self._slug_region: tuple[int, int] | None = None
+        # The active shared human filter, pushed by the view; the matching
+        # person's chip renders inverted.
+        self._active_human_filter: str | None = None
 
     @property
     def session_id(self) -> str:
@@ -167,10 +192,38 @@ class SessionRow(TelecMixin, Widget):
         agent_label = self.agent or "shell"
         line.append(f"{agent_label}/{self.mode}", style=style)
 
-        # Subdir (slug only) — permanently highlighted; inverted when row is selected/previewed
-        subdir = getattr(self.session, "subdir", None)
-        if subdir:
-            slug = subdir.removeprefix(WORKTREE_DIR + "/")
+        # Owner chip — the owning human's initials right after the agent/mode
+        # segment; the separating space sits outside the styled chip region.
+        chip = resolve_person_chip(getattr(self.session, "human_email", None))
+        self._chip_region = None
+        self._chip_email = None
+        if chip is not None:
+            inverted = self._active_human_filter is not None and self._active_human_filter == chip.person_email
+            line.append(" ", style=style)
+            chip_start = line.cell_len
+            line.append(chip.initials, style=chip.style(inverted=inverted))
+            self._chip_region = (chip_start, line.cell_len)
+            self._chip_email = chip.person_email
+
+        working_slug = getattr(self.session, "working_slug", None)
+        self._slug_region = None
+
+        # Title with the work-slug token removed (no quotes), then truncate to
+        # fit. session_display_title applies the universal [HEADLESS] marker.
+        title = session_display_title(self.session, fallback="(untitled)").splitlines()[0]
+        title_text = _strip_slug_token(title, working_slug)
+        content_w = self._content_width
+        slug_reserved = len(working_slug) + 1 if working_slug else 0
+        avail = content_w - line.cell_len - slug_reserved - 1
+        if 0 < avail < len(title_text):
+            title_text = title_text[: max(1, avail - 1)] + "\u2026"
+        if title_text:
+            line.append(" ", style=style)
+            line.append(title_text, style=style)
+
+        # The work slug rendered once as a single highlighted span — inverted
+        # when the row is selected/previewed.
+        if working_slug:
             if selected:
                 slug_style = Style(
                     color=resolve_selection_bg_hex(self.agent),
@@ -185,16 +238,10 @@ class SessionRow(TelecMixin, Widget):
                 )
             else:
                 slug_style = resolve_style(self.agent, self._tier("highlight"))
-            line.append(f" {slug}", style=slug_style)
-
-        # Title in quotes — strip newlines then truncate to fit available width.
-        # session_display_title applies the universal [HEADLESS] marker.
-        title = session_display_title(self.session, fallback="(untitled)").splitlines()[0]
-        content_w = self._content_width
-        avail = content_w - line.cell_len - 4  # 4 = '  "' prefix + '"' suffix
-        if 0 < avail < len(title):
-            title = title[: max(1, avail - 1)] + "\u2026"
-        line.append(f'  "{title}"', style=style)
+            line.append(" ", style=style)
+            slug_start = line.cell_len
+            line.append(working_slug, style=slug_style)
+            self._slug_region = (slug_start, line.cell_len)
 
         return line
 
@@ -341,8 +388,23 @@ class SessionRow(TelecMixin, Widget):
         return result
 
     def on_click(self, event: Click) -> None:
-        """Post Pressed message when clicked."""
+        """Jump to the matching todo when the work-slug span is clicked.
+
+        A click on the highlighted slug span (title line, row 0) jumps to that
+        todo; any other click selects the row.
+        """
         event.stop()
+        offset = event.style.meta.get(_CLICK_OFFSET_META) if event.style else None
+        if isinstance(offset, tuple) and len(offset) == 2:
+            column, row = int(offset[0]), int(offset[1])
+            if row == 0:
+                working_slug = getattr(self.session, "working_slug", None)
+                if working_slug and self._slug_region and self._slug_region[0] <= column < self._slug_region[1]:
+                    self.post_message(JumpToTodo(str(working_slug)))
+                    return
+                if self._chip_email and self._chip_region and self._chip_region[0] <= column < self._chip_region[1]:
+                    self.post_message(ChipFilterToggle(self._chip_email))
+                    return
         self.post_message(self.Pressed(self, shift=event.shift))
 
     def update_session(self, session: SessionDTO) -> None:

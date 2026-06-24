@@ -396,7 +396,7 @@ def assemble_todo_from_db(
         todo_started_at = time.perf_counter()
         rows = conn.execute(
             "SELECT id, slug, ready_since, schedule, group_slug, description, status, "  # guard: raw-sql
-            f"delivered_at, updated_at, created_at, removed_at FROM todo WHERE {where} ORDER BY id",
+            f"delivered_at, updated_at, created_at, removed_at, created_by_principal FROM todo WHERE {where} ORDER BY id",
         ).fetchall()
         todo_dt = time.perf_counter() - todo_started_at
 
@@ -545,6 +545,7 @@ def assemble_todo_from_db(
                     version_total=version_total,
                     todo_id=str(row_id),
                     removed_at=row[10],
+                    created_by_principal=row[11],
                 )
             )
             todo_build_total_dt += time.perf_counter() - todo_build_started_at

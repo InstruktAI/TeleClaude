@@ -122,6 +122,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     title: str
     project_path: str | None = None
     subdir: str | None = None
+    working_slug: str | None = None
     thinking_mode: str | None = None
     active_agent: str | None = None
     status: str
@@ -141,6 +142,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
                 "title": session.title,
                 "project_path": session.project_path,
                 "subdir": session.subdir,
+                "working_slug": session.working_slug,
                 "thinking_mode": session.thinking_mode,
                 "active_agent": session.active_agent,
                 "status": session.status,
@@ -242,6 +244,7 @@ class TodoDTO(BaseModel):
     active_runner: str | None = None
     todo_id: str | None = None
     removed_at: str | None = None
+    created_by_principal: str | None = None
 
 
 class OperationStatusBlockingSnippetPayload(BaseModel):

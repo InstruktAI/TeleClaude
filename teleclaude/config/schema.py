@@ -196,6 +196,29 @@ class PersonSettings(BaseModel):
     output_visibility: OutputVisibilitySettings = OutputVisibilitySettings()
 
 
+class PersonChipColorPair(BaseModel):
+    """A theme-split color pair: one value for light mode, one for dark."""
+
+    model_config = ConfigDict(extra="allow")
+    light: str | None = None
+    dark: str | None = None
+
+
+class PersonChipColor(BaseModel):
+    """Per-person chip color: a background and a text color, each theme-split.
+
+    Every leaf is independently optional and defaults to ``None``. ``None`` is
+    the renderer-default signal, not a stored color — the chip renderer fills it
+    from the theme for the active mode. The nested pairs default to empty
+    instances so the whole block can be instantiated as an empty tree and a
+    single leaf can be set without pre-populating its siblings.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    background: PersonChipColorPair = PersonChipColorPair()
+    text: PersonChipColorPair = PersonChipColorPair()
+
+
 class TelegramCreds(BaseModel):
     """Telegram platform credentials."""
 
@@ -461,6 +484,7 @@ class PersonConfig(BaseModel):
     interests: list[str] = []
     companies: list[str] = []
     settings: PersonSettings = PersonSettings()
+    color: PersonChipColor | None = None
 
     @field_validator("interests", mode="before")
     @classmethod

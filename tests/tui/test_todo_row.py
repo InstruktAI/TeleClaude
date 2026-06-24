@@ -4,12 +4,44 @@ from __future__ import annotations
 
 import pytest
 
+import teleclaude.cli.tui.widgets.chip as chip_mod
 import teleclaude.cli.tui.widgets.todo_row as todo_row_mod
+from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
 pytestmark = pytest.mark.functional
+
+XNAV_SPEC = "project/spec/feature/tui/todo-session-cross-navigation"
+
+ALICE = {"name": "Alice Smith", "email": "alice@example.com", "slug": "alice-smith"}
+BOB = {"name": "Bob Jones", "email": "bob@example.com", "slug": "bob-jones"}
+
+
+def _owned_todo(principal: str | None) -> TodoItem:
+    return TodoItem(
+        slug="owned-work",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=False,
+        kind="feature",
+        lifecycle_phase=None,
+        created_by_principal=principal,
+    )
+
+
+def _row(item: TodoItem) -> TodoRow:
+    return TodoRow(item, slug_width=len(item.slug), col_widths=TodoRow.compute_col_widths([item]))
+
+
+def _span_over(rendered: object, text: str) -> object | None:
+    pos = rendered.plain.index(text)
+    for span in rendered._spans:
+        if span.start == pos and span.end == pos + len(text):
+            return span
+    return None
 
 
 def test_kindless_todo_row_renders_question_mark_kind_and_classify_phase(snapshot: object) -> None:
@@ -261,3 +293,86 @@ def test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode(
             results.append((kind or "kindless", mode, kind_color))
 
     assert results == snapshot
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-2")
+def test_todo_author_chip_resolves_initials_and_colors(wire_people, monkeypatch, snapshot) -> None:
+    background, text = "#112233", "#ddeeff"
+    wire_people(
+        [ALICE, BOB],
+        overlays={"alice-smith": f"color:\n  background:\n    dark: '{background}'\n  text:\n    dark: '{text}'\n"},
+    )
+    monkeypatch.setattr(chip_mod, "is_dark_mode", lambda: True)
+
+    rendered = _row(_owned_todo("human:alice@example.com")).render()
+
+    span = _span_over(rendered, "AS")
+    assert span is not None
+    # Colors resolve from alice's PersonConfig.color overlay.
+    assert span.style.bgcolor.name == background
+    assert span.style.color.name == text
+    assert rendered.plain == snapshot
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-8")
+def test_todo_author_chip_carries_no_padding(wire_people, monkeypatch) -> None:
+    wire_people([ALICE, BOB])
+    monkeypatch.setattr(chip_mod, "is_dark_mode", lambda: True)
+
+    rendered = _row(_owned_todo("human:alice@example.com")).render()
+
+    span = _span_over(rendered, "AS")
+    # The styled region spans exactly the initials (enforced by _span_over's
+    # exact-boundary match); the separating space after it sits outside the
+    # styled region in the base style.
+    assert span is not None
+    assert rendered.plain[span.end].isspace()
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-1")
+def test_todo_chip_color_theme_default_and_verbatim(wire_people, monkeypatch) -> None:
+    text_dark = "#445566"
+    # alice sets only text.dark; bob sets nothing.
+    wire_people([ALICE, BOB], overlays={"alice-smith": f"color:\n  text:\n    dark: '{text_dark}'\n"})
+    monkeypatch.setattr(chip_mod, "is_dark_mode", lambda: True)
+
+    alice_span = _span_over(_row(_owned_todo("human:alice@example.com")).render(), "AS")
+    bob_span = _span_over(_row(_owned_todo("human:bob@example.com")).render(), "BJ")
+
+    assert alice_span is not None and bob_span is not None
+    # Unset background.dark → theme neutral standard-grey default; set text.dark → verbatim.
+    assert alice_span.style.bgcolor.name == theme.get_neutral_color("normal")
+    assert alice_span.style.color.name == text_dark
+    # Fully unset → both cells fall back to the theme neutral defaults.
+    assert bob_span.style.bgcolor.name == theme.get_neutral_color("normal")
+    assert bob_span.style.color.name == theme.get_neutral_color("highlight")
+
+
+def test_single_user_suppresses_todo_chip(wire_people) -> None:
+    # A sole registered person → single-user mode: the ownership surface is
+    # suppressed, so an owned todo renders no chip (SC-6).
+    wire_people([ALICE])
+    row = _row(_owned_todo("human:alice@example.com"))
+    row.render()
+    assert row._chip_region is None
+
+
+def test_multi_user_renders_todo_chip(wire_people) -> None:
+    # The same todo in multi-user mode renders the chip (SC-6 contrast).
+    wire_people([ALICE, BOB])
+    row = _row(_owned_todo("human:alice@example.com"))
+    row.render()
+    assert row._chip_region is not None
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-4")
+def test_todo_unresolvable_human_renders_no_chip(wire_people, snapshot) -> None:
+    wire_people([ALICE, BOB])
+
+    null_plain = _row(_owned_todo(None)).render().plain
+    unknown_plain = _row(_owned_todo("human:nobody@example.com")).render().plain
+
+    # Both unresolvable cases render identically — no chip, the gap closed (the
+    # slug starts right after the status glyph, no reserved chip width).
+    assert null_plain == unknown_plain
+    assert null_plain == snapshot

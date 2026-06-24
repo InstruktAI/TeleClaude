@@ -85,6 +85,7 @@ class SessionSnapshot(
     origin_metadata: dict[str, object] = field(default_factory=dict)  # guard: loose-dict
     project_path: str | None = None
     subdir: str | None = None
+    working_slug: str | None = None
     visibility: str | None = "private"
     system_role: str | None = None
     job: str | None = None
@@ -98,6 +99,7 @@ class SessionSnapshot(
             "title": self.title,
             "project_path": self.project_path,
             "subdir": self.subdir,
+            "working_slug": self.working_slug,
             "thinking_mode": self.thinking_mode,
             "active_agent": self.active_agent,
             "status": self.status,
@@ -143,6 +145,7 @@ class SessionSnapshot(
             thinking_mode=session.thinking_mode,
             active_agent=session.active_agent,
             status=session.lifecycle_status,
+            working_slug=session.working_slug,
             origin_metadata=dict(session.origin_metadata),
             created_at=session.created_at.isoformat() if session.created_at else None,
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
@@ -175,6 +178,7 @@ class SessionSnapshot(
             title=str(data["title"]),
             project_path=str(data.get("project_path")) if data.get("project_path") else None,
             subdir=str(data.get("subdir")) if data.get("subdir") else None,
+            working_slug=str(data.get("working_slug")) if data.get("working_slug") else None,
             thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,
             active_agent=str(data.get("active_agent")) if data.get("active_agent") else None,
             status=str(data["status"]),

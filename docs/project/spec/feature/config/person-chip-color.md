@@ -1,7 +1,7 @@
 ---
-description: Per-person overlay color schema — an optional four-cell background/text × light/dark structure backing the person chip, stored on PersonConfig so personalization stays in the person-owned overlay.
-delivered_by:
-  - tui-todo-session-cross-navigation
+description: Per-person overlay color schema — an optional four-cell background/text
+  × light/dark structure backing the person chip, stored on PersonConfig so personalization
+  stays in the person-owned overlay.
 ---
 
 # Person Chip Color — Spec

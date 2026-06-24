@@ -332,6 +332,7 @@ async def test_discord_reflection_webhook_failure_never_posts_user_text_as_the_b
 
 class _VoiceIdentityResolver:
     registered_people_count = 1
+    is_multi_user = False
 
     @staticmethod
     def resolve(origin: str, origin_metadata: Mapping[str, object]) -> IdentityContext:

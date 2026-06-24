@@ -60,6 +60,7 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     # --- Config: single-user mode (no login required → admin) ---
     class _StubIdentityResolver:
         registered_people_count = 1
+        is_multi_user = False
 
         @staticmethod
         def resolve_by_email(email: str) -> IdentityContext:

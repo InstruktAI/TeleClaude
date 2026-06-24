@@ -194,6 +194,7 @@ def _snapshot(
 def _install_member_identity_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
     class _MemberIdentityResolver:
         registered_people_count = 1
+        is_multi_user = False
 
         @staticmethod
         def resolve_by_email(email: str) -> IdentityContext:
@@ -911,6 +912,7 @@ async def test_self_end_terminal_caller_outside_band_rejected(
 
     class _ContributorIdentityResolver:
         registered_people_count = 1
+        is_multi_user = False
 
         @staticmethod
         def resolve_by_email(email: str) -> IdentityContext:

@@ -9,15 +9,30 @@ from collections.abc import Iterator
 import pytest
 from textual.app import App, ComposeResult
 
+import teleclaude.cli.tui.widgets.chip as chip_mod
 from teleclaude.api_models import SessionDTO
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.views.sessions_highlights import PREVIEW_HIGHLIGHT_DURATION
 from teleclaude.cli.tui.widgets.session_row import SessionRow
+from teleclaude.core.models import SessionSnapshot
 
 pytestmark = pytest.mark.functional
 
 SID = "s1"
 OTHER_SID = "s2"
+
+XNAV_SPEC = "project/spec/feature/tui/todo-session-cross-navigation"
+
+ALICE = {"name": "Alice Smith", "email": "alice@example.com", "slug": "alice-smith"}
+BOB = {"name": "Bob Jones", "email": "bob@example.com", "slug": "bob-jones"}
+
+
+def _span_over(rendered: object, text: str) -> object | None:
+    pos = rendered.plain.index(text)
+    for span in rendered._spans:
+        if span.start == pos and span.end == pos + len(text):
+            return span
+    return None
 
 
 @pytest.fixture
@@ -173,6 +188,183 @@ async def test_user_expanded_session_survives_rebuild() -> None:
         view.update_data(computers=[], projects=[], sessions=[_session(SID), _session(OTHER_SID)])
         await pilot.pause()
         assert _only_row(view, SID).collapsed is False
+
+
+def _owned_session(*, title: str, working_slug: str | None, human_email: str | None) -> SessionDTO:
+    return SessionDTO(
+        session_id=SID,
+        title=title,
+        status="idle",
+        tmux_session_name=f"tmux-{SID}",
+        active_agent="claude",
+        thinking_mode="med",
+        computer="local",
+        project_path="/proj",
+        working_slug=working_slug,
+        human_email=human_email,
+    )
+
+
+def _title_line(session: SessionDTO) -> object:
+    return SessionRow(session, display_index="1")._build_title_line()
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-5")
+def test_orchestrator_row_single_slug_span_no_quotes(wire_people, snapshot) -> None:
+    wire_people([ALICE, BOB])
+    line = _title_line(
+        _owned_session(
+            title="/next-work config-public-surface-contract",
+            working_slug="config-public-surface-contract",
+            human_email="alice@example.com",
+        )
+    )
+    # One chip + command + single highlighted slug; slug stripped from the title
+    # text, no surrounding quotes.
+    assert _span_over(line, "config-public-surface-contract") is not None
+    assert line.plain == snapshot
+
+
+def test_working_slug_projects_through_snapshot_dto_seam(wire_people, snapshot) -> None:
+    wire_people([ALICE, BOB])
+    snap = SessionSnapshot(
+        session_id=SID,
+        last_input_origin=None,
+        title="/next-work projected-slug",
+        thinking_mode="med",
+        active_agent="claude",
+        status="idle",
+        tmux_session_name=f"tmux-{SID}",
+        working_slug="projected-slug",
+        human_email="alice@example.com",
+    )
+    # Drive the real transport seam the TUI consumes: SessionSnapshot.to_dict →
+    # SessionDTO.from_core. The slug span renders only if both carry working_slug.
+    dto = SessionDTO.from_core(snap, computer="local")
+    line = _title_line(dto)
+    assert _span_over(line, "projected-slug") is not None
+    assert line.plain == snapshot
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-6")
+def test_worker_row_renders_identically_to_orchestrator(wire_people, snapshot) -> None:
+    wire_people([ALICE, BOB])
+    line = _title_line(
+        _owned_session(
+            title="/next-build config-public-surface-contract",
+            working_slug="config-public-surface-contract",
+            human_email="alice@example.com",
+        )
+    )
+    # Same chip + command + single slug layout; slug appears once, no
+    # double-space before the command tail (pinned by the snapshot).
+    assert _span_over(line, "config-public-surface-contract") is not None
+    assert line.plain == snapshot
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-7")
+def test_session_without_slug_renders_no_slug_span(wire_people, snapshot) -> None:
+    wire_people([ALICE, BOB])
+    line = _title_line(_owned_session(title="ad hoc shell work", working_slug=None, human_email="alice@example.com"))
+    # No working slug → no highlighted slug span; title renders without quotes.
+    # The snapshot is the contract: it carries the exact unquoted line with no
+    # trailing slug span.
+    assert line.plain == snapshot
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-3")
+def test_session_human_chip_after_agent_mode(wire_people, monkeypatch) -> None:
+    background, text = "#223344", "#ccddee"
+    wire_people(
+        [ALICE, BOB],
+        overlays={"alice-smith": f"color:\n  background:\n    dark: '{background}'\n  text:\n    dark: '{text}'\n"},
+    )
+    monkeypatch.setattr(chip_mod, "is_dark_mode", lambda: True)
+
+    line = _title_line(_owned_session(title="/next-work x", working_slug="x", human_email="alice@example.com"))
+
+    chip_span = _span_over(line, "AS")
+    agent_span = _span_over(line, "claude/med")
+    assert chip_span is not None and agent_span is not None
+    # Chip sits after the agent/mode segment and resolves alice's colors.
+    assert chip_span.start >= agent_span.end
+    assert chip_span.style.bgcolor.name == background
+    assert chip_span.style.color.name == text
+
+
+class _JumpApp(App[None]):
+    def __init__(self, row: SessionRow) -> None:
+        super().__init__()
+        self._row = row
+        self.jumped: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        yield self._row
+
+    def on_jump_to_todo(self, message: object) -> None:
+        self.jumped.append(message.slug)
+
+
+@pytest.mark.asyncio
+async def test_session_slug_click_jumps_to_todo(wire_people) -> None:
+    # Row-level proof that a slug click emits JumpToTodo. UC-XNAV-13 is bound by
+    # the full-app integration test in test_todo_session_cross_navigation.
+    slug = "my-work-slug"
+    wire_people([ALICE, BOB])
+    row = SessionRow(
+        _owned_session(title=f"/next-work {slug}", working_slug=slug, human_email="alice@example.com"),
+        display_index="1",
+    )
+    app = _JumpApp(row)
+    async with app.run_test(size=(120, 12)) as pilot:
+        row.render()
+        assert row._slug_region is not None
+        # Click the start of the recorded work-slug span on the title line.
+        await pilot.click(row, offset=(1 + row._slug_region[0], 0))
+        await pilot.pause()
+        # Clicking the highlighted work-slug span jumps to the matching todo.
+        assert app.jumped == [slug]
+
+
+@pytest.mark.asyncio
+async def test_select_session_lands_cursor_and_preview() -> None:
+    # View-level proof of the select-and-preview mechanism. UC-XNAV-12 is bound
+    # by the full-app integration test in test_todo_session_cross_navigation.
+    app = _SessionsTestApp()
+    async with app.run_test(size=(100, 40)) as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(computers=[], projects=[], sessions=[_session(SID), _session(OTHER_SID)])
+        await pilot.pause()
+
+        view.select_session(OTHER_SID)
+        await pilot.pause()
+        # The cross-view jump lands the cursor on the target session and previews it.
+        assert _only_row(view, OTHER_SID).has_class("selected")
+        assert view.preview_session_id == OTHER_SID
+
+
+def test_single_user_suppresses_session_chip(wire_people) -> None:
+    # Single-user mode suppresses the session owner chip (SC-6).
+    wire_people([ALICE])
+    row = SessionRow(
+        _owned_session(title="/next-work x", working_slug="x", human_email="alice@example.com"),
+        display_index="1",
+    )
+    row.render()
+    assert row._chip_region is None
+
+
+def test_session_chip_and_slug_spans_carry_no_padding(wire_people) -> None:
+    wire_people([ALICE, BOB])
+    line = _title_line(
+        _owned_session(title="/next-work my-slug", working_slug="my-slug", human_email="alice@example.com")
+    )
+    chip_span = _span_over(line, "AS")
+    slug_span = _span_over(line, "my-slug")
+    # Styled regions span exactly their own glyphs; the separators sit outside.
+    assert chip_span is not None and slug_span is not None
+    assert line.plain[chip_span.start - 1].isspace()
+    assert line.plain[slug_span.start - 1].isspace()
 
 
 @pytest.mark.asyncio

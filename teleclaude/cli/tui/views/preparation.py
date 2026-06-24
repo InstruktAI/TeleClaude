@@ -14,7 +14,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO, TodoDTO
-from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged
+from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged, TodoSelected
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
@@ -25,6 +25,7 @@ from teleclaude.cli.tui.tree import (
 )
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
+from teleclaude.cli.tui.widgets.chip import ownership_surface_enabled, principal_to_email
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.delivered_separator import DeliveredSeparator
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
@@ -104,6 +105,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._slug_to_project_path: dict[str, str] = {}
         self._slug_to_computer: dict[str, str] = {}
         self._availability: dict[str, AgentAvailabilityDTO] = {}
+        self._human_filter: str | None = None
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="preparation-scroll")
@@ -247,6 +249,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 todo_id=dto.todo_id,
                 removed_at=dto.removed_at,
                 is_holder=is_holder,
+                created_by_principal=dto.created_by_principal,
             )
 
         # Sectioned dependency trees come from the projection — the view renders;
@@ -406,6 +409,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         if self._nav_items and self.cursor_index >= len(self._nav_items):
             self.cursor_index = max(0, len(self._nav_items) - 1)
         self._update_cursor_highlight()
+        self._apply_human_filter()
         self._logger.trace(
             "[PERF] PrepView._rebuild done items=%d dt=%.3f", len(self._nav_items), _t.monotonic() - _rb0
         )
@@ -470,6 +474,45 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         if self.cursor_index >= len(self._nav_items):
             self.cursor_index = max(0, len(self._nav_items) - 1)
         self._update_cursor_highlight()
+
+    def select_todo(self, slug: str) -> bool:
+        """Move the cursor onto the todo with the given slug, if present.
+
+        Used by the cross-view jump from a session's work slug. Returns True when
+        a matching todo row was found and selected.
+        """
+        for i, widget in enumerate(self._nav_items):
+            if isinstance(widget, TodoRow) and widget.slug == slug:
+                self.cursor_index = i
+                self._update_cursor_highlight()
+                self.post_message(TodoSelected(slug))
+                return True
+        return False
+
+    def set_human_filter(self, human_filter: str | None) -> None:
+        """Set the shared human filter and apply it to the current rows."""
+        self._human_filter = human_filter
+        self._apply_human_filter()
+
+    def _apply_human_filter(self) -> None:
+        """Hide todo rows that do not belong to the active human filter.
+
+        Each todo row also learns the active filter so the filtered person's chip
+        renders inverted. Rows with no resolvable owner are hidden while a filter
+        is active. The filter is inert in single-user mode (the ownership surface
+        is suppressed), so every row stays visible regardless of any stale value.
+        """
+        active_filter = self._human_filter if ownership_surface_enabled() else None
+        for widget in self._nav_items:
+            if not isinstance(widget, TodoRow):
+                continue
+            widget._active_human_filter = active_filter
+            if active_filter is None:
+                widget.display = True
+            else:
+                owner = principal_to_email(widget.todo.created_by_principal)
+                widget.display = owner is not None and owner.lower() == active_filter
+            widget.refresh()
 
     def _update_cursor_highlight(self) -> None:
         for i, widget in enumerate(self._nav_items):

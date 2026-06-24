@@ -7,18 +7,83 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from textual.app import App, ComposeResult
 
-from teleclaude.api_models import ComputerDTO
+import teleclaude.cli.tui.state_store as state_store
+from teleclaude.api_models import ComputerDTO, ProjectWithTodosDTO, TodoDTO
+from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToSession
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views import preparation_actions
+from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.modals import ContentInputModal, CreateSlugModal
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
 pytestmark = pytest.mark.functional
+
+XNAV_SPEC = "project/spec/feature/tui/todo-session-cross-navigation"
+
+ALICE = {"name": "Alice Smith", "email": "alice@example.com", "slug": "alice-smith"}
+BOB = {"name": "Bob Jones", "email": "bob@example.com", "slug": "bob-jones"}
+
+
+def _todo_dto(
+    slug: str,
+    *,
+    created_by_principal: str | None = None,
+    active_runner: str | None = None,
+    schedule: str | None = None,
+) -> TodoDTO:
+    return TodoDTO(
+        slug=slug,
+        status="active",
+        has_requirements=False,
+        has_impl_plan=False,
+        kind="feature",
+        lifecycle_phase="build_started",
+        created_by_principal=created_by_principal,
+        active_runner=active_runner,
+        schedule=schedule,
+    )
+
+
+def _project_with(todos: list[TodoDTO]) -> ProjectWithTodosDTO:
+    return ProjectWithTodosDTO(computer="local", name="proj", path="/proj", todos=todos)
+
+
+class _PrepApp(App[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.jumped: list[str] = []
+        self.filtered: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        yield PreparationView(id="preparation-view")
+
+    def on_jump_to_session(self, message: JumpToSession) -> None:
+        self.jumped.append(message.session_id)
+
+    def on_chip_filter_toggle(self, message: ChipFilterToggle) -> None:
+        self.filtered.append(message.person_email)
+
+
+def _todo_rows(view: PreparationView) -> list[TodoRow]:
+    return [w for w in view._nav_items if isinstance(w, TodoRow)]
+
+
+def _chip_span(row: TodoRow) -> object | None:
+    rendered = row.render()
+    region = row._chip_region
+    if region is None:
+        return None
+    for span in rendered._spans:
+        if span.start == region[0] and span.end == region[1]:
+            return span
+    return None
+
 
 _DUMP_PATH = "/todos/dump"
 _PREPARE_PATH = "/todos/prepare"
@@ -293,3 +358,162 @@ def test_action_start_work_posts_operation_after_readiness_gate(
         "cwd": str(tmp_path),
     }
     harness.app._refresh_data.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-9")
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-10")
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-11")
+async def test_claim_columns_jump_projection_and_select(wire_people, snapshot) -> None:
+    # Consolidated into one App.run_test session to keep the scoped-suite
+    # wall-clock budget: the DTO->TodoItem projection (chip render), select_todo
+    # landing, and the claim-column jump regime (UC-9/10/11) all exercised here.
+    runner = "runner-xyz"
+    wire_people([ALICE, BOB])
+    app = _PrepApp()
+    async with app.run_test(size=(120, 20)) as pilot:
+        view = app.query_one(PreparationView)
+        view.update_data(
+            [
+                _project_with(
+                    [
+                        _todo_dto(
+                            "claimed",
+                            created_by_principal="human:alice@example.com",
+                            active_runner=runner,
+                            schedule="cron:* * * * *",
+                        ),
+                        _todo_dto("unclaimed", active_runner=None),
+                    ]
+                )
+            ]
+        )
+        await pilot.pause()
+        rows = {r.slug: r for r in _todo_rows(view)}
+        claimed, unclaimed = rows["claimed"], rows["unclaimed"]
+        unclaimed.render()
+
+        # Projection: created_by_principal flows DTO->TodoItem end to end, so the
+        # claimed row renders alice's author chip (pinned by the snapshot).
+        assert claimed.render().plain == snapshot
+
+        # select_todo lands the cursor on the matching row.
+        assert view.select_todo("unclaimed") is True
+
+        # UC-9: the claimed text column jumps to the runner session.
+        assert claimed._claim_region is not None
+        await pilot.click(claimed, offset=(1 + claimed._claim_region[0], 0))
+        await pilot.pause()
+        assert app.jumped == [runner]
+
+        # UC-10: the unclaimed row records no claim region; a column click selects.
+        assert unclaimed._claim_region is None
+        await pilot.click(unclaimed, offset=(20, 0))
+        await pilot.pause()
+        assert app.jumped == [runner]
+
+        # UC-11: the state-icon column sits past the claim region; clicking it does
+        # not jump (icons excluded from the claim regime).
+        await pilot.click(claimed, offset=(1 + claimed._claim_region[1] + 1, 0))
+        await pilot.pause()
+        assert app.jumped == [runner]
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-14")
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-15")
+async def test_shared_human_filter_flows(wire_people) -> None:
+    # One session covers the chip-click toggle, the set-filter hide+invert
+    # (UC-14), and the clear-filter restore (UC-15).
+    alice_email = "alice@example.com"
+    wire_people([ALICE, BOB])
+    app = _PrepApp()
+    async with app.run_test(size=(120, 20)) as pilot:
+        view = app.query_one(PreparationView)
+        view.update_data(
+            [
+                _project_with(
+                    [
+                        _todo_dto("alice-work", created_by_principal=f"human:{alice_email}"),
+                        _todo_dto("bob-work", created_by_principal="human:bob@example.com"),
+                    ]
+                )
+            ]
+        )
+        await pilot.pause()
+        rows = {r.slug: r for r in _todo_rows(view)}
+        alice_row, bob_row = rows["alice-work"], rows["bob-work"]
+        normal = _chip_span(alice_row)
+
+        # Clicking the owner chip posts the shared-filter toggle for that person.
+        alice_row.render()
+        assert alice_row._chip_region is not None
+        await pilot.click(alice_row, offset=(1 + alice_row._chip_region[0], 0))
+        await pilot.pause()
+        assert app.filtered == [alice_email]
+
+        # UC-14: applying the filter hides the non-matching row and inverts the
+        # filtered person's chip (background and text swap).
+        view.set_human_filter(alice_email)
+        await pilot.pause()
+        assert alice_row.display is True
+        assert bob_row.display is False
+        inverted = _chip_span(alice_row)
+        assert normal is not None and inverted is not None
+        assert normal.style.color == inverted.style.bgcolor
+        assert normal.style.bgcolor == inverted.style.color
+
+        # UC-15: clearing restores every row and renders chips non-inverted again.
+        view.set_human_filter(None)
+        await pilot.pause()
+        assert bob_row.display is True
+        restored = _chip_span(alice_row)
+        assert restored is not None
+        assert restored.style.color == normal.style.color
+        assert restored.style.bgcolor == normal.style.bgcolor
+
+
+def test_human_filter_persists_across_restart(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # State-store round-trip mechanism. UC-XNAV-16 is bound by the full-app
+    # filter-persistence integration test in test_todo_session_cross_navigation.
+    email = "alice@example.com"
+    monkeypatch.setattr(state_store, "TUI_STATE_PATH", tmp_path / "tui_state.json")
+
+    # The app persists the one shared filter in the `app` namespace.
+    state_store.save_state({"app": {"active_tab": "preparation", "human_filter": email}})
+
+    # A fresh process (load_state) sees the same filter — one source of truth.
+    reloaded = state_store.load_state()
+    assert reloaded["app"]["human_filter"] == email
+
+
+@pytest.mark.asyncio
+async def test_single_user_surface_suppressed_but_jumps_active(wire_people) -> None:
+    # SC-6: single-user suppresses the chip and makes the filter inert, while the
+    # claim-state jump stays active.
+    runner = "runner-solo"
+    wire_people([ALICE])
+    app = _PrepApp()
+    async with app.run_test(size=(120, 20)) as pilot:
+        view = app.query_one(PreparationView)
+        view.update_data(
+            [
+                _project_with(
+                    [_todo_dto("claimed", created_by_principal="human:alice@example.com", active_runner=runner)]
+                )
+            ]
+        )
+        await pilot.pause()
+        row = _todo_rows(view)[0]
+        row.render()
+        # No chip in single-user, but the claim region (jump target) is present.
+        assert row._chip_region is None
+        assert row._claim_region is not None
+        await pilot.click(row, offset=(1 + row._claim_region[0], 0))
+        await pilot.pause()
+        assert app.jumped == [runner]
+
+        # The filter is inert: a stale value hides nothing.
+        view.set_human_filter("nobody@example.com")
+        await pilot.pause()
+        assert row.display is True

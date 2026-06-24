@@ -2,6 +2,9 @@
 # name: test_kindless_todo_row_renders_question_mark_kind_and_classify_phase
   '  ├─■ classify-me··?··P:classify·········'
 # ---
+# name: test_todo_author_chip_resolves_initials_and_colors
+  '  ├─■ AS owned-work·feat·········'
+# ---
 # name: test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode
   list([
     tuple(
@@ -88,4 +91,7 @@
 # ---
 # name: test_todo_row_suppresses_hold_glyph_when_not_effectively_held
   '  ├─■ legacy-held··chng··P:prepared·········'
+# ---
+# name: test_todo_unresolvable_human_renders_no_chip
+  '  ├─■ owned-work··feat·········'
 # ---

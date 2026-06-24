@@ -413,6 +413,30 @@ class TodoSelected(Message):
         self.slug = slug
 
 
+class JumpToSession(Message):
+    """Cross-view jump: open a todo's runner session in the Sessions view."""
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__()
+        self.session_id = session_id
+
+
+class JumpToTodo(Message):
+    """Cross-view jump: open a session's work slug in the Preparation view."""
+
+    def __init__(self, slug: str) -> None:
+        super().__init__()
+        self.slug = slug
+
+
+class ChipFilterToggle(Message):
+    """A person chip was clicked: toggle the shared human filter on that person."""
+
+    def __init__(self, person_email: str) -> None:
+        super().__init__()
+        self.person_email = person_email
+
+
 class DocPreviewRequest(Message):
     """Request to preview a document in a pane."""
 

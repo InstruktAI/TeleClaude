@@ -124,7 +124,7 @@ def _resolve_terminal_role(email_header: str | None) -> str | None:
 
 def _requires_terminal_login() -> bool:
     """Return True when global config has multiple registered users."""
-    return get_identity_resolver().registered_people_count > 1
+    return get_identity_resolver().is_multi_user
 
 
 def _derive_session_system_role(session: Session) -> str | None:

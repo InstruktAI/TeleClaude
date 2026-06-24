@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
-from teleclaude.config.schema import PersonEntry
+from teleclaude.config.schema import PersonChipColor, PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR
 
@@ -17,6 +17,21 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+
+def derive_initials(person_name: str) -> str:
+    """Derive uppercase chip initials from a person's display name.
+
+    Multi-word names take the first letter of each word (``"Alice Smith"`` →
+    ``"AS"``); a single-word name takes its first two letters (``"Alice"`` →
+    ``"AL"``) so the chip stays a consistent two-glyph badge.
+    """
+    words = person_name.split()
+    if not words:
+        return ""
+    if len(words) == 1:
+        return words[0][:2].upper()
+    return (words[0][:1] + words[-1][:1]).upper()
 
 
 @dataclass
@@ -30,6 +45,7 @@ class IdentityContext:
     display_name_override: str | None = None
     platform: str | None = None
     platform_user_id: str | None = None
+    chip_color: PersonChipColor | None = None
 
     @property
     def display_name(self) -> str:
@@ -60,6 +76,7 @@ class IdentityResolver:
         self._discord_nick_by_email: dict[str, str] = {}
         self._discord_nick_by_user_id: dict[str, str] = {}
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
+        self._color_by_email: dict[str, PersonChipColor] = {}
         self._registered_people_count: int = 0
         self._config_mtime_ns: int | None = None
         self._people_mtime_ns: int | None = None
@@ -119,6 +136,7 @@ class IdentityResolver:
         self._discord_nick_by_email.clear()
         self._discord_nick_by_user_id.clear()
         self._by_whatsapp_phone.clear()
+        self._color_by_email.clear()
         self._registered_people_count = 0
 
         try:
@@ -150,6 +168,9 @@ class IdentityResolver:
                 logger.warning("Failed to load person config for %s: %s", person.name, e)
                 continue
 
+            if person_conf.color is not None:
+                self._color_by_email[person.email.lower()] = person_conf.color
+
             telegram_creds = getattr(person_conf.creds, "telegram", None) if person_conf.creds else None
             if telegram_creds:
                 self._by_telegram_user_id[telegram_creds.user_id] = person
@@ -179,6 +200,7 @@ class IdentityResolver:
                 person_slug=person.slug,
                 person_role=self._normalize_role(person.role),
                 display_name_override=self._display_name_override_for(person),
+                chip_color=self._color_by_email.get(email.lower()),
             )
         return IdentityContext()
 
@@ -187,6 +209,17 @@ class IdentityResolver:
         """Number of registered people in global config."""
         self._reload_if_stale()
         return self._registered_people_count
+
+    @property
+    def is_multi_user(self) -> bool:
+        """True when more than one person is registered.
+
+        The single shared determination of multi-user mode: it gates the
+        terminal-login requirement (auto-granting a sole user admin) and the TUI
+        ownership surface (chips + per-human filter). One predicate, one
+        threshold, every consumer reads it.
+        """
+        return self.registered_people_count > 1
 
     def resolve(self, origin: str, origin_metadata: Mapping[str, object]) -> IdentityContext:
         """Resolve identity from origin and metadata.

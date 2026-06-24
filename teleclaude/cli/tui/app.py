@@ -35,6 +35,7 @@ from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.animation_engine import AnimationEngine
 from teleclaude.cli.tui.animation_observability import AnimationPerfTracker
 from teleclaude.cli.tui.app_actions import TelecAppActionsMixin
+from teleclaude.cli.tui.app_cross_nav import TelecAppCrossNavMixin
 from teleclaude.cli.tui.app_media import TelecAppMediaMixin
 from teleclaude.cli.tui.app_ws import TelecAppWsMixin
 from teleclaude.cli.tui.bootstrap import (
@@ -185,7 +186,7 @@ class _RefreshStateSnapshot:
     chiptunes_pending_action: str
 
 
-class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[str | None]):
+class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, TelecAppMediaMixin, App[str | None]):
     """Main TeleClaude TUI application."""
 
     api: TelecAPIClient
@@ -549,6 +550,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         status_bar.load_persisted_state(self._persisted.get("status_bar", {}))
         theme.set_pane_theming_mode(status_bar.pane_theming_mode)
         self._apply_app_theme_for_mode(status_bar.pane_theming_mode)
+        self.restore_human_filter(self._persisted.get("app", {}))
         return status_bar
 
     def _hide_textual_tab_bar(self) -> None:
@@ -922,7 +924,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             state[get_persistence_key(widget)] = widget.get_persisted_state()
 
         tabs = self.query_one("#main-tabs", TabbedContent)
-        state["app"] = {"active_tab": tabs.active or "sessions"}
+        state["app"] = {"active_tab": tabs.active or "sessions", "human_filter": self.collect_human_filter()}
         return state
 
     def _save_state_sync(self) -> None:

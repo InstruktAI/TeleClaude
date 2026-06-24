@@ -1,7 +1,7 @@
 ---
-description: Author/human chips, claim-state highlighting, and bidirectional todo↔session navigation in the TUI, with a shared per-human filter resolved from todo and session ownership.
-delivered_by:
-  - tui-todo-session-cross-navigation
+description: Author/human chips, claim-state highlighting, and bidirectional todo↔session
+  navigation in the TUI, with a shared per-human filter resolved from todo and session
+  ownership.
 ---
 
 # Todo–Session Cross-Navigation — Spec

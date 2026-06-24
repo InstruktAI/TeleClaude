@@ -49,12 +49,8 @@ flowchart LR
 - **Pane Lifecycle Is Tmux-Anchored**: Preview and sticky panes live and die by tmux liveness plus explicit `SessionClosed` events. Snapshot diffs from the daemon (bootstrap refresh, per-computer initial events on WS reconnect) never destroy pane state — a daemon restart must not kill the user's preview/sticky panes while their underlying agent tmux sessions are alive.
 - **Un-Sticky Transitions to Preview**: When a sticky session is removed (double-press), that session becomes the active preview. Any previously active preview is dismissed. This preserves the user's focus on the session they just interacted with and minimizes layout disruption.
 - **Local-Only State**: TUI state is local UI state; core session state remains owned by the daemon.
-<!-- planned:tui-todo-session-cross-navigation -->
 - **Shared Human Filter Is Cross-View Single-Owner**: The human filter — narrowing rows to one person's work — is a single app-level setting shared by the Sessions and Preparation views, owned at the app/shared level rather than by either view, and persisted in `tui_state.json` so it survives tab switches and process restarts. It holds exactly one person or none. Both views read the same setting and render their row set against it; a chip click posts a filter message that updates the one setting, never a second per-view copy. The owning human of a row resolves from existing data — a todo's `created_by_principal`, a session's `human_email` — through the identity resolver; rows whose human does not match are hidden, and rows with no resolvable human are hidden while a filter is active.
-  <!-- /planned:tui-todo-session-cross-navigation -->
-  <!-- planned:tui-todo-session-cross-navigation -->
 - **Ownership Surface Is Multi-User-Gated**: The owner chips and the shared human filter are a multi-user affordance. They render only when the instance has more than one registered person — the same multi-user determination that gates the terminal-login requirement (the identity context's registered-people determination, read as one shared predicate by both surfaces). In single-user mode the chips and the filter are absent from both views entirely, not merely empty. The bidirectional todo↔session jumps and the claim-state highlighting are not gated — they aid solo navigation, not owner-disambiguation, and stay active regardless of user count.
-<!-- /planned:tui-todo-session-cross-navigation -->
 - **Pane Style Transition Contract**: Session pane foreground remains constant across focus changes; focus/inactive transitions are represented by background only (terminal default for active, computed haze for inactive).
 - **Input Safety**: Bindings fire only on the bare control surface — when no popup is open and no text field is active. Pastes and injected key bursts that reach that bare surface are rejected before they can fire bindings.
 
@@ -84,9 +80,7 @@ The Sessions view is the single owner of layout state:
 - `focus`: computer/project focus stack
 - `scroll`: scroll offset and window bounds
 - `output_working`: set of session ids that must render `out: Working...` until authoritative turn completion (`agent_stop`)
-<!-- planned:tui-todo-session-cross-navigation -->
 - `human_filter`: the shared cross-view person filter — a single resolved-human key or `null`. Owned at the app/shared level rather than by either view, persisted in `tui_state.json`, and read by both the Sessions and Preparation row renderers. Distinct from the per-view `FilterTodos` owner dimension, which scopes only the Preparation todo list; `human_filter` spans both views and is chip-driven.
-<!-- /planned:tui-todo-session-cross-navigation -->
 
 The canonical derivation and invariant live in `teleclaude/cli/tui/layout_model.py` (`desired()`, `enforce_i1()`, `diff_cells()`, `orphan_panes()`); the pane bridge keeps a mirror that is re-synced from this owner on every data refresh.
 
@@ -162,11 +156,9 @@ below name the user-facing operations (not reducer intents).
 - `ViewFile(file_id)` / `EditFile(file_id)`
 - `OpenFilePane(cmd)` / `CloseFilePane()`
 - `SelectTab(view_id)`
-<!-- planned:tui-todo-session-cross-navigation -->
 - `SetHumanFilter(person)` / `ClearHumanFilter()` — set or clear the shared cross-view human filter from a chip click; clicking the active person's chip clears it.
 - `JumpToSession(session_id)` — from a claimed todo's bold text columns: activate the Sessions tab and select/preview the todo's `active_runner` session.
 - `JumpToTodo(slug)` — from a session row's highlighted work slug: activate the Preparation tab and select the todo whose slug matches.
-<!-- /planned:tui-todo-session-cross-navigation -->
 
 #### State contract
 

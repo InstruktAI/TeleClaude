@@ -9,16 +9,22 @@ from textual.message import Message
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToSession
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import format_relative_time
+from teleclaude.cli.tui.widgets.chip import resolve_person_chip
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
     is_settled_ok_phase,
     pending_approval_gate,
 )
+
+# Textual injects the content (column, row) of a click into the click's style
+# meta under this key; the row uses it to map a click to a sub-region.
+_CLICK_OFFSET_META = "offset"
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
@@ -353,6 +359,14 @@ class TodoRow(TelecMixin, Widget):
         self._col_widths = col_widths or {}
         self._tree_lines = tree_lines or []
         self._max_depth = max_depth
+        # Click sub-regions recorded each render(): the owner-chip cell span (and
+        # the email it filters on) and the claimed text-column span.
+        self._chip_region: tuple[int, int] | None = None
+        self._chip_email: str | None = None
+        self._claim_region: tuple[int, int] | None = None
+        # The active shared human filter, pushed by the view; the matching
+        # person's chip renders inverted.
+        self._active_human_filter: str | None = None
 
     @staticmethod
     def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
@@ -415,15 +429,30 @@ class TodoRow(TelecMixin, Widget):
         bold = label == _TODO_STATUS_ACTIVE
         return Style(color=color, bold=bold)
 
+    def _claim_style(self) -> Style:
+        """Bold overlay for a claimed todo's text columns.
+
+        A claimed todo (a live ``active_runner``) renders its text status columns
+        bold; the columns also become a click target that jumps to the runner
+        session (the region is recorded in ``render`` and mapped in ``on_click``).
+        Empty when unclaimed — text columns then render at normal weight. The row
+        status glyph and state icons are styled elsewhere and never bolded by the
+        claim.
+        """
+        if self.todo.active_runner:
+            return Style(bold=True)
+        return Style()
+
     def _build_col(self, label: str, value: str, width: int, value_style: Style) -> Text:
         """Render a fixed-width column. Empty value -> blank padding for alignment."""
         col = Text()
         plain = _col_plain_text(label, value)
+        claim = self._claim_style()
         if plain:
             prefix_len = len(plain) - len(value)
             if prefix_len:
-                col.append(plain[:prefix_len], style=Style())
-            col.append(value, style=value_style)
+                col.append(plain[:prefix_len], style=claim)
+            col.append(value, style=value_style + claim)
         return _pad(col, width)
 
     def _total_col_width(self) -> int:
@@ -566,6 +595,24 @@ class TodoRow(TelecMixin, Widget):
             line.append("\u25a0", style=self._status_style())
         line.append(" ")
 
+        # Owner chip: the owning human's initials in their colors, rendered
+        # before the slug. No chip when the human is unresolvable — the gap is
+        # closed (no reserved width), so the slug simply starts earlier. The
+        # chip's cell width is compensated out of the dot leaders below so the
+        # property columns stay aligned across chipped and chip-less rows.
+        chip = resolve_person_chip(self.todo.created_by_principal)
+        chip_width = 0
+        self._chip_region = None
+        self._chip_email = None
+        if chip is not None:
+            inverted = self._active_human_filter is not None and self._active_human_filter == chip.person_email
+            chip_start = line.cell_len
+            line.append(chip.initials, style=chip.style(inverted=inverted))
+            self._chip_region = (chip_start, line.cell_len)
+            self._chip_email = chip.person_email
+            line.append(" ")
+            chip_width = len(chip.initials) + 1
+
         if is_selected:
             slug_style = Style(reverse=True)
         else:
@@ -574,7 +621,7 @@ class TodoRow(TelecMixin, Widget):
 
         # Dot padding from slug to columns (compensate for indent so columns align)
         indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
-        dot_count = max(1, self._slug_width - len(self.todo.slug) + 2 + indent_compensation)
+        dot_count = max(1, self._slug_width - len(self.todo.slug) + 2 + indent_compensation - chip_width)
 
         # Graceful degradation: shrink dot leaders when pane is narrower than content
         outer_w = self.outer_size.width
@@ -582,14 +629,22 @@ class TodoRow(TelecMixin, Widget):
         if outer_w > 0:
             prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
             col_w = self._total_col_width()
-            max_dots = max(0, available - prefix_width - len(self.todo.slug) - col_w)
+            max_dots = max(0, available - prefix_width - chip_width - len(self.todo.slug) - col_w)
             dot_count = min(dot_count, max_dots)
 
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
 
         # Property columns, including the dedicated held column as the block's last
-        # column (the hold glyph or its reserved blank slot).
+        # column (the hold glyph or its reserved blank slot). When the todo is
+        # claimed, the text columns (up to but excluding the state-icon column)
+        # become the jump-to-runner click region.
+        columns_start = line.cell_len
         line.append_text(self._build_columns())
+        if self.todo.active_runner:
+            text_columns_end = columns_start + max(0, self._total_col_width() - _STATE_COL_WIDTH)
+            self._claim_region = (columns_start, text_columns_end)
+        else:
+            self._claim_region = None
 
         # Fill to the current window width, reserving exactly 2 trailing spaces
         # (not dots) as the right gutter. Responsive to the live pane width. Cell
@@ -604,7 +659,31 @@ class TodoRow(TelecMixin, Widget):
 
         return line
 
+    def _click_column(self, event: Click) -> int | None:
+        """Return the content column of a click, or None when unavailable."""
+        offset = event.style.meta.get(_CLICK_OFFSET_META) if event.style else None
+        if isinstance(offset, tuple) and len(offset) == 2:
+            return int(offset[0])
+        return None
+
     def on_click(self, event: Click) -> None:
-        """Post Pressed message when clicked."""
+        """Route a click to a jump, a filter, or row selection by its column.
+
+        A click on a claimed todo's text columns jumps to the runner session; a
+        click on the owner chip toggles the shared human filter; any other click
+        selects the row.
+        """
         event.stop()
+        column = self._click_column(event)
+        if column is not None:
+            if (
+                self.todo.active_runner
+                and self._claim_region
+                and self._claim_region[0] <= column < self._claim_region[1]
+            ):
+                self.post_message(JumpToSession(str(self.todo.active_runner)))
+                return
+            if self._chip_email and self._chip_region and self._chip_region[0] <= column < self._chip_region[1]:
+                self.post_message(ChipFilterToggle(self._chip_email))
+                return
         self.post_message(self.Pressed(self))
