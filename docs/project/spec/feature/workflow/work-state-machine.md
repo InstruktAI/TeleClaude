@@ -25,7 +25,15 @@ Task execution is a separate non-SDLC lane. The lifecycle runner starts `/next-r
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
+<!-- planned-change:work-entry-drift-role-promotion -->
+
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. When any tracked artifact's collapsed drift status is `pending` or `substantive`, work does NOT mutate work-state, does NOT create or touch a worktree on this call, and does NOT dispatch any worker; it returns an orchestrator script telling the caller to run `telec todo prepare {slug}` to resolve drift. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. The prepare flow's existing BLOCKED branch routes the drift analyzer; when prepare reaches `prepared` again, its terminal's lineage-conditioned resume reminder has the bounced work orchestrator resume `telec todo work {slug}` (a fresh prepare that never bounced self-ends instead). The continuation across the bounce is the existing script-driven contract — no new mechanism, no human gate on cosmetic verdicts, and substantive verdicts cascade through the existing re-derivation chain back into a prepared Todo.
+
+<!-- change:work-entry-drift-role-promotion -->
+
+Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end, and the bounced work orchestrator's only verb is `telec todo work {slug}` — it never re-enters the prepare machine. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `next-drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict promotes the claim-holder in place — the same session keeps its `active_runner` claim while its `job` transitions from `work-orchestrator` to `prepare-orchestrator` through a claim-gated, audited transition — and the promoted session drives `/next-prepare {slug}`. Because the session now carries prepare-write authority its re-derivation write satisfies the artifact-write guard, and because no new session is dispatched the held claim raises no conflict. The promoted session re-derives the affected artifact, reaches `prepared`, and self-ends through the prepare machine's existing terminal. Work continuation after a substantive bounce is not asserted: the re-prepared slug waits for the lifecycle runner's autostart toggle exactly like any freshly prepared Todo. The promotion is the only new mechanism; the cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
+
+<!-- /planned-change:work-entry-drift-role-promotion -->
 
 ## Canonical fields
 
@@ -66,6 +74,8 @@ And the builder resolves conflicts, verifies, commits, and reports MERGE RECOVER
 And the orchestrator re-enters `telec todo work` after the builder idles so review can proceed from the recovered HEAD
 ```
 
+<!-- planned-change:work-entry-drift-role-promotion -->
+
 ```
 Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
 When the orchestrator calls "telec todo work my-feature"
@@ -80,6 +90,24 @@ And on substantive verdict the prepare machine clears the affected review verdic
 And work re-runs drift derivation, observes fresh / valid-anchor status, and proceeds with worktree creation and dispatch
 ```
 
+<!-- change:work-entry-drift-role-promotion -->
+
+```
+Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
+When the orchestrator calls "telec todo work my-feature"
+Then drift derivation reports drift.implementation-plan = pending
+And the machine does NOT advance lifecycle_phase
+And the machine does NOT create or touch the worktree
+And the machine returns a script that dispatches the next-drift-analyze worker and tells the orchestrator to re-enter "telec todo work my-feature" once the analyzer idles
+And the work orchestrator never calls "telec todo prepare my-feature"
+And on re-entry after a cosmetic verdict the machine observes non-blocking drift and proceeds with worktree creation and dispatch
+And on re-entry after a substantive verdict the machine promotes the claim-holder in place from job=work-orchestrator to job=prepare-orchestrator and hands the same session off to drive "/next-prepare my-feature"
+And the promoted session re-derives the affected artifact with no 403 write refusal and no 409 claim conflict, reaches prepared, and self-ends through the prepare machine's existing terminal
+And work continuation after the substantive re-derivation occurs only when the lifecycle runner autostart toggle is enabled
+```
+
+<!-- /planned-change:work-entry-drift-role-promotion -->
+
 ```gherkin
 Given a bug-kind Todo at lifecycle_phase=prepared with an approved implementation-plan
 And the bug has input and diagnosis artifacts
@@ -89,6 +117,23 @@ And work-entry drift does not evaluate input as a tracked artifact
 And work-entry drift does not evaluate diagnosis as a tracked artifact
 And the machine never returns WORK_ENTRY_DRIFT for drift.input or drift.diagnosis
 ```
+
+<!-- planned:work-entry-drift-role-promotion -->
+
+#### UC-WSM5: A substantive work-entry drift bounce promotes the claim-holder in place
+
+```gherkin
+Given a work-entry drift bounce dispatched the next-drift-analyze worker for a held slug whose live active_runner is the calling session with job=work-orchestrator
+When the analyzer stamps a substantive --drift-reviewed verdict and ends its turn without instructing the orchestrator to call any machine
+And the claim-holder re-enters "telec todo work my-feature"
+Then the work machine asserts the caller is the live active_runner for my-feature and currently holds job=work-orchestrator
+And it transitions that same session's job to prepare-orchestrator and records the transition
+And it dispatches no new session, so the held active_runner claim raises no 409 conflict
+And the promoted session's re-derivation write is admitted by the artifact-write guard because the session now carries job=prepare-orchestrator
+And a caller that is not the live active_runner, or whose job is not work-orchestrator, is not promoted
+```
+
+<!-- /planned:work-entry-drift-role-promotion -->
 
 ```
 Given a Todo at lifecycle_phase=build_started with a live builder session
