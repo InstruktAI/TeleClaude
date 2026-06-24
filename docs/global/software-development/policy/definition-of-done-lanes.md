@@ -78,6 +78,7 @@ For each approved-intent success criterion (a `prd` criterion, a goal/outcome st
 2. Name the specific code change in the diff that delivers the criterion (file, function, line range).
 3. Name the test whose passing demonstrates the criterion is delivered.
 4. State, in one sentence, how the code change and the passing test together satisfy the criterion.
+5. Name the concrete production-code mutation the named test kills — a single plausible wrong implementation of this criterion (a flipped condition, a dropped branch, a stubbed-out value) that turns the test red. Naming a real mutation is mandatory: it is the falsifiable proof that the test observes the criterion's actual property rather than a projection that cannot see it. If no such mutation exists — the test stays green on the broken implementation — that is the Requirement-Violation below, not a passing entry.
 
 Findings:
 
@@ -88,7 +89,7 @@ Findings:
 - For a change/bug, a behavioral delta the intent does not call for — including one introduced alongside a necessary change, or one resolving a forced decision by new behavior where established behavior or human escalation was the path → **Critical**.
 - Gold-plating (scope creep beyond the PRD) → Important.
 
-A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, or satisfaction analysis.
+A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, satisfaction analysis, or killing mutation.
 
 #### Code quality review
 
@@ -177,7 +178,7 @@ Apply the policy, not a per-function reflex:
 - **Weak tests are findings even when coverage exists.** Apply every weak-test anti-pattern the testing policy enumerates — the policy owns the full list; do not re-list it here.
 - **Browser / web UI changes** must include Playwright smoke evidence from build.
 
-Before crediting any test as meaningful coverage, answer concretely: what behavior or failure path does it pin, at what boundary, and what real bug in **our** code would it catch? If you cannot, it is weak and does not count.
+Before crediting any test as meaningful coverage, name the concrete production-code mutation it kills: a single plausible wrong implementation of the behavior under test — a flipped condition, a dropped branch, a stubbed-out value — that turns this test red. State it explicitly; a vacuous or unnameable answer ("it covers the feature") is itself the weak-test finding. A test that stays green on the broken implementation does not count, no matter what it asserts — the assertion is observing a projection of the output that cannot see the property the behavior actually changed.
 
 - Reject **meta-tests that statically scan production source** (`ast.parse`, `rglob("*.py")` over `teleclaude/`, regex over file contents) to enforce a structural rule. A structural rule must be placed at the **strongest layer that can express it**, in this order — never lower when a higher one applies:
   1. **Make the illegal state unrepresentable** in the type/signature surface — an `Enum`/`StrEnum` for a closed vocabulary, a required parameter, a `NewType` — so the compiler / `pyright` rejects the violation at authoring time.
