@@ -6,10 +6,9 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import shlex
-from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
 from teleclaude.paths import COMMANDS_DIR
@@ -37,6 +36,7 @@ __all__ = [
     "format_tool_call",
     "format_uncommitted_changes",
     "format_work_entry_drift_bounce",
+    "format_work_entry_substantive_handoff",
     "format_worker_redispatch",
     "parse_human_in_loop",
 ]
@@ -457,22 +457,66 @@ def format_uncommitted_changes(slug: str) -> str:
 NEXT: Resolve these changes according to the commit policy, then call telec todo work {slug} to continue."""
 
 
-def format_work_entry_drift_bounce(slug: str, drift_status_per_artifact: Mapping[str, str]) -> str:
-    """Format the work-entry bounce back to prepare when drift is unresolved."""
-    lines = ["DRIFT STATUS:"]
-    for artifact, status in sorted(drift_status_per_artifact.items()):
-        lines.append(f"- {artifact}: {status}")
-    drift_block = "\n".join(lines)
+def _work_entry_analyze_post_block(slug: str) -> str:
+    return f"""WHEN WORKER COMPLETES:
+The worker stamps a --drift-reviewed verdict for every pending artifact and drives no further step.
+1. Tail the worker's final output to verify it stamped every pending artifact.
+2. Call `telec todo work {slug}` to re-enter the work state machine, which reads the stamped verdict and continues."""
+
+
+def format_work_entry_drift_bounce(
+    *,
+    slug: str,
+    project_root: str,
+    guidance: str,
+    pending_classes: str,
+    recommended_mode: str,
+) -> str:
+    """Dispatch the drift analyzer from the work-entry bounce on pending drift.
+
+    The work state machine owns the work-entry drift path end-to-end: on a
+    ``pending`` collapsed status it dispatches the ``next-drift-analyze`` worker
+    and tells the orchestrator to re-enter ``telec todo work`` once the analyzer
+    idles. The work orchestrator never calls ``telec todo prepare`` — its only
+    verb is ``telec todo work``.
+    """
+    request = ToolCallRequest(
+        command=f"/{SlashCommand.NEXT_DRIFT_ANALYZE.value}",
+        args=slug,
+        project=project_root,
+        guidance=guidance,
+        subfolder="",
+        post_block=_work_entry_analyze_post_block(slug),
+        additional_context=pending_classes,
+        note="Required reading for this worker: agents/commands/next-drift-analyze.md",
+        recommended_mode=recommended_mode,
+    )
+    return format_tool_call(request)
+
+
+def format_work_entry_substantive_handoff(slug: str) -> str:
+    """Hand the promoted claim-holder into prepare to re-derive on substantive drift.
+
+    A substantive work-entry drift bounce promotes the bounced work orchestrator
+    in place to prepare-orchestrator (same session, same ``active_runner`` claim).
+    This script directs that promoted session into the prepare state machine so it
+    re-derives the affected artifact under its new prepare-write authority. The
+    work orchestrator never calls ``telec todo prepare`` itself — the promotion
+    makes this session a prepare orchestrator first.
+    """
+    loader = format_command_loader_message(SlashCommand.NEXT_PREPARE.value, slug)
     return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
-WORK_ENTRY_DRIFT: {slug} has unresolved prepare-artifact drift. Worktree setup was not started.
+WORK_ENTRY_SUBSTANTIVE_DRIFT: {slug} has substantive prepare-artifact drift. Worktree setup was not started.
 
-{drift_block}
+Your session has been promoted in place from work-orchestrator to prepare-orchestrator for {slug}; your slug claim is unchanged. You now carry prepare-write authority, so the re-derivation write will be admitted.
 
 NEXT ACTION:
-1. Call `telec todo prepare {slug}`.
-2. Follow the prepare state machine's drift-analysis or re-derivation instructions.
-3. When prepare reaches PREPARED again, call `telec todo work {slug}`."""
+Become the prepare orchestrator for {slug}. Read the prepare orchestrator procedure:
+
+{loader}
+
+Then call `telec todo prepare {slug}` and follow its output verbatim. The prepare state machine re-derives the affected artifact, reaches PREPARED, and self-ends through its own terminal. Do not call `telec todo work {slug}` again from this session."""
 
 
 def format_finalize_handoff_complete(slug: str, child_session_ids: list[str] | None = None) -> str:

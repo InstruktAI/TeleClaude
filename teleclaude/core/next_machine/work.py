@@ -34,6 +34,7 @@ from teleclaude.core.next_machine.git_ops import (
     DRIFT_SUBSTANTIVE,
     ArtifactDriftStatus,
     _merge_origin_main_into_worktree,
+    compose_agent_guidance,
     get_head_commit,
     get_stash_entries,
 )
@@ -49,10 +50,14 @@ from teleclaude.core.next_machine.output_formatting import (
     HEARTBEAT_RESET_INSTRUCTION,
     format_error,
     format_kickback_terminal,
+    format_pending_classes_for_dispatch,
     format_send_command,
     format_stash_debt,
     format_work_entry_drift_bounce,
+    format_work_entry_substantive_handoff,
 )
+from teleclaude.core.next_machine.prepare_steps import DRIFT_ANALYZER_RECOMMENDED_MODE
+from teleclaude.core.next_machine.role_transition import promote_work_orchestrator_to_prepare
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
@@ -162,7 +167,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if precondition_error is not None:
         return precondition_error
 
-    drift_error = await _check_work_entry_drift(todos_db, resolved_slug, cwd, phase_slug)
+    drift_error = await _check_work_entry_drift(db, todos_db, resolved_slug, cwd, phase_slug)
     if drift_error is not None:
         return drift_error
 
@@ -339,8 +344,18 @@ def _merge_main_recovery_wait_clause(slug: str, lifecycle_phase: str) -> str:
     return f"When the builder reports idle after MERGE RECOVERY COMPLETE, call telec todo work {slug}."
 
 
-async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: str, phase_slug: str) -> str | None:
-    """Re-derive prepare drift before any worktree setup can run."""
+async def _check_work_entry_drift(
+    db: Db, todos_db: TodosDb, resolved_slug: str, cwd: str, phase_slug: str
+) -> str | None:
+    """Own the work-entry drift path before any worktree setup can run.
+
+    Re-derives drift, then branches three ways on the collapsed verdict: a
+    ``pending`` artifact dispatches the drift analyzer and re-enters work once it
+    idles; a ``substantive`` artifact promotes the slug's claim-holder in place
+    and hands the same session off to drive ``/next-prepare``; ``cosmetic`` and
+    ``fresh`` are non-blocking and proceed to worktree creation. The work
+    orchestrator never re-enters the prepare machine itself.
+    """
     drift_started = perf_counter()
     state = await todos_db.read_state(resolved_slug)
     if state is None:
@@ -365,12 +380,36 @@ async def _check_work_entry_drift(todos_db: TodosDb, resolved_slug: str, cwd: st
     )
     await writer.commit(todos_db, resolved_slug)
     drift = collapse_drift(drift_result)
-    if _has_work_entry_blocking_drift(drift, current_phase):
-        reason = _work_entry_drift_reason(drift, current_phase)
+    verdict = _work_entry_drift_verdict(drift, current_phase)
+    if verdict is None:
+        _log_next_work_phase(phase_slug, "drift_check", drift_started, "proceed", "fresh")
+        return None
+    reason = _work_entry_drift_reason(drift, current_phase)
+    if verdict == DRIFT_PENDING:
         _log_next_work_phase(phase_slug, "drift_check", drift_started, "bounce", reason)
-        return format_work_entry_drift_bounce(resolved_slug, drift)
-    _log_next_work_phase(phase_slug, "drift_check", drift_started, "proceed", "fresh")
-    return None
+        guidance = await compose_agent_guidance(db)
+        return format_work_entry_drift_bounce(
+            slug=resolved_slug,
+            project_root=cwd,
+            guidance=guidance,
+            pending_classes=format_pending_classes_for_dispatch(drift_result),
+            recommended_mode=DRIFT_ANALYZER_RECOMMENDED_MODE,
+        )
+    session_id = get_session_id() or ""
+    promoted = await promote_work_orchestrator_to_prepare(db, todos_db, resolved_slug, session_id)
+    if not promoted:
+        _log_next_work_phase(phase_slug, "drift_check", drift_started, "error", f"promotion_refused:{reason}")
+        return format_error(
+            "PROMOTION_REFUSED",
+            (
+                f"Substantive work-entry drift on {resolved_slug} requires promoting the slug's "
+                f"claim-holder to drive re-derivation, but this session is not the live claim-holder "
+                f"acting as work-orchestrator. No role change was made."
+            ),
+            next_call=f"telec todo work {resolved_slug}",
+        )
+    _log_next_work_phase(phase_slug, "drift_check", drift_started, "promote", reason)
+    return format_work_entry_substantive_handoff(resolved_slug)
 
 
 async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: str, cwd: str) -> str | None:
@@ -402,8 +441,25 @@ async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: s
     return format_kickback_terminal(resolved_slug, child_session_ids)
 
 
-def _has_work_entry_blocking_drift(drift: dict[str, ArtifactDriftStatus], phase: LifecyclePhase) -> bool:
-    return any(status in _work_entry_blocking_statuses(phase) for status in drift.values())
+def _work_entry_drift_verdict(
+    drift: dict[str, ArtifactDriftStatus], phase: LifecyclePhase
+) -> ArtifactDriftStatus | None:
+    """Collapse per-artifact drift into the single actionable work-entry verdict.
+
+    ``pending`` takes precedence over ``substantive``: any unreviewed artifact
+    must be analyzed before the claim-holder is promoted, so the analyzer runs
+    first and the substantive promotion happens on a later re-entry once every
+    artifact carries a verdict. ``cosmetic`` and ``fresh`` are non-blocking and
+    collapse to ``None``. Phase gates which statuses are actionable — at a work
+    phase only ``substantive`` blocks, so ``pending`` mid-build proceeds.
+    """
+    blocking = _work_entry_blocking_statuses(phase)
+    statuses = set(drift.values())
+    if DRIFT_PENDING in blocking and DRIFT_PENDING in statuses:
+        return DRIFT_PENDING
+    if DRIFT_SUBSTANTIVE in blocking and DRIFT_SUBSTANTIVE in statuses:
+        return DRIFT_SUBSTANTIVE
+    return None
 
 
 def _work_entry_drift_reason(drift: dict[str, ArtifactDriftStatus], phase: LifecyclePhase) -> str:

@@ -155,6 +155,122 @@
 # name: test_prepared_entry_advances_to_build_started_without_removed_phase_commands
   'BUILD_START_DISPATCH: prepared-work'
 # ---
+# name: test_work_entry_cosmetic_drift_proceeds_to_build_without_promotion
+  'BUILD_START_DISPATCH: prepared-work'
+# ---
+# name: test_work_entry_pending_drift_dispatches_analyzer_and_reenters_work
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  agent guidance
+  
+  Based on the above guidance and the work item details, select the best agent. Recommended thinking mode for this worker: fast — use it unless you have a specific reason to override.
+  
+  PARALLELIZATION (append to --additional-context):
+  "When the work decomposes into independent sub-tasks with no data dependency, dispatch them concurrently using your runtime's own native parallel mechanism instead of serializing them; ensure parallel workers never mutate the same files."
+  
+  Dispatch metadata: command="/next-drift-analyze" args="prepared-work" project="/repo" subfolder=""
+  
+  ADDITIONAL CONTEXT FOR WORKER:
+  PENDING_DRIFT: implementation-plan=[owned-snippet]
+  
+  telec sessions run --command "/next-drift-analyze" --args "prepared-work" --project "/repo"   --agent "<your selection>" --mode "fast" --subfolder "" --additional-context 'PENDING_DRIFT: implementation-plan=[owned-snippet]'
+  Save the returned session_id.
+  
+  STEP 2 - START THE BACKUP HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Start a 300-second backup heartbeat timer using your runtime's own non-blocking timer mechanism — per the non-blocking Heartbeat policy, it must never hold a tool call open or block you from user input. Note its handle so you can cancel it later.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  INTENT — read this before continuing: the notification is the completion signal; you will be told.
+  This timer is a backup check-in only — its sole purpose is to re-engage YOUR judgment when you have
+  heard nothing. It is not a control loop and it does not watch the worker; you do.
+  - The timer is always a bare, fire-once delay. It never tests conditions, never invokes telec, never loops.
+    (A test deciding "done/not done" is assessment smuggled into automation — forbidden.)
+  - Exactly one timer exists at a time. Cancel the existing one before starting a new one.
+  - 300 seconds is the floor. NEVER set a tighter heartbeat.
+  
+  STEP 3 - WAIT PASSIVELY:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Do nothing until an event arrives in your conversation. No tailing between events, no extra
+  watchers, no tighter timers.
+  
+  TAILING DISCIPLINE (every arriving event — a notification or your backup timer completing —
+  licenses exactly one tail; no event, no tail):
+  - First tail: default latest-turn window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: the session is non-terminal and the latest observed activity is not an authoritative stop.
+  - `idle`: the session is terminal (`closing`/`closed` or `closed_at` set), or the latest turn has an agent stop with no later input.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival: tail once and act on what you read.
+  - On timer completion (you heard nothing): tail once and judge what you see. Silence may be deep
+    work, saturation, or a dead worker — that assessment is yours, never a script's.
+  - If `agent_status` is `active`: reset ONE bare backup timer and return to passive waiting.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: reset ONE bare backup timer and return to passive waiting.
+  - RECOVERY: if you cannot tell whether your timer survived (restart, compaction): kill any timers
+    you can, start ONE bare timer, resume passive waiting. Never compensate for uncertainty with
+    extra watchers or shorter intervals.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: Cancel your existing backup heartbeat timer, then start a fresh 300-second one the same way — your runtime's own non-blocking timer mechanism, per the non-blocking Heartbeat policy (never hold a tool call open, never block user input). The timer is a bare, fire-once delay that re-engages your judgment — never a condition test, never a tighter interval.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER COMPLETES:
+  The worker stamps a --drift-reviewed verdict for every pending artifact and drives no further step.
+  1. Tail the worker's final output to verify it stamped every pending artifact.
+  2. Call `telec todo work prepared-work` to re-enter the work state machine, which reads the stamped verdict and continues.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Required reading for this worker: agents/commands/next-drift-analyze.md
+  '''
+# ---
+# name: test_work_entry_substantive_drift_promotes_claim_holder_in_place
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  WORK_ENTRY_SUBSTANTIVE_DRIFT: prepared-work has substantive prepare-artifact drift. Worktree setup was not started.
+  
+  Your session has been promoted in place from work-orchestrator to prepare-orchestrator for prepared-work; your slug claim is unchanged. You now carry prepare-write authority, so the re-derivation write will be admitted.
+  
+  NEXT ACTION:
+  Become the prepare orchestrator for prepared-work. Read the prepare orchestrator procedure:
+  
+  Read <commands>/next-prepare.md and follow it exactly as the active instruction set for this session.
+  
+  Treat the following as provided inputs to that instruction set:
+  prepared-work
+  
+  Then call `telec todo prepare prepared-work` and follow its output verbatim. The prepare state machine re-derives the affected artifact, reaches PREPARED, and self-ends through its own terminal. Do not call `telec todo work prepared-work` again from this session.
+  '''
+# ---
+# name: test_work_entry_substantive_drift_refuses_non_claim_holder
+  '''
+  ERROR: PROMOTION_REFUSED
+  Substantive work-entry drift on prepared-work requires promoting the slug's claim-holder to drive re-derivation, but this session is not the live claim-holder acting as work-orchestrator. No role change was made.
+  
+  NEXT: telec todo work prepared-work
+  '''
+# ---
+# name: test_work_entry_substantive_drift_refuses_non_work_orchestrator
+  '''
+  ERROR: PROMOTION_REFUSED
+  Substantive work-entry drift on prepared-work requires promoting the slug's claim-holder to drive re-derivation, but this session is not the live claim-holder acting as work-orchestrator. No role change was made.
+  
+  NEXT: telec todo work prepared-work
+  '''
+# ---
 # name: test_work_unknown_slug_does_not_create_todo_row
   '''
   ERROR: TODO_NOT_FOUND
