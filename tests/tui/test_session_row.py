@@ -292,6 +292,33 @@ def test_session_human_chip_after_agent_mode(wire_people, monkeypatch) -> None:
     assert chip_span.style.color.name == text
 
 
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-17")
+def test_session_chip_inversion_compounds_filter_and_selection(wire_people) -> None:
+    # Selection, preview, and the live filter each invert the session chip
+    # (background and text swap); filter + selection at once cancel to resting.
+    wire_people([ALICE, BOB])
+
+    def chip(*, selected: bool = False, previewed: bool = False, filtered: bool = False) -> object | None:
+        row = SessionRow(
+            _owned_session(title="/next-work x", working_slug="x", human_email="alice@example.com"),
+            display_index="1",
+        )
+        if filtered:
+            row._active_human_filter = "alice@example.com"
+        return _span_over(row._build_title_line(selected=selected, previewed=previewed), "AS")
+
+    resting = chip()
+    assert resting is not None
+    for inverted in (chip(selected=True), chip(previewed=True), chip(filtered=True)):
+        assert inverted is not None
+        assert inverted.style.bgcolor.name == resting.style.color.name
+        assert inverted.style.color.name == resting.style.bgcolor.name
+    both = chip(selected=True, filtered=True)
+    assert both is not None
+    assert both.style.bgcolor.name == resting.style.bgcolor.name
+    assert both.style.color.name == resting.style.color.name
+
+
 class _JumpApp(App[None]):
     def __init__(self, row: SessionRow) -> None:
         super().__init__()

@@ -27,7 +27,13 @@ resolver. A session's work slug is its `working_slug`, present for orchestrator
 and worker roles alike. The chip's colors come from the per-person overlay
 schema documented in `project/spec/feature/config/person-chip-color`; this spec
 governs how those cells are rendered, including the theme-derived defaults for
-unset cells.
+unset cells. The resting chip is a low-contrast fill — the theme `subtle`
+background (the stop nearest the terminal background) under `highlight` text. An
+active state inverts those two ends, so the chip reads as the high-contrast
+black/white fill. Two triggers drive that inversion — the chip's person being
+the live filter, and the chip's row being selected or previewed — and they
+compound as a single inversion, so both at once return the chip to its resting
+look.
 
 A rendering invariant governs every chip and every highlighted span: **the
 styled span contains only its own content — never a leading or trailing space.**
@@ -43,7 +49,7 @@ Separating whitespace is rendered in the base style, outside the styled region.
 Given a person whose color.background.dark and color.text.dark are unset
 And the active theme is dark mode
 When the person's chip is rendered
-Then the background uses the theme standard-grey default
+Then the background uses the theme subtle-grey default (the low-contrast stop nearest the terminal background)
 And the text uses the theme highlight default (white)
 And a set cell, when present, is used instead of the default
 ```
@@ -190,6 +196,15 @@ Given the operator set the human filter while in one view
 When the operator switches to the other participating view
 Then the same human filter is already applied there
 And the setting is persisted once as a single source of truth across both views and process restarts
+```
+
+#### UC-XNAV-17: Selection and filter inversions compound as a single XOR
+
+```
+Given a person chip on a row
+When the row is selected or previewed, or the chip's person is the live filter
+Then the chip renders inverted (its background and text swap)
+And when both the chip is the live filter and its row is selected or previewed, the two inversions cancel and the chip renders in its resting colors
 ```
 
 ## Known caveats

@@ -373,18 +373,30 @@ def test_todo_text_columns_bold_only_when_claimed() -> None:
     assert not unclaimed.style.bold
 
 
-def test_todo_chip_inverts_when_row_selected(wire_people) -> None:
-    # Selecting a row inverts its chip (background and text swap), so the chip
-    # always flips against its resting state. A non-selected, non-filtered chip
-    # rests at subtle-bg / highlight-text.
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-17")
+def test_todo_chip_inversion_compounds_filter_and_selection(wire_people) -> None:
+    # Selection and the live filter each invert the chip (background and text
+    # swap); both at once cancel back to the resting colors.
     wire_people([ALICE, BOB])
-    resting = _span_over(_row(_owned_todo("human:alice@example.com")).render(), "AS")
-    selected_row = _row(_owned_todo("human:alice@example.com"))
-    selected_row.add_class("selected")
-    selected = _span_over(selected_row.render(), "AS")
-    assert resting is not None and selected is not None
-    assert selected.style.bgcolor.name == resting.style.color.name
-    assert selected.style.color.name == resting.style.bgcolor.name
+
+    def chip(*, selected: bool, filtered: bool) -> object | None:
+        row = _row(_owned_todo("human:alice@example.com"))
+        if selected:
+            row.add_class("selected")
+        if filtered:
+            row._active_human_filter = "alice@example.com"
+        return _span_over(row.render(), "AS")
+
+    resting = chip(selected=False, filtered=False)
+    assert resting is not None
+    for inverted in (chip(selected=True, filtered=False), chip(selected=False, filtered=True)):
+        assert inverted is not None
+        assert inverted.style.bgcolor.name == resting.style.color.name
+        assert inverted.style.color.name == resting.style.bgcolor.name
+    both = chip(selected=True, filtered=True)
+    assert both is not None
+    assert both.style.bgcolor.name == resting.style.bgcolor.name
+    assert both.style.color.name == resting.style.color.name
 
 
 def test_single_user_suppresses_todo_chip(wire_people) -> None:
