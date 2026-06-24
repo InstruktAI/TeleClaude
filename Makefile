@@ -1,4 +1,4 @@
-.PHONY: help install link certs format lint check-no-unit-tests test-e2e test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
+.PHONY: help install link certs format lint check-no-unit-tests test-e2e test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -30,6 +30,8 @@ help:
 	@echo "  make coverage         Run tests with coverage report"
 	@echo "  make coverage-html    Generate HTML coverage report"
 	@echo "  make coverage-report  Open HTML coverage report in browser"
+	@echo "  make cron-smoke       List configured jobs and check recent cron runner failures"
+	@echo ""
 	@echo "Daemon Control:"
 	@echo "  make start        Start daemon via launchd"
 	@echo "  make stop         Stop daemon AND disable service (emergency only)"
@@ -264,6 +266,13 @@ kill:
 
 status:
 	@./bin/daemon-control.sh status
+
+cron-smoke:
+	@echo "Listing configured cron jobs..."
+	@.venv/bin/python scripts/cron_runner.py --list
+	@echo ""
+	@echo "Recent cron runner failures (last $(CRON_SMOKE_SINCE))..."
+	@instrukt-ai-logs teleclaude --since $(CRON_SMOKE_SINCE) --grep "failed to load job"
 
 bootstrap:
 	@./bin/install.sh --yes

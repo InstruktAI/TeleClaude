@@ -1,0 +1,10 @@
+[Unit]
+Description=TeleClaude cron runner (one-shot, fired by teleclaude-cron.timer)
+
+[Service]
+Type=oneshot
+User={{USER}}
+WorkingDirectory={{WORKING_DIR}}
+Environment=PATH={{PATH}}
+Environment=UV_NO_SYNC=1
+ExecStart=/bin/bash -lc '{{COMMAND}}'

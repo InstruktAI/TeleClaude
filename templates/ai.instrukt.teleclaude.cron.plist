@@ -6,9 +6,7 @@
     <string>ai.instrukt.teleclaude.cron</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{{UV_PATH}}</string>
-        <string>run</string>
-        <string>--quiet</string>
+        <string>{{PYTHON_PATH}}</string>
         <string>{{WORKING_DIR}}/scripts/cron_runner.py</string>
     </array>
     <key>WorkingDirectory</key>

@@ -46,6 +46,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     V1_DAEMON_LABEL="ai.instrukt.teleclaude.daemon"
     TELEC_DAEMON_LABEL="ai.instrukt.teleclaude.telec-daemon"
     DOCS_WATCH_LABEL="ai.instrukt.teleclaude.docs-watch"
+    CRON_LABEL="ai.instrukt.teleclaude.cron"
     SERVICE_LABEL="$V1_DAEMON_LABEL"
     SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -97,6 +98,7 @@ managed_launchd_labels() {
     printf '%s\n' "$V1_DAEMON_LABEL"
     printf '%s\n' "$TELEC_DAEMON_LABEL"
     printf '%s\n' "$DOCS_WATCH_LABEL"
+    printf '%s\n' "$CRON_LABEL"
 }
 
 unit_name() {
@@ -109,6 +111,9 @@ unit_name() {
             ;;
         "$DOCS_WATCH_LABEL")
             printf 'docs-watch'
+            ;;
+        "$CRON_LABEL")
+            printf 'cron'
             ;;
         *)
             printf '%s' "$1"
@@ -279,6 +284,45 @@ install_systemd_docs_watch_service() {
     sudo systemctl restart "$service_name"
 }
 
+install_systemd_cron_service() {
+    local service_name="teleclaude-cron"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    local timer_file="/etc/systemd/system/${service_name}.timer"
+    local service_template="$PROJECT_ROOT/templates/teleclaude-cron.service"
+    local timer_template="$PROJECT_ROOT/templates/teleclaude-cron.timer"
+    # Run via the project venv interpreter (not `uv run`): the script's inline
+    # PEP-723 metadata forces `uv run` into an isolated env without the project's
+    # dependencies. Mirrors the launchd cron unit and the daemon service.
+    local command="$PROJECT_ROOT/.venv/bin/python scripts/cron_runner.py"
+    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+
+    log_info "Creating cron systemd service + timer..."
+
+    if [ ! -f "$service_template" ]; then
+        log_error "Template file not found: $service_template"
+        exit 1
+    fi
+    if [ ! -f "$timer_template" ]; then
+        log_error "Template file not found: $timer_template"
+        exit 1
+    fi
+
+    local service_content
+    service_content=$(sed \
+        -e "s|{{COMMAND}}|$command|g" \
+        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
+        -e "s|{{USER}}|$USER|g" \
+        -e "s|{{PATH}}|$service_path|g" \
+        "$service_template")
+    printf '%s\n' "$service_content" | sudo tee "$service_file" > /dev/null
+
+    sudo tee "$timer_file" < "$timer_template" > /dev/null
+    log_info "Created cron systemd service + timer files"
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now "${service_name}.timer"
+}
+
 install_launchd_service() {
     local service_name="$V1_DAEMON_LABEL"
     local plist_file
@@ -412,6 +456,45 @@ install_launchd_docs_watch_service() {
     fi
 }
 
+install_launchd_cron_service() {
+    local service_name="$CRON_LABEL"
+    local plist_file
+    plist_file="$(launchd_plist_path "$service_name")"
+    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.cron.plist"
+
+    mkdir -p "$HOME/Library/LaunchAgents"
+
+    log_info "Creating cron launchd service from template..."
+
+    if [ ! -f "$template_file" ]; then
+        log_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    # The plist invokes the interpreter directly (no shell), so it runs the
+    # project venv's Python — mirroring the daemon plist's {{PYTHON_PATH}}. The
+    # script's inline PEP-723 metadata would otherwise force `uv run` into an
+    # isolated env that lacks the project's dependencies.
+    local launchd_path
+    launchd_path="$(launchd_path_env)"
+
+    sed -e "s|{{PYTHON_PATH}}|$PROJECT_ROOT/.venv/bin/python|g" \
+        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
+        -e "s|{{PATH}}|$launchd_path|g" \
+        -e "s|{{HOME}}|$HOME|g" \
+        "$template_file" > "$plist_file"
+
+    log_info "Created cron plist file"
+
+    log_info "Loading cron service..."
+    local domain
+    domain="$(launchd_domain)"
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
+        launchctl load "$plist_file"
+    fi
+}
+
 install_service() {
     log_info "Installing System Service"
 
@@ -419,12 +502,14 @@ install_service() {
         linux)
             install_systemd_service
             install_systemd_docs_watch_service
+            install_systemd_cron_service
             ;;
         macos)
             install_launchd_service
             # telec-daemon (v2) is NOT installed here pre-cutover; it is
             # opt-in via the `install-telec-daemon` subcommand only.
             install_launchd_docs_watch_service
+            install_launchd_cron_service
             ;;
     esac
 }
@@ -758,6 +843,30 @@ status_launchd_unit() {
     return 0
 }
 
+# Status check for a periodic (StartInterval) launchd unit. Unlike a continuous
+# daemon, such a unit is loaded but idle between its scheduled runs, so a
+# non-"running" state is healthy, not a failure. Reports loaded/unloaded and logs
+# the last exit code informationally.
+status_launchd_periodic_unit() {
+    local label="$1"
+    local domain
+    domain="$(launchd_domain)"
+    local service_print
+    service_print=$(launchctl print "$domain/$label" 2>/dev/null || true)
+
+    if [ -z "$service_print" ]; then
+        log_warn "$(unit_name "$label"): NOT loaded"
+        return 1
+    fi
+
+    local state
+    local last_exit
+    state=$(echo "$service_print" | awk -F' = ' '/^[[:space:]]*state[[:space:]]*=/{print $2; exit}')
+    last_exit=$(echo "$service_print" | awk -F' = ' '/^[[:space:]]*last exit code[[:space:]]*=/{print $2; exit}')
+    log_info "$(unit_name "$label"): loaded (periodic; state: ${state:-idle}, last_exit: ${last_exit:-unknown})"
+    return 0
+}
+
 # Poll an API endpoint over the unix socket; echo "ok" when the HTTP status is in
 # the accepted set, "fail" otherwise. Shared by start (readiness gate) and status.
 check_api_endpoint() {
@@ -870,11 +979,17 @@ start_daemon() {
         fi
         start_launchd_unit "$TELEC_DAEMON_LABEL"
         start_launchd_unit "$DOCS_WATCH_LABEL"
+        # Load-only (not kickstart): a periodic StartInterval unit must be
+        # loaded without forcing an off-schedule run on every start.
+        start_launchd_unit "$CRON_LABEL"
     else
         # Linux: enable and start systemd service
         log_info "Enabling and starting systemd service..."
         sudo systemctl enable "$SERVICE_LABEL"
         sudo systemctl start "$SERVICE_LABEL"
+        # Linux has no managed-set self-heal; install/heal the cron timer
+        # idempotently on every start so no host is left without the clock.
+        install_systemd_cron_service
     fi
 
     # Wait for daemon to come up. This uses a soft warning threshold rather than
@@ -1011,6 +1126,8 @@ status_daemon() {
             log_info "telec-daemon (v2, pre-cutover): not installed — OK"
         fi
         status_launchd_unit "$DOCS_WATCH_LABEL" || overall_ok=1
+        # cron is a periodic StartInterval unit: loaded but idle between runs.
+        status_launchd_periodic_unit "$CRON_LABEL" || overall_ok=1
     fi
 
     # Check service manager status
@@ -1019,6 +1136,12 @@ status_daemon() {
         log_info "systemctl status: $SERVICE_STATUS"
         if [ "$SERVICE_STATUS" != "active" ]; then
             log_error "Service is not active: $SERVICE_STATUS"
+            return 1
+        fi
+        CRON_TIMER_STATUS=$(systemctl is-active teleclaude-cron.timer 2>/dev/null || echo "inactive")
+        log_info "cron timer status: $CRON_TIMER_STATUS"
+        if [ "$CRON_TIMER_STATUS" != "active" ]; then
+            log_error "cron timer is not active: $CRON_TIMER_STATUS"
             return 1
         fi
     fi
@@ -1103,12 +1226,18 @@ restart_daemon() {
     if [ "$PLATFORM" = "macos" ]; then
         local domain
         domain="$(launchd_domain)"
+        # restart reaches no install path on its own; heal a missing managed
+        # plist (e.g. cron) so `make restart` reinstalls it, matching start.
+        ensure_launchd_managed_plists
         KICKSTART_OUT=$(launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>&1) || {
             log_error "launchctl kickstart failed: $KICKSTART_OUT"
             return 1
         }
         restart_launchd_unit "$TELEC_DAEMON_LABEL"
         restart_launchd_unit "$DOCS_WATCH_LABEL"
+        # Load-only: keep the periodic unit loaded without forcing an
+        # off-schedule run (do not kickstart it).
+        start_launchd_unit "$CRON_LABEL"
 
         # PID may remain unchanged on some macOS restarts; verify via health instead.
         NEW_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
@@ -1116,6 +1245,9 @@ restart_daemon() {
             log_warn "launchctl kickstart pid unchanged ($NEW_PID); verifying health"
         fi
     else
+        # Linux has no managed-set self-heal; install/heal the cron timer
+        # idempotently before restart so a missing timer is restored.
+        install_systemd_cron_service
         sudo systemctl restart "$SERVICE_LABEL"
     fi
 
