@@ -348,6 +348,31 @@ def test_todo_chip_color_theme_default_and_verbatim(wire_people, monkeypatch) ->
     assert bob_span.style.color.name == theme.get_neutral_color("highlight")
 
 
+def _kind_todo(*, claimed: bool) -> TodoItem:
+    return TodoItem(
+        slug="claim-work",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=False,
+        kind="feature",
+        lifecycle_phase=None,
+        active_runner="runner-1" if claimed else None,
+    )
+
+
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-10")
+def test_todo_text_columns_bold_only_when_claimed() -> None:
+    # The text status columns carry bold weight only while the todo is claimed by
+    # a live runner; an unclaimed todo renders them at normal weight. Asserting on
+    # the span's bold flag (not .plain) is what guards the claim-state signal.
+    claimed = _span_over(_row(_kind_todo(claimed=True)).render(), "feat")
+    unclaimed = _span_over(_row(_kind_todo(claimed=False)).render(), "feat")
+    assert claimed is not None and unclaimed is not None
+    assert claimed.style.bold is True
+    assert not unclaimed.style.bold
+
+
 def test_single_user_suppresses_todo_chip(wire_people) -> None:
     # A sole registered person → single-user mode: the ownership surface is
     # suppressed, so an owned todo renders no chip (SC-6).

@@ -495,38 +495,32 @@ class TodoRow(TelecMixin, Widget):
                 _PHASE_PREFIX_KIND,
                 _display_kind(self.todo.kind),
                 w.get("K", 0),
-                Style(color=_kind_color(self.todo.kind), bold=True),
+                Style(color=_kind_color(self.todo.kind)),
             )
         )
 
         # Icebox items show P:icebox only — no work-phase columns
         if self.todo.status == TodoStatus.ICEBOX:
             result.append_text(
-                self._build_col(
-                    _PHASE_PREFIX_LIFECYCLE, "icebox", w.get("P", 0), Style(color=_icebox_color(), bold=True)
-                )
+                self._build_col(_PHASE_PREFIX_LIFECYCLE, "icebox", w.get("P", 0), Style(color=_icebox_color()))
             )
             return self._finish_columns(result)
 
         if _approval_pending(self.todo):
             result.append_text(
-                self._build_col(
-                    _PHASE_PREFIX_LIFECYCLE, "approve", w.get("P", 0), Style(color=_gold_color(), bold=True)
-                )
+                self._build_col(_PHASE_PREFIX_LIFECYCLE, "approve", w.get("P", 0), Style(color=_gold_color()))
             )
             return self._finish_columns(result)
 
         # Trashed items show T:age only
         if self.todo.status == TodoStatus.REMOVED:
             age = format_relative_time(self.todo.removed_at) if self.todo.removed_at else ""
-            result.append_text(self._build_col("T", age, w.get("P", 0), Style(color=_trashed_color(), bold=True)))
+            result.append_text(self._build_col("T", age, w.get("P", 0), Style(color=_trashed_color())))
             return self._finish_columns(result)
 
         if self.todo.kind is None:
             result.append_text(
-                self._build_col(
-                    _PHASE_PREFIX_LIFECYCLE, "classify", w.get("P", 0), Style(color=_gold_color(), bold=True)
-                )
+                self._build_col(_PHASE_PREFIX_LIFECYCLE, "classify", w.get("P", 0), Style(color=_gold_color()))
             )
             return self._finish_columns(result)
 
@@ -542,30 +536,26 @@ class TodoRow(TelecMixin, Widget):
         p_result = lifecycle_phase_label(self.todo.lifecycle_phase)
         if p_result is not None:
             p_label, p_value, p_color = p_result
-            result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))
+            result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color)))
             return self._finish_columns(result)
 
         # 2. Active or queued integration phase — render in the P column slot for alignment
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
             i_label, i_value, i_color = i_result
-            result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color, bold=True)))
+            result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color)))
             return self._finish_columns(result)
 
         # 3. Work phase (build != pending) — existing B/R/D path
         if bs is not None and bs != _TODO_STATUS_PENDING:
             b_val = bs if bs and bs != _TODO_STATUS_PENDING else ""
             result.append_text(
-                self._build_col(
-                    "B", b_val, w.get("B", 0), Style(color=ok if bs == _TODO_STATUS_COMPLETE else gold, bold=True)
-                )
+                self._build_col("B", b_val, w.get("B", 0), Style(color=ok if bs == _TODO_STATUS_COMPLETE else gold))
             )
 
             r_val = _display_review_status(rs) if rs and rs != _TODO_STATUS_PENDING else ""
             result.append_text(
-                self._build_col(
-                    "R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold, bold=True)
-                )
+                self._build_col("R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold))
             )
 
             ds = self.todo.deferrals_status
