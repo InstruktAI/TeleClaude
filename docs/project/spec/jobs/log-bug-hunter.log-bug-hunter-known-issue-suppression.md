@@ -48,7 +48,8 @@ shape `{version, suppressions: [...]}`. Each suppression carries:
 - `id`: stable identifier generated at registration; the `unsuppress` handle.
 - `pattern`: the signature matched against a candidate error line.
 - `match`: `substring` (default, literal) or `regex` (opt-in).
-- `disposition`: `expected` or `wontfix` — record-only intent, no effect on matching.
+- `disposition`: `expected` or `wontfix`, defaulting to `wontfix` — record-only
+  intent, no effect on matching.
 - `reason`: human-readable justification.
 - `source_bug`: optional slug of the bug whose triage produced the suppression.
 - `created_by`, `created_at`: provenance.
