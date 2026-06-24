@@ -17,12 +17,14 @@ if [ -n "${PROJECT_ROOT:-}" ]; then
     PROJECT_ROOT="$(cd "$PROJECT_ROOT" && pwd)"
 else
     PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    # Linked worktrees live at <main>/trees/<name>; the daemon must always home
-    # to the main checkout (only it carries the runtime .env). When this copy of
-    # the script runs from a worktree, climb back out to the main root.
-    if [ "$(basename "$(dirname "$PROJECT_ROOT")")" = "trees" ]; then
-        PROJECT_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
-    fi
+fi
+# Host services may only be controlled from the main checkout — only it carries
+# the runtime .env, and a worktree-rooted service would pin host lifecycle to an
+# ephemeral branch checkout. Linked worktrees live at <main>/trees/<name>:
+# refuse, loudly, however PROJECT_ROOT was resolved (derived or explicit).
+if [ "$(basename "$(dirname "$PROJECT_ROOT")")" = "trees" ]; then
+    echo "[FATAL] daemon-control.sh invoked from a worktree ($PROJECT_ROOT). Controlling host services from a worktree is not allowed." >&2
+    exit 1
 fi
 
 # Configuration
