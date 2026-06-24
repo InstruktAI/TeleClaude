@@ -10,6 +10,7 @@ from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 
 pytestmark = pytest.mark.functional
 
@@ -397,6 +398,84 @@ def test_todo_chip_inversion_compounds_filter_and_selection(wire_people) -> None
     assert both is not None
     assert both.style.bgcolor.name == resting.style.bgcolor.name
     assert both.style.color.name == resting.style.color.name
+
+
+def _status_item(
+    status: TodoStatus,
+    *,
+    kind: str | None = "feature",
+    lifecycle_phase: str | None = None,
+    task_plan_digest: str | None = None,
+    task_approved_digest: str | None = None,
+    schedule: str | None = None,
+) -> TodoItem:
+    return TodoItem(
+        slug="work",
+        status=status,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=False,
+        kind=kind,
+        lifecycle_phase=lifecycle_phase,
+        task_plan_digest=task_plan_digest,
+        task_approved_digest=task_approved_digest,
+        schedule=schedule,
+    )
+
+
+def test_todo_status_glyph_weight_and_color_track_status() -> None:
+    # The active status glyph carries the active color + bold weight; a draft
+    # glyph is the neutral draft color and not bold. `.plain` observes neither.
+    # Kills: dropping `bold = label == active` in _status_style, or mapping the
+    # active status to the draft color.
+    colors = todo_row_mod._STATUS_COLORS_DARK if theme.is_dark_mode() else todo_row_mod._STATUS_COLORS_LIGHT
+    active = _span_over(_row(_status_item(TodoStatus.IN_PROGRESS)).render(), "■")
+    draft = _span_over(_row(_status_item(TodoStatus.PENDING)).render(), "□")
+    assert active is not None and draft is not None
+    assert active.style.bold is True
+    assert not draft.style.bold
+    assert active.style.color.name == colors["active"]
+    assert draft.style.color.name == colors["draft"]
+
+
+def test_todo_phase_column_color_marks_settled_vs_in_flight() -> None:
+    # A settled-ok lifecycle phase renders its P-column value in the ok color; an
+    # in-flight phase renders gold. `.plain` cannot see the distinction.
+    # Kills: returning gold for a settled phase (or ok for an in-flight one) in
+    # lifecycle_phase_label.
+    settled = _row(_status_item(TodoStatus.IN_PROGRESS, lifecycle_phase=LifecyclePhase.PREPARED.value)).render()
+    in_flight = _row(_status_item(TodoStatus.IN_PROGRESS, lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value)).render()
+    settled_span = _span_over(settled, "prepared")
+    in_flight_span = _span_over(in_flight, "plan draft")
+    assert settled_span is not None and in_flight_span is not None
+    assert settled_span.style.color.name == todo_row_mod._ok_color()
+    assert in_flight_span.style.color.name == todo_row_mod._gold_color()
+    assert settled_span.style.color.name != in_flight_span.style.color.name
+
+
+def test_todo_state_icons_carry_weight_and_semantic_color() -> None:
+    # The task-authorized 'A' renders ok + bold; the authorization-pending '!'
+    # renders gold + bold. `.plain` sees the glyph but neither its weight nor its
+    # color. Kills: dropping bold on the icons, or swapping the ok/gold mapping.
+    authorized = _row(
+        _status_item(TodoStatus.IN_PROGRESS, kind="task", task_plan_digest="d", task_approved_digest="d")
+    ).render()
+    pending = _row(
+        _status_item(
+            TodoStatus.IN_PROGRESS,
+            kind="task",
+            lifecycle_phase="prepared",
+            task_plan_digest="d",
+            task_approved_digest="x",
+        )
+    ).render()
+    a_icon = _span_over(authorized, "A")
+    bang = _span_over(pending, "!")
+    assert a_icon is not None and bang is not None
+    assert a_icon.style.bold is True
+    assert a_icon.style.color.name == todo_row_mod._ok_color()
+    assert bang.style.bold is True
+    assert bang.style.color.name == todo_row_mod._gold_color()
 
 
 def test_single_user_suppresses_todo_chip(wire_people) -> None:
