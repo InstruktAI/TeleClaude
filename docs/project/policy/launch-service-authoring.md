@@ -40,7 +40,7 @@ visibility: 'public'
 <!-- planned-change:restore-host-cron-scheduler -->
 - A retired helper service was dead for over a month because its template had a hardcoded uv path that stopped existing.
 <!-- change:restore-host-cron-scheduler -->
-- A helper service was dead for over a month because its template had a hardcoded uv path that stopped existing; marker-based templates keep the cron unit and its peers resilient to relocated binaries.
+- Marker-based templates keep helper services resilient when binaries relocate (e.g., uv moving between `~/.local/bin` and `/opt/homebrew/bin`), so a host-installed unit keeps resolving its interpreter.
 <!-- /planned-change:restore-host-cron-scheduler -->
 
 ## Scope

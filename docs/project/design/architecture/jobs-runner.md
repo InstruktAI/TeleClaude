@@ -434,7 +434,6 @@ File: `~/.teleclaude/cron_todo state (todos.db)`
 <!-- change:restore-host-cron-scheduler -->
 - A host periodic trigger runs `scripts/cron_runner.py` every 5 minutes: on macOS the launchd unit `ai.instrukt.teleclaude.cron` (plist `templates/ai.instrukt.teleclaude.cron.plist`, `StartInterval 300`); on systemd the `teleclaude-cron.service` + `teleclaude-cron.timer` pair (`OnUnitActiveSec=5min`, `Persistent=true`).
 - `bin/daemon-control.sh` installs the trigger alongside the daemon and docs-watch on `start`/`restart` (idempotent). On macOS it is a managed unit, reinstalled if missing across daemon reinstalls; on systemd it is `enable`d at first install.
-- Script jobs fire daemon-independently (`uv run` subprocess); agent jobs dispatch through the daemon API (`_run_agent_job` creates a session), so an occurrence while the daemon is down marks failed and retries at the next scheduled window.
 <!-- /planned-change:restore-host-cron-scheduler -->
 - **Working directory**: Repository root
 - **Logs**: `/var/log/instrukt-ai/teleclaude/cron.log`
