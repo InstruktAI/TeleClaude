@@ -198,7 +198,11 @@ class SessionRow(TelecMixin, Widget):
         self._chip_region = None
         self._chip_email = None
         if chip is not None:
-            inverted = self._active_human_filter is not None and self._active_human_filter == chip.person_email
+            filtered = self._active_human_filter is not None and self._active_human_filter == chip.person_email
+            # Filter-on and row selection/preview each invert the chip; they
+            # compound as a single XOR, so the chip always flips against its
+            # resting state.
+            inverted = filtered != (selected or previewed)
             line.append(" ", style=style)
             chip_start = line.cell_len
             line.append(chip.initials, style=chip.style(inverted=inverted))

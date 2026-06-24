@@ -340,11 +340,11 @@ def test_todo_chip_color_theme_default_and_verbatim(wire_people, monkeypatch) ->
     bob_span = _span_over(_row(_owned_todo("human:bob@example.com")).render(), "BJ")
 
     assert alice_span is not None and bob_span is not None
-    # Unset background.dark → theme neutral standard-grey default; set text.dark → verbatim.
-    assert alice_span.style.bgcolor.name == theme.get_neutral_color("normal")
+    # Unset background.dark → theme neutral subtle-grey default; set text.dark → verbatim.
+    assert alice_span.style.bgcolor.name == theme.get_neutral_color("subtle")
     assert alice_span.style.color.name == text_dark
     # Fully unset → both cells fall back to the theme neutral defaults.
-    assert bob_span.style.bgcolor.name == theme.get_neutral_color("normal")
+    assert bob_span.style.bgcolor.name == theme.get_neutral_color("subtle")
     assert bob_span.style.color.name == theme.get_neutral_color("highlight")
 
 
@@ -371,6 +371,20 @@ def test_todo_text_columns_bold_only_when_claimed() -> None:
     assert claimed is not None and unclaimed is not None
     assert claimed.style.bold is True
     assert not unclaimed.style.bold
+
+
+def test_todo_chip_inverts_when_row_selected(wire_people) -> None:
+    # Selecting a row inverts its chip (background and text swap), so the chip
+    # always flips against its resting state. A non-selected, non-filtered chip
+    # rests at subtle-bg / highlight-text.
+    wire_people([ALICE, BOB])
+    resting = _span_over(_row(_owned_todo("human:alice@example.com")).render(), "AS")
+    selected_row = _row(_owned_todo("human:alice@example.com"))
+    selected_row.add_class("selected")
+    selected = _span_over(selected_row.render(), "AS")
+    assert resting is not None and selected is not None
+    assert selected.style.bgcolor.name == resting.style.color.name
+    assert selected.style.color.name == resting.style.bgcolor.name
 
 
 def test_single_user_suppresses_todo_chip(wire_people) -> None:

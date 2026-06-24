@@ -57,12 +57,15 @@ def _color_cell(color: PersonChipColor | None, attr: str, *, dark: bool) -> str 
 def _chip_colors(color: PersonChipColor | None) -> tuple[str, str]:
     """Resolve (background, text), filling unset cells from the theme defaults.
 
-    The theme-derived defaults are the neutral standard-grey background and the
-    neutral highlight text for the active mode. A set cell is always honored
-    verbatim.
+    The resting chip is a low-contrast fill: the neutral ``subtle`` background
+    (light grey in light mode, dark grey in dark mode — nearest the terminal
+    background) under the neutral ``highlight`` text (the maximum-contrast stop).
+    Inversion (filter-on, or a selected/previewed row) swaps these two ends, so
+    an active chip reads as the high-contrast black/white fill. A set cell is
+    always honored verbatim. See ``PersonChip.style``.
     """
     dark = is_dark_mode()
-    background = _color_cell(color, "background", dark=dark) or get_neutral_color("normal")
+    background = _color_cell(color, "background", dark=dark) or get_neutral_color("subtle")
     text = _color_cell(color, "text", dark=dark) or get_neutral_color("highlight")
     return background, text
 
