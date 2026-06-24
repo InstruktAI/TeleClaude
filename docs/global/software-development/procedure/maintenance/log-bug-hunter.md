@@ -45,7 +45,14 @@ The log-bug-hunter is one bug _source_ feeding the same pipeline that
 3. Deduplicate against previous runs:
    - Read the most recent run reports (up to 3).
    - Skip errors already reported in previous runs unless they have new context
-     (different traceback, increased frequency, new trigger).
+   (different traceback, increased frequency, new trigger).
+   <!-- planned:log-bug-hunter-known-issue-suppression -->
+   - Skip (record only) errors whose signal matches an active entry in the
+   project's suppression ledger (`telec bugs suppressions`). The service
+   subtracts suppressed signals before dispatch; this is the in-session
+   backstop for one that slips through. A suppressed signal is noted in the run
+   report, never filed as a bug.
+   <!-- /planned:log-bug-hunter-known-issue-suppression -->
 
 4. Process every error. For each error, decide fix, dispatch, or record:
    - **Fix inline** when all are true:
