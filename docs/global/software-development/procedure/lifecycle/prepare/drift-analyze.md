@@ -132,9 +132,20 @@ clears the drift stamps.
 
 ### 4. Go idle
 
+<!-- planned-change:work-entry-drift-role-promotion -->
+
 After every pending artifact has a stamp, end the worker turn. The
 dispatching session re-enters the state machine and acts on the new
 state.
+
+<!-- change:work-entry-drift-role-promotion -->
+
+After every pending artifact has a stamp, end the worker turn. The turn
+ends at the stamp — do not state what any state machine does next. The
+dispatching session follows its own machine's process, not this worker's
+narration.
+
+<!-- /planned-change:work-entry-drift-role-promotion -->
 
 ## Outputs
 
@@ -144,10 +155,23 @@ state.
 
 ## Discipline
 
+<!-- planned-change:work-entry-drift-role-promotion -->
+
 Classify drift only. Do not rewrite prepare artifacts, do not approve
 gates, do not start build work. The artifact's owning procedure
 (intake, architecture, plan) re-derives substantive drift when the
 dispatching session re-enters the state machine.
+
+<!-- change:work-entry-drift-role-promotion -->
+
+Classify drift only. Do not rewrite prepare artifacts, do not approve
+gates, do not start build work. Do not narrate or instruct the next
+process step: the turn ends at its `--drift-reviewed` stamp(s), and the
+dispatching session's own machine owns what happens next. Substantive drift
+is re-derived by the owning layer (intake, architecture, plan) under that
+machine's control, never on this worker's prompting.
+
+<!-- /planned-change:work-entry-drift-role-promotion -->
 
 A `cosmetic` verdict must be grounded in the actual evidence change for
 EVERY pending class, not assumed. If any pending class cannot be cleanly

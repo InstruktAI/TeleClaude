@@ -40,6 +40,8 @@ which it was made** — when a later change exceeds that anchor, the verdict
 expires and the artifact re-enters `pending` automatically. There is no
 silent acceptance of new drift behind a stale verdict.
 
+<!-- planned-change:work-entry-drift-role-promotion -->
+
 The feature integrates with the existing prepare lifecycle without adding
 a new phase: drift is derived inside the existing `BLOCKED` branch and
 cleared by the existing `--drift-reviewed` stamp surface. It also
@@ -52,6 +54,26 @@ PREPARED terminal's lineage-conditioned resume reminder has the bounced work
 orchestrator resume `telec todo work {slug}`, closing the loop without a human
 gate on either cosmetic or substantive verdicts (a fresh prepare that never
 bounced self-ends at the same terminal).
+
+<!-- change:work-entry-drift-role-promotion -->
+
+The feature integrates with the existing prepare lifecycle without adding
+a new phase: drift is derived inside the existing `BLOCKED` branch and
+cleared by the existing `--drift-reviewed` stamp surface. It also
+participates at the work-entry boundary: `telec todo work` calls the same
+shared derivation function before its `prepared → build_started` handoff. The
+work state machine owns the work-entry continuation — on a `pending` collapsed
+status it dispatches the `next-drift-analyze` worker and the orchestrator
+re-enters `telec todo work {slug}`; on the re-entered `substantive` status it
+promotes the claim-holder in place to `prepare-orchestrator` and hands that
+session off to drive `/next-prepare {slug}`; on `cosmetic` (valid anchor) it
+proceeds. The work orchestrator never calls `telec todo prepare`. Autonomous
+continuation needs no human gate on either verdict: the promoted session
+re-derives and self-ends through the prepare terminal, and work resumes only
+under the lifecycle runner's autostart toggle. See
+`@spec/feature/workflow/work-state-machine` for the continuation contract.
+
+<!-- /planned-change:work-entry-drift-role-promotion -->
 
 ## Canonical fields
 
@@ -232,12 +254,20 @@ order in work entry becomes:
 3. **Read state from the workflow context** (moved earlier — currently
    this happens inside the dispatch loop).
 4. **Call the shared drift derivation against repo-root state, NOT against
-   any worktree** (drift derivation compares against `origin/main` HEAD and
-   persisted provenance; no worktree is required).
+any worktree** (drift derivation compares against `origin/main` HEAD and
+persisted provenance; no worktree is required).
+<!-- planned-change:work-entry-drift-role-promotion -->
 5. If any artifact's collapsed drift status is `pending` or
-   `substantive`: return the bounce-to-prepare script. **No worktree
-   created. No state mutated. No worker dispatched.**
-6. Only when every artifact's collapsed drift status is `fresh` or
+`substantive`: return the bounce-to-prepare script. **No worktree
+created. No state mutated. No worker dispatched.**
+<!-- change:work-entry-drift-role-promotion -->
+6. If a collapsed drift status is `pending`, dispatch the
+`next-drift-analyze` worker and have the orchestrator re-enter on
+`telec todo work`; if it is `substantive`, promote the claim-holder in
+place and hand that session off to drive `/next-prepare {slug}`. **No
+worktree created. No state mutated.**
+<!-- /planned-change:work-entry-drift-role-promotion -->
+7. Only when every artifact's collapsed drift status is `fresh` or
    `cosmetic` (with a valid anchor): proceed with worktree preparation,
    the origin/main merge, the `prepared → build_started` handoff, and
    the dispatch loop.
@@ -249,17 +279,28 @@ worktree work.
 Detail of the call itself:
 
 - The shared function takes the slug, the loaded todo state, the repo
-  root, the workflow context handle for dependency lookup, and a
-  snippet-digest callable — explicit injection rather than hidden
-  imports. Both the prepare BLOCKED branch and the work entry path call
-  it with the same evidence-loading rules so there is one source of
-  truth for drift status.
+root, the workflow context handle for dependency lookup, and a
+snippet-digest callable — explicit injection rather than hidden
+imports. Both the prepare BLOCKED branch and the work entry path call
+it with the same evidence-loading rules so there is one source of
+truth for drift status.
+<!-- planned-change:work-entry-drift-role-promotion -->
 - When the shared derivation reports any tracked artifact's collapsed
-  status as `pending` or `substantive`, work does NOT advance
-  `lifecycle_phase`, does NOT create or touch the worktree, and does NOT
-  dispatch any worker on the current call. It returns an orchestrator
-  script naming the affected artifacts and instructing the orchestrator
-  to call `telec todo prepare {slug}` to resolve drift.
+status as `pending` or `substantive`, work does NOT advance
+`lifecycle_phase`, does NOT create or touch the worktree, and does NOT
+dispatch any worker on the current call. It returns an orchestrator
+script naming the affected artifacts and instructing the orchestrator
+to call `telec todo prepare {slug}` to resolve drift.
+<!-- change:work-entry-drift-role-promotion -->
+- When the shared derivation reports a tracked artifact's collapsed
+status as `pending` or `substantive`, work does NOT advance
+`lifecycle_phase` and does NOT create or touch the worktree. On `pending`
+it dispatches the `next-drift-analyze` worker and the orchestrator
+re-enters `telec todo work {slug}`; on `substantive` it promotes the
+claim-holder in place to `prepare-orchestrator` and hands that session off
+to drive `/next-prepare {slug}`. The work orchestrator never calls
+`telec todo prepare`.
+<!-- /planned-change:work-entry-drift-role-promotion -->
 - When every tracked artifact's collapsed status is `fresh` or `cosmetic`
   (with a valid evidence anchor), work proceeds with the existing
   `prepared → build_started` handoff, worktree creation, and builder
