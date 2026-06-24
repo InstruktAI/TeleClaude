@@ -4,8 +4,9 @@ frontend_root: frontend
 
 business:
   domains:
-    software-development: docs
     creative: docs
+    erp: docs
+    software-development: docs
 
 # workflow:
 #   autostart:
@@ -55,7 +56,4 @@ jobs:
     thinking_mode: fast
 # git:
 #   checkout_root: ~/Workspace/public-repos
-deployment:
-  channel: alpha
-  pinned_minor: ''
 project_slug: teleclaude
