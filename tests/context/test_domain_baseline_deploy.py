@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -154,3 +155,39 @@ def test_session_start_surfaces_missing_domain_baseline_warning(
     )
 
     assert capsys.readouterr().out.strip()
+
+
+def test_domain_baseline_strips_pending_planned_blocks(tmp_path: Path, snapshot: Any) -> None:
+    source_docs_root = tmp_path / "docs" / "global"
+    domain_src = source_docs_root / "creative"
+    _write(
+        domain_src / "baseline.md",
+        "Domain manifest intro prose.\n\n@policy/leaky.md\n",
+    )
+    _write(
+        domain_src / "policy" / "leaky.md",
+        """---
+description: A policy snippet carrying pending planned blocks.
+---
+# Leaky Policy
+
+Ordinary current prose that must survive.
+
+<!-- planned:future-work -->
+Pending ADD content that must be dropped.
+<!-- /planned:future-work -->
+
+<!-- planned-change:future-work -->
+Current REPLACE side that survives.
+<!-- change:future-work -->
+Replacement side that must be dropped.
+<!-- /planned-change:future-work -->
+
+Closing ordinary prose.
+""",
+    )
+
+    generate_domain_baselines(source_docs_root, tmp_path)
+
+    generated = (domain_src / "domain-baseline.md").read_text(encoding="utf-8")
+    assert generated == snapshot

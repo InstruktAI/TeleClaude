@@ -1,0 +1,20 @@
+# serializer version: 1
+# name: test_domain_baseline_strips_pending_planned_blocks
+  '''
+  # creative — Platform Baseline
+  
+  Domain manifest intro prose.
+  
+  ---
+  
+  # Leaky Policy
+  
+  Ordinary current prose that must survive.
+  
+  
+  Current REPLACE side that survives.
+  
+  Closing ordinary prose.
+  
+  '''
+# ---

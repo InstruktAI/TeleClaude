@@ -38,6 +38,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
@@ -763,6 +764,11 @@ def expand_inline_refs(
     def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
         if depth <= 0:
             return text
+
+        # Mirror the reader contract (context_selector.py): a plain read drops pending
+        # planned blocks so baselines ground in current truth, not unbuilt behavior.
+        text = apply_planned_change_sections(text, None)
+        text = apply_planned_sections(text, None)
 
         required_refs, stripped = extract_required_reads(text)
         required_refs = normalize_required_refs(required_refs)
