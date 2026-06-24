@@ -37,7 +37,11 @@ visibility: 'public'
 ## Rationale
 
 - Hardcoded paths break on different machines, different users, and when binaries move (e.g., uv migrating from `~/.local/bin` to `/opt/homebrew/bin`).
+<!-- planned-change:restore-host-cron-scheduler -->
 - A retired helper service was dead for over a month because its template had a hardcoded uv path that stopped existing.
+<!-- change:restore-host-cron-scheduler -->
+- A helper service was dead for over a month because its template had a hardcoded uv path that stopped existing; marker-based templates keep the cron unit and its peers resilient to relocated binaries.
+<!-- /planned-change:restore-host-cron-scheduler -->
 
 ## Scope
 

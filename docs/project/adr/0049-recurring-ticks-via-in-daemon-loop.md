@@ -32,3 +32,7 @@ Emit `scheduler.tick.*` from a `scheduler` loop mounted on the `telec-daemon` se
 
 - **OS cron bridge** (`telec cron tick` plus one crontab entry per host). Rejected: it stands up a second supervised unit and a per-platform install/uninstall surface to buy resilience — firing while the daemon is down — that has no value here, because the tick's consumers are themselves daemon-mounted and idempotent cursors already absorb missed runs.
 - **systemd timer with `Persistent=true`, or a durable scheduler (Temporal, Quartz-JDBC clustering).** Rejected: these solve multi-node exactly-once firing and durable missed-run catch-up. v2 does not coordinate recurring work across machines (multiple machines means multiple ticks, which is fine under source-owned cursors), and catch-up is already provided by the cursors, so the added machinery earns nothing.
+
+## Status
+
+Superseded by ADR-0054.

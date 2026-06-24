@@ -38,6 +38,8 @@ See the Agent Job Hygiene procedure for the full contract.
 
 ### Architecture
 
+<!-- planned-change:restore-host-cron-scheduler -->
+
 ```
 manual/API trigger
   │
@@ -65,6 +67,38 @@ teleclaude.yml                  Schedule configuration (frequency, timing, execu
   ▼
 ~/.teleclaude/cron_todo state (todos.db)   Persistent state (last_run, status, errors)
 ```
+
+<!-- change:restore-host-cron-scheduler -->
+
+```
+host trigger (launchd StartInterval 300s / systemd timer, every 5 min)
+  │
+  ├── pidfile check (~/.teleclaude/cron_runner.pid)
+  │   └── If another instance running → exit cleanly
+  │
+  ▼
+scripts/cron_runner.py          CLI entry point
+  │
+  ▼
+teleclaude/cron/runner.py       Engine: config → discover → schedule check → execute
+  │  ├── _load_job_schedules()  Read schedule config from teleclaude.yml
+  │  ├── discover_jobs()        Read configured script jobs from teleclaude.yml
+  │  ├── _run_agent_job()       Spawn agent subprocess (agent-type jobs)
+  │  ├── _run_script_job()      Execute script job via uv using the job's own PEP 723 header
+  │  ├── _is_due()              Evaluate schedule against last run timestamp
+  │  └── run_due_jobs()         Main loop: config → is_due() → run/spawn → mark state
+  │
+  ▼
+teleclaude.yml                  Schedule configuration (frequency, timing, execution mode)
+  │
+  ├── script: jobs/foo.py       → Standalone uv-run script execution (no agent)
+  └── job: foo                  → Agent subprocess via run_job() (full tools + MCP)
+  │
+  ▼
+~/.teleclaude/cron_todo state (todos.db)   Persistent state (last_run, status, errors)
+```
+
+<!-- /planned-change:restore-host-cron-scheduler -->
 
 #### Execution Modes
 
@@ -234,7 +268,15 @@ subscriptions.
 
 ## Primary Flows
 
+<!-- planned-change:restore-host-cron-scheduler -->
+
 ### Normal execution (manual/legacy trigger)
+
+<!-- change:restore-host-cron-scheduler -->
+
+### Normal execution (5-minute host trigger)
+
+<!-- /planned-change:restore-host-cron-scheduler -->
 
 1. Check pidfile at `~/.teleclaude/cron_runner.pid`. If another instance is alive, exit.
 2. Write pidfile. Register cleanup via `atexit`.
@@ -385,8 +427,15 @@ File: `~/.teleclaude/cron_todo state (todos.db)`
 
 ### Service Integration
 
+<!-- planned-change:restore-host-cron-scheduler -->
+
 - The standalone launchd cron plist is retired and no longer installed by `telec init`.
 - Any remaining `ai.instrukt.teleclaude.cron` LaunchAgent on a machine is stale runtime state and must be removed separately.
+<!-- change:restore-host-cron-scheduler -->
+- A host periodic trigger runs `scripts/cron_runner.py` every 5 minutes: on macOS the launchd unit `ai.instrukt.teleclaude.cron` (plist `templates/ai.instrukt.teleclaude.cron.plist`, `StartInterval 300`); on systemd the `teleclaude-cron.service` + `teleclaude-cron.timer` pair (`OnUnitActiveSec=5min`, `Persistent=true`).
+- `bin/daemon-control.sh` installs the trigger alongside the daemon and docs-watch on `start`/`restart` (idempotent). On macOS it is a managed unit, reinstalled if missing across daemon reinstalls; on systemd it is `enable`d at first install.
+- Script jobs fire daemon-independently (`uv run` subprocess); agent jobs dispatch through the daemon API (`_run_agent_job` creates a session), so an occurrence while the daemon is down marks failed and retries at the next scheduled window.
+<!-- /planned-change:restore-host-cron-scheduler -->
 - **Working directory**: Repository root
 - **Logs**: `/var/log/instrukt-ai/teleclaude/cron.log`
 - **Overlap prevention**: Pidfile at `~/.teleclaude/cron_runner.pid`
