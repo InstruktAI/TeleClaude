@@ -101,6 +101,12 @@ coexist alongside the newer flat families — both patterns are valid.
 | `notification` | WORKFLOW, BUSINESS          | LOCAL      | Escalation and resolution meta-events                     |
 | `schema`       | OPERATIONAL                 | CLUSTER    | Schema change proposals and adoptions                     |
 
+<!-- planned:generic-job-runner-engine -->
+
+| `job` | WORKFLOW, OPERATIONAL | CLUSTER | Scheduled job run outcomes (succeeded, failed, stalled) |
+
+<!-- /planned:generic-job-runner-engine -->
+
 ### Event type registration
 
 All built-in event types are registered in `teleclaude.events/schemas/` and wired
@@ -124,6 +130,23 @@ in the prepare state machine. All events carry `slug` as a payload field unless 
 | `prepare.artifact_produced`    | WORKFLOW    | Artifact written and lifecycle-tracked in state              | `slug`, `artifact`, `digest` |
 | `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact               | `slug`, `artifact`           |
 | `prepare.review_scoped`        | WORKFLOW    | Scoped re-review dispatched with a findings artifact         | `slug`, `findings_artifact`  |
+
+<!-- planned:generic-job-runner-engine -->
+
+### Job run events (jobs family)
+
+The `job.run.*` family covers the close of a scheduled job run. The cron runner emits one
+event per run; both script and agent jobs use the same vocabulary.
+
+| Event type          | Level       | Description                                                      | Key payload fields                                 |
+| ------------------- | ----------- | ---------------------------------------------------------------- | -------------------------------------------------- |
+| `job.run.succeeded` | WORKFLOW    | A job run closed with a successful outcome (silent)              | `job_name`, `status`, `message`, `items_processed` |
+| `job.run.failed`    | OPERATIONAL | A job run closed with a failure (actionable)                     | `job_name`, `status`, `message`                    |
+| `job.run.stalled`   | OPERATIONAL | A run opened at dispatch never closed in its window (actionable) | `job_name`, `status`, `message`                    |
+
+The idempotency key is `job_name` + `run_started_at`.
+
+<!-- /planned:generic-job-runner-engine -->
 
 ### Expansion Joint
 
