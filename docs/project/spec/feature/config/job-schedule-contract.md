@@ -1,5 +1,5 @@
 ---
-description: 'Job scheduling contract requiring exactly one of an interval (`every`) or wall-clock times (`at`), with weekday filtering reserved for `at` schedules and a legacy fallback `schedule` field still accepted.'
+description: 'Job scheduling contract requiring exactly one of an interval (`every`) or wall-clock times (`at`), with weekday filtering reserved for `at` schedules.'
 visibility: 'public'
 ---
 

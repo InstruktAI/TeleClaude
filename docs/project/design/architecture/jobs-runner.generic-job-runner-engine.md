@@ -286,6 +286,8 @@ The runner constructs the agent prompt from the `job` field and opens a session.
 loads its spec, does its work, writes a run report, reports its outcome via
 `telec jobs report`, and stops. Follows the Agent Job Hygiene procedure.
 
+<!-- planned-change:generic-job-declarative-model -->
+
 ### Schedule semantics
 
 | Schedule | Minimum interval | Preferred timing                               |
@@ -297,6 +299,18 @@ loads its spec, does its work, writes a run report, reports its outcome via
 
 A job runs only when both conditions are met: minimum interval elapsed AND preferred timing
 reached. Jobs that have never run wait for the first scheduled occurrence after discovery.
+
+<!-- change:generic-job-declarative-model -->
+
+### Schedule semantics
+
+A job runs on the cadence declared in its `when` block — an interval (`every`, e.g.
+`60m`/`2h`/`1d`) or one or more wall-clock times (`at`, optionally filtered by `weekdays`).
+Exactly one of `every`/`at` is set. The full scheduling contract is
+`project/spec/feature/config/job-schedule-contract`. Jobs that have never run wait for the
+first scheduled occurrence after discovery.
+
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### Run lifecycle persistence
 

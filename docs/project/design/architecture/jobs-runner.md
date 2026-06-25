@@ -312,12 +312,26 @@ Direct execution, no agent. For simple, deterministic work.
    that emits a serialized `JobResult`
 2. Register in `teleclaude.yml` with `script` pointing to the module
 
+<!-- planned-change:generic-job-declarative-model -->
+
 ```yaml
 jobs:
   simple_reminder:
     schedule: hourly
     script: jobs/simple_reminder.py
 ```
+
+<!-- change:generic-job-declarative-model -->
+
+```yaml
+jobs:
+  simple_reminder:
+    when:
+      every: 60m
+    script: jobs/simple_reminder.py
+```
+
+<!-- /planned-change:generic-job-declarative-model -->
 
 Script jobs return a `JobResult` — the structured output contract that the runner
 uses for logging and state persistence:
@@ -343,6 +357,8 @@ Follows the Agent Job Hygiene procedure.
 1. Create a spec doc at `docs/project/spec/jobs/<name>.md`
 2. Register in `teleclaude.yml` with `job` pointing to the spec name
 
+<!-- planned-change:generic-job-declarative-model -->
+
 ```yaml
 jobs:
   memory_review:
@@ -353,6 +369,21 @@ jobs:
     agent: claude
     thinking_mode: fast
 ```
+
+<!-- change:generic-job-declarative-model -->
+
+```yaml
+jobs:
+  memory_review:
+    when:
+      at: '08:00'
+      weekdays: [mon]
+    job: memory-review
+    agent: claude
+    thinking_mode: fast
+```
+
+<!-- /planned-change:generic-job-declarative-model -->
 
 Script job example (direct Python execution, no agent):
 
@@ -383,6 +414,8 @@ daemon is running. It loads its spec (its complete mandate), does its work,
 writes a run report, and exits. The subprocess blocks until the agent completes
 or the timeout is reached.
 
+<!-- planned-change:generic-job-declarative-model -->
+
 ### Schedule Semantics
 
 | Schedule | Minimum interval | Preferred timing                               |
@@ -395,6 +428,18 @@ or the timeout is reached.
 A job only runs when both conditions are met: minimum interval elapsed AND preferred
 timing reached. Jobs that have never run wait for the first scheduled occurrence
 after discovery.
+
+<!-- change:generic-job-declarative-model -->
+
+### Schedule Semantics
+
+A job runs on the cadence declared in its `when` block — an interval (`every`, e.g.
+`60m`/`2h`/`1d`) or one or more wall-clock times (`at`, optionally filtered by `weekdays`).
+Exactly one of `every`/`at` is set. The full scheduling contract is
+`project/spec/feature/config/job-schedule-contract`. Jobs that have never run wait for the
+first scheduled occurrence after discovery.
+
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### State Persistence
 
