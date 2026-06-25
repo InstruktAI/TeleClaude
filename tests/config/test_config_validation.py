@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import pydantic
 import pytest
 import yaml
 
 import teleclaude.cli.config_handlers as config_handlers
+from teleclaude.config.schema import ProjectConfig
 
 PERSON_AREA = "person:Maurice Faber"
 
@@ -64,3 +66,70 @@ def test_genuinely_missing_person_config_reported(tmp_path, monkeypatch):
     result = person_results[0]
     assert not result.passed
     assert result.errors == [f"Config file missing: {expected_path}"]
+
+
+@pytest.mark.functional
+def test_project_config_accepts_valid_checkpoint_overlay():
+    """A well-formed checkpoint overlay loads into a typed ProjectConfig."""
+    config = ProjectConfig.model_validate(
+        {
+            "project_slug": "side-project",
+            "checkpoint": {
+                "actions": {
+                    "restart": {
+                        "run": "Run `make restart`",
+                        "evidence": ["make restart"],
+                        "main_only": True,
+                        "precedence": 30,
+                    },
+                },
+                "code": {"scope": {"include": ["src/**/*.py"]}},
+                "bindings": [{"scope": {"include": ["src/**/*.py"]}, "actions": ["restart"]}],
+            },
+        }
+    )
+
+    assert config.checkpoint is not None
+    restart = config.checkpoint.actions["restart"]
+    assert restart.run  # non-empty guard
+    assert restart.main_only is True
+    assert restart.precedence == 30
+    assert config.checkpoint.code is not None
+    assert config.checkpoint.code.scope.include == ["src/**/*.py"]
+
+
+@pytest.mark.functional
+def test_project_config_rejects_malformed_checkpoint_overlay():
+    """A checkpoint action without its required `run` command fails validation."""
+    with pytest.raises(pydantic.ValidationError):
+        ProjectConfig.model_validate({"checkpoint": {"actions": {"restart": {"evidence": ["make restart"]}}}})
+
+
+@pytest.mark.functional
+def test_project_config_rejects_unknown_referenced_action_id():
+    """A binding referencing an action id absent from base and overlay is rejected.
+
+    The runtime would otherwise silently drop the unknown id, so a typo'd reference
+    would validate while its declared maintenance never surfaces.
+    """
+    with pytest.raises(pydantic.ValidationError):
+        ProjectConfig.model_validate(
+            {"checkpoint": {"bindings": [{"scope": {"include": ["src/**"]}, "actions": ["does-not-exist"]}]}}
+        )
+
+
+@pytest.mark.functional
+def test_project_config_rejects_binding_with_no_actions():
+    """A binding that references no action at all is rejected at the boundary."""
+    with pytest.raises(pydantic.ValidationError):
+        ProjectConfig.model_validate({"checkpoint": {"bindings": [{"scope": {"include": ["src/**"]}, "actions": []}]}})
+
+
+@pytest.mark.functional
+def test_project_config_accepts_binding_referencing_base_action():
+    """A binding may reference a base-registry action id without declaring it."""
+    config = ProjectConfig.model_validate(
+        {"checkpoint": {"bindings": [{"scope": {"include": ["Dockerfile"]}, "actions": ["install"]}]}}
+    )
+    assert config.checkpoint is not None
+    assert config.checkpoint.bindings[0].actions == ["install"]

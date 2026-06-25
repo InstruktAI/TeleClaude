@@ -9,13 +9,16 @@ from collections.abc import Callable
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.checkpoint_model import (
+    load_checkpoint_model,
+    scopes_for_action,
+    triggered_action_ids,
+)
 from teleclaude.constants import (
-    CHECKPOINT_FILE_CATEGORIES,
-    CHECKPOINT_LOG_CHECK_EVIDENCE,
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
-    CHECKPOINT_TEST_EVIDENCE,
-    FileCategory,
+    CheckpointAction,
+    CheckpointModel,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.hooks.checkpoint._evidence import (
@@ -32,19 +35,17 @@ from teleclaude.hooks.checkpoint._evidence import (
     _has_evidence_after_index,
     _has_review_dispatch_evidence,
     _iter_shell_command_records,
-    _last_category_mutation_index,
+    _last_scope_mutation_index,
     _segment_matches_evidence,
 )
 from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
-    _categorize_files,
     _command_likely_mutates_files,
     _current_branch,
     _extract_apply_patch_paths,
     _extract_shell_command,
     _extract_shell_touched_paths,
     _extract_turn_file_signals,
-    _file_matches_category,
     _git_diff_names,
     _is_checkpoint_project_supported,
     _is_docs_only,
@@ -76,7 +77,6 @@ __all__ = [
     "ScopedPathsResult",
     "TranscriptObservability",
     "_canonical_tool_name",
-    "_categorize_files",
     "_check_blast_radius",
     "_check_companion_drift",
     "_check_slug_alignment",
@@ -92,7 +92,6 @@ __all__ = [
     "_extract_shell_command",
     "_extract_shell_touched_paths",
     "_extract_turn_file_signals",
-    "_file_matches_category",
     "_has_commit_evidence",
     "_has_evidence",
     "_has_evidence_after_index",
@@ -100,7 +99,7 @@ __all__ = [
     "_is_docs_only",
     "_is_no_action_only",
     "_iter_shell_command_records",
-    "_last_category_mutation_index",
+    "_last_scope_mutation_index",
     "_looks_like_path_token",
     "_normalize_repo_path",
     "_post_commit_review_instruction",
@@ -128,8 +127,12 @@ def run_heuristics(
     authored_main_commit: bool = False,
     commit_obligations: list[str] | None = None,
     discharge_obligation: Callable[[str], bool] | None = None,
+    model: CheckpointModel | None = None,
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
+    if model is None:
+        model = load_checkpoint_model(context.project_path)
+
     result = CheckpointResult()
     result.on_main = _current_branch(context.project_path) == "main"
     result.authored_main_commit = authored_main_commit
@@ -150,61 +153,38 @@ def run_heuristics(
         append_required_action(_post_commit_review_instruction())
         result.post_commit_review_action_required = True
 
-    # 1. File categorization and commit-obligation sourcing
-    file_categories: list[FileCategory] = _categorize_files(git_files)
-    obligation_categories = _commit_obligation_categories(commit_obligations or [], result.on_main)
-    categories = _dedupe_categories([*file_categories, *obligation_categories])
-    obligation_names = {category.name for category in obligation_categories}
+    # 1. Owed action ids: every action any changed file triggers under the merged
+    # model, unioned with outstanding commit obligations (which surface only on main).
+    actions_by_id = model.actions
+    obligation_ids = set(commit_obligations or []) if result.on_main else set[str]()
+    owed_ids = triggered_action_ids(git_files, model) | obligation_ids
 
-    # 2. Build required actions. The "Changed:" summary (result.categories) is the raw
-    # turn-local category set — every category whose files were touched this turn —
-    # independent of whether any action was surfaced. Actions are attributed separately.
-    for category in sorted(categories, key=lambda c: c.precedence):
-        # Main-only categories (telec setup, dependencies, daemon code, config,
-        # syncable sources) are irrelevant in worktrees — the running system is
-        # installed from main and unaffected until integration.
-        if category.main_only and not result.on_main:
-            continue
-        if not category.instruction:
-            continue  # no per-category action (e.g. hook runtime); may still drive code actions below
+    # 2. Surface actions: ordered by precedence, main_only gated off main, suppressed
+    # when this cycle's evidence proves they ran. The "Changed:" summary
+    # (result.categories) is the branch-eligible owed-id set, independent of
+    # suppression — every action owed this turn, surfaced or deferred.
+    branch_eligible_ids = sorted(
+        (
+            action_id
+            for action_id in owed_ids
+            if action_id in actions_by_id and not (actions_by_id[action_id].main_only and not result.on_main)
+        ),
+        key=lambda aid: (actions_by_id[aid].precedence, aid),
+    )
+    for action_id in branch_eligible_ids:
+        action = actions_by_id[action_id]
+        if _action_has_evidence(timeline, action, model, context.project_path):
+            if action_id in obligation_ids and discharge_obligation is not None:
+                discharge_obligation(action_id)
+            continue  # Satisfied this turn — no action surfaced
+        append_required_action(_surface_run(action, log_since_window))
 
-        evidence_seen = False
-        if category.evidence_substrings:
-            if category.evidence_must_follow_last_mutation:
-                mutation_idx = _last_category_mutation_index(timeline, category, context.project_path)
-                if mutation_idx is not None:
-                    evidence_seen = _has_evidence_after_index(timeline, category.evidence_substrings, mutation_idx)
-                else:
-                    evidence_seen = _has_evidence(timeline, category.evidence_substrings)
-            else:
-                evidence_seen = _has_evidence(timeline, category.evidence_substrings)
-
-        if category.evidence_substrings and evidence_seen:
-            if category.name in obligation_names and discharge_obligation is not None:
-                discharge_obligation(category.name)
-            continue  # Satisfied this turn — no per-category action surfaced
-
-        append_required_action(category.instruction)
-
-    # Collective code actions (logs, tests). Doc/artifact sources (is_code=False) deploy
-    # via sync and have no runtime to inspect or behavior to test.
-    code_categories = [c for c in file_categories if c.is_code]
-    if any(c.name != "tests" for c in code_categories) and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
-        append_required_action(
-            f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window} "
-            f"--exclude 'logger=teleclaude\\.git\\.exec'`"
-        )
-    if code_categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
-        append_required_action("Run targeted tests for only YOUR changed behavior")
-
-    # Changed-line: raw turn-local category set — every category whose files were touched
-    # this turn, regardless of whether any action was surfaced or deferred.
-    result.categories = [c.name for c in sorted(categories, key=lambda c: c.precedence)]
+    result.categories = list(branch_eligible_ids)
 
     # 3. Blast-radius observation
     result.observations.extend(_check_blast_radius(git_files))
-    for action in _check_companion_drift(git_files, context.project_path):
-        append_required_action(action)
+    for action_str in _check_companion_drift(git_files, context.project_path):
+        append_required_action(action_str)
 
     # 4. Working slug alignment
     result.observations.extend(_check_slug_alignment(git_files, context))
@@ -219,28 +199,27 @@ def run_heuristics(
     return result
 
 
-def _commit_obligation_categories(obligations: list[str], on_main: bool) -> list[FileCategory]:
-    """Return checkpoint categories for outstanding commit-derived obligations."""
-    if not on_main:
-        return []
-    obligation_names = set(obligations)
-    return [
-        category
-        for category in CHECKPOINT_FILE_CATEGORIES
-        if category.name in obligation_names and category.main_only and category.instruction
-    ]
+def _surface_run(action: CheckpointAction, log_since_window: str) -> str:
+    """Render an action's surfaced instruction, filling the {window} placeholder."""
+    return action.run.replace("{window}", log_since_window)
 
 
-def _dedupe_categories(categories: list[FileCategory]) -> list[FileCategory]:
-    """Return checkpoint categories once, preserving first-seen order."""
-    seen: set[str] = set()
-    deduped: list[FileCategory] = []
-    for category in categories:
-        if category.name in seen:
-            continue
-        seen.add(category.name)
-        deduped.append(category)
-    return deduped
+def _action_has_evidence(
+    timeline: TurnTimeline,
+    action: CheckpointAction,
+    model: CheckpointModel,
+    project_path: str,
+) -> bool:
+    """Return True when this cycle's evidence proves the action ran."""
+    evidence = list(action.effective_evidence())
+    if not evidence:
+        return False
+    if action.evidence_must_follow_last_mutation:
+        scopes = scopes_for_action(model, action.id)
+        mutation_idx = _last_scope_mutation_index(timeline, scopes, project_path)
+        if mutation_idx is not None:
+            return _has_evidence_after_index(timeline, evidence, mutation_idx)
+    return _has_evidence(timeline, evidence)
 
 
 # ---------------------------------------------------------------------------
@@ -363,11 +342,13 @@ def _build_integrator_maintenance_checkpoint(
     merge_ranges: list[str],
     project_path: str,
     timeline: TurnTimeline,
+    model: CheckpointModel,
 ) -> str | None:
     """Build a maintenance checkpoint message from merge-delta files.
 
-    Surfaces only main_only maintenance category instructions, with evidence
-    suppression. No review, commit reminder, test, or log-check actions.
+    Surfaces only main_only maintenance actions, with evidence suppression. No
+    review, commit reminder, test, or log-check actions (test/log-check are not
+    main_only and so never appear here).
     """
     all_files: list[str] = []
     for merge_range in merge_ranges:
@@ -376,30 +357,28 @@ def _build_integrator_maintenance_checkpoint(
     if not all_files:
         return None
 
-    categories = _categorize_files(all_files)
-    # Integrator maintenance surfaces only main_only categories (telec setup,
-    # dependencies, daemon code, config, syncable sources). Non-main_only categories like agent-artifacts
-    # (restart-self) are not the integrator's maintenance responsibility and must
-    # not appear here regardless of what files were in the merge delta.
-    maintenance_categories = [c for c in categories if c.main_only]
-    if not maintenance_categories:
+    owed_ids = triggered_action_ids(all_files, model)
+    # Integrator maintenance surfaces only main_only actions (install, deps,
+    # restart, sync). Non-main_only actions like reload-self are not the
+    # integrator's responsibility and must not appear here regardless of the delta.
+    maintenance_actions = [
+        model.actions[action_id]
+        for action_id in owed_ids
+        if action_id in model.actions and model.actions[action_id].main_only
+    ]
+    if not maintenance_actions:
         return None
 
     actions: list[str] = []
-    for category in sorted(maintenance_categories, key=lambda c: c.precedence):
-        if not category.instruction:
+    for action in sorted(maintenance_actions, key=lambda a: (a.precedence, a.id)):
+        if _action_has_evidence(timeline, action, model, project_path):
             continue
-        evidence_seen = False
-        if category.evidence_substrings:
-            evidence_seen = _has_evidence(timeline, category.evidence_substrings)
-        if category.evidence_substrings and evidence_seen:
-            continue
-        actions.append(category.instruction)
+        actions.append(_surface_run(action, "2m"))
 
     if not actions:
         return None
 
-    category_names = [c.name for c in maintenance_categories]
+    category_names = [action.id for action in sorted(maintenance_actions, key=lambda a: (a.precedence, a.id))]
     lines: list[str] = [
         f"{CHECKPOINT_PREFIX}Integrator post-merge maintenance",
         "",
@@ -466,6 +445,8 @@ def get_checkpoint_content(
             )
             return None
 
+        model = load_checkpoint_model(project_path)
+
         timeline = extract_effective_tool_calls(
             transcript_path,
             agent_name,
@@ -480,7 +461,9 @@ def get_checkpoint_content(
             marker_content = read_integrator_maintenance_marker(session_id)
             if marker_content:
                 merge_ranges = [r for r in marker_content.strip().splitlines() if r]
-                maintenance_message = _build_integrator_maintenance_checkpoint(merge_ranges, project_path, timeline)
+                maintenance_message = _build_integrator_maintenance_checkpoint(
+                    merge_ranges, project_path, timeline, model
+                )
                 if maintenance_message:
                     consume_integrator_maintenance_marker(session_id)
                     logger.info(
@@ -553,7 +536,7 @@ def get_checkpoint_content(
             project_path,
         )
         if (
-            _is_no_action_only(effective_files)
+            _is_no_action_only(effective_files, model)
             and not force_main_commit_checkpoint
             and not commit_obligations
             and docs_committed
@@ -592,6 +575,7 @@ def get_checkpoint_content(
             authored_main_commit=authored_main_commit,
             commit_obligations=commit_obligations,
             discharge_obligation=lambda action: discharge_commit_obligation(session_id, action),
+            model=model,
         )
 
         if (

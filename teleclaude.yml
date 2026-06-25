@@ -8,6 +8,72 @@ business:
     erp: docs
     software-development: docs
 
+# TeleClaude's own checkpoint maintenance, dogfooded through the same project
+# overlay it hands every onboarded project. The platform-universal base (docs →
+# sync, agents → sync + reload-self, Makefile/hooks → install, code → test +
+# log-check) is inherited; this overlay adds TeleClaude's runtime-specific actions.
+checkpoint:
+  actions:
+    restart:
+      run: Run `make restart`
+      evidence: [make restart]
+      main_only: true
+      precedence: 30
+    deps:
+      run: 'Install updated dependencies: `uv sync`'
+      evidence: [uv sync, make install]
+      main_only: true
+      precedence: 20
+    tui-reload:
+      run: 'Run `pkill -SIGUSR2 -f -- ''\.venv/bin/telec$|teleclaude\.cli\.telec($| )''`'
+      evidence: [pkill -SIGUSR2, kill -USR2]
+      evidence_must_follow_last_mutation: true
+      precedence: 40
+  code:
+    scope:
+      include: [teleclaude/**/*.py, tests/**/*.py]
+  bindings:
+    # Daemon code requires a restart. CLI modules the daemon imports at startup
+    # are re-included via override despite the broad cli/** exclusion.
+    - scope:
+        include: [teleclaude/**/*.py]
+        exclude:
+          - teleclaude/hooks/**
+          - teleclaude/cli/**
+          - teleclaude/utils/**
+          - teleclaude/quality/**
+          - teleclaude/session_scoping/**
+          - teleclaude/project_setup/**
+          - teleclaude/codegen/**
+          - teleclaude/resource_validation/**
+          - teleclaude/entrypoints/**
+          - teleclaude/tagging/**
+          - teleclaude/helpers/**
+        override:
+          - teleclaude/cli/__init__.py
+          - teleclaude/cli/telec/__init__.py
+          - teleclaude/cli/telec/surface.py
+          - teleclaude/cli/telec/surface_types.py
+          - teleclaude/cli/telec/auth.py
+          - teleclaude/cli/telec/help.py
+          - teleclaude/cli/telec/_shared.py
+          - teleclaude/cli/telec/_run_tui.py
+          - teleclaude/cli/tool_client.py
+          - teleclaude/cli/session_auth.py
+      actions: [restart]
+    - scope:
+        include: [config.yml]
+      actions: [restart]
+    - scope:
+        include: [pyproject.toml, requirements*.txt]
+      actions: [deps]
+    - scope:
+        include: [teleclaude/install/**, teleclaude/project_setup/**, templates/**]
+      actions: [install]
+    - scope:
+        include: [teleclaude/cli/tui/**]
+      actions: [tui-reload]
+
 # workflow:
 #   autostart:
 #     feature: true

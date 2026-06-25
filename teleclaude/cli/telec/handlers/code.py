@@ -12,9 +12,9 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.checkpoint_model import load_checkpoint_model, triggered_action_ids
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
-from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES, FileCategory, _glob_matches
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
@@ -506,7 +506,7 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
     """Record checkpoint markers derived from the sealed commit."""
     session_id = get_session_id()
     if session_id:
-        obligations = _commit_obligations_for_files(committed_files)
+        obligations = _commit_obligations_for_files(committed_files, project_root)
         try:
             record_commit_obligations(session_id, obligations)
         except OSError as exc:
@@ -520,26 +520,16 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
         record_authored_main_commit(session_id)
 
 
-def _commit_obligations_for_files(files: list[str]) -> list[str]:
-    """Return main-branch maintenance category names owed by committed files."""
-    obligations: list[str] = []
-    for category in sorted(CHECKPOINT_FILE_CATEGORIES, key=lambda item: item.precedence):
-        if not category.main_only or not category.instruction:
-            continue
-        if any(_file_matches_commit_category(path, category) for path in files):
-            obligations.append(category.name)
-    return obligations
+def _commit_obligations_for_files(files: list[str], project_root: Path) -> list[str]:
+    """Return main-only maintenance action ids owed by committed files.
 
-
-def _file_matches_commit_category(path: str, category: FileCategory) -> bool:
-    """Return True when a committed path matches a checkpoint category."""
-    if not any(_glob_matches(path, pattern) for pattern in category.include_patterns):
-        return False
-    if category.override_patterns and any(_glob_matches(path, pattern) for pattern in category.override_patterns):
-        return True
-    return not (
-        category.exclude_patterns and any(_glob_matches(path, pattern) for pattern in category.exclude_patterns)
-    )
+    Resolves through the same merged checkpoint model and single matcher the hook
+    engine uses, so a committed path owes the equivalent action in both consumers.
+    """
+    model = load_checkpoint_model(str(project_root))
+    owed = triggered_action_ids(files, model)
+    main_only = [action_id for action_id in owed if action_id in model.actions and model.actions[action_id].main_only]
+    return sorted(main_only, key=lambda action_id: (model.actions[action_id].precedence, action_id))
 
 
 def _print_commit_review_guidance() -> None:

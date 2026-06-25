@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 import teleclaude.git_lock as git_lock
 import teleclaude.hooks.checkpoint as checkpoint_module
@@ -16,6 +17,7 @@ from teleclaude.constants import CHECKPOINT_MESSAGE
 from teleclaude.core.agents import AgentName
 from teleclaude.git import Repo
 from teleclaude.hooks.checkpoint import (
+    _is_checkpoint_project_supported,
     _post_commit_review_instruction,
     get_checkpoint_content,
     run_heuristics,
@@ -37,10 +39,84 @@ from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 _SPEC = "project/spec/feature/integration/agent-stop-checkpoint-blocking"
 
-# Named constants for instruction identity checks — shared with production code
-# (sourced from constants.py FileCategory instruction strings).
+# Named constants for instruction identity checks — the surfaced `run` strings of
+# the base/overlay checkpoint actions.
 _TELEC_SYNC_INSTR = "Run `telec sync`"
 _MAKE_RESTART_INSTR = "Run `make restart`"
+_SIDE_RESTART_INSTR = "Run `./restart.sh`"
+
+# TeleClaude's own checkpoint overlay, mirrored from teleclaude.yml so the fixture
+# repo dogfoods the same base ⊕ overlay model the platform hands every project
+# (SC-3 parity is verified against this overlay).
+_TELECLAUDE_CHECKPOINT_OVERLAY = {
+    "actions": {
+        "restart": {"run": "Run `make restart`", "evidence": ["make restart"], "main_only": True, "precedence": 30},
+        "deps": {
+            "run": "Install updated dependencies: `uv sync`",
+            "evidence": ["uv sync", "make install"],
+            "main_only": True,
+            "precedence": 20,
+        },
+        "tui-reload": {
+            "run": "Run `pkill -SIGUSR2 -f -- '\\.venv/bin/telec$|teleclaude\\.cli\\.telec($| )'`",
+            "evidence": ["pkill -SIGUSR2", "kill -USR2"],
+            "evidence_must_follow_last_mutation": True,
+            "precedence": 40,
+        },
+    },
+    "code": {"scope": {"include": ["teleclaude/**/*.py", "tests/**/*.py"]}},
+    "bindings": [
+        {
+            "scope": {
+                "include": ["teleclaude/**/*.py"],
+                "exclude": [
+                    "teleclaude/hooks/**",
+                    "teleclaude/cli/**",
+                    "teleclaude/utils/**",
+                    "teleclaude/quality/**",
+                    "teleclaude/session_scoping/**",
+                    "teleclaude/project_setup/**",
+                    "teleclaude/codegen/**",
+                    "teleclaude/resource_validation/**",
+                    "teleclaude/entrypoints/**",
+                    "teleclaude/tagging/**",
+                    "teleclaude/helpers/**",
+                ],
+                "override": [
+                    "teleclaude/cli/__init__.py",
+                    "teleclaude/cli/telec/__init__.py",
+                    "teleclaude/cli/telec/surface.py",
+                    "teleclaude/cli/telec/surface_types.py",
+                    "teleclaude/cli/telec/auth.py",
+                    "teleclaude/cli/telec/help.py",
+                    "teleclaude/cli/telec/_shared.py",
+                    "teleclaude/cli/telec/_run_tui.py",
+                    "teleclaude/cli/tool_client.py",
+                    "teleclaude/cli/session_auth.py",
+                ],
+            },
+            "actions": ["restart"],
+        },
+        {"scope": {"include": ["config.yml"]}, "actions": ["restart"]},
+        {"scope": {"include": ["pyproject.toml", "requirements*.txt"]}, "actions": ["deps"]},
+        {
+            "scope": {"include": ["teleclaude/install/**", "teleclaude/project_setup/**", "templates/**"]},
+            "actions": ["install"],
+        },
+        {"scope": {"include": ["teleclaude/cli/tui/**"]}, "actions": ["tui-reload"]},
+    ],
+}
+
+
+def _write_teleclaude_overlay(repo_path: Path) -> None:
+    """Write the onboarded-project marker + TeleClaude checkpoint overlay."""
+    config = {
+        "project_name": "TeleClaude",
+        "project_slug": "teleclaude",
+        "checkpoint": _TELECLAUDE_CHECKPOINT_OVERLAY,
+    }
+    with open(repo_path / "teleclaude.yml", "w", encoding="utf-8") as f:
+        yaml.safe_dump(config, f)
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +141,7 @@ def _build_supported_repo(repo_path: Path) -> Repo:
     with repo.config_writer() as config:
         config.set_value("user", "name", "Checkpoint Test")
         config.set_value("user", "email", "checkpoint-test@example.test")
+    _write_teleclaude_overlay(repo_path)
     (repo_path / "teleclaude" / "hooks" / "checkpoint").mkdir(parents=True)
     (repo_path / "teleclaude" / "hooks" / "checkpoint" / "__init__.py").write_text("", encoding="utf-8")
     (repo_path / "agents" / "commands").mkdir(parents=True)
@@ -205,7 +282,7 @@ def test_main_branch_review_gate_follows_authored_commit_latch(
     )
 
     assert marker_after_commit is True
-    assert committed_obligations_after_commit == ["daemon code"]
+    assert committed_obligations_after_commit == ["restart"]
     assert marker_after_first_checkpoint is False
     assert peer_payload is None
     assert {"authored_payload": authored_payload} == snapshot
@@ -301,7 +378,7 @@ def test_sealed_commit_records_commit_obligations(
         system_role=None,
     )
 
-    assert read_commit_obligations(session_id) == ["daemon code", "syncable sources"]
+    assert read_commit_obligations(session_id) == ["restart", "sync"]
 
 
 @pytest.mark.functional
@@ -315,7 +392,7 @@ def test_user_prompt_reset_consumes_turn_scoped_checkpoint_markers(
 
     set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
     set_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)
-    record_commit_obligations(session_id, ["daemon code"])
+    record_commit_obligations(session_id, ["restart"])
 
     _reset_checkpoint_flags(session_id)
 
@@ -498,7 +575,7 @@ def test_committed_daemon_code_surfaces_maintenance_after_head_move(
         turn_anchor_sha=anchor_sha,
     )
 
-    assert read_commit_obligations(session_id) == ["daemon code"]
+    assert read_commit_obligations(session_id) == ["restart"]
     assert {"committed_daemon_payload": payload} == snapshot
 
 
@@ -513,7 +590,7 @@ def test_satisfied_commit_obligation_discharges_and_does_not_refire(
     repo_path = tmp_path / "repo"
     _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    record_commit_obligations(session_id, ["daemon code"])
+    record_commit_obligations(session_id, ["restart"])
 
     restart_payload = _checkpoint_payload_for_cycle(
         session_id,
@@ -545,7 +622,7 @@ def test_surfaced_commit_obligation_discharges_in_later_cycle(
     repo_path = tmp_path / "repo"
     _init_supported_repo(repo_path)
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path / "flags"))
-    record_commit_obligations(session_id, ["syncable sources"])
+    record_commit_obligations(session_id, ["sync"])
 
     first_payload = _checkpoint_payload_for_cycle(session_id, repo_path, monkeypatch, _empty_timeline())
     satisfied_payload = _checkpoint_payload_for_cycle(
@@ -655,7 +732,7 @@ def test_committed_code_persists_only_main_only_maintenance_obligations(
         turn_anchor_sha=None,
     )
 
-    assert read_commit_obligations(session_id) == ["daemon code"]
+    assert read_commit_obligations(session_id) == ["restart"]
     assert payload is not None
     assert {"main_only_payload": payload} == snapshot
 
@@ -826,12 +903,12 @@ def test_code_change_all_evidence_still_appears_in_changed_summary(
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
     timeline = _timeline_with_bash_commands(["uv run pytest tests/foo.py", "instrukt-ai-logs teleclaude --since 5m"])
 
-    # hook runtime auto-applies; once its log/test actions are satisfied no action is
-    # surfaced — but the category still appears in the Changed summary because the
-    # Changed line is the raw turn-local category set, independent of actions.
+    # A hooks .py file is in the `code` scope (test + log-check). Once both actions
+    # are satisfied no action is surfaced — but the action ids still appear in the
+    # Changed summary because it is the raw owed-action set, independent of suppression.
     result = run_heuristics(["teleclaude/hooks/checkpoint/_evidence.py"], timeline, context)
 
-    assert result.categories == ["hook runtime"]
+    assert result.categories == ["log-check", "test"]
     assert not result.required_actions
 
 
@@ -1002,7 +1079,7 @@ def test_toplevel_daemon_file_categorized_as_daemon_code(
     # "/" after "**"), so this file was silently uncategorized.
     result = run_heuristics(["teleclaude/constants.py"], _empty_timeline(), context)
 
-    assert result.categories == ["daemon code"]
+    assert result.categories == ["restart", "log-check", "test"]
     assert _MAKE_RESTART_INSTR in result.required_actions
 
 
@@ -1020,7 +1097,7 @@ def test_daemon_imported_cli_module_categorized_as_daemon_code(
     # explicitly whitelisted in override_patterns.
     result = run_heuristics(["teleclaude/cli/telec/surface.py"], _empty_timeline(), context)
 
-    assert result.categories == ["daemon code"]
+    assert result.categories == ["restart", "log-check", "test"]
     assert _MAKE_RESTART_INSTR in result.required_actions
 
 
@@ -1034,10 +1111,12 @@ def test_pure_subprocess_cli_module_not_daemon_code(
     context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
 
     # teleclaude/cli/telec/handlers/code.py is invoked as a subprocess, not imported by
-    # the daemon — it stays excluded from daemon code and does not require make restart.
+    # the daemon — it is excluded from the restart binding and does not require make
+    # restart. It is still in the `code` scope, so it owes test + log-check.
     result = run_heuristics(["teleclaude/cli/telec/handlers/code.py"], _empty_timeline(), context)
 
-    assert result.categories == []
+    assert "restart" not in result.categories
+    assert result.categories == ["log-check", "test"]
     assert _MAKE_RESTART_INSTR not in result.required_actions
 
 
@@ -1055,7 +1134,7 @@ def test_transitively_loaded_cli_module_categorized_as_daemon_code(
     # override_patterns; editing it would have been silently uncategorized.
     result = run_heuristics(["teleclaude/cli/telec/auth.py"], _empty_timeline(), context)
 
-    assert result.categories == ["daemon code"]
+    assert result.categories == ["restart", "log-check", "test"]
     assert _MAKE_RESTART_INSTR in result.required_actions
 
 
@@ -1072,7 +1151,7 @@ def test_cli_package_init_categorized_as_daemon_code(
     # imports teleclaude.cli.telec; editing it changes the daemon's loaded module set.
     result = run_heuristics(["teleclaude/cli/__init__.py"], _empty_timeline(), context)
 
-    assert result.categories == ["daemon code"]
+    assert result.categories == ["restart", "log-check", "test"]
     assert _MAKE_RESTART_INSTR in result.required_actions
 
 
@@ -1118,5 +1197,93 @@ def test_committed_toplevel_daemon_code_surfaces_restart(
         turn_anchor_sha=anchor_sha,
     )
 
-    assert read_commit_obligations(session_id) == ["daemon code"]
+    assert read_commit_obligations(session_id) == ["restart"]
     assert {"toplevel_daemon_payload": payload} == snapshot
+
+
+# ---------------------------------------------------------------------------
+# UC-CP16 — project-agnostic base ⊕ overlay (SC-1, SC-2, SC-5) + onboarded gate
+# ---------------------------------------------------------------------------
+
+
+def _init_side_project(repo_path: Path, *, checkpoint: object = None, raw_yaml: str | None = None) -> Repo:
+    """A non-TeleClaude onboarded repo: a teleclaude.yml, no TeleClaude package tree."""
+    repo_path.mkdir(parents=True)
+    repo = Repo.init(repo_path, initial_branch="main")
+    with repo.config_writer() as config:
+        config.set_value("user", "name", "Side Project")
+        config.set_value("user", "email", "side@example.test")
+    if raw_yaml is not None:
+        (repo_path / "teleclaude.yml").write_text(raw_yaml, encoding="utf-8")
+    else:
+        body: dict[str, object] = {  # guard: loose-dict - test config YAML serialization boundary
+            "project_name": "Side",
+            "project_slug": "side",
+        }
+        if checkpoint is not None:
+            body["checkpoint"] = checkpoint
+        with open(repo_path / "teleclaude.yml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(body, f)
+    (repo_path / "README.md").write_text("# Side\n", encoding="utf-8")
+    repo.git.add(".")
+    repo.git.commit("-m", "init")
+    return repo
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP16")
+def test_onboarded_project_without_teleclaude_package_is_supported(tmp_path: Path) -> None:
+    """The checkpoint gate keys on teleclaude.yml, not TeleClaude package markers."""
+    onboarded = tmp_path / "side"
+    _init_side_project(onboarded)
+    bare = tmp_path / "bare"
+    bare.mkdir()
+
+    assert _is_checkpoint_project_supported(str(onboarded)) is True
+    assert _is_checkpoint_project_supported(str(bare)) is False
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP16")
+def test_base_actions_fire_for_any_onboarded_project(tmp_path: Path) -> None:
+    """SC-2: the platform-universal base fires regardless of language or overlay."""
+    repo_path = tmp_path / "side"
+    _init_side_project(repo_path)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics(["docs/guide.md"], _empty_timeline(), context)
+
+    assert _TELEC_SYNC_INSTR in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP16")
+def test_declared_overlay_action_surfaces_alongside_base(tmp_path: Path) -> None:
+    """SC-1: a project's declared overlay action is nudged alongside the base."""
+    overlay = {
+        "actions": {"restart-app": {"run": _SIDE_RESTART_INSTR, "evidence": ["./restart.sh"], "precedence": 30}},
+        "bindings": [{"scope": {"include": ["src/**/*.js"]}, "actions": ["restart-app"]}],
+    }
+    repo_path = tmp_path / "side"
+    _init_side_project(repo_path, checkpoint=overlay)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics(["src/app.js", "docs/guide.md"], _empty_timeline(), context)
+
+    assert _SIDE_RESTART_INSTR in result.required_actions
+    assert _TELEC_SYNC_INSTR in result.required_actions
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP16")
+def test_unreadable_overlay_degrades_to_base_only(tmp_path: Path) -> None:
+    """SC-5: a malformed overlay fails open to base-only without erroring."""
+    # A checkpoint action missing its required `run` makes the overlay invalid.
+    raw = "project_slug: side\ncheckpoint:\n  actions:\n    broken:\n      evidence: [x]\n"
+    repo_path = tmp_path / "side"
+    _init_side_project(repo_path, raw_yaml=raw)
+    context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path=str(repo_path))
+
+    result = run_heuristics(["docs/guide.md"], _empty_timeline(), context)
+
+    assert _TELEC_SYNC_INSTR in result.required_actions

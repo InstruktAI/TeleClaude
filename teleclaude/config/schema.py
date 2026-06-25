@@ -9,6 +9,7 @@ from typing import Annotated, Any, Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from teleclaude.config.tiers import Tier
+from teleclaude.constants import CHECKPOINT_BASE_ACTIONS
 from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import validate_slug
 
@@ -344,6 +345,94 @@ class HooksConfig(BaseModel):
     subscriptions: list[SubscriptionConfig] = []
 
 
+class CheckpointActionConfig(BaseModel):
+    """A project-declared checkpoint action (verb) overlaid on the base registry."""
+
+    model_config = ConfigDict(extra="allow")
+    run: str = Field(min_length=1)
+    evidence: list[str] = []
+    main_only: bool = False
+    precedence: int = 0
+    evidence_must_follow_last_mutation: bool = False
+
+
+class CheckpointScopeConfig(BaseModel):
+    """A glob scope: ``include`` minus ``exclude``, re-added by ``override``."""
+
+    model_config = ConfigDict(extra="allow")
+    include: list[str] = []
+    exclude: list[str] = []
+    override: list[str] = []
+
+
+class CheckpointBindingConfig(BaseModel):
+    """Maps a scope to the action ids a matching changed file owes."""
+
+    model_config = ConfigDict(extra="allow")
+    scope: CheckpointScopeConfig = CheckpointScopeConfig()
+    actions: list[str] = []
+
+
+class CheckpointCodeConfig(BaseModel):
+    """The conventional ``code`` kind: a scope onto which base ``test`` / ``log-check`` attach."""
+
+    model_config = ConfigDict(extra="allow")
+    scope: CheckpointScopeConfig = CheckpointScopeConfig()
+
+
+class CheckpointExtraActionsConfig(BaseModel):
+    """Optional extra actions appended atop a conventional base binding (``docs`` / ``agents``)."""
+
+    model_config = ConfigDict(extra="allow")
+    actions: list[str] = []
+
+
+class CheckpointConfig(BaseModel):
+    """Project checkpoint maintenance overlay merged atop the platform-universal base.
+
+    Authored at analyze-time by intelligence (``telec projects analyze``) per
+    ``project/procedure/checkpoint-overlay-projection``; consumed structurally by
+    the checkpoint engine. An unreadable overlay degrades to base-only (fail-open).
+    """
+
+    model_config = ConfigDict(extra="allow")
+    actions: dict[str, CheckpointActionConfig] = {}
+    code: CheckpointCodeConfig | None = None
+    bindings: list[CheckpointBindingConfig] = []
+    docs: CheckpointExtraActionsConfig | None = None
+    agents: CheckpointExtraActionsConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_action_references(self) -> CheckpointConfig:
+        """Every referenced action id must resolve to the base registry or a declared action.
+
+        The runtime silently drops unknown action ids (``run_heuristics`` filters to
+        the merged registry), so an unresolved reference would validate while the
+        declared maintenance never surfaces. Reject it at the boundary instead, and
+        reject a binding/extra block that references no action at all.
+        """
+        valid_ids = set(CHECKPOINT_BASE_ACTIONS) | set(self.actions)
+
+        def _check(action_ids: list[str], where: str) -> None:
+            if not action_ids:
+                raise ValueError(f"checkpoint.{where} declares no actions")
+            unknown = [action_id for action_id in action_ids if action_id not in valid_ids]
+            if unknown:
+                raise ValueError(
+                    f"checkpoint.{where} references unknown action id(s): {', '.join(unknown)}; "
+                    f"declare them under checkpoint.actions or reference a base action "
+                    f"({', '.join(sorted(valid_ids))})"
+                )
+
+        for index, binding in enumerate(self.bindings):
+            _check(binding.actions, f"bindings[{index}].actions")
+        if self.docs is not None:
+            _check(self.docs.actions, "docs.actions")
+        if self.agents is not None:
+            _check(self.agents.actions, "agents.actions")
+        return self
+
+
 class ProjectConfig(BaseModel):
     """Project-level configuration: per-project ``teleclaude.yml`` overlay.
 
@@ -365,6 +454,7 @@ class ProjectConfig(BaseModel):
     hooks: HooksConfig = HooksConfig()
     jobs: dict[str, JobScheduleConfig] = {}
     channel_subscriptions: list[ChannelSubscription] = []
+    checkpoint: CheckpointConfig | None = None
 
     @field_validator("project_slug")
     @classmethod

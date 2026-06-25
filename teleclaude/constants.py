@@ -5,7 +5,7 @@ This module defines shared constants to ensure consistency.
 
 import functools
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, StrEnum
 
 # Domain scopes (single source of truth)
@@ -333,8 +333,6 @@ CHECKPOINT_MESSAGE = (
 CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
 # Threshold for wide blast radius observation
 CHECKPOINT_BLAST_RADIUS_THRESHOLD = 3
-TUI_RELOAD_PROCESS_PATTERN = r"\.venv/bin/telec$|teleclaude\.cli\.telec($| )"
-TUI_RELOAD_COMMAND = f"Run `pkill -SIGUSR2 -f -- '{TUI_RELOAD_PROCESS_PATTERN}'`"
 
 # Sent to the agent after a restart (self-restart or maintenance auto-restore)
 # once the TUI prompt is ready. The agent has full context via --resume; this
@@ -386,165 +384,120 @@ def _glob_matches(path: str, pattern: str) -> bool:  # pyright: ignore[reportUnu
 
 
 @dataclass(frozen=True)
-class FileCategory:
-    """Maps file patterns to checkpoint action instructions."""
+class CheckpointAction:
+    """A single maintenance action in the checkpoint registry (the verb).
 
-    name: str
-    include_patterns: list[str] = field(default_factory=list)
-    exclude_patterns: list[str] = field(default_factory=list)
-    override_patterns: list[str] = field(default_factory=list)
-    instruction: str = ""
-    evidence_substrings: list[str] = field(default_factory=list)
+    Evidence, gating, ordering, and the command all live on the action, never on
+    a binding — so many bindings may trigger one action while its suppression,
+    branch-gating, and surface order are defined exactly once. ``run`` and
+    ``evidence`` may carry the ``{slug}`` placeholder, filled from the project's
+    ``project_slug`` when the effective model is loaded; ``run`` may carry the
+    ``{window}`` placeholder, filled with the elapsed-time log window at surface.
+    """
+
+    id: str
+    run: str
+    evidence: tuple[str, ...] = ()
+    main_only: bool = False
+    precedence: int = 0
     evidence_must_follow_last_mutation: bool = False
-    main_only: bool = False  # Skip instruction when not on main (worktree branches)
-    precedence: int = 0  # Lower = earlier in required actions
-    is_code: bool = True  # False for source files that deploy via sync (no runtime verification)
+
+    def effective_evidence(self) -> tuple[str, ...]:
+        """Evidence substrings proving the action ran; defaults to ``[run]``."""
+        return self.evidence if self.evidence else (self.run,)
 
 
-# Evidence patterns for general verification actions (R4)
-CHECKPOINT_TEST_EVIDENCE = ["pytest", "make test", "telec code test"]
-CHECKPOINT_RESTART_EVIDENCE = ["make restart"]
-CHECKPOINT_AGENT_RESTART_EVIDENCE = ["telec sessions restart", "/agent-restart", "agent_restart"]
-CHECKPOINT_RELOAD_EVIDENCE = ["pkill -SIGUSR2", "kill -USR2"]
-CHECKPOINT_LOG_CHECK_EVIDENCE = ["instrukt-ai-logs"]
+@dataclass(frozen=True)
+class CheckpointScope:
+    """A glob scope (the noun): ``include`` minus ``exclude``, re-added by ``override``."""
+
+    include: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
+    override: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CheckpointBinding:
+    """Maps a scope to the action ids a matching changed file owes."""
+
+    scope: CheckpointScope
+    actions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CheckpointModel:
+    """The effective checkpoint declaration: an action registry plus bindings."""
+
+    actions: dict[str, CheckpointAction]
+    bindings: tuple[CheckpointBinding, ...]
+
+
 CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 # A post-commit review is satisfied once the commit(s) are dispatched to a
 # reviewer — either a fresh run of /next-review-commits or a remediation sent to
 # an already-open reviewer ("review commits <sha>" via telec sessions send).
 CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["/next-review-commits", "review commits"]
 
-# File categories ordered by action precedence (R2, R9).
-# Evidence substrings are matched against Bash tool call commands (R4).
-CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
-    FileCategory(
-        name="telec setup",
-        include_patterns=[
-            "Makefile",
-            "teleclaude/install/**",
-            "teleclaude/project_setup/**",
-            "templates/**",
-            ".pre-commit-config.yaml",
-            ".gitattributes",
-            ".husky/pre-commit",
-        ],
-        instruction="Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)",
-        evidence_substrings=["make install", "telec projects init"],
+# Universal base actions (the verbs). TeleClaude owns this registry; every
+# onboarded project inherits it and references these ids in its own bindings or
+# extends it with project-specific actions. `log-check` carries the {slug}
+# placeholder (filled from ProjectConfig.project_slug) and the {window}
+# placeholder (filled at surface time from elapsed turn duration).
+CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
+    "install": CheckpointAction(
+        id="install",
+        run="Run `make install`",
+        evidence=("make install",),
         main_only=True,
         precedence=10,
     ),
-    FileCategory(
-        name="dependencies",
-        include_patterns=["pyproject.toml", "requirements*.txt"],
-        instruction="Install updated dependencies: `uv sync`",
-        evidence_substrings=["uv sync", "make install", "pip install"],
-        main_only=True,
-        precedence=20,
-    ),
-    FileCategory(
-        name="daemon code",
-        include_patterns=["teleclaude/**/*.py"],
-        exclude_patterns=[
-            "teleclaude/hooks/**",
-            "teleclaude/cli/**",
-            "teleclaude/utils/**",
-            "teleclaude/quality/**",
-            "teleclaude/session_scoping/**",
-            "teleclaude/project_setup/**",
-            "teleclaude/codegen/**",
-            "teleclaude/resource_validation/**",
-            "teleclaude/entrypoints/**",
-            "teleclaude/tagging/**",
-            "teleclaude/helpers/**",
-        ],
-        # CLI modules the daemon imports at startup — editing them changes daemon
-        # runtime behavior and requires a restart despite the general cli/** exclusion.
-        #
-        # Load chain: teleclaude/core/tool_access.py imports from teleclaude.cli.telec,
-        # which executes teleclaude/cli/telec/__init__.py and its transitive imports:
-        #   __init__.py → _run_tui, _shared, auth, help (→ surface_types), surface, tool_client,
-        #                  session_auth
-        # teleclaude/daemon_hook_outbox.py additionally imports session_auth directly.
-        override_patterns=[
-            "teleclaude/cli/__init__.py",
-            "teleclaude/cli/telec/__init__.py",
-            "teleclaude/cli/telec/surface.py",
-            "teleclaude/cli/telec/surface_types.py",
-            "teleclaude/cli/telec/auth.py",
-            "teleclaude/cli/telec/help.py",
-            "teleclaude/cli/telec/_shared.py",
-            "teleclaude/cli/telec/_run_tui.py",
-            "teleclaude/cli/tool_client.py",
-            "teleclaude/cli/session_auth.py",
-        ],
-        instruction="Run `make restart`",
-        evidence_substrings=CHECKPOINT_RESTART_EVIDENCE,
-        main_only=True,
-        precedence=30,
-    ),
-    FileCategory(
-        name="shared utilities",
-        include_patterns=["teleclaude/utils/**"],
-        instruction="",  # Used by both daemon and hooks; agent decides if restart is needed
-        evidence_substrings=[],
-        precedence=35,
-    ),
-    FileCategory(
-        name="config",
-        include_patterns=["config.yml"],
-        instruction="Run `make restart`",
-        evidence_substrings=CHECKPOINT_RESTART_EVIDENCE,
-        main_only=True,
-        precedence=30,
-    ),
-    FileCategory(
-        name="TUI code",
-        include_patterns=["teleclaude/cli/tui/**"],
-        instruction=TUI_RELOAD_COMMAND,
-        evidence_substrings=CHECKPOINT_RELOAD_EVIDENCE,
-        evidence_must_follow_last_mutation=True,
-        precedence=40,
-    ),
-    FileCategory(
-        name="agent artifacts",
-        include_patterns=["agents/**", ".agents/**", "**/AGENTS.master.md"],
-        instruction="Reload artifacts: `telec sessions restart self`",
-        evidence_substrings=CHECKPOINT_AGENT_RESTART_EVIDENCE,
+    "reload-self": CheckpointAction(
+        id="reload-self",
+        run="Reload artifacts: `telec sessions restart self`",
+        evidence=("telec sessions restart self",),
         precedence=50,
-        is_code=False,
     ),
-    FileCategory(
-        name="syncable sources",
-        include_patterns=["agents/**", "agents/commands/**", "docs/**"],
-        instruction="Run `telec sync`",
-        evidence_substrings=["telec sync"],
+    "sync": CheckpointAction(
+        id="sync",
+        run="Run `telec sync`",
+        evidence=("telec sync",),
         main_only=True,
         precedence=55,
-        is_code=False,
     ),
-    FileCategory(
-        name="hook runtime",
-        include_patterns=["teleclaude/hooks/**"],
-        instruction="",  # Auto-applies on next hook invocation
-        evidence_substrings=[],
-        precedence=100,
+    "log-check": CheckpointAction(
+        id="log-check",
+        run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude 'logger=teleclaude\\.git\\.exec'`",
+        evidence=("instrukt-ai-logs",),
+        precedence=58,
     ),
-    FileCategory(
-        name="tests",
-        include_patterns=["tests/**/*.py"],
-        instruction="Run targeted tests for changed test files",
-        evidence_substrings=CHECKPOINT_TEST_EVIDENCE,
+    "test": CheckpointAction(
+        id="test",
+        run="Run targeted tests for only YOUR changed behavior",
+        evidence=("pytest", "make test", "telec code test"),
         precedence=60,
     ),
-]
+}
 
-# Patterns for bare non-code files (capture-only, no action required).
-# docs/** is intentionally excluded here — those files match the
-# "syncable sources" FileCategory so agents are nudged to validate them.
-CHECKPOINT_NO_ACTION_PATTERNS: list[str] = [
-    "*.md",
-    "*.txt",
-    "*.rst",
-]
+# Universal base bindings (telec-contract paths). They fire on every checkpoint
+# in every onboarded project regardless of language. `test` and `log-check` are
+# NOT bound here — they attach to a project-declared `code` scope (code is an
+# allowlist; an unmatched file is silent).
+CHECKPOINT_BASE_BINDINGS: tuple[CheckpointBinding, ...] = (
+    CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",)),
+    CheckpointBinding(
+        scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),
+        actions=("sync", "reload-self"),
+    ),
+    CheckpointBinding(
+        scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),
+        actions=("install",),
+    ),
+)
+
+# The conventional `docs` / `agents` base bindings carry these labels so an
+# overlay's optional `docs:`/`agents:` extra actions can be appended to them.
+CHECKPOINT_BASE_DOCS_BINDING_INDEX = 0
+CHECKPOINT_BASE_AGENTS_BINDING_INDEX = 1
 
 # Worktree directory name (git worktrees live at {project}/trees/{slug})
 WORKTREE_DIR = "trees"

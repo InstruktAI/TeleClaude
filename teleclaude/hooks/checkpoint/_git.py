@@ -3,28 +3,30 @@
 import re
 import shlex
 from collections.abc import Mapping
-from fnmatch import fnmatch
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES, CHECKPOINT_NO_ACTION_PATTERNS, FileCategory, _glob_matches
+from teleclaude.checkpoint_model import triggered_action_ids
+from teleclaude.constants import CheckpointModel
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
 from teleclaude.utils.transcript import TurnTimeline
 
 logger = get_logger(__name__)
 
+# Prose source files carry no maintenance action of their own; used only to detect
+# "no code changes this turn" framing, independent of the action model.
+_DOC_FILE_SUFFIXES = (".md", ".txt", ".rst")
+
 __all__ = [
     "_canonical_tool_name",
-    "_categorize_files",
     "_command_likely_mutates_files",
     "_current_branch",
     "_extract_apply_patch_paths",
     "_extract_shell_command",
     "_extract_shell_touched_paths",
     "_extract_turn_file_signals",
-    "_file_matches_category",
     "_get_uncommitted_files",
     "_git_diff_names",
     "_is_checkpoint_project_supported",
@@ -48,21 +50,20 @@ def _canonical_tool_name(tool_name: str) -> str:
 
 
 def _is_checkpoint_project_supported(project_path: str) -> bool:
-    """Return True only for projects that carry TeleClaude checkpoint semantics."""
+    """Return True for any onboarded project — one carrying a ``teleclaude.yml``.
+
+    The checkpoint engine runs in every telec-onboarded repository, nudging the
+    platform-universal base merged with the project's declared overlay. Onboarding
+    is keyed on the project carrying a resolvable ``ProjectConfig`` (its
+    ``teleclaude.yml``), not on TeleClaude package markers.
+    """
     if not project_path:
         return False
     try:
         root = Path(project_path).expanduser().resolve()
     except Exception:
         return False
-
-    # Require clear TeleClaude markers so other repositories are excluded.
-    # checkpoint module may be a flat file or a package.
-    checkpoint_flat = root / "teleclaude" / "hooks" / "checkpoint.py"
-    checkpoint_pkg = root / "teleclaude" / "hooks" / "checkpoint" / "__init__.py"
-    has_checkpoint = checkpoint_flat.exists() or checkpoint_pkg.exists()
-    has_next_work = (root / "agents" / "commands" / "next-work.md").exists()
-    return has_checkpoint and has_next_work
+    return (root / "teleclaude.yml").exists()
 
 
 def _get_uncommitted_files(project_path: str) -> list[str] | None:
@@ -407,43 +408,8 @@ def _scope_git_files_to_current_turn(
 
 
 # ---------------------------------------------------------------------------
-# File categorization (R2)
+# Action resolution
 # ---------------------------------------------------------------------------
-
-
-def _categorize_files(git_files: list[str]) -> list[FileCategory]:
-    """Map changed files to matching file categories."""
-    matched: list[FileCategory] = []
-    seen_names: set[str] = set()
-    tests_only_category = next((c for c in CHECKPOINT_FILE_CATEGORIES if c.name == "tests"), None)
-    meaningful_files = [filepath for filepath in git_files if not _is_docs_only([filepath])]
-    tests_only_diff = bool(meaningful_files) and (
-        tests_only_category is not None
-        and all(_file_matches_category(filepath, tests_only_category) for filepath in meaningful_files)
-    )
-
-    for category in CHECKPOINT_FILE_CATEGORIES:
-        if category.name == "tests" and not tests_only_diff:
-            continue
-        for filepath in git_files:
-            if _file_matches_category(filepath, category):
-                if category.name not in seen_names:
-                    matched.append(category)
-                    seen_names.add(category.name)
-                break
-
-    return matched
-
-
-def _file_matches_category(filepath: str, category: FileCategory) -> bool:
-    """Check if a file path matches a category's include/exclude patterns."""
-    included = any(_glob_matches(filepath, pat) for pat in category.include_patterns)
-    if not included:
-        return False
-    if category.override_patterns and any(_glob_matches(filepath, pat) for pat in category.override_patterns):
-        return True
-    excluded = any(_glob_matches(filepath, pat) for pat in category.exclude_patterns)
-    return not excluded
 
 
 def _git_diff_names(project_path: str, range_expr: str) -> list[str]:
@@ -473,18 +439,13 @@ def _git_diff_names(project_path: str, range_expr: str) -> list[str]:
 
 
 def _is_docs_only(git_files: list[str]) -> bool:
-    """Check if all changed files are non-code (docs, todos, markdown)."""
+    """Check if every changed file is a prose source file (.md/.txt/.rst)."""
     for filepath in git_files:
-        if not any(fnmatch(filepath, pat) for pat in CHECKPOINT_NO_ACTION_PATTERNS):
+        if not filepath.endswith(_DOC_FILE_SUFFIXES):
             return False
     return True
 
 
-def _is_no_action_only(git_files: list[str]) -> bool:
-    """Return True when every changed file is non-actionable and uncategorized."""
-    for filepath in git_files:
-        if not any(fnmatch(filepath, pat) for pat in CHECKPOINT_NO_ACTION_PATTERNS):
-            return False
-        if _categorize_files([filepath]):
-            return False
-    return True
+def _is_no_action_only(git_files: list[str], model: CheckpointModel) -> bool:
+    """Return True when no changed file owes any action under the merged model."""
+    return not triggered_action_ids(git_files, model)

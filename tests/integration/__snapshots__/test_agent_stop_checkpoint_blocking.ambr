@@ -14,7 +14,8 @@
       'Run targeted tests for only YOUR changed behavior',
     ]),
     'hook_categories': list([
-      'hook runtime',
+      'log-check',
+      'test',
     ]),
   })
 # ---
@@ -23,7 +24,7 @@
     'unsynced_doc_payload': '''
       [TeleClaude Checkpoint] - Context-aware checkpoint
       
-      Changed: syncable sources
+      Changed: sync
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. Run `telec sync`
@@ -41,7 +42,7 @@
     'main_only_payload': '''
       [TeleClaude Checkpoint] - Context-aware checkpoint
       
-      Changed: daemon code
+      Changed: restart
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
@@ -60,7 +61,7 @@
     'committed_daemon_payload': '''
       [TeleClaude Checkpoint] - Context-aware checkpoint
       
-      Changed: daemon code
+      Changed: restart
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
@@ -79,7 +80,7 @@
     'toplevel_daemon_payload': '''
       [TeleClaude Checkpoint] - Context-aware checkpoint
       
-      Changed: daemon code
+      Changed: restart
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
@@ -112,10 +113,10 @@
     'maintenance_payload': '''
       [TeleClaude Checkpoint] - Integrator post-merge maintenance
       
-      Changed (merge delta): telec setup, dependencies, daemon code, syncable sources
+      Changed (merge delta): install, deps, restart, sync
       
       Required actions (maintenance after delivery — complete before next integration):
-      1. Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)
+      1. Run `make install`
       2. Install updated dependencies: `uv sync`
       3. Run `make restart`
       4. Run `telec sync`
@@ -133,7 +134,7 @@
     'authored_payload': '''
       [TeleClaude Checkpoint] - Context-aware checkpoint
       
-      Changed: daemon code
+      Changed: restart
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. A main-branch commit occurred this turn. Surface the `telec code commit` review gate to the user with your recommendation before reporting completion. If you recommend review, set a non-blocking 5-minute heartbeat after that message; if the heartbeat fires without a user response approving or declining review, dispatch the commit(s) to review yourself and wait for REVIEW COMPLETE.
@@ -150,18 +151,14 @@
 # name: test_make_install_surfaces_for_install_dir_change
   dict({
     'install_dir_result': list([
-      'Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)',
-      "Check logs: `instrukt-ai-logs teleclaude --since 2m --exclude 'logger=teleclaude\\.git\\.exec'`",
-      'Run targeted tests for only YOUR changed behavior',
+      'Run `make install`',
     ]),
   })
 # ---
 # name: test_make_install_surfaces_for_makefile_change
   dict({
     'makefile_result': list([
-      'Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)',
-      "Check logs: `instrukt-ai-logs teleclaude --since 2m --exclude 'logger=teleclaude\\.git\\.exec'`",
-      'Run targeted tests for only YOUR changed behavior',
+      'Run `make install`',
     ]),
   })
 # ---
@@ -191,8 +188,6 @@
   dict({
     'pyproject_result': list([
       'Install updated dependencies: `uv sync`',
-      "Check logs: `instrukt-ai-logs teleclaude --since 2m --exclude 'logger=teleclaude\\.git\\.exec'`",
-      'Run targeted tests for only YOUR changed behavior',
     ]),
   })
 # ---
@@ -206,7 +201,7 @@
     'first_payload': '''
       [TeleClaude Checkpoint] - Context-aware checkpoint
       
-      Changed: syncable sources
+      Changed: sync
       
       Required actions (BLOCKING — do not resume user-facing work until all complete):
       1. Run `telec sync`
@@ -226,8 +221,7 @@
       'Reload artifacts: `telec sessions restart self`',
     ]),
     'worktree_categories': list([
-      'agent artifacts',
-      'syncable sources',
+      'reload-self',
     ]),
   })
 # ---

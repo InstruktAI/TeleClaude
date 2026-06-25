@@ -3,12 +3,13 @@
 import re
 from pathlib import Path
 
+from teleclaude.checkpoint_model import scope_matches
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
     CHECKPOINT_COMMIT_EVIDENCE,
     CHECKPOINT_REVIEW_DISPATCH_EVIDENCE,
-    FileCategory,
+    CheckpointScope,
 )
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.checkpoint._git import (
@@ -17,7 +18,6 @@ from teleclaude.hooks.checkpoint._git import (
     _extract_apply_patch_paths,
     _extract_shell_command,
     _extract_shell_touched_paths,
-    _file_matches_category,
     _normalize_repo_path,
     _segment_tokens,
     _split_shell_segments,
@@ -40,8 +40,8 @@ __all__ = [
     "_has_evidence_after_index",
     "_has_review_dispatch_evidence",
     "_iter_shell_command_records",
-    "_last_category_mutation_index",
     "_last_git_file_mutation_index",
+    "_last_scope_mutation_index",
     "_segment_matches_evidence",
 ]
 
@@ -200,13 +200,13 @@ def _record_touched_paths(
     return touched
 
 
-def _last_category_mutation_index(
+def _last_scope_mutation_index(
     timeline: TurnTimeline,
-    category: FileCategory,
+    scopes: list[CheckpointScope],
     project_path: str,
 ) -> int | None:
-    """Return the last timeline index that mutated a file in the given category."""
-    if not timeline.has_data:
+    """Return the last timeline index that mutated a file matching any given scope."""
+    if not timeline.has_data or not scopes:
         return None
 
     last_index: int | None = None
@@ -215,7 +215,7 @@ def _last_category_mutation_index(
         if tool_name not in _MUTATOR_TOOLS:
             continue
         touched = _record_touched_paths(record, tool_name, project_path, include_shell_inference=False)
-        if any(_file_matches_category(path, category) for path in touched):
+        if any(scope_matches(path, scope) for path in touched for scope in scopes):
             last_index = idx
 
     return last_index
