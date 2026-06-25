@@ -200,13 +200,13 @@ async def inject_user_turn(
                     )
                     return True
                 if observation.state == PromptDeliveryState.SUBMITTED:
-                    logger.info(
-                        "inject_user_turn: prompt submitted by pane observation session=%s paste_attempt=%d/%d",
-                        session.session_id,
-                        paste_attempt,
-                        paste_attempts,
+                    return await _confirm_observed_submission(
+                        session,
+                        turn_started=turn_started,
+                        source="paste_observation",
+                        attempt=paste_attempt,
+                        attempt_total=paste_attempts,
                     )
-                    return True
                 if observation.state == PromptDeliveryState.IN_INPUT:
                     return await _submit_observed_user_turn(
                         session,
@@ -229,6 +229,33 @@ async def inject_user_turn(
         return False
     finally:
         event_bus.unsubscribe(TeleClaudeEvents.AGENT_ACTIVITY, handler)
+
+
+async def _confirm_observed_submission(
+    session: Session,
+    *,
+    turn_started: asyncio.Future[None],
+    source: str,
+    attempt: int,
+    attempt_total: int,
+) -> bool:
+    if await _wait_for_turn_started(turn_started, INJECT_TURN_START_TIMEOUT_S):
+        logger.info(
+            "inject_user_turn: turn confirmed after pane submission observation session=%s source=%s attempt=%d/%d",
+            session.session_id,
+            source,
+            attempt,
+            attempt_total,
+        )
+        return True
+    logger.warning(
+        "inject_user_turn: pane showed submitted state without turn-start confirmation session=%s source=%s attempt=%d/%d",
+        session.session_id,
+        source,
+        attempt,
+        attempt_total,
+    )
+    return False
 
 
 async def _wait_for_prompt_delivery_observation(
@@ -270,8 +297,16 @@ async def _submit_observed_user_turn(
 ) -> bool:
     observation = initial_observation
     for submit_attempt, delay_s in enumerate(INJECT_SUBMIT_RETRY_DELAYS_S, start=1):
+        if observation.state == PromptDeliveryState.SUBMITTED:
+            return await _confirm_observed_submission(
+                session,
+                turn_started=turn_started,
+                source="submit_observation",
+                attempt=submit_attempt,
+                attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),
+            )
         if observation.state != PromptDeliveryState.IN_INPUT:
-            return observation.state == PromptDeliveryState.SUBMITTED or turn_started.done()
+            return turn_started.done()
 
         submitted = await tmux_bridge.send_enter(session.tmux_session_name)
         if not submitted:
@@ -293,13 +328,13 @@ async def _submit_observed_user_turn(
 
         observation = await _observe_prompt_delivery(session, text, active_agent=active_agent)
         if observation.state == PromptDeliveryState.SUBMITTED:
-            logger.info(
-                "inject_user_turn: prompt submitted by pane observation session=%s submit_attempt=%d/%d",
-                session.session_id,
-                submit_attempt,
-                len(INJECT_SUBMIT_RETRY_DELAYS_S),
+            return await _confirm_observed_submission(
+                session,
+                turn_started=turn_started,
+                source="submit_observation",
+                attempt=submit_attempt,
+                attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),
             )
-            return True
         if observation.state == PromptDeliveryState.ABSENT:
             if await _wait_for_turn_started(turn_started, INJECT_TURN_START_TIMEOUT_S):
                 return True

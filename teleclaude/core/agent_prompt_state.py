@@ -39,8 +39,6 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
         if _contains_target(normalized_live, target):
             state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
             return PromptDeliveryObservation(state, normalized_live)
-        if _contains_target(_normalize_text(output), target):
-            return PromptDeliveryObservation(PromptDeliveryState.SUBMITTED, normalized_live)
         return PromptDeliveryObservation(PromptDeliveryState.ABSENT, normalized_live)
 
     normalized_output = _normalize_text(output)
@@ -52,8 +50,6 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
             else PromptDeliveryState.SUBMITTED
         )
         return PromptDeliveryObservation(state, live_region.strip())
-    if _contains_target(normalized_output, target):
-        return PromptDeliveryObservation(PromptDeliveryState.SUBMITTED, live_region.strip())
     return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_region.strip())
 
 
@@ -80,6 +76,7 @@ def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> s
 
 
 def _extract_gemini_live_region(lines: list[str], target: str) -> str:
+    del target
     footer_idx = -1
     for idx in range(len(lines) - 1, -1, -1):
         if AgentName.GEMINI.prompt_marker in lines[idx]:
@@ -87,12 +84,7 @@ def _extract_gemini_live_region(lines: list[str], target: str) -> str:
             break
     if footer_idx >= 0:
         return "\n".join(lines[max(0, footer_idx - 20) : footer_idx + 1])
-
-    joined = "\n".join(lines)
-    target_idx = joined.rfind(target)
-    if target_idx < 0:
-        return ""
-    return joined[target_idx:]
+    return ""
 
 
 def _target_is_terminal_in_region(region: str, target: str, agent: AgentName) -> bool:

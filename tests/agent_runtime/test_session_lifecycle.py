@@ -8,6 +8,7 @@ No fallback to admin should exist for sessions without explicit identity.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -20,6 +21,7 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 
 import teleclaude.core.agent_coordinator._coordinator as coordinator_mod
+import teleclaude.daemon_session as daemon_session_mod
 from teleclaude.api import auth as auth_mod
 from teleclaude.api import sessions_actions_routes, sessions_routes
 from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
@@ -32,7 +34,7 @@ from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.command_handlers import _session as session_handler_mod
 from teleclaude.core.events import AgentEventContext, AgentHookEvents, build_agent_payload
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import MessageMetadata, SessionSnapshot
+from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.models._session import Session
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug, live_slug_holder
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
@@ -240,9 +242,112 @@ async def _create_session(
     return resp.json()
 
 
+class _AgentThenMessageHarness(daemon_session_mod._DaemonSessionMixin):
+    def __init__(self) -> None:
+        self.command_service = SimpleNamespace(start_agent=AsyncMock())
+        self.polled: list[tuple[str, str]] = []
+        self.readiness_calls: list[tuple[str, str]] = []
+
+    async def _await_agent_readiness(
+        self,
+        session: Session,
+        session_id: str,
+        agent_name: str,
+        ready_future: asyncio.Future[None],
+    ) -> None:
+        del session, ready_future
+        self.readiness_calls.append((session_id, agent_name))
+
+    async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
+        self.polled.append((session_id, tmux_session_name))
+
+
+async def _seed_agent_then_message_session(api: AsyncClient, session_id: str) -> None:
+    await api.db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name=f"tc_{session_id}",
+        last_input_origin=InputOrigin.TERMINAL.value,
+        title="agent_then_message",
+        session_id=session_id,
+        project_path="/tmp",
+        lifecycle_status="initializing",
+        active_agent="codex",
+        thinking_mode="fast",
+        human_role="admin",
+        emit_session_started=False,
+    )
+
+
 async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
     """Load session directly from DB (attached to the client by conftest)."""
     return await api.db.get_session(session_id)
+
+
+def _agent_then_message_intent(message: str) -> SessionLaunchIntent:
+    return SessionLaunchIntent(
+        kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+        agent="codex",
+        thinking_mode="fast",
+        message=message,
+    )
+
+
+@pytest.mark.spec(_SPEC, "Additional context propagation")
+async def test_agent_then_message_launch_reports_success_after_confirmed_delivery(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    session_id = "agent-then-message-confirmed"
+    message = "confirmed startup prompt"
+    await _seed_agent_then_message_session(api, session_id)
+    harness = _AgentThenMessageHarness()
+    inject = AsyncMock(return_value=True)
+    process_running = AsyncMock(return_value=True)
+    monkeypatch.setattr(daemon_session_mod, "db", api.db)
+    monkeypatch.setattr(daemon_session_mod.tmux_io, "inject_user_turn", inject)
+    monkeypatch.setattr(daemon_session_mod.tmux_io, "is_process_running", process_running)
+
+    result = await harness._execute_launch_intent(session_id, _agent_then_message_intent(message))
+
+    assert result == {"status": "success", "message": "Message submitted after agent start"}
+    harness.command_service.start_agent.assert_awaited_once()
+    inject.assert_awaited_once()
+    injected_session = inject.await_args.args[0]
+    assert injected_session.session_id == session_id
+    assert inject.await_args.args[1] == message
+    assert inject.await_args.kwargs == {"active_agent": "codex"}
+    assert harness.polled == [(session_id, f"tc_{session_id}")]
+    stored = await _get_session_from_db(api, session_id)
+    assert stored.last_message_sent == message
+
+
+@pytest.mark.spec(_SPEC, "Additional context propagation")
+async def test_agent_then_message_launch_reports_error_when_delivery_unconfirmed(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    session_id = "agent-then-message-unconfirmed"
+    message = "unconfirmed startup prompt"
+    await _seed_agent_then_message_session(api, session_id)
+    harness = _AgentThenMessageHarness()
+    inject = AsyncMock(return_value=False)
+    process_running = AsyncMock(return_value=True)
+    monkeypatch.setattr(daemon_session_mod, "db", api.db)
+    monkeypatch.setattr(daemon_session_mod.tmux_io, "inject_user_turn", inject)
+    monkeypatch.setattr(daemon_session_mod.tmux_io, "is_process_running", process_running)
+
+    result = await harness._execute_launch_intent(session_id, _agent_then_message_intent(message))
+
+    assert result == {"status": "error", "message": "Failed to submit message into agent prompt"}
+    harness.command_service.start_agent.assert_awaited_once()
+    inject.assert_awaited_once()
+    assert harness.polled == []
+    stored = await _get_session_from_db(api, session_id)
+    assert stored.last_message_sent == message
 
 
 # ---------------------------------------------------------------------------

@@ -65,6 +65,7 @@ async def _prepare_restart(
     monkeypatch: pytest.MonkeyPatch,
     *,
     pane_output: str = _LIVE_STIMULUS_PROMPT,
+    submit_delays: tuple[float, ...] = (0.2, 0.05, 0.05),
 ) -> tuple[AsyncMock, AsyncMock, AsyncMock, AsyncMock, list, list]:
     """Wire the faked tmux/process boundary and a restart-eligible session.
 
@@ -106,7 +107,7 @@ async def _prepare_restart(
     monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.05)
     monkeypatch.setattr(tmux_io, "INJECT_PROMPT_OBSERVE_INTERVAL_S", 0.01)
     monkeypatch.setattr(tmux_io, "INJECT_PASTE_RETRY_BACKOFF_S", (0.01, 0.01))
-    monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", (0.05, 0.05, 0.05))
+    monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", submit_delays)
 
     timeout_events: list[SessionLifecycleContext] = []
     activity_events: list[UserPromptSubmitActivityEvent] = []
