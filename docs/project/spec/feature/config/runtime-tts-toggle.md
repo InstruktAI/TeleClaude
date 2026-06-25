@@ -213,8 +213,6 @@ And the TTS manager's live enabled flag stays False
 And no session-start voice is spoken while the runtime layer holds TTS muted
 ```
 
-<!-- planned:tts-lazy-deps -->
-
 #### UC-CFG-RUNTIME-17: Enabling TTS provisions the optional deps before the flag flips
 
 ```
@@ -269,8 +267,6 @@ manager's initial enabled flag; the runtime-settings layer is the single source
 of truth for the live enable/mute. Provisioned state is determined by probing
 whether a configured-and-enabled TTS service's dependencies import, never by a
 configuration flag.
-
-<!-- /planned:tts-lazy-deps -->
 
 <!-- planned:tts-deprovision -->
 

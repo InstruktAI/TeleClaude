@@ -20,20 +20,16 @@
     "boto3>=1.34.0",
     "dateparser>=1.2.0",
     "discord.py>=2.4.0",
-    "elevenlabs>=2.31.0",
     "fastapi>=0.115.0",
     "greenlet>=3.3.0",
     "httpx>=0.28.0",
     "instruktai-python-logger>=0.4.5",
-    "misaki[en]; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-audio; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "munch>=4.0.0",
     "nest-asyncio>=1.6.0",
-    "num2words; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "openai>=2.6.1",
     "packaging>=24.0",
     "pathspec>=0.12.0",
-    "phonemizer-fork>=3.3.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "psutil>=5.9.0",
     "py7zr>=1.0.0",
     "py65emu>=0.1.0",
@@ -62,6 +58,18 @@
   readme="README.md"
   requires-python=">=3.12"
   version="0.6.1"
+
+  [project.optional-dependencies]
+    # TTS-exclusive deps: excluded from a baseline install, provisioned on demand the
+    # first time TTS is enabled via `uv sync --frozen --extra tts`. elevenlabs is
+    # cross-platform; the mlx text pipeline (misaki/num2words/phonemizer-fork) is
+    # Apple-Silicon-only and keeps its platform markers.
+    tts=[
+      "elevenlabs>=2.31.0",
+      "misaki[en]; sys_platform == 'darwin' and platform_machine == 'arm64'",
+      "num2words; sys_platform == 'darwin' and platform_machine == 'arm64'",
+      "phonemizer-fork>=3.3.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    ]
 
 [dependency-groups]
   dev=[

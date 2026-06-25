@@ -762,8 +762,10 @@ install_python_deps() {
 
     install_uv
 
-    # All deps use platform markers — plain uv sync installs the right
-    # packages for any platform. No extras, no flags, no fragility.
+    # Baseline sync installs core deps only: platform markers select the right
+    # packages for any platform, and uv sync never pulls an extra. The
+    # TTS-exclusive deps live in the `tts` extra, provisioned on demand the first
+    # time TTS is enabled (uv sync --frozen --extra tts), not at setup time.
     print_info "Syncing Python environment with uv..."
     if [ "$CI_MODE" = true ]; then
         (cd "$INSTALL_DIR" && uv sync --frozen)

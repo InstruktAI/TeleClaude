@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
+from teleclaude.tts.provision import ensure_tts_provisioned_async, supported_services, tts_deps_present
+
 if TYPE_CHECKING:
     from teleclaude.tts.manager import TTSManager
 
@@ -86,6 +89,46 @@ class RuntimeSettings:
         self._schedule_flush()
         return self.get_state()
 
+    async def apply_patch_async(self, updates: SettingsPatch) -> SettingsState:
+        """Apply a patch, gating a genuine TTS enable transition on provisioning.
+
+        A False->True ``tts.enabled`` transition first awaits dependency
+        provisioning off the event loop; only on success does the flag flip. Any
+        ``TTSProvisionError`` propagates with no state mutation (fail closed). A
+        mute (True->False) or a no-op delegates straight to the sync patch with no
+        provisioning call.
+        """
+        if self._is_tts_enable_transition(updates):
+            await ensure_tts_provisioned_async(config.tts)
+        return self.patch(updates)
+
+    def _is_tts_enable_transition(self, updates: SettingsPatch) -> bool:
+        """True only for a genuine False->True tts.enabled change."""
+        return updates.tts is not None and updates.tts.enabled is True and self._state.tts.enabled is False
+
+    def reconcile_tts_provisioning(self) -> None:
+        """Force TTS off at boot when a replayed enabled=True is not ready on this host.
+
+        Runs no install: a persisted/seeded ``enabled=True`` is forced off (state and
+        manager) and persisted synchronously when the host supports no enabled service
+        or the extra-backed deps are not importable, so the settings API never reports
+        ``enabled=True`` on an unprovisioned host.
+        """
+        if not self._tts_manager.enabled:
+            return
+        is_supported = bool(supported_services(config.tts))
+        deps_present = tts_deps_present(config.tts)
+        if is_supported and deps_present:
+            return
+        logger.warning(
+            "tts_boot_reconcile_forced_off",
+            supported=is_supported,
+            deps_present=deps_present,
+        )
+        self._state.tts.enabled = False
+        self._tts_manager.enabled = False
+        self._write_state_to_disk()
+
     @staticmethod
     def parse_patch(raw: object) -> SettingsPatch:
         """Parse a raw JSON body into a typed SettingsPatch."""
@@ -155,12 +198,17 @@ class RuntimeSettings:
         await self._flush_to_disk()
 
     async def _flush_to_disk(self) -> None:
+        # Best-effort: a debounced background flush must never crash the loop.
         try:
-            self._settings_path.parent.mkdir(parents=True, exist_ok=True)
-            payload = {
-                "tts": {"enabled": self._state.tts.enabled},
-            }
-            self._settings_path.write_text(f"{json.dumps(payload, indent=2, sort_keys=True)}\n", encoding="utf-8")
-            logger.info("Runtime settings flushed to %s", self._settings_path)
-        except Exception:
+            self._write_state_to_disk()
+        except OSError:
             logger.exception("Failed to flush runtime settings to disk")
+
+    def _write_state_to_disk(self) -> None:
+        """Write current state to disk, propagating any write failure to the caller."""
+        self._settings_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "tts": {"enabled": self._state.tts.enabled},
+        }
+        self._settings_path.write_text(f"{json.dumps(payload, indent=2, sort_keys=True)}\n", encoding="utf-8")
+        logger.info("Runtime settings flushed to %s", self._settings_path)

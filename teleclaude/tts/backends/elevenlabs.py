@@ -2,8 +2,6 @@
 
 import os
 
-from elevenlabs.client import ElevenLabs
-from elevenlabs.play import play
 from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,6 +30,10 @@ class ElevenLabsBackend:
             if not voice_id:
                 logger.debug("ElevenLabs: no voice_id provided")
                 return False
+
+            # Lazy import: elevenlabs lives in the `tts` extra, provisioned on enable.
+            from elevenlabs.client import ElevenLabs  # noqa: PLC0415
+            from elevenlabs.play import play  # noqa: PLC0415
 
             client = ElevenLabs(api_key=api_key)
             audio = client.text_to_speech.convert(

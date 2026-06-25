@@ -360,6 +360,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Mutable runtime settings with debounced JSON persistence
         self.runtime_settings = RuntimeSettings(RUNTIME_SETTINGS_PATH, self.tts_manager)
+        # Fail closed: a replayed enabled=True on an unprovisioned/unsupported host is
+        # forced off (and persisted) before the settings API can report it.
+        self.runtime_settings.reconcile_tts_provisioning()
 
         self.maintenance_service = MaintenanceService(
             client=self.client,
