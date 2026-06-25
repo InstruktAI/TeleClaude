@@ -131,12 +131,27 @@ cannot overwrite a notification that has not yet been delivered.
 
 #### Cross-project iteration
 
+<!-- planned-change:log-bug-hunter-generalization -->
+
 Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do **not**
 re-implement project discovery. They consume `ProjectCatalogService` (a lazy singleton
 over `~/.teleclaude/projects.yaml`) and `ProjectJobOrchestrator` (a generic iterator that
 runs an injected `run_for_project(node)` per subscribing project and isolates per-project
 exceptions). Per-job services (e.g., `LogBugHunterService`) are one-project executors; the
 cross-project loop lives in the orchestrator.
+
+<!-- change:log-bug-hunter-generalization -->
+
+Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do **not**
+re-implement project discovery. They consume `ProjectCatalogService` (a lazy singleton
+over `~/.teleclaude/projects.yaml`) and `ProjectJobOrchestrator` (a generic iterator that
+runs an injected `run_for_project(node)` per subscribing project and isolates per-project
+exceptions). The orchestrator is consumed from inside the job module itself — the job's
+own `run()` builds the orchestrator and supplies the per-project executor — so the
+cross-project loop lives in the shared orchestrator with no per-job service and no runner
+special-case branch.
+
+<!-- /planned-change:log-bug-hunter-generalization -->
 
 ## Inputs/Outputs
 
