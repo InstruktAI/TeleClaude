@@ -75,7 +75,7 @@ And if the target returns an error envelope, an upstream error is surfaced
 And if the target does not respond, a timeout error is surfaced
 ```
 
-#### Additional context propagation
+#### UC-SL24: Startup message becomes a confirmed agent turn
 
 ```
 Given the caller passes a message in the create request
@@ -86,9 +86,29 @@ And the launch intent is built with agent, thinking mode, and message
 And the message is persisted on the launch intent
 And once the agent CLI is ready, the bootstrap task submits the message through confirmed user-turn delivery
 And confirmed user-turn delivery waits until the pasted message is observable in the live prompt input before sending Enter
-And if Enter does not start a turn while the message remains observable in the live prompt input, it retries Enter without re-pasting
-And if the message cannot be confirmed as submitted, the launch result is an error rather than a silent success
+And when the agent emits `user_prompt_submit`, the launch result is success and output polling starts
 And the initiator extraction records the caller's session id so the spawned child can notify the initiator on stop (one-shot listener)
+```
+
+#### UC-SL25: Startup message enter retries do not re-paste
+
+```
+Given the caller passes a message in the create request
+And the pasted message remains observable in the live prompt input
+When Enter does not start a turn
+Then confirmed user-turn delivery retries Enter without re-pasting the message
+And if no turn start is confirmed within the retry budget, the launch result is an error rather than a silent success
+```
+
+#### UC-SL26: Historical prompt text does not confirm startup delivery
+
+```
+Given the caller passes a message in the create request
+And the pane output contains that message only in historical scrollback
+When confirmed user-turn delivery observes the pane
+Then the historical copy does not satisfy the live prompt input check
+And Enter is not sent from that observation
+And the launch result is an error rather than a silent success
 ```
 
 #### Initiator listener registration

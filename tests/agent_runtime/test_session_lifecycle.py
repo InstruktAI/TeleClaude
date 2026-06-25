@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,6 +22,9 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 
 import teleclaude.core.agent_coordinator._coordinator as coordinator_mod
+import teleclaude.core.command_handlers._agent as agent_handler_mod
+import teleclaude.core.command_handlers._utils as command_utils_mod
+import teleclaude.core.session_bootstrap as session_bootstrap_mod
 import teleclaude.daemon_session as daemon_session_mod
 from teleclaude.api import auth as auth_mod
 from teleclaude.api import sessions_actions_routes, sessions_routes
@@ -29,18 +33,31 @@ from teleclaude.api.session_remote import dispatch_session_close_to_peer, dispat
 from teleclaude.cli import api_client as api_client_mod
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.constants import EVENT_END_SESSION, ROLE_ORCHESTRATOR, ROLE_WORKER, WORKTREE_DIR, JobRole, SlashCommand
+from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
 from teleclaude.core.agent_coordinator import AgentCoordinator
+from teleclaude.core.agents import AgentName
 from teleclaude.core.command_handlers import _session as session_handler_mod
-from teleclaude.core.events import AgentEventContext, AgentHookEvents, build_agent_payload
+from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.command_service import CommandService
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import (
+    AgentEventContext,
+    AgentHookEvents,
+    SessionLifecycleContext,
+    TeleClaudeEvents,
+    UserPromptSubmitActivityEvent,
+    build_agent_payload,
+)
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSnapshot
+from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionSnapshot
 from teleclaude.core.models._session import Session
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug, live_slug_holder
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import get_todos_db
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.commands import CloseSessionCommand
 from teleclaude.types.lifecycle import LifecyclePhase
@@ -70,6 +87,13 @@ class _RemoteCloseDispatchRecord(TypedDict):
     session_id: str | None
     timeout: float
     wait_for_response: bool
+
+
+class _CreateSessionResponse(TypedDict):
+    status: str
+    session_id: str
+    tmux_session_name: str
+    agent: str | None
 
 
 class _RemoteDispatchHarness(_RemoteMixin):
@@ -242,40 +266,125 @@ async def _create_session(
     return resp.json()
 
 
-class _AgentThenMessageHarness(daemon_session_mod._DaemonSessionMixin):
-    def __init__(self) -> None:
-        self.command_service = SimpleNamespace(start_agent=AsyncMock())
+class _AgentThenMessageBootstrapHarness(daemon_session_mod._DaemonSessionMixin):
+    def __init__(self, command_service: CommandService) -> None:
+        self.command_service = command_service
+        self.agent_coordinator = None
+        self.started_polling: list[tuple[str, str]] = []
         self.polled: list[tuple[str, str]] = []
-        self.readiness_calls: list[tuple[str, str]] = []
+        self.launch_results: list[dict[str, str]] = []
 
-    async def _await_agent_readiness(
-        self,
-        session: Session,
-        session_id: str,
-        agent_name: str,
-        ready_future: asyncio.Future[None],
-    ) -> None:
-        del session, ready_future
-        self.readiness_calls.append((session_id, agent_name))
+    async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None:
+        self.started_polling.append((session_id, tmux_session_name))
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         self.polled.append((session_id, tmux_session_name))
 
+    async def _execute_launch_intent(
+        self,
+        session_id: str,
+        launch_intent: SessionLaunchIntent | None,
+    ) -> dict[str, str]:
+        result = await super()._execute_launch_intent(session_id, launch_intent)
+        self.launch_results.append(result)
+        return result
 
-async def _seed_agent_then_message_session(api: AsyncClient, session_id: str) -> None:
-    await api.db.create_session(
-        computer_name="TestComputer",
-        tmux_session_name=f"tc_{session_id}",
-        last_input_origin=InputOrigin.TERMINAL.value,
-        title="agent_then_message",
-        session_id=session_id,
-        project_path="/tmp",
-        lifecycle_status="initializing",
-        active_agent="codex",
-        thinking_mode="fast",
-        human_role="admin",
-        emit_session_started=False,
-    )
+
+async def _await_bootstrap_tasks(tasks: list[asyncio.Future[object]]) -> None:
+    done, pending = await asyncio.wait(tasks, timeout=2.0)
+    assert pending == set()
+    for task in done:
+        task.result()
+
+
+async def _install_agent_then_message_route_harness(
+    api: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    pane_output: str,
+    emit_turn_on_enter: bool,
+) -> tuple[_AgentThenMessageBootstrapHarness, list[asyncio.Future[object]], AsyncMock, AsyncMock, AsyncMock]:
+    monkeypatch.setattr(daemon_session_mod, "db", api.db)
+    monkeypatch.setattr(session_bootstrap_mod, "db", api.db)
+    monkeypatch.setattr(agent_handler_mod, "db", api.db)
+    monkeypatch.setattr(command_utils_mod, "db", api.db)
+
+    command_service = get_command_service()
+    harness = _AgentThenMessageBootstrapHarness(command_service)
+    tasks: list[asyncio.Future[object]] = []
+    session_tmpdirs: dict[str, Path] = {}
+
+    def _queue_background_task(task: Awaitable[object], label: str) -> None:
+        queued = asyncio.ensure_future(task)
+        queued.set_name(label)
+        tasks.append(queued)
+
+    async def _execute_terminal_command(
+        session_id: str,
+        command: str,
+        title: str | None,
+        send_enter: bool,
+    ) -> bool:
+        del command, title, send_enter
+        await event_bus.emit(
+            TeleClaudeEvents.AGENT_READY,
+            SessionLifecycleContext(session_id=session_id),
+            visibility=EventVisibility.LOCAL,
+        )
+        return True
+
+    async def _ensure_tmux_session(
+        name: str,
+        working_dir: str,
+        cols: int = 80,
+        rows: int = 24,
+        session_id: str | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> bool:
+        del name, working_dir, cols, rows, env_vars
+        if session_id:
+            session_tmpdir = tmp_path / "session-tmp" / session_id
+            session_tmpdir.mkdir(parents=True, exist_ok=True)
+            session_tmpdirs[session_id] = session_tmpdir
+        return True
+
+    def _get_session_tmpdir(session_id: str) -> Path | None:
+        return session_tmpdirs.get(session_id)
+
+    async def _send_enter(tmux_session_name: str | None) -> bool:
+        if emit_turn_on_enter and tmux_session_name:
+            session_id = tmux_session_name.removeprefix("tc_")
+            await event_bus.emit(
+                TeleClaudeEvents.AGENT_ACTIVITY,
+                UserPromptSubmitActivityEvent(
+                    session_id=session_id,
+                    event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+                ),
+                visibility=EventVisibility.LOCAL,
+            )
+        return True
+
+    paste_recorder = AsyncMock(return_value=True)
+    enter_recorder = AsyncMock(side_effect=_send_enter)
+    capture_recorder = AsyncMock(return_value=pane_output)
+
+    command_service._bootstrap_session = harness._bootstrap_session_resources  # pyright: ignore[reportPrivateUsage]
+    command_service._queue_background_task = _queue_background_task  # pyright: ignore[reportPrivateUsage]
+    command_service._execute_terminal_command = _execute_terminal_command  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tmux_bridge, "ensure_tmux_session", _ensure_tmux_session)
+    monkeypatch.setattr(tmux_bridge, "get_session_tmpdir", _get_session_tmpdir)
+    monkeypatch.setattr(tmux_bridge, "paste_text_existing_tmux", paste_recorder)
+    monkeypatch.setattr(tmux_bridge, "send_enter", enter_recorder)
+    monkeypatch.setattr(tmux_bridge, "capture_pane", capture_recorder)
+    monkeypatch.setattr(tmux_bridge, "is_process_running", AsyncMock(return_value=True))
+    monkeypatch.setattr(tmux_io, "INJECT_TURN_START_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(tmux_io, "INJECT_PROMPT_OBSERVE_INTERVAL_S", 0.01)
+    monkeypatch.setattr(tmux_io, "INJECT_PASTE_RETRY_BACKOFF_S", (0.01, 0.01))
+    monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", (0.05, 0.05, 0.05))
+
+    return harness, tasks, paste_recorder, enter_recorder, capture_recorder
 
 
 async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
@@ -283,71 +392,109 @@ async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
     return await api.db.get_session(session_id)
 
 
-def _agent_then_message_intent(message: str) -> SessionLaunchIntent:
-    return SessionLaunchIntent(
-        kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-        agent="codex",
-        thinking_mode="fast",
-        message=message,
+async def _post_agent_then_message_session(api: AsyncClient, tmp_path: Path, message: str) -> _CreateSessionResponse:
+    resp = await api.post(
+        "/sessions",
+        json={
+            "computer": "TestComputer",
+            "project_path": str(tmp_path),
+            "agent": AgentName.CODEX.value,
+            "thinking_mode": "fast",
+            "human_email": "test@test.com",
+            "human_role": "admin",
+            "message": message,
+        },
+    )
+    assert resp.status_code == 200, f"session creation failed: {resp.text}"
+    return cast(_CreateSessionResponse, resp.json())
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_confirms_user_turn_delivery(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "confirmed startup prompt"
+    harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=f"{AgentName.CODEX.prompt_marker.strip()} {message}",
+        emit_turn_on_enter=True,
     )
 
+    data = await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
 
-@pytest.mark.spec(_SPEC, "Additional context propagation")
-async def test_agent_then_message_launch_reports_success_after_confirmed_delivery(
+    session_id = data["session_id"]
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 1
+    assert capture_recorder.await_count >= 1
+    assert harness.polled == [(session_id, data["tmux_session_name"])]
+
+
+@pytest.mark.spec(_SPEC, "UC-SL25")
+async def test_agent_then_message_create_retries_enter_without_repaste_when_turn_start_missing(
     api: AsyncClient,
     cluster_event_bus: None,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del cluster_event_bus
-    session_id = "agent-then-message-confirmed"
-    message = "confirmed startup prompt"
-    await _seed_agent_then_message_session(api, session_id)
-    harness = _AgentThenMessageHarness()
-    inject = AsyncMock(return_value=True)
-    process_running = AsyncMock(return_value=True)
-    monkeypatch.setattr(daemon_session_mod, "db", api.db)
-    monkeypatch.setattr(daemon_session_mod.tmux_io, "inject_user_turn", inject)
-    monkeypatch.setattr(daemon_session_mod.tmux_io, "is_process_running", process_running)
-
-    result = await harness._execute_launch_intent(session_id, _agent_then_message_intent(message))
-
-    assert result == {"status": "success", "message": "Message submitted after agent start"}
-    harness.command_service.start_agent.assert_awaited_once()
-    inject.assert_awaited_once()
-    injected_session = inject.await_args.args[0]
-    assert injected_session.session_id == session_id
-    assert inject.await_args.args[1] == message
-    assert inject.await_args.kwargs == {"active_agent": "codex"}
-    assert harness.polled == [(session_id, f"tc_{session_id}")]
-    stored = await _get_session_from_db(api, session_id)
-    assert stored.last_message_sent == message
-
-
-@pytest.mark.spec(_SPEC, "Additional context propagation")
-async def test_agent_then_message_launch_reports_error_when_delivery_unconfirmed(
-    api: AsyncClient,
-    cluster_event_bus: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    del cluster_event_bus
-    session_id = "agent-then-message-unconfirmed"
     message = "unconfirmed startup prompt"
-    await _seed_agent_then_message_session(api, session_id)
-    harness = _AgentThenMessageHarness()
-    inject = AsyncMock(return_value=False)
-    process_running = AsyncMock(return_value=True)
-    monkeypatch.setattr(daemon_session_mod, "db", api.db)
-    monkeypatch.setattr(daemon_session_mod.tmux_io, "inject_user_turn", inject)
-    monkeypatch.setattr(daemon_session_mod.tmux_io, "is_process_running", process_running)
+    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=f"{AgentName.CODEX.prompt_marker.strip()} {message}",
+        emit_turn_on_enter=False,
+    )
 
-    result = await harness._execute_launch_intent(session_id, _agent_then_message_intent(message))
+    await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
 
-    assert result == {"status": "error", "message": "Failed to submit message into agent prompt"}
-    harness.command_service.start_agent.assert_awaited_once()
-    inject.assert_awaited_once()
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 3
     assert harness.polled == []
-    stored = await _get_session_from_db(api, session_id)
-    assert stored.last_message_sent == message
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] != "success"
+
+
+@pytest.mark.spec(_SPEC, "UC-SL26")
+async def test_agent_then_message_create_ignores_scrollback_prompt_text(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "historical startup prompt"
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output="\n".join(
+            [
+                f"{prompt_marker} {message}",
+                "• old response",
+                prompt_marker,
+            ]
+        ),
+        emit_turn_on_enter=False,
+    )
+
+    await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
+
+    assert paste_recorder.await_count == 3
+    assert enter_recorder.await_count == 0
+    assert harness.polled == []
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] != "success"
 
 
 # ---------------------------------------------------------------------------
