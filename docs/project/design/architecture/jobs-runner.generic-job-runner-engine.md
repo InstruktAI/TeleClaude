@@ -147,9 +147,9 @@ re-implement project discovery. They consume `ProjectCatalogService` (a lazy sin
 over `~/.teleclaude/projects.yaml`) and `ProjectJobOrchestrator` (a generic iterator that
 runs an injected `run_for_project(node)` per subscribing project and isolates per-project
 exceptions). The orchestrator is consumed from inside the job module itself — the job's
-own `run()` builds the orchestrator and supplies the per-project executor — so the
-cross-project loop lives in the shared orchestrator with no per-job service and no runner
-special-case branch.
+own `run()` builds the `ProjectJobOrchestrator` and supplies the per-project executor that
+scans, suppression-filters, and files. The cross-project loop lives in the shared
+orchestrator with no per-job service and no runner special-case branch.
 
 <!-- /planned-change:log-bug-hunter-generalization -->
 
