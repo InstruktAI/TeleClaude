@@ -182,6 +182,8 @@ special-case branch.
 - Agent jobs produce a run report every run, even when there is nothing to process.
 - Agent jobs fix forward within scope; they do not chase out-of-scope issues.
 
+<!-- planned-change:generic-job-declarative-model -->
+
 ### Configuration Surface
 
 ### Project-level: `teleclaude.yml`
@@ -243,6 +245,43 @@ to find subscribers for a given service.
 
 Global scope (people list, ops users). Also checked by discovery for global-level
 subscriptions.
+
+<!-- change:generic-job-declarative-model -->
+
+### Configuration Surface
+
+#### Project-level: `teleclaude.yml`
+
+The project-root `teleclaude.yml` registers a project's jobs under the `jobs:` key. A job
+declares WHEN it runs through the `when` block (see
+`project/spec/feature/config/job-schedule-contract`) and WHAT it runs through exactly one
+execution pointer — `script` (path, in-process job) or `job` (spec doc name, agent job). The
+pointer present IS the execution class; there is no separate discriminator field. The
+remaining execution fields are `agent` (default `claude`), `thinking_mode` (default `fast`),
+and `timeout` (seconds; default 1800).
+
+```yaml
+jobs:
+  youtube_sync_subscriptions:
+    when:
+      at: '06:00'
+    script: jobs/youtube_sync_subscriptions.py
+```
+
+A project `jobs` entry whose name matches a global registry job is an **enable overlay**: it
+carries only `enabled` to turn that global job on or off for the project, and the config load
+rejects it if it carries any identity-bearing field. An entry whose name is not in the global
+registry is a local job declaration (exactly one pointer plus a `when` schedule).
+
+#### Global registry and per-person scope
+
+`~/.teleclaude/teleclaude.yml` carries global scope, including the `jobs:` **registry** of
+globally declared jobs available to every project; a project runs a global job only when its
+overlay enables it. `~/.teleclaude/people/{name}/teleclaude.yml` carries per-subscriber
+configuration. Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a
+given service.
+
+<!-- /planned-change:generic-job-declarative-model -->
 
 ## Primary Flows
 

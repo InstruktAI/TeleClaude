@@ -69,6 +69,8 @@ Known caveats) and must pass snippet schema validation.
 
 ### 4. Register in teleclaude.yml
 
+<!-- planned-change:generic-job-declarative-model -->
+
 Add under `jobs:`:
 
 ```yaml
@@ -82,6 +84,28 @@ jobs:
     preferred_hour: 0..23 # optional, non-hourly
     preferred_weekday: 0..6 # optional, weekly
 ```
+
+<!-- change:generic-job-declarative-model -->
+
+Declare a job under `jobs:` with a `when` schedule and exactly one execution pointer — the
+pointer present is the execution class, and there is no `type` field:
+
+```yaml
+jobs:
+  { job_key }:
+    when:
+      at: '06:00' # or: every: 60m
+    job: { job-slug } # agent job — OR `script: jobs/{job_key}.py` for a script job
+    agent: claude | gemini | codex # agent jobs only
+    thinking_mode: fast | med | slow # agent jobs only
+```
+
+To publish a job for every project, declare it the same way under the `jobs:` registry in the
+global `~/.teleclaude/teleclaude.yml`. A project then turns a global job on with an **enable
+overlay** — a `jobs` entry of the same name carrying only `enabled: true` (or `false` to turn
+it off); an overlay that carries any other field is rejected at config load.
+
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### 5. For script jobs: write the script
 
