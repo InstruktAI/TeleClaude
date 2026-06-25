@@ -31,11 +31,7 @@ A dependency is **phase-specific**: a single `after` edge projects into two dist
 - **Prepare gate** — a candidate entering the **prepare** lane is blocked until every `after` parent has reached `PREPARED` (its design is frozen). The prepare lane reads the parent's frozen artifacts, so the parent's design freeze — not its delivery — is the unblock condition.
 - **Work gate** — a candidate entering the **work/build** lane is blocked until every `after` parent is `delivered` (merged to `main`). The work lane builds on the parent's merged code, so delivery is the unblock condition.
 
-<!-- planned:task-lane-kind-aware-routing -->
-
 For a `kind=task` parent, **both** gates key on delivery. A task's `PREPARED` phase records only that its `task-plan` is drafted and authorized; a task produces its deliverable when it **runs**, not when its plan freezes. A dependent's prepare lane has nothing to read from a task parent until the task delivers, so a `kind=task` parent clears the prepare gate only when `delivered` — never via `PREPARED`. The `PREPARED`-clears-prepare rule above applies to SDLC kinds (`feature` / `change` / `bug`) only.
-
-<!-- /planned:task-lane-kind-aware-routing -->
 
 `PREPARED` is a durable freeze, not a decaying signal: reaching it clears the prepare gate and does not un-clear. A later parent re-derivation does not reopen the prepare gate; it surfaces on the dependent as upstream-artifact drift (see `@spec/feature/workflow/drift-detection`) and routes the dependent to re-review. Drift propagates the signal; it does not author the change.
 
@@ -184,8 +180,6 @@ And the same refusal applies when the requested dependency is any ancestor holde
 And a dependency from a non-member todo onto the holder is still allowed
 ```
 
-<!-- planned:task-lane-kind-aware-routing -->
-
 #### UC-WDG6: A task parent clears the prepare gate only on delivery
 
 ```gherkin
@@ -194,8 +188,6 @@ When the prepare orchestrator resolves the next prepare-runnable slug
 Then "child" is skipped because a kind=task parent does not clear the prepare gate at PREPARED
 And "child" becomes prepare-runnable only once "task-parent" is delivered
 ```
-
-<!-- /planned:task-lane-kind-aware-routing -->
 
 ### Cross-context references
 
@@ -207,10 +199,7 @@ And "child" becomes prepare-runnable only once "task-parent" is delivered
 - The graph is per-project: one todo list, one dependency graph, one project root. There is no cross-project dependency.
 - Dependency satisfaction is lane-specific. `delivered` clears the work gate; `PREPARED` clears the prepare gate. `icebox`, `pending`, and lifecycle phases before `PREPARED` leave the prepare gate closed. Removing a dep edge is the only way to unblock a candidate whose dep is iceboxed.
 
-<!-- planned:task-lane-kind-aware-routing -->
-
 - A `kind=task` parent is the exception to the prepare-gate rule: it clears the prepare gate only on `delivered`, never on `PREPARED`, because a task's deliverable is a run product (see the phase-specific gates section).
-<!-- /planned:task-lane-kind-aware-routing -->
 
 - `set-deps` is a full replacement: passing no `--after` clears all edges for the slug; there is no incremental add/remove surface. To merge edges, the caller must read the current edges first and submit the union.
 - `telec todo update --after` carries the same full-replacement semantics. To clear all edges, pass `--after ""`; omitting `--after` leaves deps untouched. There is no incremental add/remove dependency surface; callers that want to merge edges must read the current set and submit the union.

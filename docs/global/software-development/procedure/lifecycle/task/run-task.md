@@ -24,16 +24,14 @@ there is no build, review, finalize, or commit.
 ## Preconditions
 
 - The todo is `kind=task`, authorized, not held, dispatched by the lifecycle
-runner (or a manual start), with `lifecycle_phase=task_running`.
-<!-- planned:task-lane-kind-aware-routing -->
+  runner (or a manual start), with `lifecycle_phase=task_running`.
 - Dispatch is kind-gated. The autonomous lifecycle runner dispatches a task run
-only when `workflow.autostart.task` is enabled (off by default), mirroring the
-SDLC work lane; task **prepare** (`/next-prepare-task`) stays ungated and always
-runs. A **manual** start is never gated by autostart — it runs an authorized
-task through the authenticated work-operation route (`/todos/work`), which
-resolves the operation kind from `kind=task` server-side, with no in-process
-auth bypass.
-<!-- /planned:task-lane-kind-aware-routing -->
+  only when `workflow.autostart.task` is enabled (off by default), mirroring the
+  SDLC work lane; task **prepare** (`/next-prepare-task`) stays ungated and always
+  runs. A **manual** start is never gated by autostart — it runs an authorized
+  task through the authenticated work-operation route (`/todos/work`), which
+  resolves the operation kind from `kind=task` server-side, with no in-process
+  auth bypass.
 - A `task-plan` artifact exists. A `log` artifact may not (it is absent on the
   first firing).
 - The session is booted with the full `telec` CLI surface and available skills.
