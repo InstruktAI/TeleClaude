@@ -2,3 +2,4 @@
 @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
 @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
 @~/.teleclaude/docs/software-development/principle/documentation-first-development.md
+@~/.teleclaude/docs/software-development/design/workspace-scoping.md
