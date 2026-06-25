@@ -74,7 +74,6 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 - **Identifier:** the combined (`project_path`, `person_name`) tuple. Global-only computation when both are absent.
 - **Lifecycle:** computed on demand; cached in-memory by consumers per their own caching policy. Recomputed when any overlay file changes (`config.effective.updated` event fires).
 
-<!-- planned:project-agnostic-checkpoint-payload -->
 
 #### ProjectConfig checkpoint overlay (value object)
 
@@ -106,7 +105,6 @@ checkpoint:
   - `docs` and `agents` are universal base bindings with fixed scope; a project omits them unless adding extra actions.
 - **Authoring:** written by `telec projects analyze` per `project/procedure/checkpoint-overlay-projection`; the runtime consumes it structurally.
 - **Consumed by:** the checkpoint engine (`project/design/architecture/checkpoint-system`).
-<!-- /planned:project-agnostic-checkpoint-payload -->
 
 #### PersonConfig output visibility (value object)
 

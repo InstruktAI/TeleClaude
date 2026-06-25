@@ -87,7 +87,6 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 21. **Companion-drift detection**: when a turn's changed files include a live parent doc snippet (`<stem>.md`) whose pending companion sibling (`<stem>.<slug>.md`) exists on disk but is absent from the changed set, the engine surfaces an action to mirror the parent edit into the companion — catching, at agent_stop, the edit that the companion would otherwise clobber when it replaces the parent at delivery. The check is a filename-derived presence test (reusing the companion-detection helpers the doc index uses); companion in the changed set suppresses it for free. It mechanizes only the question code may answer (presence); whether the companion is a correct mirror stays with the reviewer (intelligence-boundaries).
 
-<!-- planned:project-agnostic-checkpoint-payload -->
 
 22. **Base ⊕ overlay action set**: The effective action set is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). The base fires on every checkpoint in every onboarded project regardless of language — telec-contract paths plus the slug-parameterized log-check: `docs/**` → `telec sync`; `agents/**`, `.agents/**`, `**/AGENTS.master.md` → `telec sync` + `telec sessions restart self`; `Makefile`, `.pre-commit-config.yaml`, `.gitattributes`, `.husky/pre-commit` → `make install`; changed code → `instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig` (superseding the hardcoded command in Invariant 15). The overlay adds the project's own runtime actions. Unreadable project config fails open to base-only — the fail-open posture of Invariant 13 extended to configuration.
 
@@ -96,7 +95,6 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 24. **Code is an allowlist; there is no code/non-code classifier**: "Owes `test` + `log-check`" is an ordinary action set bound to a project-declared `code` scope — broad source-root globs authored at analyze-time by intelligence, never sniffed at runtime. A changed file owes test+log iff it matches such a binding; an unmatched file is silent. There is no `is_code` flag, no enumerated non-code set, and no collective cross-category code detection. A code-shaped path that must skip validation (vendored, generated) is carved out with the binding's own `exclude`. Action selection is structural glob + evidence matching over the merged declaration only — no runtime code path inspects file language or content (`general/principle/intelligence-boundaries`).
 
 25. **One matcher, three consumers**: A single scope-matcher (`include` → `override` → `exclude`) and one action-resolution pass serve all three consumers — the `agent_stop` hook engine, the commit-obligation ledger (Invariant 20), and the integrator post-merge maintenance path (Invariant 19) — resolving from the same merged `(registry, bindings)`. A path that owes an action in one consumer owes the equivalent in the others; they cannot drift.
-<!-- /planned:project-agnostic-checkpoint-payload -->
 
 ## Primary flows
 

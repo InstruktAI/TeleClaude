@@ -294,7 +294,6 @@ would overwrite `CLAUDE.md` with the shim and silently destroy its content.
 The human must decide which file is authoritative before the analysis
 proceeds.
 
-<!-- planned:project-agnostic-checkpoint-payload -->
 
 ### 16. Checkpoint maintenance overlay
 
@@ -309,7 +308,6 @@ uncertainty for human confirmation rather than guessing — this is authoring-ti
 intelligence, never a runtime detection path
 (`general/principle/intelligence-boundaries`).
 
-<!-- /planned:project-agnostic-checkpoint-payload -->
 
 ## Outputs
 
