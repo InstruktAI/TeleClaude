@@ -22,7 +22,7 @@ project-declarable paradigm, a re-analyze re-maps it onto every project.
 - `telec projects analyze` (`/projects-analyze`) is available.
 - The platform-universal base and the `ProjectConfig.checkpoint` overlay surface
   exist (`project/design/architecture/checkpoint-system`,
-  `project/spec/teleclaude-config`).
+  `project/spec/domain/config`).
 
 ## Steps
 
@@ -63,4 +63,4 @@ project-declarable paradigm, a re-analyze re-maps it onto every project.
 ## See Also
 
 - docs/project/design/architecture/checkpoint-system.md
-- docs/project/spec/teleclaude-config.md
+- docs/project/spec/domain/config.md

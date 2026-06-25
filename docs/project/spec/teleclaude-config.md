@@ -103,42 +103,6 @@ the source for application/runtime secrets. Those values enter agent sessions
 only when their names are also listed in the effective `env_allow_list` and are
 present in the daemon environment.
 
-<!-- planned:project-agnostic-checkpoint-payload -->
-
-#### Checkpoint overlay (`ProjectConfig.checkpoint`)
-
-`checkpoint` declares the project's checkpoint maintenance overlay — the project-specific actions merged on top of the platform-universal base (see `project/design/architecture/checkpoint-system`, Invariants 22–25). The runtime does structured glob + evidence matching only; language flavoring is authored here at analyze-time, never detected at runtime.
-
-```yaml
-checkpoint:
-  actions: # the verbs: action-id → definition; extends the TeleClaude base registry
-    <action-id>:
-      run: string # command/instruction the agent must perform
-      evidence: list[string] # tool-call substrings proving it ran (default: [run])
-      main_only: bool # suppress off main (worktree-irrelevant); default false
-      precedence: int # surface order; lower first
-      evidence_must_follow_last_mutation: bool # evidence counts only after the last matching edit; default false
-  code: # the project's source roots; base test/log-check attach automatically
-    scope:
-      include: list[string]
-      exclude: list[string]
-      override: list[string]
-  bindings: # the nouns→verbs: path scope → action-ids (base registry ∪ project actions)
-    - scope:
-        include: list[string]
-        exclude: list[string]
-        override: list[string]
-      actions: list[string]
-  docs: # optional: extra actions on top of the base docs → telec sync
-    actions: list[string]
-  agents: # optional: extra actions on top of the base agents → telec sync + reload-self
-    actions: list[string]
-```
-
-`docs` and `agents` are universal base bindings with fixed scope; a project omits them unless adding extra actions. `code` carries only a scope — the base `test` / `log-check` actions attach to it automatically. A path matched by no binding is silent. Unreadable project config fails open to the base-only action set.
-
-<!-- /planned:project-agnostic-checkpoint-payload -->
-
 ### Global-only keys (`GlobalConfig` adds these)
 
 Valid **only** in `~/.teleclaude/teleclaude.yml`. Rejected by `ProjectConfig`.

@@ -1,6 +1,4 @@
 ---
-delivered_by:
-  - v2-config-cutover
 description: Config bounded context — effective configuration resolved from layered
   YAML overlays. Owns the model, validation, and overlay computation. Consumed by
   every service.
@@ -75,6 +73,40 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
   - Workflow autostart policy is per-machine runtime configuration owned solely by `config.yml` (the Runtime Configuration aggregate), not a layered overlay value. The workflow runner may read it, but workflow may not invent undeclared fallback keys or silently treat missing schema fields as enabled; defaults are provided by the config schema itself. Project and per-person overlays carry no autostart key and cannot narrow or widen it. A runtime-config update emits `config.effective.updated`; workflow re-evaluates affected projects on the next runner wake-up.
 - **Identifier:** the combined (`project_path`, `person_name`) tuple. Global-only computation when both are absent.
 - **Lifecycle:** computed on demand; cached in-memory by consumers per their own caching policy. Recomputed when any overlay file changes (`config.effective.updated` event fires).
+
+<!-- planned:project-agnostic-checkpoint-payload -->
+
+#### ProjectConfig checkpoint overlay (value object)
+
+- **Root:** `ProjectConfig.checkpoint` — the project's checkpoint maintenance overlay.
+- **Contains:** an action registry (`id → run`, `evidence`, `main_only`, `precedence`, `evidence_must_follow_last_mutation`) and bindings (`scope{include, exclude, override} → [action-id]`), plus the conventional `code` / `docs` / `agents` kinds. Surface shape:
+
+```yaml
+checkpoint:
+  actions: # action-id → definition; extends the TeleClaude base registry
+    <action-id>:
+      run: string            # command/instruction the agent must perform
+      evidence: list[string] # tool-call substrings proving it ran (default: [run])
+      main_only: bool        # suppress off main (worktree-irrelevant); default false
+      precedence: int        # surface order; lower first
+      evidence_must_follow_last_mutation: bool # default false
+  code: { scope: { include: list[string], exclude: list[string], override: list[string] } }
+  bindings:
+    - scope: { include: list[string], exclude: list[string], override: list[string] }
+      actions: list[string]
+  docs:   { actions: list[string] } # optional extras atop base docs → telec sync
+  agents: { actions: list[string] } # optional extras atop base agents → sync + reload-self
+```
+
+- **Invariants:**
+  - The effective checkpoint action set is the platform-universal base merged with this project-declared overlay; an unreadable overlay degrades to base-only (fail-open, consistent with the fail-open posture above).
+  - Evidence, `main_only`, `precedence`, and the command belong to the action, never to the binding — one action, defined once, referenced by many bindings.
+  - Action selection is structured glob + evidence matching only; no runtime language or content detection. The overlay is authored at analyze-time by intelligence.
+  - A changed path owes `test` + `log-check` iff it matches a `code` binding; a path matched by no binding is silent.
+  - `docs` and `agents` are universal base bindings with fixed scope; a project omits them unless adding extra actions.
+- **Authoring:** written by `telec projects analyze` per `project/procedure/checkpoint-overlay-projection`; the runtime consumes it structurally.
+- **Consumed by:** the checkpoint engine (`project/design/architecture/checkpoint-system`).
+<!-- /planned:project-agnostic-checkpoint-payload -->
 
 #### PersonConfig output visibility (value object)
 
