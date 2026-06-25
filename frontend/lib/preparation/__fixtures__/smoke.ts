@@ -18,6 +18,8 @@ function todo(overrides: Partial<TodoInfo> & Pick<TodoInfo, 'slug'>): TodoInfo {
     integration_phase: null,
     finalize_status: null,
     delivered_at: null,
+    hold: false,
+    held: false,
     ...overrides,
   };
 }

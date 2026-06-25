@@ -24,6 +24,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import EventType, OperationCompletedContext
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.create import next_create
+from teleclaude.core.next_machine.kinds import KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
     DispatchOrigin,
     ManualLifecycleStatus,
@@ -67,6 +68,7 @@ class SerializedOperation(TypedDict, total=False):
 
 
 OPERATION_KIND_TODO_WORK = "todo_work"
+OPERATION_KIND_TASK_RUN = "task_run"
 OPERATION_KIND_TODO_INTEGRATE = "todo_integrate"
 OPERATION_KIND_TODO_CREATE = "todo_create"
 OPERATION_KIND_TODO_PREPARE = "todo_prepare"
@@ -74,6 +76,7 @@ OPERATION_KIND_TODO_RENAME = "todo_rename"
 OPERATION_KIND_TODO_REMOVE = "todo_remove"
 _COMPLETION_EVENTS: dict[str, EventType] = {
     OPERATION_KIND_TODO_WORK: "operation.todo_work.completed",
+    OPERATION_KIND_TASK_RUN: "operation.task_run.completed",
     OPERATION_KIND_TODO_INTEGRATE: "operation.todo_integrate.completed",
     OPERATION_KIND_TODO_CREATE: "operation.todo_create.completed",
     OPERATION_KIND_TODO_PREPARE: "operation.todo_prepare.completed",
@@ -147,9 +150,16 @@ class OperationsService:
         caller_session_id: str,
         client_request_id: str | None,
     ) -> SerializedOperation:
-        """Create or reattach a receipt-backed todo-work operation."""
+        """Create or reattach a receipt-backed manual-start operation.
+
+        The single ``/todos/work`` route serves both lanes: the operation kind is
+        resolved from the todo's stored ``kind`` so a ``kind=task`` start records a
+        ``task_run`` operation (routed to the task-run lane) while every SDLC kind
+        records ``todo_work``. No caller flag selects the lane.
+        """
+        operation_kind = await self._resolve_work_operation_kind(slug=slug, cwd=cwd)
         lock = await self._get_submit_lock(
-            kind=OPERATION_KIND_TODO_WORK,
+            kind=operation_kind,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
@@ -157,7 +167,7 @@ class OperationsService:
         async with lock:
             if client_request_id:
                 existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_WORK,
+                    kind=operation_kind,
                     caller_session_id=caller_session_id,
                     client_request_id=client_request_id,
                 )
@@ -165,19 +175,19 @@ class OperationsService:
                     return self._serialize_operation(existing)
 
             existing = await self._db.find_matching_nonterminal_operation(
-                kind=OPERATION_KIND_TODO_WORK,
+                kind=operation_kind,
                 caller_session_id=caller_session_id,
                 cwd=cwd,
                 slug=slug,
             )
             if existing is not None:
                 if existing.state == "queued":
-                    await self._ensure_operation_task(existing.operation_id)
+                    await self._ensure_operation_task(existing.operation_id, kind=operation_kind)
                 return self._serialize_operation(existing)
 
             payload_json = json.dumps(
                 {
-                    "kind": OPERATION_KIND_TODO_WORK,
+                    "kind": operation_kind,
                     "slug": slug,
                     "cwd": cwd,
                 },
@@ -187,7 +197,7 @@ class OperationsService:
             try:
                 created = await self._db.create_operation(
                     operation_id=operation_id,
-                    kind=OPERATION_KIND_TODO_WORK,
+                    kind=operation_kind,
                     caller_session_id=caller_session_id,
                     client_request_id=client_request_id,
                     cwd=cwd,
@@ -199,7 +209,7 @@ class OperationsService:
                 if not client_request_id:
                     raise
                 existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_WORK,
+                    kind=operation_kind,
                     caller_session_id=caller_session_id,
                     client_request_id=client_request_id,
                 )
@@ -207,8 +217,29 @@ class OperationsService:
                     raise
                 return self._serialize_operation(existing)
 
-            await self._ensure_operation_task(created.operation_id)
+            await self._ensure_operation_task(created.operation_id, kind=operation_kind)
             return self._serialize_operation(created)
+
+    async def _resolve_work_operation_kind(self, *, slug: str | None, cwd: str) -> str:
+        """Resolve the manual-start operation kind from the todo's stored kind.
+
+        A ``kind=task`` todo starts as a ``task_run`` operation; every SDLC kind
+        (and a slug-less or stateless start) resolves to ``todo_work``.
+        """
+        if slug is None:
+            return OPERATION_KIND_TODO_WORK
+        todos_db = await get_todos_db(Path(cwd).resolve())
+        state = await todos_db.read_state(slug)
+        if state is None:
+            return OPERATION_KIND_TODO_WORK
+        raw_kind = state.get("kind")
+        if not isinstance(raw_kind, str):
+            return OPERATION_KIND_TODO_WORK
+        try:
+            kind = canonical_kind(raw_kind)
+        except ValueError:
+            return OPERATION_KIND_TODO_WORK
+        return OPERATION_KIND_TASK_RUN if kind == KIND_TASK else OPERATION_KIND_TODO_WORK
 
     async def submit_todo_integrate(
         self,
@@ -592,6 +623,7 @@ class OperationsService:
     async def _ensure_operation_task(self, operation_id: str, *, kind: str = OPERATION_KIND_TODO_WORK) -> None:
         factories: dict[str, Callable[[Operation], Awaitable[str]]] = {
             OPERATION_KIND_TODO_WORK: self._run_todo_work,
+            OPERATION_KIND_TASK_RUN: self._run_task_run,
             OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_PREPARE: self._run_todo_prepare,
@@ -735,6 +767,28 @@ class OperationsService:
             operation,
             lane=RunnerLane.WORK,
             state_machine=lambda op: next_work(self._db, op.slug, op.cwd),
+        )
+
+    async def _run_task_run(self, operation: Operation) -> str:
+        return await self._run_todo_lifecycle_operation(
+            operation,
+            lane=RunnerLane.TASK_RUN,
+            state_machine=self._continue_task_run_in_place,
+        )
+
+    @staticmethod
+    async def _continue_task_run_in_place(operation: Operation) -> str:
+        """In-place continuation for a caller already bound to the task slug.
+
+        A task is normally executed by a dedicated ``/next-run-task`` worker the
+        bridge dispatches; an operator START is unbound and takes that path. This
+        fallback only fires when the caller session already drives the slug, so it
+        returns the run-task continuation rather than the SDLC work machine.
+        """
+        slug = operation.slug or "<auto>"
+        return (
+            f"TASK_RUNNING: {slug} — execute the next firing from the current task-plan, "
+            "append the result to the log, and stay alive for follow-up."
         )
 
     async def _run_todo_lifecycle_operation(

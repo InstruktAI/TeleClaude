@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
-from teleclaude.core.next_machine.kinds import KIND_FEATURE
+from teleclaude.core.next_machine.kinds import KIND_FEATURE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
@@ -205,6 +205,11 @@ async def effective_delivered_slugs_for_dependencies(
 def _state_counts_as_dependency_prepared(state: dict[str, StateValue] | None) -> bool:
     """Return True when a todo has crossed the prepare dependency gate."""
     if state is None:
+        return False
+    if state.get("kind") == KIND_TASK:
+        # A task's deliverable is a run product: its PREPARED phase records only
+        # that the task-plan is drafted, not that anything was produced. A task
+        # dependency is satisfied solely through the delivered set, never here.
         return False
     approvals = state.get("approvals")
     if isinstance(approvals, dict):

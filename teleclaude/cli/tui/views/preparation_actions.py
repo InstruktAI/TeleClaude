@@ -31,7 +31,13 @@ from teleclaude.core.next_machine.lifecycle import (
     is_ready_for_work,
     pending_approval_gate,
 )
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_BUG, TODO_KIND_FEATURE, TodoDumpKind
+from teleclaude.types.todo_kind import (
+    ALL_DUMP_KINDS,
+    TODO_KIND_BUG,
+    TODO_KIND_FEATURE,
+    TODO_KIND_TASK,
+    TodoDumpKind,
+)
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
@@ -562,7 +568,10 @@ class PreparationViewActionsMixin:
     def action_start_work(self) -> None:
         """s: submit a work operation for the selected scope.
 
-        Gated on canonical lifecycle readiness when a specific todo is selected.
+        SDLC kinds are pre-gated on canonical work-lane readiness. A task is not:
+        ``is_ready_for_work`` is the SDLC work-lane authority and rejects tasks by
+        design, so the TUI submits the task directly and lets the authenticated
+        server route resolve it to the task-run lane and report any skip reason.
         """
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
@@ -574,13 +583,14 @@ class PreparationViewActionsMixin:
             if not todo_row:
                 return
             kind = todo_row.todo.kind or TODO_KIND_FEATURE
-            ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=todo_row.todo.lifecycle_phase)
-            if not ready:
-                self.app.notify(
-                    f"Todo is not ready to start work: {reason}",
-                    severity="warning",
-                )  # type: ignore[attr-defined]
-                return
+            if kind != TODO_KIND_TASK:
+                ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=todo_row.todo.lifecycle_phase)
+                if not ready:
+                    self.app.notify(
+                        f"Todo is not ready to start work: {reason}",
+                        severity="warning",
+                    )  # type: ignore[attr-defined]
+                    return
 
         self._submit_lifecycle_operation("/todos/work", project_path, slug, "Starting work")
 

@@ -49,6 +49,7 @@ async def _add_todo(
     slug: str,
     *,
     lifecycle_phase: LifecyclePhase,
+    kind: str = "change",
     group_slug: str | None = None,
     after: list[str] | None = None,
 ) -> None:
@@ -57,7 +58,7 @@ async def _add_todo(
         slug,
         {
             "schema_version": 4,
-            "kind": "change",
+            "kind": kind,
             "phase": "pending",
             "lifecycle_phase": lifecycle_phase.value,
         },
@@ -140,6 +141,30 @@ async def test_prd_approval_clears_prepare_gate_but_not_work_gate(tmp_path: Path
     assert deps_satisfied(dependencies, prepared, _CHILD)
     assert _PARENT not in delivered
     assert not deps_satisfied(dependencies, delivered, _CHILD)
+
+
+@pytest.mark.spec(_SPEC, "UC-WDG6")
+async def test_task_parent_clears_prepare_gate_only_on_delivery(tmp_path: Path) -> None:
+    todos_db = await _project_db(tmp_path / "project")
+    await _add_todo(todos_db, _PARENT, lifecycle_phase=LifecyclePhase.PREPARED, kind="task")
+    await _add_todo(todos_db, _CHILD, lifecycle_phase=LifecyclePhase.DRAFT, after=[_PARENT])
+    dependencies = {_CHILD: [_PARENT]}
+
+    prepared = await effective_prepared_slugs_for_dependencies(todos_db)
+    delivered = await effective_delivered_slugs_for_dependencies(todos_db)
+
+    assert _PARENT not in prepared
+    assert not deps_satisfied(dependencies, prepared, _CHILD)
+    assert _PARENT not in delivered
+
+    await todos_db.deliver(_PARENT)
+
+    prepared = await effective_prepared_slugs_for_dependencies(todos_db)
+    delivered = await effective_delivered_slugs_for_dependencies(todos_db)
+
+    assert _PARENT in delivered
+    assert deps_satisfied(dependencies, delivered, _CHILD)
+    assert deps_satisfied(dependencies, prepared, _CHILD)
 
 
 @pytest.mark.spec(_SPEC, "UC-WDG2")

@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 import pytest
 from fastapi import HTTPException
@@ -61,7 +61,11 @@ from teleclaude.core.next_machine.session_hold import (
     hold_todo_for_manual_session_close,
     notify_runner_of_gate_approval,
 )
-from teleclaude.core.operations.service import OperationsService
+from teleclaude.core.operations.service import (
+    OPERATION_KIND_TASK_RUN,
+    OPERATION_KIND_TODO_WORK,
+    OperationsService,
+)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
@@ -174,6 +178,23 @@ class _RunnerClient:
     async def send_message(self, session_id: str, computer: str, message: str) -> bool:
         self.messages.append((session_id, computer, message))
         return True
+
+
+class _CapturingRegistry:
+    """Task registry that captures spawned coroutines without running them.
+
+    Submit paths spawn the operation runner via ``spawn``; closing the coroutine
+    keeps the created-operation assertion deterministic (no background dispatch)
+    and avoids "coroutine was never awaited" warnings.
+    """
+
+    def __init__(self) -> None:
+        self.spawned = 0
+
+    def spawn(self, coro: object, name: str | None = None) -> object:
+        self.spawned += 1
+        cast(Any, coro).close()
+        return object()
 
 
 class _WakePayload(TypedDict, total=False):
@@ -449,13 +470,52 @@ def test_authorized_task_dispatches_to_task_run_after_dependencies() -> None:
         {"ready": ready},
         prepared_slugs=set(),
         delivered_slugs={"dep-a"},
-        autostart={_TASK: False},
+        autostart={_TASK: True},
         live_session_ids=set(),
     )
 
     assert before_dep.intents == []
     assert before_dep.skips[RunnerSkipReason.DEPENDENCY_BLOCKED] == ["blocked"]
     assert [(intent.slug, intent.lane, intent.command) for intent in after_dep.intents] == [
+        ("ready", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
+    ]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_autonomous_task_run_honors_autostart_task() -> None:
+    """The autonomous runner gates TASK_RUN on autostart.task, symmetric with the
+    SDLC work lane. An authorized, due, no-dep task is POLICY_DISABLED when
+    autostart.task is off and dispatches TASK_RUN when it is on."""
+    ready = RunnerTodo(
+        slug="ready",
+        status="active",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        hold=False,
+        active_runner=None,
+        task_plan_digest="plan-a",
+        task_approved=True,
+        task_approved_digest="plan-a",
+    )
+
+    disabled = decide_dispatches(
+        {"ready": ready},
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: False},
+        live_session_ids=set(),
+    )
+    enabled = decide_dispatches(
+        {"ready": ready},
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: True},
+        live_session_ids=set(),
+    )
+
+    assert disabled.intents == []
+    assert disabled.skips[RunnerSkipReason.POLICY_DISABLED] == ["ready"]
+    assert [(intent.slug, intent.lane, intent.command) for intent in enabled.intents] == [
         ("ready", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
     ]
 
@@ -507,7 +567,7 @@ def test_authorized_recurring_task_dispatches_only_at_matching_cron_time() -> No
         {"weekly-task": task},
         prepared_slugs=set(),
         delivered_slugs=set(),
-        autostart={_TASK: False},
+        autostart={_TASK: True},
         live_session_ids=set(),
         now=datetime(2026, 6, 21, 9, 15, tzinfo=UTC),
     )
@@ -515,7 +575,7 @@ def test_authorized_recurring_task_dispatches_only_at_matching_cron_time() -> No
         {"weekly-task": task},
         prepared_slugs=set(),
         delivered_slugs=set(),
-        autostart={_TASK: False},
+        autostart={_TASK: True},
         live_session_ids=set(),
         now=datetime(2026, 6, 22, 9, 15, tzinfo=UTC),
     )
@@ -2258,6 +2318,31 @@ async def test_operation_bridge_work_lane_on_prepared_todo_stays_work(tmp_path: 
 
     assert result == snapshot
     assert client.requests[0]["command"] == _NEXT_WORK
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_submit_work_records_task_run_kind_for_task_and_todo_work_for_sdlc(tmp_path: Path) -> None:
+    """The single /todos/work submit self-resolves the operation kind from the
+    todo's kind: a kind=task start persists a `task_run` operation while an SDLC
+    kind persists `todo_work`."""
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "sdlc-a", kind=_CHANGE, lifecycle_phase=LifecyclePhase.PREPARED.value)
+    await _add_todo(todos_db, "task-a", kind=_TASK, lifecycle_phase=LifecyclePhase.PREPARED.value)
+    await _authorize_task_plan(todos_db, "task-a")
+    db = Db(":memory:")
+    await db.initialize()
+    service = OperationsService(db=db, task_registry=cast(TaskRegistry, _CapturingRegistry()))
+
+    sdlc_op = await service.submit_todo_work(
+        slug="sdlc-a", cwd=str(project_root), caller_session_id="caller", client_request_id=None
+    )
+    task_op = await service.submit_todo_work(
+        slug="task-a", cwd=str(project_root), caller_session_id="caller", client_request_id=None
+    )
+
+    assert sdlc_op["kind"] == OPERATION_KIND_TODO_WORK
+    assert task_op["kind"] == OPERATION_KIND_TASK_RUN
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")

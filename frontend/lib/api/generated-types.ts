@@ -118,10 +118,13 @@ export interface TTSSettingsPatch {
 export interface TodoDumpRequest {
   slug: string;
   content: string;
+  kind?: 'feature' | 'change' | 'bug' | 'task' | null;
   after?: string[] | null;
-  kind?: 'bug' | 'draft' | 'prepped' | null;
+  schedule?: string | null;
   cwd?: string | null;
-  silent?: boolean;
+  icebox?: boolean;
+  group?: string | null;
+  plan?: boolean;
 }
 
 export interface VoiceInputRequest {
@@ -205,7 +208,6 @@ export interface ComputerInfo {
   user?: string | null;
   host?: string | null;
   is_local: boolean;
-  tmux_binary?: string | null;
 }
 
 export interface CreateSessionResponse {
@@ -252,6 +254,7 @@ export interface MessageInfo {
 export interface OperationCompletedEvent {
   event:
     | 'operation.todo_work.completed'
+    | 'operation.task_run.completed'
     | 'operation.todo_integrate.completed'
     | 'operation.todo_create.completed'
     | 'operation.todo_prepare.completed'
@@ -307,7 +310,7 @@ export interface ProjectInfo {
 
 export interface ProjectWithTodosInfo extends ProjectInfo {
   todos: TodoInfo[];
-  has_roadmap?: boolean;
+  has_todo?: boolean;
 }
 
 export interface ProjectsInitialData {
@@ -373,6 +376,7 @@ export interface SessionInfo {
   title: string;
   project_path?: string | null;
   subdir?: string | null;
+  working_slug?: string | null;
   thinking_mode?: string | null;
   active_agent?: string | null;
   status: string;
@@ -449,12 +453,22 @@ export interface TodoInfo {
   delivered_at?: string | null;
   kind?: string | null;
   ready_since?: string | null;
+  schedule?: string | null;
+  task_plan_digest?: string | null;
+  task_approved_digest?: string | null;
   updated_at?: string | null;
   created_at?: string | null;
   band?: string | null;
   lifecycle_phase?: string | null;
   integration_phase?: string | null;
   finalize_status?: string | null;
+  hold: boolean;
+  held: boolean;
+  hold_source?: string | null;
+  active_runner?: string | null;
+  todo_id?: string | null;
+  removed_at?: string | null;
+  created_by_principal?: string | null;
 }
 
 export interface TodoRenamedData {

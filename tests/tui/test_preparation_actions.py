@@ -93,6 +93,7 @@ _TODO_SLUG = "kindless-todo"
 _BUG_SLUG = "broken-thing"
 _CONTENT = "captured content\nwith multiple lines"
 _KIND_BUG = "bug"
+_SEVERITY_WARNING = "warning"
 
 
 class _RecordingApp:
@@ -358,6 +359,46 @@ def test_action_start_work_posts_operation_after_readiness_gate(
         "cwd": str(tmp_path),
     }
     harness.app._refresh_data.assert_called_once()
+
+
+def test_action_start_work_submits_task_without_sdlc_readiness_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tool_api_request = MagicMock(return_value={"operation_id": "op-task-run"})
+    monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+    harness = _Harness(tmp_path)
+    # is_ready_for_work rejects every task; the TUI must not pre-gate a task —
+    # it submits and lets the server resolve the task-run lane.
+    harness._current = _todo_row(
+        kind="task",
+        lifecycle_phase="prepared",
+        task_plan_digest="plan-a",
+        task_approved_digest="plan-a",
+    )
+
+    harness.action_start_work()
+
+    assert tool_api_request.call_args.args[:2] == (_METHOD_POST, _WORK_PATH)
+    assert tool_api_request.call_args.kwargs["json_body"] == {
+        "slug": "selected",
+        "cwd": str(tmp_path),
+    }
+    warning_calls = [
+        call for call in harness.app.notify.call_args_list if call.kwargs.get("severity") == _SEVERITY_WARNING
+    ]
+    assert warning_calls == []
+
+
+def test_action_start_work_still_gates_unready_sdlc_todo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    tool_api_request = MagicMock(return_value={"operation_id": "op-work"})
+    monkeypatch.setattr(preparation_actions, "tool_api_request", tool_api_request)
+    harness = _Harness(tmp_path)
+    harness._current = _todo_row(kind="change", lifecycle_phase="plan_drafting")
+
+    harness.action_start_work()
+
+    tool_api_request.assert_not_called()
+    assert harness.app.notify.call_args.kwargs.get("severity") == _SEVERITY_WARNING
 
 
 @pytest.mark.asyncio

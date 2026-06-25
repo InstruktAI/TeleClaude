@@ -142,6 +142,11 @@ def _resolve_kinded_dispatch(
         unmet = [dep for dep in todo.after if dep not in delivered_slugs]
         if unmet:
             return None, RunnerSkipReason.DEPENDENCY_BLOCKED
+        # Autonomous run honors autostart.task; the manual path passes an
+        # all-True map so operator-initiated starts are unaffected. Prepare
+        # stays ungated above, symmetric with the SDLC prepare branch.
+        if not _autostart_enabled(KIND_TASK, autostart):
+            return None, RunnerSkipReason.POLICY_DISABLED
         return RunnerLane.TASK_RUN, None
     if kind not in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
         return None, RunnerSkipReason.INVALID_KIND

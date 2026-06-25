@@ -661,6 +661,7 @@ class OperationCompletedEventDTO(BaseModel):
 
     event: Literal[
         "operation.todo_work.completed",
+        "operation.task_run.completed",
         "operation.todo_integrate.completed",
         "operation.todo_create.completed",
         "operation.todo_prepare.completed",
