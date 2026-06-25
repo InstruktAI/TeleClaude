@@ -20,8 +20,8 @@ visibility: 'public'
 - **Spec-bound behavior lives in integration tests** at `crates/<crate>/tests/<slug>.rs`, mirroring
   the feature spec `docs/project/spec/feature/<domain>/<slug>.md` (the domain resolves to a crate).
   Each test binds its scenario with a `// spec: <spec_id> <UC-id>` comment naming the scenario it
-  realizes; Rust bindings are checked at review (the on-demand coverage report parses Python only).
-  Functional, smoke, and integration levels follow the generic policy.
+  realizes; Rust bindings are checked at review. Functional, smoke, and integration levels follow
+  the generic policy.
 
 ### Dependency injection — the wiring model
 
@@ -295,8 +295,7 @@ crates, infrastructure crates, and test code.
 
 ## Enforcement
 
-- `cargo test --workspace` runs on pre-commit and must pass.
-- `cargo clippy --workspace --all-targets -- -D warnings` runs on pre-commit.
+- `cargo test` and `cargo clippy` run on pre-commit and must pass; flags and scope are owned by the harness.
 - New service crates without colocated unit tests are rejected at review.
 - New service crates without integration tests in `tests/` are rejected at
   review.

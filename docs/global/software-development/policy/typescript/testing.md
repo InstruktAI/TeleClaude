@@ -19,12 +19,11 @@ visibility: 'public'
    tested — see the generic policy.
 3. **Bind scenarios** with the project's `spec("<spec_id>", "<UC-id>")` tag at the top of each test;
    the functional/integration tier is a per-test tag, never a directory.
-4. **Run through `package.json`** — invoke the declared `test` script (`npm test`), never `npx`
-   directly, so the runner and its config have a single source of truth. Snapshots use vitest's
-   built-in `toMatchSnapshot` / `toMatchInlineSnapshot` (`vitest -u` to update; CI never updates).
-5. **Coverage** is checked at review against the scenario inventory; the on-demand
-   `tools/lint/spec_coverage.py` report parses Python bindings only, so TypeScript binding
-   completeness and drift are a review judgment.
+4. **Run through the declared `package.json` test script**, so the runner and its config have a
+   single source of truth. Snapshots use vitest's built-in `toMatchSnapshot` /
+   `toMatchInlineSnapshot`; CI never updates.
+5. **Coverage** is measured against the scenario inventory; TypeScript binding completeness and
+   drift are checked at review.
 
 ## Rationale
 
@@ -38,15 +37,11 @@ visibility: 'public'
 
 ## Enforcement
 
-- TypeScript spec bindings are checked at review; `tools/lint/spec_coverage.py` does not parse them.
+- TypeScript spec bindings are checked at review.
 - The reviewer rejects agent-authored unit tests.
-- `tools/lint/forbid_ts_unit_tests.py` (pre-commit) structurally blocks agent-authored TypeScript
-  unit tests, mirroring the Python ban's exit-code contract. It resolves the TypeScript surface from
-  `frontend_root` in `teleclaude.yml` (default `frontend`), so a Next.js-only project where the
-  package root is the app is covered by setting `frontend_root` to that root — no special-casing. Any
-  tracked `*.test.ts(x)` under the resolved root that is co-located (e.g. in an `__tests__/`
-  directory) or otherwise outside the doctrine path `<frontend_root>/tests/<domain>/<slug>.test.ts(x)`
-  fails the commit. Playwright e2e specs (`*.spec.ts`) are functional and excluded by suffix.
+- Agent-authored TypeScript unit tests, and test files outside the doctrine path
+  `<frontend_root>/tests/<domain>/<slug>.test.ts(x)`, are structurally blocked; the mechanism is
+  owned by the harness and tooling. Playwright e2e specs (`*.spec.ts`) are functional.
 
 ## Exceptions
 

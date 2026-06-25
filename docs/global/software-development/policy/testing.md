@@ -47,8 +47,8 @@ visibility: 'public'
    `<slug>` in the filename is normalized to the language's module-naming rule — Python and Rust use
    underscores (`session-lifecycle` → `test_session_lifecycle.py`), TypeScript keeps the hyphens
    (`session-lifecycle.test.ts`). The spec determines the test file's location and name — an agent
-   never invents a test path. The functional vs integration distinction is a **per-test marker**
-   (`@pytest.mark.functional` / `@pytest.mark.integration`), never a directory.
+   never invents a test path. The functional vs integration distinction is a **per-test marker**,
+   never a directory; the marker form is defined in the per-language testing policy.
 
    **Contract-defining artifacts are not tested — the artifact is the spec.** A thin shim whose
    behavior is its own declaration — a command wrapper, a git filter, a fixed-response tool — is not
@@ -86,9 +86,7 @@ visibility: 'public'
     `#### UC-<area><n>:` subsection containing exactly one fenced Gherkin block; ids are unique within
     a spec. A Gherkin block not yet under a `#### UC-` header is an **anonymous scenario** — the
     id-assignment backlog, worked down as scenarios get bound. This structure is upheld by the
-    authoring discipline and the reviewer; `tools/lint/spec_coverage.py` is an on-demand report that
-    surfaces the `#### UC-` inventory, anonymous scenarios, and orphan/duplicate bindings — not a
-    hard gate.
+    authoring discipline and the reviewer.
 
 ### Assertion craft (all languages)
 
@@ -147,11 +145,10 @@ visibility: 'public'
 
 ## Enforcement
 
-- `tools/lint/spec_coverage.py` is an on-demand report (not a gate): bound / unbound / duplicate /
-  orphan against the scenario inventory. It parses Python `@pytest.mark.spec` bindings; bindings in
-  other languages are checked at review.
+- Binding completeness — bound / unbound / duplicate / orphan against the scenario inventory — is
+  enforced; bindings are expressed and checked per-language.
 - Spec structure (the `### Use cases` section, well-formed unique `#### UC-` ids, one Gherkin block
-  per id) and binding completeness are upheld at review, not by an automated gate.
+  per id) and binding completeness are upheld at review.
 - Per-language checks enforce the unit-test stance for each language.
 - The reviewer judges binding honesty: does the test drive the real system for its scenario without
   mocking the thing under test.

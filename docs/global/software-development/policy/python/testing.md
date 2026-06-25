@@ -12,11 +12,9 @@ visibility: 'public'
 ## Rules
 
 1. **No unit tests.** Behavior is verified by functional and smoke tests; Python is a compiler-less
-   language under the generic rule. `tools/lint/forbid_unit_tests.py` (pre-commit) only prevents the
-   `tests/unit/` path from reappearing — a path guard, not a unit-test detector. A unit test placed
-   in any other directory, or wearing a `@pytest.mark.functional` label, passes every automated
-   check and is caught only at review, against `software-development/concept/functional-test-boundary`.
-   The discipline lives in the definition and the review, not in the path guard.
+   language under the generic rule. A unit test placed anywhere, or wearing a `@pytest.mark.functional`
+   label, is caught at review against `software-development/concept/functional-test-boundary`. The
+   discipline lives in the definition and the review.
 2. **Test files mirror the feature spec.** A spec at `docs/project/spec/feature/<domain>/<slug>.md`
    is covered by `tests/<domain>/test_<slug>.py`. Contract-defining tooling (wrappers, git filters)
    is not tested — see the generic policy.
@@ -26,31 +24,16 @@ visibility: 'public'
    _organize_ a tier's tests (e.g. `tests/process/`), but tier selection is always by marker. The
    `process` tier marks a test that drives a real OS subprocess across wall-clock deadlines.
    Shared fixtures live in `tests/conftest.py`.
-4. **Run via `uv run pytest`.** The harness is plain pytest plus declarative configuration — no
-   watchdog, reaper, in-flight tracker, or custom wall code.
-   Time budgets for the fast tier (functional/integration) are enforced by
-   `pytest-timeout` (`timeout=5`, `timeout_method="signal"`) and the suite wall-clock ceiling by
-   `session_timeout`, both in `[tool.pytest.ini_options]` as the single source; parallelism is
-   `pytest-xdist` (`-n auto`). The fast tier excludes the `process` tier via `-m "not process"`, so a
-   subprocess-timing test never starves under xdist. The `process` tier is the sanctioned retier
-   destination for a test that holds a real OS subprocess across wall-clock deadlines: it runs as a
-   separate serial stage (xdist cleared via `-o "addopts="`) under its own relaxed per-test timeout,
-   so that budget is a constant of the process stage, never a larger number granted to a fast-tier
-   test.
-   A per-test budget breach forcibly stops
-   the offending test and names it by node id with a dumped traceback (signal method), per xdist
-   worker — the one point a running test is interrupted, so in-flight identification lives here. The
-   session ceiling is a graceful between-tests stop that emits `session-timeout: N sec exceeded` and
-   never hard-kills a running test; a run that ends in a bare `Interrupted` with no named cause is
-   itself a test-infrastructure defect. Budgets are non-negotiable
-   constants: a test that exceeds its budget is fixed, split, or retiered, never granted a larger
-   number. A test that can hang or leak is fixed (or moved to a self-cleaning integration test), not
-   wrapped in harness code.
-5. **Snapshots use `syrupy`** (`uv run pytest --snapshot-update`; CI never updates snapshots). The
-   string-assertion paradigm is the generic policy's.
-6. **Coverage** is reported on demand by `tools/lint/spec_coverage.py` against the scenario
-   inventory; drift is handled by the spec → test → code change process (generic policy rule 10),
-   not by an automated detector.
+4. **Run via `uv run pytest`.** The harness is plain pytest plus declarative configuration. Tests run
+   in tiers under non-negotiable time budgets owned by the harness config: the fast tier
+   (functional/integration) excludes the `process` tier so a subprocess-timing test never starves it,
+   and the `process` tier runs as a separate serial stage under its own bounded budget. A test that
+   exceeds its budget is fixed, split, or retiered — never granted a larger budget. A test that can
+   hang or leak is fixed (or moved to a self-cleaning integration test), not wrapped in harness code.
+5. **Snapshots use `syrupy`**; CI never updates snapshots. The string-assertion paradigm is the
+   generic policy's.
+6. **Coverage** is measured against the scenario inventory; drift is handled by the spec → test →
+   code change process (generic policy rule 10).
 
 ## Rationale
 
@@ -64,8 +47,8 @@ visibility: 'public'
 
 ## Enforcement
 
-- `tools/lint/forbid_unit_tests.py` (pre-commit) blocks the `tests/unit/` path only — it is a path guard, not a unit-test detector. Functional-versus-unit structure anywhere else is enforced at review against `software-development/concept/functional-test-boundary`.
-- `tools/lint/spec_coverage.py` is an on-demand report of bound / unbound / duplicate / orphan; it is not wired into a gate.
+- The functional-versus-unit structure is enforced at review against `software-development/concept/functional-test-boundary`.
+- Binding completeness — bound / unbound / duplicate / orphan against the scenario inventory — is enforced; the mechanism is owned by the harness and tooling.
 
 ## Exceptions
 
