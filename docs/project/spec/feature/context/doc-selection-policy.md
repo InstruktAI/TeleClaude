@@ -117,6 +117,16 @@ When the Selection policy applies the project filter
 Then no snippets are returned
 ```
 
+#### UC-DSP5: Domains filter keeps only snippets in the requested published domains
+
+```
+Given --domains <domain> passed by the caller
+When the Selection policy applies the domains filter
+Then only snippets whose domain is in the requested set are returned
+And snippets in other domains, including structural scopes general and project, are excluded
+And third-party entries are silenced
+```
+
 ### Cross-context references
 
 - **identity** — terminal-session role is resolved upstream by the CLI and

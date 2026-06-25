@@ -823,6 +823,18 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         # project (mirrors the target-slug branch below).
         third_party_entries = []
 
+    if domains:
+        # Narrow the assembled list to the requested published domains. Global
+        # snippets are otherwise universally included by the include factory, so
+        # without this the filter would never bite. Each snippet's domain is the
+        # first segment of its id (snippet_validation), so structural scopes like
+        # ``general``/``project`` fall outside any published domain and drop out.
+        requested_domains = set(domains)
+        snippets = [snippet for snippet in snippets if snippet.domain in requested_domains]
+        # Third-party entries carry no taxonomy domain; a published-domain filter
+        # excludes them (mirrors the projects branch).
+        third_party_entries = []
+
     if not snippet_ids and target_slug is not None:
         # Index --target: focus on one todo's pending work — both the not-yet-live
         # NEW snippets it delivers and the LIVE snippets it reworks via planned

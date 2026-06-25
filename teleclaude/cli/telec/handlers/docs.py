@@ -7,6 +7,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.config.loader import load_app_config
 from teleclaude.context_selector import build_context_output
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.domains import valid_domains
 from teleclaude.project_root import resolve_invocation_project_root
 from teleclaude.snippet_validation import SnippetScope
 
@@ -33,6 +34,24 @@ def _parse_scope(value: str, subcommand: str) -> SnippetScope:
         print(f"Invalid --scope value: {value}. Valid values: {valid}.")
         print(_usage("docs", subcommand))
         raise SystemExit(1) from None
+
+
+def _parse_domains(value: str, subcommand: str) -> list[str]:
+    """Parse a ``--domains`` value against the published-domain set or fail fast.
+
+    Valid domains are exactly the published-domain union (``valid_domains()``);
+    structural scopes like ``general``/``project`` are not selectable here, mirroring
+    the phase-1 header's advertised choices.
+    """
+    requested = [d.strip() for d in value.split(",") if d.strip()]
+    valid = valid_domains()
+    invalid = [d for d in requested if d not in valid]
+    if invalid:
+        valid_list = ", ".join(sorted(valid)) or "(none registered)"
+        print(f"Invalid --domains value(s): {', '.join(invalid)}. Valid domains: {valid_list}.")
+        print(_usage("docs", subcommand))
+        raise SystemExit(1)
+    return requested
 
 
 def _handle_docs(args: list[str]) -> None:
@@ -83,7 +102,7 @@ def _handle_docs_index(args: list[str]) -> None:
             print(_usage("docs", "index"))
             raise SystemExit(1)
         elif arg in ("--domains", "-d") and i + 1 < len(args):
-            domains = [d.strip() for d in args[i + 1].split(",") if d.strip()]
+            domains = _parse_domains(args[i + 1], "index")
             i += 2
         elif arg in ("--domains", "-d"):
             print("Missing value for --domains.")

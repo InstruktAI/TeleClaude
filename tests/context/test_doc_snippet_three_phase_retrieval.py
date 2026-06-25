@@ -451,6 +451,21 @@ def test_index_invalid_scope_exits_nonzero(
     assert capsys.readouterr().out  # an error message is surfaced, not a silent exit
 
 
+def test_index_invalid_domain_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A --domains value outside the published-domain set fails loud with a non-zero exit
+    (handler error-path, no spec scenario)."""
+    _setup_handler_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(docs_handler, "valid_domains", lambda: {"software-development", "erp", "creative"})
+
+    with pytest.raises(SystemExit) as exc:
+        _handle_docs_index(["--domains", "bogus-nonsense"])
+
+    assert exc.value.code == 1
+    assert capsys.readouterr().out  # an error message is surfaced, not a silent exit
+
+
 @pytest.mark.spec(_SPEC, "UC-3PR4")
 def test_unknown_project_returns_empty_without_hard_fail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

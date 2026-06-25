@@ -113,6 +113,40 @@ def test_global_snippet_in_unsubscribed_domain_is_included(tmp_path: Path, monke
     assert foreign_domain_id in output
 
 
+@pytest.mark.spec(_SPEC, "UC-DSP5")
+def test_domains_filter_keeps_only_requested_domains(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--domains <X> returns only snippets whose domain is X; other domains and structural
+    scopes (general/project) are excluded, even though the global tree is otherwise universally included."""
+    gdocs = tmp_path / "ghome" / ".teleclaude" / "docs"
+    sw_id = "software-development/policy/example"
+    erp_id = "erp/policy/operating-disciplines"
+    _write_index(
+        gdocs / "index.yaml",
+        gdocs,
+        [
+            _entry(_GLOBAL_ID, "principle", "global", "general", "general/principle/example.md"),
+            _entry(sw_id, "policy", "global", "software-development", "software-development/policy/example.md"),
+            _entry(erp_id, "policy", "global", "erp", "erp/policy/operating-disciplines.md"),
+        ],
+    )
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", gdocs)
+    project_root = tmp_path / "proj"
+    (project_root / "docs").mkdir(parents=True, exist_ok=True)
+    _write_index(
+        project_root / "docs" / "project" / "index.yaml",
+        project_root,
+        [_entry(_PROJECT_ID, "spec", "project", "project", "docs/project/spec/feature/context/proj-thing.md")],
+    )
+
+    output = build_context_output(areas=[], project_root=project_root, domains=["software-development"])
+
+    assert sw_id in output
+    # Other published domains, the general scope, and the project scope all drop out.
+    assert erp_id not in output
+    assert _GLOBAL_ID not in output
+    assert _PROJECT_ID not in output
+
+
 @pytest.mark.spec(_SPEC, "UC-DSP1")
 def test_scope_global_excludes_project_snippets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """--scope global returns only global snippets; project-scoped ones are excluded."""
