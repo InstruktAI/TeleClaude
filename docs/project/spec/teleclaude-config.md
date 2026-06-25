@@ -115,7 +115,7 @@ checkpoint:
       main_only: bool # suppress off main (worktree-irrelevant); default false
       precedence: int # surface order; lower first
       evidence_must_follow_last_mutation: bool # evidence counts only after the last matching edit; default false
-  code: # the project's source roots; base lint/test/log-check attach automatically
+  code: # the project's source roots; base test/log-check attach automatically
     scope:
       include: list[string]
       exclude: list[string]
@@ -132,7 +132,7 @@ checkpoint:
     actions: list[string]
 ```
 
-`docs` and `agents` are universal base bindings with fixed scope; a project omits them unless adding extra actions. `code` carries only a scope — the base `lint` / `test` / `log-check` actions attach to it automatically. A path matched by no binding is silent. Unreadable project config fails open to the base-only action set.
+`docs` and `agents` are universal base bindings with fixed scope; a project omits them unless adding extra actions. `code` carries only a scope — the base `test` / `log-check` actions attach to it automatically. A path matched by no binding is silent. Unreadable project config fails open to the base-only action set.
 
 <!-- /planned:project-agnostic-checkpoint-payload -->
 

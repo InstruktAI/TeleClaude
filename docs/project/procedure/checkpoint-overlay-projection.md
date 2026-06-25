@@ -28,7 +28,7 @@ project-declarable paradigm, a re-analyze re-maps it onto every project.
 
 1. `telec projects analyze` reads the codebase and infers the project's
    checkpoint maintenance: the source roots that constitute the `code` scope
-   (onto which the base `lint` / `test` / `log-check` actions attach), and the
+   (onto which the base `test` / `log-check` actions attach), and the
    project's own runtime actions (build, restart, reload) named by make-contract
    convention (`make install` / `make test` / `make lint` work by convention).
 2. For each inferred action the analyzer writes a registry entry — `run`, the
