@@ -4,6 +4,7 @@ All functions are stateless and use config imported from teleclaude.config.
 """
 
 from teleclaude.core.tmux_bridge._keys import (
+    paste_text_existing_tmux,
     pid_is_alive,
     send_arrow_key,
     send_backspace,
@@ -74,6 +75,7 @@ __all__ = [
     "is_process_running",
     "kill_session",
     "list_tmux_sessions",
+    "paste_text_existing_tmux",
     "pid_is_alive",
     "safe_session_tmp_component",
     "send_arrow_key",

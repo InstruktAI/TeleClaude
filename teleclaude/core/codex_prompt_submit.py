@@ -217,13 +217,14 @@ def _find_prompt_input(output: str) -> str:
     return text
 
 
-def _has_agent_marker(output: str) -> bool:
-    lines = output.rstrip().split("\n")
-    for line in lines[-10:]:
-        clean_line = _strip_ansi(line.strip())
-        if clean_line and clean_line[0] in CODEX_AGENT_MARKERS:
-            return True
-    return False
+def extract_prompt_block(output: str) -> tuple[str, bool]:
+    """Return Codex's live prompt input and whether an agent boundary follows it."""
+    return _extract_prompt_block(output)
+
+
+def find_prompt_input(output: str) -> str:
+    """Return Codex's live prompt input text."""
+    return _find_prompt_input(output)
 
 
 def _has_live_prompt_marker(output: str) -> bool:
@@ -292,6 +293,8 @@ def _is_compact_dimmed_agent_boundary_line(line: str) -> bool:
 
 
 __all__ = [
-    "_find_prompt_input",
-    "_has_agent_marker",
+    "extract_prompt_block",
+    "find_live_prompt_line_index",
+    "find_prompt_input",
+    "has_live_prompt_marker",
 ]

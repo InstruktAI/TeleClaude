@@ -115,6 +115,17 @@ And subprocess-timeout is caught and converted to a structured log + failure ret
 And the redundant existence check is intentionally omitted to save one subprocess call
 ```
 
+#### paste-text-existing-host-pane skips submit
+
+```
+Given a caller has already verified the host pane exists
+When the paste-only existing-pane variant is invoked
+Then it runs the same load-buffer, paste-buffer, and cleanup stages as send-keys-existing-host-pane
+And it does NOT wait the post-paste submit gap
+And it does NOT send a submit keystroke
+And the caller is responsible for observing pane state and submitting later if needed
+```
+
 #### send-keys-to-tty is the non-pane escape hatch
 
 ```

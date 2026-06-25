@@ -120,6 +120,39 @@ async def send_keys_existing_tmux(
         return False
 
 
+async def paste_text_existing_tmux(
+    session_name: str,
+    text: str,
+    *,
+    active_agent: str | None = None,
+    timeout: float = SUBPROCESS_TIMEOUT_QUICK,
+) -> bool:
+    """Paste text to an existing tmux session without submitting it."""
+    try:
+        return await _paste_text_tmux(
+            session_name=session_name,
+            text=text,
+            active_agent=active_agent,
+            timeout=timeout,
+        )
+    except SubprocessTimeoutError as e:
+        logger.error(
+            "tmux paste timed out",
+            session=session_name,
+            reason="timeout",
+            timeout_s=e.timeout,
+        )
+        return False
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.exception(
+            "tmux paste subprocess error",
+            session=session_name,
+            reason="subprocess_error",
+            error_class=type(e).__name__,
+        )
+        return False
+
+
 async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True) -> bool:
     """Send keys directly to a controlling TTY (non-tmux sessions)."""
     try:
@@ -178,6 +211,60 @@ async def _send_keys_tmux(
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
+    pasted = await _paste_text_tmux(
+        session_name=session_name,
+        text=text,
+        active_agent=active_agent,
+        timeout=timeout,
+    )
+    if not pasted:
+        return False
+
+    # Submit via a DISCRETE send-keys C-m. paste-buffer -p emitted DECSET 2004
+    # markers (\x1b[200~ ... \x1b[201~) around the content. All three agent
+    # CLIs (codex, claude code, agy) enable bracketed-paste mode at startup
+    # and atomically buffer everything between the markers as a single 'paste'
+    # event. The next Enter KeyEvent is unambiguously discrete → submit.
+    #
+    # The short fixed sleep is a sub-second ordering safety margin so tmux
+    # finishes writing the close marker through the pty before the next
+    # subprocess writes \r. It is NOT a paste-detection heuristic, and does
+    # NOT need to scale with payload size — the close marker is the same
+    # regardless of how much content preceded it.
+    logger.debug(
+        "tmux paste pipeline: waiting before submit",
+        session=session_name,
+        submit_delay_s=_SUBMIT_GAP_S,
+    )
+    await asyncio.sleep(_SUBMIT_GAP_S)
+
+    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
+    result = await asyncio.create_subprocess_exec(
+        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
+    if result.returncode != 0:
+        logger.error(
+            "tmux send-keys submit returned nonzero exit",
+            session=session_name,
+            reason="nonzero_exit_submit",
+            returncode=result.returncode,
+            stderr=stderr.decode().strip(),
+        )
+        return False
+
+    logger.debug("tmux paste pipeline: submit ok", session=session_name)
+    return True
+
+
+async def _paste_text_tmux(
+    *,
+    session_name: str,
+    text: str,
+    active_agent: str | None,
+    timeout: float = SUBPROCESS_TIMEOUT_QUICK,
+) -> bool:
+    """Paste text to tmux (session must already exist)."""
     # Antigravity CLI can't handle '!' character - escape it
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
@@ -274,40 +361,7 @@ async def _send_keys_tmux(
                 paste_succeeded=paste_succeeded,
             )
 
-    # Submit via a DISCRETE send-keys C-m. paste-buffer -p emitted DECSET 2004
-    # markers (\x1b[200~ ... \x1b[201~) around the content. All three agent
-    # CLIs (codex, claude code, agy) enable bracketed-paste mode at startup
-    # and atomically buffer everything between the markers as a single 'paste'
-    # event. The next Enter KeyEvent is unambiguously discrete → submit.
-    #
-    # The short fixed sleep is a sub-second ordering safety margin so tmux
-    # finishes writing the close marker through the pty before the next
-    # subprocess writes \r. It is NOT a paste-detection heuristic, and does
-    # NOT need to scale with payload size — the close marker is the same
-    # regardless of how much content preceded it.
-    logger.debug(
-        "tmux paste pipeline: waiting before submit",
-        session=session_name,
-        submit_delay_s=_SUBMIT_GAP_S,
-    )
-    await asyncio.sleep(_SUBMIT_GAP_S)
-
-    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
-    result = await asyncio.create_subprocess_exec(
-        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
-    if result.returncode != 0:
-        logger.error(
-            "tmux send-keys submit returned nonzero exit",
-            session=session_name,
-            reason="nonzero_exit_submit",
-            returncode=result.returncode,
-            stderr=stderr.decode().strip(),
-        )
-        return False
-
-    logger.debug("tmux paste pipeline: submit ok", session=session_name, payload_bytes=payload_len)
+    logger.debug("tmux paste pipeline: paste complete", session=session_name, payload_bytes=payload_len)
     return True
 
 

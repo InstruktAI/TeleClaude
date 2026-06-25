@@ -8,6 +8,7 @@ from signal import Signals
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
+from teleclaude.core.agent_prompt_state import PromptDeliveryObservation, PromptDeliveryState, classify_prompt_delivery
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -20,14 +21,17 @@ from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
 
-# Confirmed user-turn delivery. A single blind paste+submit is lost when the
-# readiness race resolves before the agent is listening (swallowed paste) or the
-# submit Enter lands inside the bracketed-paste span (text sits unsubmitted). The
-# wrapper below observes a positive turn-start signal — the `user_prompt_submit`
-# agent-activity event the runtime already tracks — and idempotently re-injects
-# until the turn starts or the cap is reached.
+# Confirmed user-turn delivery. A single blind paste+submit can lose ordering
+# under tmux congestion: paste may not be visible to the agent editor yet, or the
+# discrete Enter may be swallowed while the target text stays in the live input.
+# The wrapper below separates paste observation from submit recovery: paste is
+# retried only until the target appears in the live input; after submit, only
+# Enter is retried and only while the target still appears in that live input.
 INJECT_TURN_START_TIMEOUT_S = 8.0
-INJECT_MAX_ATTEMPTS = 3
+INJECT_PASTE_VISIBLE_TIMEOUT_S = 3.0
+INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
+INJECT_PASTE_RETRY_BACKOFF_S: tuple[float, ...] = (0.5, 1.0)
+INJECT_SUBMIT_RETRY_DELAYS_S: tuple[float, ...] = (0.5, 0.5, 1.0, 2.0, 3.0)
 
 
 async def _revive_headless_and_send(
@@ -143,13 +147,10 @@ async def inject_user_turn(
 ) -> bool:
     """Inject a user-turn message and confirm the agent actually started a turn.
 
-    Pastes ``text`` via the shared submit path, then waits for a positive
-    turn-start signal — the ``user_prompt_submit`` agent-activity event the
-    runtime already emits when the agent accepts a turn. "Input left the box" is
-    NOT treated as success: a swallowed paste also empties the input line. When no
-    turn start is observed within the per-attempt window, the input line is
-    cleared (so a landed-but-unsubmitted paste is not duplicated) and the text is
-    re-pasted and resubmitted, bounded by ``INJECT_MAX_ATTEMPTS``.
+    Paste is not considered delivered until the pane shows ``text`` in the live
+    prompt input. Submit is retried with Enter only while that same live input
+    still contains ``text``. The routine never clears the prompt and never
+    re-pastes after submit has been attempted.
 
     Returns True when a turn start is confirmed, False when the retry cap is
     exhausted with no started turn (the caller fails loudly — no silent drop).
@@ -168,43 +169,166 @@ async def inject_user_turn(
 
     handler = event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, _on_activity)
     try:
-        for attempt in range(1, INJECT_MAX_ATTEMPTS + 1):
-            if attempt > 1:
-                # Clear any landed-but-unsubmitted paste before re-injecting so a
-                # swallowed-Enter does not accumulate duplicated content.
-                await tmux_bridge.send_ctrl_key(tmux_name, "u")
-            sent = await tmux_bridge.send_keys_existing_tmux(
+        paste_attempts = len(INJECT_PASTE_RETRY_BACKOFF_S) + 1
+        for paste_attempt in range(1, paste_attempts + 1):
+            pasted = await tmux_bridge.paste_text_existing_tmux(
                 session_name=tmux_name,
                 text=text,
                 active_agent=active_agent,
             )
-            if not sent:
+            if not pasted:
                 logger.warning(
                     "inject_user_turn: paste failed session=%s attempt=%d/%d",
                     session.session_id,
-                    attempt,
-                    INJECT_MAX_ATTEMPTS,
+                    paste_attempt,
+                    paste_attempts,
                 )
-            try:
-                await asyncio.wait_for(asyncio.shield(turn_started), timeout=INJECT_TURN_START_TIMEOUT_S)
-            except TimeoutError:
+            else:
+                observation = await _wait_for_prompt_delivery_observation(
+                    session,
+                    text,
+                    active_agent=active_agent,
+                    turn_started=turn_started,
+                    timeout_s=INJECT_PASTE_VISIBLE_TIMEOUT_S,
+                )
+                if turn_started.done():
+                    logger.info(
+                        "inject_user_turn: turn started during paste observation session=%s attempt=%d/%d",
+                        session.session_id,
+                        paste_attempt,
+                        paste_attempts,
+                    )
+                    return True
+                if observation.state == PromptDeliveryState.SUBMITTED:
+                    logger.info(
+                        "inject_user_turn: prompt submitted by pane observation session=%s paste_attempt=%d/%d",
+                        session.session_id,
+                        paste_attempt,
+                        paste_attempts,
+                    )
+                    return True
+                if observation.state == PromptDeliveryState.IN_INPUT:
+                    return await _submit_observed_user_turn(
+                        session,
+                        text,
+                        active_agent=active_agent,
+                        turn_started=turn_started,
+                        initial_observation=observation,
+                    )
+
                 logger.warning(
-                    "inject_user_turn: no turn start session=%s attempt=%d/%d",
+                    "inject_user_turn: target not visible after paste session=%s attempt=%d/%d",
                     session.session_id,
-                    attempt,
-                    INJECT_MAX_ATTEMPTS,
+                    paste_attempt,
+                    paste_attempts,
                 )
-                continue
-            logger.info(
-                "inject_user_turn: turn started session=%s attempt=%d/%d",
-                session.session_id,
-                attempt,
-                INJECT_MAX_ATTEMPTS,
-            )
-            return True
+
+            if paste_attempt < paste_attempts:
+                await asyncio.sleep(INJECT_PASTE_RETRY_BACKOFF_S[paste_attempt - 1])
+
         return False
     finally:
         event_bus.unsubscribe(TeleClaudeEvents.AGENT_ACTIVITY, handler)
+
+
+async def _wait_for_prompt_delivery_observation(
+    session: Session,
+    text: str,
+    *,
+    active_agent: str | None,
+    turn_started: asyncio.Future[None],
+    timeout_s: float,
+) -> PromptDeliveryObservation:
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    observation = await _observe_prompt_delivery(session, text, active_agent=active_agent)
+    while observation.state == PromptDeliveryState.ABSENT and not turn_started.done():
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return observation
+        await asyncio.sleep(min(INJECT_PROMPT_OBSERVE_INTERVAL_S, remaining))
+        observation = await _observe_prompt_delivery(session, text, active_agent=active_agent)
+    return observation
+
+
+async def _observe_prompt_delivery(
+    session: Session,
+    text: str,
+    *,
+    active_agent: str | None,
+) -> PromptDeliveryObservation:
+    output = await tmux_bridge.capture_pane(session.tmux_session_name)
+    return classify_prompt_delivery(output, text, active_agent)
+
+
+async def _submit_observed_user_turn(
+    session: Session,
+    text: str,
+    *,
+    active_agent: str | None,
+    turn_started: asyncio.Future[None],
+    initial_observation: PromptDeliveryObservation,
+) -> bool:
+    observation = initial_observation
+    for submit_attempt, delay_s in enumerate(INJECT_SUBMIT_RETRY_DELAYS_S, start=1):
+        if observation.state != PromptDeliveryState.IN_INPUT:
+            return observation.state == PromptDeliveryState.SUBMITTED or turn_started.done()
+
+        submitted = await tmux_bridge.send_enter(session.tmux_session_name)
+        if not submitted:
+            logger.warning(
+                "inject_user_turn: enter failed session=%s attempt=%d/%d",
+                session.session_id,
+                submit_attempt,
+                len(INJECT_SUBMIT_RETRY_DELAYS_S),
+            )
+
+        if await _wait_for_turn_started(turn_started, delay_s):
+            logger.info(
+                "inject_user_turn: turn started session=%s submit_attempt=%d/%d",
+                session.session_id,
+                submit_attempt,
+                len(INJECT_SUBMIT_RETRY_DELAYS_S),
+            )
+            return True
+
+        observation = await _observe_prompt_delivery(session, text, active_agent=active_agent)
+        if observation.state == PromptDeliveryState.SUBMITTED:
+            logger.info(
+                "inject_user_turn: prompt submitted by pane observation session=%s submit_attempt=%d/%d",
+                session.session_id,
+                submit_attempt,
+                len(INJECT_SUBMIT_RETRY_DELAYS_S),
+            )
+            return True
+        if observation.state == PromptDeliveryState.ABSENT:
+            if await _wait_for_turn_started(turn_started, INJECT_TURN_START_TIMEOUT_S):
+                return True
+            logger.warning(
+                "inject_user_turn: target left input without confirmation session=%s submit_attempt=%d/%d",
+                session.session_id,
+                submit_attempt,
+                len(INJECT_SUBMIT_RETRY_DELAYS_S),
+            )
+            return False
+
+        logger.warning(
+            "inject_user_turn: target still in input after enter session=%s submit_attempt=%d/%d",
+            session.session_id,
+            submit_attempt,
+            len(INJECT_SUBMIT_RETRY_DELAYS_S),
+        )
+
+    return False
+
+
+async def _wait_for_turn_started(turn_started: asyncio.Future[None], timeout_s: float) -> bool:
+    if turn_started.done():
+        return True
+    try:
+        await asyncio.wait_for(asyncio.shield(turn_started), timeout=timeout_s)
+    except TimeoutError:
+        return turn_started.done()
+    return True
 
 
 async def send_escape(session: Session) -> bool:

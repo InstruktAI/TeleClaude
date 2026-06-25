@@ -70,25 +70,29 @@ Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the 
 And after the relaunch, it awaits readiness for the session within a bounded timeout, releasing the subscription in a finalizer
 And on readiness, it injects the fixed continuation stimulus ("Session restarted. Continue pending work or remain idle.") into the host pane as a user-turn message
 And it confirms the resumed agent started a turn from that stimulus, observed through the agent-activity signal the runtime already tracks
-And when the turn start is confirmed on the first attempt, the stimulus is delivered exactly once with no re-injection
+And when the turn start is confirmed on the first submit, the stimulus is pasted exactly once and submitted exactly once
 And on readiness timeout, it emits a readiness-timeout event and posts a message to the user but does NOT inject the stimulus
 ```
 
-#### UC-AR2: Self-restart re-injects idempotently when the turn start is deferred
+#### UC-AR2: Self-restart retries submit only while the stimulus remains live
 
 ```
-Given a self-restart has injected the continuation stimulus but no turn start is observed within the per-attempt window
+Given a self-restart has pasted the continuation stimulus
+And pane observation confirms the stimulus is present in the live prompt input
+And no turn start is observed after the submit Enter
 When the handler retries delivery
-Then it clears the input line, re-pastes the stimulus, and resubmits, so a landed-but-unsubmitted paste is not duplicated
-And the retries are bounded by a retry cap
-And once a turn start is observed, exactly one turn has started (no double-start)
+Then it re-captures and re-classifies the pane before each retry
+And while the stimulus remains present in the live prompt input, it sends another Enter without clearing or re-pasting the stimulus
+And if the stimulus leaves the live prompt input, it stops sending Enter and waits for confirmation
+And once a turn start is observed, exactly one turn has started with no duplicate stimulus
 ```
 
 #### UC-AR3: Self-restart fails loud on retry exhaustion
 
 ```
-Given a self-restart's continuation stimulus is repeatedly swallowed so no turn start is ever observed
-When the retry cap is exhausted
+Given a self-restart's continuation stimulus never becomes observable in the live prompt input
+Or the stimulus remains in the live prompt input after every bounded submit retry
+When the relevant retry budget is exhausted
 Then the handler does NOT report the stimulus as delivered on the input box emptying alone
 And it reports failure and keeps the session alive, never silently dropping the stimulus
 ```

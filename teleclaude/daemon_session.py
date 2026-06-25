@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import os
 import time
 from collections.abc import Coroutine
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
+from teleclaude.core import polling_coordinator, session_cleanup, tmux_io
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
@@ -49,35 +46,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Agent startup detection
-AGENT_START_TIMEOUT_S = 5.0
-AGENT_START_POLL_INTERVAL_S = 0.5
-AGENT_START_SETTLE_DELAY_S = 0.5  # Initial delay after process starts
-AGENT_START_CONFIRM_ENTER_DELAY_S = 1.0
-AGENT_START_CONFIRM_ENTER_ATTEMPTS = 4
-AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
-AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
-AGENT_START_ENTER_INTER_DELAY_S = 0.2
-AGENT_START_POST_INJECT_DELAY_S = 1.0
-AGENT_START_STABILIZE_TIMEOUT_S = 10.0  # Max wait for output to stop changing during startup
 AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stable"
-AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
-GEMINI_START_EXTRA_DELAY_S = float(os.getenv("GEMINI_START_EXTRA_DELAY_S", "3"))
-
 AGENT_PROMPT_READY_TIMEOUT_S = float(os.getenv("AGENT_PROMPT_READY_TIMEOUT_S", "60"))
-
-
-@dataclass(frozen=True)
-class OutputChangeSummary:
-    """Summary details for tmux output changes."""
-
-    changed: bool
-    reason: str | None = None
-    before_len: int | None = None
-    after_len: int | None = None
-    diff_index: int | None = None
-    before_snippet: str | None = None
-    after_snippet: str | None = None
 
 
 class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
@@ -412,24 +382,22 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.error("agent_then_message: process not running after readiness (session=%s)", session_id)
             return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
 
-        # Step 2: Inject the message — the agent's stdin loop is live.
+        # Step 2: Submit the message — the agent's stdin loop is live.
         logger.debug("agent_then_message: injecting message to session=%s", session_id)
 
-        working_dir = resolve_working_dir(session.project_path, session.subdir)
-        pasted = await tmux_io.process_text(
+        delivered = await tmux_io.inject_user_turn(
             session,
             message,
-            working_dir=working_dir,
             active_agent=session.active_agent,
         )
-        if not pasted:
-            return {"status": "error", "message": "Failed to paste command into tmux"}
+        if not delivered:
+            return {"status": "error", "message": "Failed to submit message into agent prompt"}
 
         await db.update_last_activity(session_id)
         await self._poll_and_send_output(session_id, session.tmux_session_name)
 
         logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
-        return {"status": "success", "message": "Message injected after agent start"}
+        return {"status": "success", "message": "Message submitted after agent start"}
 
     async def _await_agent_readiness(
         self,
@@ -464,89 +432,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             quiet_s=AGENT_START_STABILIZE_QUIET_S,
             timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
         )
-
-    async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
-        output = await tmux_bridge.capture_pane(session.tmux_session_name)
-        if not output:
-            return "", ""
-        tail = output[-UI_MESSAGE_MAX_CHARS:]
-        digest = hashlib.sha256(tail.encode("utf-8", errors="replace")).hexdigest()
-        return tail, digest
-
-    @staticmethod
-    def _summarize_output_change(before: str, after: str) -> OutputChangeSummary:
-        if before == after:
-            return OutputChangeSummary(changed=False, reason="identical")
-
-        min_len = min(len(before), len(after))
-        diff_index = None
-        for idx in range(min_len):
-            if before[idx] != after[idx]:
-                diff_index = idx
-                break
-        if diff_index is None:
-            diff_index = min_len
-
-        snippet_len = 160
-        before_snippet = before[max(0, diff_index - 40) : diff_index + snippet_len]
-        after_snippet = after[max(0, diff_index - 40) : diff_index + snippet_len]
-
-        return OutputChangeSummary(
-            changed=True,
-            before_len=len(before),
-            after_len=len(after),
-            diff_index=diff_index,
-            before_snippet=repr(before_snippet),
-            after_snippet=repr(after_snippet),
-        )
-
-    async def _wait_for_output_change(
-        self,
-        session: Session,
-        before: str,
-        before_digest: str,
-        timeout_s: float,
-    ) -> tuple[bool, str]:
-        deadline = time.monotonic() + timeout_s
-        last_tail = ""
-        while time.monotonic() < deadline:
-            current_tail, current_digest = await self._pane_output_snapshot(session)
-            last_tail = current_tail
-            if current_digest != before_digest:
-                return True, current_tail
-            await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
-        return False, last_tail
-
-    async def _confirm_command_acceptance(self, session: Session) -> bool:
-        attempts = max(1, AGENT_START_CONFIRM_ENTER_ATTEMPTS)
-        for attempt in range(attempts):
-            before_tail, before_digest = await self._pane_output_snapshot(session)
-            await tmux_io.send_enter(session)
-            await asyncio.sleep(AGENT_START_ENTER_INTER_DELAY_S)
-            await tmux_io.send_enter(session)
-
-            changed, after_tail = await self._wait_for_output_change(
-                session,
-                before_tail,
-                before_digest,
-                AGENT_START_OUTPUT_CHANGE_TIMEOUT_S,
-            )
-            if changed:
-                summary = self._summarize_output_change(before_tail, after_tail)
-                logger.debug(
-                    "agent_then_message acceptance output change: %s",
-                    summary,
-                )
-                return True
-            logger.trace(
-                "agent_then_message no output change after enter attempt %d: tail=%s",
-                attempt + 1,
-                repr(after_tail[-160:]) if after_tail else "''",
-            )
-
-            if attempt < attempts - 1:
-                await asyncio.sleep(AGENT_START_CONFIRM_ENTER_DELAY_S)
-        return False
 
     async def _handle_error(self, _event: str, context: ErrorEventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""

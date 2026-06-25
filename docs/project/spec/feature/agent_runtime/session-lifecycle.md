@@ -83,7 +83,11 @@ And the launch kind is `agent` (the default)
 When the launch-intent builder runs
 Then the launch kind is upgraded to `agent_then_message`
 And the launch intent is built with agent, thinking mode, and message
-And the message is persisted on the launch intent and replayed into the host pane by the bootstrap task once the agent CLI is ready
+And the message is persisted on the launch intent
+And once the agent CLI is ready, the bootstrap task submits the message through confirmed user-turn delivery
+And confirmed user-turn delivery waits until the pasted message is observable in the live prompt input before sending Enter
+And if Enter does not start a turn while the message remains observable in the live prompt input, it retries Enter without re-pasting
+And if the message cannot be confirmed as submitted, the launch result is an error rather than a silent success
 And the initiator extraction records the caller's session id so the spawned child can notify the initiator on stop (one-shot listener)
 ```
 
