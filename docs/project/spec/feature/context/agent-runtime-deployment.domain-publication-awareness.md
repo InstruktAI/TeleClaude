@@ -42,13 +42,13 @@ and the index build — read one root unchanged.
 
 For each source `docs/global/<domain>/baseline.md` the deploy inflates the
 domain baseline and writes it as a generated, gitignored file beside its
-manifest at `docs/global/<domain>/domain-baseline-bundle.md`, visible through
-the per-domain symlink at `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`.
-These generated bundles are excluded from snippet iteration and validation, so
-they are never treated as authored snippets. The SessionStart hook reads that
-file to inject the domain's process-enforcement baseline. Global third-party
-docs are read from the mother repo source (`docs/third-party/`), not from under
-the docs tree.
+manifest at `docs/global/<domain>/domain-baseline.md`, visible through the
+per-domain symlink at `~/.teleclaude/docs/<domain>/domain-baseline.md`. These
+generated baselines are excluded from snippet iteration and validation, so they
+are never treated as authored snippets. The SessionStart hook reads that file to
+inject the domain's process-enforcement baseline. Global third-party docs are
+read from the mother repo source (`docs/third-party/`), not from under the docs
+tree.
 
 When the distribution step is invoked directly in no-deploy mode, agent
 artifacts are emitted to `project_root/dist/global` and
@@ -101,8 +101,8 @@ Scenario: UC-ARD4 Sync composes the per-domain multi-root docs tree
   And ~/.teleclaude/docs is a real directory containing one symlink per published domain to its owning publisher's docs/global/<domain>
   And ~/.teleclaude/docs/general resolves to the Mother repo's docs/global/general
   And ~/.teleclaude/docs/index.yaml is the union of every publisher's global index
-  And the inflated domain baseline is written to each owning publisher's docs/global/<domain>/domain-baseline-bundle.md
-  And that generated bundle is gitignored and excluded from snippet iteration and validation
+  And the inflated domain baseline is written to each owning publisher's docs/global/<domain>/domain-baseline.md
+  And that generated baseline is gitignored and excluded from snippet iteration and validation
   And a subfolder added to a source domain afterward resolves through its per-domain link without a re-deploy
 ```
 
@@ -118,18 +118,18 @@ Scenario: UC-ARD5 Distribution invoked directly in no-deploy mode
 ```
 
 ```
-Scenario: UC-ARD6 SessionStart injects the generated domain baseline bundle
-  Given a session whose command resolves to a domain with a generated baseline bundle
+Scenario: UC-ARD6 SessionStart injects the generated domain baseline
+  Given a session whose command resolves to a domain with a generated baseline
   When the SessionStart hook builds additional context
-  Then it reads ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
+  Then it reads ~/.teleclaude/docs/<domain>/domain-baseline.md
   And injects the inflated domain process-enforcement baseline before the first user message
 ```
 
 ```
-Scenario: UC-ARD7 SessionStart surfaces a missing domain baseline bundle
-  Given a session whose command resolves to a domain whose generated baseline bundle is absent
+Scenario: UC-ARD7 SessionStart surfaces a missing domain baseline
+  Given a session whose command resolves to a domain whose generated baseline is absent
   When the SessionStart hook builds additional context
-  Then it surfaces a visible warning naming the missing ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
+  Then it surfaces a visible warning naming the missing ~/.teleclaude/docs/<domain>/domain-baseline.md
   And the mandatory baseline is never silently dropped
 ```
 

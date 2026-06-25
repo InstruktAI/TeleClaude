@@ -9,11 +9,7 @@ visibility: 'public'
 
 - **Read a domain's baseline bundle before substantive work in it.** When a task enters a
   knowledge domain — e.g. writing or reviewing code/tests enters `software-development` —
-  <!-- planned-change:domain-publication-awareness -->
   read that domain's bundle once at entry: `~/.teleclaude/docs/<domain>/domain-baseline.md`.
-  <!-- change:domain-publication-awareness -->
-  read that domain's bundle once at entry: `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`.
-  <!-- /planned-change:domain-publication-awareness -->
   The bundle is the domain's full mandatory contract, pre-resolved to read in one pass; read
   it in full instead of piecemeal index browsing when starting fresh in a domain, then
   progressive-read individual snippets with `telec docs get <id>`. Skip it only when the
@@ -44,16 +40,9 @@ visibility: 'public'
 
 ## Enforcement
 
-<!-- planned-change:domain-publication-awareness -->
-
 - Entering domain work without reading that domain's bundle
-(`~/.teleclaude/docs/<domain>/domain-baseline.md`), when its contracts are not already
-loaded, is a process miss — read the bundle first.
-<!-- change:domain-publication-awareness -->
-- Entering domain work without reading that domain's bundle
-(`~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`), when its contracts are not
-already loaded, is a process miss — read the bundle first.
-<!-- /planned-change:domain-publication-awareness -->
+  (`~/.teleclaude/docs/<domain>/domain-baseline.md`), when its contracts are not already
+  loaded, is a process miss — read the bundle first.
 - If unsure about policies, procedures, roles, or constraints, run a filtered
   `telec docs index --areas <type>` (or `--baseline-only`) before editing or executing.
 
