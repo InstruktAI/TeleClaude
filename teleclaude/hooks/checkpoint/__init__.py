@@ -190,7 +190,10 @@ def run_heuristics(
     # via sync and have no runtime to inspect or behavior to test.
     code_categories = [c for c in file_categories if c.is_code]
     if any(c.name != "tests" for c in code_categories) and not _has_evidence(timeline, CHECKPOINT_LOG_CHECK_EVIDENCE):
-        append_required_action(f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window}`")
+        append_required_action(
+            f"Check logs: `instrukt-ai-logs teleclaude --since {log_since_window} "
+            f"--exclude 'logger=teleclaude\\.git\\.exec'`"
+        )
     if code_categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
         append_required_action("Run targeted tests for only YOUR changed behavior")
 
