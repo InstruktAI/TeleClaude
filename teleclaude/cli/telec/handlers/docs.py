@@ -44,6 +44,12 @@ def _parse_domains(value: str, subcommand: str) -> list[str]:
     the phase-1 header's advertised choices.
     """
     requested = [d.strip() for d in value.split(",") if d.strip()]
+    if not requested:
+        # An empty/whitespace/comma-only value supplies no domain; treat it as a
+        # missing value rather than silently degrading to an unfiltered listing.
+        print("Missing value for --domains.")
+        print(_usage("docs", subcommand))
+        raise SystemExit(1)
     valid = valid_domains()
     invalid = [d for d in requested if d not in valid]
     if invalid:

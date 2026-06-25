@@ -451,16 +451,30 @@ def test_index_invalid_scope_exits_nonzero(
     assert capsys.readouterr().out  # an error message is surfaced, not a silent exit
 
 
-def test_index_invalid_domain_exits_nonzero(
+@pytest.mark.spec(_SPEC, "UC-3PR5")
+def test_index_unknown_domain_exits_nonzero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A --domains value outside the published-domain set fails loud with a non-zero exit
-    (handler error-path, no spec scenario)."""
+    """A --domains value outside the published-domain set fails loud with a non-zero exit."""
     _setup_handler_project(tmp_path, monkeypatch)
     monkeypatch.setattr(docs_handler, "valid_domains", lambda: {"software-development", "erp", "creative"})
 
     with pytest.raises(SystemExit) as exc:
         _handle_docs_index(["--domains", "bogus-nonsense"])
+
+    assert exc.value.code == 1
+    assert capsys.readouterr().out  # an error message is surfaced, not a silent exit
+
+
+@pytest.mark.spec(_SPEC, "UC-3PR6")
+def test_index_empty_domain_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An empty/comma-only --domains value is a missing value, not a silent unfiltered listing."""
+    _setup_handler_project(tmp_path, monkeypatch)
+
+    with pytest.raises(SystemExit) as exc:
+        _handle_docs_index(["--domains", ""])
 
     assert exc.value.code == 1
     assert capsys.readouterr().out  # an error message is surfaced, not a silent exit

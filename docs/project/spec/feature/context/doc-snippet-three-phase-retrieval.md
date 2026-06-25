@@ -106,6 +106,24 @@ Then the snippet is surfaced in the output with an "Insufficient role" / "access
 And the content body is withheld
 ```
 
+#### UC-3PR5: Unknown --domains value fails loud
+
+```
+Given a --domains value that names a domain outside the published-domain set
+When the caller runs telec docs index --domains <value>
+Then the command fails with a non-zero exit and an error naming the valid domains
+And the listing is not silently returned unfiltered
+```
+
+#### UC-3PR6: Empty --domains value fails loud
+
+```
+Given a --domains value that supplies no domain (empty or comma-only)
+When the caller runs telec docs index --domains <value>
+Then the command fails with a non-zero exit as a missing value
+And the listing is not silently returned unfiltered
+```
+
 ```
 Given a third-party snippet ID
 When the caller runs telec docs get on that ID

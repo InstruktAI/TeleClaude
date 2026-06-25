@@ -137,14 +137,26 @@ def test_domains_filter_keeps_only_requested_domains(tmp_path: Path, monkeypatch
         project_root,
         [_entry(_PROJECT_ID, "spec", "project", "project", "docs/project/spec/feature/context/proj-thing.md")],
     )
+    # A third-party entry has no taxonomy domain; it must be silenced under a domain filter
+    # even when --third-party is explicitly requested.
+    repo_root = tmp_path / "repo"
+    _write_third_party_index(
+        repo_root / "docs" / "third-party" / "index.yaml",
+        [{"id": _GLOBAL_TP_ID, "description": "Global lib.", "scope": "global", "path": "global-lib.md"}],
+    )
+    monkeypatch.setattr("teleclaude.context_selector.REPO_ROOT", repo_root)
 
-    output = build_context_output(areas=[], project_root=project_root, domains=["software-development"])
+    output = build_context_output(
+        areas=[], project_root=project_root, domains=["software-development"], include_third_party=True
+    )
 
     assert sw_id in output
     # Other published domains, the general scope, and the project scope all drop out.
     assert erp_id not in output
     assert _GLOBAL_ID not in output
     assert _PROJECT_ID not in output
+    # The third-party track is silenced by the domains filter.
+    assert _GLOBAL_TP_ID not in output
 
 
 @pytest.mark.spec(_SPEC, "UC-DSP1")
