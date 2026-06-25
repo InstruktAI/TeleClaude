@@ -3,6 +3,8 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "pyyaml",
+#     "ruamel.yaml>=0.18.0",
+#     "redis>=5.0.0",
 #     "aiohttp",
 #     "dateparser",
 #     "munch",
