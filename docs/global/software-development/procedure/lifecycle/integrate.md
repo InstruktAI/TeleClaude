@@ -183,7 +183,7 @@ housekeeping) to origin/main after syncing local main via pull. If the pull
 failed and the agent resolved it manually, push repo root using the explicit
 project root path emitted by the engine.
 
-Self-end: `telec sessions end self`.
+Depart per the Heartbeat policy — your `telec sessions end self` is a departure, not an inline command.
 
 ### When to end, when to wait, when to beacon
 

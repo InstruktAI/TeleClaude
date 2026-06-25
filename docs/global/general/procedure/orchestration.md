@@ -33,7 +33,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 4. When a notification arrives OR the heartbeat timer expires, invoke the state machine again.
 5. Repeat until the state machine emits a terminal cleanup script that includes `telec sessions end self`.
 
-The state machine owns every concrete decision: dispatch, session ending, phase transitions, fix relay, terminal cleanup. The orchestrator never decides session lifecycle or branches on verdict — if the script says `telec sessions end <id>`, end that session; if the script says `telec sessions send <id> "..."`, send that message. The only orchestrator-owned behaviors are heartbeat management and tailing discipline.
+The state machine owns every concrete decision: dispatch, session ending, phase transitions, fix relay, terminal cleanup. The orchestrator never decides session lifecycle or branches on verdict — if the script says `telec sessions end <id>`, end that session; if the script says `telec sessions send <id> "..."`, send that message. The exception is `telec sessions end self` — the orchestrator's own departure, enacted per the Heartbeat policy rather than run inline. The only orchestrator-owned behaviors are heartbeat management and tailing discipline.
 
 ### Container Slug Handling
 
