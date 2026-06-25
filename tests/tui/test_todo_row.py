@@ -421,6 +421,7 @@ def _status_item(
     task_plan_digest: str | None = None,
     task_approved_digest: str | None = None,
     schedule: str | None = None,
+    held: bool = False,
 ) -> TodoItem:
     return TodoItem(
         slug="work",
@@ -433,6 +434,7 @@ def _status_item(
         task_plan_digest=task_plan_digest,
         task_approved_digest=task_approved_digest,
         schedule=schedule,
+        held=held,
     )
 
 
@@ -467,15 +469,20 @@ def test_todo_phase_column_color_marks_settled_vs_in_flight() -> None:
 
 
 @pytest.mark.spec(XNAV_SPEC, "UC-XNAV-11")
-def test_todo_schedule_badge_carries_weight_and_color() -> None:
-    # The schedule 'S' badge renders gold + bold in its state-column slot. `.plain`
-    # sees the glyph but neither its weight nor its color. Kills: dropping the
-    # bold or the gold color on the schedule badge.
+def test_todo_state_column_badges_carry_weight_and_color() -> None:
+    # The schedule 'S' badge and the hold glyph each render gold + bold in their
+    # state-column slots. `.plain` sees the glyphs but neither weight nor color.
+    # Kills: dropping the bold or the gold color on either badge.
     scheduled = _row(_status_item(TodoStatus.IN_PROGRESS, schedule="cron:* * * * *")).render()
     s_badge = _span_over(scheduled, "S")
     assert s_badge is not None
     assert s_badge.style.bold is True
     assert s_badge.style.color.name == todo_row_mod._gold_color()
+    held = _row(_status_item(TodoStatus.IN_PROGRESS, held=True)).render()
+    hold_glyph = _span_over(held, todo_row_mod._HOLD_ICON)
+    assert hold_glyph is not None
+    assert hold_glyph.style.bold is True
+    assert hold_glyph.style.color.name == todo_row_mod._gold_color()
 
 
 def test_single_user_suppresses_todo_chip(wire_people) -> None:
