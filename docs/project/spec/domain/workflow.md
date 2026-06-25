@@ -66,8 +66,17 @@ kind mutation is refused.
 **Phase** (per glossary)
 : Sub-state within a stage. Examples for `prepare` stage: `intake`, `prd_drafting`, `prd_human_approval`, `architecture_drafting`, `architecture_review`, `plan_drafting`, `plan_review`, `drift_analysis`, `diagnose`, `prepared`. A kind-less todo has no `lifecycle_phase` at all: before classification it carries `kind=None` with `lifecycle_phase` absent, and `/analyze-todo-input` assigns a kind autonomously — which fixes the kind and routes it to that kind's entry phase in one step. There is no pre-classification phase value.
 
+<!-- planned-change:run-task-log-artifact-kind-missing -->
+
 **Artifact** (workflow artifact — per glossary)
 : A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
+
+<!-- change:run-task-log-artifact-kind-missing -->
+
+**Artifact** (workflow artifact — per glossary)
+: A document produced during a todo's lifecycle. Canonical kinds: `input`, `prd`, `architecture` (thin index/log of touched doc snippets), `implementation-plan`, `task-plan` (the actionable, living-bookkeeping artifact for `kind=task` — intent line, ordered checkable steps, per-step status, running log; groomed in place as the task is worked), `log` (the `kind=task` continuity and restart-idempotency record, appended across firings inside the persistent `/next-run-task` session), `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is a legacy read/remove-only artifact kind; new bug todo content is stored in `input`.
+
+<!-- /planned-change:run-task-log-artifact-kind-missing -->
 
 **Task authorization**
 : Human approval for a prepared task to be run. It is recorded in workflow state, not inferred from `task-plan` existence, and it is the per-task autostart opt-in: the default autostart policy leaves `task=false`, and authorization flips that one task to runnable. The stamp is **digest-bound**: it records `approved_digest` = the `task-plan` digest the human saw at authorization, so authorization attaches to that exact plan. The lifecycle runner may dispatch `/next-run-task` only when the task is prepared, has a `task-plan`, is authorized with `approved_digest` equal to the current `task-plan` digest, is not held, has no live task runner/claim, and satisfies either its dependency gate or its schedule gate. A `task-plan` edited after approval changes its digest, so the stamp no longer matches and the task is unauthorized until re-authorized — no explicit clear is needed, the mismatch is the invalidation. Creation via `--kind task --plan` writes this stamp up front, digest-bound to the seeded plan, so the task is pre-authorized by construction.
