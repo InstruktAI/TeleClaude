@@ -1144,7 +1144,11 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - `integrate phases`: per `integration-state-machine` design doc (squash, conflict-resolve, lint, test, push, deliver).
 - `roadmap status` (persisted): `active`, `icebox`, `delivered`, `removed`.
 - `todo-list display state` (derived for the todo-list view from persisted roadmap status + lifecycle phase): `pending`, `ready`, `in_progress`, `delivered`, `icebox`. (`removed` is persisted-only — excluded from the default view, surfaced only via the recovery UI.)
+<!-- planned-change:run-task-log-artifact-kind-missing -->
 - `artifact kind`: `input`, `prd`, `architecture`, `implementation-plan`, `task-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`.
+<!-- change:run-task-log-artifact-kind-missing -->
+- `artifact kind`: `input`, `prd`, `architecture`, `implementation-plan`, `task-plan`, `log`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`.
+<!-- /planned-change:run-task-log-artifact-kind-missing -->
 - `verdict`: `approve`, `needs_work`, `needs_decision`.
 
 ## Known caveats
