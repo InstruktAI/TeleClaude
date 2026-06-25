@@ -48,7 +48,7 @@ visibility: 'public'
 ## Enforcement
 
 - The functional-versus-unit structure is enforced at review against `software-development/concept/functional-test-boundary`.
-- Binding completeness — bound / unbound / duplicate / orphan against the scenario inventory — is enforced; the mechanism is owned by the harness and tooling.
+- Binding state — bound / unbound / duplicate / orphan — is measured against the scenario inventory; binding completeness is upheld at review.
 
 ## Exceptions
 
