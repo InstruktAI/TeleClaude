@@ -191,6 +191,41 @@ Then a state-mutation error is raised with the underlying validation text
 And no commit happens — the stamp call exits before any partial mutation lands
 ```
 
+<!-- planned:task-run-outcome-contract -->
+
+#### UC-WSS12: One-shot task success outcome delivers the todo
+
+```gherkin
+Given a Todo has kind="task", a one-shot schedule (no cron recurrence), and a live run session as its active_runner
+When the run session runs "telec todo stamp my-slug --task-outcome success"
+Then the stamp confirms the todo is kind="task" and resolves the schedule as one-shot
+And the todo is delivered through the existing delivery path, satisfying its dependents
+And the lifecycle runner skips the delivered todo and does not re-dispatch /next-run-task after the run session closes
+```
+
+#### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
+
+```gherkin
+Given a Todo has kind="task", a recurring cron schedule, and a hold whose hold_audit source is the task-error source
+When the run session runs "telec todo stamp my-slug --task-outcome success"
+Then the stamp resolves the schedule as recurring and clears the task-error hold
+And the todo is not delivered and stays live for its next scheduled instant
+And a hold whose source is a human pause is left untouched by the same success outcome
+```
+
+#### UC-WSS14: Task error outcome holds the todo with its reason
+
+```gherkin
+Given a Todo has kind="task" and a live run session as its active_runner
+When the run session runs "telec todo stamp my-slug --task-outcome error --reason '<why a human is needed>'"
+Then the stamp records hold=true and hold_audit with the task-error source, the reason, and the caller session id
+And the held todo is not auto-re-dispatched and the run session stays alive as the beacon for human resolution
+And an error outcome with an empty or missing reason is refused before any write
+And a task-outcome stamp on a Todo that is not kind="task" is refused before any write
+```
+
+<!-- /planned:task-run-outcome-contract -->
+
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
@@ -212,3 +247,18 @@ And no commit happens — the stamp call exits before any partial mutation lands
 - Rewriting a drift-tracked artifact (via `telec todo artifacts write`) clears all of its drift-reviewed stamps so the next derivation establishes a fresh anchor against newly captured provenance. Substantive verdicts never need explicit expiry — re-derivation is the path back to a fresh stamp.
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/next-build`) is responsible for issuing it as the last act of the build flow.
 - `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a session whose `system_role == orchestrator` may stamp it; a worker session or a plain operator shell is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo) and invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`. The stamp mutates state only; on the orchestrator's next `telec todo work` re-entry the work machine releases the slug's working resources (worktree + local/remote branch + workspace dir, keeping the durable todo and artifacts) and emits the session-cleanup script (end workers, end self) — neither is done by the stamp.
+
+<!-- planned:task-run-outcome-contract -->
+
+- `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
+  `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A
+  one-shot `success` delivers the Todo; a recurring `success` clears a task-error hold
+  and leaves the Todo live; `error` holds the Todo with the task-error hold source and
+  the reason. The stamp transitions terminal state synchronously and adds no new state
+  field. `error` **requires a non-empty reason**, and a task-outcome stamp on a non-task
+  Todo is refused before any write. A task-error hold has **no bare-unhold recovery**:
+  `telec todo update --release` refuses to clear it, so recovery is `--task-outcome
+success` (which delivers) or a deliberate manual start; a firing that ends without a
+  stamp leaves the Todo re-runnable.
+
+<!-- /planned:task-run-outcome-contract -->

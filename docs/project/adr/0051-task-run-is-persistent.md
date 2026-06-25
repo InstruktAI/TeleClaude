@@ -61,3 +61,9 @@ SDLC prepare machine, the human authorization gate, recurrence via `schedule`, t
   no live surface for the human to inspect, which is the explicit operator
   requirement for the task lane. Continuity that ephemerality bought through the
   `log` is retained — the `log` still bridges restart revivals.
+
+## Status
+
+Superseded in part by ADR-0060. A one-shot firing now delivers-and-ends on success and
+holds on error, so the "never self-ends" stance narrows to the error-beacon and
+recurring cases; the recurring wake-the-live-session decision stands.
