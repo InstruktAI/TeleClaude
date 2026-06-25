@@ -131,6 +131,10 @@ ARTIFACT_DIAGNOSIS = "diagnosis"
 ARTIFACT_INVESTIGATION = "investigation"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 ARTIFACT_TASK_PLAN = "task-plan"
+# The kind=task lane's continuity / restart-idempotency record: read on start,
+# appended with dated entries per firing, kept lean. A run-phase product — not
+# prepare-owned, not drift-tracked, not lifecycle-relevant.
+ARTIFACT_LOG = "log"
 # DEPRECATED: bug reports now live in the universal "input" artifact (kind=bug is
 # authoritative). Retained only for READ/REMOVE of pre-collapse todos; the on-open
 # migration `_migrate_bug_artifact_to_input` renames existing rows to "input".
@@ -168,6 +172,7 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_INVESTIGATION,
         ARTIFACT_IMPLEMENTATION_PLAN,
         ARTIFACT_TASK_PLAN,
+        ARTIFACT_LOG,
         ARTIFACT_BUG,
         ARTIFACT_QUALITY_CHECKLIST,
         ARTIFACT_DESIGN_SPEC,

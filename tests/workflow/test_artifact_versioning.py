@@ -13,12 +13,13 @@ from fastapi import HTTPException
 from teleclaude.api import todo_artifact_authority as authority_mod
 from teleclaude.api import todo_routes as routes_mod
 from teleclaude.api.auth import CallerIdentity
-from teleclaude.api.todo_routes import write_artifact
+from teleclaude.api.todo_routes import read_artifact, write_artifact
 from teleclaude.cli.telec import main
 from teleclaude.cli.telec.handlers import todo as todo_handler
 from teleclaude.constants import (
     ARTIFACT_BUG,
     ARTIFACT_INPUT,
+    ARTIFACT_LOG,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ROLE_ORCHESTRATOR,
@@ -30,7 +31,7 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.todo_kind import TODO_KIND_CHANGE
+from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
 
 pytestmark = pytest.mark.functional
 
@@ -503,3 +504,57 @@ async def test_two_competing_unclaimed_writers_yield_one_version_and_one_conflic
     # Exactly one writer won the claim race; which one is nondeterministic, so the
     # contract is that a claim landed (non-empty active_runner), not its identity.
     assert await _active_runner(todos_db, slug)
+
+
+@pytest.mark.asyncio
+@pytest.mark.spec(_SPEC, "UC-WAV19")
+async def test_log_artifact_round_trips_and_reads_empty_before_first_write(tmp_path: Path) -> None:
+    """A kind=task todo's `log` reads empty before first write, then round-trips.
+
+    Binds the run-task continuity contract: the lane reads the log on start
+    (empty on the first firing, no kind-validation error) and appends dated
+    entries that the versioned store records.
+    """
+    project_root = tmp_path / "project"
+    slug = "log-wav19"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_todo(slug)
+    await todos_db.write_state(
+        slug,
+        {
+            "schema_version": 5,
+            "kind": TODO_KIND_TASK,
+            "phase": "in_progress",
+            "lifecycle_phase": LifecyclePhase.BUILD_STARTED.value,
+            "active_runner": "",
+        },
+    )
+
+    # First firing: reading the log before any write returns empty content,
+    # not the "Unknown artifact kind: log" rejection the closed enum produced.
+    first_read = await read_artifact(slug=slug, name=ARTIFACT_LOG, cwd=str(project_root))
+    assert not first_read.content
+
+    entry_one = "## 2026-06-25\n- started task; no prior state."
+    write_one = await write_artifact(
+        slug=slug,
+        name=ARTIFACT_LOG,
+        content=entry_one,
+        cwd=str(project_root),
+        identity=_agent_identity("runner-session"),
+    )
+    assert write_one.status == _OK_STATUS
+    assert (await read_artifact(slug=slug, name=ARTIFACT_LOG, cwd=str(project_root))).content == entry_one
+
+    # A second firing appends; the read-modify-write lands a new version.
+    entry_two = f"{entry_one}\n## 2026-06-26\n- resumed; completed step 1."
+    await write_artifact(
+        slug=slug,
+        name=ARTIFACT_LOG,
+        content=entry_two,
+        cwd=str(project_root),
+        identity=_agent_identity("runner-session"),
+    )
+    assert (await read_artifact(slug=slug, name=ARTIFACT_LOG, cwd=str(project_root))).content == entry_two
+    assert len(await todos_db.artifact_versions(slug, ARTIFACT_LOG)) == 2

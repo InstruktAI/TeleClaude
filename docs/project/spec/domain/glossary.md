@@ -36,12 +36,7 @@ Appears in: `agent_runtime`, `session_ledger`, `identity` (`session_tokens`), `w
 
 Appears in: `workflow`, `agent_artifacts`. Different concepts. Scope by phrase.
 
-<!-- planned-change:run-task-log-artifact-kind-missing -->
-
-- **Workflow artifact** (or **preparation artifact**, **todo artifact**) — a document produced during a todo's prepare or work phase: `input`, `prd`, `architecture`, `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is retained only for legacy read/remove compatibility; new bug todo content is authored in `input`. Authored by prepare/build workers; consumed by reviewers and the next worker in the lifecycle.
-<!-- change:run-task-log-artifact-kind-missing -->
 - **Workflow artifact** (or **preparation artifact**, **todo artifact**) — a document produced during a todo's prepare, work, or task-run phase: `input`, `prd`, `architecture`, `implementation-plan`, `bug`, `quality-checklist`, `design-spec`, `deferrals`, `log`, `requirements-review-findings`, `architecture-review-findings`, `plan-review-findings`, `review-findings`. Stored as TEXT in `workflow.artifacts`. `bug` is retained only for legacy read/remove compatibility; new bug todo content is authored in `input`. `log` is the task lane's continuity and restart-idempotency record, appended across a `kind=task` todo's firings. Authored by prepare/build/task-run workers; consumed by reviewers and the next worker in the lifecycle.
-<!-- /planned-change:run-task-log-artifact-kind-missing -->
 
 - **Agent artifact** — a deployable file or directory under `agents/` that defines an agent's behavior: slash commands, skills, addenda, manifests. Inflated and distributed by `agent_artifacts` to deployed runtime directories (`~/.claude/`, `~/.codex/`, `~/.gemini/`).
 

@@ -92,8 +92,6 @@ When an agent attempts to write any artifact for that slug
 Then the workflow service refuses with a "delivered (read-only)" error
 ```
 
-<!-- planned:run-task-log-artifact-kind-missing -->
-
 #### UC-WAV19: log artifact round-trips and reads empty before its first write
 
 ```gherkin
@@ -104,8 +102,6 @@ When the agent writes a log artifact with a dated continuity entry
 Then the workflow service accepts the write and appends a new version
 And a subsequent read of the log returns the written content
 ```
-
-<!-- /planned:run-task-log-artifact-kind-missing -->
 
 ### Write authority
 
