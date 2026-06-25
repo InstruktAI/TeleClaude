@@ -41,10 +41,12 @@ Domain **validity** is a single platform-owned closed vocabulary, and
   folder name against the constant. Folder presence IS publication; multi-publisher
   contribution to the same domain merges as before, with snippet-id uniqueness the
   only cross-publisher guard.
-- **The config fields are removed.** `business.domains` and `business.publishes`
-  leave the `ProjectConfig` schema. `BusinessConfig` keeps `extra="allow"`, so an
-  existing `teleclaude.yml` still carrying those keys loads without error — the
-  keys are tolerated and ignored, requiring no fleet-wide config migration.
+- **The `business` config surface is removed entirely.** `business.domains`,
+  `business.publishes`, and the `BusinessConfig` value object that held them are
+  deleted from the schema — no empty shell is kept. `ProjectConfig` is
+  `extra="allow"`, so an existing `teleclaude.yml` still carrying a `business:`
+  key loads without error — the key is tolerated and ignored, requiring no
+  fleet-wide config migration.
 
 The universal-awareness and on-demand-depth model of ADR-0059 is unchanged: every
 project still sees every published domain as a one-line index and loads depth on
@@ -58,9 +60,9 @@ to a fixed constant.
   through registered configs before the domain is recognized.
 - The bootstrap outage class is removed: a new domain's first publisher is valid
   the moment its folder exists, with no declaration ordering dependency.
-- `business.domains`/`business.publishes` removal is backward-safe by virtue of
-  `extra="allow"`; unmigrated configs keep loading. The mother repo drops its own
-  now-dead declarations for hygiene.
+- Removing the whole `business` surface is backward-safe by virtue of
+  `ProjectConfig`'s `extra="allow"`; unmigrated configs keep loading. Every
+  project drops its now-dead `business` block; nothing in the platform reads it.
 - The constant is a `StrEnum` (the closed-vocabulary type the platform mandates,
   as for snippet scope and taxonomy), so illegal domain values are unrepresentable
   rather than policed by a scanner.
