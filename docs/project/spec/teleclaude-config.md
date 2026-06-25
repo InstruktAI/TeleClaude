@@ -73,6 +73,9 @@ frontend_root: string # optional layout override: directory containing TypeScrip
 description: string
 business:
   domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)
+<!-- planned:domain-publication-awareness -->
+  publishes: list[string] # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains
+<!-- /planned:domain-publication-awareness -->
 jobs: mapping[string, JobScheduleConfig]
 hooks:
   inbound: mapping[string, InboundSourceConfig]
