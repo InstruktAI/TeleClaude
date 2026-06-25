@@ -3,14 +3,30 @@
 from __future__ import annotations
 
 import json
+import re
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.api_models import TodoDumpRequest
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config import config
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.services.log_bug_hunter_suppressions import (
+    Disposition,
+    MatchMode,
+    Suppression,
+    SuppressionLedgerError,
+    active,
+    append,
+    load,
+    remove,
+    suppressions_path_for,
+)
+from teleclaude.services.project_catalog.loaders import load_project_node
 from teleclaude.slug import normalize_slug
 from teleclaude.types.todo_kind import TODO_KIND_BUG
 
@@ -18,6 +34,9 @@ __all__ = [
     "_handle_bugs",
     "_handle_bugs_list",
     "_handle_bugs_report",
+    "_handle_bugs_suppress",
+    "_handle_bugs_suppressions",
+    "_handle_bugs_unsuppress",
     "_resolve_project_by_name",
 ]
 
@@ -36,6 +55,20 @@ def _resolve_project_by_name(name: str) -> Path:
     raise SystemExit(1)
 
 
+def _resolve_project_slug(project_name: str | None) -> str:
+    """Resolve the project slug the suppression ledger is keyed on.
+
+    Mirrors the service's slug derivation (``load_project_node``) so the CLI
+    writer and the daemon reader resolve the identical ledger path.
+    """
+    root = _resolve_project_by_name(project_name) if project_name else resolve_invocation_cwd()
+    node = load_project_node(root)
+    if node is None:
+        print(f"No loadable teleclaude.yml under {root}; cannot resolve project for suppression.")
+        raise SystemExit(1)
+    return node.slug
+
+
 def _handle_bugs(args: list[str]) -> None:
     """Handle telec bugs commands."""
     if not args:
@@ -47,6 +80,19 @@ def _handle_bugs(args: list[str]) -> None:
         _handle_bugs_report(args[1:])
     elif subcommand == "list":
         _handle_bugs_list(args[1:])
+    elif subcommand in ("suppress", "suppressions", "unsuppress"):
+        # A corrupt durable ledger fails loudly rather than being silently emptied
+        # and overwritten; surface it as a clean non-zero exit, not a raw traceback.
+        try:
+            if subcommand == "suppress":
+                _handle_bugs_suppress(args[1:])
+            elif subcommand == "suppressions":
+                _handle_bugs_suppressions(args[1:])
+            else:
+                _handle_bugs_unsuppress(args[1:])
+        except SuppressionLedgerError as exc:
+            print(f"Suppression ledger error: {exc}")
+            raise SystemExit(1) from None
     else:
         print(f"Unknown bugs subcommand: {subcommand}")
         print(_usage("bugs"))
@@ -185,3 +231,167 @@ def _handle_bugs_list(args: list[str]) -> None:
     print("-" * 60)
     for slug, status in bugs:
         print(f"{slug:<40} {status:<15}")
+
+
+def _parse_expires(raw: str) -> datetime:
+    """Parse an ISO-8601 ``--expires`` value, exiting on a malformed input."""
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        print(
+            f"Invalid --expires '{raw}': expected an ISO-8601 timestamp (e.g. 2026-12-31 or 2026-12-31T00:00:00+00:00)."
+        )
+        raise SystemExit(1) from None
+
+
+def _handle_bugs_suppress(args: list[str]) -> None:
+    """Handle telec bugs suppress "<pattern>" --reason <r> [...]."""
+    pattern: str | None = None
+    reason: str | None = None
+    match_raw = MatchMode.SUBSTRING.value
+    disposition_raw = Disposition.WONTFIX.value
+    project_name: str | None = None
+    source_bug: str | None = None
+    expires_raw: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--reason" and i + 1 < len(args):
+            reason = args[i + 1]
+            i += 2
+        elif arg == "--match" and i + 1 < len(args):
+            match_raw = args[i + 1]
+            i += 2
+        elif arg == "--disposition" and i + 1 < len(args):
+            disposition_raw = args[i + 1]
+            i += 2
+        elif arg == "--project" and i + 1 < len(args):
+            project_name = args[i + 1]
+            i += 2
+        elif arg == "--source-bug" and i + 1 < len(args):
+            source_bug = args[i + 1]
+            i += 2
+        elif arg == "--expires" and i + 1 < len(args):
+            expires_raw = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("bugs", "suppress"))
+            raise SystemExit(1)
+        else:
+            if pattern is not None:
+                print("Only one pattern is allowed.")
+                print(_usage("bugs", "suppress"))
+                raise SystemExit(1)
+            pattern = arg
+            i += 1
+
+    if not pattern:
+        print("Missing required pattern.")
+        print(_usage("bugs", "suppress"))
+        raise SystemExit(1)
+    if not reason:
+        print("Missing required --reason.")
+        print(_usage("bugs", "suppress"))
+        raise SystemExit(1)
+
+    try:
+        match = MatchMode(match_raw)
+    except ValueError:
+        print(f"Invalid --match '{match_raw}': must be one of {', '.join(m.value for m in MatchMode)}.")
+        raise SystemExit(1) from None
+    try:
+        disposition = Disposition(disposition_raw)
+    except ValueError:
+        print(f"Invalid --disposition '{disposition_raw}': must be one of {', '.join(d.value for d in Disposition)}.")
+        raise SystemExit(1) from None
+
+    if match is MatchMode.REGEX:
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            print(f"Invalid regex pattern: {exc}")
+            raise SystemExit(1) from None
+
+    expires_at = _parse_expires(expires_raw) if expires_raw else None
+    slug = _resolve_project_slug(project_name)
+    entry = Suppression(
+        id=uuid.uuid4().hex[:12],
+        pattern=pattern,
+        match=match,
+        disposition=disposition,
+        reason=reason,
+        source_bug=source_bug,
+        created_by=read_current_session_email() or "unknown",
+        created_at=datetime.now(UTC),
+        expires_at=expires_at,
+    )
+    append(suppressions_path_for(slug), entry)
+    print(f"Registered suppression {entry.id} for project '{slug}' ({match.value}: {pattern!r}).")
+
+
+def _handle_bugs_suppressions(args: list[str]) -> None:
+    """Handle telec bugs suppressions [--project <name>] — list the ledger."""
+    project_name: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project" and i + 1 < len(args):
+            project_name = args[i + 1]
+            i += 2
+        else:
+            print(f"Unknown option: {arg}")
+            print(_usage("bugs", "suppressions"))
+            raise SystemExit(1)
+
+    slug = _resolve_project_slug(project_name)
+    ledger = load(suppressions_path_for(slug))
+    entries = active(ledger, datetime.now(UTC))
+    if not entries:
+        print(f"No active suppressions for project '{slug}'.")
+        return
+
+    print(f"Active suppressions for project '{slug}' ({len(entries)}):\n")
+    for entry in entries:
+        expiry = entry.expires_at.isoformat() if entry.expires_at else "never"
+        print(f"  {entry.id}  [{entry.match.value}/{entry.disposition.value}]  expires={expiry}")
+        print(f"    pattern: {entry.pattern!r}")
+        print(f"    reason:  {entry.reason}")
+        if entry.source_bug:
+            print(f"    source:  {entry.source_bug}")
+
+
+def _handle_bugs_unsuppress(args: list[str]) -> None:
+    """Handle telec bugs unsuppress <id> [--project <name>] — remove one entry."""
+    suppression_id: str | None = None
+    project_name: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project" and i + 1 < len(args):
+            project_name = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("bugs", "unsuppress"))
+            raise SystemExit(1)
+        else:
+            if suppression_id is not None:
+                print("Only one id is allowed.")
+                print(_usage("bugs", "unsuppress"))
+                raise SystemExit(1)
+            suppression_id = arg
+            i += 1
+
+    if not suppression_id:
+        print("Missing required suppression id.")
+        print(_usage("bugs", "unsuppress"))
+        raise SystemExit(1)
+
+    slug = _resolve_project_slug(project_name)
+    if remove(suppressions_path_for(slug), suppression_id):
+        print(f"Removed suppression {suppression_id} from project '{slug}'.")
+    else:
+        print(f"No suppression with id '{suppression_id}' for project '{slug}'.")
+        raise SystemExit(1)

@@ -23,6 +23,11 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ROLE_SYSTEM
 from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
+from teleclaude.services.log_bug_hunter_suppressions import (
+    load,
+    suppressions_path_for,
+    unsuppressed_lines,
+)
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
@@ -108,6 +113,10 @@ class LogBugHunterService:
         self._project_slug = project_slug
         self._state_path = state_path
         self._state = self._load_state()
+        # The ledger path is derived from the project slug, never injected, so the
+        # daemon reader and the ``telec bugs`` CLI writer resolve the identical file
+        # and suppression can never be silently disabled by a missing parameter.
+        self._suppressions = load(suppressions_path_for(project_slug))
 
     async def maybe_dispatch(self, *, now: datetime | None = None) -> bool:
         """Dispatch only when the last hour of logs contains candidate errors."""
@@ -126,11 +135,19 @@ class LogBugHunterService:
             self._mark_failed("log query returned no output")
             return False
 
-        if not self.has_candidate_error_signals(output):
+        candidate_lines = self._candidate_error_lines(output)
+        if not candidate_lines:
             self._state.last_status = "clean"
             self._state.last_error = None
             self._save_state()
             logger.debug("log bug hunter scheduler found no candidate errors")
+            return False
+
+        if not unsuppressed_lines(candidate_lines, self._suppressions, check_time):
+            self._state.last_status = "suppressed"
+            self._state.last_error = None
+            self._save_state()
+            logger.info("log bug hunter window fully suppressed; skipping dispatch")
             return False
 
         if await self._has_active_job_session():
@@ -150,9 +167,14 @@ class LogBugHunterService:
         return True
 
     @staticmethod
-    def has_candidate_error_signals(output: str) -> bool:
-        """Return True when log output contains actionable error signals."""
-        return bool(_CANDIDATE_ERROR_SIGNAL_RE.search(output))
+    def _candidate_error_lines(output: str) -> list[str]:
+        """Return the individual log lines carrying an actionable error signal.
+
+        The scan extracts lines rather than answering a whole-window yes/no so
+        suppression can subtract matched lines per-signal: an all-suppressed
+        window dispatches nothing, while any unsuppressed line still dispatches.
+        """
+        return [line for line in output.splitlines() if _CANDIDATE_ERROR_SIGNAL_RE.search(line)]
 
     def _is_due(self, now: datetime) -> bool:
         last_checked = self._state.last_checked_at

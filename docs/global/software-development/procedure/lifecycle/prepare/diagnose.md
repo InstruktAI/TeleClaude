@@ -72,22 +72,20 @@ that makes the plan groundable.
      session**. Write **no** `investigation` and **no** `diagnosis`: a todo about to be
      retired earns no artifacts, and the survivor owns the diagnosis.
    - **Hand forward material info — only when sure it helps.** Before removing, compare
-   this twin's `input` against the survivor's todo. If this twin carries discovery
-   context the survivor does not surface — a distinct reproduction, a second occurrence
-   site, an environment detail — and you are **confident it is genuinely additive**,
-   send a single informational message to the survivor's active session
-   (`telec sessions send <session_id> "<info>"`) before retiring. Substance only: no
-   acknowledgement, no echo, no narration. If you are not sure it adds, stay silent and
-   just retire — silence is the default, a low-value message is noise that interrupts an
-   agent mid-diagnosis.
-   <!-- planned:log-bug-hunter-known-issue-suppression -->
+     this twin's `input` against the survivor's todo. If this twin carries discovery
+     context the survivor does not surface — a distinct reproduction, a second occurrence
+     site, an environment detail — and you are **confident it is genuinely additive**,
+     send a single informational message to the survivor's active session
+     (`telec sessions send <session_id> "<info>"`) before retiring. Substance only: no
+     acknowledgement, no echo, no narration. If you are not sure it adds, stay silent and
+     just retire — silence is the default, a low-value message is noise that interrupts an
+     agent mid-diagnosis.
    - **If the reported signal matches an active suppression, retire this todo as
-   already-triaged.** A log-hunter signal already in the project's suppression
-   ledger (`telec bugs suppressions`) was deliberately accepted as expected or
-   won't-fix; treat it like a duplicate — remove the todo
-   (`telec todo remove {slug}`, naming the suppression in the reason) and end
-   the session, writing no `investigation` and no `diagnosis`.
-   <!-- /planned:log-bug-hunter-known-issue-suppression -->
+     already-triaged.** A log-hunter signal already in the project's suppression
+     ledger (`telec bugs suppressions`) was deliberately accepted as expected or
+     won't-fix; treat it like a duplicate — remove the todo
+     (`telec todo remove {slug}`, naming the suppression in the reason) and end
+     the session, writing no `investigation` and no `diagnosis`.
    - **If this todo is the survivor, or no sibling exists, proceed to Step 2.**
 2. **Read the symptom as a defect to investigate.** With the `input` already in hand from
    triage, treat it as a real, reproducible defect until investigation proves otherwise
@@ -178,12 +176,10 @@ already written, so the trail is durable — escalation hands it forward, it is 
    not advance an ungrounded diagnosis.
 
 - If investigation shows the reported behavior is correct (not a defect), record that in
-the `investigation` and surface it; the bug may need reclassification or closure rather
-than a fix.
-<!-- planned:log-bug-hunter-known-issue-suppression -->
+  the `investigation` and surface it; the bug may need reclassification or closure rather
+  than a fix.
 - If that correct-behavior signal is a recurring log-hunter source that would keep
-re-filing, register a suppression so it stops: author the invariant pattern, run
-`telec bugs suppress "<pattern>" --reason "<why>" --source-bug {slug}`, record it in
-the `investigation`, and retire the todo. This replaces keeping a bug open
-indefinitely to suppress re-filing.
-<!-- /planned:log-bug-hunter-known-issue-suppression -->
+  re-filing, register a suppression so it stops: author the invariant pattern, run
+  `telec bugs suppress "<pattern>" --reason "<why>" --source-bug {slug}`, record it in
+  the `investigation`, and retire the todo. This replaces keeping a bug open
+  indefinitely to suppress re-filing.

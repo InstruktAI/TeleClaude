@@ -828,6 +828,36 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
+            "suppress": CommandDef(
+                desc="Register a known-issue suppression so the log bug hunter stops re-filing a triaged signal",
+                args='"<pattern>" --reason <r> [--match substring|regex] [--disposition expected|wontfix] [--project <name>] [--source-bug <slug>] [--expires <when>]',
+                flags=[
+                    Flag("--reason", desc="Human-readable justification (required)"),
+                    Flag("--match", desc="Match mode: substring (default, literal) or regex"),
+                    Flag("--disposition", desc="expected or wontfix (default: wontfix); record-only"),
+                    _FLAG_PROJECT_TRUSTED,
+                    Flag("--source-bug", desc="Slug of the originating bug whose triage produced this suppression"),
+                    Flag("--expires", desc="Optional ISO-8601 expiry after which the suppression lapses"),
+                ],
+                notes=[
+                    "The ledger is the log bug hunter's allowlist: a matched candidate error line is treated as already triaged and does not dispatch a session.",
+                    "Matching is literal (substring) or a compiled regex; a regex pattern is validated here and rejected if it does not compile.",
+                    "Author the pattern to target the invariant signal (a stable reason token), never a volatile value like a millisecond figure.",
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+            ),
+            "suppressions": CommandDef(
+                desc="List the active known-issue suppressions for a project",
+                args="[--project <name>]",
+                flags=[_FLAG_PROJECT_TRUSTED],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            "unsuppress": CommandDef(
+                desc="Remove a known-issue suppression by id so its signal is eligible for filing again",
+                args="<id> [--project <name>]",
+                flags=[_FLAG_PROJECT_TRUSTED],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+            ),
         },
     ),
     "content": CommandDef(
