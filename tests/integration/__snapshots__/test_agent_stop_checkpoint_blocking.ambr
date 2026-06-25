@@ -10,7 +10,7 @@
 # name: test_code_change_with_outstanding_actions_shown_in_summary
   dict({
     'hook_actions': list([
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      "Check logs: `instrukt-ai-logs teleclaude --since 2m --exclude 'logger=teleclaude\\.git\\.exec'`",
       'Run targeted tests for only YOUR changed behavior',
     ]),
     'hook_categories': list([
@@ -151,7 +151,7 @@
   dict({
     'install_dir_result': list([
       'Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      "Check logs: `instrukt-ai-logs teleclaude --since 2m --exclude 'logger=teleclaude\\.git\\.exec'`",
       'Run targeted tests for only YOUR changed behavior',
     ]),
   })
@@ -160,7 +160,7 @@
   dict({
     'makefile_result': list([
       'Run `make install` (setup changed: Makefile, install scripts, templates, hook installers, or git filters)',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      "Check logs: `instrukt-ai-logs teleclaude --since 2m --exclude 'logger=teleclaude\\.git\\.exec'`",
       'Run targeted tests for only YOUR changed behavior',
     ]),
   })
@@ -191,7 +191,7 @@
   dict({
     'pyproject_result': list([
       'Install updated dependencies: `uv sync`',
-      'Check logs: `instrukt-ai-logs teleclaude --since 2m`',
+      "Check logs: `instrukt-ai-logs teleclaude --since 2m --exclude 'logger=teleclaude\\.git\\.exec'`",
       'Run targeted tests for only YOUR changed behavior',
     ]),
   })
