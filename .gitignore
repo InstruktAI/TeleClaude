@@ -98,7 +98,6 @@ target/
 # Generated diagrams (regenerated via `make diagrams`)
 docs/diagrams/
 # Local AI config artifacts
-.agents/
 .antigravitycli/
 .claude/
 .codex/
