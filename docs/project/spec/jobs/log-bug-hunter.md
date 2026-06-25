@@ -1,5 +1,5 @@
 ---
-description: 'Daily agent job that scans daemon logs for errors, fixes inline or dispatches to bug pipeline.'
+description: "Daily job that scans each subscribed project's daemon logs and files a minimal bug report for every unsuppressed error signal."
 visibility: 'public'
 ---
 

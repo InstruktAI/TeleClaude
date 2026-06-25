@@ -139,10 +139,22 @@ Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do
    the runner per project, and isolates per-project exceptions so one broken
    project cannot stop the rest.
 
+<!-- planned-change:log-bug-hunter-generalization -->
+
 Per-job services (e.g., `LogBugHunterService`) are **one-project executors**.
 They accept `project_root` and `project_slug` and run a single iteration —
 the cross-project loop lives in `ProjectJobOrchestrator`, not inside the
 job service.
+
+<!-- change:log-bug-hunter-generalization -->
+
+The orchestrator is consumed from inside the job module itself — the job's own
+`run()` builds the `ProjectJobOrchestrator` and supplies the per-project
+executor that scans, suppression-filters, and files. The cross-project loop
+lives in the shared orchestrator with no per-job service and no runner
+special-case branch.
+
+<!-- /planned-change:log-bug-hunter-generalization -->
 
 ## Inputs/Outputs
 

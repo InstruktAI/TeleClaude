@@ -1,5 +1,5 @@
 ---
-description: 'Proactive log scanning procedure that discovers errors, fixes inline or dispatches to the bug pipeline, and writes run reports.'
+description: 'Proactive log-scanning job that discovers daemon errors and files a minimal bug report for each unsuppressed signal.'
 visibility: 'public'
 ---
 
