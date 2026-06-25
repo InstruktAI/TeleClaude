@@ -11,6 +11,7 @@ import yaml
 
 import teleclaude.git_lock as git_lock
 import teleclaude.hooks.checkpoint as checkpoint_module
+import teleclaude.session_scoping._extractors.claude as claude_extractor
 import teleclaude.session_scoping._extractors.codex as codex_extractor
 from teleclaude.cli.telec.handlers import code
 from teleclaude.constants import CHECKPOINT_MESSAGE
@@ -212,6 +213,10 @@ def _patch_checkpoint_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTi
     monkeypatch.setattr(checkpoint_module, "extract_effective_tool_calls", lambda *_args, **_kwargs: timeline)
 
 
+def _patch_claude_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeline) -> None:
+    monkeypatch.setattr(claude_extractor, "extract_effective_tool_calls", lambda *_args, **_kwargs: timeline)
+
+
 def _disable_commit_quality_gates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(code, "handle_format", lambda _paths: None)
     monkeypatch.setattr(code, "handle_lint", lambda _paths: None)
@@ -400,6 +405,31 @@ def test_user_prompt_reset_consumes_turn_scoped_checkpoint_markers(
     assert has_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG) is False
     assert has_checkpoint_flag(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG) is False
     assert read_commit_obligations(session_id) == []
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP1")
+def test_claude_shell_mutation_path_surfaces_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-claude-shell-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    timeline = _timeline_with_bash("python - <<'PY' > teleclaude/core/tracked.py\nprint('# shell mutation')\nPY")
+    _patch_checkpoint_timeline(monkeypatch, timeline)
+    _patch_claude_timeline(monkeypatch, timeline)
+
+    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# shell mutation\n", encoding="utf-8")
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=str(tmp_path / "transcript.jsonl"),
+        agent_name=AgentName.CLAUDE,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert payload is not None
 
 
 @pytest.mark.functional

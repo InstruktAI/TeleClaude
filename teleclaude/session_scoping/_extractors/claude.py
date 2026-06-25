@@ -10,11 +10,16 @@ from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 from teleclaude.utils.transcript._tool_calls import _find_turn_start_idx
 
 from .._types import ScopeMode
-from ._common import _normalize_workspace_path, extract_structured_paths_from_timeline
+from ._common import (
+    _normalize_workspace_path,
+    extract_shell_paths_from_timeline,
+    extract_structured_paths_from_timeline,
+)
 
 __all__ = ["collect_claude_paths"]
 
 _CLAUDE_FALLBACK_MUTATORS = {"write", "edit"}
+_CLAUDE_SHELL_MUTATORS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
 
 
 def _snapshot_paths_from_entry(entry: Mapping[str, object], workspace_root: str | None) -> set[str]:
@@ -67,18 +72,23 @@ def collect_claude_paths(
         else:
             current_snapshot_paths = snapshot_paths
 
-    structured_fallback = extract_structured_paths_from_timeline(
-        extract_effective_tool_calls(
-            transcript_path,
-            AgentName.CLAUDE,
-            scope="session" if scope_mode == "session_dirty" else "turn",
-        ),
+    timeline = extract_effective_tool_calls(
+        transcript_path,
+        AgentName.CLAUDE,
+        scope="session" if scope_mode == "session_dirty" else "turn",
+    )
+    fallback_paths = extract_structured_paths_from_timeline(
+        timeline,
         workspace_root=workspace_root,
         allowed_tools=_CLAUDE_FALLBACK_MUTATORS,
+    ) | extract_shell_paths_from_timeline(
+        timeline,
+        workspace_root=workspace_root,
+        allowed_tools=_CLAUDE_SHELL_MUTATORS,
     )
 
     if not current_snapshot_paths:
-        return structured_fallback, "claude_structured_fallback"
+        return fallback_paths, "claude_structured_fallback"
     if scope_mode == "turn_delta":
-        return (current_snapshot_paths - previous_snapshot_paths) | structured_fallback, "claude_file_history"
-    return current_snapshot_paths | structured_fallback, "claude_file_history"
+        return (current_snapshot_paths - previous_snapshot_paths) | fallback_paths, "claude_file_history"
+    return current_snapshot_paths | fallback_paths, "claude_file_history"

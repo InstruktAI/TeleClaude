@@ -6,11 +6,12 @@ from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import extract_effective_tool_calls
 
 from .._types import ScopeMode
-from ._common import extract_structured_paths_from_timeline
+from ._common import extract_shell_paths_from_timeline, extract_structured_paths_from_timeline
 
 __all__ = ["collect_codex_paths"]
 
 _CODEX_MUTATORS = {"edit", "write", "multiedit", "apply_patch", "notebookedit"}
+_CODEX_SHELL_MUTATORS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
 
 
 def collect_codex_paths(
@@ -27,11 +28,13 @@ def collect_codex_paths(
         native_session_id=native_session_id,
         scope="session" if scope_mode == "session_dirty" else "turn",
     )
-    return (
-        extract_structured_paths_from_timeline(
-            timeline,
-            workspace_root=workspace_root,
-            allowed_tools=_CODEX_MUTATORS,
-        ),
-        "codex_structured",
+    paths = extract_structured_paths_from_timeline(
+        timeline,
+        workspace_root=workspace_root,
+        allowed_tools=_CODEX_MUTATORS,
+    ) | extract_shell_paths_from_timeline(
+        timeline,
+        workspace_root=workspace_root,
+        allowed_tools=_CODEX_SHELL_MUTATORS,
     )
+    return paths, "codex_structured"
