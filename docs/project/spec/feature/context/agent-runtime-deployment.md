@@ -168,11 +168,17 @@ Scenario: UC-ARD8 Duplicate snippet id across publishers blocks the deploy
 ### Cross-context references
 
 - **agent_runtime** — each agent CLI reads its `~/.<agent>/` tree at
-  runtime. The deployed directories are the publish/consume boundary
-  between Context (publisher) and agent_runtime (consumer).
+runtime. The deployed directories are the publish/consume boundary
+between Context (publisher) and agent_runtime (consumer).
+<!-- planned-change:domains-constant-not-config -->
 - **config** — supplies the project root, the Mother project resolution used
-  by the agent-artifact publishing gate, and each project's `business.publishes`
-  declarations used to compose the docs tree.
+by the agent-artifact publishing gate, and each project's `business.publishes`
+declarations used to compose the docs tree.
+<!-- change:domains-constant-not-config -->
+- **config** — supplies the project root and the Mother project resolution used
+by the agent-artifact publishing gate. Publication is discovered from valid
+`docs/global/<domain>/` folder presence, not from project config.
+<!-- /planned-change:domains-constant-not-config -->
 
 ## Known caveats
 

@@ -15,8 +15,8 @@ union of every registered project's `business.publishes` declarations
 validator computes its own allowlist from the very declarations it gates. It is
 also bootstrap-fragile — the first publisher of a domain is unrecognized until
 its declaration lands at a registered repo-root config, which produced a
-169-reference `invalid_scope` outage during the domain-publication-awareness
-integration.
+169-reference `invalid_scope` outage when a domain's first publisher was
+integrated.
 
 The config surface restated facts the system already owns. Validity is a fixed
 platform fact, not a per-project declaration. Publication is already expressed by
