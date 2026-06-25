@@ -1,7 +1,4 @@
 # serializer version: 1
 # name: test_claim_columns_jump_projection_and_select
-  '  ├─□ AS claimed·feat··B:started······S·············································································  '
-# ---
-# name: test_view_load_projects_author_chip
-  '  ├─□ AS owned-work·feat··B:started·················································································  '
+  '  ├─□ claimed····feat··B:started·····SAS············································································  '
 # ---

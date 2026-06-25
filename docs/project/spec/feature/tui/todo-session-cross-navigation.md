@@ -28,12 +28,16 @@ and worker roles alike. The chip's colors come from the per-person overlay
 schema documented in `project/spec/feature/config/person-chip-color`; this spec
 governs how those cells are rendered, including the theme-derived defaults for
 unset cells. The resting chip is a low-contrast fill — the theme `subtle`
-background (the stop nearest the terminal background) under `highlight` text. An
-active state inverts those two ends, so the chip reads as the high-contrast
-black/white fill. Two triggers drive that inversion — the chip's person being
-the live filter, and the chip's row being selected or previewed — and they
-compound as a single inversion, so both at once return the chip to its resting
-look.
+background (the stop nearest the terminal background) under `highlight` text.
+Weight encodes selection alone: the chip is bold only while its row is selected
+or previewed, normal weight otherwise. Color encodes the rest: a highlighted
+chip takes the row's selection text pole (black in dark mode, white in light)
+over its fill — a custom hue kept, a neutral chip using the opposite pole (the
+sticky-badge look). The same extreme applies whenever the chip is active — its
+person is the live filter (on) or its row is highlighted — and only the weight
+differs: bold under selection, normal under the filter alone.
+On a todo row the chip occupies a dedicated state column (next-to-last, before
+the hold column); on a session row it sits just after the agent/mode segment.
 
 A rendering invariant governs every chip and every highlighted span: **the
 styled span contains only its own content — never a leading or trailing space.**
@@ -198,13 +202,24 @@ Then the same human filter is already applied there
 And the setting is persisted once as a single source of truth across both views and process restarts
 ```
 
-#### UC-XNAV-17: Selection and filter inversions compound as a single XOR
+#### UC-XNAV-17: Chip weight tracks selection; highlight snaps to the extreme
 
 ```
 Given a person chip on a row
-When the row is selected or previewed, or the chip's person is the live filter
-Then the chip renders inverted (its background and text swap)
-And when both the chip is the live filter and its row is selected or previewed, the two inversions cancel and the chip renders in its resting colors
+When the row is selected or previewed
+Then the chip renders bold
+And its text takes the row's selection pole (black in dark mode, white in light)
+And a neutral chip's background is the opposite pole while a custom chip keeps its hue
+And this holds even when the chip's person is also the live filter (selection dominates)
+```
+
+#### UC-XNAV-18: An active-filter chip takes the extreme without bold
+
+```
+Given the chip's person is the live filter and its row is not selected or previewed
+When the chip is rendered
+Then its text takes the row's selection pole (black in dark mode, white in light) over a pole/hue fill, identical to the highlighted chip's colors
+And its weight stays normal (weight is reserved for selection)
 ```
 
 ## Known caveats

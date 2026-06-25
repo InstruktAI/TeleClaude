@@ -11,6 +11,7 @@ from textual.app import App, ComposeResult
 
 import teleclaude.cli.tui.widgets.chip as chip_mod
 from teleclaude.api_models import SessionDTO
+from teleclaude.cli.tui.theme import get_selection_fg_hex
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.views.sessions_highlights import PREVIEW_HIGHLIGHT_DURATION
 from teleclaude.cli.tui.widgets.session_row import SessionRow
@@ -293,9 +294,12 @@ def test_session_human_chip_after_agent_mode(wire_people, monkeypatch) -> None:
 
 
 @pytest.mark.spec(XNAV_SPEC, "UC-XNAV-17")
-def test_session_chip_inversion_compounds_filter_and_selection(wire_people) -> None:
-    # Selection, preview, and the live filter each invert the session chip
-    # (background and text swap); filter + selection at once cancel to resting.
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-18")
+def test_session_chip_weight_and_color_track_selection_and_filter(wire_people) -> None:
+    # Weight encodes selection/preview alone; color encodes the rest. Resting:
+    # normal weight. Filter-on (not highlighted): colors swap, still normal.
+    # Selected/previewed: bold, snapped to the high-contrast pole; selection
+    # dominates the filter.
     wire_people([ALICE, BOB])
 
     def chip(*, selected: bool = False, previewed: bool = False, filtered: bool = False) -> object | None:
@@ -308,15 +312,24 @@ def test_session_chip_inversion_compounds_filter_and_selection(wire_people) -> N
         return _span_over(row._build_title_line(selected=selected, previewed=previewed), "AS")
 
     resting = chip()
-    assert resting is not None
-    for inverted in (chip(selected=True), chip(previewed=True), chip(filtered=True)):
-        assert inverted is not None
-        assert inverted.style.bgcolor.name == resting.style.color.name
-        assert inverted.style.color.name == resting.style.bgcolor.name
+    filtered = chip(filtered=True)
+    selected = chip(selected=True)
+    previewed = chip(previewed=True)
     both = chip(selected=True, filtered=True)
-    assert both is not None
-    assert both.style.bgcolor.name == resting.style.bgcolor.name
-    assert both.style.color.name == resting.style.color.name
+    assert all(s is not None for s in (resting, filtered, selected, previewed, both))
+    pole = get_selection_fg_hex()
+    # Weight: bold only when highlighted.
+    assert not resting.style.bold
+    assert not filtered.style.bold
+    assert selected.style.bold is True
+    assert previewed.style.bold is True
+    # Resting is low-contrast (not the pole). Filter-on, selection, and preview all
+    # take the selection text pole over the opposite-pole fill (neutral chip).
+    assert resting.style.color.name != pole
+    for active in (filtered, selected, previewed, both):
+        assert active.style.color.name == pole
+        assert active.style.bgcolor.name in {"#000000", "#ffffff"}
+        assert active.style.bgcolor.name != pole
 
 
 class _JumpApp(App[None]):

@@ -1,9 +1,9 @@
 # serializer version: 1
 # name: test_kindless_todo_row_renders_question_mark_kind_and_classify_phase
-  '  ├─■ classify-me··?··P:classify·········'
+  '  ├─■ classify-me··?··P:classify··········'
 # ---
 # name: test_todo_author_chip_resolves_initials_and_colors
-  '  ├─■ AS owned-work·feat·········'
+  '  ├─■ owned-work··feat······AS··'
 # ---
 # name: test_todo_row_kind_column_color_per_kind_in_dark_and_light_mode
   list([
@@ -61,37 +61,37 @@
 # ---
 # name: test_todo_row_renders_compact_kind_labels
   list([
-    '  ├─■ my-feature··feat·········',
-    '  ├─■ my-change···chng·········',
-    '  ├─■ my-bug······bug··········',
-    '  ├─■ my-task·····task·········',
+    '  ├─■ my-feature··feat··········',
+    '  ├─■ my-change···chng··········',
+    '  ├─■ my-bug······bug···········',
+    '  ├─■ my-task·····task··········',
   ])
 # ---
 # name: test_todo_row_renders_disapproved_review_status
-  '  ├─■ fix-review··chng··B:complete··R:disapp·········'
+  '  ├─■ fix-review··chng··B:complete··R:disapp··········'
+# ---
+# name: test_todo_row_renders_generic_approval_and_schedule_state
+  list([
+    '  ├─■ task-pending·····task··P:approve···········',
+    '  ├─■ task-authorized··task··P:prepared··········',
+    '  ├─■ task-stale·······task··P:approve······S····',
+  ])
 # ---
 # name: test_todo_row_renders_hold_distinct_from_icebox
   list([
-    '  ├─■ held-work····chng··B:started·······🔒',
-    '  ├─■ frozen-work··chng··P:icebox··········',
+    '  ├─■ held-work····chng··B:started········🔒',
+    '  ├─■ frozen-work··chng··P:icebox···········',
   ])
 # ---
 # name: test_todo_row_renders_pending_approval_distinct_from_hold
   list([
-    '  ├─■ approval-work··feat··P:approve·········',
-    '  ├─■ held-work······feat··B:started·······🔒',
-  ])
-# ---
-# name: test_todo_row_renders_task_authorization_and_schedule_state
-  list([
-    '  ├─■ task-pending·····task··P:approve······!···',
-    '  ├─■ task-authorized··task··P:prepared·····A···',
-    '  ├─■ task-stale·······task··P:approve······!S··',
+    '  ├─■ approval-work··feat··P:approve··········',
+    '  ├─■ held-work······feat··B:started········🔒',
   ])
 # ---
 # name: test_todo_row_suppresses_hold_glyph_when_not_effectively_held
-  '  ├─■ legacy-held··chng··P:prepared·········'
+  '  ├─■ legacy-held··chng··P:prepared··········'
 # ---
 # name: test_todo_unresolvable_human_renders_no_chip
-  '  ├─■ owned-work··feat·········'
+  '  ├─■ owned-work··feat··········'
 # ---

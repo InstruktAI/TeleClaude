@@ -14,7 +14,7 @@ from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.utils.formatters import format_relative_time
-from teleclaude.cli.tui.widgets.chip import resolve_person_chip
+from teleclaude.cli.tui.widgets.chip import PersonChip, resolve_person_chip
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
@@ -97,15 +97,6 @@ def _task_authorization_pending(todo: TodoItem) -> bool:
     if not todo.task_plan_digest:
         return False
     return todo.task_approved_digest != todo.task_plan_digest
-
-
-def _task_authorized(todo: TodoItem) -> bool:
-    return bool(
-        todo.kind == "task"
-        and todo.task_plan_digest
-        and todo.task_approved_digest
-        and todo.task_approved_digest == todo.task_plan_digest
-    )
 
 
 def _is_held(todo: TodoItem) -> bool:
@@ -230,10 +221,12 @@ _GOLD_LIGHT = "color(136)"
 _COL_GAP = 2
 
 # Cell width reserved for the dedicated state column: a two-dot gap (like every
-# other column), two one-cell task badges, and the 2-cell hold glyph slot. Every
-# row occupies this exact cell width so the right edge aligns.
-_STATE_BADGE_CELLS = 2
-_STATE_COL_WIDTH = _COL_GAP + _STATE_BADGE_CELLS + _HOLD_ICON_CELLS
+# other column), the one-cell schedule badge, the 2-cell owner-chip slot
+# (next-to-last), and the 2-cell hold glyph slot (last). Every row occupies this
+# exact cell width so the right edge aligns.
+_SCHEDULE_CELLS = 1
+_CHIP_CELLS = 2
+_STATE_COL_WIDTH = _COL_GAP + _SCHEDULE_CELLS + _CHIP_CELLS + _HOLD_ICON_CELLS
 
 # Horizontal padding from CSS `padding: 0 1` (1 left + 1 right)
 _WIDGET_PADDING_HORZ = 2
@@ -364,6 +357,12 @@ class TodoRow(TelecMixin, Widget):
         self._chip_region: tuple[int, int] | None = None
         self._chip_email: str | None = None
         self._claim_region: tuple[int, int] | None = None
+        # Owner chip resolved once per render() and consumed when the chip column
+        # is painted; its span is recorded relative to the column block, then
+        # offset to an absolute cell range.
+        self._render_chip: PersonChip | None = None
+        self._render_selected: bool = False
+        self._chip_rel_region: tuple[int, int] | None = None
         # The active shared human filter, pushed by the view; the matching
         # person's chip renders inverted.
         self._active_human_filter: str | None = None
@@ -460,32 +459,46 @@ class TodoRow(TelecMixin, Widget):
         return self._col_widths.get("_max", 0)
 
     def _finish_columns(self, result: Text) -> Text:
-        """Dot-pad property columns, then render the fixed-width state column."""
+        """Dot-pad property columns, then render the fixed-width state column.
+
+        State column, left to right: schedule badge, owner chip (next-to-last),
+        hold glyph (last).
+        """
         result = _pad(result, self._total_col_width() - _STATE_COL_WIDTH)
         result.append("·" * _COL_GAP, style=Style(color=_muted_color()))
-        if _task_authorization_pending(self.todo):
-            result.append("!", style=Style(color=_gold_color(), bold=True))
-        elif _task_authorized(self.todo):
-            result.append("A", style=Style(color=_ok_color(), bold=True))
-        else:
-            result.append("·", style=Style(color=_muted_color()))
         if self.todo.schedule:
             result.append("S", style=Style(color=_gold_color(), bold=True))
         else:
             result.append("·", style=Style(color=_muted_color()))
+        self._append_chip(result)
         if _is_held(self.todo):
             result.append(_HOLD_ICON, style=Style(color=_gold_color(), bold=True))
         else:
             result.append("·" * _HOLD_ICON_CELLS, style=Style(color=_muted_color()))
         return result
 
+    def _append_chip(self, result: Text) -> None:
+        """Paint the owner-chip slot and record its span relative to the column
+        block. Blank (dot-filled) when there is no resolvable owner chip."""
+        self._chip_rel_region = None
+        chip = self._render_chip
+        if chip is None:
+            result.append("·" * _CHIP_CELLS, style=Style(color=_muted_color()))
+            return
+        filtered = self._active_human_filter is not None and self._active_human_filter == chip.person_email
+        start = result.cell_len
+        result.append(chip.initials, style=chip.style(selected=self._render_selected, inverted=filtered))
+        self._chip_rel_region = (start, result.cell_len)
+        pad = _CHIP_CELLS - len(chip.initials)
+        if pad > 0:
+            result.append("·" * pad, style=Style(color=_muted_color()))
+
     def _build_columns(self) -> Text:
         """Build aligned columns. K:<kind> renders first, then phase (P/I) or work (B/R/D)."""
-        target = self._total_col_width()
-
-        # Holders show no columns — status is the projection's leaf aggregate.
+        # Holders show no property columns — status is the projection's leaf
+        # aggregate — but still carry the state column (owner chip, hold).
         if self.todo.is_holder:
-            return _pad(Text(), target)
+            return self._finish_columns(Text())
 
         w = self._col_widths
         result = Text()
@@ -585,26 +598,13 @@ class TodoRow(TelecMixin, Widget):
             line.append("\u25a0", style=self._status_style())
         line.append(" ")
 
-        # Owner chip: the owning human's initials in their colors, rendered
-        # before the slug. No chip when the human is unresolvable — the gap is
-        # closed (no reserved width), so the slug simply starts earlier. The
-        # chip's cell width is compensated out of the dot leaders below so the
-        # property columns stay aligned across chipped and chip-less rows.
-        chip = resolve_person_chip(self.todo.created_by_principal)
-        chip_width = 0
+        # The owner chip lives in its own state column (next-to-last, before the
+        # hold column); resolve it once here and paint it in _finish_columns. The
+        # slug starts immediately after the status glyph.
+        self._render_chip = resolve_person_chip(self.todo.created_by_principal)
+        self._render_selected = is_selected
         self._chip_region = None
         self._chip_email = None
-        if chip is not None:
-            filtered = self._active_human_filter is not None and self._active_human_filter == chip.person_email
-            # Filter-on and row-selection each invert the chip; they compound as a
-            # single XOR, so the chip always flips against its resting state.
-            inverted = filtered != is_selected
-            chip_start = line.cell_len
-            line.append(chip.initials, style=chip.style(inverted=inverted))
-            self._chip_region = (chip_start, line.cell_len)
-            self._chip_email = chip.person_email
-            line.append(" ")
-            chip_width = len(chip.initials) + 1
 
         if is_selected:
             slug_style = Style(reverse=True)
@@ -614,7 +614,7 @@ class TodoRow(TelecMixin, Widget):
 
         # Dot padding from slug to columns (compensate for indent so columns align)
         indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
-        dot_count = max(1, self._slug_width - len(self.todo.slug) + 2 + indent_compensation - chip_width)
+        dot_count = max(1, self._slug_width - len(self.todo.slug) + 2 + indent_compensation)
 
         # Graceful degradation: shrink dot leaders when pane is narrower than content
         outer_w = self.outer_size.width
@@ -622,7 +622,7 @@ class TodoRow(TelecMixin, Widget):
         if outer_w > 0:
             prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
             col_w = self._total_col_width()
-            max_dots = max(0, available - prefix_width - chip_width - len(self.todo.slug) - col_w)
+            max_dots = max(0, available - prefix_width - len(self.todo.slug) - col_w)
             dot_count = min(dot_count, max_dots)
 
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
@@ -633,6 +633,10 @@ class TodoRow(TelecMixin, Widget):
         # become the jump-to-runner click region.
         columns_start = line.cell_len
         line.append_text(self._build_columns())
+        if self._chip_rel_region is not None and self._render_chip is not None:
+            rel_start, rel_end = self._chip_rel_region
+            self._chip_region = (columns_start + rel_start, columns_start + rel_end)
+            self._chip_email = self._render_chip.person_email
         if self.todo.active_runner:
             text_columns_end = columns_start + max(0, self._total_col_width() - _STATE_COL_WIDTH)
             self._claim_region = (columns_start, text_columns_end)

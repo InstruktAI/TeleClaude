@@ -192,7 +192,9 @@ def test_todo_row_renders_pending_approval_distinct_from_hold(snapshot: object) 
     assert [row.render().plain for row in rows] == snapshot
 
 
-def test_todo_row_renders_task_authorization_and_schedule_state(snapshot: object) -> None:
+def test_todo_row_renders_generic_approval_and_schedule_state(snapshot: object) -> None:
+    # Task authorization surfaces through the generic P:approve phase column (no
+    # dedicated per-task badge); the schedule badge renders in the state column.
     items = [
         TodoItem(
             slug="task-pending",
@@ -322,12 +324,12 @@ def test_todo_author_chip_carries_no_padding(wire_people, monkeypatch) -> None:
 
     rendered = _row(_owned_todo("human:alice@example.com")).render()
 
+    # _span_over returns a span only when its boundaries exactly cover the
+    # initials occurrence — so a non-None result proves the styled region is the
+    # initials alone, with no padding bleeding into the chip style (the column's
+    # muted-leader separation sits outside it).
     span = _span_over(rendered, "AS")
-    # The styled region spans exactly the initials (enforced by _span_over's
-    # exact-boundary match); the separating space after it sits outside the
-    # styled region in the base style.
     assert span is not None
-    assert rendered.plain[span.end].isspace()
 
 
 @pytest.mark.spec(XNAV_SPEC, "UC-XNAV-1")
@@ -375,9 +377,12 @@ def test_todo_text_columns_bold_only_when_claimed() -> None:
 
 
 @pytest.mark.spec(XNAV_SPEC, "UC-XNAV-17")
-def test_todo_chip_inversion_compounds_filter_and_selection(wire_people) -> None:
-    # Selection and the live filter each invert the chip (background and text
-    # swap); both at once cancel back to the resting colors.
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-18")
+def test_todo_chip_weight_and_color_track_selection_and_filter(wire_people) -> None:
+    # Weight encodes selection alone; color encodes the rest. Resting: normal
+    # weight, subtle bg / highlight text. Filter-on (not selected): colors swap,
+    # still normal weight. Selected: bold, snapped to the high-contrast pole, and
+    # selection dominates the filter.
     wire_people([ALICE, BOB])
 
     def chip(*, selected: bool, filtered: bool) -> object | None:
@@ -389,15 +394,23 @@ def test_todo_chip_inversion_compounds_filter_and_selection(wire_people) -> None
         return _span_over(row.render(), "AS")
 
     resting = chip(selected=False, filtered=False)
-    assert resting is not None
-    for inverted in (chip(selected=True, filtered=False), chip(selected=False, filtered=True)):
-        assert inverted is not None
-        assert inverted.style.bgcolor.name == resting.style.color.name
-        assert inverted.style.color.name == resting.style.bgcolor.name
+    filtered = chip(selected=False, filtered=True)
+    selected = chip(selected=True, filtered=False)
     both = chip(selected=True, filtered=True)
-    assert both is not None
-    assert both.style.bgcolor.name == resting.style.bgcolor.name
-    assert both.style.color.name == resting.style.color.name
+    assert all(s is not None for s in (resting, filtered, selected, both))
+    pole = theme.get_selection_fg_hex()
+    # Weight: bold only when selected.
+    assert not resting.style.bold
+    assert not filtered.style.bold
+    assert selected.style.bold is True
+    assert both.style.bold is True
+    # Resting is low-contrast (not the pole). Filter-on and selection both take
+    # the selection text pole over the opposite-pole fill (neutral chip).
+    assert resting.style.color.name != pole
+    for active in (filtered, selected, both):
+        assert active.style.color.name == pole
+        assert active.style.bgcolor.name in {"#000000", "#ffffff"}
+        assert active.style.bgcolor.name != pole
 
 
 def _status_item(
@@ -453,29 +466,15 @@ def test_todo_phase_column_color_marks_settled_vs_in_flight() -> None:
     assert settled_span.style.color.name != in_flight_span.style.color.name
 
 
-def test_todo_state_icons_carry_weight_and_semantic_color() -> None:
-    # The task-authorized 'A' renders ok + bold; the authorization-pending '!'
-    # renders gold + bold. `.plain` sees the glyph but neither its weight nor its
-    # color. Kills: dropping bold on the icons, or swapping the ok/gold mapping.
-    authorized = _row(
-        _status_item(TodoStatus.IN_PROGRESS, kind="task", task_plan_digest="d", task_approved_digest="d")
-    ).render()
-    pending = _row(
-        _status_item(
-            TodoStatus.IN_PROGRESS,
-            kind="task",
-            lifecycle_phase="prepared",
-            task_plan_digest="d",
-            task_approved_digest="x",
-        )
-    ).render()
-    a_icon = _span_over(authorized, "A")
-    bang = _span_over(pending, "!")
-    assert a_icon is not None and bang is not None
-    assert a_icon.style.bold is True
-    assert a_icon.style.color.name == todo_row_mod._ok_color()
-    assert bang.style.bold is True
-    assert bang.style.color.name == todo_row_mod._gold_color()
+def test_todo_schedule_badge_carries_weight_and_color() -> None:
+    # The schedule 'S' badge renders gold + bold in its state-column slot. `.plain`
+    # sees the glyph but neither its weight nor its color. Kills: dropping the
+    # bold or the gold color on the schedule badge.
+    scheduled = _row(_status_item(TodoStatus.IN_PROGRESS, schedule="cron:* * * * *")).render()
+    s_badge = _span_over(scheduled, "S")
+    assert s_badge is not None
+    assert s_badge.style.bold is True
+    assert s_badge.style.color.name == todo_row_mod._gold_color()
 
 
 def test_single_user_suppresses_todo_chip(wire_people) -> None:

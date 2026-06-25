@@ -12,6 +12,7 @@ from textual.app import App, ComposeResult
 import teleclaude.cli.tui.state_store as state_store
 from teleclaude.api_models import ComputerDTO, ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToSession
+from teleclaude.cli.tui.theme import get_selection_fg_hex
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
@@ -493,18 +494,19 @@ async def test_shared_human_filter_flows(wire_people) -> None:
         await pilot.pause()
         assert app.filtered == [alice_email]
 
-        # UC-14: applying the filter hides the non-matching row and inverts the
-        # filtered person's chip (background and text swap).
+        # UC-14: applying the filter hides the non-matching row and pushes the
+        # filtered person's chip to the selection extreme (pole text, not its
+        # resting low-contrast colors).
         view.set_human_filter(alice_email)
         await pilot.pause()
         assert alice_row.display is True
         assert bob_row.display is False
         inverted = _chip_span(alice_row)
         assert normal is not None and inverted is not None
-        assert normal.style.color == inverted.style.bgcolor
-        assert normal.style.bgcolor == inverted.style.color
+        assert inverted.style.color.name == get_selection_fg_hex()
+        assert inverted.style.color != normal.style.color
 
-        # UC-15: clearing restores every row and renders chips non-inverted again.
+        # UC-15: clearing restores every row and renders chips at rest again.
         view.set_human_filter(None)
         await pilot.pause()
         assert bob_row.display is True
