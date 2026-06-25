@@ -145,13 +145,13 @@ Then the text status columns render at normal weight
 And they carry no jump click target
 ```
 
-#### UC-XNAV-11: Icons are excluded from the claim regime
+#### UC-XNAV-11: The state column is excluded from the claim regime
 
 ```
 Given a claimed todo
 When the row is rendered
-Then the row status glyph and the state icons (!, A, S, lock) are neither bold-toggled by claim nor made clickable
-And they retain their existing semantic color and weight
+Then the row status glyph and the state column (schedule badge, owner chip, hold glyph) are neither bold-toggled by the claim nor made claim-clickable
+And they retain their own semantic color and weight (the schedule badge gold and bold, the hold glyph gold)
 ```
 
 #### UC-XNAV-12: Clicking a claimed text column jumps to the session

@@ -466,6 +466,7 @@ def test_todo_phase_column_color_marks_settled_vs_in_flight() -> None:
     assert settled_span.style.color.name != in_flight_span.style.color.name
 
 
+@pytest.mark.spec(XNAV_SPEC, "UC-XNAV-11")
 def test_todo_schedule_badge_carries_weight_and_color() -> None:
     # The schedule 'S' badge renders gold + bold in its state-column slot. `.plain`
     # sees the glyph but neither its weight nor its color. Kills: dropping the
