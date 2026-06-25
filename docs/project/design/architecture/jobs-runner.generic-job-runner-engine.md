@@ -195,9 +195,12 @@ job is registered under the `jobs:` key. Schedule fields: `schedule`
    `job.run.stalled`); re-attempt any closed-but-unnotified emission.
 5. Load schedule config and discover configured script jobs.
 6. For each due job not already open: open a run. A script job runs `JOB.run()` in-process
-   and closes synchronously; an agent job creates its session and stays open for the sweep.
+   on a daemon thread joined with `timeout`; if it times out, the runner records the failed
+   outcome and aborts the rest of the pass so no later job starts. An agent job creates its
+   session and stays open for the sweep; a session-creation failure records a failed outcome
+   and emits `job.run.failed` rather than skipping silently.
 7. Persist the run lifecycle after every transition.
-8. Remove pidfile on exit.
+8. Remove pidfile on exit (the daemon thread of any timed-out job is reaped here).
 
 ### Force run (CLI)
 
@@ -210,7 +213,8 @@ config or last run time, flowing the same open/close lifecycle.
 (`scripts/cron_runner.py --job NAME --force`) so the job executes in the ephemeral runner
 process with the same timeout containment as a scheduled run. It opens a run and lets the
 sweep close it; it does not report completion at dispatch and does not run job logic inside
-the daemon.
+the daemon. A spawn failure returns an explicit API error so the operator sees the start
+failure synchronously.
 
 ### Script job contract
 
@@ -284,7 +288,8 @@ survives a transport outage independent of later run state.
 - **Job has no config entry**: Silently skipped (logged at debug level).
 - **Job module fails to import**: Logged as error, run closed as failed, other jobs still run.
 - **Script job raises during `run()`**: Caught, run closed as failed, other jobs still run.
-- **Script job exceeds `timeout`**: The daemon-thread join returns a failed `JobResult` and the tick is released; the hung job is hard-reaped when the runner process exits, freeing the pidlock.
+- **Script job exceeds `timeout`**: The daemon-thread join records a failed `JobResult` and the runner aborts the rest of the pass so no later job runs concurrently; the hung job is hard-reaped when the runner process exits, freeing the pidlock, and the deferred jobs run on the next trigger.
+- **A job cannot start**: An agent session-creation failure records a failed outcome and emits `job.run.failed`; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
 - **Agent run never reported within its window**: Marked `stalled`, emits `job.run.stalled`, notifies a human.
 - **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
 - **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.
