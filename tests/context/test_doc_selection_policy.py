@@ -90,6 +90,29 @@ def test_no_filter_returns_global_and_project_snippets(tmp_path: Path, monkeypat
     assert _PROJECT_ID in output
 
 
+def test_global_snippet_in_unsubscribed_domain_is_included(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No subscriber gate: a global snippet in a domain the project does not list
+    under business.domains is still surfaced (universal awareness)."""
+    gdocs = tmp_path / "ghome" / ".teleclaude" / "docs"
+    foreign_domain_id = "erp/policy/operating-disciplines"
+    _write_index(
+        gdocs / "index.yaml",
+        gdocs,
+        [_entry(foreign_domain_id, "policy", "global", "erp", "erp/policy/operating-disciplines.md")],
+    )
+    monkeypatch.setattr("teleclaude.context_selector.GLOBAL_SNIPPETS_DIR", gdocs)
+    project_root = tmp_path / "proj"
+    (project_root / "docs").mkdir(parents=True, exist_ok=True)
+    (project_root / "teleclaude.yml").write_text(
+        "project_slug: proj\nbusiness:\n  domains:\n    software-development: docs\n",
+        encoding="utf-8",
+    )
+
+    output = build_context_output(areas=[], project_root=project_root)
+
+    assert foreign_domain_id in output
+
+
 @pytest.mark.spec(_SPEC, "UC-DSP1")
 def test_scope_global_excludes_project_snippets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """--scope global returns only global snippets; project-scoped ones are excluded."""

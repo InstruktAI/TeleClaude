@@ -22,9 +22,9 @@ Load the platform's process-enforcement baseline for the named domain into the a
 ## Steps
 
 1. Resolve the `domain` argument to its deployed baseline path:
-   - `software-development` → `~/.teleclaude/docs/software-development/domain-baseline.md`
-   - `creative` → `~/.teleclaude/docs/creative/domain-baseline.md`
-   - `erp` → `~/.teleclaude/docs/erp/domain-baseline.md`
+   - `software-development` → `~/.teleclaude/docs/software-development/domain-baseline-bundle.md`
+   - `creative` → `~/.teleclaude/docs/creative/domain-baseline-bundle.md`
+   - `erp` → `~/.teleclaude/docs/erp/domain-baseline-bundle.md`
 2. Read the file in full.
 3. Treat its contents as mandatory context for the rest of the session.
 

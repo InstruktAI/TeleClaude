@@ -9,11 +9,11 @@ link_shared_scripts() {
     mkdir -p "$base_dir"
     ln -sfn "$INSTALL_DIR/scripts" "$target_dir"
 
-    # Point the runtime docs root at the repo's global docs via a single
-    # whole-tree symlink, so every domain, the generated index, and the
-    # per-domain domain-baseline.md files are a live view of source that can
-    # never be partially deployed. Replace any stale real directory left by
-    # older installs.
+    # Bootstrap the runtime docs root as a whole-tree symlink onto the repo's
+    # global docs (a mother-only initial view). The first `telec sync` replaces
+    # it with a per-file composition of every publisher's docs/global, a merged
+    # index, and per-domain domain-baseline-bundle.md files. Replace any stale
+    # real directory left by older installs.
     local docs_root="$base_dir/docs"
     local source_docs="$INSTALL_DIR/docs/global"
     if [ -d "$source_docs" ]; then

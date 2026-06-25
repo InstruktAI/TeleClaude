@@ -50,7 +50,7 @@ class CodexAdapter(HookAdapter):
         Codex's SessionStart, UserPromptSubmit, and Stop hooks accept a
         ``systemMessage`` field on stdout-JSON (see ``Common output fields``
         in the AGENTS.md hooks doc). Returning it here lets the receiver
-        deliver domain-baseline content and memory context into the Codex
+        deliver domain baseline content and memory context into the Codex
         agent's startup, matching the contract already used for Claude and
         Gemini. An empty context produces no output so the receiver skips
         printing.

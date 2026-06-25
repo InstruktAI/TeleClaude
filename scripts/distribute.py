@@ -39,9 +39,13 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
+from teleclaude.docs_index import get_project_slug
+from teleclaude.domains import publishes_for_root
 from teleclaude.paths import COMMANDS_DIR, GLOBAL_SNIPPETS_DIR
+from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
+from teleclaude.snippet_roots import is_excluded_snippet_path
 from teleclaude.snippet_validation import derive_snippet_classification, load_domains
 
 Transform = Callable[[Post], str]
@@ -878,55 +882,287 @@ def _inflate_domain_baseline(baseline_src: Path, domain_src: Path, *, project_ro
     return inflated
 
 
-def ensure_docs_root_symlink(source_docs_root: Path, deploy_docs_root: Path) -> None:
-    """Point the deployed docs root at the source global docs via a single symlink.
+# Cross-cutting top-level docs dir always contributed by every publisher that
+# has it (not gated by ``publishes``); domains are gated by ``publishes``.
+_DOMAIN_AGNOSTIC_DIR = "general"
 
-    ``~/.teleclaude/docs`` is one whole-tree symlink to ``<repo>/docs/global``, so
-    every current and future source child — domains, ``index.yaml``, and the
-    generated ``<domain>/domain-baseline.md`` files — resolves through it as a live
-    view that can never be partially deployed. Any stale real directory or wrong
-    symlink left by an older deploy is replaced idempotently.
+
+class _Publisher(NamedTuple):
+    """A registered project's global-docs contribution."""
+
+    slug: str
+    docs_global: Path
+    publishes: frozenset[str]
+
+
+def gather_publishers(project_root: Path, current_docs_global: Path) -> list[_Publisher]:
+    """Collect every registered project that contributes global docs.
+
+    The current project (the one being synced) contributes via
+    ``current_docs_global`` — the live checkout, so a worktree's edits compose
+    rather than the registered repo's stale copy. Its registered root (and the
+    shared git common root, for worktree syncs) is skipped in the manifest sweep
+    so it is never counted twice.
+    """
+    publishers = [
+        _Publisher(get_project_slug(project_root), current_docs_global, frozenset(publishes_for_root(project_root)))
+    ]
+    seen = {project_root.resolve(), _resolve_git_common_root(project_root).resolve()}
+    for root in load_roots():
+        resolved = root.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        docs_global = root / "docs" / "global"
+        if not docs_global.is_dir():
+            continue
+        publishers.append(_Publisher(get_project_slug(root), docs_global, frozenset(publishes_for_root(root))))
+    return publishers
+
+
+def _is_composable_snippet_file(path: Path) -> bool:
+    """A real snippet file linkable into the deployed root.
+
+    Build-time manifests (``index.yaml``, ``baseline*.md``) and generated bundles
+    (``domain-baseline*.md``) are not linked — they are regenerated per sync.
+    """
+    name = path.name
+    if name == "index.yaml":
+        return False
+    if name.endswith(".md") and (name.startswith("baseline") or name.startswith("domain-baseline")):
+        return False
+    return True
+
+
+def _desired_links(publishers: list[_Publisher], deploy_docs_root: Path) -> dict[Path, Path]:
+    """Map every deployed link path to its publisher source file (the merge)."""
+    desired: dict[Path, Path] = {}
+    for pub in publishers:
+        if not pub.docs_global.is_dir():
+            continue
+        for entry in sorted(os.listdir(pub.docs_global)):
+            top = pub.docs_global / entry
+            if not top.is_dir() or entry.startswith((".", "_")):
+                continue
+            if entry != _DOMAIN_AGNOSTIC_DIR and entry not in pub.publishes:
+                continue
+            for src in sorted(top.rglob("*")):
+                if not src.is_file() or not _is_composable_snippet_file(src):
+                    continue
+                if is_excluded_snippet_path(src, pub.docs_global):
+                    continue
+                desired[deploy_docs_root / src.relative_to(pub.docs_global)] = src
+    return desired
+
+
+def compose_docs_root(publishers: list[_Publisher], deploy_docs_root: Path) -> None:
+    """Compose ``~/.teleclaude/docs`` per file from every contributing publisher.
+
+    The deployed root is a real directory; each snippet file is a symlink to its
+    publisher source (a live view), so a domain dir can merge files from multiple
+    publishers. The root is rebuilt from the desired set each sync, so a removed
+    or renamed snippet leaves no orphan link. Build outputs (merged ``index.yaml``
+    and per-domain ``domain-baseline-bundle.md``) are written as real files
+    afterwards by their own steps.
     """
     if deploy_docs_root.is_symlink():
-        if deploy_docs_root.resolve() == source_docs_root.resolve():
-            return
         deploy_docs_root.unlink()
     elif deploy_docs_root.is_dir():
         shutil.rmtree(deploy_docs_root)
     elif os.path.lexists(deploy_docs_root):
         deploy_docs_root.unlink(missing_ok=True)
-    deploy_docs_root.parent.mkdir(parents=True, exist_ok=True)
-    deploy_docs_root.symlink_to(source_docs_root)
-    print(f"  Linked docs root: {deploy_docs_root} -> {source_docs_root}")
+    deploy_docs_root.mkdir(parents=True, exist_ok=True)
+
+    desired = _desired_links(publishers, deploy_docs_root)
+    for link_path, src in sorted(desired.items()):
+        link_path.parent.mkdir(parents=True, exist_ok=True)
+        link_path.symlink_to(src)
+    print(f"  Composed docs root: {deploy_docs_root} ({len(desired)} file(s) from {len(publishers)} publisher(s))")
 
 
-def generate_domain_baselines(source_docs_root: Path, project_root: Path) -> None:
-    """Inflate each domain's baseline manifest into a gitignored ``domain-baseline.md``.
+def write_merged_index(publishers: list[_Publisher], deploy_docs_root: Path) -> None:
+    """Write the union of every publisher's global ``index.yaml`` to the root.
 
-    The fully-expanded baseline is written beside its source manifest at
-    ``<repo>/docs/global/<domain>/domain-baseline.md`` (gitignored, excluded from
-    snippet iteration and validation). Under the whole-tree docs symlink it is
-    visible at ``~/.teleclaude/docs/<domain>/domain-baseline.md`` and injected at
-    SessionStart for runtimes that do not auto-follow ``@`` refs.
+    Snippet-id uniqueness across publishers is the one merge guard (SC4): the
+    same id declared by two publishers is a sync-blocking collision, raised here
+    rather than silently deduped. Distinct ids in a shared domain merge cleanly —
+    there is no domain ownership.
+    """
+    merged: list[dict[str, object]] = []  # guard: loose-dict - opaque index entries merged from external yaml
+    owner_by_id: dict[str, str] = {}
+    collisions: list[tuple[str, str, str]] = []
+    for pub in publishers:
+        index_path = pub.docs_global / "index.yaml"
+        if not index_path.exists():
+            continue
+        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            continue
+        snippets = payload.get("snippets")
+        if not isinstance(snippets, list):
+            continue
+        for item in snippets:
+            if not isinstance(item, dict):
+                continue
+            snippet_id = item.get("id")
+            if not isinstance(snippet_id, str):
+                continue
+            prior_owner = owner_by_id.get(snippet_id)
+            if prior_owner is not None:
+                if prior_owner != pub.slug:
+                    collisions.append((snippet_id, prior_owner, pub.slug))
+                continue
+            owner_by_id[snippet_id] = pub.slug
+            merged.append(cast("dict[str, object]", item))  # guard: loose-dict - opaque external index entry
+    if collisions:
+        lines = ["", "=" * 80, "ERROR: Global snippet ID collision(s) across publishers", "=" * 80, ""]
+        for snippet_id, owner, intruder in collisions:
+            lines.extend([f"ID: {snippet_id}", f"Declared by: {owner} and {intruder}", ""])
+        lines.append("=" * 80)
+        raise SystemExit("\n".join(lines))
+    merged.sort(key=lambda entry: str(entry.get("id", "")))
+    out = {"project_root": "~/.teleclaude", "snippets_root": "~/.teleclaude/docs", "snippets": merged}
+    (deploy_docs_root / "index.yaml").write_text(
+        yaml.safe_dump(out, sort_keys=False, width=1000, allow_unicode=True), encoding="utf-8"
+    )
+    print(f"  Merged docs index: {deploy_docs_root / 'index.yaml'} ({len(merged)} snippet(s))")
+
+
+def _unique_inline_refs(ref_files: list[Path]) -> list[str]:
+    """Ordered unique ``@``-ref targets across a list of manifest files."""
+    refs: list[str] = []
+    seen: set[str] = set()
+    for ref_file in ref_files:
+        for match in INLINE_REF_RE.finditer(ref_file.read_text(encoding="utf-8")):
+            ref = match.group(1)
+            if ref not in seen:
+                seen.add(ref)
+                refs.append(ref)
+    return refs
+
+
+def _inflate_merged_domain_baseline(domain: str, contributors: list[_Publisher], *, project_root: Path) -> str:
+    """Inflate the union of all contributors' baseline manifests for a domain.
+
+    A single contributor reuses the plain inflation. Multiple contributors merge
+    their ``baseline.md`` (and ``baseline-progressive.md``) refs and inflate once
+    over the deduped union, so a snippet referenced by two publishers appears
+    once. Manifest refs are absolute ``~/.teleclaude/docs`` paths, so resolution
+    is publisher-independent.
+    """
+    baseline_srcs = [pub.docs_global / domain / "baseline.md" for pub in contributors]
+    domain_src = contributors[0].docs_global / domain
+    if len(contributors) == 1:
+        return _inflate_domain_baseline(baseline_srcs[0], domain_src, project_root=project_root)
+
+    combined = "\n".join(f"@{ref}" for ref in _unique_inline_refs(baseline_srcs))
+    inflated = expand_inline_refs(combined, project_root=project_root, current_path=domain_src / "baseline.md")
+    progressive_srcs = [
+        pub.docs_global / domain / "baseline-progressive.md"
+        for pub in contributors
+        if (pub.docs_global / domain / "baseline-progressive.md").exists()
+    ]
+    progressive_refs = _unique_inline_refs(progressive_srcs)
+    if progressive_refs:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix="-baseline-progressive.md", delete=False, encoding="utf-8"
+        ) as handle:
+            handle.write("\n".join(f"@{ref}" for ref in progressive_refs))
+            combined_progressive = Path(handle.name)
+        try:
+            progressive_index = _render_progressive_index(combined_progressive, project_root=project_root)
+        finally:
+            combined_progressive.unlink(missing_ok=True)
+        if progressive_index:
+            inflated = f"{inflated.rstrip()}\n\n---\n\n{progressive_index}\n"
+    return inflated
+
+
+def generate_domain_baselines(publishers: list[_Publisher], deploy_docs_root: Path, project_root: Path) -> None:
+    """Write one merged ``domain-baseline-bundle.md`` per published domain.
+
+    For each domain in the union of every publisher's ``publishes``, all
+    contributing publishers' baseline manifests are inflated once (deduped) into
+    a single ``~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`` real file,
+    regenerated every sync and injected at SessionStart for runtimes that do not
+    auto-follow ``@`` refs.
     """
     header_template = "# {name} — Platform Baseline\n\n"
-    for entry in sorted(os.listdir(source_docs_root)):
-        if entry.startswith(".") or entry == "third-party":
-            continue
-        domain_src = source_docs_root / entry
-        if not domain_src.is_dir():
-            continue
-        baseline_src = domain_src / "baseline.md"
-        if not baseline_src.exists():
+    domains = sorted({domain for pub in publishers for domain in pub.publishes})
+    failures: list[tuple[str, str]] = []
+    for domain in domains:
+        contributors = [
+            pub for pub in publishers if domain in pub.publishes and (pub.docs_global / domain / "baseline.md").exists()
+        ]
+        if not contributors:
             continue
         try:
-            inflated = _inflate_domain_baseline(baseline_src, domain_src, project_root=project_root)
+            inflated = _inflate_merged_domain_baseline(domain, contributors, project_root=project_root)
         except Exception as e:
-            print(f"  Error inflating {entry}/baseline.md: {e}")
+            failures.append((domain, str(e)))
             continue
-        baseline_dst = domain_src / "domain-baseline.md"
-        baseline_dst.write_text(header_template.format(name=entry) + inflated, encoding="utf-8")
-        print(f"  Generated domain baseline: {baseline_dst}")
+        bundle_dst = deploy_docs_root / domain / "domain-baseline-bundle.md"
+        bundle_dst.parent.mkdir(parents=True, exist_ok=True)
+        bundle_dst.write_text(header_template.format(name=domain) + inflated, encoding="utf-8")
+        print(f"  Generated domain bundle: {bundle_dst}")
+    if failures:
+        lines = ["", "=" * 80, "ERROR: Domain baseline bundle generation failed", "=" * 80, ""]
+        lines.extend(f"{domain}: {error}" for domain, error in failures)
+        lines.append("=" * 80)
+        raise SystemExit("\n".join(lines))
+
+
+def _render_domain_awareness(deploy_docs_root: Path) -> str:
+    """Render one awareness line per published domain from the merged index.
+
+    Each line names the domain, its snippet count, and the path to its baseline
+    bundle, so every project's entrypoint surfaces every published domain with
+    on-demand depth. Sources the deployed merged ``index.yaml``.
+    """
+    index_path = deploy_docs_root / "index.yaml"
+    if not index_path.exists():
+        return ""
+    payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return ""
+    snippets = payload.get("snippets")
+    if not isinstance(snippets, list):
+        return ""
+    counts: dict[str, int] = {}
+    for item in snippets:
+        if not isinstance(item, dict):
+            continue
+        domain = item.get("domain")
+        if not isinstance(domain, str) or domain in ("baseline", "general", "project", ""):
+            continue
+        counts[domain] = counts.get(domain, 0) + 1
+    if not counts:
+        return ""
+    lines = [
+        f"- `{domain}` — {counts[domain]} snippet(s); bundle: `~/.teleclaude/docs/{domain}/domain-baseline-bundle.md`"
+        for domain in sorted(counts)
+    ]
+    header = "## Published Domains — load a domain's bundle for depth\n\n"
+    return header + "\n".join(lines)
+
+
+def deploy_documentation(project_root: Path, docs_source_dir: Path, *, deploy_docs_root: Path | None = None) -> None:
+    """The documentation deployment step: compose the multi-publisher docs root.
+
+    Gathers every contributing publisher (the current project contributes from
+    ``docs_source_dir``, its live checkout, so a worktree's edits compose), then
+    rebuilds the deployed root as a per-file merge, writes the merged index, and
+    regenerates every published domain's ``domain-baseline-bundle.md``. Id
+    collisions across publishers and bundle-inflation failures abort the deploy.
+    """
+    if not docs_source_dir.is_dir():
+        return
+    target = deploy_docs_root if deploy_docs_root is not None else GLOBAL_SNIPPETS_DIR
+    print("\nDeploying documentation...")
+    publishers = gather_publishers(project_root, docs_source_dir.resolve())
+    compose_docs_root(publishers, target)
+    write_merged_index(publishers, target)
+    generate_domain_baselines(publishers, target, project_root)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -981,6 +1217,9 @@ def _write_project_agents(master_path: Path, *, project_root: Path, warn_only: b
         current_path=master_path,
         warn_only=warn_only,
     )
+    awareness = _render_domain_awareness(GLOBAL_SNIPPETS_DIR)
+    if awareness:
+        inflated = f"{inflated.rstrip()}\n\n---\n\n{awareness}\n"
     agents_path = master_path.parent / "AGENTS.md"
     agents_path.write_text(inflated, encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"
@@ -1310,6 +1549,9 @@ def main() -> None:  # noqa: C901
                 combined_agents_content = expanded_body
             if combined_agents_content:
                 combined_agents_content = combined_agents_content.rstrip() + addendum_suffix
+                awareness = _render_domain_awareness(GLOBAL_SNIPPETS_DIR)
+                if awareness:
+                    combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
             if combined_agents_content:
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:
@@ -1425,23 +1667,7 @@ def main() -> None:  # noqa: C901
             print("Deployment complete.")
 
     def _deploy_documentation(source_dir: str) -> None:
-        """Deploy global docs as one whole-tree symlink and generate domain baselines.
-
-        ``~/.teleclaude/docs`` becomes a single symlink to ``<repo>/docs/global``, so
-        the index, every domain, and the generated ``<domain>/domain-baseline.md``
-        files are a live view of source. No per-domain symlinks, no ``_baselines``
-        snapshot, and no ``index.yaml`` rewrite — the source ``index.yaml`` already
-        carries ``~/.teleclaude`` paths, and third-party docs are read from source.
-        """
-        if not os.path.isdir(source_dir):
-            return
-
-        print("\nDeploying documentation...")
-        deploy_docs_root = GLOBAL_SNIPPETS_DIR
-        source_docs_root = Path(source_dir).resolve()
-
-        ensure_docs_root_symlink(source_docs_root, deploy_docs_root)
-        generate_domain_baselines(source_docs_root, Path(project_root))
+        deploy_documentation(Path(project_root), Path(source_dir))
 
     if args.deploy:
         with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:

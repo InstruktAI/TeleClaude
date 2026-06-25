@@ -125,6 +125,11 @@ class BusinessConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     domains: dict[str, str] = {}
+    # Domains this project contributes global snippets to. The union of every
+    # registered project's `publishes` is the set of valid domains; contributions
+    # from multiple publishers to the same domain merge. `domains` is at most a
+    # cosmetic browse default and no longer gates capability.
+    publishes: list[str] = []
 
 
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]

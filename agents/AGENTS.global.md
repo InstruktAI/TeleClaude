@@ -51,7 +51,7 @@ These gates are absolute. Load before the first edit, every time.
 
 **Functional code or tests** (write, modify, refactor, or fix):
 
-READ `~/.teleclaude/docs/software-development/domain-baseline.md`.
+READ `~/.teleclaude/docs/software-development/domain-baseline-bundle.md`.
 
 Additionally, load the language-specific policy for the code you are touching:
 

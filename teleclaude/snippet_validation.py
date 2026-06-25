@@ -10,11 +10,11 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
+from teleclaude.constants import TAXONOMY_TYPES
+from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
-_DOMAINS = frozenset(DOMAIN_SCOPES)
 
 
 class SnippetTaxonomy(StrEnum):
@@ -61,9 +61,14 @@ class SnippetClassification:
     domain: str
 
 
-def load_domains(_project_root: Path) -> set[str]:
-    """Return the canonical domain scopes from constants."""
-    return set(_DOMAINS)
+def load_domains(project_root: Path) -> set[str]:
+    """Return the valid domain scopes for classifying ``project_root``'s snippets.
+
+    The set is the union of every registered publisher's ``business.publishes``
+    plus ``project_root``'s own declarations, so a project can always classify
+    its own snippets — even before it is registered in the manifest.
+    """
+    return valid_domains() | publishes_for_root(project_root)
 
 
 def _split_parts(value: str) -> tuple[list[str], bool]:
@@ -305,8 +310,8 @@ def _expected_from_global(
         return None, None
     # Domain-level baseline: docs/global/<domain>/baseline.md (e.g.
     # software-development, creative). Treated as a manifest — no frontmatter
-    # required. The deploy pipeline inflates it into a gitignored file at
-    # docs/global/<domain>/domain-baseline.md for codex-readable consumption.
+    # required. The deploy pipeline inflates it into the composed docs root at
+    # ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md for codex-readable consumption.
     if path.name in {"baseline.md", "baseline-progressive.md"} and path.parent.name == scope_segment:
         return None, None
     if scope_segment == "baseline":

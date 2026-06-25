@@ -1,5 +1,13 @@
 # serializer version: 1
-# name: test_domain_baseline_strips_pending_planned_blocks
+# name: test_render_domain_awareness_one_line_per_published_domain
+  '''
+  ## Published Domains — load a domain's bundle for depth
+  
+  - `creative` — 1 snippet(s); bundle: `~/.teleclaude/docs/creative/domain-baseline-bundle.md`
+  - `erp` — 2 snippet(s); bundle: `~/.teleclaude/docs/erp/domain-baseline-bundle.md`
+  '''
+# ---
+# name: test_single_publisher_bundle_strips_pending_planned_blocks
   '''
   # creative — Platform Baseline
   

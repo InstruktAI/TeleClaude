@@ -1,13 +1,44 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pydantic
 import pytest
 import yaml
 
 import teleclaude.cli.config_handlers as config_handlers
+from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import ProjectConfig
 
 PERSON_AREA = "person:Maurice Faber"
+
+
+@pytest.mark.functional
+def test_project_config_without_publishes_loads_empty_list(tmp_path: Path) -> None:
+    """An old-shape teleclaude.yml with no business.publishes loads it as []."""
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text(
+        "project_name: Legacy\nbusiness:\n  domains:\n    software-development: docs\n",
+        encoding="utf-8",
+    )
+
+    config = load_project_config(config_path)
+
+    assert config.business.publishes == []
+
+
+@pytest.mark.functional
+def test_project_config_parses_declared_publishes(tmp_path: Path) -> None:
+    """A teleclaude.yml declaring business.publishes loads the domain list."""
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text(
+        "project_name: Publisher\nbusiness:\n  publishes:\n    - erp\n    - creative\n",
+        encoding="utf-8",
+    )
+
+    config = load_project_config(config_path)
+
+    assert config.business.publishes == ["erp", "creative"]
 
 
 def _write_person_config(people_dir, folder, body=None):

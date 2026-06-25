@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
+from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.snippet_validation import SnippetScope
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
@@ -450,13 +450,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
-                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <{'|'.join(DOMAIN_SCOPES)}>] [--scope <{_SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
+                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <domain>] [--scope <{_SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
                 flags=[
                     _H,
                     Flag("--baseline-only", "-b", "Show only baseline snippets"),
                     Flag("--third-party", "-t", "Include third-party docs"),
                     Flag("--areas", "-a", f"Filter by taxonomy type ({'|'.join(TAXONOMY_TYPES)}); omit for all"),
-                    Flag("--domains", "-d", f"Filter by domain ({'|'.join(DOMAIN_SCOPES)}); omit for all"),
+                    Flag("--domains", "-d", "Filter by published domain; omit for all"),
                     Flag("--scope", desc=f"Filter to global or project snippets ({_SCOPE_VALUES})"),
                     Flag("--project", desc="Filter to a registered project's snippets by slug"),
                     Flag("--target", desc="Filter to snippets delivered by slug"),

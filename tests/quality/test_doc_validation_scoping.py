@@ -646,6 +646,10 @@ Replacement body.
         assert not get_errors()
 
     def test_baseline_dedup_uses_path_derived_ids(self, tmp_path: Path, snapshot: object) -> None:
+        (tmp_path / "teleclaude.yml").write_text(
+            "project_name: fixture\nbusiness:\n  publishes:\n    - software-development\n",
+            encoding="utf-8",
+        )
         baseline = tmp_path / "docs" / "global" / "software-development" / "baseline.md"
         baseline.parent.mkdir(parents=True)
         baseline.write_text("@docs/global/software-development/concept/baseline-entry.md\n", encoding="utf-8")

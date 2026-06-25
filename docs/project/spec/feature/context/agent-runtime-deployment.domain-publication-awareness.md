@@ -1,5 +1,5 @@
 ---
-description: "Two-phase deployment of transpiled artifacts to per-agent home dirs, with Codex commands routed to a shared TeleClaude dir and global docs composed from every publisher's docs/global as a per-domain multi-root tree under one filesystem root."
+description: "Two-phase deployment of transpiled artifacts to per-agent home dirs, with Codex commands routed to a shared TeleClaude dir and global docs composed per file from every publisher's docs/global into one merged filesystem root."
 visibility: 'public'
 ---
 
@@ -29,26 +29,29 @@ path runs two phases:
    reusable across projects.
 
 After both phases, the global documentation tree is exposed at
-`~/.teleclaude/docs/` as a **composed per-domain multi-root tree**. The root is
-a real directory whose children are: one symlink per published domain
-(`~/.teleclaude/docs/<domain>` → its owning publisher's
-`docs/global/<domain>`), a `general/` symlink to the Mother repo's shared
-`docs/global/general`, and a merged `index.yaml` unioned from every publisher's
-global index. Each published domain resolves to its owning publisher's source
-as a live view (no copy, no aggregation), and a domain has exactly one owning
-publisher. The single filesystem root `~/.teleclaude/docs` is preserved so the
-three readers that resolve global docs — the SessionStart hook, `telec docs`,
-and the index build — read one root unchanged.
+`~/.teleclaude/docs/` as a **per-file merge of every publisher's
+`docs/global`**. The root is a real directory rebuilt each sync: for every
+contributing publisher and every snippet file under a domain it declares in
+`business.publishes` (plus the cross-cutting `general/`), the file is linked in
+per file (`~/.teleclaude/docs/<rel>` → the publisher's source file). A domain
+directory therefore merges files from multiple publishers — there is no domain
+ownership; the only cross-publisher constraint is snippet-id uniqueness. Each
+file is a live view of its source (no copy). Build-time manifests
+(`index.yaml`, `baseline*.md`) are not linked; the deploy writes its own build
+outputs as real files: a merged `index.yaml` (the union of every publisher's
+global index, deduped by id) and one `domain-baseline-bundle.md` per published
+domain. The root is rebuilt from the desired set each sync, so a removed or
+renamed snippet leaves no orphan link. The single filesystem root
+`~/.teleclaude/docs` is preserved so the three readers that resolve global docs —
+the SessionStart hook, `telec docs`, and the index build — read one root
+unchanged.
 
-For each source `docs/global/<domain>/baseline.md` the deploy inflates the
-domain baseline and writes it as a generated, gitignored file beside its
-manifest at `docs/global/<domain>/domain-baseline.md`, visible through the
-per-domain symlink at `~/.teleclaude/docs/<domain>/domain-baseline.md`. These
-generated baselines are excluded from snippet iteration and validation, so they
-are never treated as authored snippets. The SessionStart hook reads that file to
-inject the domain's process-enforcement baseline. Global third-party docs are
-read from the mother repo source (`docs/third-party/`), not from under the docs
-tree.
+For each published domain the deploy inflates the union of every contributing
+publisher's `baseline.md` (and `baseline-progressive.md`) once, deduped, and
+writes the result as a real `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`.
+The SessionStart hook reads that bundle to inject the domain's
+process-enforcement baseline. Global third-party docs are read from the mother
+repo source (`docs/third-party/`), not from under the docs tree.
 
 When the distribution step is invoked directly in no-deploy mode, agent
 artifacts are emitted to `project_root/dist/global` and
@@ -70,7 +73,7 @@ Scenario: UC-ARD1 Mother project full sync with deploy
   And local sources from .agents/ deploy to the project root
   And Codex commands deploy to ~/.teleclaude/commands/
   And AGENTS.override.md is written to the project root for Codex override detection
-  And docs/global/ is exposed as a composed per-domain multi-root tree at ~/.teleclaude/docs/
+  And docs/global/ is composed per file into the merged ~/.teleclaude/docs/ root
 ```
 
 ```
@@ -81,7 +84,7 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   Then the global phase produces no agent-home artifact writes
   And the local phase deploys .agents/ to the project root
   And Codex commands still route to ~/.teleclaude/commands/
-  And the project's docs/global/<domain> for each domain it publishes is composed into ~/.teleclaude/docs/
+  And the project's docs/global/<domain> files for each domain it publishes are merged into ~/.teleclaude/docs/
 ```
 
 ```
@@ -89,21 +92,21 @@ Scenario: UC-ARD3 Sync from a worktree uses worktree docs
   Given sync runs from a git worktree of the Mother project
   When the canonical-root resolver identifies the canonical root
   Then the docs source is the current worktree checkout
-  And the Mother-owned domains deployed reflect the worktree's branch through their per-domain links, not main
+  And the Mother repo's contributed domain files deployed reflect the worktree's branch, not main
 ```
 
 ```
-Scenario: UC-ARD4 Sync composes the per-domain multi-root docs tree
-  Given two publishers, each declaring the domains it owns
-  And each publisher source domain docs/global/<domain>/ has a baseline.md
+Scenario: UC-ARD4 Sync composes the per-file multi-publisher docs tree
+  Given two publishers, each declaring in business.publishes the domains it contributes
+  And both publishers contribute distinct snippet files to the same domain
   When the documentation deployment step runs
   Then any stale real or symlinked ~/.teleclaude/docs from an older deploy is replaced
-  And ~/.teleclaude/docs is a real directory containing one symlink per published domain to its owning publisher's docs/global/<domain>
+  And ~/.teleclaude/docs is a real directory whose snippet files are symlinks to their publisher sources
+  And the shared domain directory contains the merged files from both publishers, each resolving to its own source
   And ~/.teleclaude/docs/general resolves to the Mother repo's docs/global/general
   And ~/.teleclaude/docs/index.yaml is the union of every publisher's global index
-  And the inflated domain baseline is written to each owning publisher's docs/global/<domain>/domain-baseline.md
-  And that generated baseline is gitignored and excluded from snippet iteration and validation
-  And a subfolder added to a source domain afterward resolves through its per-domain link without a re-deploy
+  And each published domain has a regenerated ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md unioning every contributor's baseline manifest
+  And a snippet removed from a source domain leaves no orphan link after the next deploy
 ```
 
 ```
@@ -118,19 +121,27 @@ Scenario: UC-ARD5 Distribution invoked directly in no-deploy mode
 ```
 
 ```
-Scenario: UC-ARD6 SessionStart injects the generated domain baseline
-  Given a session whose command resolves to a domain with a generated baseline
+Scenario: UC-ARD6 SessionStart injects the generated domain bundle
+  Given a session whose command resolves to a domain with a generated bundle
   When the SessionStart hook builds additional context
-  Then it reads ~/.teleclaude/docs/<domain>/domain-baseline.md
+  Then it reads ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
   And injects the inflated domain process-enforcement baseline before the first user message
 ```
 
 ```
-Scenario: UC-ARD7 SessionStart surfaces a missing domain baseline
-  Given a session whose command resolves to a domain whose generated baseline is absent
+Scenario: UC-ARD7 SessionStart surfaces a missing domain bundle
+  Given a session whose command resolves to a domain whose generated bundle is absent
   When the SessionStart hook builds additional context
-  Then it surfaces a visible warning naming the missing ~/.teleclaude/docs/<domain>/domain-baseline.md
+  Then it surfaces a visible warning naming the missing ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
   And the mandatory baseline is never silently dropped
+```
+
+```
+Scenario: UC-ARD8 Duplicate snippet id across publishers blocks the deploy
+  Given two publishers whose global indexes declare the same snippet id
+  When the documentation deployment step merges their indexes
+  Then the deploy aborts with a sync-blocking error naming the colliding id and both publishers
+  And no merged index is written
 ```
 
 ### Cross-context references
@@ -139,7 +150,7 @@ Scenario: UC-ARD7 SessionStart surfaces a missing domain baseline
   runtime. The deployed directories are the publish/consume boundary
   between Context (publisher) and agent_runtime (consumer).
 - **config** — supplies the project root, the Mother project resolution used
-  by the agent-artifact publishing gate, and each project's published-domain
+  by the agent-artifact publishing gate, and each project's `business.publishes`
   declarations used to compose the docs tree.
 
 ## Known caveats
@@ -148,15 +159,17 @@ Scenario: UC-ARD7 SessionStart surfaces a missing domain baseline
   `~/.codex/commands/`) is deliberate cross-project sharing. It
   surprises operators who expect symmetry with `~/.claude/` and
   `~/.gemini/`. The decision is intentional, not a bug.
-- Documentation links are read-only by convention. Each per-domain symlink
-  resolves onto its owning publisher's live source tree, so a stray edit
+- Documentation links are read-only by convention. Each per-file symlink
+  resolves onto its contributing publisher's live source file, so a stray edit
   through it mutates source; agents treat deployed docs as read-only.
 - Worktree-aware docs sourcing prevents the easy bug of "synced from a
   worktree but deployed main-branch docs". A worktree whose `docs/` is
   missing, however, falls back silently rather than erroring.
 - The distribution step is always fatal: a non-zero distribution exit propagates
-  and fails the sync (there is no suppress-on-warn mode). The docs watcher, which
-  must not block, catches that failure at its own subprocess boundary instead.
+  and fails the sync (there is no suppress-on-warn mode). A cross-publisher id
+  collision and a bundle-inflation failure both abort the deploy this way. The
+  docs watcher, which must not block, catches that failure at its own subprocess
+  boundary instead.
 - The deployed `index.yaml` is a merged union of every publisher's source
   `index.yaml`; each source index already carries `~/.teleclaude` paths, so the
   merge is a union of entries with no path rewrite. Consumers see identical

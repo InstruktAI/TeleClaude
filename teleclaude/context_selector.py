@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import AppConfig
-from teleclaude.constants import DOMAIN_SCOPES, HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
+from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.doc_body import (
     INLINE_REF_RE,
     apply_planned_change_sections,
@@ -21,6 +21,7 @@ from teleclaude.doc_body import (
     split_frontmatter,
 )
 from teleclaude.docs_index import extract_required_reads, get_project_slug
+from teleclaude.domains import valid_domains
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_SNIPPETS_DIR, REPO_ROOT
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
@@ -503,16 +504,15 @@ def _include_snippet_factory(
     projects: list[str] | None,
     current_project_slug: str,
     global_snippets_root: Path,
-    domain_config: dict[str, Path],
     project_domain_roots: dict[str, Path],
 ) -> Callable[[SnippetMeta], bool]:
     def _include(snippet: SnippetMeta) -> bool:
         if effective_human_role != HUMAN_ROLE_ADMIN and snippet.visibility != "public":
             return False
         if global_snippets_root in snippet.path.parents:
-            return snippet.snippet_id.startswith("general/") or any(
-                snippet.snippet_id.startswith(f"{domain}/") for domain in domain_config
-            )
+            # Every published domain is universally visible; there is no
+            # per-project subscriber gate. Depth is loaded on demand.
+            return True
         if snippet.scope != "project":
             return True
         is_cross_project = bool(snippet.source_project) and snippet.source_project.lower() != current_project_slug
@@ -571,7 +571,7 @@ def _build_phase1_output(
     parts = [
         "# PHASE 1: Snippet Index (IDs + descriptions)",
         "# Review the snippets below and select the IDs you need.",
-        f"# Filter with --areas <{'|'.join(TAXONOMY_TYPES)}> and/or --domains <{'|'.join(DOMAIN_SCOPES)}> (omit for all)",
+        f"# Filter with --areas <{'|'.join(TAXONOMY_TYPES)}> and/or --domains <{'|'.join(sorted(valid_domains()))}> (omit for all)",
         "",
     ]
     ordered = sorted(
@@ -798,7 +798,6 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         projects=projects,
         current_project_slug=current_project_slug,
         global_snippets_root=global_snippets_root,
-        domain_config=domain_config,
         project_domain_roots=project_domain_roots,
     )
     snippets = [snippet for snippet in snippets if include_snippet(snippet)]

@@ -33,8 +33,14 @@ class _IndexEntry(TypedDict, total=False):
 
 
 @pytest.mark.spec(_SPEC, "UC-3PR1")
-def test_phase1_appends_lifecycle_suffixes_for_pending_snippets(tmp_path: Path, snapshot: object) -> None:
+def test_phase1_appends_lifecycle_suffixes_for_pending_snippets(
+    tmp_path: Path, snapshot: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Phase-1 output appends lifecycle suffixes to pending snippets only."""
+    monkeypatch.setattr(
+        "teleclaude.context_selector.valid_domains",
+        lambda: {"software-development", "creative", "erp"},
+    )
     current = SnippetMeta(
         snippet_id="project/spec/feature/context/current-snippet",
         description="A current snippet with no pending state.",

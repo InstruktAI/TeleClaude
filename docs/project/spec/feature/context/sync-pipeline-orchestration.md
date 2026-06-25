@@ -120,11 +120,20 @@ Scenario: Delivery completes before sync
 
 ## Known caveats
 
+<!-- planned-change:domain-publication-awareness -->
+
 - Sync is idempotent at the source markdown layer: it may write generated,
-  gitignored artifacts that live in the source tree — derived `index.yaml`
-  indexes and the per-domain `docs/global/<domain>/domain-baseline.md` baselines
-  (excluded from snippet iteration and validation) — but it must not mutate
-  authored `docs/**/*.md` snippets.
+gitignored artifacts that live in the source tree — derived `index.yaml`
+indexes and the per-domain `docs/global/<domain>/domain-baseline.md` baselines
+(excluded from snippet iteration and validation) — but it must not mutate
+authored `docs/**/*.md` snippets.
+<!-- change:domain-publication-awareness -->
+- Sync is idempotent at the source markdown layer: it writes the derived,
+gitignored `index.yaml` indexes into the source tree and each published
+domain's `domain-baseline-bundle.md` into the deployed root
+`~/.teleclaude/docs/<domain>/` (not the source tree), but it must not mutate
+authored `docs/**/*.md` snippets.
+<!-- /planned-change:domain-publication-awareness -->
 - Provenance recording is best-effort: back-end availability is not required
   for sync to complete. When the back-end is unavailable, provenance rows are
   skipped and a warning is emitted. Drift between sync runs and the

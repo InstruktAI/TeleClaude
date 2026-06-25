@@ -19,7 +19,7 @@ from sqlmodel import select
 
 from teleclaude import paths as tc_paths
 from teleclaude.config.loader import load_company_config, load_global_config, load_project_config
-from teleclaude.constants import DOMAIN_SCOPES, UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
@@ -27,6 +27,7 @@ from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import JsonDict
+from teleclaude.domains import valid_domains
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
@@ -370,8 +371,8 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     domain-baseline content is injected BEFORE the agent processes the
     command's own Required reads.
 
-    Returns the domain only when it matches the configured allowlist
-    (``DOMAIN_SCOPES``). Anything else — unknown values, path-traversal
+    Returns the domain only when it is a valid published domain
+    (``valid_domains()``). Anything else — unknown values, path-traversal
     attempts, malformed metadata — is rejected.
     """
     try:
@@ -403,7 +404,7 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
         )
     if not isinstance(domain, str) or not domain:
         return None
-    if domain not in DOMAIN_SCOPES:
+    if domain not in valid_domains():
         logger.warning(EVENT_COMMAND_DOMAIN_NOT_ALLOWLISTED, session_id=session_id, domain=domain)
         return None
     return domain
@@ -416,22 +417,22 @@ class DomainBaselineUnavailable(RuntimeError):
 def _load_domain_baseline_content(domain: str) -> str:
     """Return the inflated content of the named domain baseline.
 
-    The deploy pipeline writes one fully-expanded baseline file per source
-    domain manifest at ``~/.teleclaude/docs/<domain>/domain-baseline.md`` (a
-    gitignored file generated beside the source manifest, visible through the
-    whole-tree docs symlink). This helper reads it for injection at SessionStart
-    so the agent — including runtimes that do not auto-follow ``@`` refs — has the
-    full domain process-enforcement baseline loaded before the first user message.
+    The deploy pipeline writes one merged, fully-expanded bundle per published
+    domain at ``~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`` (a real
+    file in the composed docs root, unioning every contributing publisher's
+    baseline manifest). This helper reads it for injection at SessionStart so the
+    agent — including runtimes that do not auto-follow ``@`` refs — has the full
+    domain process-enforcement baseline loaded before the first user message.
 
     The caller is expected to have validated ``domain`` against
-    ``DOMAIN_SCOPES``. As defence-in-depth, the resolved path is verified to
+    ``valid_domains()``. As defence-in-depth, the resolved path is verified to
     live under the canonical docs root before reading. Raises
     ``DomainBaselineUnavailable`` when the deployed baseline is missing,
     unreadable, or empty — the SessionStart hook surfaces this as a visible
     failure rather than silently dropping mandatory context.
     """
     docs_root = tc_paths.GLOBAL_SNIPPETS_DIR.resolve()
-    candidate = (docs_root / domain / "domain-baseline.md").resolve()
+    candidate = (docs_root / domain / "domain-baseline-bundle.md").resolve()
     if docs_root not in candidate.parents:
         raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")
     if not candidate.is_file():
@@ -489,7 +490,7 @@ def _print_additional_context(
                 )
                 domain_baseline = (
                     f"WARNING: mandatory '{domain}' domain baseline could not be loaded "
-                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/{domain}/domain-baseline.md`, "
+                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/{domain}/domain-baseline-bundle.md`, "
                     "then continue."
                 )
 
