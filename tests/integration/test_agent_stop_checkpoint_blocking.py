@@ -217,6 +217,10 @@ def _patch_claude_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeli
     monkeypatch.setattr(claude_extractor, "extract_effective_tool_calls", lambda *_args, **_kwargs: timeline)
 
 
+def _patch_codex_timeline(monkeypatch: pytest.MonkeyPatch, timeline: TurnTimeline) -> None:
+    monkeypatch.setattr(codex_extractor, "extract_effective_tool_calls", lambda *_args, **_kwargs: timeline)
+
+
 def _disable_commit_quality_gates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(code, "handle_format", lambda _paths: None)
     monkeypatch.setattr(code, "handle_lint", lambda _paths: None)
@@ -425,6 +429,56 @@ def test_claude_shell_mutation_path_surfaces_checkpoint(
         session_id=session_id,
         transcript_path=str(tmp_path / "transcript.jsonl"),
         agent_name=AgentName.CLAUDE,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert payload is not None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP1")
+def test_claude_compact_redirection_path_surfaces_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-claude-compact-redirection-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    timeline = _timeline_with_bash("printf '# shell mutation\\n' >teleclaude/core/tracked.py")
+    _patch_checkpoint_timeline(monkeypatch, timeline)
+    _patch_claude_timeline(monkeypatch, timeline)
+
+    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# shell mutation\n", encoding="utf-8")
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=str(tmp_path / "transcript.jsonl"),
+        agent_name=AgentName.CLAUDE,
+        project_path=str(repo_path),
+        turn_anchor_sha=None,
+    )
+
+    assert payload is not None
+
+
+@pytest.mark.functional
+@pytest.mark.spec(_SPEC, "UC-CP1")
+def test_codex_shell_mutation_path_surfaces_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "checkpoint-codex-shell-session"
+    repo_path = tmp_path / "repo"
+    _init_supported_repo(repo_path)
+    timeline = _timeline_with_bash("printf '# shell mutation\\n' >teleclaude/core/tracked.py")
+    _patch_checkpoint_timeline(monkeypatch, timeline)
+    _patch_codex_timeline(monkeypatch, timeline)
+
+    (repo_path / "teleclaude" / "core" / "tracked.py").write_text("# shell mutation\n", encoding="utf-8")
+    payload = get_checkpoint_content(
+        session_id=session_id,
+        transcript_path=str(tmp_path / "transcript.jsonl"),
+        agent_name=AgentName.CODEX,
         project_path=str(repo_path),
         turn_anchor_sha=None,
     )

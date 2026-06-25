@@ -1,7 +1,5 @@
 """Git diff analysis, file categorization, and shell parsing utilities."""
 
-import re
-import shlex
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -11,6 +9,12 @@ from teleclaude.checkpoint_model import triggered_action_ids
 from teleclaude.constants import CheckpointModel
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
+from teleclaude.shell_path_parser import command_likely_mutates_files as _shared_command_likely_mutates_files
+from teleclaude.shell_path_parser import extract_shell_command as _shared_extract_shell_command
+from teleclaude.shell_path_parser import extract_shell_touched_paths as _shared_extract_shell_touched_paths
+from teleclaude.shell_path_parser import looks_like_path_token as _shared_looks_like_path_token
+from teleclaude.shell_path_parser import segment_tokens as _shared_segment_tokens
+from teleclaude.shell_path_parser import split_shell_segments as _shared_split_shell_segments
 from teleclaude.utils.transcript import TurnTimeline
 
 logger = get_logger(__name__)
@@ -174,121 +178,32 @@ def _normalize_repo_path(path: str, project_path: str) -> str:
 
 def _command_likely_mutates_files(command: str) -> bool:
     """Best-effort shell command classifier for file-mutating intent."""
-    if not command:
-        return False
-    cmd = command.strip()
-    if not cmd:
-        return False
-
-    patterns = (
-        r"\bapply_patch\b",
-        r"\bgit\s+(add|mv|rm|restore|checkout|apply)\b",
-        r"\bsed\s+.*-i(?:\s|$)",
-        r"\bperl\s+-pi\b",
-        r"\btouch\b",
-        r"\bmkdir\b",
-        r"\bmv\b",
-        r"\bcp\b",
-        r"\brm\b",
-        r"\btee\b",
-    )
-    if any(re.search(pattern, cmd) for pattern in patterns):
-        return True
-
-    # Redirection is a loose mutation signal; used only as fallback.
-    if ">>" in cmd or " > " in cmd:
-        return True
-    return False
+    return _shared_command_likely_mutates_files(command)
 
 
 def _extract_shell_command(input_data: Mapping[str, object]) -> str:
     """Extract command text from tool input payloads across adapters."""
-    command = input_data.get("command")
-    if not isinstance(command, str) or not command.strip():
-        command = input_data.get("cmd")
-    if isinstance(command, str):
-        return command.strip()
-    return ""
+    return _shared_extract_shell_command(input_data)
 
 
 def _looks_like_path_token(token: str) -> bool:
     """Heuristic for shell tokens that are likely file paths."""
-    if not token:
-        return False
-    if token.startswith(("-", "$")):
-        return False
-    if token in {"|", ">", ">>", "2>", "1>", "&&", "||", ";"}:
-        return False
-    if token.startswith("s/") and token.count("/") >= 2:
-        # Common sed replacement expression; not a file path.
-        return False
-    if token.startswith("{") or token.startswith("["):
-        return False
-
-    if token.startswith(("./", "../", "/")):
-        return True
-    if "/" in token:
-        return True
-
-    suffixes = (
-        ".py",
-        ".md",
-        ".txt",
-        ".rst",
-        ".toml",
-        ".yaml",
-        ".yml",
-        ".json",
-        ".sh",
-        ".sql",
-        ".ini",
-        ".cfg",
-        ".lock",
-        ".ts",
-        ".tsx",
-        ".js",
-        ".jsx",
-        ".css",
-    )
-    return token.endswith(suffixes)
+    return _shared_looks_like_path_token(token)
 
 
 def _split_shell_segments(command: str) -> list[str]:
     """Split a shell command into sequential segments (`&&`, `||`, `;`, newline)."""
-    if not command:
-        return []
-    parts = re.split(r"(?:&&|\|\||;|\n)", command)
-    return [part.strip() for part in parts if part.strip()]
+    return _shared_split_shell_segments(command)
 
 
 def _segment_tokens(segment: str) -> list[str]:
     """Best-effort tokenization for a command segment."""
-    if not segment:
-        return []
-    try:
-        return shlex.split(segment)
-    except ValueError:
-        return segment.split()
+    return _shared_segment_tokens(segment)
 
 
 def _extract_shell_touched_paths(command: str, project_path: str) -> set[str]:
     """Best-effort extraction of mutated file paths from shell commands."""
-    touched: set[str] = set()
-    if not command:
-        return touched
-
-    for segment in _split_shell_segments(command):
-        for token in _segment_tokens(segment):
-            clean = token.strip().strip("\"'`").strip(",;:")
-            if not _looks_like_path_token(clean):
-                continue
-            if ":" in clean and not clean.startswith(("./", "../", "/")):
-                # Likely git rev/path syntax or host:port-like token.
-                continue
-            normalized = _normalize_repo_path(clean, project_path)
-            if normalized:
-                touched.add(normalized)
-    return touched
+    return _shared_extract_shell_touched_paths(command, lambda path: _normalize_repo_path(path, project_path))
 
 
 def _extract_apply_patch_paths(patch_text: str, project_path: str) -> set[str]:
