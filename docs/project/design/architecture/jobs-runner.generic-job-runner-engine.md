@@ -87,9 +87,12 @@ The `script` field is the discriminator. Its presence determines the execution m
 | Agent jobs  | session at dispatch    | Full agent session with tools + MCP; opens a run, closes on reported outcome            |
 
 **Script jobs** (`script` present) — The runner resolves the configured module, imports
-it, reads its module-level `JOB` instance, and calls `JOB.run()` in-process, guarded by a
-thread-based timeout that honors the job's `timeout`. The returned `JobResult` closes the
-run in the same tick. No subprocess is spawned and no stdout is parsed.
+it, reads its module-level `JOB` instance, and calls `JOB.run()` in-process on a daemon
+worker thread joined with the job's `timeout`. The returned `JobResult` closes the run in
+the same tick. On timeout the runner records a failed `JobResult` and releases the tick; the
+daemon thread cannot keep the process alive, so a hung job is hard-reaped when the runner
+process exits at end of pass, releasing the pidlock for the next trigger. No subprocess is
+spawned and no stdout is parsed.
 
 **Agent jobs** (`script` absent, `job` required) — The runner opens a run and creates an
 agent session (fire-and-forget) tagged with the job name. The agent reads its spec doc
@@ -108,9 +111,11 @@ Outcomes ride the platform's existing event substrate. The runner emits a `job.r
 event on close or stall through `EventProducer`; the notification cartridge projects an
 actionable event (failure or stall) to admins and stays silent for a clean run. The agent
 never emits events — it reports only through `telec jobs report`, and the runner owns the
-translation to events. When event emission cannot be delivered, the run is held as
-closed-but-unnotified and re-attempted on a later sweep so an actionable outcome is not
-silently dropped.
+translation to events. When event emission cannot be delivered, the runner persists a
+durable pending-emission record — the full payload keyed by `job_name` + `run_started_at` —
+and the next sweep drains the queue, re-emitting each outcome exactly once until it
+succeeds. A job with an unnotified actionable outcome is not re-dispatched, so a later run
+cannot overwrite a notification that has not yet been delivered.
 
 #### Components
 
@@ -201,8 +206,11 @@ config or last run time, flowing the same open/close lifecycle.
 
 ### Manual run (API)
 
-`POST /jobs/{name}/run` triggers a single job through the same generic lifecycle — it opens
-a run and lets the sweep close it; it does not report completion at dispatch.
+`POST /jobs/{name}/run` launches the standalone cron runner process
+(`scripts/cron_runner.py --job NAME --force`) so the job executes in the ephemeral runner
+process with the same timeout containment as a scheduled run. It opens a run and lets the
+sweep close it; it does not report completion at dispatch and does not run job logic inside
+the daemon.
 
 ### Script job contract
 
@@ -266,15 +274,19 @@ File: `~/.teleclaude/state/cron_state.json`
 - `last_status`: `"running"` | `"success"` | `"failed"` | `"stalled"` | `"never"`.
 - `last_error`: error or stall message, or null.
 
+A separate `pending_emissions` collection holds undelivered actionable outcomes, each keyed
+by `job_name` + `run_started_at` and carrying its full event payload, so a notification
+survives a transport outage independent of later run state.
+
 ## Failure modes
 
 - **Missing `teleclaude.yml`**: Engine logs a warning, no jobs run.
 - **Job has no config entry**: Silently skipped (logged at debug level).
 - **Job module fails to import**: Logged as error, run closed as failed, other jobs still run.
 - **Script job raises during `run()`**: Caught, run closed as failed, other jobs still run.
-- **Script job exceeds `timeout`**: The thread-based guard returns a failed `JobResult`; the run closes as failed.
+- **Script job exceeds `timeout`**: The daemon-thread join returns a failed `JobResult` and the tick is released; the hung job is hard-reaped when the runner process exits, freeing the pidlock.
 - **Agent run never reported within its window**: Marked `stalled`, emits `job.run.stalled`, notifies a human.
-- **Event emission unavailable**: The run stays closed-but-unnotified and re-emits on a later sweep; an actionable outcome is never silently dropped.
+- **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
 - **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.
 - **Daemon unavailable during an agent job**: The agent spawns without MCP tools and still reports its outcome to the filesystem; the run closes normally.
 
