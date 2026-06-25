@@ -22,8 +22,8 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
+from teleclaude.checkpoint_model import load_checkpoint_model, triggered_action_ids  # noqa: E402
 from teleclaude.git import GitCommandError, Repo  # noqa: E402
-from teleclaude.hooks.checkpoint._git import _categorize_files  # noqa: E402
 
 
 def _diff_files(repo_path: str, ref_range: str) -> list[str]:
@@ -46,19 +46,23 @@ def main() -> None:
     if not files:
         return
 
-    categories = _categorize_files(files)
-    actions = [
-        cat.instruction for cat in sorted(categories, key=lambda c: c.precedence) if cat.instruction and cat.main_only
-    ]
+    model = load_checkpoint_model(repo_path)
+    owed = sorted(
+        (
+            model.actions[action_id]
+            for action_id in triggered_action_ids(files, model)
+            if action_id in model.actions and model.actions[action_id].main_only
+        ),
+        key=lambda action: (action.precedence, action.id),
+    )
 
-    if not actions:
+    if not owed:
         return
 
-    cat_names = [cat.name for cat in categories if cat.instruction and cat.main_only]
-    print(f"Changed: {', '.join(cat_names)}")
+    print(f"Changed: {', '.join(action.id for action in owed)}")
     print("Required actions:")
-    for i, action in enumerate(actions, 1):
-        print(f"  {i}. {action}")
+    for i, action in enumerate(owed, 1):
+        print(f"  {i}. {action.run.replace('{window}', '2m')}")
 
 
 if __name__ == "__main__":
