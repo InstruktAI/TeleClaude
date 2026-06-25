@@ -13,6 +13,9 @@ visibility: 'public'
    scenario it realizes — `<spec_id>` and a stable scenario id (`UC-<area><n>`). The human-authored
    Gherkin (`Given / When / Then`) is the contract; the test body only drives the real system to
    exercise that scenario. An agent binds an unbound scenario — it does not author the assertion.
+   **A test that binds no scenario and is not a smoke/wiring check (rule 5) must not exist — do not
+   write it, and delete it if it is already there. A missing bindable scenario is the reason there
+   is no test, never a licence to invent one.**
 2. **The scenario author and the test binder are distinct roles.** The Product Owner authors and
    freezes a scenario (human-driven, agent-assisted, at intake); a later build pass binds it. A test
    is never written by the same pass that authored its scenario — that is grading one's own work and
@@ -55,7 +58,9 @@ visibility: 'public'
    tested: a test of it would only restate the contract it declares (the literal-echo anti-pattern).
    Test feature behavior bound to a spec, never a declaration. If such a tool grows branchy
    decision-logic worth catching, that is a signal to simplify the tool or move the logic into a
-   tested unit — not to add a test to the tool.
+   tested unit — not to add a test to the tool. **This holds when the fix to a bug is itself such a
+   declaration (for example, declaring a required dependency): there is no reproduction test, because
+   a test would only restate the declaration.**
 
 ### Coverage and drift
 

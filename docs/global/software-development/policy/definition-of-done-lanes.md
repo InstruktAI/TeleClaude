@@ -467,10 +467,14 @@ When `kind == "bug"`, the `input` artifact is the bug report and the intent sour
 2. Root cause analysis is sound.
 3. Fix is minimal and targeted.
 4. Investigation and documentation sections are complete.
-5. A reproduction test exists — the bug was reproduced as a test before the fix.
-6. The reproduction test passes after the fix.
+5. A reproduction test exists — the bug was reproduced as a test before the fix — unless the fix is a
+   contract-defining artifact with no bindable scenario (see `software-development/policy/testing`,
+   "Contract-defining artifacts are not tested"), in which case there is correctly no test.
+6. The reproduction test passes after the fix (when item 5 requires one).
 
-Missing reproduction test for a bug fix is a **Critical** finding. All other review lanes still apply.
+Missing reproduction test for a bug fix is a **Critical** finding **only when a bindable scenario
+exists**. Demanding a test for a fix that is itself a declaration is the error, not the missing test.
+All other review lanes still apply.
 
 ## Rationale
 
