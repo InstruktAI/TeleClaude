@@ -43,8 +43,10 @@ each decision point until the queue is drained.
   concurrent agents, and only their author may resolve them. But this block is almost
   always **transient**: those agents commit their snippets within minutes and main
   goes green on its own. So do not idle and do not escalate on first contact — wait
-  and retry on a heartbeat (see **REPO ROOT SYNC REQUIRED** below). The state machine
-  emits this guidance when it observes the divergence.
+  and retry on a heartbeat (see **REPO ROOT SYNC REQUIRED** below). The one exception:
+  a trivial repo-hygiene/config file (`.gitignore` and the like) may be committed
+  as-is to unblock — a non-destructive move detailed under **REPO ROOT SYNC
+  REQUIRED**. The state machine emits this guidance when it observes the divergence.
 
 ## Steps
 
@@ -155,6 +157,20 @@ pull could not fast-forward). Two cases:
   3. Escalate to the human only after the block persists ~15–20 min (≈5 beats) of
      continuous dirtiness — past that window it is no longer transient WIP but a
      stuck or abandoned change that needs a human.
+
+  **Trivial repo-hygiene files are a sanctioned exception to the wait.** When the
+  only dirty paths are repo-hygiene or config files — `.gitignore`, `.gitattributes`,
+  editor/tooling config, and the like — whose diff is small and self-evidently benign
+  on inspection, commit them as-is to unblock the sync rather than waiting out the
+  window. Committing-as-is is **non-destructive**: it preserves the change exactly,
+  which is what makes it safe — unlike stash, overwrite, discard, or rebase-across,
+  which relocate or destroy a worker's change and stay forbidden for every dirty path.
+  Inspect the diff first, then land it with a pathspec-scoped
+  `telec code commit --approved --include <path>` under an honest message, and rebase.
+  The exception is narrow on purpose: source, tests, docs-with-content, lockfiles, and
+  delivery-tied generated artifacts are a worker's substantive deliverable — never
+  commit those, and when you cannot tell which kind a dirty file is, treat it as a
+  worker's and stay in the heartbeat-retry flow above.
 
   While waiting you are not idle: you hold the lease and the in-flight candidate is
   already committed, ready to push the instant main clears.
