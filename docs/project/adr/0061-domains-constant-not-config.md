@@ -38,9 +38,16 @@ Domain **validity** is a single platform-owned closed vocabulary, and
   constant, never a publish union.
 - **Publication is convention, not declaration.** Distribution composes each
   registered root's existing `docs/global/<domain>/` folders, validating each
-  folder name against the constant. Folder presence IS publication; multi-publisher
-  contribution to the same domain merges as before, with snippet-id uniqueness the
-  only cross-publisher guard.
+  folder name against the constant — a top-level folder whose name is not a valid
+  domain (and is not `general`) fails `telec sync` rather than being silently
+  skipped. Folder presence IS publication; multi-publisher contribution to the
+  same domain merges as before, with snippet-id uniqueness the only cross-publisher
+  guard.
+- **No project owns a domain.** The platform owns only the `Domain` vocabulary;
+  domains have no owning publisher. A root contributes to a domain solely by
+  having its `docs/global/<domain>/` folder, and the same domain may be populated
+  from several roots at once. Where a domain's snippets physically live is an
+  artifact of which repo holds the folder, never an ownership claim.
 - **The `business` config surface is removed entirely.** `business.domains`,
   `business.publishes`, and the `BusinessConfig` value object that held them are
   deleted from the schema — no empty shell is kept. `ProjectConfig` is
