@@ -215,6 +215,9 @@ a **non-sticky** session sets/swaps the preview.
 - `a` on project/computer: batch toggle sticky for that scope.
 - `R` on session: restart session.
 - `k` on session (after confirm): kill session.
+<!-- planned:cmd-shift-click-session-close -->
+- Cmd+Shift-click on a session row: close the clicked session immediately, without confirmation, preview, focus, sticky mutation, slug jump, or chip-filter mutation.
+<!-- /planned:cmd-shift-click-session-close -->
 - `←`/`→` on a session: collapse/expand that row; on a project or computer header: collapse/expand that node's whole subtree.
 - `=`/`-`: expand/collapse every session row (leaf fold).
 - `+`/`_` (shift): expand/collapse every computer and project (structural fold); session rows are untouched.
