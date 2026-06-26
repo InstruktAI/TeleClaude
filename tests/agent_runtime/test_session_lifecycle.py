@@ -370,6 +370,12 @@ async def _install_agent_then_message_route_harness(
     pane_outputs = [pane_output] if isinstance(pane_output, str) else list(pane_output)
 
     async def _capture_pane(_tmux_session_name: str | None) -> str:
+        if len(pane_outputs) == 3:
+            if paste_recorder.await_count == 0:
+                return pane_outputs[0]
+            if enter_recorder.await_count == 0:
+                return pane_outputs[1]
+            return pane_outputs[2]
         if len(pane_outputs) == 2:
             return pane_outputs[0] if paste_recorder.await_count == 0 else pane_outputs[1]
         if len(pane_outputs) > 1:
@@ -538,6 +544,38 @@ async def test_agent_then_message_create_retries_enter_without_repaste_when_turn
     assert harness.polled == []
     assert harness.launch_results
     assert harness.launch_results[0]["status"] != "success"
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_accepts_codex_consumed_input_without_submit_hook(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "startup prompt that Codex consumes before the submit hook is observed"
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=[
+            f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+            f"{prompt_marker} {message}\n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+            "✦ Thinking\n",
+        ],
+        emit_turn_on_enter=False,
+    )
+
+    data = await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
+
+    session_id = data["session_id"]
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 1
+    assert capture_recorder.await_count >= 3
+    assert harness.polled == [(session_id, data["tmux_session_name"])]
 
 
 @pytest.mark.spec(_SPEC, "UC-SL26")

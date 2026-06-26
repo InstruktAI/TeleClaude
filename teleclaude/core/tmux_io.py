@@ -12,9 +12,8 @@ from teleclaude.core.agent_prompt_state import (
     PromptDeliveryObservation,
     PromptDeliveryState,
     classify_prompt_delivery,
-    is_codex_collapsed_paste_marker,
 )
-from teleclaude.core.agents import get_agent_command
+from teleclaude.core.agents import AgentName, get_agent_command, resolve_parser_agent
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import AgentActivityEvent, AgentHookEvents, TeleClaudeEvents
@@ -150,9 +149,9 @@ async def inject_user_turn(
 ) -> bool:
     """Inject a user-turn message and confirm the agent actually started a turn.
 
-    Paste is attempted once. Submit is retried with Enter only while the pane
-    shows ``text`` in the live prompt input. The routine never clears the prompt
-    and never re-pastes after a successful paste operation.
+    Paste is attempted once. Submit is retried with Enter only after the pane
+    shows a live prompt input change. The routine never clears the prompt and
+    never re-pastes after a successful paste operation.
 
     Returns True when a turn start is confirmed, False when the retry cap is
     exhausted with no started turn (the caller fails loudly — no silent drop).
@@ -175,10 +174,6 @@ async def inject_user_turn(
             session,
             text,
             active_agent=active_agent,
-            accept_codex_collapsed_paste=False,
-        )
-        stale_collapsed_live_input = (
-            before_paste.live_input if is_codex_collapsed_paste_marker(before_paste.live_input) else None
         )
         pasted = await tmux_bridge.paste_text_existing_tmux(
             session_name=tmux_name,
@@ -195,7 +190,7 @@ async def inject_user_turn(
             active_agent=active_agent,
             turn_started=turn_started,
             timeout_s=INJECT_PASTE_VISIBLE_TIMEOUT_S,
-            stale_collapsed_live_input=stale_collapsed_live_input,
+            pre_paste_live_input=before_paste.live_input,
         )
         if turn_started.done():
             logger.info("inject_user_turn: turn started during paste observation session=%s", session.session_id)
@@ -204,6 +199,7 @@ async def inject_user_turn(
             return await _confirm_observed_submission(
                 session,
                 turn_started=turn_started,
+                active_agent=active_agent,
                 source="paste_observation",
                 attempt=1,
                 attempt_total=1,
@@ -232,10 +228,20 @@ async def _confirm_observed_submission(
     session: Session,
     *,
     turn_started: asyncio.Future[None],
+    active_agent: str | None,
     source: str,
     attempt: int,
     attempt_total: int,
 ) -> bool:
+    if resolve_parser_agent(active_agent) is AgentName.CODEX:
+        logger.info(
+            "inject_user_turn: Codex turn accepted from rendered submission state session=%s source=%s attempt=%d/%d",
+            session.session_id,
+            source,
+            attempt,
+            attempt_total,
+        )
+        return True
     if await _wait_for_turn_started(turn_started, INJECT_TURN_START_TIMEOUT_S):
         logger.info(
             "inject_user_turn: turn confirmed after pane submission observation session=%s source=%s attempt=%d/%d",
@@ -262,30 +268,34 @@ async def _wait_for_prompt_delivery_observation(
     active_agent: str | None,
     turn_started: asyncio.Future[None],
     timeout_s: float,
-    stale_collapsed_live_input: str | None,
+    pre_paste_live_input: str,
 ) -> PromptDeliveryObservation:
     deadline = asyncio.get_running_loop().time() + timeout_s
     observation = await _observe_prompt_delivery(
         session,
         text,
         active_agent=active_agent,
-        accept_codex_collapsed_paste=True,
     )
-    ignored_collapsed = _is_stale_collapsed_observation(observation, stale_collapsed_live_input)
-    while (observation.state == PromptDeliveryState.ABSENT or ignored_collapsed) and not turn_started.done():
+    observation = _accept_new_codex_live_input_after_paste(
+        observation,
+        active_agent=active_agent,
+        pre_paste_live_input=pre_paste_live_input,
+    )
+    while observation.state == PromptDeliveryState.ABSENT and not turn_started.done():
         remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
-            if ignored_collapsed:
-                return PromptDeliveryObservation(PromptDeliveryState.ABSENT, observation.live_input)
             return observation
         await asyncio.sleep(min(INJECT_PROMPT_OBSERVE_INTERVAL_S, remaining))
         observation = await _observe_prompt_delivery(
             session,
             text,
             active_agent=active_agent,
-            accept_codex_collapsed_paste=True,
         )
-        ignored_collapsed = _is_stale_collapsed_observation(observation, stale_collapsed_live_input)
+        observation = _accept_new_codex_live_input_after_paste(
+            observation,
+            active_agent=active_agent,
+            pre_paste_live_input=pre_paste_live_input,
+        )
     return observation
 
 
@@ -294,26 +304,44 @@ async def _observe_prompt_delivery(
     text: str,
     *,
     active_agent: str | None,
-    accept_codex_collapsed_paste: bool,
 ) -> PromptDeliveryObservation:
     output = await tmux_bridge.capture_pane(session.tmux_session_name)
-    return classify_prompt_delivery(
-        output,
-        text,
-        active_agent,
-        accept_codex_collapsed_paste=accept_codex_collapsed_paste,
-    )
+    return classify_prompt_delivery(output, text, active_agent)
 
 
-def _is_stale_collapsed_observation(
+def _accept_new_codex_live_input_after_paste(
     observation: PromptDeliveryObservation,
-    stale_collapsed_live_input: str | None,
-) -> bool:
-    return (
-        stale_collapsed_live_input is not None
-        and observation.live_input == stale_collapsed_live_input
-        and is_codex_collapsed_paste_marker(observation.live_input)
+    *,
+    active_agent: str | None,
+    pre_paste_live_input: str,
+) -> PromptDeliveryObservation:
+    if resolve_parser_agent(active_agent) is not AgentName.CODEX:
+        return observation
+    if observation.state != PromptDeliveryState.ABSENT:
+        return observation
+    live_input = observation.live_input.strip()
+    if not live_input or live_input == pre_paste_live_input.strip():
+        return observation
+    logger.debug(
+        "inject_user_turn: accepting new Codex live input after paste without exact target reconstruction live_input=%r",
+        live_input[:80],
     )
+    return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input)
+
+
+def _accept_current_codex_live_input(
+    observation: PromptDeliveryObservation,
+    *,
+    active_agent: str | None,
+) -> PromptDeliveryObservation:
+    if resolve_parser_agent(active_agent) is not AgentName.CODEX:
+        return observation
+    if observation.state != PromptDeliveryState.ABSENT:
+        return observation
+    live_input = observation.live_input.strip()
+    if not live_input:
+        return observation
+    return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input)
 
 
 async def _submit_observed_user_turn(
@@ -330,6 +358,7 @@ async def _submit_observed_user_turn(
             return await _confirm_observed_submission(
                 session,
                 turn_started=turn_started,
+                active_agent=active_agent,
                 source="submit_observation",
                 attempt=submit_attempt,
                 attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),
@@ -359,17 +388,26 @@ async def _submit_observed_user_turn(
             session,
             text,
             active_agent=active_agent,
-            accept_codex_collapsed_paste=True,
         )
+        observation = _accept_current_codex_live_input(observation, active_agent=active_agent)
         if observation.state == PromptDeliveryState.SUBMITTED:
             return await _confirm_observed_submission(
                 session,
                 turn_started=turn_started,
+                active_agent=active_agent,
                 source="submit_observation",
                 attempt=submit_attempt,
                 attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),
             )
         if observation.state == PromptDeliveryState.ABSENT:
+            if _codex_live_input_was_consumed(observation, active_agent=active_agent):
+                logger.info(
+                    "inject_user_turn: Codex turn accepted after live input was consumed session=%s submit_attempt=%d/%d",
+                    session.session_id,
+                    submit_attempt,
+                    len(INJECT_SUBMIT_RETRY_DELAYS_S),
+                )
+                return True
             if await _wait_for_turn_started(turn_started, INJECT_TURN_START_TIMEOUT_S):
                 return True
             logger.warning(
@@ -388,6 +426,18 @@ async def _submit_observed_user_turn(
         )
 
     return False
+
+
+def _codex_live_input_was_consumed(
+    observation: PromptDeliveryObservation,
+    *,
+    active_agent: str | None,
+) -> bool:
+    return (
+        resolve_parser_agent(active_agent) is AgentName.CODEX
+        and observation.state == PromptDeliveryState.ABSENT
+        and not observation.live_input.strip()
+    )
 
 
 async def _wait_for_turn_started(turn_started: asyncio.Future[None], timeout_s: float) -> bool:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -28,15 +27,12 @@ class PromptDeliveryObservation:
 
 
 _CLAUDE_PASTED_TEXT_PREFIX = "[Pasted text "
-_CODEX_COLLAPSED_PASTE_RE = re.compile(r"^\[(?:Pasted Content|Pasted text)[^\]]*\]$")
 
 
 def classify_prompt_delivery(
     output: str,
     text: str,
     active_agent: str | None,
-    *,
-    accept_codex_collapsed_paste: bool = False,
 ) -> PromptDeliveryObservation:
     """Classify whether ``text`` is absent, stuck in live input, or submitted."""
     target = _normalize_text(text).strip()
@@ -46,11 +42,8 @@ def classify_prompt_delivery(
     agent = resolve_parser_agent(active_agent)
     if agent is AgentName.CODEX:
         live_input, has_submit_boundary = extract_prompt_block(output)
-        normalized_live = _normalize_text(live_input).strip()
+        normalized_live = _strip_codex_prompt_chrome(_normalize_text(live_input).strip())
         if _codex_prompt_matches_target(normalized_live, target):
-            state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
-            return PromptDeliveryObservation(state, normalized_live)
-        if accept_codex_collapsed_paste and is_codex_collapsed_paste_marker(normalized_live):
             state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
             return PromptDeliveryObservation(state, normalized_live)
         return PromptDeliveryObservation(PromptDeliveryState.ABSENT, normalized_live)
@@ -82,10 +75,6 @@ def _contains_target(haystack: str, target: str) -> bool:
 
 def _codex_prompt_matches_target(haystack: str, target: str) -> bool:
     return _fold_prompt_whitespace(_strip_codex_prompt_chrome(haystack)) == _fold_prompt_whitespace(target)
-
-
-def is_codex_collapsed_paste_marker(text: str) -> bool:
-    return bool(_CODEX_COLLAPSED_PASTE_RE.fullmatch(_fold_prompt_whitespace(_strip_codex_prompt_chrome(text))))
 
 
 def _fold_prompt_whitespace(text: str) -> str:

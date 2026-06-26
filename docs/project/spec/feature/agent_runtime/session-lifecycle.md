@@ -85,10 +85,11 @@ Then the launch kind is upgraded to `agent_then_message`
 And the launch intent is built with agent, thinking mode, and message
 And the message is persisted on the launch intent
 And once the agent CLI is ready, the bootstrap task submits the message through confirmed user-turn delivery
-And confirmed user-turn delivery waits until the pasted message is observable in the live prompt input before sending Enter
-And an agent-rendered collapsed paste marker in the current live prompt input satisfies that live-input check only when it appears after the single paste attempt
+And confirmed user-turn delivery waits until the live prompt input changes from its pre-paste state to a non-empty value before sending Enter
+And Codex delivery treats the post-paste live input box as the confirmation boundary rather than reconstructing exact rendered prompt text
 And confirmed user-turn delivery attempts the paste once; if the pasted message is not confirmed in the live prompt input, the launch result is an error rather than a re-paste
 And when the agent emits `user_prompt_submit`, the launch result is success and output polling starts
+And for Codex, a rendered submitted state or a consumed live input after Enter also makes the launch result success and starts output polling
 And the initiator extraction records the caller's session id so the spawned child can notify the initiator on stop (one-shot listener)
 ```
 
@@ -109,7 +110,7 @@ Given the caller passes a message in the create request
 And the pane output contains that message only in historical scrollback
 When confirmed user-turn delivery observes the pane
 Then the historical copy does not satisfy the live prompt input check
-And a carryover collapsed paste marker that was already present before the paste attempt does not satisfy the live prompt input check
+And an unchanged pre-existing live prompt input does not satisfy the live prompt input check
 And Enter is not sent from that observation
 And the launch result is an error rather than a silent success
 ```
