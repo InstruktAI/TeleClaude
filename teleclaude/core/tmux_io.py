@@ -13,7 +13,7 @@ from teleclaude.core.agent_prompt_state import (
     PromptDeliveryState,
     classify_prompt_delivery,
 )
-from teleclaude.core.agents import AgentName, get_agent_command, resolve_parser_agent
+from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import AgentActivityEvent, AgentHookEvents, TeleClaudeEvents
@@ -25,11 +25,11 @@ from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
 
-# Confirmed user-turn delivery. A single blind paste+submit can lose ordering
-# under tmux congestion: the discrete Enter may be swallowed while the target
-# text stays in the live input. Paste is single-shot because repeating it
-# corrupts the editor buffer; recovery retries only Enter and only while the
-# target still appears in that live input.
+# Prompt-state user-turn delivery. A single blind paste+submit can lose ordering
+# under tmux congestion: the discrete Enter may be swallowed while the pasted
+# input stays live. Paste is single-shot because repeating it corrupts the
+# editor buffer; recovery retries only Enter and only while effective input
+# remains in that live prompt.
 INJECT_TURN_START_TIMEOUT_S = 8.0
 INJECT_PASTE_VISIBLE_TIMEOUT_S = 8.0
 INJECT_PROMPT_OBSERVE_INTERVAL_S = 0.1
@@ -147,14 +147,15 @@ async def inject_user_turn(
     *,
     active_agent: str | None = None,
 ) -> bool:
-    """Inject a user-turn message and confirm the agent actually started a turn.
+    """Inject a user-turn message and confirm the prompt accepted submission.
 
     Paste is attempted once. Submit is retried with Enter only after the pane
     shows a live prompt input change. The routine never clears the prompt and
     never re-pastes after a successful paste operation.
 
-    Returns True when a turn start is confirmed, False when the retry cap is
-    exhausted with no started turn (the caller fails loudly — no silent drop).
+    Returns True when the live prompt no longer holds the pasted input or an
+    agent activity hook arrives first, False when the retry cap is exhausted
+    with the input still stuck (the caller fails loudly — no silent drop).
     """
     tmux_name = session.tmux_session_name or ""
     loop = asyncio.get_running_loop()
@@ -196,15 +197,12 @@ async def inject_user_turn(
             logger.info("inject_user_turn: turn started during paste observation session=%s", session.session_id)
             return True
         if observation.state == PromptDeliveryState.SUBMITTED:
-            return await _confirm_observed_submission(
-                session,
-                turn_started=turn_started,
-                active_agent=active_agent,
-                accept_rendered_codex_submission=False,
-                source="paste_observation",
-                attempt=1,
-                attempt_total=1,
+            logger.warning(
+                "inject_user_turn: pane showed submitted state before enter session=%s live_input=%r",
+                session.session_id,
+                observation.live_input[:80],
             )
+            return False
         if observation.state == PromptDeliveryState.IN_INPUT:
             return await _submit_observed_user_turn(
                 session,
@@ -225,44 +223,6 @@ async def inject_user_turn(
         event_bus.unsubscribe(TeleClaudeEvents.AGENT_ACTIVITY, handler)
 
 
-async def _confirm_observed_submission(
-    session: Session,
-    *,
-    turn_started: asyncio.Future[None],
-    active_agent: str | None,
-    accept_rendered_codex_submission: bool,
-    source: str,
-    attempt: int,
-    attempt_total: int,
-) -> bool:
-    if accept_rendered_codex_submission and resolve_parser_agent(active_agent) is AgentName.CODEX:
-        logger.info(
-            "inject_user_turn: Codex turn accepted from rendered submission state session=%s source=%s attempt=%d/%d",
-            session.session_id,
-            source,
-            attempt,
-            attempt_total,
-        )
-        return True
-    if await _wait_for_turn_started(turn_started, INJECT_TURN_START_TIMEOUT_S):
-        logger.info(
-            "inject_user_turn: turn confirmed after pane submission observation session=%s source=%s attempt=%d/%d",
-            session.session_id,
-            source,
-            attempt,
-            attempt_total,
-        )
-        return True
-    logger.warning(
-        "inject_user_turn: pane showed submitted state without turn-start confirmation session=%s source=%s attempt=%d/%d",
-        session.session_id,
-        source,
-        attempt,
-        attempt_total,
-    )
-    return False
-
-
 async def _wait_for_prompt_delivery_observation(
     session: Session,
     text: str,
@@ -278,9 +238,8 @@ async def _wait_for_prompt_delivery_observation(
         text,
         active_agent=active_agent,
     )
-    observation = _accept_new_codex_live_input_after_paste(
+    observation = _accept_new_live_input_after_paste(
         observation,
-        active_agent=active_agent,
         pre_paste_live_input=pre_paste_live_input,
     )
     while observation.state == PromptDeliveryState.ABSENT and not turn_started.done():
@@ -293,9 +252,8 @@ async def _wait_for_prompt_delivery_observation(
             text,
             active_agent=active_agent,
         )
-        observation = _accept_new_codex_live_input_after_paste(
+        observation = _accept_new_live_input_after_paste(
             observation,
-            active_agent=active_agent,
             pre_paste_live_input=pre_paste_live_input,
         )
     return observation
@@ -311,33 +269,24 @@ async def _observe_prompt_delivery(
     return classify_prompt_delivery(output, text, active_agent)
 
 
-def _accept_new_codex_live_input_after_paste(
+def _accept_new_live_input_after_paste(
     observation: PromptDeliveryObservation,
     *,
-    active_agent: str | None,
     pre_paste_live_input: str,
 ) -> PromptDeliveryObservation:
-    if resolve_parser_agent(active_agent) is not AgentName.CODEX:
-        return observation
     if observation.state != PromptDeliveryState.ABSENT:
         return observation
     live_input = observation.live_input.strip()
     if not live_input or live_input == pre_paste_live_input.strip():
         return observation
     logger.debug(
-        "inject_user_turn: accepting new Codex live input after paste without exact target reconstruction live_input=%r",
+        "inject_user_turn: accepting changed live input after paste without exact target reconstruction live_input=%r",
         live_input[:80],
     )
     return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_input)
 
 
-def _accept_current_codex_live_input(
-    observation: PromptDeliveryObservation,
-    *,
-    active_agent: str | None,
-) -> PromptDeliveryObservation:
-    if resolve_parser_agent(active_agent) is not AgentName.CODEX:
-        return observation
+def _accept_current_live_input(observation: PromptDeliveryObservation) -> PromptDeliveryObservation:
     if observation.state != PromptDeliveryState.ABSENT:
         return observation
     live_input = observation.live_input.strip()
@@ -357,15 +306,13 @@ async def _submit_observed_user_turn(
     observation = initial_observation
     for submit_attempt, delay_s in enumerate(INJECT_SUBMIT_RETRY_DELAYS_S, start=1):
         if observation.state == PromptDeliveryState.SUBMITTED:
-            return await _confirm_observed_submission(
-                session,
-                turn_started=turn_started,
-                active_agent=active_agent,
-                accept_rendered_codex_submission=True,
-                source="submit_observation",
-                attempt=submit_attempt,
-                attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),
+            logger.info(
+                "inject_user_turn: prompt submitted session=%s submit_attempt=%d/%d",
+                session.session_id,
+                submit_attempt,
+                len(INJECT_SUBMIT_RETRY_DELAYS_S),
             )
+            return True
         if observation.state != PromptDeliveryState.IN_INPUT:
             return turn_started.done()
 
@@ -378,49 +325,29 @@ async def _submit_observed_user_turn(
                 len(INJECT_SUBMIT_RETRY_DELAYS_S),
             )
 
-        if await _wait_for_turn_started(turn_started, delay_s):
+        observation = await _wait_for_post_enter_prompt_state(
+            session,
+            text,
+            active_agent=active_agent,
+            turn_started=turn_started,
+            timeout_s=delay_s,
+        )
+        if observation.state == PromptDeliveryState.SUBMITTED:
             logger.info(
-                "inject_user_turn: turn started session=%s submit_attempt=%d/%d",
+                "inject_user_turn: prompt submitted session=%s submit_attempt=%d/%d",
                 session.session_id,
                 submit_attempt,
                 len(INJECT_SUBMIT_RETRY_DELAYS_S),
             )
             return True
-
-        observation = await _observe_prompt_delivery(
-            session,
-            text,
-            active_agent=active_agent,
-        )
-        observation = _accept_current_codex_live_input(observation, active_agent=active_agent)
-        if observation.state == PromptDeliveryState.SUBMITTED:
-            return await _confirm_observed_submission(
-                session,
-                turn_started=turn_started,
-                active_agent=active_agent,
-                accept_rendered_codex_submission=True,
-                source="submit_observation",
-                attempt=submit_attempt,
-                attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),
-            )
         if observation.state == PromptDeliveryState.ABSENT:
-            if _codex_live_input_was_consumed(observation, active_agent=active_agent):
-                logger.info(
-                    "inject_user_turn: Codex turn accepted after live input was consumed session=%s submit_attempt=%d/%d",
-                    session.session_id,
-                    submit_attempt,
-                    len(INJECT_SUBMIT_RETRY_DELAYS_S),
-                )
-                return True
-            if await _wait_for_turn_started(turn_started, INJECT_TURN_START_TIMEOUT_S):
-                return True
-            logger.warning(
-                "inject_user_turn: target left input without confirmation session=%s submit_attempt=%d/%d",
+            logger.info(
+                "inject_user_turn: prompt input cleared after enter session=%s submit_attempt=%d/%d",
                 session.session_id,
                 submit_attempt,
                 len(INJECT_SUBMIT_RETRY_DELAYS_S),
             )
-            return False
+            return True
 
         logger.warning(
             "inject_user_turn: target still in input after enter session=%s submit_attempt=%d/%d",
@@ -429,29 +356,38 @@ async def _submit_observed_user_turn(
             len(INJECT_SUBMIT_RETRY_DELAYS_S),
         )
 
+    logger.warning(
+        "inject_user_turn: input remained stuck after submit retry budget session=%s attempts=%d",
+        session.session_id,
+        len(INJECT_SUBMIT_RETRY_DELAYS_S),
+    )
     return False
 
 
-def _codex_live_input_was_consumed(
-    observation: PromptDeliveryObservation,
+async def _wait_for_post_enter_prompt_state(
+    session: Session,
+    text: str,
     *,
     active_agent: str | None,
-) -> bool:
-    return (
-        resolve_parser_agent(active_agent) is AgentName.CODEX
-        and observation.state == PromptDeliveryState.ABSENT
-        and not observation.live_input.strip()
-    )
-
-
-async def _wait_for_turn_started(turn_started: asyncio.Future[None], timeout_s: float) -> bool:
-    if turn_started.done():
-        return True
-    try:
-        await asyncio.wait_for(asyncio.shield(turn_started), timeout=timeout_s)
-    except TimeoutError:
-        return turn_started.done()
-    return True
+    turn_started: asyncio.Future[None],
+    timeout_s: float,
+) -> PromptDeliveryObservation:
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    while True:
+        if turn_started.done():
+            return PromptDeliveryObservation(PromptDeliveryState.SUBMITTED, "")
+        observation = await _observe_prompt_delivery(
+            session,
+            text,
+            active_agent=active_agent,
+        )
+        observation = _accept_current_live_input(observation)
+        if observation.state != PromptDeliveryState.IN_INPUT:
+            return observation
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return observation
+        await asyncio.sleep(min(INJECT_PROMPT_OBSERVE_INTERVAL_S, remaining))
 
 
 async def send_escape(session: Session) -> bool:

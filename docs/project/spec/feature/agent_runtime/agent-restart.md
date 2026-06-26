@@ -61,16 +61,19 @@ And the agent CLI replays its own transcript on startup so the resumed agent obs
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
 
-#### UC-AR1: Self-restart delivers the continuation stimulus on a confirmed turn start
+#### UC-AR1: Self-restart submits the continuation stimulus through prompt-state delivery
 
 ```
 Given the request carries the self-restart flag
 When the handler enters the relaunch phase
 Then it subscribes to the session-ready signal BEFORE issuing the relaunch (the agent's session start event can fire before a post-hoc subscriber would attach)
 And after the relaunch, it awaits readiness for the session within a bounded timeout, releasing the subscription in a finalizer
-And on readiness, it injects the fixed continuation stimulus ("Session restarted. Continue pending work or remain idle.") into the host pane as a user-turn message
-And it confirms the resumed agent started a turn from that stimulus, observed through the agent-activity signal the runtime already tracks
-And when the turn start is confirmed on the first submit, the stimulus is pasted exactly once and submitted exactly once
+And on readiness, it injects the fixed continuation stimulus ("Session restarted. Continue pending work or remain idle.") through prompt-state delivery
+And prompt-state delivery captures the live prompt input state before paste
+And prompt-state delivery pastes the stimulus exactly once
+And after paste, it sends Enter as soon as the live prompt input changes from its pre-paste state to effective user input
+And when a post-Enter observation shows the live prompt input is no longer effectively occupied, or a submitted/agent-active pane boundary is visible, the stimulus is reported as delivered
+And if `user_prompt_submit` arrives while prompt-state delivery is still observing or retrying, it also stops delivery as success but is not required for success
 And on readiness timeout, it emits a readiness-timeout event and posts a message to the user but does NOT inject the stimulus
 ```
 
@@ -78,23 +81,22 @@ And on readiness timeout, it emits a readiness-timeout event and posts a message
 
 ```
 Given a self-restart has pasted the continuation stimulus
-And pane observation confirms the stimulus is present in the live prompt input
-And no turn start is observed after the submit Enter
+And pane observation confirms changed effective user input in the live prompt input
+And after submit Enter the live prompt remains effectively occupied
 When the handler retries delivery
 Then it re-captures and re-classifies the pane before each retry
-And while the stimulus remains present in the live prompt input, it sends another Enter without clearing or re-pasting the stimulus
-And if the stimulus leaves the live prompt input, it stops sending Enter and waits for confirmation
-And once a turn start is observed, exactly one turn has started with no duplicate stimulus
+And while effective user input remains present in the live prompt input, it sends another Enter without clearing or re-pasting the stimulus
+And if the live prompt input becomes empty, generated-only, or replaced by a submitted/agent-active pane boundary, it stops sending Enter and reports success
+And the stimulus is pasted exactly once with no duplicate stimulus
 ```
 
 #### UC-AR3: Self-restart fails loud on retry exhaustion
 
 ```
-Given a self-restart's continuation stimulus never becomes observable in the live prompt input
-Or the stimulus remains in the live prompt input after every bounded submit retry
+Given a self-restart's continuation stimulus never produces changed effective user input in the live prompt input
+Or effective user input remains in the live prompt input after every bounded submit retry
 When the relevant retry budget is exhausted
-Then the handler does NOT report the stimulus as delivered on the input box emptying alone
-And it reports failure and keeps the session alive, never silently dropping the stimulus
+Then the handler reports failure and keeps the session alive, never silently dropping the stimulus
 ```
 
 #### UC-AR4: Non-self restart skips the continuation stimulus

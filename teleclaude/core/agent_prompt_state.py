@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -27,6 +28,7 @@ class PromptDeliveryObservation:
 
 
 _CLAUDE_PASTED_TEXT_PREFIX = "[Pasted text "
+_ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 
 
 def classify_prompt_delivery(
@@ -48,20 +50,18 @@ def classify_prompt_delivery(
             return PromptDeliveryObservation(state, normalized_live)
         return PromptDeliveryObservation(PromptDeliveryState.ABSENT, normalized_live)
 
-    normalized_output = _normalize_text(output)
-    live_region = _extract_marker_live_region(normalized_output, target, agent)
-    if agent is AgentName.CLAUDE and _CLAUDE_PASTED_TEXT_PREFIX in live_region:
-        if _claude_collapsed_paste_matches_target(live_region, target):
-            return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_region.strip())
-        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_region.strip())
-    if _contains_target(live_region, target):
+    live_region = _extract_marker_live_region(output, target, agent)
+    live_input = _normalize_live_region_input(live_region, agent)
+    if agent is AgentName.CLAUDE and _CLAUDE_PASTED_TEXT_PREFIX in live_input:
+        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input)
+    if _contains_target(live_input, target):
         state = (
             PromptDeliveryState.IN_INPUT
-            if _target_is_terminal_in_region(live_region, target, agent)
+            if _target_is_terminal_in_region(live_input, target, agent)
             else PromptDeliveryState.SUBMITTED
         )
-        return PromptDeliveryObservation(state, live_region.strip())
-    return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_region.strip())
+        return PromptDeliveryObservation(state, live_input)
+    return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_input)
 
 
 def _normalize_text(text: str) -> str:
@@ -79,6 +79,35 @@ def _codex_prompt_matches_target(haystack: str, target: str) -> bool:
 
 def _fold_prompt_whitespace(text: str) -> str:
     return " ".join(text.split())
+
+
+def _strip_generated_segments(text: str) -> str:
+    if "\x1b[" not in text:
+        return text
+
+    out: list[str] = []
+    active_generated_style = False
+    idx = 0
+    while idx < len(text):
+        if text[idx] == "\x1b":
+            match = _ANSI_SGR_RE.match(text, idx)
+            if match:
+                params = [p for p in match.group(1).split(";") if p]
+                if not params or "0" in params:
+                    active_generated_style = False
+                else:
+                    if "22" in params and "2" not in params:
+                        active_generated_style = False
+                    if "23" in params and "3" not in params:
+                        active_generated_style = False
+                    if "2" in params or "3" in params:
+                        active_generated_style = True
+                idx = match.end()
+                continue
+        if not active_generated_style:
+            out.append(text[idx])
+        idx += 1
+    return "".join(out)
 
 
 def _strip_codex_prompt_chrome(text: str) -> str:
@@ -101,7 +130,7 @@ def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> s
     if not marker:
         return ""
     for idx in range(len(lines) - 1, -1, -1):
-        if lines[idx].strip().startswith(marker):
+        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
             if agent is AgentName.CLAUDE:
                 return _extract_claude_live_input_block(lines[idx:])
             return "\n".join(lines[idx:])
@@ -117,29 +146,8 @@ def _extract_claude_live_input_block(lines: list[str]) -> str:
     return "\n".join(input_lines)
 
 
-def _claude_collapsed_paste_matches_target(live_region: str, target: str) -> bool:
-    visible_live = live_region.split(_CLAUDE_PASTED_TEXT_PREFIX, 1)[0]
-    visible_lines = _canonical_claude_prompt_lines(visible_live)
-    if not visible_lines:
-        return False
-    target_lines = _canonical_claude_prompt_lines(target)
-    return target_lines[: len(visible_lines)] == visible_lines
-
-
-def _canonical_claude_prompt_lines(text: str) -> list[str]:
-    lines: list[str] = []
-    marker = AgentName.CLAUDE.prompt_marker.strip()
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if marker and line.startswith(marker):
-            line = line[len(marker) :].strip()
-        if line:
-            lines.append(line)
-    return lines
-
-
 def _is_claude_input_boundary(line: str) -> bool:
-    stripped = line.strip()
+    stripped = strip_ansi_codes(line).strip()
     return bool(stripped) and set(stripped) <= {"─"}
 
 
@@ -147,12 +155,53 @@ def _extract_gemini_live_region(lines: list[str], target: str) -> str:
     del target
     footer_idx = -1
     for idx in range(len(lines) - 1, -1, -1):
-        if AgentName.GEMINI.prompt_marker in lines[idx]:
+        if AgentName.GEMINI.prompt_marker in strip_ansi_codes(lines[idx]):
             footer_idx = idx
             break
     if footer_idx >= 0:
-        return "\n".join(lines[max(0, footer_idx - 20) : footer_idx + 1])
+        start_idx = footer_idx
+        for idx in range(footer_idx - 1, max(-1, footer_idx - 20), -1):
+            if strip_ansi_codes(lines[idx]).strip().startswith(">"):
+                start_idx = idx
+                break
+        return "\n".join(lines[start_idx : footer_idx + 1])
     return ""
+
+
+def _normalize_live_region_input(live_region: str, agent: AgentName) -> str:
+    lines: list[str] = []
+    for raw_line in live_region.splitlines():
+        if _is_prompt_chrome_line(raw_line, agent):
+            continue
+        input_part = _strip_live_prompt_marker(raw_line, agent)
+        input_part = _strip_generated_segments(input_part)
+        normalized = _normalize_text(input_part).strip()
+        if normalized:
+            lines.append(normalized)
+    return "\n".join(lines).strip()
+
+
+def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
+    stripped = strip_ansi_codes(raw_line).strip()
+    if not stripped:
+        return True
+    if agent is AgentName.GEMINI and stripped == AgentName.GEMINI.prompt_marker:
+        return True
+    if agent is AgentName.CLAUDE and _is_claude_input_boundary(raw_line):
+        return True
+    return False
+
+
+def _strip_live_prompt_marker(raw_line: str, agent: AgentName) -> str:
+    marker = ">" if agent is AgentName.GEMINI else agent.prompt_marker.strip()
+    if not marker:
+        return raw_line
+    marker_pos = raw_line.find(marker)
+    if marker_pos < 0:
+        return raw_line
+    if strip_ansi_codes(raw_line[:marker_pos]).strip():
+        return raw_line
+    return raw_line[marker_pos + len(marker) :]
 
 
 def _target_is_terminal_in_region(region: str, target: str, agent: AgentName) -> bool:

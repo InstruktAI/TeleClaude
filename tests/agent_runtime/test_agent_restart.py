@@ -1,10 +1,10 @@
-"""Functional coverage for self-restart continuation-stimulus delivery (UC-AR1).
+"""Functional coverage for self-restart continuation-stimulus delivery.
 
 Drives the real restart surface (`CommandService.restart_agent`) with only the
 tmux/process boundary faked, and asserts on tmux delivery actions and emitted
-events — never on logger output. The positive turn-start signal is the
-`user_prompt_submit` agent-activity event the runtime already emits when an
-agent accepts a turn.
+events — never on logger output. Prompt-state delivery is successful when the
+live prompt accepts Enter; `user_prompt_submit` is only an opportunistic later
+signal while delivery is still observing.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ async def _prepare_restart(
     api: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    pane_output: str = _LIVE_STIMULUS_PROMPT,
+    pane_output: str | list[str] = _LIVE_STIMULUS_PROMPT,
     submit_delays: tuple[float, ...] = (0.2, 0.05, 0.05),
 ) -> tuple[AsyncMock, AsyncMock, AsyncMock, AsyncMock, list, list]:
     """Wire the faked tmux/process boundary and a restart-eligible session.
@@ -96,10 +96,23 @@ async def _prepare_restart(
     paste_recorder = AsyncMock(return_value=True)
     enter_recorder = AsyncMock(return_value=True)
     ctrl_recorder = AsyncMock(return_value=True)
+    pane_outputs = [pane_output] if isinstance(pane_output, str) else list(pane_output)
+
+    async def _capture_pane(_tmux_session_name: str | None) -> str:
+        if len(pane_outputs) == 3:
+            if paste_recorder.await_count == 0:
+                return pane_outputs[0]
+            if enter_recorder.await_count == 0:
+                return pane_outputs[1]
+            return pane_outputs[2]
+        if len(pane_outputs) > 1:
+            return pane_outputs.pop(0)
+        return pane_outputs[0]
+
     monkeypatch.setattr(tmux_bridge, "send_keys_existing_tmux", send_recorder)
     monkeypatch.setattr(tmux_bridge, "paste_text_existing_tmux", paste_recorder)
     monkeypatch.setattr(tmux_bridge, "send_enter", enter_recorder)
-    monkeypatch.setattr(tmux_bridge, "capture_pane", AsyncMock(return_value=pane_output))
+    monkeypatch.setattr(tmux_bridge, "capture_pane", AsyncMock(side_effect=_capture_pane))
     monkeypatch.setattr(tmux_bridge, "send_ctrl_key", ctrl_recorder)
     monkeypatch.setattr(tmux_bridge, "wait_for_shell_ready", AsyncMock(return_value=True))
     monkeypatch.setattr(tmux_bridge, "is_process_running", AsyncMock(return_value=True))
@@ -157,12 +170,12 @@ async def _emit_turn_start() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-AR1")
-async def test_self_restart_delivers_stimulus_on_confirmed_turn_start(
+async def test_self_restart_reports_stimulus_delivered_when_prompt_state_clears(
     api: AsyncClient,
     cluster_event_bus: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A confirmed turn start delivers the stimulus once, with no re-inject."""
+    """A prompt-state transition delivers the stimulus once, with no hook dependency."""
     (
         _send_recorder,
         paste_recorder,
@@ -170,30 +183,37 @@ async def test_self_restart_delivers_stimulus_on_confirmed_turn_start(
         ctrl_recorder,
         timeout_events,
         activity_events,
-    ) = await _prepare_restart(api, monkeypatch)
+    ) = await _prepare_restart(
+        api,
+        monkeypatch,
+        pane_output=[
+            f"{AgentName.CLAUDE.prompt_marker} ",
+            _LIVE_STIMULUS_PROMPT,
+            f"{AgentName.CLAUDE.prompt_marker} ",
+        ],
+    )
 
     ok, _err = await get_command_service().restart_agent(RestartAgentCommand(session_id=_SESSION_ID, self_restart=True))
     assert ok is True
 
     await _emit_ready()
     assert await _wait_until(lambda: _stimulus_paste_count(paste_recorder) >= 1 and enter_recorder.await_count >= 1)
-    await _emit_turn_start()
     await _await_inject_task()
 
     assert _stimulus_paste_count(paste_recorder) == 1
     assert enter_recorder.await_count == 1
     assert ctrl_recorder.await_count == 0
-    assert len(activity_events) == 1  # exactly one turn started
-    assert timeout_events == []  # no failure boundary
+    assert activity_events == []
+    assert timeout_events == []
 
 
 @pytest.mark.spec(_SPEC, "UC-AR2")
-async def test_self_restart_retries_enter_when_turn_start_is_deferred(
+async def test_self_restart_retries_enter_while_prompt_state_remains_occupied(
     api: AsyncClient,
     cluster_event_bus: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A deferred turn start retries Enter only while the stimulus remains live."""
+    """A stuck live prompt retries Enter without re-pasting the stimulus."""
     (
         _send_recorder,
         paste_recorder,

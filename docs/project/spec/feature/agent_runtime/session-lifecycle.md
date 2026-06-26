@@ -75,7 +75,7 @@ And if the target returns an error envelope, an upstream error is surfaced
 And if the target does not respond, a timeout error is surfaced
 ```
 
-#### UC-SL24: Startup message becomes a confirmed agent turn
+#### UC-SL24: Startup message is accepted by the live prompt
 
 ```
 Given the caller passes a message in the create request
@@ -84,12 +84,16 @@ When the launch-intent builder runs
 Then the launch kind is upgraded to `agent_then_message`
 And the launch intent is built with agent, thinking mode, and message
 And the message is persisted on the launch intent
-And once the agent CLI is ready, the bootstrap task submits the message through confirmed user-turn delivery
-And confirmed user-turn delivery waits until the live prompt input changes from its pre-paste state to a non-empty value before sending Enter
-And Codex delivery treats the post-paste live input box as the confirmation boundary rather than reconstructing exact rendered prompt text
-And confirmed user-turn delivery attempts the paste once; if the pasted message is not confirmed in the live prompt input, the launch result is an error rather than a re-paste
-And when the agent emits `user_prompt_submit`, the launch result is success and output polling starts
-And for Codex, a rendered submitted state or a consumed live input after Enter also makes the launch result success and starts output polling
+And once the agent CLI is ready, the bootstrap task submits the message through prompt-state startup delivery
+And prompt-state startup delivery captures the live prompt input state before paste
+And prompt-state startup delivery attempts the paste exactly once
+And after paste, it waits until the live prompt input changes from its pre-paste state to effective user input before sending Enter
+And effective user input is any real prompt occupancy, including collapsed paste markers beginning with `[Pasted `
+And generated or styled suggestion text in the prompt counts as empty input
+And prompt-state startup delivery sends Enter as soon as changed effective user input is observed
+And when a post-Enter observation shows the live prompt input is no longer effectively occupied, or a submitted/agent-active pane boundary is visible, the launch result is success and output polling starts
+And if `user_prompt_submit` arrives while prompt-state startup delivery is still observing or retrying, it also stops delivery as success but is not required for success
+And if effective user input is never observed after the single paste attempt, the launch result is an error rather than a re-paste
 And the initiator extraction records the caller's session id so the spawned child can notify the initiator on stop (one-shot listener)
 ```
 
@@ -97,10 +101,12 @@ And the initiator extraction records the caller's session id so the spawned chil
 
 ```
 Given the caller passes a message in the create request
-And the pasted message remains observable in the live prompt input
-When Enter does not start a turn
-Then confirmed user-turn delivery retries Enter without re-pasting the message
-And if no turn start is confirmed within the retry budget, the launch result is an error rather than a silent success
+And the live prompt input contains changed effective user input after the single paste
+When Enter is sent but the post-Enter pane observation still shows effective user input in the live prompt
+Then prompt-state startup delivery re-captures and re-classifies the live prompt before each retry
+And while effective user input remains in the live prompt, it retries Enter without clearing or re-pasting the message
+And if the live prompt input becomes empty, generated-only, or replaced by a submitted/agent-active pane boundary, it stops retrying and reports success
+And if effective user input remains in the live prompt after the retry budget, the launch result is an error rather than a silent success
 ```
 
 #### UC-SL26: Historical prompt text does not confirm startup delivery
@@ -108,9 +114,10 @@ And if no turn start is confirmed within the retry budget, the launch result is 
 ```
 Given the caller passes a message in the create request
 And the pane output contains that message only in historical scrollback
-When confirmed user-turn delivery observes the pane
+When prompt-state startup delivery observes the pane
 Then the historical copy does not satisfy the live prompt input check
 And an unchanged pre-existing live prompt input does not satisfy the live prompt input check
+And generated or styled suggestion text in the live prompt does not satisfy the live prompt input check
 And Enter is not sent from that observation
 And the launch result is an error rather than a silent success
 ```

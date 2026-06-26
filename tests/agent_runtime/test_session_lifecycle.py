@@ -32,7 +32,15 @@ from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, re
 from teleclaude.api.session_remote import dispatch_session_close_to_peer, dispatch_session_keys_to_peer
 from teleclaude.cli import api_client as api_client_mod
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.constants import EVENT_END_SESSION, ROLE_ORCHESTRATOR, ROLE_WORKER, WORKTREE_DIR, JobRole, SlashCommand
+from teleclaude.constants import (
+    EVENT_END_SESSION,
+    ROLE_ORCHESTRATOR,
+    ROLE_WORKER,
+    WORKTREE_DIR,
+    JobRole,
+    ResultStatus,
+    SlashCommand,
+)
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.adapter_client._remote import RemoteDispatchError, _RemoteMixin
 from teleclaude.core.agent_coordinator import AgentCoordinator
@@ -406,13 +414,19 @@ async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
     return await api.db.get_session(session_id)
 
 
-async def _post_agent_then_message_session(api: AsyncClient, tmp_path: Path, message: str) -> _CreateSessionResponse:
+async def _post_agent_then_message_session(
+    api: AsyncClient,
+    tmp_path: Path,
+    message: str,
+    *,
+    agent: AgentName = AgentName.CODEX,
+) -> _CreateSessionResponse:
     resp = await api.post(
         "/sessions",
         json={
             "computer": "TestComputer",
             "project_path": str(tmp_path),
-            "agent": AgentName.CODEX.value,
+            "agent": agent.value,
             "thinking_mode": "fast",
             "human_email": "test@test.com",
             "human_role": "admin",
@@ -547,34 +561,73 @@ async def test_agent_then_message_create_retries_enter_without_repaste_when_turn
 
 
 @pytest.mark.spec(_SPEC, "UC-SL24")
-async def test_agent_then_message_create_accepts_codex_consumed_input_without_submit_hook(
+async def test_agent_then_message_create_accepts_claude_prompt_state_after_enter_without_submit_hook(
     api: AsyncClient,
     cluster_event_bus: None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del cluster_event_bus
-    message = "startup prompt that Codex consumes before the submit hook is observed"
-    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    message = "startup prompt hidden behind a collapsed Claude paste chip"
+    prompt_marker = AgentName.CLAUDE.prompt_marker
     harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
         api,
         tmp_path,
         monkeypatch,
         pane_output=[
-            f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
-            f"{prompt_marker} {message}\n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
-            "✦ Thinking\n",
+            f"{prompt_marker} ",
+            "\n".join(
+                [
+                    f"{prompt_marker} [Pasted text #1 +4 lines]",
+                    "────────────────────────────────────────────────────────────────",
+                ]
+            ),
+            f"{prompt_marker} ",
         ],
         emit_turn_on_enter=False,
     )
 
-    data = await _post_agent_then_message_session(api, tmp_path, message)
+    data = await _post_agent_then_message_session(api, tmp_path, message, agent=AgentName.CLAUDE)
     await _await_bootstrap_tasks(tasks)
 
     session_id = data["session_id"]
     assert paste_recorder.await_count == 1
     assert enter_recorder.await_count == 1
     assert capture_recorder.await_count >= 3
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] == ResultStatus.SUCCESS
+    assert harness.polled == [(session_id, data["tmux_session_name"])]
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_accepts_gemini_collapsed_paste_prompt_state_without_submit_hook(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "startup prompt hidden behind a collapsed Gemini paste chip"
+    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=[
+            "> \n? for shortcuts",
+            "> [Pasted text #1 +4 lines]\n? for shortcuts",
+            "> \n? for shortcuts",
+        ],
+        emit_turn_on_enter=False,
+    )
+
+    data = await _post_agent_then_message_session(api, tmp_path, message, agent=AgentName.GEMINI)
+    await _await_bootstrap_tasks(tasks)
+
+    session_id = data["session_id"]
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 1
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] == ResultStatus.SUCCESS
     assert harness.polled == [(session_id, data["tmux_session_name"])]
 
 
@@ -666,6 +719,37 @@ async def test_agent_then_message_create_does_not_submit_unchanged_codex_live_in
         tmp_path,
         monkeypatch,
         pane_output=f"{prompt_marker} {unchanged_input}\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
+        emit_turn_on_enter=False,
+    )
+
+    await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
+
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 0
+    assert harness.polled == []
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] != "success"
+
+
+@pytest.mark.spec(_SPEC, "UC-SL26")
+async def test_agent_then_message_create_treats_generated_prompt_suggestion_as_empty_input(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "fresh prompt must not be inferred from generated prompt suggestion"
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=[
+            f"{prompt_marker} \n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
+            f"{prompt_marker} \x1b[2mCaptured Suggestion\x1b[0m\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
+        ],
         emit_turn_on_enter=False,
     )
 
