@@ -57,18 +57,6 @@ project as **universal awareness with on-demand depth**:
 - The cheap-awareness / on-demand-depth split means a focused project carries one line per
   foreign domain as ambient surface — accepted as the price of universal discoverability.
 
-## Status
-
-Superseded in part by ADR-0061. The validity model decided here — the set of
-valid domains derived dynamically from publisher `business.publishes`
-declarations, and the notion that a domain has an owning publisher — is replaced
-by a fixed platform-owned `Domain` vocabulary, and the
-`business.domains`/`business.publishes` config fields are removed. No project
-owns a domain; the platform owns only the vocabulary. The universal-awareness
-and on-demand-depth model decided here remains in force; publication is now
-expressed by `docs/global/<domain>/` folder presence rather than declaration,
-with multi-publisher merge guarded only by snippet-id uniqueness.
-
 ## See Also
 
 - ~/.teleclaude/docs/general/policy/context-retrieval.md

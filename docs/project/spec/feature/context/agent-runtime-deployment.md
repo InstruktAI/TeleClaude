@@ -31,22 +31,9 @@ path runs two phases:
 After both phases, the global documentation tree is exposed at
 `~/.teleclaude/docs/` as a **per-file merge of every publisher's
 `docs/global`**. The root is a real directory rebuilt each sync: for every
-
-<!-- planned-change:domains-constant-not-config -->
-
 contributing publisher and every snippet file under a domain it declares in
 `business.publishes` (plus the cross-cutting `general/`), the file is linked in
-per file
-
-<!-- change:domains-constant-not-config -->
-
-contributing publisher and every snippet file under a `docs/global/<domain>`
-directory whose name is a valid platform domain (plus the cross-cutting
-`general/`), the file is linked in per file
-
-<!-- /planned-change:domains-constant-not-config -->
-
-(`~/.teleclaude/docs/<rel>` → the publisher's source file). A domain
+per file (`~/.teleclaude/docs/<rel>` → the publisher's source file). A domain
 directory therefore merges files from multiple publishers — there is no domain
 ownership; the only cross-publisher constraint is snippet-id uniqueness. Each
 file is a live view of its source (no copy). Build-time manifests
@@ -97,11 +84,7 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   Then the global phase produces no agent-home artifact writes
   And the local phase deploys .agents/ to the project root
   And Codex commands still route to ~/.teleclaude/commands/
-<!-- planned-change:domains-constant-not-config -->
   And the project's docs/global/<domain> files for each domain it publishes are merged into ~/.teleclaude/docs/
-<!-- change:domains-constant-not-config -->
-  And the project's docs/global/<domain> files for each directory whose name is a valid platform domain are merged into ~/.teleclaude/docs/
-<!-- /planned-change:domains-constant-not-config -->
 ```
 
 ```
@@ -114,11 +97,7 @@ Scenario: UC-ARD3 Sync from a worktree uses worktree docs
 
 ```
 Scenario: UC-ARD4 Sync composes the per-file multi-publisher docs tree
-<!-- planned-change:domains-constant-not-config -->
   Given two publishers, each declaring in business.publishes the domains it contributes
-<!-- change:domains-constant-not-config -->
-  Given two publishers, each contributing docs/global/<domain> folders whose names are valid platform domains
-<!-- /planned-change:domains-constant-not-config -->
   And both publishers contribute distinct snippet files to the same domain
   When the documentation deployment step runs
   Then any stale real or symlinked ~/.teleclaude/docs from an older deploy is replaced
@@ -168,17 +147,11 @@ Scenario: UC-ARD8 Duplicate snippet id across publishers blocks the deploy
 ### Cross-context references
 
 - **agent_runtime** — each agent CLI reads its `~/.<agent>/` tree at
-runtime. The deployed directories are the publish/consume boundary
-between Context (publisher) and agent_runtime (consumer).
-<!-- planned-change:domains-constant-not-config -->
+  runtime. The deployed directories are the publish/consume boundary
+  between Context (publisher) and agent_runtime (consumer).
 - **config** — supplies the project root, the Mother project resolution used
-by the agent-artifact publishing gate, and each project's `business.publishes`
-declarations used to compose the docs tree.
-<!-- change:domains-constant-not-config -->
-- **config** — supplies the project root and the Mother project resolution used
-by the agent-artifact publishing gate. Publication is discovered from valid
-`docs/global/<domain>/` folder presence, not from project config.
-<!-- /planned-change:domains-constant-not-config -->
+  by the agent-artifact publishing gate, and each project's `business.publishes`
+  declarations used to compose the docs tree.
 
 ## Known caveats
 

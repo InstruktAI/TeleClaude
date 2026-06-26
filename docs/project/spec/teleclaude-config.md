@@ -26,15 +26,7 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 | ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
 | **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests`, `event_domains` |
 
-<!-- planned-change:domains-constant-not-config -->
-
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions` |
-
-<!-- change:domains-constant-not-config -->
-
-| **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `jobs`, `hooks`, `channel_subscriptions` |
-
-<!-- /planned-change:domains-constant-not-config -->
 
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
 
@@ -79,12 +71,9 @@ project_name: string # human-readable display name
 env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
 frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
 description: string
-<!-- planned-change:domains-constant-not-config -->
 business:
   domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)
   publishes: list[string] # domains this project contributes global docs for (a contribution declaration, not ownership); the union across all registered projects is the set of valid domains, and contributions to the same domain merge with snippet-id uniqueness as the only guard
-<!-- change:domains-constant-not-config -->
-<!-- /planned-change:domains-constant-not-config -->
 jobs: mapping[string, JobScheduleConfig]
 hooks:
   inbound: mapping[string, InboundSourceConfig]
