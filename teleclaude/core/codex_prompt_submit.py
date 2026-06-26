@@ -9,7 +9,6 @@ from teleclaude.utils import strip_ansi_codes
 logger = get_logger(__name__)
 
 CODEX_PROMPT_MARKER = "›"
-CODEX_PROMPT_LIVE_DISTANCE = 4
 CODEX_TOOL_ACTION_LOOKBACK_LINES = 120
 
 CODEX_AGENT_MARKERS = frozenset(
@@ -152,9 +151,6 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         if _is_suggestion_styled(line) and not _strip_ansi(line_without_suggestion).strip():
             continue
         parts.append(_strip_ansi(line_without_suggestion).rstrip())
-
-    if (len(lines) - 1 - prompt_idx) >= CODEX_PROMPT_LIVE_DISTANCE:
-        return "", False
 
     text = "\n".join(parts).strip()
     if not text:

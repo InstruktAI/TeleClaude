@@ -417,12 +417,28 @@ async def test_agent_then_message_create_confirms_user_turn_delivery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     del cluster_event_bus
-    message = "confirmed startup prompt"
+    message = (
+        "Read /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exactly as "
+        "the active instruction set for this session.\n\n"
+        "Treat the following as provided inputs to that instruction set:\n"
+        "per-domain-symlink-single-owner"
+    )
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
     harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
         api,
         tmp_path,
         monkeypatch,
-        pane_output=f"{AgentName.CODEX.prompt_marker.strip()} {message}",
+        pane_output="\n".join(
+            [
+                f"{prompt_marker} Read /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exactly as the active instruction set",
+                "  for this session.",
+                "",
+                "  Treat the following as provided inputs to that instruction set:",
+                "  per-domain-symlink-single-owner",
+                "",
+                "  Create a plan?  shift + tab use Plan mode   esc dismiss",
+            ]
+        ),
         emit_turn_on_enter=True,
     )
 

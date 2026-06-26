@@ -39,7 +39,7 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
     if agent is AgentName.CODEX:
         live_input, has_submit_boundary = extract_prompt_block(output)
         normalized_live = _normalize_text(live_input).strip()
-        if _contains_target(normalized_live, target):
+        if _contains_codex_target(normalized_live, target):
             state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
             return PromptDeliveryObservation(state, normalized_live)
         return PromptDeliveryObservation(PromptDeliveryState.ABSENT, normalized_live)
@@ -47,7 +47,9 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
     normalized_output = _normalize_text(output)
     live_region = _extract_marker_live_region(normalized_output, target, agent)
     if agent is AgentName.CLAUDE and _CLAUDE_PASTED_TEXT_PREFIX in live_region:
-        return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_region.strip())
+        if _claude_collapsed_paste_matches_target(live_region, target):
+            return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_region.strip())
+        return PromptDeliveryObservation(PromptDeliveryState.ABSENT, live_region.strip())
     if _contains_target(live_region, target):
         state = (
             PromptDeliveryState.IN_INPUT
@@ -65,6 +67,16 @@ def _normalize_text(text: str) -> str:
 
 def _contains_target(haystack: str, target: str) -> bool:
     return target in haystack
+
+
+def _contains_codex_target(haystack: str, target: str) -> bool:
+    if _contains_target(haystack, target):
+        return True
+    return _fold_prompt_whitespace(target) in _fold_prompt_whitespace(haystack)
+
+
+def _fold_prompt_whitespace(text: str) -> str:
+    return " ".join(text.split())
 
 
 def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> str:
@@ -89,6 +101,27 @@ def _extract_claude_live_input_block(lines: list[str]) -> str:
             break
         input_lines.append(line)
     return "\n".join(input_lines)
+
+
+def _claude_collapsed_paste_matches_target(live_region: str, target: str) -> bool:
+    visible_live = live_region.split(_CLAUDE_PASTED_TEXT_PREFIX, 1)[0]
+    visible_lines = _canonical_claude_prompt_lines(visible_live)
+    if not visible_lines:
+        return False
+    target_lines = _canonical_claude_prompt_lines(target)
+    return target_lines[: len(visible_lines)] == visible_lines
+
+
+def _canonical_claude_prompt_lines(text: str) -> list[str]:
+    lines: list[str] = []
+    marker = AgentName.CLAUDE.prompt_marker.strip()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if marker and line.startswith(marker):
+            line = line[len(marker) :].strip()
+        if line:
+            lines.append(line)
+    return lines
 
 
 def _is_claude_input_boundary(line: str) -> bool:
