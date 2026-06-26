@@ -1,5 +1,6 @@
 ---
 description: Makefile targets contain no inline shell behavior; recipes delegate to testable, lintable scripts. Mandated for TeleClaude's own repo; offered to satellites, never mandated.
+visibility: internal
 ---
 
 # Makefile No Inline Logic — Policy
