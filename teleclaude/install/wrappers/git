@@ -591,7 +591,7 @@ For NEW files (untracked), stage them explicitly:
 For EXISTING modified files, no staging is needed at all. The commit's
 pathspec takes them straight from the working tree:
   telec code changed                       # see what's in scope
-  telec code commit                        # surface Path A/B/C, then re-run with --approved
+  telec code commit                        # surface commit-first review-routing guidance
 
 NEW files in scope are intentionally NOT auto-committed (catches temp/
 scratch artifacts). If you don't `telec code add` them, they stay
@@ -613,10 +613,10 @@ mandated trailer.
 Start with no flags:
   telec code commit
 
-That surfaces Path A/B/C. Pick a classification, get human approval if it
-requires it, then re-run with --approved and a quoted message. If files
-outside the resolved scope must be in the commit, add --include <path>
-[<path> ...] at re-run time.
+That surfaces the commit-first review-routing gate. Commit autonomously
+with --approved once the gate is understood, then route any review from the
+committed diff. If files outside the resolved scope must be in the commit,
+add --include <path> [<path> ...] at re-run time.
 MSG
     exit 1
 fi
@@ -625,7 +625,7 @@ fi
 # cherry-pick / rebase / merge produce commits via paths whose outer subcmd
 # is not 'commit', so the gate above doesn't see them. Without this, replays
 # can land on main bypassing telec code commit's main-branch lock and the
-# Path A/B/C approval gate.
+# commit-first review-routing gate.
 case "$_subcmd" in
     cherry-pick|rebase|merge)
         _produces_commit=1
@@ -641,11 +641,12 @@ case "$_subcmd" in
             if [ "$_current_branch" = "main" ]; then
                 _log_block "replay_main_unauthorized_${_subcmd}"
                 cat >&2 <<MSG
-ERROR: 'git $_subcmd' on main produces commits without going through the approval gate.
+ERROR: 'git $_subcmd' on main produces commits without going through telec code commit.
 
-This bypasses telec code commit's main-branch lock, scope checks, and Path A/B/C.
+This bypasses telec code commit's main-branch lock, scope checks, and the
+commit-first review-routing gate.
 
-To proceed (human-approved, one-shot):
+To proceed (explicit override, one-shot):
   TELECLAUDE_OVERRIDE_APPROVED=1 git $_subcmd <args>
 MSG
                 exit 1
