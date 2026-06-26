@@ -1,6 +1,7 @@
 ---
 description: 'Software development lifecycle. Three-stage model: prepare, work, integrate.'
 visibility: 'public'
+activation_trigger: 'Use when the user wants you to prime as an orchestrator or wants to understand the software development lifecycle.'
 ---
 
 # Lifecycle Overview — Procedure
