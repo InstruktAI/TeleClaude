@@ -24,6 +24,7 @@ from teleclaude.core.events import (
     AgentSessionStartPayload,
     AgentStopActivityEvent,
     AgentStopPayload,
+    ErrorEventContext,
     SessionLifecycleContext,
     SessionStatusContext,
     TeleClaudeEvents,
@@ -95,10 +96,12 @@ class AgentCoordinator(
                     try:
                         event_bus.emit(
                             TeleClaudeEvents.ERROR,
-                            {
-                                "message": f"Failed to update session title: {exc}",
-                                "severity": "warning",
-                            },  # type: ignore[arg-type]
+                            ErrorEventContext(
+                                session_id=None,
+                                message=f"Failed to update session title: {exc}",
+                                source="agent_coordinator",
+                                severity="warning",
+                            ),
                             visibility=EventVisibility.CLUSTER,
                         )
                     except Exception:

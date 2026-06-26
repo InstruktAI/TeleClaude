@@ -12,11 +12,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, TypedDict
+from pathlib import Path
+from typing import Any, TypedDict, cast
 
+import pytest
+
+from teleclaude.core.agent_coordinator import _coordinator as coordinator_module
+from teleclaude.core.agent_coordinator._coordinator import AgentCoordinator
+from teleclaude.core.agents import AgentName
 from teleclaude.core.event_bus import EventBus
-from teleclaude.core.events import SessionLifecycleContext
+from teleclaude.core.events import ErrorEventContext, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.events.envelope import EventEnvelope
+from teleclaude.utils.transcript import _iterators as transcript_iterators
 
 
 class _PendingEntry(TypedDict):
@@ -323,3 +330,94 @@ async def test_stale_pending_entry_is_reclaimed_via_inherited_processor_mechanis
         "a custom EventBus consumer loop without the inherited reclaim "
         "mechanism would not satisfy this"
     )
+
+
+async def test_transcript_format_mismatch_emits_typed_error_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    redis = _RedisStreamFake()
+    bus = EventBus(role="daemon", redis_client=redis)
+    received: list[Any] = []
+
+    async def handler(_event: str, context: Any) -> None:
+        received.append(context)
+
+    bus.subscribe(TeleClaudeEvents.ERROR, handler)
+    monkeypatch.setattr(transcript_iterators, "event_bus", bus)
+    transcript_iterators._REPORTED_TRANSCRIPT_FORMAT_MISMATCHES.clear()
+
+    transcript_path = tmp_path / "gemini-session.jsonl"
+    transcript_path.write_text("{malformed json\n", encoding="utf-8")
+
+    entries = transcript_iterators._get_entries_for_agent(str(transcript_path), AgentName.GEMINI)
+    await _drain_bus(bus, ticks=4)
+
+    assert entries == []
+    assert len(received) == 1
+    context = received[0]
+    assert isinstance(context, ErrorEventContext)
+    assert context.session_id is None
+    assert context.severity == "warning"
+    assert context.message
+
+
+async def test_title_background_task_failure_emits_typed_error_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    redis = _RedisStreamFake()
+    bus = EventBus(role="daemon", redis_client=redis)
+    received: list[Any] = []
+
+    async def handler(_event: str, context: Any) -> None:
+        received.append(context)
+
+    async def failing_title_update() -> None:
+        raise RuntimeError("title unavailable")
+
+    bus.subscribe(TeleClaudeEvents.ERROR, handler)
+    monkeypatch.setattr(coordinator_module, "event_bus", bus)
+
+    coordinator = AgentCoordinator(
+        client=cast(Any, object()),
+        tts_manager=cast(Any, object()),
+    )
+    coordinator._queue_background_task(failing_title_update(), "update-title")
+    for _ in range(4):
+        await asyncio.sleep(0)
+    await _drain_bus(bus, ticks=4)
+
+    assert len(received) == 1
+    context = received[0]
+    assert isinstance(context, ErrorEventContext)
+    assert context.session_id is None
+    assert context.severity == "warning"
+    assert context.message
+
+
+async def test_event_bus_rejects_dict_context_and_round_trips_error_context() -> None:
+    redis = _RedisStreamFake()
+    publisher = EventBus(role="daemon", redis_client=redis)
+    consumer = EventBus(role="operation-runner", redis_client=redis)
+
+    with pytest.raises(TypeError):
+        await publisher.emit(TeleClaudeEvents.ERROR, cast(Any, {"message": "x"}))
+
+    received: list[Any] = []
+
+    async def handler(_event: str, context: Any) -> None:
+        received.append(context)
+
+    consumer.subscribe(TeleClaudeEvents.ERROR, handler)
+    await publisher.emit(
+        TeleClaudeEvents.ERROR,
+        ErrorEventContext(session_id=None, message="x", source="s", severity="warning"),
+    )
+    await _drain_bus(consumer, ticks=4)
+
+    assert len(received) == 1
+    context = received[0]
+    assert isinstance(context, ErrorEventContext)
+    assert context.session_id is None
+    assert context.source
+    assert context.severity == "warning"

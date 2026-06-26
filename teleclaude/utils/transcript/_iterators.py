@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.events import ErrorEventContext, TeleClaudeEvents
 from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventVisibility
 
@@ -50,14 +50,16 @@ def _report_transcript_format_mismatch(agent: str, path: Path, exc: json.JSONDec
     try:
         event_bus.emit(
             TeleClaudeEvents.ERROR,
-            {
-                "message": (
+            ErrorEventContext(
+                session_id=None,
+                message=(
                     f"Transcript parser can't read {agent} session file "
                     f"{path.name} — file shape may have changed in the agent CLI. "
                     "Output/summary/title for this session will be empty until the parser is updated."
                 ),
-                "severity": "warning",
-            },  # type: ignore[arg-type]
+                source="transcript_reader",
+                severity="warning",
+            ),
             visibility=EventVisibility.CLUSTER,
         )
     except Exception as emit_exc:

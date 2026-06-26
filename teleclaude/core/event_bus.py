@@ -611,6 +611,8 @@ class EventBus:
             self._successful_handlers.pop(evicted, None)
 
     def _context_payload(self, context: EventContext) -> dict[str, JsonValue]:
+        if not dataclasses.is_dataclass(context) or isinstance(context, type):
+            raise TypeError(f"Expected dataclass for EventBus context, got {type(context).__name__}")
         payload = _json_object(context)
         payload[_CONTEXT_TYPE_KEY] = type(context).__name__
         return payload
