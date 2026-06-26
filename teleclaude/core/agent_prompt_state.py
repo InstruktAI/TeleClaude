@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -27,9 +28,16 @@ class PromptDeliveryObservation:
 
 
 _CLAUDE_PASTED_TEXT_PREFIX = "[Pasted text "
+_CODEX_COLLAPSED_PASTE_RE = re.compile(r"^\[(?:Pasted Content|Pasted text)[^\]]*\]$")
 
 
-def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -> PromptDeliveryObservation:
+def classify_prompt_delivery(
+    output: str,
+    text: str,
+    active_agent: str | None,
+    *,
+    accept_codex_collapsed_paste: bool = False,
+) -> PromptDeliveryObservation:
     """Classify whether ``text`` is absent, stuck in live input, or submitted."""
     target = _normalize_text(text).strip()
     if not target:
@@ -40,6 +48,9 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
         live_input, has_submit_boundary = extract_prompt_block(output)
         normalized_live = _normalize_text(live_input).strip()
         if _codex_prompt_matches_target(normalized_live, target):
+            state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
+            return PromptDeliveryObservation(state, normalized_live)
+        if accept_codex_collapsed_paste and is_codex_collapsed_paste_marker(normalized_live):
             state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
             return PromptDeliveryObservation(state, normalized_live)
         return PromptDeliveryObservation(PromptDeliveryState.ABSENT, normalized_live)
@@ -73,6 +84,10 @@ def _codex_prompt_matches_target(haystack: str, target: str) -> bool:
     return _fold_prompt_whitespace(_strip_codex_prompt_chrome(haystack)) == _fold_prompt_whitespace(target)
 
 
+def is_codex_collapsed_paste_marker(text: str) -> bool:
+    return bool(_CODEX_COLLAPSED_PASTE_RE.fullmatch(_fold_prompt_whitespace(_strip_codex_prompt_chrome(text))))
+
+
 def _fold_prompt_whitespace(text: str) -> str:
     return " ".join(text.split())
 
@@ -84,7 +99,9 @@ def _strip_codex_prompt_chrome(text: str) -> str:
 
 def _is_codex_prompt_chrome_line(line: str) -> bool:
     normalized = _fold_prompt_whitespace(line).lower()
-    return "shift + tab" in normalized and "esc dismiss" in normalized
+    return ("shift + tab" in normalized and "esc dismiss" in normalized) or (
+        normalized.startswith("gpt-") and "\u00b7" in normalized
+    )
 
 
 def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> str:

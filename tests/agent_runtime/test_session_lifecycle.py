@@ -302,7 +302,7 @@ async def _install_agent_then_message_route_harness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    pane_output: str,
+    pane_output: str | list[str],
     emit_turn_on_enter: bool,
 ) -> tuple[_AgentThenMessageBootstrapHarness, list[asyncio.Future[object]], AsyncMock, AsyncMock, AsyncMock]:
     monkeypatch.setattr(daemon_session_mod, "db", api.db)
@@ -367,7 +367,16 @@ async def _install_agent_then_message_route_harness(
 
     paste_recorder = AsyncMock(return_value=True)
     enter_recorder = AsyncMock(side_effect=_send_enter)
-    capture_recorder = AsyncMock(return_value=pane_output)
+    pane_outputs = [pane_output] if isinstance(pane_output, str) else list(pane_output)
+
+    async def _capture_pane(_tmux_session_name: str | None) -> str:
+        if len(pane_outputs) == 2:
+            return pane_outputs[0] if paste_recorder.await_count == 0 else pane_outputs[1]
+        if len(pane_outputs) > 1:
+            return pane_outputs.pop(0)
+        return pane_outputs[0]
+
+    capture_recorder = AsyncMock(side_effect=_capture_pane)
 
     command_service._bootstrap_session = harness._bootstrap_session_resources  # pyright: ignore[reportPrivateUsage]
     command_service._queue_background_task = _queue_background_task  # pyright: ignore[reportPrivateUsage]
@@ -381,7 +390,6 @@ async def _install_agent_then_message_route_harness(
     monkeypatch.setattr(tmux_io, "INJECT_TURN_START_TIMEOUT_S", 0.05)
     monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.05)
     monkeypatch.setattr(tmux_io, "INJECT_PROMPT_OBSERVE_INTERVAL_S", 0.01)
-    monkeypatch.setattr(tmux_io, "INJECT_PASTE_RETRY_BACKOFF_S", (0.01, 0.01))
     monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", (0.05, 0.05, 0.05))
 
     return harness, tasks, paste_recorder, enter_recorder, capture_recorder
@@ -449,6 +457,46 @@ async def test_agent_then_message_create_confirms_user_turn_delivery(
     assert paste_recorder.await_count == 1
     assert enter_recorder.await_count == 1
     assert capture_recorder.await_count >= 1
+    assert harness.polled == [(session_id, data["tmux_session_name"])]
+
+
+@pytest.mark.spec(_SPEC, "UC-SL24")
+async def test_agent_then_message_create_submits_fresh_codex_collapsed_paste_marker(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = (
+        "Reply with exactly TELECLAUDE_LONG_MULTILINE_SMOKE_OK and then stop.\n\n"
+        "Long multiline payload:\n"
+        "- one\n"
+        "- two\n\n"
+        "```text\n"
+        "line A\n"
+        "line B\n"
+        "```"
+    )
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=[
+            f"{prompt_marker} \n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
+            f"{prompt_marker} [Pasted Content 1080 chars]\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
+        ],
+        emit_turn_on_enter=True,
+    )
+
+    data = await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
+
+    session_id = data["session_id"]
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 1
+    assert capture_recorder.await_count >= 2
     assert harness.polled == [(session_id, data["tmux_session_name"])]
 
 
@@ -530,7 +578,63 @@ async def test_agent_then_message_create_ignores_scrollback_prompt_text(
     await _post_agent_then_message_session(api, tmp_path, message)
     await _await_bootstrap_tasks(tasks)
 
-    assert paste_recorder.await_count == 3
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 0
+    assert harness.polled == []
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] != "success"
+
+
+@pytest.mark.spec(_SPEC, "UC-SL26")
+async def test_agent_then_message_create_does_not_submit_stale_codex_collapsed_paste_marker(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "fresh prompt whose live input must not be inferred from stale collapsed paste"
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=f"{prompt_marker} [Pasted Content 999 chars]\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
+        emit_turn_on_enter=False,
+    )
+
+    await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
+
+    assert paste_recorder.await_count == 1
+    assert enter_recorder.await_count == 0
+    assert harness.polled == []
+    assert harness.launch_results
+    assert harness.launch_results[0]["status"] != "success"
+
+
+@pytest.mark.spec(_SPEC, "UC-SL25")
+async def test_agent_then_message_create_does_not_repaste_or_submit_corrupted_prompt_buffer(
+    api: AsyncClient,
+    cluster_event_bus: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del cluster_event_bus
+    message = "startup prompt that should appear once"
+    prompt_marker = AgentName.CODEX.prompt_marker.strip()
+    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
+        api,
+        tmp_path,
+        monkeypatch,
+        pane_output=f"{prompt_marker} {message}{message}",
+        emit_turn_on_enter=False,
+    )
+
+    await _post_agent_then_message_session(api, tmp_path, message)
+    await _await_bootstrap_tasks(tasks)
+
+    assert paste_recorder.await_count == 1
     assert enter_recorder.await_count == 0
     assert harness.polled == []
     assert harness.launch_results

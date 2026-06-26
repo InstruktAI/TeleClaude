@@ -106,7 +106,6 @@ async def _prepare_restart(
     monkeypatch.setattr(tmux_io, "INJECT_TURN_START_TIMEOUT_S", 0.05)
     monkeypatch.setattr(tmux_io, "INJECT_PASTE_VISIBLE_TIMEOUT_S", 0.05)
     monkeypatch.setattr(tmux_io, "INJECT_PROMPT_OBSERVE_INTERVAL_S", 0.01)
-    monkeypatch.setattr(tmux_io, "INJECT_PASTE_RETRY_BACKOFF_S", (0.01, 0.01))
     monkeypatch.setattr(tmux_io, "INJECT_SUBMIT_RETRY_DELAYS_S", submit_delays)
 
     timeout_events: list[SessionLifecycleContext] = []
@@ -242,7 +241,7 @@ async def test_self_restart_swallowed_input_fails_loud_without_success(
     # Never emit a turn-start signal: the visible live prompt belongs to a different payload.
     await _await_inject_task()
 
-    assert _stimulus_paste_count(paste_recorder) == 3  # exhausted paste-visibility attempts
+    assert _stimulus_paste_count(paste_recorder) == 1  # never corrupts the buffer by re-pasting
     assert enter_recorder.await_count == 0  # never submit text that was not observed
     assert ctrl_recorder.await_count == 0
     assert activity_events == []  # no turn ever started
