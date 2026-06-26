@@ -1,18 +1,16 @@
 ---
-description: Claude Code quota and usage retrieval research for TeleClaude dispatch decisions.
+description: Claude Code local research log for TeleClaude dispatch decisions.
 ---
 
-# Claude Code Quota Research
+# Claude Code Research Log
 
-## Overview
+## Claude Code CLI Usage Snapshot Retrieval
+
+_Recorded: 2026-06-26T14:46:44+02:00. Source classification: own local CLI research; no authoritative public vendor documentation is known in the repository's third-party docs._
 
 Claude Code quota collection uses an observed print-mode slash command path. TeleClaude treats the behavior as local empirical research, not as a publicly documented vendor contract.
 
-## Source classification
-
-These findings are own research from local CLI behavior. No authoritative public vendor documentation for this quota retrieval path is known in the repository's third-party docs, so collectors must treat the behavior as observed and verify failures explicitly.
-
-## Findings
+### Findings
 
 - `claude -p '/usage'` executes the `/usage` slash command in print mode instead of sending it as a model prompt.
 - `--output-format json` wraps the result in a JSON envelope, but the quota details are still embedded in the `result` text field.
@@ -20,7 +18,7 @@ These findings are own research from local CLI behavior. No authoritative public
 - The result text included current session usage, weekly all-model usage, weekly Sonnet-only usage, and reset timestamps.
 - The collector should parse the quota text defensively and report an unknown state when the expected usage/reset lines are absent.
 
-## Tested invocation
+### Tested invocation
 
 ```bash
 claude -p '/usage' \
@@ -33,11 +31,11 @@ claude -p '/usage' \
   --settings '{"forceLoginMethod":"claudeai","enabledMcpjsonServers":[],"disableAllHooks":true}'
 ```
 
-## Recommended collector shape
+### Recommended collector shape
 
 Run the tested print-mode invocation, read the JSON envelope, and extract quota facts from `result`. Store normalized values as remaining fractions for the five-hour and weekly windows under `~/.teleclaude/state/`.
 
-## Caveats
+### Caveats
 
 - The useful quota data is formatted text, not a stable JSON schema.
 - Subscription wording can change, so absence of a recognizable line should become a reported probe failure rather than a guessed value.

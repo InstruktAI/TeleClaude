@@ -21,4 +21,4 @@ slash commands.
 
 ## See Also
 
-- third-party/codex-cli/quota-research
+- third-party/codex-cli/research-log — Codex Session Log Rate-Limit Retrieval

@@ -28,4 +28,4 @@ The CLIs provide built-in commands and support custom commands defined as TOML f
 
 ## See Also
 
-- third-party/antigravity-cli/quota-research
+- third-party/antigravity-cli/research-log — Antigravity Local Language Server Quota Summary

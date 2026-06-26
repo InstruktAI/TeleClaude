@@ -57,4 +57,4 @@ Usage of agy:
 
 ## See Also
 
-- third-party/antigravity-cli/quota-research
+- third-party/antigravity-cli/research-log — Antigravity Local Language Server Quota Summary

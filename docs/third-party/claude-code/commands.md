@@ -27,4 +27,4 @@ commands are created as Markdown files in `.claude/commands/` or via skills in
 
 ## See Also
 
-- third-party/claude-code/quota-research
+- third-party/claude-code/research-log — Claude Code CLI Usage Snapshot Retrieval
