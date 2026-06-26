@@ -83,6 +83,9 @@
     '  ├─■ frozen-work··chng··P:icebox···········',
   ])
 # ---
+# name: test_todo_row_renders_hold_glyph_for_held_prepare_todo
+  '  ├─■ legacy-held··chng··P:prepared········🔒'
+# ---
 # name: test_todo_row_renders_pending_approval_distinct_from_hold
   list([
     '  ├─■ approval-work··feat··P:approve··········',
