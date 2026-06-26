@@ -390,7 +390,10 @@ def _holder_slugs(rows: Sequence[TodoRow]) -> set[str]:
 async def _load_todos(
     todos_db: TodosDb, db: Db, *, claimed_slugs: set[str] | None = None
 ) -> tuple[dict[str, RunnerTodo], list[str]]:
-    rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True)
+    rows = sorted(
+        await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True),
+        key=lambda row: {"removed": 0, "delivered": 1, "icebox": 2, "active": 3}.get(row["status"], -1),
+    )
     deps = await todos_db.load_deps()
     outstanding = claimed_slugs or set()
     holders = _holder_slugs(rows)

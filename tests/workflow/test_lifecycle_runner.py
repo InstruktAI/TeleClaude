@@ -2398,6 +2398,46 @@ async def test_operation_bridge_dispatches_natural_prepare_lane_for_draft_operat
     assert state["manually_started"] is True
 
 
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+async def test_operation_bridge_uses_live_recreated_slug_over_removed_history(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    Repo.init(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value,
+        active_runner=None,
+    )
+    assert await todos_db.soft_remove_from_todo(_WORK_SLUG, cwd=str(project_root))
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value,
+        active_runner=None,
+    )
+    client = _RunnerClient()
+    service = OperationsService(
+        db=cast(Db, _FakeDb()),
+        task_registry=TaskRegistry(),
+        lifecycle_client_factory=lambda: client,
+    )
+
+    result = await service._run_todo_lifecycle_operation(
+        _operation(slug=_WORK_SLUG, cwd=project_root),
+        lane=RunnerLane.PREPARE,
+        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+    )
+
+    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} prepare {_SPAWN_SESSION}"
+    assert client.requests[0]["command"] == _NEXT_PREPARE
+    assert client.requests[0]["args"] == _WORK_SLUG
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == _SPAWN_SESSION
+    assert state["manually_started"] is True
+
+
 @pytest.mark.spec(_SPEC, "UC-WFL-24")
 async def test_operation_bridge_honors_explicit_prepare_lane_on_prepared_todo(tmp_path: Path, snapshot: object) -> None:
     project_root = tmp_path / "project"
