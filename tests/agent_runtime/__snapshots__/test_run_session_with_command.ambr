@@ -7,6 +7,12 @@
       Treat the following as provided inputs to that instruction set:
   
     ''',
+    '/next-prepare': '''
+      Read <COMMANDS_DIR>/next-prepare.md and follow it exactly as the active instruction set for this session.
+      
+      Treat the following as provided inputs to that instruction set:
+  
+    ''',
     '/next-review-commits': '''
       Read <COMMANDS_DIR>/next-review-commits.md and follow it exactly as the active instruction set for this session.
       

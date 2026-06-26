@@ -80,7 +80,7 @@ And the public full-command (used for the human-visible initial-input echo) rema
 ```
 Given the effective agent is "codex"
 And the normalized command starts with "/next-"
-And the command is slug-bound (not in the non-slug-bound set: next-integrate, next-review-commits)
+And the command is slug-bound (not in the non-slug-bound set: next-prepare, next-integrate, next-review-commits)
 And the args field is empty
 When the Codex startup-message rewrite validates the inputs
 Then it rejects with "/<command> requires a slug argument"
@@ -90,7 +90,7 @@ Then it rejects with "/<command> requires a slug argument"
 
 ```
 Given the effective agent is "codex"
-And the normalized command is in the non-slug-bound set (next-integrate, next-review-commits)
+And the normalized command is in the non-slug-bound set (next-prepare, next-integrate, next-review-commits)
 And the args field is empty
 When the Codex startup-message rewrite runs
 Then the startup message is replaced by a Codex loader prompt that

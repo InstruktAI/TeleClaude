@@ -15,6 +15,7 @@ from teleclaude.paths import COMMANDS_DIR
 
 _SPEC = "project/spec/feature/agent_runtime/run-session-with-command"
 
+_PREPARE_COMMAND = "/next-prepare"
 _INTEGRATE_COMMAND = "/next-integrate"
 _REVIEW_COMMITS_COMMAND = "/next-review-commits"
 _BUILD_COMMAND = "/next-build"
@@ -66,11 +67,11 @@ async def test_codex_non_slug_bound_argless_produces_loader_message(
     monkeypatch: pytest.MonkeyPatch,
     snapshot: SnapshotAssertion,
 ) -> None:
-    """Codex /next-integrate and /next-review-commits with empty args boot the loader, not a 400."""
+    """Codex argless lifecycle commands boot the loader, not a 400."""
     captured = _install_launch_intent_capture(monkeypatch)
 
     rendered: dict[str, str | None] = {}
-    for command in (_INTEGRATE_COMMAND, _REVIEW_COMMITS_COMMAND):
+    for command in (_PREPARE_COMMAND, _INTEGRATE_COMMAND, _REVIEW_COMMITS_COMMAND):
         captured.clear()
         response = await _run(api, tmp_path, command=command, args="", agent="codex")
 
