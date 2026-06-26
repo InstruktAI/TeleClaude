@@ -480,11 +480,36 @@ async def test_agent_then_message_create_retries_enter_without_repaste_when_turn
 
 
 @pytest.mark.spec(_SPEC, "UC-SL26")
+@pytest.mark.parametrize(
+    "scrollback_tail",
+    [
+        pytest.param(
+            [
+                "Previous assistant response line 1.",
+                "Previous assistant response line 2.",
+                "Previous assistant response line 3.",
+            ],
+            id="ordinary-output",
+        ),
+        pytest.param(
+            [
+                "• Thinking (1s • esc to interrupt)",
+                "Completed output line 1.",
+                "Completed output line 2.",
+                "Completed output line 3.",
+                "Completed output line 4.",
+                "Completed output line 5.",
+            ],
+            id="submitted-boundary",
+        ),
+    ],
+)
 async def test_agent_then_message_create_ignores_scrollback_prompt_text(
     api: AsyncClient,
     cluster_event_bus: None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    scrollback_tail: list[str],
 ) -> None:
     del cluster_event_bus
     message = "historical startup prompt"
@@ -496,8 +521,7 @@ async def test_agent_then_message_create_ignores_scrollback_prompt_text(
         pane_output="\n".join(
             [
                 f"{prompt_marker} {message}",
-                "• old response",
-                prompt_marker,
+                *scrollback_tail,
             ]
         ),
         emit_turn_on_enter=False,

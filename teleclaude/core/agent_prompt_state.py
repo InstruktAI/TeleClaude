@@ -39,7 +39,7 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
     if agent is AgentName.CODEX:
         live_input, has_submit_boundary = extract_prompt_block(output)
         normalized_live = _normalize_text(live_input).strip()
-        if _contains_codex_target(normalized_live, target):
+        if _codex_prompt_matches_target(normalized_live, target):
             state = PromptDeliveryState.SUBMITTED if has_submit_boundary else PromptDeliveryState.IN_INPUT
             return PromptDeliveryObservation(state, normalized_live)
         return PromptDeliveryObservation(PromptDeliveryState.ABSENT, normalized_live)
@@ -69,14 +69,22 @@ def _contains_target(haystack: str, target: str) -> bool:
     return target in haystack
 
 
-def _contains_codex_target(haystack: str, target: str) -> bool:
-    if _contains_target(haystack, target):
-        return True
-    return _fold_prompt_whitespace(target) in _fold_prompt_whitespace(haystack)
+def _codex_prompt_matches_target(haystack: str, target: str) -> bool:
+    return _fold_prompt_whitespace(_strip_codex_prompt_chrome(haystack)) == _fold_prompt_whitespace(target)
 
 
 def _fold_prompt_whitespace(text: str) -> str:
     return " ".join(text.split())
+
+
+def _strip_codex_prompt_chrome(text: str) -> str:
+    lines = [line for line in text.splitlines() if not _is_codex_prompt_chrome_line(line)]
+    return "\n".join(lines).strip()
+
+
+def _is_codex_prompt_chrome_line(line: str) -> bool:
+    normalized = _fold_prompt_whitespace(line).lower()
+    return "shift + tab" in normalized and "esc dismiss" in normalized
 
 
 def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> str:

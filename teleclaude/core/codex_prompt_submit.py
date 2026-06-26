@@ -10,6 +10,7 @@ logger = get_logger(__name__)
 
 CODEX_PROMPT_MARKER = "›"
 CODEX_TOOL_ACTION_LOOKBACK_LINES = 120
+CODEX_SUBMITTED_PROMPT_BOUNDARY_DISTANCE = 4
 
 CODEX_AGENT_MARKERS = frozenset(
     {
@@ -134,14 +135,17 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         parts.append(first)
 
     has_submit_boundary = False
-    for line in lines[prompt_idx + 1 :]:
+    submit_boundary_idx: int | None = None
+    for idx, line in enumerate(lines[prompt_idx + 1 :], start=prompt_idx + 1):
         clean_line = _strip_ansi(line)
         stripped = clean_line.strip()
         if _is_live_agent_marker_line(line):
             has_submit_boundary = True
+            submit_boundary_idx = idx
             break
         if _is_compact_dimmed_agent_boundary_line(line):
             has_submit_boundary = True
+            submit_boundary_idx = idx
             break
         if stripped and stripped[0] in CODEX_AGENT_MARKERS:
             continue
@@ -153,6 +157,12 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:
         parts.append(_strip_ansi(line_without_suggestion).rstrip())
 
     text = "\n".join(parts).strip()
+    if (
+        has_submit_boundary
+        and submit_boundary_idx is not None
+        and len(lines) - submit_boundary_idx > CODEX_SUBMITTED_PROMPT_BOUNDARY_DISTANCE
+    ):
+        return "", False
     if not text:
         return "", has_submit_boundary
     return text, has_submit_boundary
