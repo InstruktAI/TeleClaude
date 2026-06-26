@@ -49,19 +49,20 @@ that makes the plan groundable.
 
 ## Steps
 
-1. **Triage for a duplicate — before any investigation or artifact write.**
-   Simultaneous log scans and human reports produce near-coincident reports of the same
-   defect, each scaffolding its own bug todo. The report-time moment cannot catch this —
-   each reporter checks before the other's todo exists — but by the time this phase runs
-   the sibling already exists, so the triage lives here, ahead of the investigation and
-   every artifact write. Read this todo's reported symptom for the comparison
+1. **Triage for duplicate, suppression, or no-fix — before any investigation or artifact
+   write.** Simultaneous log scans and human reports produce near-coincident reports of
+   the same defect, each scaffolding its own bug todo. The report-time moment cannot catch
+   this — each reporter checks before the other's todo exists — but by the time this phase
+   runs the sibling already exists, so the triage lives here, ahead of the investigation
+   and every artifact write. Read this todo's reported symptom for the comparison
    (`telec todo artifacts read {slug} input`), list the in-flight bugs
-   (`telec bugs list`, `telec todo list`), and read the `input` of the candidates that
-   look related. A **duplicate** is another bug todo whose reported defect shares the same
-   root symptom — the same error signature, the same failing surface — not merely the same
-   file or area; that judgment is yours to make from the symptoms, not a string match.
-   Reading inputs is the triage's own work; the hard gate is on investigation and artifact
-   writes, never on the read the triage depends on.
+   (`telec bugs list`, `telec todo list`), read the active suppression ledger
+   (`telec bugs suppressions`), and read the `input` of the candidates that look related.
+   A **duplicate** is another bug todo whose reported defect shares the same root symptom
+   — the same error signature, the same failing surface — not merely the same file or
+   area; that judgment is yours to make from the symptoms, not a string match. Reading
+   inputs and suppressions is the triage's own work; the hard gate is on investigation and
+   artifact writes, never on the read the triage depends on.
    - **If a sibling for the same defect is already in flight, retire this todo as the
      duplicate.** Resolve the race deterministically so two simultaneous diagnose sessions
      never both retire themselves: the **survivor** is whichever twin is already further
@@ -86,6 +87,20 @@ that makes the plan groundable.
      won't-fix; treat it like a duplicate — remove the todo
      (`telec todo remove {slug}`, naming the suppression in the reason) and end
      the session, writing no `investigation` and no `diagnosis`.
+   - **If the reported signal is itself a suppression or no-fix candidate, decide that
+     before diagnosing.** Log-hunter bug reports sometimes describe correct operational
+     behavior rather than a defect: external service throttles, stale duplicate cleanup,
+     intentionally tolerated platform limits, or a report whose symptom was already fixed
+     by a committed change. Do a short confirmation from the `input`, the active
+     suppressions, and a targeted log check if needed; do not perform full root-cause
+     investigation merely to prove an accepted no-fix classification. If the signal is a
+     stable recurring condition that should not re-file, register the invariant pattern
+     with `telec bugs suppress "<pattern>" --reason "<why>" --match regex
+--disposition <expected|wontfix> --source-bug {slug}`, then remove the todo and end
+     the session, writing no `investigation` and no `diagnosis`. If the signal was already
+     fixed, one-off, or unlikely to recur, remove the todo and end the session **without**
+     adding a suppression. If confidence is not high, keep the todo and proceed to Step 2;
+     the cost of a false suppression is hiding a real bug.
    - **If this todo is the survivor, or no sibling exists, proceed to Step 2.**
 2. **Read the symptom as a defect to investigate.** With the `input` already in hand from
    triage, treat it as a real, reproducible defect until investigation proves otherwise
@@ -146,10 +161,12 @@ cause, the planner decides the fix; (3) writing a conclusion not grounded in the
 investigation; (4) writing a "likely" cause to keep moving when the mechanism will not
 ground — escalate instead; (5) diagnosing past a duplicate — investigating or writing
 artifacts into a todo whose defect a further-along sibling already owns, instead of
-triaging first (Step 1), retiring the twin, and ending. A duplicate earns no artifacts. Escalation is the strong, honest move: a "likely" cause is
-imagined confidence, and dressing it as a finding to keep the pipeline moving is the
-cardinal sin this phase stops. The diagnosis is judged by the cross-model plan reviewer;
-write it to be refuted, not to look right.
+triaging first (Step 1), retiring the twin, and ending; (6) diagnosing past a
+high-confidence expected or won't-fix signal that should be suppressed or simply removed
+before artifacts exist. A retired duplicate or no-fix todo earns no artifacts. Escalation
+is the strong, honest move: a "likely" cause is imagined confidence, and dressing it as a
+finding to keep the pipeline moving is the cardinal sin this phase stops. The diagnosis is
+judged by the cross-model plan reviewer; write it to be refuted, not to look right.
 
 ## Recovery
 
