@@ -2,20 +2,24 @@
 
 install:
 	@echo "Installing project dependencies..."
-	@bash tools/quality.sh install
-	@echo "✓ Project dependencies installed"
+	@echo "ERROR: wire make install to this project's dependency setup command." >&2
+	@echo "Examples: uv sync --group dev, pnpm install, cargo fetch." >&2
+	@exit 2
 
 lint:
 	@echo "Running lint checks..."
-	@FILES_FROM="$(FILES_FROM)" bash tools/quality.sh lint
-	@echo "✓ Lint checks passed"
+	@echo "ERROR: wire make lint to this project's lint/typecheck command." >&2
+	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped lint is supported." >&2
+	@exit 2
 
 test:
 	@echo "Running tests..."
-	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" bash tools/quality.sh test
-	@echo "✓ Tests passed"
+	@echo "ERROR: wire make test to this project's test command." >&2
+	@echo "This target is intentionally unscoped." >&2
+	@exit 2
 
 format:
 	@echo "Formatting code..."
-	@FILES_FROM="$(FILES_FROM)" bash tools/quality.sh format
-	@echo "✓ Code formatted"
+	@echo "ERROR: wire make format to this project's formatter command." >&2
+	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped format is supported." >&2
+	@exit 2

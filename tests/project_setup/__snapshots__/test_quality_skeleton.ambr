@@ -12,6 +12,38 @@
     ]),
   })
 # ---
+# name: test_generated_python_project_makefile_uses_explicit_project_owned_placeholders
+  dict({
+    'makefile': '''
+      .PHONY: install lint test format
+      
+      install:
+      	@echo "Installing project dependencies..."
+      	@echo "ERROR: wire make install to this project's dependency setup command." >&2
+      	@echo "Examples: uv sync --group dev, pnpm install, cargo fetch." >&2
+      	@exit 2
+      
+      lint:
+      	@echo "Running lint checks..."
+      	@echo "ERROR: wire make lint to this project's lint/typecheck command." >&2
+      	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped lint is supported." >&2
+      	@exit 2
+      
+      test:
+      	@echo "Running tests..."
+      	@echo "ERROR: wire make test to this project's test command." >&2
+      	@echo "This target is intentionally unscoped." >&2
+      	@exit 2
+      
+      format:
+      	@echo "Formatting code..."
+      	@echo "ERROR: wire make format to this project's formatter command." >&2
+      	@echo "If FILES_FROM is set, read NUL-delimited paths from it when scoped format is supported." >&2
+      	@exit 2
+  
+    ''',
+  })
+# ---
 # name: test_projects_init_installs_thin_precommit_hook_without_legacy_bootstrap
   dict({
     'contains_install_python': False,
