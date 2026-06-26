@@ -6,11 +6,11 @@ description: Antigravity CLI quota and usage retrieval research for TeleClaude d
 
 ## Overview
 
-This note records local research into reading Antigravity CLI (`agy`) quota state for dispatch decisions. The future-agent question is: how can TeleClaude collect Gemini/Antigravity five-hour and weekly quota state without screen-scraping `/usage` or sending `/usage` to the model?
+Antigravity CLI (`agy`) quota collection uses an observed local language-server endpoint exposed by a short-lived CLI session. TeleClaude treats the behavior as local empirical research, not as a publicly documented vendor contract.
 
-## Provenance
+## Source classification
 
-These findings come from local CLI, log, and local-RPC research performed on 2026-06-26. They are not vendor-documented in the public Antigravity CLI command docs reviewed for this repository, and the useful behavior is treated as an observed local runtime contract until upstream documentation says otherwise.
+These findings are own research from local CLI, log, and local-RPC behavior. No authoritative public vendor documentation for this quota retrieval path is known in the repository's third-party docs, so collectors must treat the behavior as observed and verify failures explicitly.
 
 ## Findings
 

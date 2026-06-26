@@ -6,11 +6,11 @@ description: Claude Code quota and usage retrieval research for TeleClaude dispa
 
 ## Overview
 
-This note records local research into reading Claude Code subscription usage from the CLI for dispatch decisions. The future-agent question is: how can TeleClaude collect Claude's five-hour and weekly allowance state without driving a long-lived TUI?
+Claude Code quota collection uses an observed print-mode slash command path. TeleClaude treats the behavior as local empirical research, not as a publicly documented vendor contract.
 
-## Provenance
+## Source classification
 
-These findings come from local CLI research performed on 2026-06-26. They are not vendor-documented in the public Claude Code command docs reviewed for this repository, and the useful behavior is treated as an observed CLI contract until upstream documentation says otherwise.
+These findings are own research from local CLI behavior. No authoritative public vendor documentation for this quota retrieval path is known in the repository's third-party docs, so collectors must treat the behavior as observed and verify failures explicitly.
 
 ## Findings
 

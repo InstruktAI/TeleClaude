@@ -6,11 +6,11 @@ description: Codex CLI quota and usage retrieval research for TeleClaude dispatc
 
 ## Overview
 
-This note records local research into reading Codex CLI quota state for dispatch decisions. The future-agent question is: how can TeleClaude determine Codex five-hour and weekly allowance state without spending an unnecessary model turn?
+Codex CLI quota collection uses observed local session-log records and a controlled TUI fallback. TeleClaude treats the behavior as local empirical research, not as a publicly documented vendor contract.
 
-## Provenance
+## Source classification
 
-These findings come from local CLI and session-log research performed on 2026-06-26. They are not vendor-documented in the public Codex CLI command docs reviewed for this repository, and the useful behavior is treated as an observed local runtime contract until upstream documentation says otherwise.
+These findings are own research from local CLI and session-log behavior. No authoritative public vendor documentation for this quota retrieval path is known in the repository's third-party docs, so collectors must treat the behavior as observed and verify failures explicitly.
 
 ## Findings
 
