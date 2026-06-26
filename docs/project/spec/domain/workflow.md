@@ -971,7 +971,7 @@ When they run `telec todo create <slug> "<content>" --kind <k> --icebox`
 Then the todo is created in the icebox (roadmap `status="icebox"`) and visible in icebox reads
 And the runner skips it as an iceboxed entry, so no session is dispatched
 And `telec todo unfreeze <slug>` returns it to active and makes it eligible on the next runner wake-up
-And `--hold`/`--release` are not accepted on create; hold is set only by the manual-close interlock or `telec todo update --hold`
+And `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18 in the todo-creation spec), and hold is also set by the manual-close interlock or `telec todo update --hold`
 ```
 
 ```gherkin

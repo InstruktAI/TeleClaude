@@ -90,6 +90,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+_CREATE_HOLD_REASON = "todo create --hold"
 _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_INPUT,
     ARTIFACT_PRD,
@@ -724,6 +725,10 @@ async def todo_content_create(
       - "task": content is the "input" artifact; enters task-plan drafting unless --plan supplies
         the pre-authorized task-plan.
     ``icebox`` creates the todo parked in the icebox (no prepare auto-spawn).
+    ``hold`` creates an active todo with the dispatch brake set
+    (``hold_audit.source=creation``) so the lifecycle router and runner skip it
+    until it is released — the hidden specialist control for live-human prepare
+    orchestration; mutually exclusive with ``icebox``.
     ``group`` attaches the new todo as a child of the named parent slug,
     making the parent a structural holder via the existing derivation.
     """
@@ -749,9 +754,22 @@ async def todo_content_create(
                 status_code=400,
                 detail="--plan is valid only with --kind change or --kind task",
             )
+        if request.hold and request.icebox:
+            raise HTTPException(
+                status_code=400,
+                detail="hold and icebox are mutually exclusive",
+            )
         created_by_principal = optional_capture_principal(identity)
         state = initial_todo_state_for_kind(request.kind)
-        pickup_requested = not request.icebox
+        if request.hold:
+            state["hold"] = True
+            state["hold_audit"] = {
+                "source": HoldAuditSource.CREATION.value,
+                "set_at": datetime.now(UTC).isoformat(),
+                "set_by_session_id": created_by_principal or "",
+                "reason": _CREATE_HOLD_REASON,
+            }
+        pickup_requested = not request.icebox and not request.hold
 
         written_artifact_name = ""
         written_artifact_body = ""

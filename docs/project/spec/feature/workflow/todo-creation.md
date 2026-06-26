@@ -26,6 +26,8 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
     - `--kind change --plan` writes the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
     - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
 
+- `--hold` — **hidden specialist control.** Creates an **active** todo (roadmap `status="active"`) whose hold flag is set with `hold_audit.source=creation`, so the lifecycle router consumes the creation event without dispatch and the lifecycle runner skips the slug until the hold is released via `telec todo update <slug> --release`. Unlike `--icebox` it does not park the todo in the icebox: the todo carries normal state and its `input` artifact, and stays visible as an active held row. It is mutually exclusive with `--icebox`. It is reserved for live-human prepare orchestration (a human driving an agent to own a new todo's prepare phase) and is suppressed from broad CLI help, generated command tables, and routine create guidance.
+
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
 The Todo aggregate's invariants — unique kebab-case slug, kind fixed once assigned, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for `workflow.todo.created`.
@@ -69,6 +71,38 @@ And the route writes state + `input` artifact with the roadmap entry's status se
 And the route emits workflow.todo.created with pickup_requested=false
 And the lifecycle runner skips the iceboxed slug and spawns no session
 And the todo waits in the icebox until `telec todo unfreeze parked-idea` returns it to active
+```
+
+#### UC-WTC18: Held create writes active held state and exposes it through todo state views
+
+```
+Given a live-human prepare orchestrator needs to own a new todo before the runner can claim it
+When they run `telec todo create held-change "<content>" --kind change --hold`
+Then the request carries kind="change" and hold=True
+And the route writes the roadmap entry with status="active", the default state, and the `input` artifact
+And the persisted state has hold=True and hold_audit.source="creation"
+And `telec todo show held-change` exposes the held state and its hold_audit.source
+And `telec todo list` projects the same active row as held, reusing the existing hold projection that update-created holds use
+```
+
+#### UC-WTC19: Held create suppresses auto dispatch until release
+
+```
+Given a todo is created with `telec todo create held-change "<content>" --kind change --hold`
+When the route emits workflow.todo.created
+Then the payload carries pickup_requested=false
+And the lifecycle router consumes the event without dispatching a session
+And the lifecycle runner skips the active held todo as HELD
+And after `telec todo update held-change --release` the active todo becomes eligible for its normal lane once other gates are satisfied
+```
+
+#### UC-WTC20: Hold and icebox are mutually exclusive at create time
+
+```
+Given a caller submits a create request carrying both hold=True and icebox=True
+When the workflow service validates the request
+Then the create is rejected before any roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+And the diagnostic names hold and icebox as mutually exclusive
 ```
 
 #### UC-WTC12: Group create attaches a child and derives the parent holder
@@ -117,11 +151,11 @@ And the lifecycle runner acts against the targeted project
 #### UC-WTC14: Removed create-time parking flags are rejected
 
 ```
-Given a caller submits a create request carrying a retired parking field — `--hold`, `--release`, or the hidden `--silent` (or the corresponding `hold`/`release`/`silent` request body field)
+Given a caller submits a create request carrying a retired parking field — `--release` or the hidden `--silent` (or the corresponding `release`/`silent` request body field)
 When the workflow service validates the request body
 Then the create is rejected at the request boundary (fail-closed) rather than silently accepted
 And no roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
-And the create-time parking mechanism a caller must use instead is `--icebox`
+And the `hold` field is accepted (it is the hidden specialist dispatch brake — see UC-WTC18)
 ```
 
 ```
@@ -266,6 +300,7 @@ When they run `telec todo create --help`
 Then the usage line shows `--kind` as optional with values `feature|change|bug|task`
 And the help states that omitting `--kind` creates a kind-less todo classified by `/analyze-todo-input`
 And the help does not advertise retired kind values
+And the help does not advertise the hidden `--hold` flag
 ```
 
 #### UC-WTC2: Dep-blocked create event is consumed without prepare dispatch
@@ -299,8 +334,8 @@ And the router dispatches /next-prepare for "child" as usual
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
 - `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). A bare `task` is created silent and enters `task_plan_drafting`, where `/next-prepare-task` authors its `task-plan`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes.
-- A created todo enters its kind's lifecycle; nothing holds it back at creation. `--icebox` is the only flag that parks it instead (`status="icebox"`, `pickup_requested=false`), and the lifecycle runner skips iceboxed entries. The route always emits `workflow.todo.created` after a successful create.
-- `--group <parent-slug>` is the create-time path to a grouped child. It threads `group_slug` through the create transaction's existing `add_to_todo` call. Holder status for the parent is **derived** from the live child reference, never stored — `create --group` mutates no holder row; the same transaction strips the parent's non-`input` payload via the holder-purge, and refuses the create when the parent already carries a non-`input` artifact (it is past prepare — see UC-WTC16). `--hold` and `--release` are not accepted on create.
+- A created todo enters its kind's lifecycle; nothing holds it back at creation by default. Two flags suppress create-time dispatch (`pickup_requested=false`): `--icebox` parks it in the icebox (`status="icebox"`), and `--hold` leaves it **active** but sets the durable dispatch brake (`hold=True`, `hold_audit.source="creation"`). The lifecycle runner skips both — iceboxed entries by status, held entries by the hold brake — until the icebox is unfrozen or the hold is released. The two are mutually exclusive. The route always emits `workflow.todo.created` after a successful create.
+- `--group <parent-slug>` is the create-time path to a grouped child. It threads `group_slug` through the create transaction's existing `add_to_todo` call. Holder status for the parent is **derived** from the live child reference, never stored — `create --group` mutates no holder row; the same transaction strips the parent's non-`input` payload via the holder-purge, and refuses the create when the parent already carries a non-`input` artifact (it is past prepare — see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18).
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
 - The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/analyze-todo-input` for classification when dependency gates allow pickup.
 

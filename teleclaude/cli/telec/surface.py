@@ -493,7 +493,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--hold]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
@@ -515,6 +515,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag(
                         "--plan",
                         desc="For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.",
+                    ),
+                    Flag(
+                        "--hold",
+                        desc="Create the todo with the dispatch brake set so router/runner pickup is suppressed until release; specialist live-human prepare orchestration only.",
+                        hidden=True,
                     ),
                 ],
                 notes=[

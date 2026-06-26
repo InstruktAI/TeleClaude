@@ -6,7 +6,7 @@ import sqlite3
 import sys
 from collections.abc import AsyncGenerator, Mapping
 from pathlib import Path
-from typing import TypedDict, Unpack, cast
+from typing import TypedDict, TypeGuard, Unpack, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -43,11 +43,13 @@ from teleclaude.core.todos_db import (
     get_todos_db,
     todos_db_path,
 )
+from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
 from teleclaude.events.cartridges import lifecycle_router
 from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.types.commands import CreateSessionCommand
+from teleclaude.types.todos import HoldAuditSource
 
 pytestmark = pytest.mark.functional
 
@@ -62,6 +64,7 @@ _PARENT = "parent"
 _CHILD = "child"
 _KINDLESS = "kindless"
 _PARKED = "parked-idea"
+_HELD = "held-change"
 _NEXT_PREPARE = "/next-prepare"
 _NEXT_WORK = "/next-work"
 _ANALYZE_TODO_INPUT = "/analyze-todo-input"
@@ -135,6 +138,10 @@ async def _noop_emit_event(**_kwargs: object) -> None:
     return None
 
 
+def _is_todo_show_payload(payload: ShowPayload) -> TypeGuard[TodoShowPayload]:
+    return payload.get("stage") != "holder"
+
+
 @pytest.mark.spec(_SPEC, "UC-WTC1")
 def test_create_help_exposes_canonical_kind_choices(
     monkeypatch: pytest.MonkeyPatch,
@@ -146,6 +153,8 @@ def test_create_help_exposes_canonical_kind_choices(
     main()
 
     captured = capsys.readouterr()
+    # The hidden specialist `--hold` flag is suppressed from broad create help.
+    assert "--hold" not in captured.out
     assert {"stdout": captured.out, "stderr": captured.err} == snapshot
 
 
@@ -298,6 +307,143 @@ async def test_icebox_create_parks_todo_and_suppresses_dispatch(
 
     await LifecycleRouterCartridge().process(_created_event(payload), cast(PipelineContext, object()))
     assert _CapturingTelecAPIClient.calls == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC18")
+def test_create_hold_flag_sends_hold_in_request_body(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The hidden `--hold` flag parses through the CLI handler into hold=True on the request body."""
+    invocation_cwd = tmp_path / "invocation"
+    invocation_cwd.mkdir()
+    tool_api_request = MagicMock(return_value={"status": "ok"})
+    monkeypatch.setattr(todo_handlers, "resolve_invocation_cwd", lambda: invocation_cwd)
+    monkeypatch.setattr(todo_handlers, "tool_api_request", tool_api_request)
+
+    todo_handlers._handle_todo_create([_HELD, "Live-human prepare orchestration.", "--kind", _KIND_CHANGE, "--hold"])
+
+    json_body = tool_api_request.call_args.kwargs["json_body"]
+    assert json_body["hold"] is True
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC18")
+async def test_hold_create_writes_active_held_state_and_exposes_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    monkeypatch.setattr(todo_routes, "emit_event", _noop_emit_event)
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug=_HELD,
+            content="Live-human prepare orchestration.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            hold=True,
+        ),
+        identity=None,
+    )
+
+    todos_db = await get_todos_db(project_root)
+    # Active roadmap row (not iceboxed) + input artifact written normally. The
+    # default projection excludes the icebox, so the held todo surfacing here
+    # proves its roadmap status is active, not parked.
+    assert await todos_db.read_artifact(_HELD, ARTIFACT_INPUT)
+    [todo] = assemble_todo_from_db(str(project_root))
+    assert todo.slug == _HELD
+    assert todo.status != TodoStatus.ICEBOX
+    # The held projection mirrors update-created holds.
+    assert todo.hold is True
+    assert todo.held is True
+    assert todo.hold_source == HoldAuditSource.CREATION.value
+
+    # Persisted state carries the creation-sourced hold brake.
+    state = await todos_db.read_state(_HELD)
+    assert state is not None
+    assert state["hold"] is True
+    hold_audit = state["hold_audit"]
+    assert isinstance(hold_audit, dict)
+    assert hold_audit["source"] == HoldAuditSource.CREATION.value
+
+    # `telec todo show` exposes the held state through the same state block.
+    payload = await assemble_show_payload(todos_db, _HELD)
+    assert payload is not None
+    assert _is_todo_show_payload(payload)
+    state_block = payload["state"]
+    assert state_block["hold"] is True
+    audit_block = state_block["hold_audit"]
+    assert isinstance(audit_block, dict)
+    assert audit_block["source"] == HoldAuditSource.CREATION.value
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC19")
+async def test_hold_create_suppresses_auto_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+    monkeypatch.setattr(lifecycle_router, "TelecAPIClient", _CapturingTelecAPIClient)
+    _CapturingTelecAPIClient.calls = []
+
+    await todo_routes.todo_content_create(
+        TodoDumpRequest(
+            slug=_HELD,
+            content="Live-human prepare orchestration.",
+            kind=_KIND_CHANGE,
+            cwd=str(project_root),
+            hold=True,
+        ),
+        identity=None,
+    )
+
+    [event_kwargs] = emitted
+    payload = event_kwargs["payload"]
+    assert isinstance(payload, dict)
+    assert payload["pickup_requested"] is False
+
+    # The router consumes the held-create event without dispatching a session.
+    await LifecycleRouterCartridge().process(_created_event(payload), cast(PipelineContext, object()))
+    assert _CapturingTelecAPIClient.calls == []
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC20")
+async def test_hold_and_icebox_are_mutually_exclusive_at_create(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    snapshot: object,
+) -> None:
+    project_root = tmp_path / "project"
+    emitted: list[_EmittedEvent] = []
+
+    async def _capture_emit_event(**kwargs: object) -> None:
+        emitted.append(cast(_EmittedEvent, kwargs))
+
+    monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
+
+    with pytest.raises(HTTPException) as exc:
+        await todo_routes.todo_content_create(
+            TodoDumpRequest(
+                slug=_HELD,
+                content="Cannot be both.",
+                kind=_KIND_CHANGE,
+                cwd=str(project_root),
+                hold=True,
+                icebox=True,
+            ),
+            identity=None,
+        )
+
+    assert exc.value.status_code == 400
+    # The diagnostic names the mutually exclusive flags (snapshot is the contract).
+    assert exc.value.detail == snapshot
+    # Nothing was written: no row, no state, no event.
+    assert emitted == []
+    assert assemble_todo_from_db(str(project_root), include_icebox=True) == []
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC12")
@@ -493,7 +639,7 @@ async def test_project_root_create_targets_explicit_project(
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC14")
-@pytest.mark.parametrize("retired_field", ["hold", "release", "silent"])
+@pytest.mark.parametrize("retired_field", ["release", "silent"])
 def test_retired_create_parking_fields_are_rejected(retired_field: str) -> None:
     with pytest.raises(ValidationError):
         TodoDumpRequest.model_validate(
@@ -504,6 +650,20 @@ def test_retired_create_parking_fields_are_rejected(retired_field: str) -> None:
                 retired_field: True,
             }
         )
+
+
+@pytest.mark.spec(_SPEC, "UC-WTC14")
+def test_hold_create_field_is_accepted() -> None:
+    """`hold` is no longer a retired field — it is the hidden create-time dispatch brake."""
+    request = TodoDumpRequest.model_validate(
+        {
+            "slug": _HELD,
+            "content": "Live-human prepare orchestration.",
+            "kind": _KIND_CHANGE,
+            "hold": True,
+        }
+    )
+    assert request.hold is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WTC4")

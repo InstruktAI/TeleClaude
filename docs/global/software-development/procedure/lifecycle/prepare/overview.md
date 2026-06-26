@@ -59,6 +59,30 @@ state machine. The state machine decides what happens next.
 
 ## Steps
 
+### 0. Resolve the entry mode
+
+Before doing anything else, resolve which of three live-entry modes this session
+is in — the slug's presence and the human's presence determine the posture:
+
+- **No slug + human present.** The conversation itself is the source for
+  `@input`. Shape a concrete todo with the human, and once the intent is
+  concrete create it held with the hidden specialist control
+  `telec todo create <slug> <content> --kind <kind> --hold`. The `--hold`
+  keeps the runner from claiming the new todo before you continue, so you keep
+  ownership of prepare. Then continue as the owning prepare orchestrator from
+  Step 1.
+- **Slug + human present and no `human_in_loop: false`.** Treat this as the
+  human reassessing or refining that todo, not autonomous continuation. Do not
+  call `telec todo prepare {slug}` before assessing the conversation and the
+  human's intent for the slug; advance only once that intent is clear, then
+  proceed from Step 1.
+- **Slug + `human_in_loop: false`.** Daemon standin path: proceed directly
+  from the artifacts through the prepare state machine (Step 1 onward).
+
+`--hold` is the create-time dispatch brake reserved for this orchestration
+context; release it with `telec todo update <slug> --release` once the todo is
+ready to enter its normal lane.
+
 ### 1. Pre-flight input viability
 
 Before calling the state machine, read the `input` artifact and decide whether

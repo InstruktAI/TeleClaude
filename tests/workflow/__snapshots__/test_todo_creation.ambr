@@ -43,6 +43,9 @@
 # name: test_group_create_refuses_to_holderify_parent_past_prepare
   "todo 'parent' carries prepared artifacts (past prepare) and cannot be grouped into a holder; group only parents that hold input alone"
 # ---
+# name: test_hold_and_icebox_are_mutually_exclusive_at_create
+  'hold and icebox are mutually exclusive'
+# ---
 # name: test_holder_artifact_write_returns_clean_409_not_500
   "todo 'parent' is a structural holder with grouped children; it carries no artifacts or state — write to its children instead"
 # ---

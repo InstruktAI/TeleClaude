@@ -361,8 +361,11 @@ class TodoDumpRequest(BaseModel):
 
     ``icebox`` creates the todo parked in the icebox so the daemon's prepare
     auto-spawn is suppressed. ``group`` attaches the new todo as a child of the
-    named parent slug. The retired create-time parking fields ``hold``,
-    ``release``, and ``silent`` are rejected (``extra="forbid"``): a stale body
+    named parent slug. ``hold`` is a hidden create-time dispatch brake for
+    specialist orchestration: it creates an active todo whose hold flag is set so
+    the lifecycle router and runner do not claim it until it is released — not a
+    parking replacement for ``--icebox``. The retired create-time fields
+    ``release`` and ``silent`` are rejected (``extra="forbid"``): a stale body
     carrying them fails fast rather than silently auto-dispatching.
     """
 
@@ -377,6 +380,7 @@ class TodoDumpRequest(BaseModel):
     icebox: bool = False
     group: str | None = None
     plan: bool = False
+    hold: bool = False
 
 
 # WebSocket Event DTOs

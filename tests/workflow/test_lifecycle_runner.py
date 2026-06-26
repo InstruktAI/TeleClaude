@@ -833,6 +833,44 @@ def test_prepared_hold_skips_under_active_autostart() -> None:
     assert decision.skips[RunnerSkipReason.HELD] == ["prepared-held"]
 
 
+@pytest.mark.spec(_SPEC, "UC-WTC19")
+def test_held_create_is_skipped_until_release_then_dispatches() -> None:
+    """A created-held change todo is skipped HELD; releasing the brake makes it eligible for prepare."""
+    held_slug = "held-change"
+
+    def _todo(*, hold: bool) -> dict[str, RunnerTodo]:
+        return {
+            held_slug: RunnerTodo(
+                slug=held_slug,
+                status="active",
+                kind=_CHANGE,
+                lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value,
+                hold=hold,
+                active_runner=None,
+            )
+        }
+
+    held = decide_dispatches(
+        _todo(hold=True),
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_CHANGE: True},
+        live_session_ids=set(),
+    )
+    assert held.intents == []
+    assert held.skips[RunnerSkipReason.HELD] == [held_slug]
+
+    released = decide_dispatches(
+        _todo(hold=False),
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_CHANGE: True},
+        live_session_ids=set(),
+    )
+    assert RunnerSkipReason.HELD not in released.skips
+    assert [intent.slug for intent in released.intents] == [held_slug]
+
+
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
 def test_manual_runner_mode_short_circuits_before_hold_skip() -> None:
     """Manual runner mode freezes autonomous dispatch before per-todo gates."""
@@ -1058,7 +1096,9 @@ def _operation(
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-def test_run_session_infers_working_slug_without_downgrading_orchestrator_role(tmp_path: Path) -> None:
+def test_run_session_prepare_is_non_slug_bound_and_keeps_orchestrator_role(tmp_path: Path) -> None:
+    """`/next-prepare` is non-slug-bound: the prepare orchestrator selects its own work, so a
+    passed arg does not bind a working_slug, and the session keeps the orchestrator role."""
     request = RunSessionRequest(
         command="/next-prepare",
         args=_WORK_SLUG,
@@ -1068,7 +1108,7 @@ def test_run_session_infers_working_slug_without_downgrading_orchestrator_role(t
 
     plan = _prepare_run_session(request, _caller_identity())
 
-    assert plan.working_slug == _WORK_SLUG
+    assert plan.working_slug is None
     assert plan.system_role == ROLE_ORCHESTRATOR
 
 
