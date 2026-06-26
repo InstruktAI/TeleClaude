@@ -66,7 +66,7 @@ Then the policy defaults to software-development
 <!-- change:per-domain-symlink-single-owner -->
 
 ```
-Given no --domains flag (the business.domains field is removed)
+Given no --domains flag
 When the Selection policy resolves the candidate set
 Then every global snippet stays universally visible and the project's own snippets are included
 And the cross-project domain prefixes are the union of registered publishers' business.publishes

@@ -46,8 +46,7 @@ project declares the same domain in `business.publishes`, the deploy
 HARD-BLOCKS (exits non-zero, composes nothing) with `split domain ownership:
 <domain> claimed by <A> and <B>`. The single declaring project is the owner
 whose folder the domain symlinks to. This is the one cross-publisher integrity
-rule, replacing the former per-file merge whose only guard was snippet-id
-uniqueness.
+rule: a domain has exactly one owning publisher.
 
 The deploy writes the merged `index.yaml` at the root — the union of every
 owner's per-domain global index. Because no two owners share a domain, the union
