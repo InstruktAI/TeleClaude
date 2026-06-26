@@ -1,5 +1,6 @@
 ---
 delivered_by:
+  - fix-claim-removal-to-work-on-all-stages
   - v2-workflow-cutover
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
@@ -150,6 +151,8 @@ When a todo is held, the row renders the gate/lock icon and offers the unhold co
 
 : The durable, single-valued workflow-owned field on a Todo holding the agent session id currently driving that todo's lifecycle — a link todo → session, with nothing else denormalized onto it. A non-null `active_runner` marks the todo as driven; lane, command, liveness, and project are resolved by dereferencing the session id against the agent-runtime session record. The lifecycle runner is the sole spawning authority: every lifecycle session — autonomous dispatch, a manual operator START, and headless adoption — flows through one runner-owned, claim-guarded dispatch primitive that writes `active_runner` (and `manually_started`) as one guarded operation with the spawn, so no concurrent runner pass can duplicate it. There are no side spawn paths; the state machine and the driven session never write `active_runner`. It is single-valued — one driver per todo — and a lane handoff is clear-on-close then write-on-next-dispatch, never a live overwrite. Sub-workers a driver dispatches (reviewers, drift analyzers, build/finalize workers) do not hold it; for `kind=task` the dispatched session is itself the driver. A link naming a non-live session is stale: the lifecycle runner clears it and dispatches. Session close is a runner wake-up, so a closed driver's link is cleared on the next evaluation.
 
+Claim writes also repair the agent-runtime session metadata as a fallback, not as the primary source of truth. When the claim primitive writes `active_runner=session_id`, it backfills that session row's `working_slug` only when the field is empty; a pre-existing matching slug is accepted, and a different pre-existing slug is a hard conflict. Lifecycle state-machine invocations (`telec todo prepare`/`telec todo work`, TUI START, and headless adoption) additionally have lane intent and may repair a generic session title to the command shape they are taking on (`/next-prepare <slug>`, `/next-work <slug>`, or the task-lane command). Artifact writes that claim without state-machine lane intent do not infer or rewrite titles.
+
 **Human gate control**
 
 : Two independent human controls a parked todo can expose, each derived from current todo state and never stored: an approval control and a hold control. They are orthogonal and carry no relationship — neither suppresses nor takes precedence over the other. The approval control approves a pending human-approval gate — PRD human approval, task authorization, or a creative gate — governs progression within the prepare lane, and routes to the underlying approval stamp the gate requires. The control surface itself is a human-authenticated TUI action an agent or unauthenticated caller cannot satisfy. The underlying stamp authority is per gate: PRD approval is human-only — an agent session is refused at the stamp — whereas a creative gate's stamp may also be cleared by the slug-bound orchestrator through the CLI on the human's confirmation (per `@spec/feature/workflow/state-stamping`), bound by the todo-mutation-authority gate and never reaching another slug. The hold control is the unhold control (see Hold): offered when an active todo's `hold` flag is set, and it clears the flag through the hold update path. The same hold verdict the operator surface reads also decides the lifecycle runner's autonomous-dispatch skip, so "why is this parked" and "what the human can do here" never diverge. On a todo row a held todo is shown by a single gate/lock icon in the last column.
@@ -221,12 +224,12 @@ When a todo is held, the row renders the gate/lock icon and offers the unhold co
   - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
   - **Hold is the only persisted manual-dispatch brake, and it acts whenever a todo is held.** A held todo is skipped by the lifecycle runner whenever its stored `hold` flag is true, regardless of kind, autostart policy, or lifecycle phase. A residual flag is never auto-cleared; it remains operator intent until release or a successful manual lifecycle start clears it. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
   - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.
-  - **The lifecycle runner is the primary spawning authority, and orchestrator dedup is registry-backed.** Autonomous dispatch, a manual operator START, and headless adoption flow through one runner-owned, claim-guarded dispatch primitive that writes `active_runner` (and `manually_started`) atomically with the spawn. An orchestrator may also be started directly — a `/next-prepare` or `/next-work` session launched through `telec sessions run` by an operator or agent — which stamps the session's `working_slug` at birth but writes no `active_runner`. Dedup therefore never relies on `active_runner` alone: a live orchestrator session bound to a slug in the session registry blocks a duplicate regardless of how it was started. A headless session carries no claim until it is explicitly adopted.
+  - **The lifecycle runner is the primary spawning authority, and orchestrator dedup is registry-backed.** Autonomous dispatch, a manual operator START, and headless adoption flow through one runner-owned, claim-guarded dispatch primitive that writes `active_runner` (and `manually_started`) atomically with the spawn. An orchestrator may also be started directly — a `/next-prepare` or `/next-work` session launched through `telec sessions run` by an operator or agent — which stamps the session's `working_slug` at birth but writes no `active_runner`. Dedup therefore never relies on `active_runner` alone: a live orchestrator session bound to a slug in the session registry blocks a duplicate regardless of how it was started. A headless session carries no claim until it is explicitly adopted. Claim writes backfill a missing session `working_slug` and refuse a conflicting one; lifecycle state-machine claim paths may also repair the title to the claimed command role.
   - **Automatic dispatch is kind-prioritized and load-capped; manual start is neither.** Among candidates whose dependencies are satisfied (for a `task`, including its schedule/timer gate and task authorization), the runner dispatches by kind priority `bug` > `change` > `task` > `feature`. It auto-dispatches only while the live count of driver sessions not flagged `manually_started` is below `max_todo_dispatch` (runtime config, default 5); at the cap, remaining eligible candidates are skipped and dispatch on a later wake. A manual `telec todo work/prepare` start (or a headless adoption) is not subject to the priority order or the cap, and its `manually_started` driver is never counted toward the cap.
   - **Todo state mutation is gated by the caller's slug binding and the todo's claim.** Every agent-authored mutation — readiness, verdict, finalize, kind-assign, drift, creative gate, and approval — passes one gate: a caller bound to a `working_slug` may mutate only that slug (no role bypass; orchestrators and sub-workers gated identically); a caller with no `working_slug` (a human-driven manual session) may mutate a todo only when it has no live agent claim, and otherwise is refused with the live claimant's session id surfaced for the agent to give to the human. Human approval of a human gate is a separate human-authenticated TUI surface; an agent's approval stamp is bound by this same gate and never reaches another slug.
   - **Automatic dispatch is single-flight per project/slug/lane.** The runner acquires a dispatch claim before spawning to close the boot-gap race, then records the spawned session id as the todo's `active_runner` and releases the claim. Steady-state "already driven" is answered, for an orchestrator, by the session registry — a live session whose `system_role` is `orchestrator` and whose `working_slug` equals the slug — and, for any other driver, by the presence of a live `active_runner`; never by the short-lived claim and never by session-title inspection.
   - **Orchestrator ownership is read from the structured registry; other drivers from the durable link.** For an orchestrator the runner decides "already driven" by an exact, project-scoped match on the structured `working_slug` field of a live `orchestrator` session — not a title scan and not contingent on `active_runner` being set — so an orchestrator started outside the dispatch primitive still blocks a duplicate. For a non-orchestrator driver (a `kind=task` run session) ownership remains the durable `active_runner` link naming a live session. `active_runner` stays the gate-approval notification and lane-handoff pointer; a link naming a non-live session is stale and the runner clears it. Resolution is exact-slug and project-scoped; prefix slug matches are forbidden.
-  - **A todo has at most one active runner, written by the dispatcher.** `active_runner` is single-valued. The dispatcher that spawns the session writes it once from the returned session id — the runner for autonomous dispatch, the manual-start command path for an operator `telec todo work|prepare`. It is not overwritten while a driver is live; a lane handoff is clear-on-close then write-on-next-dispatch. The state machine and the driven session do not write it. Sub-workers a driver dispatches do not write it; for `kind=task` the dispatched session is itself the driver.
+  - **A todo has at most one active runner, written by the dispatcher.** `active_runner` is single-valued. The dispatcher that spawns the session writes it once from the returned session id — the runner for autonomous dispatch, the manual-start command path for an operator `telec todo work|prepare`. It is not overwritten while a driver is live; a lane handoff is clear-on-close then write-on-next-dispatch. The state machine and the driven session do not write it. Sub-workers a driver dispatches do not write it; for `kind=task` the dispatched session is itself the driver. The same claim write is the fallback metadata repair point for the session row: empty `working_slug` is filled from the claimed slug, mismatched `working_slug` is refused, and title repair is limited to state-machine calls that know the lifecycle lane.
   - **Dependency readiness uses PRD-approved ground for prepare and delivered ground for work.** Dependent prepare may unblock when every direct dependency has a human-approved PRD or stronger evidence; stronger evidence includes `prepared`, work-lane, or delivered states only when the dependency's PRD approval remains human-authored. Dependent work remains blocked until all `after` dependencies are delivered. The v1 dependency-prepared predicate is currently phase-only, so this delivery changes that predicate instead of treating current prepared-ground as sufficient.
   - **Icebox and removed entries are never runner candidates.** Icebox remains an independent operator parking state; removing/re-activating entries follows the existing soft-delete contract and does not imply hold.
   - **The human gate-control surface derives two independent controls.** A todo row's approval control and hold control are each computed from current todo state and never stored; they are orthogonal — no mutual exclusion and no precedence between them. The approval control governs progression within prepare and requires a human-authenticated caller; the hold control is the unhold control, offered when an active todo's `hold` flag is set, and it clears the flag. It renders as a gate/lock icon in the row's last column whenever held. The same hold verdict decides the lifecycle runner's autonomous-dispatch skip.
@@ -963,6 +966,29 @@ And the manual start is refused only when a different live session already holds
 And the autonomous runner still skips an approval-pending entry for its own dispatch — the manual path's claim-only authority and the autonomous approval gate are independent
 ```
 
+```gherkin
+Given a lifecycle state-machine start or adoption claims slug X for session S
+And S has no `working_slug`
+When workflow writes `active_runner=S`
+Then workflow also writes S.working_slug = X as fallback session metadata repair
+And the session title is repaired to the lifecycle command for the claimed lane and slug
+```
+
+```gherkin
+Given a claim writes `active_runner=S` for slug X
+And S already has `working_slug` set to Y
+When Y is not X
+Then workflow refuses the claim as a conflicting session binding
+And it does not overwrite the existing session slug
+```
+
+```gherkin
+Given an artifact write claims slug X without state-machine lane intent
+When workflow writes `active_runner`
+Then workflow may backfill an empty session `working_slug`
+But it does not infer or rewrite the session title
+```
+
 #### UC-WFL-21: Hold replaces silent as the manual parking mechanism
 
 ```gherkin
@@ -1008,6 +1034,25 @@ When the lifecycle runner wakes on `agent_runtime.session.ended`
 Then no hold is set
 And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
+
+<!-- planned:fix-claim-removal-to-work-on-all-stages -->
+
+```gherkin
+Given a live todo carries an `active_runner` link
+When workflow marks that row delivered or removed
+Then workflow clears `active_runner` and `manually_started` on the retained state
+And explicit delivered or removed reads expose the row without a claim
+```
+
+```gherkin
+Given a delivered or removed todo row still carries an `active_runner` link for an ended session
+When session-end cleanup or lifecycle-runner reconciliation handles that session
+Then workflow clears `active_runner` and `manually_started` on the retained row by durable todo identity
+And the cleanup does not resolve the row through the live slug alias
+And no hold is written for the delivered or removed row
+```
+
+<!-- /planned:fix-claim-removal-to-work-on-all-stages -->
 
 #### UC-WFL-23: Hold is the autonomous dispatch brake
 

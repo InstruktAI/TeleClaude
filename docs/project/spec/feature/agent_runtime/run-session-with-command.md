@@ -73,6 +73,7 @@ Then the startup message is replaced by a Codex loader prompt that
   configured commands directory and treat the args as inputs to that
   instruction set
 And the public full-command (used for the human-visible initial-input echo) remains the original "/<command> <args>" form
+And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the normalized command and args before or alongside the rewrite, never from the rewritten startup message
 ```
 
 #### UC-CLR1: Codex slug-bound /next-\* with empty args is rejected
@@ -221,6 +222,7 @@ When the run flow dispatches the create flow
 Then it builds a create-session command via the canonical command mapper
 And the launch intent kind is "agent then message" carrying the effective agent, thinking mode, and (rewritten) startup message
 And the initial-input value is the original "/<command> <args>" string (for human-facing echo)
+And a slug-bound lifecycle command stamps the create-session command's `working_slug` from the normalized args as creation-time metadata
 And the listener-skip flag mirrors the request's detach flag
 And on success the response carries the new session id, host pane reference, and the resolved agent
 ```
@@ -265,7 +267,8 @@ And the command is still launched verbatim into the agent — agent-side handlin
 ## Known caveats
 
 - **Codex loader-message rewrite is asymmetric.** Only `/next-*` commands are rewritten for Codex; other slash commands sent to Codex pass through verbatim. The rewrite materializes the compiled prompt at `<commands-dir>/<cmd>.md` — if that file is missing on disk, Codex will fail at first read rather than at request time.
-- **The full-command and the startup message diverge for Codex.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other.
+- **The full-command and the startup message diverge for Codex.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the rewritten startup message.
+- **Claim-time session metadata repair is fallback only.** `/sessions/run` stamps known slug-bound lifecycle metadata at creation time. Workflow claim/adoption paths may backfill a missing `working_slug` later, but that repair does not replace creation-time stamping.
 - **`detach=true` does NOT cancel polling on the spawned session** — it only suppresses listener registration for the caller. The spawned session still has its own output polling and adapter routing.
 - **Invalid slash commands are not rejected.** A typo in `--command` (e.g., `/nxt-build`) passes validation as long as it starts with `/` — it simply launches a session that immediately fails inside the agent. Validation here is shape-only.
 - **Worker-lifecycle slug guard fires AFTER agent resolution.** A misconfigured-agent failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. default-agent-related) to disambiguate.
