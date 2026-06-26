@@ -24,6 +24,7 @@ _PYTHON_FILES: list[tuple[str, str]] = [
     ("pre-commit-config.yaml", ".pre-commit-config.yaml"),
     (".githooks/pre-commit", ".githooks/pre-commit"),
     ("Makefile.template", "Makefile"),
+    ("tools/quality.sh", "tools/quality.sh"),
 ]
 
 _TYPESCRIPT_FILES: list[tuple[str, str]] = [

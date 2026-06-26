@@ -15,6 +15,7 @@ from teleclaude.project_setup.skeleton import deploy_skeleton
 _SPEC = "general/spec/tools/telec-cli"
 _INSTALL_PYTHON_TOKEN = "INSTALL_PYTHON"
 _PRECOMMIT_PATH = Path(".githooks") / "pre-commit"
+_QUALITY_SCRIPT_PATH = Path("tools") / "quality.sh"
 
 
 def _seed_python_project(project_root: Path) -> None:
@@ -49,6 +50,7 @@ def test_python_quality_skeleton_creates_nested_hook_material(
     assert hook_path.is_file()
     assert (hook_path.stat().st_mode & stat.S_IXUSR) == 0
     assert (project_root / "Makefile").is_file()
+    assert (project_root / _QUALITY_SCRIPT_PATH).is_file()
     assert (project_root / "pyproject.toml").is_file()
     assert (project_root / ".pre-commit-config.yaml").is_file()
     assert {

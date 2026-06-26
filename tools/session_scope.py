@@ -95,7 +95,7 @@ def main() -> None:
     """Resolve session-touched files and print them to stdout."""
     # Testing seam: when SESSION_SCOPE_STUB_OUTPUT is set, bypass session detection
     # and emit the stub content directly. Used by shell-level tests to exercise
-    # the scoped branch in lint.sh/test.sh without a live DB session.
+    # the scoped quality path without a live DB session.
     _stub = os.environ.get("SESSION_SCOPE_STUB_OUTPUT")
     if _stub is not None:
         if _stub:

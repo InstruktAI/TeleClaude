@@ -614,7 +614,7 @@ install_system_deps() {
         install_package jq
     fi
 
-    # ripgrep (fast file search, used by format.sh for CLAUDE.md cleanup)
+    # ripgrep (fast file search used by TeleClaude tooling)
     if command -v rg &> /dev/null; then
         print_info "ripgrep already installed"
     else

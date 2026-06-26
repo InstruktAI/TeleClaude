@@ -51,12 +51,12 @@ link:
 
 format:
 	@echo "Formatting code..."
-	@FILES_FROM="$(FILES_FROM)" tools/quality.sh format
+	@FILES_FROM="$(FILES_FROM)" bash tools/quality.sh format
 	@echo "✓ Code formatted"
 
 lint:
 	@echo "Running lint checks..."
-	@FILES_FROM="$(FILES_FROM)" tools/quality.sh lint
+	@FILES_FROM="$(FILES_FROM)" bash tools/quality.sh lint
 	@echo "✓ Lint checks passed"
 
 check-no-unit-tests:
@@ -80,7 +80,7 @@ test-meta:
 
 test:
 	@echo "Running repo-wide tests..."
-	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" tools/quality.sh test
+	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" bash tools/quality.sh test
 	@echo "✓ All tests passed"
 
 coverage:
