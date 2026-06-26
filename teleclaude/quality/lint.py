@@ -10,6 +10,7 @@ explicit files bypass scoping.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -60,7 +61,10 @@ def _run_tool(cmd: list[str], project_root: Path, step_name: str) -> None:
     entry points so they can also run from hooks and direct maintainer calls.
     """
     logger.info("Running %s", step_name)
-    result = subprocess.run(cmd, cwd=str(project_root), check=False)
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(REPO_ROOT)
+    result = subprocess.run(cmd, cwd=str(project_root), env=env, check=False)
     if result.returncode != 0:
         logger.error("%s failed (exit %d)", step_name, result.returncode)
         raise SystemExit(result.returncode)
