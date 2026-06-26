@@ -31,7 +31,7 @@ jobs:
         run: echo "TELECLAUDE_HOME=$RUNNER_TEMP/tc-home" >> "$GITHUB_ENV"
 
       - name: Full TeleClaude Bootstrap
-        run: make bootstrap-ci
+        run: make install
         timeout-minutes: 5
 
       - name: Run lint

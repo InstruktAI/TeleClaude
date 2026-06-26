@@ -1,8 +1,6 @@
 ---
 description: "Makefile targets carry no inline orchestration logic; recipes delegate to testable, lintable scripts. Mandated for TeleClaude's own repo; offered to satellites, never mandated."
 visibility: internal
-delivered_by:
-  - thin-make-single-install
 ---
 
 # Makefile No Inline Logic — Policy

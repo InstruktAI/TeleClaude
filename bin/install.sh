@@ -24,25 +24,17 @@ PYTHON_MIN_VERSION="3.11"
 
 NON_INTERACTIVE=false
 CI_MODE=false
+DEPS_ONLY_MODE=false
 
-refuse_git_worktree() {
-    # CRITICAL: Refuse to run from a git worktree
-    if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
-        GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
-        COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null)
-        if [ "$GIT_DIR" != "$COMMON_DIR" ]; then
-            echo "ERROR: Cannot run 'make install' from a git worktree!"
-            echo ""
-            echo "Running install from a worktree would:"
-            echo "  - Repoint the global CLI symlink to the worktree"
-            echo "  - Reconfigure the system service to use worktree paths"
-            echo "  - Break the main TeleClaude daemon"
-            echo ""
-            echo "Install must only run from the main repository."
-            echo "Worktrees are prepared by install conventions (make install or npm/pnpm install)."
-            exit 1
-        fi
+is_git_worktree() {
+    if command -v git > /dev/null 2>&1 && git -C "$INSTALL_DIR" rev-parse --git-dir > /dev/null 2>&1; then
+        local git_dir common_dir
+        git_dir=$(git -C "$INSTALL_DIR" rev-parse --git-dir 2>/dev/null)
+        common_dir=$(git -C "$INSTALL_DIR" rev-parse --git-common-dir 2>/dev/null)
+        [ "$git_dir" != "$common_dir" ]
+        return
     fi
+    return 1
 }
 
 parse_args() {
@@ -57,12 +49,31 @@ parse_args() {
                 NON_INTERACTIVE=true
                 shift
                 ;;
+            --deps-only)
+                DEPS_ONLY_MODE=true
+                NON_INTERACTIVE=true
+                shift
+                ;;
             *)
                 echo "Unknown option: $1"
                 exit 1
                 ;;
         esac
     done
+}
+
+select_install_mode() {
+    if [ "$CI_MODE" = false ] && [ "$DEPS_ONLY_MODE" = false ]; then
+        if is_git_worktree; then
+            DEPS_ONLY_MODE=true
+            NON_INTERACTIVE=true
+        elif [ -n "${CI:-}" ]; then
+            CI_MODE=true
+            NON_INTERACTIVE=true
+        elif [ ! -t 0 ]; then
+            NON_INTERACTIVE=true
+        fi
+    fi
 }
 
 # Logging function
@@ -210,12 +221,25 @@ _resolve_agent_enabled() {
     fi
 }
 
+list_contains() {
+    local needle="$1"
+    shift
+    local item
+    for item in "$@"; do
+        if [ "$item" = "$needle" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 setup_agents_interactive() {
     print_header "Interactive Agent Configuration"
 
     ensure_config_yml
 
-    local current_default_agent=$(get_current_default_agent "claude")
+    local current_default_agent
+    current_default_agent=$(get_current_default_agent "claude")
     if [ "$current_default_agent" = "agy" ]; then
         current_default_agent="gemini"
     fi
@@ -285,22 +309,22 @@ setup_agents_interactive() {
         # More than one agent chosen, ask which one to have as default
         # Present current default if it is in the enabled list, otherwise default to first enabled
         local default_selection="$current_default_agent"
-        if [[ ! " ${enabled_list[*]} " =~ " ${default_selection} " ]]; then
+        if ! list_contains "$default_selection" "${enabled_list[@]}"; then
             default_selection="${enabled_list[0]}"
         fi
 
         # If the saved default is valid in the current enabled set, keep it — don't re-ask.
-        if [[ " ${enabled_list[*]} " =~ " ${current_default_agent} " ]]; then
+        if list_contains "$current_default_agent" "${enabled_list[@]}"; then
             default_agent="$current_default_agent"
             print_info "Default agent already configured ($default_agent); not asking again"
         elif [ "$NON_INTERACTIVE" = true ]; then
             default_agent="$default_selection"
         else
             while true; do
-                read -p "Which agent should be the default? ($(echo "${enabled_list[*]}" | sed 's/ /\//g')) [$default_selection]: " response || true
+                read -r -p "Which agent should be the default? ($(echo "${enabled_list[*]}" | sed 's/ /\//g')) [$default_selection]: " response || true
                 response="${response:-$default_selection}"
                 response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
-                if [[ " ${enabled_list[*]} " =~ " ${response} " ]]; then
+                if list_contains "$response" "${enabled_list[@]}"; then
                     default_agent="$response"
                     break
                 fi
@@ -383,7 +407,7 @@ confirm() {
     fi
 
     local response
-    read -p "$prompt_text (y/n) [$default]: " response || true
+    read -r -p "$prompt_text (y/n) [$default]: " response || true
     response="${response:-$default}"
     [[ "$response" =~ ^[Yy]$ ]]
 }
@@ -395,6 +419,7 @@ detect_os() {
         Linux*)
             OS="linux"
             if [ -f /etc/os-release ]; then
+                # shellcheck source=/dev/null
                 . /etc/os-release
                 DISTRO="$ID"
             else
@@ -635,7 +660,7 @@ install_system_deps() {
             if [[ "$OSTYPE" == "darwin"* ]]; then
                 brew services start redis >> "$LOG_FILE" 2>&1 || true
             else
-                sudo systemctl enable --now redis >> "$LOG_FILE" 2>&1 || true
+                sudo systemctl enable --now redis 2>&1 | tee -a "$LOG_FILE" >/dev/null || true
             fi
             print_success "Redis service management delegated to OS"
         fi
@@ -781,6 +806,66 @@ install_python_deps() {
     print_success "Python dependencies installed"
 }
 
+install_precommit_hook() {
+    local hook_dest hook_src
+    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path hooks/pre-commit 2>/dev/null); then
+        case "$hook_dest" in
+            /*) ;;
+            *) hook_dest="$INSTALL_DIR/$hook_dest" ;;
+        esac
+    else
+        hook_dest="$INSTALL_DIR/.git/hooks/pre-commit"
+    fi
+
+    mkdir -p "$(dirname "$hook_dest")"
+    hook_src="$INSTALL_DIR/.githooks/pre-commit"
+    if [ ! -f "$hook_src" ] && [ -f "$INSTALL_DIR/templates/quality/python/.githooks/pre-commit" ]; then
+        hook_src="$INSTALL_DIR/templates/quality/python/.githooks/pre-commit"
+    fi
+    if [ -f "$hook_src" ]; then
+        cp "$hook_src" "$hook_dest"
+        chmod +x "$hook_dest"
+        print_success "Pre-commit hook installed"
+    else
+        print_warning "Pre-commit hook source not found; skipping"
+    fi
+}
+
+install_deps_only() {
+    print_header "Installing Project Dependencies"
+
+    if ! command -v uv >/dev/null 2>&1; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+
+    (cd "$INSTALL_DIR" && uv run --group dev python -c "print(\"Python environment ready\")")
+
+    if [ -d "$INSTALL_DIR/frontend" ] && [ -f "$INSTALL_DIR/frontend/package.json" ]; then
+        if command -v pnpm >/dev/null 2>&1; then
+            pnpm --dir "$INSTALL_DIR/frontend" install --ignore-scripts
+        else
+            npm --prefix "$INSTALL_DIR/frontend" install --ignore-scripts
+        fi
+    fi
+
+    if [ -f "$INSTALL_DIR/Cargo.toml" ]; then
+        if command -v cargo >/dev/null 2>&1; then
+            (cd "$INSTALL_DIR" && cargo fetch)
+            (cd "$INSTALL_DIR" && cargo build --release -p telec-daemon)
+            local target_binary="$HOME/.local/bin/telec-daemon"
+            mkdir -p "$(dirname "$target_binary")"
+            cp "$INSTALL_DIR/target/release/telec-daemon" "$target_binary"
+            chmod +x "$target_binary"
+        else
+            echo "cargo not found — skipping telec-daemon build (v2, pre-cutover; becomes required at the v2 cutover)."
+        fi
+    fi
+
+    install_precommit_hook
+    print_success "Project dependencies installed"
+}
+
 # Pinned Blueprint engine. Graphify ships daily; pin exactly so the graph.json
 # contract the blueprint depends on stays stable (project/adr/0016).
 GRAPHIFY_PINNED_VERSION="0.8.33"
@@ -845,7 +930,8 @@ _ensure_local_bin_on_path() {
         return 0
     fi
 
-    local line='case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
+    local line
+    line="case \":\$PATH:\" in *\":\$HOME/.local/bin:\"*) ;; *) export PATH=\"\$HOME/.local/bin:\$PATH\" ;; esac"
     print_warning "$TELEC_BIN_DIR is not on your PATH — TeleClaude CLIs won't resolve in new shells."
     printf '  Suggested addition to %s:\n' "$rc"
     printf '    # TeleClaude: resolve user-published CLIs (telec, graphify)\n'
@@ -1067,17 +1153,28 @@ setup_git_filters(Path('$INSTALL_DIR'))
 }
 
 # Load modular install steps
+# shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/redis_locality.sh"
+# shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
+# shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/link_shared_scripts.sh"
 
 # Main
 main() {
-    refuse_git_worktree
     parse_args "$@"
+    select_install_mode
 
     print_header "TeleClaude Install"
     log "Install started in $INSTALL_DIR"
+
+    if [ "$DEPS_ONLY_MODE" = true ]; then
+        install_deps_only
+        print_header "Install Complete"
+        print_success "Project dependencies installed"
+        log "Deps-only install completed"
+        return 0
+    fi
 
     detect_os
     check_python
@@ -1085,6 +1182,7 @@ main() {
 
     install_system_deps
     install_python_deps
+    install_precommit_hook
     install_blueprint_engine
     setup_corepack
     setup_frontend

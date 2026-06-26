@@ -1,4 +1,4 @@
-.PHONY: help install link certs format lint check-no-unit-tests test-e2e test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
+.PHONY: help install link format lint check-no-unit-tests test-e2e test-agents test-meta test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke build-artifacts generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt test-rust-integration
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -11,12 +11,9 @@ help:
 	@echo "  make install      Set up this TeleClaude checkout and install repo dependencies"
 	@echo "  telec config wizard  Configure this TeleClaude checkout interactively"
 	@echo "  make start        Start daemon via launchd/systemd"
-	@echo "  make bootstrap    Non-interactive machine-global bootstrap"
-	@echo "  make bootstrap-ci Lean non-interactive bootstrap for CI environments"
 	@echo "  make generate-types  Generate TypeScript types from Pydantic API models"
 	@echo "  make build-artifacts  Generate and deploy agent artifacts (docs, skills, prompts)"
 	@echo "  make link         Link shared scripts/docs into ~/.teleclaude"
-	@echo "  make certs        Generate SSL certificates for REST API"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format       Format code with ruff"
@@ -25,8 +22,10 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-e2e         Run integration/e2e tests only"
+	@echo "  make test-agents      Run agent invocation matrix"
 	@echo "  make test-meta        Run process meta tests (serial, isolated harness)"
 	@echo "  make test             Run repo-wide tests"
+	@echo "  make test-rust-integration  Run Rust integration suite against docker-compose"
 	@echo "  make coverage         Run tests with coverage report"
 	@echo "  make coverage-html    Generate HTML coverage report"
 	@echo "  make coverage-report  Open HTML coverage report in browser"
@@ -45,132 +44,19 @@ help:
 	@echo ""
 
 install:
-	@echo "Installing project dependencies..."
-	@bash -eu -o pipefail -c '\
-		if ! command -v uv >/dev/null 2>&1; then \
-			curl -LsSf https://astral.sh/uv/install.sh | sh; \
-			export PATH="$$HOME/.local/bin:$$PATH"; \
-		fi; \
-		uv run --group dev python -c "print(\"Python environment ready\")"; \
-		if [ -d frontend ] && [ -f frontend/package.json ]; then \
-			if command -v pnpm >/dev/null 2>&1; then pnpm --dir frontend install --ignore-scripts; else npm --prefix frontend install --ignore-scripts; fi; \
-		fi; \
-		if [ -f Cargo.toml ]; then \
-			if command -v cargo >/dev/null 2>&1; then \
-				cargo fetch; \
-				cargo build --release -p telec-daemon; \
-				target_binary="$$HOME/.local/bin/telec-daemon"; \
-				mkdir -p "$$(dirname "$$target_binary")"; \
-				cp target/release/telec-daemon "$$target_binary"; \
-				chmod +x "$$target_binary"; \
-			else \
-				echo "cargo not found — skipping telec-daemon build (v2, pre-cutover; becomes required at the v2 cutover)."; \
-			fi; \
-		fi; \
-		hook_dest="$$(git rev-parse --git-path hooks/pre-commit 2>/dev/null || printf ".git/hooks/pre-commit")"; \
-		mkdir -p "$$(dirname "$$hook_dest")"; \
-		hook_src=".githooks/pre-commit"; \
-		if [ ! -f "$$hook_src" ] && [ -f templates/quality/python/.githooks/pre-commit ]; then hook_src="templates/quality/python/.githooks/pre-commit"; fi; \
-		if [ -f "$$hook_src" ]; then cp "$$hook_src" "$$hook_dest"; chmod +x "$$hook_dest"; fi; \
-	'
-	@echo "✓ Project dependencies installed"
+	@./bin/install.sh
 
 link:
-	@echo "Linking shared scripts/docs..."
-	@mkdir -p "$$HOME/.teleclaude"
-	@ln -sfn "$(PWD)/scripts" "$$HOME/.teleclaude/scripts"
-	@if [ -e "$$HOME/.teleclaude/docs" ] && [ ! -L "$$HOME/.teleclaude/docs" ]; then rm -rf "$$HOME/.teleclaude/docs"; fi
-	@ln -sfn "$(PWD)/docs/global" "$$HOME/.teleclaude/docs"
-	@echo "✓ Linked shared scripts/docs"
+	@./bin/init/link_shared_scripts.sh
 
 format:
 	@echo "Formatting code..."
-	@FILES_FROM="$(FILES_FROM)" bash -eu -o pipefail -c '\
-		scoped=0; paths=(); \
-		if [ -n "$$FILES_FROM" ]; then scoped=1; while IFS= read -r -d "" path; do paths+=("$$path"); done < "$$FILES_FROM"; fi; \
-		run_frontend_format() { if command -v pnpm >/dev/null 2>&1; then pnpm exec prettier --write "$$@"; else npx --yes prettier --write "$$@"; fi; }; \
-		run_rust_fmt() { \
-			local rust_workspace=0 path dir manifest name; local -a rust_packages=(); local -A rust_seen=(); \
-			for path in "$$@"; do \
-				if [ "$$path" = "Cargo.toml" ] || [ "$$path" = "Cargo.lock" ]; then rust_workspace=1; continue; fi; \
-				case "$$path" in *.rs) ;; *) continue ;; esac; \
-				dir="$${path%/*}"; if [ "$$dir" = "$$path" ]; then dir="."; fi; manifest=""; \
-				while [ "$$dir" != "." ] && [ "$$dir" != "/" ]; do \
-					if [ -f "$$dir/Cargo.toml" ]; then manifest="$$dir/Cargo.toml"; break; fi; \
-					dir="$${dir%/*}"; if [ -z "$$dir" ]; then dir="."; fi; \
-				done; \
-				if [ -z "$$manifest" ]; then continue; fi; \
-				if [ "$$manifest" = "Cargo.toml" ]; then rust_workspace=1; continue; fi; \
-				name="$$(sed -n -E "/^\\[package\\]/,/^\\[/{s/^[[:space:]]*name[[:space:]]*=[[:space:]]*\"([^\"]+)\".*/\\1/p;}" "$$manifest" | head -n 1)"; \
-				if [ -z "$$name" ]; then rust_workspace=1; continue; fi; \
-				if [ -z "$${rust_seen[$$name]+x}" ]; then rust_seen[$$name]=1; rust_packages+=("$$name"); fi; \
-			done; \
-			if [ "$$rust_workspace" -eq 1 ]; then cargo fmt --all; elif [ "$${#rust_packages[@]}" -gt 0 ]; then for name in "$${rust_packages[@]}"; do cargo fmt -p "$$name"; done; fi; \
-		}; \
-		if [ "$$scoped" -eq 0 ]; then \
-			uv run ruff check --fix .; uv run ruff format .; \
-			prettier_targets=(); for p in README.md AGENTS.md; do [ -f "$$p" ] && prettier_targets+=("$$p"); done; [ -d docs ] && prettier_targets+=("docs/**/*.md"); [ "$${#prettier_targets[@]}" -gt 0 ] && npx --yes prettier --write "$${prettier_targets[@]}"; \
-			if [ -d frontend ] && [ -f frontend/package.json ]; then (cd frontend && run_frontend_format .); fi; \
-			if [ -f Cargo.toml ]; then cargo fmt --all; fi; \
-		else \
-			py=(); prettier_root=(); prettier_frontend=(); rust_inputs=(); \
-			for path in "$${paths[@]}"; do \
-				case "$$path" in *.py) py+=("$$path") ;; esac; \
-				case "$$path" in frontend/*) case "$$path" in *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.json|*.css|*.md|*.yml|*.yaml) prettier_frontend+=("$${path#frontend/}") ;; esac ;; *.md|*.json|*.yml|*.yaml) prettier_root+=("$$path") ;; esac; \
-				case "$$path" in *.rs|Cargo.toml|Cargo.lock) rust_inputs+=("$$path") ;; esac; \
-			done; \
-			[ "$${#py[@]}" -gt 0 ] && uv run ruff check --fix "$${py[@]}" && uv run ruff format "$${py[@]}"; \
-			[ "$${#prettier_root[@]}" -gt 0 ] && npx --yes prettier --write "$${prettier_root[@]}"; \
-			if [ "$${#prettier_frontend[@]}" -gt 0 ] && [ -d frontend ]; then (cd frontend && run_frontend_format "$${prettier_frontend[@]}"); fi; \
-			if [ "$${#rust_inputs[@]}" -gt 0 ] && [ -f Cargo.toml ]; then run_rust_fmt "$${rust_inputs[@]}"; fi; \
-		fi; \
-	'
+	@FILES_FROM="$(FILES_FROM)" tools/quality.sh format
 	@echo "✓ Code formatted"
 
 lint:
 	@echo "Running lint checks..."
-	@FILES_FROM="$(FILES_FROM)" bash -eu -o pipefail -c '\
-		scoped=0; paths=(); \
-		if [ -n "$$FILES_FROM" ]; then scoped=1; while IFS= read -r -d "" path; do paths+=("$$path"); done < "$$FILES_FROM"; fi; \
-		run_jscpd() { if [ "$$#" -gt 0 ]; then npx --yes jscpd --min-lines 25 --min-tokens 150 --mode strict --exit-code 1 --ignore "**/migrations/**" "$$@"; fi; }; \
-		run_frontend_lint() { if command -v pnpm >/dev/null 2>&1; then pnpm exec eslint "$$@" && pnpm exec tsc --noEmit; else npx --yes eslint "$$@" && npx --yes tsc --noEmit; fi; }; \
-		run_rust_clippy() { \
-			local rust_workspace=0 path dir manifest name; local -a rust_packages=(); local -A rust_seen=(); \
-			for path in "$$@"; do \
-				if [ "$$path" = "Cargo.toml" ] || [ "$$path" = "Cargo.lock" ]; then rust_workspace=1; continue; fi; \
-				case "$$path" in *.rs|*/Cargo.toml) ;; *) continue ;; esac; \
-				if [ "$${path##*/}" = "Cargo.toml" ]; then dir="$${path%/*}"; else dir="$${path%/*}"; fi; \
-				if [ "$$dir" = "$$path" ]; then dir="."; fi; manifest=""; \
-				while [ "$$dir" != "." ] && [ "$$dir" != "/" ]; do \
-					if [ -f "$$dir/Cargo.toml" ]; then manifest="$$dir/Cargo.toml"; break; fi; \
-					dir="$${dir%/*}"; if [ -z "$$dir" ]; then dir="."; fi; \
-				done; \
-				if [ -z "$$manifest" ]; then continue; fi; \
-				if [ "$$manifest" = "Cargo.toml" ]; then rust_workspace=1; continue; fi; \
-				name="$$(sed -n -E "/^\\[package\\]/,/^\\[/{s/^[[:space:]]*name[[:space:]]*=[[:space:]]*\"([^\"]+)\".*/\\1/p;}" "$$manifest" | head -n 1)"; \
-				if [ -z "$$name" ]; then rust_workspace=1; continue; fi; \
-				if [ -z "$${rust_seen[$$name]+x}" ]; then rust_seen[$$name]=1; rust_packages+=("$$name"); fi; \
-			done; \
-			if [ "$$rust_workspace" -eq 1 ]; then cargo clippy --workspace --all-targets -- -D warnings; elif [ "$${#rust_packages[@]}" -gt 0 ]; then for name in "$${rust_packages[@]}"; do cargo clippy -p "$$name" --all-targets -- -D warnings; done; fi; \
-		}; \
-		if [ "$$scoped" -eq 0 ]; then \
-			uv run ruff check .; uv run ruff format --check .; uv run pyright; uv run mypy; \
-			jscpd_targets=(); for p in teleclaude tools; do [ -e "$$p" ] && jscpd_targets+=("$$p"); done; run_jscpd "$${jscpd_targets[@]}"; \
-			if [ -d frontend ] && [ -f frontend/package.json ]; then (cd frontend && run_frontend_lint .); fi; \
-			if [ -f Cargo.toml ]; then cargo clippy --workspace --all-targets -- -D warnings; fi; \
-		else \
-			py=(); py_full=0; ts=(); ts_full=0; rust_inputs=(); \
-			for path in "$${paths[@]}"; do \
-				case "$$path" in *.py) py+=("$$path") ;; pyproject.toml|mypy.ini|pyrightconfig.json) py_full=1 ;; esac; \
-				case "$$path" in frontend/*.ts|frontend/*.tsx|frontend/*.js|frontend/*.jsx|frontend/*.mjs|frontend/*.cjs) ts+=("$${path#frontend/}") ;; frontend/package.json|frontend/tsconfig*.json|frontend/eslint.config.*|frontend/vitest.config.*) ts_full=1 ;; esac; \
-				case "$$path" in *.rs|Cargo.toml|Cargo.lock|*/Cargo.toml) rust_inputs+=("$$path") ;; esac; \
-			done; \
-			if [ "$$py_full" -eq 1 ]; then uv run ruff check .; uv run ruff format --check .; uv run pyright; uv run mypy; jscpd_targets=(); for p in teleclaude tools; do [ -e "$$p" ] && jscpd_targets+=("$$p"); done; run_jscpd "$${jscpd_targets[@]}"; \
-			elif [ "$${#py[@]}" -gt 0 ]; then uv run ruff check "$${py[@]}"; uv run ruff format --check "$${py[@]}"; uv run pyright "$${py[@]}"; uv run mypy "$${py[@]}"; run_jscpd "$${py[@]}"; fi; \
-			if [ -d frontend ] && [ -f frontend/package.json ]; then if [ "$$ts_full" -eq 1 ]; then (cd frontend && run_frontend_lint .); elif [ "$${#ts[@]}" -gt 0 ]; then (cd frontend && run_frontend_lint "$${ts[@]}"); fi; fi; \
-			if [ "$${#rust_inputs[@]}" -gt 0 ] && [ -f Cargo.toml ]; then run_rust_clippy "$${rust_inputs[@]}"; fi; \
-		fi; \
-	'
+	@FILES_FROM="$(FILES_FROM)" tools/quality.sh lint
 	@echo "✓ Lint checks passed"
 
 check-no-unit-tests:
@@ -194,14 +80,7 @@ test-meta:
 
 test:
 	@echo "Running repo-wide tests..."
-	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" bash -eu -o pipefail -c '\
-		pytest_args=(); if [ -n "$$SNAPSHOT_UPDATE" ]; then pytest_args+=("--snapshot-update"); fi; \
-		uv run pytest "$${pytest_args[@]}"; \
-		run_frontend_test() { if command -v pnpm >/dev/null 2>&1; then pnpm test "$$@"; else npm test "$$@"; fi; }; \
-		if [ -d frontend ] && [ -f frontend/package.json ]; then if [ -n "$$SNAPSHOT_UPDATE" ]; then (cd frontend && run_frontend_test -- -u); else (cd frontend && run_frontend_test); fi; fi; \
-		if [ -f Cargo.toml ]; then cargo test --workspace --lib; fi; \
-	'
-	@if [ -z "$$CI" ]; then $(MAKE) test-meta; fi
+	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" tools/quality.sh test
 	@echo "✓ All tests passed"
 
 coverage:
@@ -273,15 +152,6 @@ cron-smoke:
 	@echo ""
 	@echo "Recent cron runner failures (last $(CRON_SMOKE_SINCE))..."
 	@instrukt-ai-logs teleclaude --since $(CRON_SMOKE_SINCE) --grep "failed to load job"
-
-bootstrap:
-	@./bin/install.sh --yes
-
-bootstrap-ci:
-	@./bin/install.sh --ci
-
-onboard:
-	@telec onboard
 
 build-artifacts:
 	@$(MAKE) generate-types

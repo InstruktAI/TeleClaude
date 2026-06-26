@@ -148,10 +148,10 @@ async def execute_update(
 
         # Install
         await update_status({"status": "installing", "timestamp": time.time()})
-        logger.info("Deploy: running make install...")
+        logger.info("Deploy: running installer (deps-only)...")
         install = await asyncio.create_subprocess_exec(
-            "make",
-            "install",
+            "./bin/install.sh",
+            "--deps-only",
             cwd=_REPO_ROOT,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

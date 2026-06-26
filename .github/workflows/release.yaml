@@ -70,7 +70,7 @@ jobs:
           echo "All CLI credentials verified"
 
       - name: Full TeleClaude Bootstrap
-        run: make bootstrap-ci
+        run: make install
 
       - name: Verify Agent Invocation Matrix
         # Smoke test only — quorum enforcement happens at lane level.
@@ -196,7 +196,7 @@ jobs:
       - name: Use repo-local telec
         run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
       - name: Bootstrap Environment
-        run: make bootstrap-ci
+        run: make install
       - name: Download Arbiter Decision
         uses: actions/download-artifact@v4
         with:
