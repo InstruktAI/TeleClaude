@@ -23,7 +23,7 @@ The contract resolves four classes of file state at commit time:
 
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
-On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the human-approved gate that lets the commit proceed; on a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
+On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
 ## Canonical fields
 
@@ -49,12 +49,12 @@ And exits non-zero without staging anything
 And inspection commands (`git diff`, `git status`, `git log`) remain available
 ```
 
-#### Bare telec code commit on main surfaces the review-routing gate
+#### Bare telec code commit on main surfaces the commit-first review-routing gate
 
 ```
 Given an agent on the `main` branch with a non-integrator role
 When the agent invokes `telec code commit` with no message and no flags
-Then the command prints the review-routing gate to stderr
+Then the command prints the commit-first review-routing gate to stderr
 And exits 0 — serving the gate is the successful outcome, not a failure
 And the gate routes review by what the diff touches: functional code/tests → agent-judged med code review; doc snippets (docs/**) or agent artifacts (agents/**) → required fast doc-hygiene review; neither → no review
 And the gate points at `telec code changed` for scope inspection
@@ -66,7 +66,7 @@ And the gate surfaces `telec code add` and `--include` for new-file declaration
 ```
 Given an agent on the `main` branch with a non-integrator role
 When the agent invokes `telec code commit "<message>"` without `--approved`
-Then the command prints the gate to stderr without producing a commit
+Then the command prints the commit-first review-routing gate to stderr without producing a commit
 And exits non-zero without producing a commit
 ```
 
@@ -254,7 +254,7 @@ And exits non-zero without producing a commit
 ```
 Given the session's system role resolves to integrator
 When the integrator invokes `telec code commit --approved "<msg>"` on main
-Then the review-routing gate is NOT printed
+Then the commit-first review-routing gate is NOT printed
 And the commit proceeds (subject to the other invariants — pathspec construction, partial-staging guard, etc.)
 And this is justified because every change the integrator commits was individually approved via its delivery's lifecycle
 ```
@@ -339,7 +339,7 @@ Then main_branch_lock __exit__ is called (lock released)
 
 ```
 Given a non-integrator agent invokes telec code commit with no message and no --approved
-When the branch is main (review-routing gate) or any other branch (short help)
+When the branch is main (commit-first review-routing gate) or any other branch (short help)
 Then the guidance is printed and no commit occurs
 And SystemExit(0) — serving the gate is the successful outcome of a bare invocation
 ```

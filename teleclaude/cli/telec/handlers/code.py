@@ -300,7 +300,7 @@ def handle_code_commit(args: list[str]) -> None:
     project_root = resolve_git_root(resolve_invocation_cwd())
 
     # The absence of --approved is the trigger: surface guidance, never commit.
-    # On main + non-integrator → review-routing gate. Off main / integrator → short help.
+    # On main + non-integrator → commit-first review-routing gate. Off main / integrator → short help.
     # Bare invocation (no message) is discovery — serving the menu is the
     # successful outcome, so exit 0. A message without --approved means the agent
     # meant to commit and skipped the gate: a real miss, so exit non-zero to stop
@@ -313,7 +313,7 @@ def handle_code_commit(args: list[str]) -> None:
             raise SystemExit(1 if forgot_gate else 0)
         print(
             "telec code commit is the sealed canonical commit interface.\n"
-            "Get human approval, then commit with:\n"
+            "Use --approved to acknowledge the agent-owned commit gate:\n"
             '  telec code commit --approved "type(scope): subject"',
             file=sys.stderr,
         )

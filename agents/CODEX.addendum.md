@@ -58,14 +58,7 @@ This file defines Codex-specific operating rules for this repository.
 - Use delta updates: what changed, what failed, what is next.
 - Avoid repetition and recap dumps unless requested.
 
-## `telec code commit` Addendum
-
-Before committing on `main`, run `telec code commit` with no arguments. Treat its
-Path A/B/C output as binding. For B/C, assess whether review is needed from the
-change context, ask the human whether to send it, and include the recommendation.
-Do not call B/C work done until review is declined or REVIEW COMPLETE returns.
-
-REMINDER: YOU ARE OBLIGATED TO PRESENT B/C REVIEW SUGGESTION! THE HUMAN MUST MAKE AN EXPLICIT CHOICE TO DECLINE REVIEW OR APPROVE THE SUGGESTION. DO NOT SKIP THIS STEP!
+## Commit Attribution
 
 Use this trailer in commits made by Codex:
 

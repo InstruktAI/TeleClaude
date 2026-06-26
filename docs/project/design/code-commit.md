@@ -5,6 +5,10 @@ visibility: 'public'
 
 # Code Commit — Design
 
+## Required reads
+
+@~/.teleclaude/docs/software-development/policy/commits.md
+
 ## Purpose
 
 `telec code commit` is the canonical commit interface for **autonomous agent
@@ -81,7 +85,7 @@ op wins.
 | `git stash*`                                                                  | ❌ blocked (absolute, no role override)                       | ❌ blocked                             | ❌ blocked                          | Stash captures every dirty file in the worktree it runs in — no pathspec granularity. In a multi-agent repo, a stash lifts other agents' WIP; the pop either silently re-stages foreign content or conflicts with no clean recovery. The integrator's recovery when repo-root sync finds dirty files is to halt and surface to the human (per the integration procedure), never to stash. |
 | `git clean`                                                                   | ❌ blocked                                                    | ❌ blocked                             | ❌ blocked                          | Deletes untracked files; rarely the right answer for agents.                                                                                                                                                                                                                                                                                                                              |
 | `git revert <commit>`                                                         | ⚠️ `--confirmed` required                                     | ⚠️ `--confirmed` required              | ⚠️ `--confirmed` required           | Multi-agent commits often span scopes; inspection precedes revert.                                                                                                                                                                                                                                                                                                                        |
-| `git merge`/`rebase`/`cherry-pick` on main                                    | ❌ unless integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` | ✅ allowed                             | (n/a)                               | Replays produce commits via paths that bypass `telec code commit`'s Path A/B/C gate.                                                                                                                                                                                                                                                                                                      |
+| `git merge`/`rebase`/`cherry-pick` on main                                    | ❌ unless integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` | ✅ allowed                             | (n/a)                               | Replays produce commits via paths that bypass `telec code commit`'s sealed commit gate.                                                                                                                                                                                                                                                                                                   |
 | `git push origin main`                                                        | ❌ blocked                                                    | ✅ allowed (from integration worktree) | (n/a)                               | Only the integrator publishes to canonical main.                                                                                                                                                                                                                                                                                                                                          |
 
 **Legend.** ✅ = allowed; ❌ = wrapper blocks with diagnostic; ⚠️ = blocked
@@ -109,7 +113,9 @@ names files explicitly.
 Sealed contract — exactly:
 
 - `"<message>"` — one quoted commit message (required when `--approved`).
-- `--approved` — human-approved gate; absence triggers Path A/B/C guidance.
+- `--approved` — agent-owned sealed-gate acknowledgment. Absence triggers
+  commit-first and post-commit review-routing guidance; it is not a human
+  approval signal.
 - `--include <path> [<path> ...]` — declare files outside the resolved
   workspace scope that must be in this commit (e.g., a file the human
   collaboratively edited that the scope heuristic missed). Each declared
@@ -167,14 +173,12 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    both steps. The thin `.git/hooks/pre-commit` performs only a partial-staging
    backstop; it does not re-run format or lint.
 
-5. **Path A/B/C classification on main.** Non-integrator commits on main are
-   classified:
-   - **Path A:** all staged files non-functional + message contains `[skip ci]` → autonomous.
-   - **Path B:** small functional change, human-approved → commit directly (`--approved`).
-   - **Path C:** functional change + review → commit with `--approved`. If
-     this patch series has no `/next-review-commits` reviewer yet, dispatch
-     one. Follow-up commits for the same patch series are sent to that same
-     reviewer with `telec sessions send`.
+5. **Commit-first gate on main.** Non-integrator agents on main use the bare
+   `telec code commit` invocation to surface commit-first and post-commit
+   review-routing guidance. They then commit with `--approved`; the committed
+   diff determines whether a post-commit review is required or recommended per
+   `software-development/policy/commits`. This design owns the mechanics; the
+   policy owns the behavioral rule.
 
 6. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
 
@@ -192,7 +196,7 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
 
 ```
 telec code commit --approved "feat(scope): subject"
-  → ABC gate satisfied (--approved present)
+  → commit gate satisfied (--approved present)
   → lock acquired
   → wait_for_index_lock_clear (self-heal any stale .git/index.lock)
   → workspace scope = WORKTREE → all dirty paths
@@ -209,11 +213,11 @@ telec code commit --approved "feat(scope): subject"
   → lock released
 ```
 
-### Agent commit on main (Path A — non-functional)
+### Agent commit on main
 
 ```
 telec code commit --approved "chore(docs): update snippets [skip ci]"
-  → ABC gate satisfied (--approved + [skip ci])
+  → commit gate satisfied (--approved present)
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
   → pathspec = scope minus untracked-not-staged
@@ -229,7 +233,7 @@ telec code commit --approved "chore(docs): update snippets [skip ci]"
 
 ```
 telec code commit --approved "fix(scope): subject" --include path/to/extra.py
-  → ABC gate satisfied
+  → commit gate satisfied
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
   → pathspec = scope ∪ {path/to/extra.py}
@@ -247,7 +251,7 @@ telec code commit --approved "fix(scope): subject" --include path/to/extra.py
 
 The integrator's normal home is `trees/_integration/`, which is a worktree.
 Same flow as "Agent commit (worktree)" above. The integrator role bypasses
-Path A/B/C classification.
+commit-first gate.
 
 ### Integrator's project-root sync
 
@@ -277,11 +281,10 @@ quietly drop unreachable claims.
 the gate output. No commit is produced; files remain in their current state
 for the agent to fix and retry.
 
-**Path B/C gate.** Functional files on main without human approval. Exit
-with guidance. Path B: human approves with `--approved`. Path C: human
-approves the commit; the agent dispatches `/next-review-commits` only when
-the patch series has no reviewer yet. Follow-up commits for that patch series
-are sent to the same reviewer.
+**Forgotten commit gate.** A non-integrator agent on main passes a message
+without `--approved`. Exit with commit-first guidance and no commit. The agent
+reruns the sealed command with `--approved`, then routes any post-commit review
+obligation from the committed diff.
 
 ## See also
 

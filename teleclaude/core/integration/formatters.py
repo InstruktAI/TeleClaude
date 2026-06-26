@@ -9,7 +9,7 @@ and emit explicit ``git -C <project_root>`` prefixes.
 
 from __future__ import annotations
 
-# Integrators bypass Path A/B/C (system_role == "integrator" exempts them in
+# Integrators bypass the commit-first review gate (system_role == "integrator" exempts them in
 # the handler), so their commit instruction goes straight to --approved with
 # a quoted message. Single source of truth — referenced by every integration
 # decision template that ends with a commit step.

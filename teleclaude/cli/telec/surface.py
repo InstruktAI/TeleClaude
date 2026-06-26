@@ -1235,7 +1235,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag(
                         "--approved",
-                        desc="Human-approved commit gate. Required to commit on main; bare invocation prints Path A/B/C and exits.",
+                        desc="Agent-owned sealed commit gate. Required to commit; bare main invocation prints commit-first and review-routing guidance.",
                     ),
                     Flag(
                         "--include",
@@ -1247,7 +1247,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.",
                     "NEW (untracked) files in scope are NOT auto-committed; declare them via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts).",
                     "Unmerged-index files in pathspec are staged internally for the integrator conflict path.",
-                    "Without --approved on main: prints Path A/B/C classification and exits.",
+                    "Without --approved on main: prints commit-first and review-routing guidance and exits.",
                     "Pathspec = workspace scope plus --include paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.",
                     "The 🤖/Co-Authored-By trailer is appended automatically (idempotent).",
                 ],
