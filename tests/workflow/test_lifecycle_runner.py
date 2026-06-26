@@ -1314,6 +1314,34 @@ async def test_manual_adoption_claims_unclaimed_slug_for_caller_bound_to_other_s
     assert state["manually_started"] is True
 
 
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS12")
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+async def test_manual_prepare_adoption_releases_held_unclaimed_slug(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(
+        todos_db,
+        _WORK_SLUG,
+        lifecycle_phase=LifecyclePhase.PLAN_DRAFTING.value,
+        hold=True,
+    )
+    caller = _Session(session_id="caller-session", working_slug=_OTHER_SLUG)
+
+    result = await adopt_manual_lifecycle_session(
+        project_root,
+        _WORK_SLUG,
+        caller.session_id,
+        db=cast(Db, _FakeDb({caller.session_id: caller})),
+    )
+
+    assert result.status is ManualLifecycleStatus.ADOPTED
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["active_runner"] == caller.session_id
+    assert state["manually_started"] is True
+    assert state["hold"] is False
+
+
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_manual_adoption_marks_authorized_task_as_task_run(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
