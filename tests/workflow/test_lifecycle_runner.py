@@ -1798,7 +1798,7 @@ async def test_guard_driver_start_allows_worker_child_spawn(tmp_path: Path) -> N
     )
 
 
-@pytest.mark.spec("project/spec/feature/agent_runtime/run-session-with-command", "Lifecycle driver-start dedup")
+@pytest.mark.spec("project/spec/feature/agent_runtime/run-session-with-command", "UC-DSD1")
 async def test_guard_driver_start_allows_first_spawn_without_holder(tmp_path: Path) -> None:
     """An orchestrator-class create is allowed when no live driver holds the slug —
     the autonomous runner's sanctioned first spawn."""

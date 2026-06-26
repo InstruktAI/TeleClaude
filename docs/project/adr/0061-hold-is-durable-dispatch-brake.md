@@ -1,8 +1,7 @@
 ---
-id: project/adr/0061-hold-is-durable-dispatch-brake
-type: adr
-domain: project
-scope: project
+visibility: public
+number: 61
+date: 2026-06-26
 description: Hold is the durable autonomous-dispatch brake for any active todo; manual close and explicit hold requests persist it independently of kind, phase, and autostart policy.
 ---
 

@@ -132,15 +132,6 @@ And the prepare state machine runs in the invoking session
 And no separate orchestrator session is dispatched for my-todo
 ```
 
-```gherkin
-Given a Todo with `hold=true`
-And no live holder owns the Todo
-When an operator invokes "telec todo prepare my-todo"
-Then the lifecycle operation clears hold as part of the successful claim/start path
-And the invoking session claims my-todo as its live active-runner in-process
-And if a live holder owns the Todo, the operation is refused and hold remains intact
-```
-
 ```
 Given a Todo at lifecycle_phase=plan_review with an approved plan
 And any tracked artifact's per-class drift derivation (see @spec/feature/workflow/drift-detection) collapses to pending or substantive
@@ -157,6 +148,17 @@ Given a Todo whose state has somehow accumulated a contradictory phase that the 
 When the orchestrator calls "telec todo prepare my-feature"
 Then the loop iterates up to the prepare loop limit and exits with a non-recoverable instruction
 And the instruction tells the operator to inspect via "telec todo show my-feature" and surface the issue to the user
+```
+
+#### UC-WPS12: A manual prepare invocation releases a held unclaimed slug
+
+```gherkin
+Given a Todo with `hold=true`
+And no live holder owns the Todo
+When an operator invokes "telec todo prepare my-todo"
+Then the lifecycle operation clears hold as part of the successful claim/start path
+And the invoking session claims my-todo as its live active-runner in-process
+And if a live holder owns the Todo, the operation is refused and hold remains intact
 ```
 
 ### Auto-continue
