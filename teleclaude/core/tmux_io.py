@@ -200,6 +200,7 @@ async def inject_user_turn(
                 session,
                 turn_started=turn_started,
                 active_agent=active_agent,
+                accept_rendered_codex_submission=False,
                 source="paste_observation",
                 attempt=1,
                 attempt_total=1,
@@ -229,11 +230,12 @@ async def _confirm_observed_submission(
     *,
     turn_started: asyncio.Future[None],
     active_agent: str | None,
+    accept_rendered_codex_submission: bool,
     source: str,
     attempt: int,
     attempt_total: int,
 ) -> bool:
-    if resolve_parser_agent(active_agent) is AgentName.CODEX:
+    if accept_rendered_codex_submission and resolve_parser_agent(active_agent) is AgentName.CODEX:
         logger.info(
             "inject_user_turn: Codex turn accepted from rendered submission state session=%s source=%s attempt=%d/%d",
             session.session_id,
@@ -359,6 +361,7 @@ async def _submit_observed_user_turn(
                 session,
                 turn_started=turn_started,
                 active_agent=active_agent,
+                accept_rendered_codex_submission=True,
                 source="submit_observation",
                 attempt=submit_attempt,
                 attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),
@@ -395,6 +398,7 @@ async def _submit_observed_user_turn(
                 session,
                 turn_started=turn_started,
                 active_agent=active_agent,
+                accept_rendered_codex_submission=True,
                 source="submit_observation",
                 attempt=submit_attempt,
                 attempt_total=len(INJECT_SUBMIT_RETRY_DELAYS_S),

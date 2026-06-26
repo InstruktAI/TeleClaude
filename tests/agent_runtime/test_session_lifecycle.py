@@ -593,6 +593,13 @@ async def test_agent_then_message_create_accepts_codex_consumed_input_without_su
         pytest.param(
             [
                 "• Thinking (1s • esc to interrupt)",
+                "Previous response line.",
+            ],
+            id="near-bottom-submitted-boundary",
+        ),
+        pytest.param(
+            [
+                "• Thinking (1s • esc to interrupt)",
                 "Completed output line 1.",
                 "Completed output line 2.",
                 "Completed output line 3.",
