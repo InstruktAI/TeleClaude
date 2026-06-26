@@ -191,8 +191,6 @@ Then a state-mutation error is raised with the underlying validation text
 And no commit happens — the stamp call exits before any partial mutation lands
 ```
 
-<!-- planned:task-run-outcome-contract -->
-
 #### UC-WSS12: One-shot task success outcome delivers the todo
 
 ```gherkin
@@ -224,8 +222,6 @@ And an error outcome with an empty or missing reason is refused before any write
 And a task-outcome stamp on a Todo that is not kind="task" is refused before any write
 ```
 
-<!-- /planned:task-run-outcome-contract -->
-
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
@@ -248,8 +244,6 @@ And a task-outcome stamp on a Todo that is not kind="task" is refused before any
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/next-build`) is responsible for issuing it as the last act of the build flow.
 - `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a session whose `system_role == orchestrator` may stamp it; a worker session or a plain operator shell is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo) and invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`. The stamp mutates state only; on the orchestrator's next `telec todo work` re-entry the work machine releases the slug's working resources (worktree + local/remote branch + workspace dir, keeping the durable todo and artifacts) and emits the session-cleanup script (end workers, end self) — neither is done by the stamp.
 
-<!-- planned:task-run-outcome-contract -->
-
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
   `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A
   one-shot `success` delivers the Todo; a recurring `success` clears a task-error hold
@@ -260,5 +254,3 @@ And a task-outcome stamp on a Todo that is not kind="task" is refused before any
   `telec todo update --release` refuses to clear it, so recovery is `--task-outcome
 success` (which delivers) or a deliberate manual start; a firing that ends without a
   stamp leaves the Todo re-runnable.
-
-<!-- /planned:task-run-outcome-contract -->

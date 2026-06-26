@@ -32,6 +32,7 @@ from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todo
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_FEATURE, TODO_KIND_TASK
+from teleclaude.types.todos import HoldAuditSource
 
 pytestmark = pytest.mark.functional
 
@@ -46,6 +47,14 @@ _ORIGINAL_INPUT_MARKER = "original intent."
 _KICKBACK_REASON_USAGE = "--kickback requires --reason"
 _VERDICT_APPROVE = "approve"
 _VERDICT_CLEARED = ""
+_DELIVERED_PHASE = "delivered"
+_TASK_ERROR_REASON = "disk full"
+_RUN_SESSION = "run-session"
+_HUMAN_HOLD_REASON = "paused"
+_TASK_OUTCOME_STAMP = "task_outcome"
+_OUTCOME_ERROR = "error"
+_OUTCOME_SUCCESS = "success"
+_STAMP_ROUTE = "/todos/stamp"
 
 
 @pytest.fixture(autouse=True)
@@ -90,6 +99,26 @@ async def _add_feature_todo_with_prd(todos_db: TodosDb, slug: str) -> None:
         },
     )
     await todos_db.write_artifact(slug, ARTIFACT_PRD, "# PRD\n\nApprove this.", updated_by="test")
+
+
+async def _add_task_todo(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    schedule: str | None = None,
+    hold_audit: dict[str, StateValue] | None = None,
+) -> None:
+    await todos_db.add_to_todo(slug, schedule=schedule)
+    state: dict[str, StateValue] = {
+        "schema_version": 5,
+        "kind": TODO_KIND_TASK,
+        "phase": "in_progress",
+        "lifecycle_phase": LifecyclePhase.TASK_RUNNING.value,
+    }
+    if hold_audit is not None:
+        state["hold"] = True
+        state["hold_audit"] = hold_audit
+    await todos_db.write_state(slug, state)
 
 
 async def _create_runtime_session(
@@ -640,6 +669,29 @@ def test_kickback_cli_requires_reason(
     assert calls == []
 
 
+@pytest.mark.spec(_SPEC, "UC-WSS14")
+def test_task_outcome_cli_maps_flag_to_stamp_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_paths: list[str] = []
+    captured_bodies: list[todo_handlers._TodoStampBody] = []
+
+    def _capture(method: str, path: str, *, json_body: todo_handlers._TodoStampBody) -> dict[str, str]:
+        captured_paths.append(path)
+        captured_bodies.append(json_body)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(todo_handlers, "tool_api_call", _capture)
+
+    todo_handlers._handle_todo_stamp([_SLUG, "--task-outcome", _OUTCOME_ERROR, "--reason", _TASK_ERROR_REASON])
+    todo_handlers._handle_todo_stamp([_SLUG, "--task-outcome", _OUTCOME_SUCCESS])
+
+    assert captured_paths == [_STAMP_ROUTE, _STAMP_ROUTE]
+    assert captured_bodies[0]["stamp_type"] == _TASK_OUTCOME_STAMP
+    assert captured_bodies[0]["phase"] == _OUTCOME_ERROR
+    assert captured_bodies[0]["value"] == _TASK_ERROR_REASON
+    assert captured_bodies[1]["stamp_type"] == _TASK_OUTCOME_STAMP
+    assert captured_bodies[1]["phase"] == _OUTCOME_SUCCESS
+
+
 @pytest.mark.spec(_SPEC, "UC-WSS4")
 def test_stamp_help_lists_build_complete_flag(
     monkeypatch: pytest.MonkeyPatch,
@@ -666,6 +718,129 @@ def test_build_complete_confirmation_conveys_claim_recorded(
 
     captured = capsys.readouterr()
     assert {"stdout": captured.out, "stderr": captured.err} == snapshot
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS12")
+async def test_task_outcome_success_one_shot_delivers(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_task_todo(todos_db, _SLUG)
+
+    await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="task_outcome", phase="success")
+
+    assert _SLUG in await todos_db.delivered_slugs()
+    assert await todos_db.read_state(_SLUG) is None
+    delivered = await todos_db.read_state_delivered(_SLUG)
+    assert delivered is not None
+    assert delivered["phase"] == _DELIVERED_PHASE
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS13")
+async def test_task_outcome_success_recurring_clears_task_error_hold(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_task_todo(
+        todos_db,
+        _SLUG,
+        schedule="cron:0 0 * * *",
+        hold_audit={
+            "source": HoldAuditSource.TASK_ERROR.value,
+            "set_at": "2026-06-25T00:00:00+00:00",
+            "set_by_session_id": _RUN_SESSION,
+            "reason": "boom",
+        },
+    )
+
+    await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="task_outcome", phase="success")
+
+    assert _SLUG not in await todos_db.delivered_slugs()
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.hold is False
+    assert writer.state.hold_audit.source == HoldAuditSource.NONE
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS13")
+async def test_task_outcome_success_recurring_preserves_human_hold(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_task_todo(
+        todos_db,
+        _SLUG,
+        schedule="cron:0 0 * * *",
+        hold_audit={
+            "source": HoldAuditSource.MANUAL.value,
+            "set_at": "2026-06-25T00:00:00+00:00",
+            "set_by_session_id": "human",
+            "reason": _HUMAN_HOLD_REASON,
+        },
+    )
+
+    await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="task_outcome", phase="success")
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.hold is True
+    assert writer.state.hold_audit.source == HoldAuditSource.MANUAL
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS14")
+async def test_task_outcome_error_holds_with_reason(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_task_todo(todos_db, _SLUG)
+
+    await apply_todo_stamp(
+        cwd=str(project_root),
+        slug=_SLUG,
+        stamp_type="task_outcome",
+        phase="error",
+        value=_TASK_ERROR_REASON,
+        caller_session_id=_RUN_SESSION,
+    )
+
+    assert _SLUG not in await todos_db.delivered_slugs()
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    writer = StateWriter(state)
+    assert writer.state.hold is True
+    assert writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR
+    assert writer.state.hold_audit.reason == _TASK_ERROR_REASON
+    assert writer.state.hold_audit.set_by_session_id == _RUN_SESSION
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS14")
+async def test_task_outcome_refuses_non_task_without_mutation(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_build_started_todo(todos_db, _SLUG)
+
+    with pytest.raises(StateMutationError):
+        await apply_todo_stamp(cwd=str(project_root), slug=_SLUG, stamp_type="task_outcome", phase="success")
+
+    assert _SLUG not in await todos_db.delivered_slugs()
+
+
+@pytest.mark.spec(_SPEC, "UC-WSS14")
+async def test_task_outcome_error_empty_reason_refused_without_mutation(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_task_todo(todos_db, _SLUG)
+
+    with pytest.raises(StateMutationError):
+        await apply_todo_stamp(
+            cwd=str(project_root),
+            slug=_SLUG,
+            stamp_type="task_outcome",
+            phase="error",
+            value="   ",
+        )
+
+    state = await todos_db.read_state(_SLUG)
+    assert state is not None
+    assert StateWriter(state).state.hold is False
 
 
 @pytest.mark.parametrize("entry_version", [3, 4])

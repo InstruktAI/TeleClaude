@@ -62,11 +62,13 @@ from teleclaude.core.next_machine.state_mutation import (
     StateMutationError,
     StateWriter,
 )
+from teleclaude.core.next_machine.task_wake import is_recurring_schedule
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -226,6 +228,15 @@ async def apply_todo_stamp(
             slug,
             reason=value,
             repo_root=cwd,
+        )
+    elif stamp_type == "task_outcome":
+        return await _apply_task_outcome_stamp(
+            todos_db,
+            writer,
+            slug,
+            outcome=phase or "",
+            reason=value,
+            caller_session_id=caller_session_id,
         )
     else:
         raise ValueError(f"unknown stamp type: {stamp_type}")
@@ -524,6 +535,56 @@ async def _apply_kickback_stamp(
     )
     ApprovalsManager(writer).cascade_substantive_drift(ARTIFACT_IMPLEMENTATION_PLAN)
     return await writer.commit(todos_db, slug)
+
+
+async def _apply_task_outcome_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    *,
+    outcome: str,
+    reason: str,
+    caller_session_id: str | None,
+) -> dict[str, StateValue]:
+    """Reconcile a task firing's outcome into the todo's terminal state.
+
+    A one-shot ``success`` delivers the todo; a recurring ``success`` clears a
+    prior task-error hold and leaves the todo live for its next instant; an
+    ``error`` holds the todo with the task-error source and reason so a closed or
+    killed run does not blindly re-dispatch. The terminal state is the durable
+    outcome — no separate outcome field — and the lifecycle runner honors it
+    unchanged on its next stateless re-evaluation.
+    """
+    if writer.state.kind != KIND_TASK:
+        raise StateMutationError("cannot stamp task_outcome: todo is not kind='task'")
+    if outcome not in {"success", "error"}:
+        raise StateMutationError(f"task_outcome requires success or error, got: {outcome!r}")
+    if outcome == "error" and not reason.strip():
+        raise StateMutationError("task_outcome error requires a non-empty reason")
+
+    if outcome == "error":
+        writer.state.hold = True
+        writer.state.hold_audit = HoldAuditState(
+            source=HoldAuditSource.TASK_ERROR,
+            set_at=datetime.now(UTC).isoformat(),
+            set_by_session_id=caller_session_id or "",
+            reason=reason,
+        )
+        return await writer.commit(todos_db, slug)
+
+    recurring = is_recurring_schedule(await todos_db.get_schedule(slug))
+    if recurring:
+        if writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
+            writer.state.hold = False
+            writer.state.hold_audit = HoldAuditState()
+        return await writer.commit(todos_db, slug)
+
+    if not await todos_db.deliver(slug):
+        raise StateMutationError(f"task_outcome success could not deliver slug '{slug}': no active row")
+    delivered = await todos_db.read_state_delivered(slug)
+    if delivered is None:
+        raise StateMutationError(f"task_outcome success delivered slug '{slug}' but its state is unreadable")
+    return delivered
 
 
 async def _validate_stamp_authority(

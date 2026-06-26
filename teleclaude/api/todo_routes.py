@@ -80,6 +80,7 @@ from teleclaude.project_root import resolve_state_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_CHANGE, TODO_KIND_TASK
+from teleclaude.types.todos import HoldAuditSource
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -182,6 +183,13 @@ def _normalize_schedule_request(schedule: str | None) -> str | None:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+TASK_ERROR_RELEASE_REFUSAL = (
+    "is held by a task error and cannot be bare-released. "
+    "Recover with `telec todo stamp --task-outcome success` (delivers) "
+    "or kill the run and start it manually."
+)
+
+
 async def _apply_hold_update(
     todos_db: TodosDb,
     slug: str,
@@ -197,16 +205,18 @@ async def _apply_hold_update(
     if raw_state is None:
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in todo list")
     writer = StateWriter(raw_state)
+    if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
+        raise HTTPException(status_code=409, detail=f"slug '{slug}' {TASK_ERROR_RELEASE_REFUSAL}")
     if hold and writer.state.kind is not None and not autostart_enabled_for_kind(writer.state.kind):
         return writer.state.hold
     writer.state.hold = hold
     if hold:
-        writer.state.hold_audit.source = "manual"
+        writer.state.hold_audit.source = HoldAuditSource.MANUAL
         writer.state.hold_audit.set_at = datetime.now(UTC).isoformat()
         writer.state.hold_audit.set_by_session_id = caller_session_id or ""
         writer.state.hold_audit.reason = "todo update"
     else:
-        writer.state.hold_audit.source = ""
+        writer.state.hold_audit.source = HoldAuditSource.NONE
         writer.state.hold_audit.set_at = ""
         writer.state.hold_audit.set_by_session_id = ""
         writer.state.hold_audit.reason = ""

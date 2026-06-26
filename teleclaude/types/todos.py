@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -148,10 +149,22 @@ class BuildReviewState(BaseModel):
     dispatch_head: str = ""
 
 
+class HoldAuditSource(StrEnum):
+    """Closed vocabulary for what set the current hold brake."""
+
+    NONE = ""
+    CREATION = "creation"
+    MANUAL = "manual"
+    SESSION_CLOSE = "session_close"
+    TASK_ERROR = "task_error"
+
+
 class HoldAuditState(BaseModel):
     """Diagnostic metadata for the current hold brake."""
 
-    source: Literal["", "creation", "manual", "session_close"] = ""
+    model_config = ConfigDict(use_enum_values=True)
+
+    source: HoldAuditSource = HoldAuditSource.NONE
     set_at: str = ""
     set_by_session_id: str = ""
     reason: str = ""

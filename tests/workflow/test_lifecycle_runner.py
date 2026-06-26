@@ -521,6 +521,61 @@ def test_autonomous_task_run_honors_autostart_task() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_stamped_terminal_state_suppresses_task_re_dispatch() -> None:
+    """The outcome contract's correctness rests on the runner honoring the
+    stamped terminal state: a delivered one-shot is DELIVERED, a held one-shot at
+    task_running is HELD, and an un-held un-delivered authorized one-shot still
+    dispatches TASK_RUN — the guard is the terminal state, not a blanket block."""
+    delivered = RunnerTodo(
+        slug="delivered-task",
+        status="delivered",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.TASK_RUNNING.value,
+        hold=False,
+        active_runner=None,
+        task_plan_digest="plan-a",
+        task_approved=True,
+        task_approved_digest="plan-a",
+    )
+    held = RunnerTodo(
+        slug="held-task",
+        status="active",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.TASK_RUNNING.value,
+        hold=True,
+        active_runner=None,
+        task_plan_digest="plan-b",
+        task_approved=True,
+        task_approved_digest="plan-b",
+    )
+    runnable = RunnerTodo(
+        slug="runnable-task",
+        status="active",
+        kind=_TASK,
+        lifecycle_phase=LifecyclePhase.PREPARED.value,
+        hold=False,
+        active_runner=None,
+        task_plan_digest="plan-c",
+        task_approved=True,
+        task_approved_digest="plan-c",
+    )
+
+    decision = decide_dispatches(
+        {"delivered-task": delivered, "held-task": held, "runnable-task": runnable},
+        prepared_slugs=set(),
+        delivered_slugs=set(),
+        autostart={_TASK: True},
+        live_session_ids=set(),
+    )
+
+    assert decision.skips[RunnerSkipReason.DELIVERED] == ["delivered-task"]
+    assert decision.skips[RunnerSkipReason.HELD] == ["held-task"]
+    assert [(intent.slug, intent.lane, intent.command) for intent in decision.intents] == [
+        ("runnable-task", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
+    ]
+
+
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
 def test_authorized_task_with_future_schedule_is_not_dispatched() -> None:
     future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     decision = decide_dispatches(

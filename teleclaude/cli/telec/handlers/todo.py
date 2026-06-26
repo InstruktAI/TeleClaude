@@ -788,7 +788,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
             "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
             "--task-approved, --drift-reviewed, --kind-assign, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
-            "--art-approved, --visuals-approved, --kickback)"
+            "--art-approved, --visuals-approved, --kickback, --task-outcome)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -865,6 +865,10 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
         elif arg == "--kickback":
             stamp_type = "kickback"
             i += 1
+        elif arg == "--task-outcome" and i + 1 < len(args):
+            stamp_type = "task_outcome"
+            phase = args[i + 1]
+            i += 2
         elif arg == "--reason" and i + 1 < len(args):
             value = args[i + 1]
             i += 2

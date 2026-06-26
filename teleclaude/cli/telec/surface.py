@@ -767,6 +767,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     f" [--kind-assign <{TODO_KIND_USAGE}> [<content>]]"
                     " [--build-complete] [--finalize-ready]"
                     " [--kickback --reason <reason>]"
+                    " [--task-outcome <success|error> [--reason <text>]]"
                 ),
                 flags=[
                     _H,
@@ -792,7 +793,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "--kickback",
                         desc="Work-orchestrator-only: send an unbuildable todo back to plan drafting",
                     ),
-                    Flag("--reason", desc="Reason recorded to input (required with --kickback)"),
+                    Flag("--reason", desc="Reason recorded to input (required with --kickback / --task-outcome error)"),
+                    Flag(
+                        "--task-outcome",
+                        desc="Durable task firing outcome: success delivers/clears, error holds with --reason",
+                    ),
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
@@ -801,6 +806,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
                     'telec todo stamp my-slug --kickback --reason "<why the plan cannot be built>"',
+                    "telec todo stamp my-task --task-outcome success",
+                    'telec todo stamp my-task --task-outcome error --reason "<why a human is needed>"',
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

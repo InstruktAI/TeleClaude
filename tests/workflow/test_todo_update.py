@@ -684,6 +684,58 @@ async def test_todo_update_hold_noops_when_autostart_disabled_release_still_clea
     assert released_state["hold"] is False
 
 
+@pytest.mark.spec("project/spec/feature/workflow/state-stamping", "UC-WSS14")
+async def test_todo_update_release_refuses_task_error_hold_but_clears_manual_hold(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, "task-a", kind=TODO_KIND_TASK, hold=True)
+
+    error_held = await todos_db.read_state("task-a")
+    assert error_held is not None
+    error_held["hold_audit"] = {
+        "source": "task_error",
+        "set_at": "2026-06-25T00:00:00+00:00",
+        "set_by_session_id": "run-session",
+        "reason": "boom",
+    }
+    await todos_db.write_state("task-a", error_held)
+
+    with pytest.raises(HTTPException) as refusal:
+        await todo_routes.todo_update(
+            slug="task-a",
+            release=True,
+            cwd=str(project_root),
+            identity=_identity(),
+        )
+    assert refusal.value.status_code == 409
+    assert todo_routes.TASK_ERROR_RELEASE_REFUSAL in refusal.value.detail
+    persisted = await todos_db.read_state("task-a")
+    assert persisted is not None
+    assert persisted["hold"] is True
+
+    manual_held = await todos_db.read_state("task-a")
+    assert manual_held is not None
+    manual_held["hold_audit"] = {
+        "source": "manual",
+        "set_at": "2026-06-25T00:00:00+00:00",
+        "set_by_session_id": "human",
+        "reason": "paused",
+    }
+    await todos_db.write_state("task-a", manual_held)
+
+    release_response = await todo_routes.todo_update(
+        slug="task-a",
+        release=True,
+        cwd=str(project_root),
+        identity=_identity(),
+    )
+    release_sync = cast(todo_routes._TodoUpdateResponse, release_response)
+    assert release_sync.hold is False
+    released = await todos_db.read_state("task-a")
+    assert released is not None
+    assert released["hold"] is False
+
+
 @pytest.mark.spec(_TODO_LIFECYCLE_PHASE_SPEC, "UC-TLP1")
 async def test_todo_update_kind_warns_then_forces_orphan_removal(tmp_path: Path, snapshot: SnapshotAssertion) -> None:
     project_root = tmp_path / "project"

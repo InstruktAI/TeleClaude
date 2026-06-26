@@ -16,7 +16,7 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.todos import HoldAuditState
+from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
 logger = get_logger(__name__)
 
@@ -106,7 +106,7 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
     writer = StateWriter(state)
     writer.state.hold = True
     writer.state.hold_audit = HoldAuditState(
-        source="session_close",
+        source=HoldAuditSource.SESSION_CLOSE,
         set_at=datetime.now(UTC).isoformat(),
         set_by_session_id=session_id,
         reason="manual session close",

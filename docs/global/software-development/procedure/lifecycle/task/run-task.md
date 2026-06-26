@@ -2,8 +2,9 @@
 activation_trigger: Use when the lifecycle runner dispatches an authorized task for
   execution
 description: Execute an authorized task against its durable task-plan, carry continuity
-  through the log, deliver outputs to the predictable workspace, and stay alive for
-  human follow-up and the task's next scheduled firing. Non-SDLC; no commit.
+  through the log, deliver outputs to the predictable workspace, report a durable firing
+  outcome the runner reconciles (success delivers the todo, error holds it for a human),
+  and stay alive only while a reason remains. Non-SDLC; no commit.
 ---
 
 # Run Task — Procedure
@@ -16,10 +17,11 @@ description: Execute an authorized task against its durable task-plan, carry con
 
 Execute an authorized `kind=task` todo against its durable `task-plan`, carry
 continuity across firings through the `log`, deliver any filesystem outputs to the
-task's predictable workspace, and **stay alive** — for the human to inspect the
-output and for the task's next scheduled firing. The run is the standing hands of a
-durable intent; the todo and its artifacts are the record. This is non-SDLC work:
-there is no build, review, finalize, or commit.
+task's predictable workspace, and **report a durable outcome** that resolves each
+firing — the lifecycle runner reconciles that outcome into the todo's terminal
+state. The run is the standing hands of a durable intent; the todo and its
+artifacts are the record. This is non-SDLC work: there is no build, review,
+finalize, or commit.
 
 ## Preconditions
 
@@ -40,10 +42,11 @@ there is no build, review, finalize, or commit.
 
 1. **Read the evidence first.** You may be a fresh instance — the first dispatch, or
    a revival after a daemon restart — with no memory of prior firings
-   (`general/principle/continuity`). Read the `log` before anything else. If the
-   `log` shows the run for the current scheduled instant already completed, do not
-   repeat it. If the `log` is empty or absent, this is the first firing and you begin
-   it.
+   (`general/principle/continuity`). Read the `log` before anything else; it carries
+   the continuity narrative across firings. The durable outcome the previous firing
+   stamped is the authoritative "this firing completed" signal — a stamped instant is
+   never repeated. If the `log` is empty or absent and no outcome is stamped, this is
+   the first firing and you begin it.
 
 2. **Read the plan.** Read the `task-plan`. It is the human-approved intent and
    carries the specifics this procedure deliberately omits — what to produce,
@@ -66,9 +69,9 @@ there is no build, review, finalize, or commit.
    snapshots). Do not invent output locations elsewhere.
 
 6. **Write the durable record.** Append a concise, dated entry to the `log`: what
-   this firing did, what it produced, and what it encountered — including failures
-   and obstacles ("the source was unreachable; deferred X") and which scheduled
-   instant it satisfied. The `log` is the continuity and restart-idempotency record
+   this firing did, what it produced, and what it encountered — including recoverable
+   obstacles you worked around or deferred ("the source was unreachable; deferred X")
+   and which scheduled instant it satisfied. The `log` is the continuity record
    across firings and restarts; if it is not in the `log` or a workspace artifact, it
    is lost.
 
@@ -76,37 +79,62 @@ there is no build, review, finalize, or commit.
    across many firings, roll older entries up into a summary — your judgment, not a
    rule.
 
-8. **Stay alive.** Do not self-end. After a firing completes, remain available for
-   the human to inspect the output and for the task's next firing — the lifecycle
-   runner wakes this live session on each due scheduled instant; a one-shot task
-   simply waits after its single firing. Never stamp build-complete, dispatch
-   review, or enter finalize-ready.
+8. **Report the firing outcome.** Stamp a durable outcome on the todo — `success`
+   when the firing achieved the plan's intent, `error` (with a reason) when it hit a
+   condition that needs human judgment. The stamp is the completion signal the
+   lifecycle runner reconciles on its next pass: `success` on a one-shot task
+   **delivers** the todo (and so satisfies its dependents); `success` on a recurring
+   task records the firing and leaves the task live for its next scheduled instant;
+   `error` **holds** the todo — recording the task-error source and reason in the
+   hold audit — and notifies a human. A recoverable obstacle you logged and worked
+   around in step 6 is not an `error`; reserve `error` for a genuine blocker that
+   only human intelligence can resolve. A firing that ends without stamping leaves no
+   outcome and stays re-runnable.
+
+9. **Resolve, then rest.** Liveness follows the outcome, not a blanket rule. A
+   one-shot firing that stamped `success` is delivered — the session has no further
+   role and ends. A firing that stamped `error` stays alive so the human can engage
+   the still-loaded context; once resolved, stamp `success` (which delivers the
+   todo), or the human ends the session and a deliberate manual `start` re-runs it. A
+   recurring task stays alive between firings — the lifecycle runner wakes it on each
+   due instant. A held task never re-fires on its own: `hold` means no further firing
+   — re-run or recurrence — until a human resolves it. Never stamp build-complete,
+   dispatch review, or enter finalize-ready.
 
 ## Outputs
 
 - An updated `log` artifact (a new dated entry; possibly compacted).
 - Any deliverables under `{project_root}/workspace/{slug}/`.
 - Any handoff the plan directed.
-- The todo intact and durable, and the run session alive for inspection and the
-  next firing.
+- A durable outcome stamped for the firing: `success` → the todo delivered (one-shot)
+  or recorded and still live (recurring); `error` → the todo held with its reason and
+  a human notified.
+- The run session alive only while a reason remains — a recurring task between
+  firings, or an errored firing awaiting human resolution.
 
 ## Recovery
 
-- **`task-plan` absent or unreadable.** Record the blocker in the `log` and stay
-  alive; do not improvise the task.
-- **A required capability fails** (network, API, auth). Record exactly what failed
-  in the `log` and stay alive; do not fabricate a result. The next firing, or the
-  human reading the `log`, continues from the evidence.
+- **`task-plan` absent or unreadable.** Record the blocker in the `log` and stamp
+  `error` (reason: the plan is missing) so the todo holds for a human; do not
+  improvise the task.
+- **A required capability fails** (network, API, auth). If it is recoverable or
+  transient, record it in the `log` and let the next firing continue from the
+  evidence. If it blocks the firing's intent and only a human can resolve it, record
+  exactly what failed in the `log` and stamp `error` so the todo holds and a human is
+  notified; never fabricate a result.
 - **Handoff ambiguity.** The plan is authoritative. If the plan is silent on
   reporting, send nothing outward and leave it to the human.
 
 ## Discipline
 
-You run someone's standing intent and stay alive to keep running it. The failure
-modes are acting as if you remember across a restart (skipping the `log`),
-substituting your own idea of the task for the plan, or self-ending — the run must
-stay alive for the human to inspect and for the next firing. Read the `log` on
-start, execute the plan per firing, record what happened, stay alive. You are
-powerful (the full CLI surface) but bounded by the plan: never widen scope, never
-write outside the workspace, and never send anything outward the plan did not
-sanction.
+You run someone's standing intent and resolve each firing with a durable outcome.
+The failure modes are acting as if you remember across a restart (skipping the
+`log`), substituting your own idea of the task for the plan, ending a firing without
+stamping an outcome (leaving completion invisible and the todo to silently
+re-dispatch or hang), self-ending on an unresolved `error` instead of staying for
+the human, or treating a held error as something to re-run. Read the evidence on
+start, execute the plan per firing, record what happened, stamp the outcome, and
+rest according to it — deliver on success, hold on error, stay alive only while a
+reason remains. You are powerful (the full CLI surface) but bounded by the plan:
+never widen scope, never write outside the workspace, and never send anything
+outward the plan did not sanction.

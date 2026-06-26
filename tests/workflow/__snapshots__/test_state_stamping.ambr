@@ -31,7 +31,7 @@
     'stderr': '',
     'stdout': '''
       Usage:
-        telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready] [--kickback --reason <reason>]
+        telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]]
       
         Stamp a verdict or readiness marker into todo state
       
@@ -46,7 +46,8 @@
         --build-complete        Record the worker's build-complete claim; gates run on the next telec todo work dispatch
         --finalize-ready        Mark worktree as ready for finalize handoff
         --kickback              Work-orchestrator-only: send an unbuildable todo back to plan drafting
-        --reason                Reason recorded to input (required with --kickback)
+        --reason                Reason recorded to input (required with --kickback / --task-outcome error)
+        --task-outcome          Durable task firing outcome: success delivers/clears, error holds with --reason
       
       Notes:
         Use this command to stamp a verdict or readiness marker into todo state.
@@ -58,6 +59,8 @@
         telec todo stamp my-slug --verdict changes_requested --phase build_review
         telec todo stamp my-slug --finalize-ready
         telec todo stamp my-slug --kickback --reason "<why the plan cannot be built>"
+        telec todo stamp my-task --task-outcome success
+        telec todo stamp my-task --task-outcome error --reason "<why a human is needed>"
       
   
     ''',
