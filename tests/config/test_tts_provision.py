@@ -9,6 +9,7 @@ import platform
 import subprocess
 import sys
 from collections.abc import Callable
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -120,13 +121,16 @@ def _tts_config(services: dict[str, TTSServiceConfig]) -> TTSConfig:
     return TTSConfig(enabled=True, service_priority=None, events={}, services=services)
 
 
-def _find_spec_blocking(absent: set[str]) -> Callable[..., object]:
+def _find_spec_blocking(absent: set[str], provisioned: set[str] | None = None) -> Callable[..., object]:
     """Return a find_spec replacement that reports the named modules as absent."""
     real_find_spec = importlib.util.find_spec
+    provisioned = set() if provisioned is None else provisioned
 
     def _fake(name: str, *args: object, **kwargs: object) -> object:
         if name in absent:
             return None
+        if name in provisioned:
+            return ModuleSpec(name, loader=None)
         return real_find_spec(name, *args, **kwargs)
 
     return _fake
@@ -137,7 +141,7 @@ async def test_extra_service_unprovisioned_triggers_install(monkeypatch: pytest.
     """A core provider being enabled must not skip the install for an unprovisioned extra service."""
     cfg = _tts_config({"openai": _svc(), "elevenlabs": _svc()})
     absent = {_ELEVENLABS}
-    monkeypatch.setattr(importlib.util, "find_spec", _find_spec_blocking(absent))
+    monkeypatch.setattr(importlib.util, "find_spec", _find_spec_blocking(absent, {_ELEVENLABS}))
 
     assert tts_deps_present(cfg) is False
 
