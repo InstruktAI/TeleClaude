@@ -2399,10 +2399,20 @@ async def test_operation_bridge_dispatches_natural_prepare_lane_for_draft_operat
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_operation_bridge_uses_live_recreated_slug_over_removed_history(tmp_path: Path) -> None:
+async def test_operation_bridge_uses_live_recreated_slug_over_removed_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     Repo.init(project_root)
+    row_ids = iter(
+        (
+            "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            "00000000-0000-4000-8000-000000000000",
+        )
+    )
+    monkeypatch.setattr("teleclaude.core.todos_db._todo._generate_id", lambda: next(row_ids))
     await _add_todo(
         todos_db,
         _WORK_SLUG,
