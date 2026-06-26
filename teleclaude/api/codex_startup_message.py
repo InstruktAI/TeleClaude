@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
+from teleclaude.constants import NON_SLUG_BOUND_COMMANDS
 from teleclaude.paths import COMMANDS_DIR
+
+_NON_SLUG_BOUND_VALUES = {command.value for command in NON_SLUG_BOUND_COMMANDS}
 
 
 def _build_codex_loader_message(command_name: str, args: str) -> str:
@@ -31,6 +34,6 @@ def _rewrite_codex_next_startup_message(  # pyright: ignore[reportUnusedFunction
     command_token, _, remainder = stripped_message.partition(" ")
     normalized_cmd = command_token.lstrip("/")
     normalized_args = remainder.strip()
-    if not normalized_args:
+    if not normalized_args and normalized_cmd not in _NON_SLUG_BOUND_VALUES:
         raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
     return _build_codex_loader_message(normalized_cmd, normalized_args)

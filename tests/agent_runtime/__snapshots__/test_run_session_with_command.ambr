@@ -1,0 +1,22 @@
+# serializer version: 1
+# name: test_codex_non_slug_bound_argless_produces_loader_message
+  dict({
+    '/next-integrate': '''
+      Read <COMMANDS_DIR>/next-integrate.md and follow it exactly as the active instruction set for this session.
+      
+      Treat the following as provided inputs to that instruction set:
+  
+    ''',
+    '/next-review-commits': '''
+      Read <COMMANDS_DIR>/next-review-commits.md and follow it exactly as the active instruction set for this session.
+      
+      Treat the following as provided inputs to that instruction set:
+  
+    ''',
+  })
+# ---
+# name: test_codex_slug_bound_argless_is_rejected
+  dict({
+    'detail': '/next-build requires a slug argument',
+  })
+# ---

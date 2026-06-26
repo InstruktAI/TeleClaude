@@ -251,6 +251,13 @@ class SlashCommand(str, Enum):
     NEXT_CREATE_HTML = "next-create-html"
 
 
+# Canonical `/next-*` commands that carry no todo slug: the integrator runs without
+# one, and review-commits is bound to a commit SHA rather than a slug. Both the
+# dispatch slug-bound gate and the Codex startup rewrite read this single set so
+# they cannot disagree on which commands may run argless.
+NON_SLUG_BOUND_COMMANDS = frozenset({SlashCommand.NEXT_INTEGRATE, SlashCommand.NEXT_REVIEW_COMMITS})
+
+
 class JobRole(str, Enum):
     """Canonical job roles for sessions spawned by slash commands."""
 

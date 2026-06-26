@@ -46,7 +46,7 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import SlashCommand
+from teleclaude.constants import NON_SLUG_BOUND_COMMANDS, SlashCommand
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -83,11 +83,9 @@ WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_FINALIZE,
 }
 
-# Worker-class commands that carry no todo slug: the integrator runs without one,
-# and review-commits is bound to a commit SHA rather than a slug.
-_NON_SLUG_BOUND = {SlashCommand.NEXT_INTEGRATE, SlashCommand.NEXT_REVIEW_COMMITS}
-
-SLUG_BOUND_LIFECYCLE_COMMANDS = {command.value for command in COMMAND_ROLE_MAP if command not in _NON_SLUG_BOUND}
+SLUG_BOUND_LIFECYCLE_COMMANDS = {
+    command.value for command in COMMAND_ROLE_MAP if command not in NON_SLUG_BOUND_COMMANDS
+}
 SLUG_BOUND_LIFECYCLE_COMMANDS.add("analyze-todo-input")
 
 _STATE = SimpleNamespace(client=None)

@@ -75,18 +75,6 @@ Then the startup message is replaced by a Codex loader prompt that
 And the public full-command (used for the human-visible initial-input echo) remains the original "/<command> <args>" form
 ```
 
-<!-- planned-change:fix-next-integrate-regression -->
-
-```
-Given the effective agent is "codex"
-And the normalized command starts with "/next-"
-And the args field is empty
-When the Codex startup-message rewrite validates the inputs
-Then it rejects with "/<command> requires a slug argument"
-```
-
-<!-- change:fix-next-integrate-regression -->
-
 #### UC-CLR1: Codex slug-bound /next-\* with empty args is rejected
 
 ```
@@ -111,7 +99,7 @@ Then the startup message is replaced by a Codex loader prompt that
 And no slug argument is required
 ```
 
-<!-- /planned-change:fix-next-integrate-regression -->
+#### UC-CLR3: Non-Codex agent leaves the startup message unchanged
 
 ```
 Given the effective agent is not "codex"
