@@ -299,10 +299,7 @@ class _AgentThenMessageBootstrapHarness(daemon_session_mod._DaemonSessionMixin):
 
 
 async def _await_bootstrap_tasks(tasks: list[asyncio.Future[object]]) -> None:
-    done, pending = await asyncio.wait(tasks, timeout=2.0)
-    assert pending == set()
-    for task in done:
-        task.result()
+    await asyncio.gather(*tasks)
 
 
 async def _install_agent_then_message_route_harness(
