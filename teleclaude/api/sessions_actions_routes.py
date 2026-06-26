@@ -83,10 +83,16 @@ WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_FINALIZE,
 }
 
-SLUG_BOUND_LIFECYCLE_COMMANDS = {
-    command.value for command in COMMAND_ROLE_MAP if command not in NON_SLUG_BOUND_COMMANDS
+NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.NEXT_REVIEW_COMMITS}
+
+SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
+    command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
 }
-SLUG_BOUND_LIFECYCLE_COMMANDS.add("analyze-todo-input")
+SLUG_INFERABLE_LIFECYCLE_COMMANDS.add("analyze-todo-input")
+
+SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
+    command.value for command in NON_SLUG_BOUND_COMMANDS
+}
 
 _STATE = SimpleNamespace(client=None)
 
@@ -352,7 +358,7 @@ def _resolve_run_session_agent(request: RunSessionRequest) -> str:
 
 def _infer_working_slug(normalized_cmd: str, normalized_args: str) -> str | None:
     """Infer the todo slug owned by a lifecycle slash-command session."""
-    if normalized_cmd not in SLUG_BOUND_LIFECYCLE_COMMANDS:
+    if normalized_cmd not in SLUG_INFERABLE_LIFECYCLE_COMMANDS:
         return None
     slug, _, _rest = normalized_args.partition(" ")
     return slug.strip() or None
@@ -432,7 +438,7 @@ def _prepare_run_session(
         if not normalized_args:
             raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
     working_slug = _infer_working_slug(normalized_cmd, normalized_args)
-    if normalized_cmd in SLUG_BOUND_LIFECYCLE_COMMANDS and not working_slug:
+    if normalized_cmd in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not working_slug:
         raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
 
     command_domain = _resolve_command_domain_field(normalized_cmd)

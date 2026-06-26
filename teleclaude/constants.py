@@ -251,11 +251,11 @@ class SlashCommand(str, Enum):
     NEXT_CREATE_HTML = "next-create-html"
 
 
-# Canonical `/next-*` commands that carry no todo slug: the prepare orchestrator
-# and integrator select work themselves, and review-commits is bound to commit
-# SHAs rather than a slug. Both the dispatch slug-bound gate and the Codex startup
-# rewrite read this single set so they cannot disagree on which commands may run
-# argless.
+# Canonical `/next-*` commands that may run without a todo slug: the prepare
+# orchestrator and integrator can select work themselves, and review-commits is
+# bound to commit SHAs rather than a slug. The dispatch required-slug gate and
+# Codex startup rewrite read this single set so they cannot disagree on which
+# commands may run argless.
 NON_SLUG_BOUND_COMMANDS = frozenset(
     {SlashCommand.NEXT_PREPARE, SlashCommand.NEXT_INTEGRATE, SlashCommand.NEXT_REVIEW_COMMITS}
 )
