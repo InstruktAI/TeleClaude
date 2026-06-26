@@ -6,11 +6,17 @@ description: Antigravity CLI local research log for TeleClaude dispatch decision
 
 ## Antigravity Local Language Server Quota Summary
 
-_Recorded: 2026-06-26T14:46:44+02:00. Source classification: own local CLI, log, and local-RPC research; no authoritative public vendor documentation is known in the repository's third-party docs._
+_Timestamp: 2026-06-26T14:46:44+02:00_
 
-Antigravity CLI (`agy`) quota collection uses an observed local language-server endpoint exposed by a short-lived CLI session. TeleClaude treats the behavior as local empirical research, not as a publicly documented vendor contract.
+### Objective
 
-### Findings
+Determine how TeleClaude can collect Gemini/Antigravity five-hour and weekly quota state without screen-scraping `/usage` or sending `/usage` to the model.
+
+### Answer
+
+Antigravity CLI (`agy`) quota collection uses an observed local language-server endpoint exposed by a short-lived CLI session. Treat the path as local empirical behavior, not a public vendor contract. Start a short-lived `agy` session with an isolated log file, wait until the HTTP port appears in that log, call the local quota summary endpoint, normalize `remainingFraction` and `resetTime` by bucket/window, and immediately end the session.
+
+### Evidence
 
 - `agy --print '/usage'` does not execute the TUI slash command. It sends `/usage` as ordinary model input and can consume a model turn.
 - `agy models` lists available models only; it does not expose quota state.
@@ -26,7 +32,7 @@ Antigravity CLI (`agy`) quota collection uses an observed local language-server 
 - The observed response included Gemini model buckets for `weekly` and `5h`, plus separate third-party model buckets.
 - Directly calling the Google backend quota endpoint with the access token stored on disk returned `401 invalid_token`; the CLI refreshes auth through its runtime/keyring path.
 
-### Tested local-RPC flow
+Tested local-RPC flow:
 
 ```bash
 log=$(mktemp)
@@ -47,11 +53,7 @@ curl -sS -X POST \
 tmux kill-session -t teleclaude_agy_quota
 ```
 
-### Recommended collector shape
-
-Start a short-lived `agy` session with an isolated log file, wait until the HTTP port appears in that log, call the local quota summary endpoint, normalize `remainingFraction` and `resetTime` by bucket/window, and immediately end the session. This avoids interpreting TUI text and avoids sending `/usage` as a prompt.
-
-### Caveats
+### Gaps
 
 - The runner must always clean up the temporary tmux session, including failure paths.
 - The local endpoint is available only while `agy` is running.

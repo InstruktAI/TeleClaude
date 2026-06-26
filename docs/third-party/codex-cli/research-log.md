@@ -6,11 +6,17 @@ description: Codex CLI local research log for TeleClaude dispatch decisions.
 
 ## Codex Session Log Rate-Limit Retrieval
 
-_Recorded: 2026-06-26T14:46:44+02:00. Source classification: own local CLI and session-log research; no authoritative public vendor documentation is known in the repository's third-party docs._
+_Timestamp: 2026-06-26T14:46:44+02:00_
 
-Codex CLI quota collection uses observed local session-log records and a controlled TUI fallback. TeleClaude treats the behavior as local empirical research, not as a publicly documented vendor contract.
+### Objective
 
-### Findings
+Determine how TeleClaude can collect Codex five-hour and weekly allowance state without spending an unnecessary model turn.
+
+### Answer
+
+Codex CLI quota collection uses observed local session-log records and a controlled TUI fallback. Treat the path as local empirical behavior, not a public vendor contract. Prefer passive structured extraction from the latest session log when the newest `token_count` event is fresh enough for dispatch decisions. If no fresh structured record exists, run the controlled TUI fallback and let an intelligent runner interpret the pane output into normalized state.
+
+### Evidence
 
 - `codex exec '/status'` does not execute the TUI `/status` slash command. It sends `/status` as ordinary model input and consumes a model turn.
 - Codex session logs contain structured quota data in `event_msg` records where `payload.type == "token_count"`.
@@ -27,7 +33,7 @@ Codex CLI quota collection uses observed local session-log records and a control
 - The same values matched the TUI `/status` display: `100 - used_percent` equals the displayed percent left.
 - A controlled TUI fallback can refresh the value without a model turn by starting Codex in tmux, sending `/status`, capturing the pane, and ending the session.
 
-### Tested passive extraction
+Tested passive extraction:
 
 ```bash
 latest=$(
@@ -44,7 +50,7 @@ jq -c '
 ' "$latest" | tail -1
 ```
 
-### Tested TUI fallback
+Tested TUI fallback:
 
 ```bash
 tmux new-session -d -s usage_probe_codex -x 120 -y 40 \
@@ -54,11 +60,7 @@ tmux capture-pane -pt usage_probe_codex -S -80
 tmux kill-session -t usage_probe_codex
 ```
 
-### Recommended collector shape
-
-Prefer passive structured extraction from the latest session log when the newest `token_count` event is fresh enough for dispatch decisions. If no fresh structured record exists, run the controlled TUI fallback and let an intelligent runner interpret the pane output into normalized state.
-
-### Caveats
+### Gaps
 
 - Do not `cat` full Codex JSONL logs in routine probes; they contain transcripts and prompt content. Filter for `payload.type == "token_count"`.
 - `codex exec` should not be used to query `/status`, because it spends a model turn and only creates quota evidence as a side effect.

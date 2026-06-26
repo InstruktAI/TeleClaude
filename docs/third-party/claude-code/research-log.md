@@ -6,11 +6,17 @@ description: Claude Code local research log for TeleClaude dispatch decisions.
 
 ## Claude Code CLI Usage Snapshot Retrieval
 
-_Recorded: 2026-06-26T14:46:44+02:00. Source classification: own local CLI research; no authoritative public vendor documentation is known in the repository's third-party docs._
+_Timestamp: 2026-06-26T14:46:44+02:00_
 
-Claude Code quota collection uses an observed print-mode slash command path. TeleClaude treats the behavior as local empirical research, not as a publicly documented vendor contract.
+### Objective
 
-### Findings
+Determine how TeleClaude can collect Claude Code five-hour and weekly usage state without driving a long-lived TUI.
+
+### Answer
+
+Claude Code quota collection uses an observed print-mode slash command path. Treat the path as local empirical behavior, not a public vendor contract. Run the tested print-mode invocation, read the JSON envelope, and extract quota facts from `result`. Store normalized values as remaining fractions for the five-hour and weekly windows under `~/.teleclaude/state/`.
+
+### Evidence
 
 - `claude -p '/usage'` executes the `/usage` slash command in print mode instead of sending it as a model prompt.
 - `--output-format json` wraps the result in a JSON envelope, but the quota details are still embedded in the `result` text field.
@@ -18,7 +24,7 @@ Claude Code quota collection uses an observed print-mode slash command path. Tel
 - The result text included current session usage, weekly all-model usage, weekly Sonnet-only usage, and reset timestamps.
 - The collector should parse the quota text defensively and report an unknown state when the expected usage/reset lines are absent.
 
-### Tested invocation
+Tested invocation:
 
 ```bash
 claude -p '/usage' \
@@ -31,11 +37,7 @@ claude -p '/usage' \
   --settings '{"forceLoginMethod":"claudeai","enabledMcpjsonServers":[],"disableAllHooks":true}'
 ```
 
-### Recommended collector shape
-
-Run the tested print-mode invocation, read the JSON envelope, and extract quota facts from `result`. Store normalized values as remaining fractions for the five-hour and weekly windows under `~/.teleclaude/state/`.
-
-### Caveats
+### Gaps
 
 - The useful quota data is formatted text, not a stable JSON schema.
 - Subscription wording can change, so absence of a recognizable line should become a reported probe failure rather than a guessed value.
