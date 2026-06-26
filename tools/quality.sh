@@ -335,12 +335,11 @@ lint_scoped() {
 }
 
 run_tests() {
-    local -a pytest_args=()
     if [ -n "${SNAPSHOT_UPDATE:-}" ]; then
-        pytest_args+=("--snapshot-update")
+        uv run pytest --snapshot-update
+    else
+        uv run pytest
     fi
-
-    uv run pytest "${pytest_args[@]}"
 
     if [ -d frontend ] && [ -f frontend/package.json ]; then
         if [ -n "${SNAPSHOT_UPDATE:-}" ]; then

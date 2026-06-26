@@ -48,7 +48,7 @@ lint:
 		}; \
 		if [ "$$scoped" -eq 0 ]; then \
 			uv run ruff check .; uv run ruff format --check .; uv run pyright; uv run mypy; \
-			jscpd_targets=(); for p in {{project_name}} tests tools; do [ -e "$$p" ] && jscpd_targets+=("$$p"); done; run_jscpd "$${jscpd_targets[@]}"; \
+			set --; for p in {{project_name}} tests tools; do [ -e "$$p" ] && set -- "$$@" "$$p"; done; run_jscpd "$$@"; \
 			if [ -d frontend ] && [ -f frontend/package.json ]; then (cd frontend && run_frontend_lint .); fi; \
 			if [ -f Cargo.toml ]; then cargo clippy --workspace --all-targets -- -D warnings; fi; \
 		else \
@@ -58,7 +58,7 @@ lint:
 				case "$$path" in frontend/*.ts|frontend/*.tsx|frontend/*.js|frontend/*.jsx|frontend/*.mjs|frontend/*.cjs) ts+=("$${path#frontend/}") ;; frontend/package.json|frontend/tsconfig*.json|frontend/eslint.config.*|frontend/vitest.config.*) ts_full=1 ;; esac; \
 				case "$$path" in *.rs|Cargo.toml|Cargo.lock|*/Cargo.toml) rust_inputs+=("$$path") ;; esac; \
 			done; \
-			if [ "$$py_full" -eq 1 ]; then uv run ruff check .; uv run ruff format --check .; uv run pyright; uv run mypy; jscpd_targets=(); for p in {{project_name}} tests tools; do [ -e "$$p" ] && jscpd_targets+=("$$p"); done; run_jscpd "$${jscpd_targets[@]}"; \
+			if [ "$$py_full" -eq 1 ]; then uv run ruff check .; uv run ruff format --check .; uv run pyright; uv run mypy; set --; for p in {{project_name}} tests tools; do [ -e "$$p" ] && set -- "$$@" "$$p"; done; run_jscpd "$$@"; \
 			elif [ "$${#py[@]}" -gt 0 ]; then uv run ruff check "$${py[@]}"; uv run ruff format --check "$${py[@]}"; uv run pyright "$${py[@]}"; uv run mypy "$${py[@]}"; run_jscpd "$${py[@]}"; fi; \
 			if [ -d frontend ] && [ -f frontend/package.json ]; then if [ "$$ts_full" -eq 1 ]; then (cd frontend && run_frontend_lint .); elif [ "$${#ts[@]}" -gt 0 ]; then (cd frontend && run_frontend_lint "$${ts[@]}"); fi; fi; \
 			if [ "$${#rust_inputs[@]}" -gt 0 ] && [ -f Cargo.toml ]; then run_rust_clippy "$${rust_inputs[@]}"; fi; \
@@ -69,8 +69,7 @@ lint:
 test:
 	@echo "Running tests..."
 	@SNAPSHOT_UPDATE="$(SNAPSHOT_UPDATE)" bash -eu -o pipefail -c '\
-		pytest_args=(); if [ -n "$$SNAPSHOT_UPDATE" ]; then pytest_args+=("--snapshot-update"); fi; \
-		uv run pytest "$${pytest_args[@]}"; \
+		if [ -n "$$SNAPSHOT_UPDATE" ]; then uv run pytest --snapshot-update; else uv run pytest; fi; \
 		run_frontend_test() { if command -v pnpm >/dev/null 2>&1; then pnpm test "$$@"; else npm test "$$@"; fi; }; \
 		if [ -d frontend ] && [ -f frontend/package.json ]; then if [ -n "$$SNAPSHOT_UPDATE" ]; then (cd frontend && run_frontend_test -- -u); else (cd frontend && run_frontend_test); fi; fi; \
 		if [ -f Cargo.toml ]; then cargo test --workspace --lib; fi; \
