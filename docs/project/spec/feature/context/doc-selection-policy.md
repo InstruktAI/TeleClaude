@@ -55,11 +55,24 @@ When the Selection policy applies the type filter
 Then only snippets with frontmatter type: policy are returned
 ```
 
+<!-- planned-change:per-domain-symlink-single-owner -->
+
 ```
 Given no --domains flag and no business.domains in teleclaude.yml
 When the Selection policy resolves the domain list
 Then the policy defaults to software-development
 ```
+
+<!-- change:per-domain-symlink-single-owner -->
+
+```
+Given no --domains flag (the business.domains field is removed)
+When the Selection policy resolves the candidate set
+Then every global snippet stays universally visible and the project's own snippets are included
+And the cross-project domain prefixes are the union of registered publishers' business.publishes
+```
+
+<!-- /planned-change:per-domain-symlink-single-owner -->
 
 ```
 Given --baseline-only is set
@@ -130,22 +143,36 @@ And third-party entries are silenced
 ### Cross-context references
 
 - **identity** — terminal-session role is resolved upstream by the CLI and
-  passed in; the predicate composition uses it to filter visibility.
+passed in; the predicate composition uses it to filter visibility.
+<!-- planned-change:per-domain-symlink-single-owner -->
 - **config** — supplies `business.domains` from project configuration, the
-  project catalog of known project slugs for cross-project ID classification,
-  and the `project_slug` that determines which IDs are "own" vs.
-  "cross-project".
+project catalog of known project slugs for cross-project ID classification,
+and the `project_slug` that determines which IDs are "own" vs.
+"cross-project".
+<!-- change:per-domain-symlink-single-owner -->
+- **config** — supplies the registered publishers' `business.publishes`
+declarations (their union is the valid-domain set used for cross-project ID
+classification), the project catalog of known project slugs, and the
+`project_slug` that determines which IDs are "own" vs. "cross-project".
+<!-- /planned-change:per-domain-symlink-single-owner -->
 
 ## Known caveats
 
 - Snippet visibility defaults to `internal` when frontmatter omits the field.
-  Public exposure is an explicit opt-in, not the default — so a freshly
-  authored snippet without `visibility: public` is invisible to non-admin
-  callers until the field is added.
+Public exposure is an explicit opt-in, not the default — so a freshly
+authored snippet without `visibility: public` is invisible to non-admin
+callers until the field is added.
+<!-- planned-change:per-domain-symlink-single-owner -->
 - Global-domain filtering of the global tree is path-dependent. A project
-  with no `business.domains` configured falls back to `software-development`,
-  so cross-domain snippets (e.g., `creative/*`, `marketing/*`) are filtered
-  out of that project's view unless `business.domains` is explicitly set.
+with no `business.domains` configured falls back to `software-development`,
+so cross-domain snippets (e.g., `creative/*`, `marketing/*`) are filtered
+out of that project's view unless `business.domains` is explicitly set.
+<!-- change:per-domain-symlink-single-owner -->
+- Every published global domain is universally visible to every project; there
+is no per-project global-domain gate. The set of valid domains is the union of
+the registered publishers' `business.publishes`. The `--domains` flag still
+narrows a listing to requested domains on demand.
+<!-- /planned-change:per-domain-symlink-single-owner -->
 - Cross-project snippet `delivered_by` slugs are NOT normalized against the
   consuming project's todo list. A snippet that references a slug from a
   foreign project appears in the consuming project's index with a phantom
