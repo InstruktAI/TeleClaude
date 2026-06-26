@@ -172,7 +172,7 @@ jobs:
       target_version: ${{ steps.arbiter.outputs.target_version }}
     steps:
       - name: Download Reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-release-reports
       - name: Extract Decision
@@ -198,7 +198,7 @@ jobs:
       - name: Bootstrap Environment
         run: make install
       - name: Download Arbiter Decision
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-release-reports
       - name: Compute Next Version
