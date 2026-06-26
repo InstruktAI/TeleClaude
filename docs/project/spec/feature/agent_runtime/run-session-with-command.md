@@ -87,6 +87,8 @@ Then it rejects with "/<command> requires a slug argument"
 
 <!-- change:fix-next-integrate-regression -->
 
+#### UC-CLR-1 — Codex slug-bound /next-\* with empty args is rejected
+
 ```
 Given the effective agent is "codex"
 And the normalized command starts with "/next-"
@@ -95,6 +97,8 @@ And the args field is empty
 When the Codex startup-message rewrite validates the inputs
 Then it rejects with "/<command> requires a slug argument"
 ```
+
+#### UC-CLR-2 — Codex non-slug-bound /next-\* with empty args produces the loader message
 
 ```
 Given the effective agent is "codex"

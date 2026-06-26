@@ -461,22 +461,29 @@ async def test_agent_then_message_create_confirms_user_turn_delivery(
 
 
 @pytest.mark.spec(_SPEC, "UC-SL24")
-async def test_agent_then_message_create_submits_fresh_codex_collapsed_paste_marker(
+@pytest.mark.parametrize(
+    "post_paste_input",
+    [
+        pytest.param(
+            "Read /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exac",
+            id="partial-render",
+        ),
+        pytest.param("[Pasted Content 1080 chars]", id="collapsed-marker"),
+    ],
+)
+async def test_agent_then_message_create_submits_any_new_codex_live_input_after_paste(
     api: AsyncClient,
     cluster_event_bus: None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    post_paste_input: str,
 ) -> None:
     del cluster_event_bus
     message = (
-        "Reply with exactly TELECLAUDE_LONG_MULTILINE_SMOKE_OK and then stop.\n\n"
-        "Long multiline payload:\n"
-        "- one\n"
-        "- two\n\n"
-        "```text\n"
-        "line A\n"
-        "line B\n"
-        "```"
+        "Read /Users/Morriz/.teleclaude/commands/next-review-plan.md and follow it exactly as "
+        "the active instruction set for this session.\n\n"
+        "Treat the following as provided inputs to that instruction set:\n"
+        "fix-next-integrate-regression"
     )
     prompt_marker = AgentName.CODEX.prompt_marker.strip()
     harness, tasks, paste_recorder, enter_recorder, capture_recorder = await _install_agent_then_message_route_harness(
@@ -484,8 +491,14 @@ async def test_agent_then_message_create_submits_fresh_codex_collapsed_paste_mar
         tmp_path,
         monkeypatch,
         pane_output=[
-            f"{prompt_marker} \n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
-            f"{prompt_marker} [Pasted Content 1080 chars]\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
+            f"{prompt_marker} \n\n  gpt-5.5 high · ~/Workspace/InstruktAI/TeleClaude · main",
+            "\n".join(
+                [
+                    f"{prompt_marker} {post_paste_input}",
+                    "",
+                    "  Create a plan?  shift + tab use Plan mode   esc dismiss",
+                ]
+            ),
         ],
         emit_turn_on_enter=True,
     )
@@ -586,48 +599,28 @@ async def test_agent_then_message_create_ignores_scrollback_prompt_text(
 
 
 @pytest.mark.spec(_SPEC, "UC-SL26")
-async def test_agent_then_message_create_does_not_submit_stale_codex_collapsed_paste_marker(
+@pytest.mark.parametrize(
+    "unchanged_input",
+    [
+        pytest.param("[Pasted Content 999 chars]", id="collapsed-marker"),
+        pytest.param("stale text already in the input box", id="plain-input"),
+    ],
+)
+async def test_agent_then_message_create_does_not_submit_unchanged_codex_live_input(
     api: AsyncClient,
     cluster_event_bus: None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    unchanged_input: str,
 ) -> None:
     del cluster_event_bus
-    message = "fresh prompt whose live input must not be inferred from stale collapsed paste"
+    message = "fresh prompt whose live input must not be inferred from unchanged stale input"
     prompt_marker = AgentName.CODEX.prompt_marker.strip()
     harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
         api,
         tmp_path,
         monkeypatch,
-        pane_output=f"{prompt_marker} [Pasted Content 999 chars]\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
-        emit_turn_on_enter=False,
-    )
-
-    await _post_agent_then_message_session(api, tmp_path, message)
-    await _await_bootstrap_tasks(tasks)
-
-    assert paste_recorder.await_count == 1
-    assert enter_recorder.await_count == 0
-    assert harness.polled == []
-    assert harness.launch_results
-    assert harness.launch_results[0]["status"] != "success"
-
-
-@pytest.mark.spec(_SPEC, "UC-SL25")
-async def test_agent_then_message_create_does_not_repaste_or_submit_corrupted_prompt_buffer(
-    api: AsyncClient,
-    cluster_event_bus: None,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    del cluster_event_bus
-    message = "startup prompt that should appear once"
-    prompt_marker = AgentName.CODEX.prompt_marker.strip()
-    harness, tasks, paste_recorder, enter_recorder, _capture_recorder = await _install_agent_then_message_route_harness(
-        api,
-        tmp_path,
-        monkeypatch,
-        pane_output=f"{prompt_marker} {message}{message}",
+        pane_output=f"{prompt_marker} {unchanged_input}\n\n  gpt-5.5 medium · ~/Workspace/InstruktAI/TeleClaude · main",
         emit_turn_on_enter=False,
     )
 
