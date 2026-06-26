@@ -18,3 +18,7 @@ slash commands.
 
 - https://developers.openai.com/codex/cli/slash-commands
 - https://developers.openai.com/codex/custom-prompts
+
+## See Also
+
+- third-party/codex-cli/quota-research

@@ -24,3 +24,7 @@ commands are created as Markdown files in `.claude/commands/` or via skills in
 ## Sources
 
 - https://code.claude.com/docs/en/slash-commands
+
+## See Also
+
+- third-party/claude-code/quota-research

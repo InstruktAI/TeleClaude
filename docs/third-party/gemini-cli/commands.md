@@ -25,3 +25,7 @@ The CLIs provide built-in commands and support custom commands defined as TOML f
 - https://geminicli.com/docs/cli/commands
 - https://geminicli.com/docs/cli/custom-commands
 - https://antigravity.google/docs/gcli-migration
+
+## See Also
+
+- third-party/antigravity-cli/quota-research

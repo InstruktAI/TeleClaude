@@ -19,6 +19,7 @@ Usage of agy:
   --dangerously-skip-permissions  Auto-approve all tool permission requests without prompting
   -i                              Short alias for --prompt-interactive
   --log-file                      Override CLI log file path
+  --model                         Model for the current CLI session
   -p                              Short alias for --print
   --print                         Run a single prompt non-interactively and print the response
   --print-timeout                 Timeout for print mode wait (default 5m0s)
@@ -39,7 +40,8 @@ Usage of agy:
 
 ## Model Selection
 
-- **Note**: The Go-based `agy` CLI does not accept model flags (e.g. `-m` or `--model`) directly via the command line. Model tiering and configurations are loaded via global settings files under `~/.gemini/antigravity-cli/settings.json` or managed dynamically in the TUI configuration adapter.
+- **Command-line model**: The Go-based `agy` CLI accepts `--model` for the current CLI session.
+- **Stored model defaults**: Model tiering and configurations are also loaded via global settings files under `~/.gemini/antigravity-cli/settings.json` or managed dynamically in the TUI configuration adapter.
 
 ## Custom command locations
 
@@ -52,3 +54,7 @@ Usage of agy:
 
 - https://antigravity.google/docs/gcli-migration
 - https://dev.to/google/antigravity-cli-2-0
+
+## See Also
+
+- third-party/antigravity-cli/quota-research

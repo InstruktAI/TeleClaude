@@ -10,6 +10,7 @@
 @docs/third-party/antigravity-cli/hooks.md
 @docs/third-party/antigravity-cli/permissions.md
 @docs/third-party/antigravity-cli/policy-engine.md
+@docs/third-party/antigravity-cli/quota-research.md
 @docs/third-party/antigravity-cli/skills.md
 @docs/third-party/antigravity-cli/sub-agents.md
 @docs/third-party/art-of-hosting/chaordic-design.md
@@ -19,12 +20,14 @@
 @docs/third-party/claude-code/commands.md
 @docs/third-party/claude-code/hooks.md
 @docs/third-party/claude-code/permissions.md
+@docs/third-party/claude-code/quota-research.md
 @docs/third-party/claude-code/skills.md
 @docs/third-party/claude-code/sub-agents.md
 @docs/third-party/codex-cli/commands.md
 @docs/third-party/codex-cli/configuration.md
 @docs/third-party/codex-cli/hooks.md
 @docs/third-party/codex-cli/permissions.md
+@docs/third-party/codex-cli/quota-research.md
 @docs/third-party/codex-cli/skills.md
 @docs/third-party/codex-cli/sub-agents.md
 @docs/third-party/discord/bot-api.md
