@@ -26,6 +26,9 @@ class PromptDeliveryObservation:
     live_input: str
 
 
+_CLAUDE_PASTED_TEXT_PREFIX = "[Pasted text "
+
+
 def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -> PromptDeliveryObservation:
     """Classify whether ``text`` is absent, stuck in live input, or submitted."""
     target = _normalize_text(text).strip()
@@ -43,6 +46,8 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
 
     normalized_output = _normalize_text(output)
     live_region = _extract_marker_live_region(normalized_output, target, agent)
+    if agent is AgentName.CLAUDE and _CLAUDE_PASTED_TEXT_PREFIX in live_region:
+        return PromptDeliveryObservation(PromptDeliveryState.IN_INPUT, live_region.strip())
     if _contains_target(live_region, target):
         state = (
             PromptDeliveryState.IN_INPUT
@@ -55,7 +60,7 @@ def classify_prompt_delivery(output: str, text: str, active_agent: str | None) -
 
 def _normalize_text(text: str) -> str:
     stripped = strip_ansi_codes(text or "")
-    return stripped.replace("\r\n", "\n").replace("\r", "\n")
+    return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
 
 
 def _contains_target(haystack: str, target: str) -> bool:
@@ -71,8 +76,24 @@ def _extract_marker_live_region(output: str, target: str, agent: AgentName) -> s
         return ""
     for idx in range(len(lines) - 1, -1, -1):
         if lines[idx].strip().startswith(marker):
+            if agent is AgentName.CLAUDE:
+                return _extract_claude_live_input_block(lines[idx:])
             return "\n".join(lines[idx:])
     return ""
+
+
+def _extract_claude_live_input_block(lines: list[str]) -> str:
+    input_lines: list[str] = []
+    for line in lines:
+        if _is_claude_input_boundary(line):
+            break
+        input_lines.append(line)
+    return "\n".join(input_lines)
+
+
+def _is_claude_input_boundary(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) <= {"─"}
 
 
 def _extract_gemini_live_region(lines: list[str], target: str) -> str:

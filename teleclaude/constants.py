@@ -462,7 +462,7 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
     ),
     "log-check": CheckpointAction(
         id="log-check",
-        run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude 'logger=teleclaude\\.git\\.exec'`",
+        run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude git-wrapper`",
         evidence=("instrukt-ai-logs",),
         precedence=58,
     ),

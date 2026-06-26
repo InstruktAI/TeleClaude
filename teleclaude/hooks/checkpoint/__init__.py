@@ -321,11 +321,9 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
             lines.append(f"- {obs}")
 
     lines.append("")
-    if actions:
-        lines.append("Execute every required action above before responding to the user.")
-    else:
+    if not actions:
         lines.append("Review and resolve the observations before responding to the user.")
-    lines.append("")
+        lines.append("")
     lines.append(_RESPONSE_POLICY)
     lines.append("")
     lines.append(_ESCAPE_HATCH)
@@ -390,8 +388,6 @@ def _build_integrator_maintenance_checkpoint(
         lines.append(f"{i}. {action}")
     lines.extend(
         [
-            "",
-            "Execute every required action above before responding to the user.",
             "",
             _RESPONSE_POLICY,
             "",
