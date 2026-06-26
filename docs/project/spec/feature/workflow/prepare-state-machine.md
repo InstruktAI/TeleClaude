@@ -158,7 +158,17 @@ And no live holder owns the Todo
 When an operator invokes "telec todo prepare my-todo"
 Then the lifecycle operation clears hold as part of the successful claim/start path
 And the invoking session claims my-todo as its live active-runner in-process
-And if a live holder owns the Todo, the operation is refused and hold remains intact
+```
+
+#### UC-WPS13: A manual prepare invocation refuses a held slug with a live holder
+
+```gherkin
+Given a Todo with `hold=true`
+And a live holder owns the Todo
+When an operator invokes "telec todo prepare my-todo"
+Then the lifecycle operation is refused
+And the live holder remains the active runner
+And hold remains intact
 ```
 
 ### Auto-continue

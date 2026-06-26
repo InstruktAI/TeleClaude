@@ -1342,7 +1342,7 @@ async def test_manual_prepare_adoption_releases_held_unclaimed_slug(tmp_path: Pa
     assert state["hold"] is False
 
 
-@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS12")
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS13")
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
 async def test_manual_prepare_adoption_refuses_live_holder_and_preserves_hold(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
