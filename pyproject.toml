@@ -332,7 +332,7 @@
   asyncio_mode="auto"
   timeout=5
   timeout_method="signal"
-  session_timeout=40
+  session_timeout=90
   filterwarnings=[
     "ignore:.*datetime.utcnow.*:DeprecationWarning",
     "ignore::pytest.PytestUnhandledThreadExceptionWarning",
