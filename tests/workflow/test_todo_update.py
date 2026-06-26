@@ -27,6 +27,7 @@ from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todo
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE, TODO_KIND_TASK
+from teleclaude.types.todos import HoldAuditSource
 
 pytestmark = pytest.mark.functional
 
@@ -596,8 +597,6 @@ async def test_todo_update_hold_release_composes_with_dependencies(
         return "event-id"
 
     monkeypatch.setattr(todo_routes, "emit_event", _capture_emit_event)
-    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda kind: kind == TODO_KIND_CHANGE)
-
     hold_response = await todo_routes.todo_update(
         slug="feature-a",
         after=["feature-b"],
@@ -643,15 +642,12 @@ async def test_todo_update_hold_release_composes_with_dependencies(
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
-async def test_todo_update_hold_noops_when_autostart_disabled_release_still_clears(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_todo_update_hold_persists_when_autostart_disabled_release_still_clears(
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, "change-a")
-    monkeypatch.setattr(todo_routes, "autostart_enabled_for_kind", lambda _kind: False)
-
     hold_response = await todo_routes.todo_update(
         slug="change-a",
         hold=True,
@@ -660,15 +656,13 @@ async def test_todo_update_hold_noops_when_autostart_disabled_release_still_clea
     )
 
     hold_sync = cast(todo_routes._TodoUpdateResponse, hold_response)
-    assert hold_sync.hold is False
+    assert hold_sync.hold is True
     hold_state = await todos_db.read_state("change-a")
     assert hold_state is not None
-    assert hold_state["hold"] is False
-
-    residual = await todos_db.read_state("change-a")
-    assert residual is not None
-    residual["hold"] = True
-    await todos_db.write_state("change-a", residual)
+    assert hold_state["hold"] is True
+    hold_audit = hold_state["hold_audit"]
+    assert isinstance(hold_audit, dict)
+    assert hold_audit["source"] == HoldAuditSource.MANUAL
 
     release_response = await todo_routes.todo_update(
         slug="change-a",

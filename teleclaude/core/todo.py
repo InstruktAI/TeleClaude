@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import IntegrationPhase, TodoStatus
-from teleclaude.core.next_machine.autostart import autostart_active_for_kind
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     derive_build_status,
@@ -498,14 +497,9 @@ def assemble_todo_from_db(
 
             projection = _derive_projection_fields(slug, raw_status, state)
             hold_audit = state.get("hold_audit") if isinstance(state, dict) else None
-            # Derive effective-hold once at the projection boundary — the one place
-            # that legitimately reads config — so every edge reads only the verdict.
-            raw_phase = state.get("lifecycle_phase") if isinstance(state, dict) else None
-            held = effective_hold(
-                hold=bool(state.get("hold")) if isinstance(state, dict) else False,
-                lifecycle_phase=raw_phase if isinstance(raw_phase, str) else None,
-                autostart_active=autostart_active_for_kind(projection.kind),
-            )
+            # Derive hold once at the projection boundary so every UI edge reads
+            # only the verdict.
+            held = effective_hold(hold=bool(state.get("hold")) if isinstance(state, dict) else False)
 
             todos.append(
                 TodoDTO(

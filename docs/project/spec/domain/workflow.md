@@ -115,7 +115,9 @@ kind mutation is refused.
 : The project-scoped autonomous dispatcher for workflow lifecycle work. It is woken by workflow/config/session events, reloads the current todo list for the affected project, evaluates the full eligible set, acquires a dispatch claim for each selected `(project, slug, lane)`, and then starts the relevant `/analyze-todo-input`, `/next-prepare`, or `/next-work` session. It is stateless between events except for durable claims/leases used to prevent duplicate dispatch. Its autonomous evaluation is itself gated by the `workflow.runner` mode: under `autostart` it dispatches as described; under `manual` it performs no autonomous dispatch at all — every lane, prepare included, is frozen — and only manual start events (`telec todo work/prepare`, the TUI START, headless adoption) move a todo. The mode gates the autonomous path alone; a manual start is never gated by it.
 **Hold**
 
-: A durable manual brake on automatic work-lane execution, in effect only while a todo is actually in the work lane — its lifecycle phase is past `prepared` (`build_started` and onward) and its kind's autostart is active. Hold exists to stop work the runner has started or would re-start; it carries no meaning anywhere in the prepare lane. A todo is **effectively held** exactly when three conditions hold together: its stored `hold` flag is set, its kind's autostart is active (the `workflow.runner` mode is `autostart` **and** the kind's `autostart` toggle is on), and its phase is past `prepared`. This single derived predicate is the only thing any reader observes — the lifecycle runner's work-dispatch skip, the rendered lock glyph, and the offered unhold control all read it — so a stored flag is inert everywhere the moment any condition fails: the kind's autostart is off, the runner mode is `manual`, or the todo sits anywhere in the prepare lane through `prepared`. When a todo is effectively held, the runner skips its work dispatch, a single gate/lock icon renders in the row's last column, and the unhold control that clears the flag is offered in the same place. A residual flag is never auto-cleared; it simply does not act until all three conditions hold again. Manual start is the operator's one-way-forward path and never reads hold. A todo with no assigned kind is pre-classification, outside the autostart-governed surface, and never effectively held.
+: A durable manual brake on autonomous lifecycle dispatch. A todo is held exactly when its stored `hold` flag is true; the predicate is independent of kind, lifecycle phase, and autostart policy. Hold stops the lifecycle runner from autonomously dispatching analyze, prepare, work, task-prepare, or task-run sessions for the todo until the hold is released. It does not clear or replace the live `active_runner` claim: hold controls future autonomous dispatch, while session-close cleanup clears the claim when the claiming session ends.
+
+When a todo is held, the row renders the gate/lock icon and offers the unhold control that clears the flag through the same hold update path. A manual human close of a lifecycle-driving session sets hold through the existing hold audit before requesting close, in every lifecycle phase including prepare. A normal agent self-close, successful lifecycle completion, prepared cleanup, finalize cleanup, or ordinary session end does not write hold. An authorized `telec todo update <slug> --hold` request always persists the hold for any active todo kind. Manual lifecycle start is the release-and-start path: it first verifies that no other live holder owns the todo, then clears hold and adopts or dispatches; if a live holder exists, start is refused and hold remains.
 
 **Autostart policy**
 
@@ -150,7 +152,7 @@ kind mutation is refused.
 
 **Human gate control**
 
-: Two independent human controls a parked todo can expose, each derived from current todo state and never stored: an approval control and a hold control. They are orthogonal and carry no relationship — neither suppresses nor takes precedence over the other; their non-overlap across the lifecycle is incidental, not encoded. The approval control approves a pending human-approval gate — PRD human approval, task authorization, or a creative gate — governs progression within the prepare lane, and routes to the underlying approval stamp the gate requires. The control surface itself is a human-authenticated TUI action an agent or unauthenticated caller cannot satisfy. The underlying stamp authority is per gate: PRD approval is human-only — an agent session is refused at the stamp — whereas a creative gate's stamp may also be cleared by the slug-bound orchestrator through the CLI on the human's confirmation (per `@spec/feature/workflow/state-stamping`), bound by the todo-mutation-authority gate and never reaching another slug. The hold control is the unhold control (see Hold): offered exactly when a todo is effectively held — its `hold` flag is set, its kind's autostart is active (`workflow.runner` is `autostart` and the kind's toggle is on), and its phase is past `prepared` — and it clears the flag. The same derived predicate the operator surface reads also decides the lifecycle runner's auto-dispatch skips, so "why is this parked" and "what the human can do here" never diverge. On a todo row an effectively-held todo is shown by a single gate/lock icon in the last column; a stored `hold` flag renders no icon and offers no control while the kind's autostart is off, the runner mode is `manual`, or the todo is anywhere in the prepare lane through `prepared`.
+: Two independent human controls a parked todo can expose, each derived from current todo state and never stored: an approval control and a hold control. They are orthogonal and carry no relationship — neither suppresses nor takes precedence over the other. The approval control approves a pending human-approval gate — PRD human approval, task authorization, or a creative gate — governs progression within the prepare lane, and routes to the underlying approval stamp the gate requires. The control surface itself is a human-authenticated TUI action an agent or unauthenticated caller cannot satisfy. The underlying stamp authority is per gate: PRD approval is human-only — an agent session is refused at the stamp — whereas a creative gate's stamp may also be cleared by the slug-bound orchestrator through the CLI on the human's confirmation (per `@spec/feature/workflow/state-stamping`), bound by the todo-mutation-authority gate and never reaching another slug. The hold control is the unhold control (see Hold): offered when an active todo's `hold` flag is set, and it clears the flag through the hold update path. The same hold verdict the operator surface reads also decides the lifecycle runner's autonomous-dispatch skip, so "why is this parked" and "what the human can do here" never diverge. On a todo row a held todo is shown by a single gate/lock icon in the last column.
 
 **Delivery commit**
 : The git commit SHA on `main` that materialized the todo's outcome. Non-empty when stage is `delivered`. The audit trail anchor.
@@ -217,7 +219,7 @@ kind mutation is refused.
   - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
   - **Creator lineage is captured at creation and is audit-only.** The roadmap row records `created_by_principal` — the resolved principal of the creating caller — at the moment of creation, and the field is immutable thereafter. When the creator is itself an agent session, the recorded principal is that session's resolved principal: the chain-root human (`human:<email>`) whenever the chain originates at a human entry point, and `system:<session_id>` only for a chain with no human root. Lineage is attribution only — it never widens authorization, which remains governed by role × project independently of the recorded principal.
   - **Automatic lifecycle dispatch is derived, not encoded at creation.** Creation records the todo and emits `workflow.todo.created`; the lifecycle runner decides whether to dispatch by reading current todo state, dependency state, hold, effective autostart policy, and live-session/claim state at wake time. Creation-time `pickup_requested` is retired as the target dispatch authority.
-  - **Hold is the only persisted manual-dispatch brake, and it acts only on a todo that is effectively held.** A held todo is skipped by the lifecycle runner only when its `hold` flag is set, its kind's autostart is active (`workflow.runner` is `autostart` and the kind's toggle is on), and its phase is past `prepared`; the effective brake is that single derived predicate, so a stored flag is inert whenever any condition fails — autostart off, runner `manual`, or anywhere in the prepare lane through `prepared`. A residual flag is never auto-cleared; it simply does not act. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
+  - **Hold is the only persisted manual-dispatch brake, and it acts whenever a todo is held.** A held todo is skipped by the lifecycle runner whenever its stored `hold` flag is true, regardless of kind, autostart policy, or lifecycle phase. A residual flag is never auto-cleared; it remains operator intent until release or a successful manual lifecycle start clears it. Task no-autostart is NOT represented as hold: `kind=task` defaults to `autostart=false` while remaining `hold=false`.
   - **Lifecycle-runner evaluation is project-scoped and complete.** Every wake-up resolves a canonical project root fail-closed; if project identity is absent or ambiguous, no dispatch occurs. Once resolved, the runner evaluates the full eligible set for that project rather than only the event slug, so one delivery/config/session event can unblock multiple todos.
   - **The lifecycle runner is the primary spawning authority, and orchestrator dedup is registry-backed.** Autonomous dispatch, a manual operator START, and headless adoption flow through one runner-owned, claim-guarded dispatch primitive that writes `active_runner` (and `manually_started`) atomically with the spawn. An orchestrator may also be started directly — a `/next-prepare` or `/next-work` session launched through `telec sessions run` by an operator or agent — which stamps the session's `working_slug` at birth but writes no `active_runner`. Dedup therefore never relies on `active_runner` alone: a live orchestrator session bound to a slug in the session registry blocks a duplicate regardless of how it was started. A headless session carries no claim until it is explicitly adopted.
   - **Automatic dispatch is kind-prioritized and load-capped; manual start is neither.** Among candidates whose dependencies are satisfied (for a `task`, including its schedule/timer gate and task authorization), the runner dispatches by kind priority `bug` > `change` > `task` > `feature`. It auto-dispatches only while the live count of driver sessions not flagged `manually_started` is below `max_todo_dispatch` (runtime config, default 5); at the cap, remaining eligible candidates are skipped and dispatch on a later wake. A manual `telec todo work/prepare` start (or a headless adoption) is not subject to the priority order or the cap, and its `manually_started` driver is never counted toward the cap.
@@ -227,7 +229,7 @@ kind mutation is refused.
   - **A todo has at most one active runner, written by the dispatcher.** `active_runner` is single-valued. The dispatcher that spawns the session writes it once from the returned session id — the runner for autonomous dispatch, the manual-start command path for an operator `telec todo work|prepare`. It is not overwritten while a driver is live; a lane handoff is clear-on-close then write-on-next-dispatch. The state machine and the driven session do not write it. Sub-workers a driver dispatches do not write it; for `kind=task` the dispatched session is itself the driver.
   - **Dependency readiness uses PRD-approved ground for prepare and delivered ground for work.** Dependent prepare may unblock when every direct dependency has a human-approved PRD or stronger evidence; stronger evidence includes `prepared`, work-lane, or delivered states only when the dependency's PRD approval remains human-authored. Dependent work remains blocked until all `after` dependencies are delivered. The v1 dependency-prepared predicate is currently phase-only, so this delivery changes that predicate instead of treating current prepared-ground as sufficient.
   - **Icebox and removed entries are never runner candidates.** Icebox remains an independent operator parking state; removing/re-activating entries follows the existing soft-delete contract and does not imply hold.
-  - **The human gate-control surface derives two independent controls.** A todo row's approval control and hold control are each computed from current todo state and never stored; they are orthogonal — no mutual exclusion and no precedence between them. The approval control governs progression within prepare and requires a human-authenticated caller; the hold control is the unhold control, offered exactly when a todo is effectively held — its `hold` flag is set, its kind's autostart is active (`workflow.runner` is `autostart` and the kind's toggle on), and its phase is past `prepared` — and it clears the flag (manual start still takes any todo forward and never reads hold). It renders as a gate/lock icon in the row's last column whenever effectively held, and renders nothing and offers no control while autostart is off, the runner is `manual`, or the todo is in the prepare lane through `prepared`. The same derived predicate decides the lifecycle runner's auto-dispatch skips.
+  - **The human gate-control surface derives two independent controls.** A todo row's approval control and hold control are each computed from current todo state and never stored; they are orthogonal — no mutual exclusion and no precedence between them. The approval control governs progression within prepare and requires a human-authenticated caller; the hold control is the unhold control, offered when an active todo's `hold` flag is set, and it clears the flag. It renders as a gate/lock icon in the row's last column whenever held. The same hold verdict decides the lifecycle runner's autonomous-dispatch skip.
   <!-- planned:distributed-todo-postgres -->
   - **The todo store is the fleet's single authoritative store.** Every project's todos live in one shared store reached by every computer; there is no per-computer copy that can diverge. Storage is unconditional — a project with no git remote and no configuration stores and runs its todos in the shared store. When a computer cannot reach the shared store, a todo write fails closed with an operator-visible error; there is no local fallback and no queued local write, because either reintroduces the divergence the shared store exists to remove.
   - **A todo's execution is owned by a durable `execution_host`, and dispatch is a filter on that ownership.** A computer's lifecycle runner sees every todo but auto-dispatches only those whose `execution_host` is itself, or is unset — in which case it atomically claims ownership as it materializes the worktree. Claim-and-materialize is one serialized critical section over the shared store: an unexpired foreign claim refuses; absent, mine, or expired takes, and two simultaneous takeovers serialize to one winner. Ownership releases only by its owner (graceful handoff) or on delivery; takeover of another host's todo is explicit and human-gated, never automatic.
@@ -992,11 +994,11 @@ And the task is skipped by the runner for policy-disabled, not for hold
 #### UC-WFL-22: Manual session close halts via explicit hold
 
 ```gherkin
-Given a live lifecycle session is driving todo "my-slug" in the work lane (`build_started` or later) whose kind's autostart is active
+Given a live lifecycle session is driving todo "my-slug" in any lifecycle phase, including prepare
 When an operator manually closes that session (`telec sessions end` or a UI close affordance)
 Then the close command sets `hold=true` on "my-slug"
 And the closing session emits `agent_runtime.session.ended`
-And the lifecycle runner wakes, finds "my-slug" effectively held, and does not re-dispatch its work
+And the lifecycle runner wakes, finds "my-slug" held, and does not autonomously dispatch a replacement lifecycle session
 And the stale `active_runner` link is cleared
 ```
 
@@ -1007,35 +1009,39 @@ Then no hold is set
 And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
 
-#### UC-WFL-23: Hold is effective only in the work lane under an active-autostart kind
+#### UC-WFL-23: Hold is the autonomous dispatch brake
 
 ```gherkin
-Given a todo carrying `hold=true` whose kind's autostart is inactive — the kind's autostart toggle is off, or `workflow.runner` is `manual`
+Given any active todo carries `hold=true`
 When the todo row is rendered and the lifecycle runner evaluates it
-Then the todo is not effectively held: no gate/lock icon renders, no hold control is offered, and the runner does not skip it for hold
-And the residual flag is left untouched — neither cleared nor acted upon
-```
-
-```gherkin
-Given a todo carrying `hold=true` whose kind's autostart is active but whose lifecycle phase is at or before `prepared`
-When the todo row is rendered and the lifecycle runner evaluates it
-Then the todo is not effectively held: no lock icon, no hold control, and no hold-skip
-And preparation proceeds normally, because hold has no meaning in the prepare lane
-```
-
-```gherkin
-Given a todo carrying `hold=true` whose kind's autostart is active and whose lifecycle phase is past `prepared` (`build_started` or later)
-When the todo row is rendered and the lifecycle runner evaluates it
-Then the todo is effectively held: the lifecycle runner skips its work dispatch
+Then the todo is held: the lifecycle runner skips autonomous analyze, prepare, work, task-prepare, and task-run dispatch for that todo
 And a single gate/lock icon renders in the row's last column
 And the unhold control that clears the flag is offered in the same place
+And kind, lifecycle phase, and autostart policy do not make the stored hold inert
 ```
 
 ```gherkin
-Given a kind whose autostart was off and whose todos carry residual `hold=true` flags
-When an operator turns that kind's autostart on
-Then a residual flag becomes effective again only for a todo in the work lane, and is otherwise inert
-And no flag is auto-cleared by the toggle
+Given an authorized caller runs `telec todo update my-slug --hold` for any active todo kind
+When workflow applies the update
+Then it persists `state.hold=true`
+And it records the manual hold audit for the caller
+And it leaves any live `active_runner` claim unchanged
+```
+
+```gherkin
+Given an authorized caller has set `hold=true` on a todo currently claimed by a live `active_runner`
+When that claiming session later ends or is closed
+Then the session-end cleanup clears `active_runner`
+And the hold remains in place
+And the lifecycle runner does not autonomously replace the closed session
+```
+
+```gherkin
+Given a held todo has no live holder
+When an operator triggers the TUI/manual lifecycle start path for that todo
+Then the operation first verifies that no live holder owns the todo
+And after that check succeeds, it clears hold and adopts or dispatches the lifecycle session
+And if a live holder exists, the operation is refused and hold remains intact
 ```
 
 #### UC-WFL-24: Operator-initiated lifecycle dispatch honors an explicit prepare request

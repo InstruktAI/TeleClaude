@@ -56,6 +56,7 @@ from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import HoldAuditState
 
 logger = get_logger(__name__)
 
@@ -218,21 +219,7 @@ def decide_dispatches(
         if _pending_approval_gate_for_runner(todo):
             decision.skip(RunnerSkipReason.APPROVAL_PENDING, slug)
             continue
-        try:
-            held_kind = canonical_kind(todo.kind) if todo.kind is not None else None
-        except ValueError:
-            held_kind = todo.kind
-        # Resolve autostart_active from the function's explicit inputs only — the
-        # runner_mode and the autostart map it already receives — never global
-        # config, so the decision stays pure over its parameters. (runner_mode is
-        # AUTOSTART here: MANUAL returned early above.)
-        autostart_active = held_kind == KIND_TASK or (
-            runner_mode is WorkflowRunnerMode.AUTOSTART
-            and held_kind is not None
-            and held_kind in autostart
-            and _autostart_enabled(held_kind, autostart)
-        )
-        if effective_hold(hold=todo.hold, lifecycle_phase=todo.lifecycle_phase, autostart_active=autostart_active):
+        if effective_hold(hold=todo.hold):
             decision.skip(RunnerSkipReason.HELD, slug)
             continue
         # Orchestrator dedup is registry-authoritative: a live orchestrator bound
@@ -377,6 +364,9 @@ async def _set_active_runner(
     writer = StateWriter(state)
     writer.state.active_runner = session_id
     writer.state.manually_started = manually_started
+    if manually_started:
+        writer.state.hold = False
+        writer.state.hold_audit = HoldAuditState()
     if lane is RunnerLane.TASK_RUN:
         writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING.value
     await writer.commit(todos_db, slug)
@@ -718,15 +708,16 @@ async def adopt_manual_lifecycle_session(
     *,
     db: Db | None = None,
 ) -> ManualLifecycleSessionResult:
-    """Claim an unheld slug in-process for a by-hand operator invocation.
+    """Claim an unclaimed slug in-process for a by-hand operator invocation.
 
-    A manual invocation on an unheld todo (no live holder; earlier branches
+    A manual invocation on an unclaimed todo (no live holder; earlier branches
     return ``ALREADY_DRIVEN`` when a different live session holds it) claims the
     slug in-process for the calling session — ``active_runner = caller``,
-    ``manually_started = True`` — regardless of which slug the caller's session is
-    bound to. The only binding requirement is a live caller session: a session id
-    with no registry row returns ``NOT_BOUND``. The operation bridge then runs the
-    state machine in the calling session; no separate orchestrator is dispatched.
+    ``manually_started = True`` — and clears any stored hold as part of that
+    successful manual start. The only binding requirement is a live caller
+    session: a session id with no registry row returns ``NOT_BOUND``. The
+    operation bridge then runs the state machine in the calling session; no
+    separate orchestrator is dispatched.
     """
     project_root = resolve_state_root(project_path)
     runtime_db = db or await get_db()

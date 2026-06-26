@@ -12,7 +12,6 @@ import pytest
 from teleclaude.cli.telec.handlers import _todo_show
 from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import TodoStatus
-from teleclaude.core import todo as todo_module
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.todo import assemble_todo_from_db
 from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
@@ -198,7 +197,7 @@ async def test_todo_projection_includes_kindless_todo_without_lifecycle_phase(
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-21")
 async def test_todo_projection_and_show_payload_include_hold_and_active_runner(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    tmp_path: Path,
 ) -> None:
     project_root = tmp_path / "project"
     await close_todos_db_instances()
@@ -219,10 +218,8 @@ async def test_todo_projection_and_show_payload_include_hold_and_active_runner(
             },
         )
 
-    # Effective-hold is derived server-side: a held work-lane todo whose kind's
-    # autostart is active carries held=True; the raw hold flag stays present
-    # (back-compat). The projection resolves autostart from config.
-    monkeypatch.setattr(todo_module, "autostart_active_for_kind", lambda _kind: True)
+    # Held is derived server-side from the durable hold flag, independent of
+    # autostart and lifecycle phase.
     await _write(LifecyclePhase.BUILD_STARTED.value)
     [todo] = assemble_todo_from_db(str(project_root))
     assert todo.hold is True
@@ -230,20 +227,11 @@ async def test_todo_projection_and_show_payload_include_hold_and_active_runner(
     assert todo.hold_source == _HOLD_SOURCE_MANUAL
     assert todo.active_runner == _ACTIVE_RUNNER
 
-    # Same work-lane todo with autostart inactive: not effectively held; raw hold
-    # remains present.
-    monkeypatch.setattr(todo_module, "autostart_active_for_kind", lambda _kind: False)
-    [todo] = assemble_todo_from_db(str(project_root))
-    assert todo.hold is True
-    assert todo.held is False
-
-    # A held todo still in the prepare lane is never effectively held, even with
-    # autostart active — hold has no meaning before the work lane.
-    monkeypatch.setattr(todo_module, "autostart_active_for_kind", lambda _kind: True)
+    # A held todo still in the prepare lane is held too.
     await _write(LifecyclePhase.PLAN_DRAFTING.value)
     [todo] = assemble_todo_from_db(str(project_root))
     assert todo.hold is True
-    assert todo.held is False
+    assert todo.held is True
 
     payload = await assemble_show_payload(todos_db, "held-work")
     assert payload is not None

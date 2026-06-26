@@ -88,7 +88,7 @@ def _hold_control_available(row: TodoRow) -> bool:
     if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
         return False
     # The offered control IS the unhold control: it is present exactly when the
-    # todo is effectively held, and pressing it clears the flag.
+    # active todo is held, and pressing it clears the flag.
     return row.todo.held
 
 

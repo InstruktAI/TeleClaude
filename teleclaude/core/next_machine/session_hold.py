@@ -9,7 +9,6 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import get_todos_db
@@ -20,7 +19,7 @@ from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
 logger = get_logger(__name__)
 
-AUTOSTART_DISABLED_REASON = "autostart-disabled"
+MANUAL_CLOSE_HELD_REASON = "held"
 
 
 @dataclass(frozen=True)
@@ -95,14 +94,6 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
     state = await todos_db.read_state(slug)
     if state is None:
         return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason="state-not-found")
-    kind = state.get("kind")
-    if isinstance(kind, str) and not autostart_enabled_for_kind(kind):
-        return ActiveRunnerMutationResult(
-            slug=slug,
-            project_path=project_path,
-            mutated=False,
-            reason=AUTOSTART_DISABLED_REASON,
-        )
     writer = StateWriter(state)
     writer.state.hold = True
     writer.state.hold_audit = HoldAuditState(
@@ -113,7 +104,12 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
     )
     await writer.commit(todos_db, slug)
     await _emit_todo_updated(slug=slug, project_path=project_path, source="workflow.session_close")
-    return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=True, reason="held")
+    return ActiveRunnerMutationResult(
+        slug=slug,
+        project_path=project_path,
+        mutated=True,
+        reason=MANUAL_CLOSE_HELD_REASON,
+    )
 
 
 async def clear_active_runner_for_session_end(db: Db, session_id: str) -> ActiveRunnerMutationResult:
@@ -152,7 +148,7 @@ async def notify_runner_of_gate_approval(cwd: str, slug: str) -> bool:
 
 
 __all__ = [
-    "AUTOSTART_DISABLED_REASON",
+    "MANUAL_CLOSE_HELD_REASON",
     "ActiveRunnerMutationResult",
     "clear_active_runner_for_session_end",
     "hold_todo_for_manual_session_close",

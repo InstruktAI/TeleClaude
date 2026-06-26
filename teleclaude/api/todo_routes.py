@@ -56,7 +56,6 @@ from teleclaude.constants import (
 )
 from teleclaude.core.dates import normalize_task_schedule
 from teleclaude.core.db import db as runtime_db
-from teleclaude.core.next_machine.autostart import autostart_enabled_for_kind
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -207,8 +206,6 @@ async def _apply_hold_update(
     writer = StateWriter(raw_state)
     if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
         raise HTTPException(status_code=409, detail=f"slug '{slug}' {TASK_ERROR_RELEASE_REFUSAL}")
-    if hold and writer.state.kind is not None and not autostart_enabled_for_kind(writer.state.kind):
-        return writer.state.hold
     writer.state.hold = hold
     if hold:
         writer.state.hold_audit.source = HoldAuditSource.MANUAL

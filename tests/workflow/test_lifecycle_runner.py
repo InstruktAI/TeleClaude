@@ -763,7 +763,7 @@ def test_manual_runner_mode_freezes_all_autonomous_dispatch() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
-def test_autostart_disabled_residual_hold_does_not_skip_prepare_lane() -> None:
+def test_hold_skips_prepare_lane_even_when_autostart_disabled() -> None:
     decision = decide_dispatches(
         {
             "draft-held": RunnerTodo(
@@ -781,14 +781,13 @@ def test_autostart_disabled_residual_hold_does_not_skip_prepare_lane() -> None:
         live_session_ids=set(),
     )
 
-    assert [intent.slug for intent in decision.intents] == ["draft-held"]
-    assert RunnerSkipReason.HELD not in decision.skips
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.HELD] == ["draft-held"]
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
 def test_work_lane_hold_skips_runner_as_held() -> None:
-    """Hold is effective only in the work lane: a held todo past ``prepared``
-    under an active-autostart kind is skipped for hold."""
+    """Hold stops autonomous dispatch in the work lane."""
     decision = decide_dispatches(
         {
             "work-held": RunnerTodo(
@@ -811,10 +810,8 @@ def test_work_lane_hold_skips_runner_as_held() -> None:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
-def test_prepared_residual_hold_does_not_skip_under_active_autostart() -> None:
-    """The reported bug: a residual ``hold`` on a ``prepared`` todo whose kind's
-    autostart is active is inert — hold has no meaning in the prepare lane, so
-    the runner does not skip it for hold."""
+def test_prepared_hold_skips_under_active_autostart() -> None:
+    """A held prepared todo is not auto-started into work."""
     decision = decide_dispatches(
         {
             "prepared-held": RunnerTodo(
@@ -832,13 +829,13 @@ def test_prepared_residual_hold_does_not_skip_under_active_autostart() -> None:
         live_session_ids=set(),
     )
 
-    assert RunnerSkipReason.HELD not in decision.skips
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.HELD] == ["prepared-held"]
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-23")
-def test_work_lane_hold_under_manual_runner_is_not_held() -> None:
-    """A held work-lane todo is not effectively held when the runner mode is
-    ``manual`` — the autonomous path is frozen and hold does not act."""
+@pytest.mark.spec(_SPEC, "UC-WFL-20")
+def test_manual_runner_mode_short_circuits_before_hold_skip() -> None:
+    """Manual runner mode freezes autonomous dispatch before per-todo gates."""
     decision = decide_dispatches(
         {
             "work-held": RunnerTodo(
@@ -857,14 +854,13 @@ def test_work_lane_hold_under_manual_runner_is_not_held() -> None:
         runner_mode=WorkflowRunnerMode.MANUAL,
     )
 
+    assert decision.intents == []
     assert RunnerSkipReason.HELD not in decision.skips
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
-def test_kindless_hold_does_not_skip_runner() -> None:
-    """A kind-less todo is pre-classification, outside the autostart-governed
-    surface, and never effectively held — its residual hold is inert and it
-    proceeds to kind discovery."""
+def test_kindless_hold_skips_analyze_dispatch() -> None:
+    """A held kind-less todo does not enter autonomous kind discovery."""
     decision = decide_dispatches(
         {
             "kindless-held": RunnerTodo(
@@ -882,7 +878,8 @@ def test_kindless_hold_does_not_skip_runner() -> None:
         live_session_ids=set(),
     )
 
-    assert RunnerSkipReason.HELD not in decision.skips
+    assert decision.intents == []
+    assert decision.skips[RunnerSkipReason.HELD] == ["kindless-held"]
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1223,7 +1220,7 @@ async def test_manual_start_dispatches_dedicated_runner_and_marks_manual_owner(t
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
-async def test_manual_start_dispatches_held_todo_as_one_way_forward_path(tmp_path: Path) -> None:
+async def test_manual_start_releases_held_todo_after_claim_check(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG, hold=True)
@@ -1240,13 +1237,16 @@ async def test_manual_start_dispatches_held_todo_as_one_way_forward_path(tmp_pat
     assert result.status is ManualLifecycleStatus.DISPATCHED
     assert result.reason is None
     assert client.requests[0]["command"] == _NEXT_WORK
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["hold"] is False
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
 async def test_manual_start_refuses_live_claimant(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION, hold=True)
     client = _RunnerClient()
 
     result = await manual_start_lifecycle_session(
@@ -1260,6 +1260,9 @@ async def test_manual_start_refuses_live_claimant(tmp_path: Path) -> None:
     assert result.status is ManualLifecycleStatus.ALREADY_DRIVEN
     assert result.session_id == _LIVE_SESSION
     assert client.requests == []
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["hold"] is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1290,11 +1293,11 @@ async def test_manual_dispatch_intent_routes_authorized_task_to_task_run(tmp_pat
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_adoption_claims_unheld_slug_for_caller_bound_to_other_slug(tmp_path: Path) -> None:
+async def test_manual_adoption_claims_unclaimed_slug_for_caller_bound_to_other_slug(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG)
-    # The operator session is bound to a different slug; it still claims the unheld todo in-process.
+    # The operator session is bound to a different slug; it still claims the unclaimed todo in-process.
     caller = _Session(session_id="caller-session", working_slug=_OTHER_SLUG)
 
     result = await adopt_manual_lifecycle_session(
@@ -1398,7 +1401,7 @@ async def test_operation_bridge_caller_bound_to_other_slug_claims_in_place_witho
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG)
-    # A live operator session bound to a different slug invokes on the unheld todo.
+    # A live operator session bound to a different slug invokes on the unclaimed todo.
     caller = _Session(session_id="caller-session", working_slug=_OTHER_SLUG)
     client = _RunnerClient()
     service = OperationsService(
@@ -1795,14 +1798,14 @@ async def test_guard_driver_start_allows_worker_child_spawn(tmp_path: Path) -> N
     )
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec("project/spec/feature/agent_runtime/run-session-with-command", "Lifecycle driver-start dedup")
 async def test_guard_driver_start_allows_first_spawn_without_holder(tmp_path: Path) -> None:
     """An orchestrator-class create is allowed when no live driver holds the slug —
     the autonomous runner's sanctioned first spawn."""
     project_root = (tmp_path / "project").resolve()
     await _project_db(project_root)
     todos_db = await get_todos_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=None, hold=True)
 
     await guard_driver_start(
         project_root,
@@ -1811,15 +1814,18 @@ async def test_guard_driver_start_allows_first_spawn_without_holder(tmp_path: Pa
         caller_session_id="caller-session",
         db=cast(Db, _FakeDb()),
     )
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state["hold"] is True
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
 async def test_operation_bridge_refuses_live_driver_from_other_session(tmp_path: Path) -> None:
     """The operator op door fails the operation with a ClaimConflict carrying the
     holder when a live driver from another session already holds the slug."""
     project_root = (tmp_path / "project").resolve()
     todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION, hold=True)
     service = OperationsService(
         db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(session_id=_LIVE_SESSION)})),
         task_registry=cast(TaskRegistry, object()),
@@ -1842,6 +1848,7 @@ async def test_operation_bridge_refuses_live_driver_from_other_session(tmp_path:
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
     assert state["active_runner"] == _LIVE_SESSION
+    assert state["hold"] is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1942,14 +1949,10 @@ def test_approval_gate_and_hold_are_independent() -> None:
     assert pending_approval_gate({**base, "hold": False}) is ApprovalGate.PRD
     assert pending_approval_gate({**base, "hold": True}) is ApprovalGate.PRD
 
-    # effective_hold reads only its own inputs (hold, phase, autostart_active),
-    # never the approval gate: a held work-lane todo under an active-autostart
-    # kind is effectively held independent of any pending approval, and the flag
-    # alone decides it.
-    assert effective_hold(hold=True, lifecycle_phase=LifecyclePhase.BUILD_STARTED.value, autostart_active=True) is True
-    assert (
-        effective_hold(hold=False, lifecycle_phase=LifecyclePhase.BUILD_STARTED.value, autostart_active=True) is False
-    )
+    # effective_hold reads only the stored hold flag; approval, phase, kind, and
+    # autostart never change the hold verdict.
+    assert effective_hold(hold=True) is True
+    assert effective_hold(hold=False) is False
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -2056,13 +2059,11 @@ def test_removed_planning_events_are_not_registered() -> None:
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
 async def test_manual_session_close_sets_hold_on_active_runner_todo(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG, active_runner=_CLOSE_HOLD_SESSION)
-    monkeypatch.setattr(session_hold, "autostart_enabled_for_kind", lambda kind: kind == _CHANGE)
     runtime_db = await db_mod.get_db()
     await runtime_db.create_session(
         computer_name="local",
@@ -2087,15 +2088,13 @@ async def test_manual_session_close_sets_hold_on_active_runner_todo(
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-23")
-async def test_manual_session_close_does_not_hold_autostart_disabled_kind(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_manual_session_close_sets_hold_on_autostart_disabled_kind(
     tmp_path: Path,
 ) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     session_id = f"{tmp_path.name}-autostart-off-close"
     await _add_todo(todos_db, _WORK_SLUG, active_runner=session_id)
-    monkeypatch.setattr(session_hold, "autostart_enabled_for_kind", lambda _kind: False)
     runtime_db = await db_mod.get_db()
     await runtime_db.create_session(
         computer_name="local",
@@ -2110,11 +2109,14 @@ async def test_manual_session_close_does_not_hold_autostart_disabled_kind(
 
     result = await hold_todo_for_manual_session_close(runtime_db, session_id)
 
-    assert result.mutated is False
-    assert result.reason == session_hold.AUTOSTART_DISABLED_REASON
+    assert result.mutated is True
+    assert result.reason == session_hold.MANUAL_CLOSE_HELD_REASON
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
-    assert state["hold"] is False
+    assert state["hold"] is True
+    hold_audit = state["hold_audit"]
+    assert isinstance(hold_audit, dict)
+    assert hold_audit["source"] == _HOLD_SOURCE_SESSION_CLOSE
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
@@ -2401,7 +2403,7 @@ async def test_submit_work_records_task_run_kind_for_task_and_todo_work_for_sdlc
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
-async def test_operation_bridge_dispatches_held_todo_as_manual_forward_path(tmp_path: Path) -> None:
+async def test_operation_bridge_releases_held_todo_as_manual_forward_path(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG, hold=True)
@@ -2423,6 +2425,7 @@ async def test_operation_bridge_dispatches_held_todo_as_manual_forward_path(tmp_
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
     assert state["active_runner"] == _SPAWN_SESSION
+    assert state["hold"] is False
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -2459,11 +2462,11 @@ async def test_operation_bridge_claims_approval_pending_todo(tmp_path: Path) -> 
     assert state["active_runner"] == _SPAWN_SESSION
 
 
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_adoption_claims_unheld_approval_pending_slug(tmp_path: Path) -> None:
+@pytest.mark.spec(_SPEC, "UC-WFL-23")
+async def test_manual_adoption_releases_held_approval_pending_slug(tmp_path: Path) -> None:
     # The claim-only contract holds at the door, at a pending human-approval phase:
-    # the manual door claims the unheld slug in-process (the state machine parks at
-    # the gate); the phase never refuses the start. Guards a re-introduction of the
+    # the manual door claims the held but unclaimed slug in-process and clears the
+    # hold. The phase never refuses the start. Guards a re-introduction of the
     # leaked gate at the shared chokepoint's nearest public surface.
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
@@ -2472,6 +2475,7 @@ async def test_manual_adoption_claims_unheld_approval_pending_slug(tmp_path: Pat
         _WORK_SLUG,
         kind=_FEATURE,
         lifecycle_phase=LifecyclePhase.PRD_HUMAN_APPROVAL.value,
+        hold=True,
     )
     caller = _Session(session_id="caller-session")
 
@@ -2487,6 +2491,7 @@ async def test_manual_adoption_claims_unheld_approval_pending_slug(tmp_path: Pat
     assert state is not None
     assert state["active_runner"] == caller.session_id
     assert state["manually_started"] is True
+    assert state["hold"] is False
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")

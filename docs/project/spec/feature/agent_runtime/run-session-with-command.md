@@ -185,6 +185,15 @@ Then no live-holder conflict is found and the session is created
 ```
 
 ```
+Given a held todo slug X has no live holder
+And an orchestrator-class create request would bind X through the New Session modal or `telec sessions run`
+When the create-door dedup check runs before the session is created
+Then the held flag alone does not refuse creation
+And the create door does not clear hold
+And hold release belongs to the lifecycle command's operator path after that path successfully claims or dispatches X
+```
+
+```
 Given slug X already has a live holder
 And a dispatch claim for X is still held (retained briefly after the holder's active_runner was written)
 And a second orchestrator-class request for X arrives

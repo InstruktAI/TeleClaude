@@ -260,19 +260,14 @@ def pending_approval_gate(todo_state: TodoState | Mapping[str, object]) -> Appro
     return None
 
 
-def effective_hold(*, hold: bool, lifecycle_phase: str | None, autostart_active: bool) -> bool:
+def effective_hold(*, hold: bool) -> bool:
     """Return whether a stored hold flag currently acts as the dispatch brake.
 
-    A todo is *effectively held* exactly when three conditions hold together:
-    its stored ``hold`` flag is set, its kind's autostart is active
-    (``autostart_active``, resolved by the caller from the context it owns), and
-    its phase is past ``prepared`` (the work lane). Hold has no meaning in the
-    prepare lane, so a residual flag there is inert. The predicate is pure over
-    these primitives — it reads no global config — so the one rule serves every
-    source (the runner from its explicit inputs, the projection from config)
-    without a shared protocol or dict/attribute branching.
+    Hold is durable operator intent, independent of kind, lifecycle phase, and
+    autostart policy. It is pure over the stored flag so the runner, projection,
+    and UI all observe the same brake.
     """
-    return bool(hold) and autostart_active and not is_in_prepare_lane(lifecycle_phase)
+    return bool(hold)
 
 
 def derive_build_status(

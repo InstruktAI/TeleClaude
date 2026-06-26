@@ -7,6 +7,13 @@ description: Hold applies only while a todo kind's autostart policy is enabled; 
 
 # ADR-0053: Hold scoped to autostart-enabled kinds — ADR
 
+## Status
+
+Superseded in part by ADR-0061. Hold persistence, rendering, and autonomous
+dispatch effect are no longer scoped to autostart-enabled work-lane todos; this
+record remains the historical rationale for the discarded autostart-scoped
+model.
+
 ## Context
 
 Hold is the persisted operator brake for automatic entry into lifecycle work. The

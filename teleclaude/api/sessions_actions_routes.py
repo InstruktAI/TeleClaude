@@ -374,7 +374,7 @@ async def enforce_driver_start_guard(
 
     Shared by both create doors (run-session and generic create): it classifies
     the requested launch and runs the two-signal dedup guard, mapping a conflict
-    to HTTP 409 naming the holder. A non-driver launch or an unheld slug passes
+    to HTTP 409 naming the holder. A non-driver launch or an unclaimed slug passes
     through silently.
     """
     if not working_slug:

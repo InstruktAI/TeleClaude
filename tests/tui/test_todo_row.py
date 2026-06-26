@@ -237,10 +237,7 @@ def test_todo_row_renders_generic_approval_and_schedule_state(snapshot: object) 
     assert [row.render().plain for row in rows] == snapshot
 
 
-def test_todo_row_suppresses_hold_glyph_when_not_effectively_held(snapshot: object) -> None:
-    # A residual ``hold`` flag whose derived verdict is not effectively held
-    # (autostart off, runner manual, or still in the prepare lane) renders no
-    # lock glyph: the widget reads only the pre-derived ``held`` verdict.
+def test_todo_row_renders_hold_glyph_for_held_prepare_todo(snapshot: object) -> None:
     item = TodoItem(
         slug="legacy-held",
         status=TodoStatus.IN_PROGRESS,
@@ -250,7 +247,7 @@ def test_todo_row_suppresses_hold_glyph_when_not_effectively_held(snapshot: obje
         kind="change",
         lifecycle_phase="prepared",
         hold=True,
-        held=False,
+        held=True,
         hold_source="manual",
     )
     row = TodoRow(
