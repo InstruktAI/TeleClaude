@@ -21,6 +21,7 @@ from teleclaude.core.todos_db._models import (
     TodoDep,
     TodoStateModel,
 )
+from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 from teleclaude.docs_reconcile import scan_remove_orphans
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
@@ -137,9 +138,18 @@ class TodosDbTodoSoftDeleteMixin:
                 state_model = await db_session.get(TodoStateModel, entry.id)
                 if state_model is not None:
                     try:
-                        is_draft = json.loads(state_model.state).get("kind") == "draft"
+                        state = json.loads(state_model.state)
+                        if not isinstance(state, dict):
+                            raise TypeError
+                        is_draft = state.get("kind") == "draft"
                     except (ValueError, TypeError):
                         is_draft = False
+                    else:
+                        state.pop("active_runner", None)
+                        state["manually_started"] = False
+                        state_model.state = json.dumps(canonicalize_state_for_storage(state))
+                        state_model.updated_at = datetime.now(UTC).isoformat()
+                        db_session.add(state_model)
 
                 now = datetime.now(UTC).isoformat()
                 entry.prev_status = entry.status

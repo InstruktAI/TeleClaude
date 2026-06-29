@@ -249,6 +249,25 @@ class TodosDbStateMixin:
                 self._on_mutation("todo_updated", None)
             return payload
 
+    async def read_state_by_id(self, todo_id: str) -> dict[str, StateValue] | None:
+        """Read state JSON for a specific todo row id, including terminal rows."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await session.get(Todo, todo_id)
+            if entry is None:
+                return None
+            state_model = await session.get(TodoStateModel, todo_id)
+            if state_model is None:
+                return None
+            raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+            payload = upcycle_state_dict(raw_state)
+            if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
+                state_model.state = json.dumps(payload, default=str)
+                state_model.updated_at = datetime.now(UTC).isoformat()
+                session.add(state_model)
+                await session.commit()
+                self._on_mutation("todo_updated", None)
+            return payload
+
     async def get_state(self, slug: str) -> dict[str, StateValue] | None:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.read_state(slug)

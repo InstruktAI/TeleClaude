@@ -364,6 +364,8 @@ class TodosDbTodoMixin:
                 state = json.loads(state_model.state)
                 state["phase"] = "delivered"
                 state["integration_phase"] = "delivered"
+                state.pop("active_runner", None)
+                state["manually_started"] = False
                 state_model.state = json.dumps(canonicalize_state_for_storage(state))
                 state_model.updated_at = now
                 db_session.add(state_model)

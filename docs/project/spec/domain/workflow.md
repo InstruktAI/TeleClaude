@@ -1034,8 +1034,6 @@ Then no hold is set
 And the runner clears the stale `active_runner` link and re-evaluates "my-slug" under the normal eligibility gates
 ```
 
-<!-- planned:fix-claim-removal-to-work-on-all-stages -->
-
 ```gherkin
 Given a live todo carries an `active_runner` link
 When workflow marks that row delivered or removed
@@ -1050,8 +1048,6 @@ Then workflow clears `active_runner` and `manually_started` on the retained row 
 And the cleanup does not resolve the row through the live slug alias
 And no hold is written for the delivered or removed row
 ```
-
-<!-- /planned:fix-claim-removal-to-work-on-all-stages -->
 
 #### UC-WFL-23: Hold is the autonomous dispatch brake
 

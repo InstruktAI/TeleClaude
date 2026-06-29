@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.todos_db import TodoRow, get_todos_db
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
@@ -20,6 +20,7 @@ from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 logger = get_logger(__name__)
 
 MANUAL_CLOSE_HELD_REASON = "held"
+ACTIVE_RUNNER_CLEARED_REASON = "cleared"
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,24 @@ async def _active_runner_slug(db: Db, session_id: str) -> tuple[str | None, str 
     return matches[0], project_path, "ok"
 
 
+async def _active_runner_rows_for_session_end(db: Db, session_id: str) -> tuple[str | None, list[TodoRow], str]:
+    session = await db.get_session(session_id)
+    if session is None:
+        return None, [], "session-not-found"
+    if not session.project_path:
+        return None, [], "session-project-missing"
+    project_path = str(Path(session.project_path).resolve())
+    todos_db = await get_todos_db(project_path)
+    matches: list[TodoRow] = []
+    for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
+        state = await todos_db.read_state_by_id(row["id"])
+        if state and state.get("active_runner") == session_id:
+            matches.append(row)
+    if not matches:
+        return project_path, [], "active-runner-not-found"
+    return project_path, matches, "ok"
+
+
 async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveRunnerMutationResult:
     slug, project_path, reason = await _active_runner_slug(db, session_id)
     if slug is None or project_path is None:
@@ -113,21 +132,35 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
 
 
 async def clear_active_runner_for_session_end(db: Db, session_id: str) -> ActiveRunnerMutationResult:
-    slug, project_path, reason = await _active_runner_slug(db, session_id)
+    project_path, rows, reason = await _active_runner_rows_for_session_end(db, session_id)
     if project_path is not None:
         await _emit_session_ended(session_id=session_id, project_path=project_path)
-    if slug is None or project_path is None:
-        return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason=reason)
+    if project_path is None:
+        return ActiveRunnerMutationResult(slug=None, project_path=None, mutated=False, reason=reason)
+    if not rows:
+        return ActiveRunnerMutationResult(slug=None, project_path=project_path, mutated=False, reason=reason)
 
     todos_db = await get_todos_db(project_path)
-    state = await todos_db.read_state(slug)
-    if state is None:
-        return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason="state-not-found")
-    writer = StateWriter(state)
-    writer.state.active_runner = None
-    writer.state.manually_started = False
-    await writer.commit(todos_db, slug)
-    return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=True, reason="cleared")
+    cleared_slug: str | None = None
+    for row in rows:
+        state = await todos_db.read_state_by_id(row["id"])
+        if state is None:
+            continue
+        writer = StateWriter(state)
+        writer.state.active_runner = None
+        writer.state.manually_started = False
+        await writer.commit_by_id(todos_db, row["id"])
+        cleared_slug = cleared_slug or row["slug"]
+    if cleared_slug is None:
+        return ActiveRunnerMutationResult(
+            slug=rows[0]["slug"], project_path=project_path, mutated=False, reason="state-not-found"
+        )
+    return ActiveRunnerMutationResult(
+        slug=cleared_slug,
+        project_path=project_path,
+        mutated=True,
+        reason=ACTIVE_RUNNER_CLEARED_REASON,
+    )
 
 
 async def notify_runner_of_gate_approval(cwd: str, slug: str) -> bool:
@@ -148,6 +181,7 @@ async def notify_runner_of_gate_approval(cwd: str, slug: str) -> bool:
 
 
 __all__ = [
+    "ACTIVE_RUNNER_CLEARED_REASON",
     "MANUAL_CLOSE_HELD_REASON",
     "ActiveRunnerMutationResult",
     "clear_active_runner_for_session_end",

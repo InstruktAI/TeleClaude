@@ -172,6 +172,18 @@ class StateWriter:
             await todos_db.write_state(slug, payload, session=session)
         return payload
 
+    async def commit_by_id(
+        self,
+        todos_db: TodosDb,
+        todo_id: str,
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> dict[str, StateValue]:
+        """Validate and persist the current state by durable todo row id."""
+        payload = self.to_dict()
+        await todos_db.write_state_by_id(todo_id, payload, session=session)
+        return payload
+
     def commit_sync(self, todos_db: TodosDb, slug: str) -> dict[str, StateValue]:
         """Validate and persist the current state via the sync DB path."""
         payload = self.to_dict()

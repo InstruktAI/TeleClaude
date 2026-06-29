@@ -275,13 +275,17 @@ async def _is_live_runner(db: Db, session_id: str | None) -> bool:
 
 async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> RunnerTodo | None:
     if row["status"] in {"delivered", "removed"}:
+        state = await todos_db.read_state_by_id(row["id"])
+        active_runner = state.get("active_runner") if state is not None else None
+        manually_started = state is not None and state.get("manually_started") is True
         return RunnerTodo(
             slug=row["slug"],
             status=row["status"],
             kind=None,
             lifecycle_phase=None,
             hold=False,
-            active_runner=None,
+            active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
+            manually_started=manually_started,
             after=(),
             schedule=row["schedule"],
         )
@@ -335,14 +339,14 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
     return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
 
 
-async def _clear_active_runner(todos_db: TodosDb, slug: str) -> None:
-    state = await todos_db.read_state(slug)
+async def _clear_active_runner(todos_db: TodosDb, row: TodoRow) -> None:
+    state = await todos_db.read_state_by_id(row["id"])
     if state is None:
         return
     writer = StateWriter(state)
     writer.state.active_runner = None
     writer.state.manually_started = False
-    await writer.commit(todos_db, slug)
+    await writer.commit_by_id(todos_db, row["id"])
 
 
 async def _set_active_runner(
@@ -436,7 +440,7 @@ async def _load_todos(
         # session row may not yet read as live. Clearing here would race the next
         # pass into a duplicate dispatch (the storm this guard prevents).
         if todo.active_runner and todo.slug not in outstanding and not await _is_live_runner(db, todo.active_runner):
-            await _clear_active_runner(todos_db, todo.slug)
+            await _clear_active_runner(todos_db, row)
             reconciled.append(todo.slug)
             todo = RunnerTodo(
                 slug=todo.slug,

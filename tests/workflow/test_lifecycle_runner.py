@@ -79,6 +79,7 @@ from teleclaude.events.schemas import register_all
 from teleclaude.git import Repo
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
 pytestmark = pytest.mark.functional
@@ -248,6 +249,20 @@ async def _add_todo(
             hold=hold,
         ).model_dump(exclude_none=True),
     )
+
+
+async def _terminal_state_for_slug(
+    todos_db: TodosDb,
+    slug: str,
+    *,
+    status: str,
+) -> tuple[str, dict[str, StateValue]]:
+    rows = await todos_db.list_todo(include_delivered=True, include_removed=True)
+    matching = [row for row in rows if row["slug"] == slug and row["status"] == status]
+    assert len(matching) == 1
+    state = await todos_db.read_state_by_id(matching[0]["id"])
+    assert state is not None
+    return matching[0]["id"], state
 
 
 async def _authorize_task_plan(todos_db: TodosDb, slug: str, body: str = "Do the task.") -> str:
@@ -2239,6 +2254,157 @@ async def test_session_end_clears_active_runner_link(tmp_path: Path) -> None:
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
     assert "active_runner" not in state
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_delivery_clears_active_runner_on_retained_state(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION, manually_started=True)
+
+    delivered = await todos_db.deliver(_WORK_SLUG, commit=_DELIVERY_COMMIT)
+
+    assert delivered is True
+    assert await todos_db.read_state(_WORK_SLUG) is None
+    _, state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="delivered")
+    assert "active_runner" not in state
+    assert state.get("manually_started") in (False, None)
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_soft_remove_clears_active_runner_on_retained_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION, manually_started=True)
+    monkeypatch.setattr("teleclaude.core.todos_db._todo_soft_delete.cleanup_delivered_slug", lambda *_args: None)
+
+    removed = await todos_db.soft_remove_from_todo(_WORK_SLUG, cwd=str(project_root))
+
+    assert removed is True
+    assert await todos_db.read_state(_WORK_SLUG) is None
+    _, state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="removed")
+    assert "active_runner" not in state
+    assert state.get("manually_started") in (False, None)
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_session_end_clears_terminal_active_runner_links(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    session_id = "terminal-close-end-session"
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    await _add_todo(todos_db, _OTHER_SLUG)
+    assert await todos_db.deliver(_WORK_SLUG, commit=_DELIVERY_COMMIT) is True
+    monkeypatch.setattr("teleclaude.core.todos_db._todo_soft_delete.cleanup_delivered_slug", lambda *_args: None)
+    assert await todos_db.soft_remove_from_todo(_OTHER_SLUG, cwd=str(project_root)) is True
+    delivered_id, delivered_state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="delivered")
+    removed_id, removed_state = await _terminal_state_for_slug(todos_db, _OTHER_SLUG, status="removed")
+    delivered_state["active_runner"] = session_id
+    delivered_state["manually_started"] = True
+    removed_state["active_runner"] = session_id
+    removed_state["manually_started"] = True
+    await todos_db.write_state_by_id(delivered_id, delivered_state)
+    await todos_db.write_state_by_id(removed_id, removed_state)
+    runtime_db = await db_mod.get_db()
+    await runtime_db.create_session(
+        computer_name="local",
+        tmux_session_name="tmux-ended-terminal-session",
+        last_input_origin="terminal",
+        title="runner",
+        project_path=str(project_root),
+        session_id=session_id,
+        human_role="member",
+        emit_session_started=False,
+    )
+
+    result = await clear_active_runner_for_session_end(runtime_db, session_id)
+
+    assert result.mutated is True
+    assert result.reason == session_hold.ACTIVE_RUNNER_CLEARED_REASON
+    assert result.project_path == str(project_root.resolve())
+    assert result.slug in {_WORK_SLUG, _OTHER_SLUG}
+    _, delivered_state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="delivered")
+    _, removed_state = await _terminal_state_for_slug(todos_db, _OTHER_SLUG, status="removed")
+    assert "active_runner" not in delivered_state
+    assert delivered_state.get("manually_started") in (False, None)
+    assert delivered_state.get("hold") is not True
+    assert "active_runner" not in removed_state
+    assert removed_state.get("manually_started") in (False, None)
+    assert removed_state.get("hold") is not True
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_runner_reconciliation_clears_terminal_stale_active_runner(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    assert await todos_db.deliver(_WORK_SLUG, commit=_DELIVERY_COMMIT) is True
+    delivered_id, delivered_state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="delivered")
+    delivered_state["active_runner"] = _STALE_SESSION
+    delivered_state["manually_started"] = True
+    await todos_db.write_state_by_id(delivered_id, delivered_state)
+    client = _RunnerClient()
+
+    result = await run_lifecycle_runner(
+        project_root,
+        trigger="test",
+        db=cast(Db, _FakeDb()),
+        client_factory=lambda: client,
+    )
+
+    assert result.reconciled == [_WORK_SLUG]
+    assert result.dispatched == []
+    _, state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="delivered")
+    assert "active_runner" not in state
+    assert state.get("manually_started") in (False, None)
+
+
+@pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
+async def test_manual_session_close_does_not_hold_terminal_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    session_id = "terminal-close-hold-session"
+    project_root = tmp_path / "project"
+    todos_db = await _project_db(project_root)
+    await _add_todo(todos_db, _WORK_SLUG)
+    await _add_todo(todos_db, _OTHER_SLUG)
+    assert await todos_db.deliver(_WORK_SLUG, commit=_DELIVERY_COMMIT) is True
+    monkeypatch.setattr("teleclaude.core.todos_db._todo_soft_delete.cleanup_delivered_slug", lambda *_args: None)
+    assert await todos_db.soft_remove_from_todo(_OTHER_SLUG, cwd=str(project_root)) is True
+    delivered_id, delivered_state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="delivered")
+    removed_id, removed_state = await _terminal_state_for_slug(todos_db, _OTHER_SLUG, status="removed")
+    delivered_state["active_runner"] = session_id
+    removed_state["active_runner"] = session_id
+    await todos_db.write_state_by_id(delivered_id, delivered_state)
+    await todos_db.write_state_by_id(removed_id, removed_state)
+    runtime_db = await db_mod.get_db()
+    await runtime_db.create_session(
+        computer_name="local",
+        tmux_session_name="tmux-terminal-hold",
+        last_input_origin="terminal",
+        title="runner",
+        project_path=str(project_root),
+        session_id=session_id,
+        human_role="member",
+        emit_session_started=False,
+    )
+
+    result = await hold_todo_for_manual_session_close(runtime_db, session_id)
+
+    assert result.mutated is False
+    _, delivered_state = await _terminal_state_for_slug(todos_db, _WORK_SLUG, status="delivered")
+    _, removed_state = await _terminal_state_for_slug(todos_db, _OTHER_SLUG, status="removed")
+    assert delivered_state.get("hold") is not True
+    assert removed_state.get("hold") is not True
 
 
 @pytest.mark.spec("project/spec/domain/workflow", "UC-WFL-22")
