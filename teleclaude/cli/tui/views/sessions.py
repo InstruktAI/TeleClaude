@@ -683,6 +683,13 @@ class SessionsView(
         self._update_cursor_highlight()
         self._scroll_to_cursor()
 
+        if message.meta and message.shift:
+            self._post_kill_session_request(row)
+            self._last_click_time = 0.0
+            self._last_click_session = None
+            self.focus()
+            return
+
         if message.shift:
             self.action_toggle_preview()
             self.focus()

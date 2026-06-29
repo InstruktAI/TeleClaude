@@ -7,10 +7,20 @@ import time
 from collections.abc import Iterator
 
 import pytest
+from rich.style import Style
 from textual.app import App, ComposeResult
+from textual.events import Click
 
 import teleclaude.cli.tui.widgets.chip as chip_mod
 from teleclaude.api_models import SessionDTO
+from teleclaude.cli.tui.messages import (
+    ChipFilterToggle,
+    FocusPaneRequest,
+    JumpToTodo,
+    KillSessionRequest,
+    PreviewChanged,
+    StickyChanged,
+)
 from teleclaude.cli.tui.theme import get_selection_fg_hex
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.views.sessions_highlights import PREVIEW_HIGHLIGHT_DURATION
@@ -72,14 +82,73 @@ def _session(session_id: str, *, last_output_summary: str | None = None) -> Sess
 
 
 class _SessionsTestApp(App[None]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.kill_requests: list[KillSessionRequest] = []
+        self.jump_requests: list[JumpToTodo] = []
+        self.chip_requests: list[ChipFilterToggle] = []
+        self.preview_requests: list[PreviewChanged] = []
+        self.sticky_requests: list[StickyChanged] = []
+        self.focus_requests: list[FocusPaneRequest] = []
+
     def compose(self) -> ComposeResult:
         yield SessionsView()
+
+    def clear_recorded_messages(self) -> None:
+        self.kill_requests.clear()
+        self.jump_requests.clear()
+        self.chip_requests.clear()
+        self.preview_requests.clear()
+        self.sticky_requests.clear()
+        self.focus_requests.clear()
+
+    def on_kill_session_request(self, message: KillSessionRequest) -> None:
+        self.kill_requests.append(message)
+
+    def on_jump_to_todo(self, message: JumpToTodo) -> None:
+        self.jump_requests.append(message)
+
+    def on_chip_filter_toggle(self, message: ChipFilterToggle) -> None:
+        self.chip_requests.append(message)
+
+    def on_preview_changed(self, message: PreviewChanged) -> None:
+        self.preview_requests.append(message)
+
+    def on_sticky_changed(self, message: StickyChanged) -> None:
+        self.sticky_requests.append(message)
+
+    def on_focus_pane_request(self, message: FocusPaneRequest) -> None:
+        self.focus_requests.append(message)
 
 
 def _only_row(view: SessionsView, session_id: str) -> SessionRow:
     rows = [w for w in view._nav_items if isinstance(w, SessionRow) and w.session_id == session_id]
     assert len(rows) == 1
     return rows[0]
+
+
+def _click_row_offset(
+    row: SessionRow,
+    column: int,
+    *,
+    line: int = 0,
+    shift: bool = False,
+    meta: bool = False,
+) -> None:
+    row.on_click(
+        Click(
+            row,
+            x=column,
+            y=line,
+            delta_x=0,
+            delta_y=0,
+            button=1,
+            shift=shift,
+            meta=meta,
+            ctrl=False,
+            style=Style(meta={"offset": (column, line)}),
+        )
+    )
 
 
 @pytest.mark.asyncio
@@ -364,6 +433,102 @@ async def test_session_slug_click_jumps_to_todo(wire_people) -> None:
         await pilot.pause()
         # Clicking the highlighted work-slug span jumps to the matching todo.
         assert app.jumped == [slug]
+
+
+@pytest.mark.asyncio
+async def test_option_shift_click_on_slug_posts_kill_without_navigation_or_layout_messages(wire_people) -> None:
+    slug = "my-work-slug"
+    wire_people([ALICE, BOB])
+    app = _SessionsTestApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(
+            computers=[],
+            projects=[],
+            sessions=[
+                _owned_session(title=f"/next-work {slug}", working_slug=slug, human_email="alice@example.com"),
+                _session(OTHER_SID),
+            ],
+        )
+        await pilot.pause()
+        view.preview_session_id = OTHER_SID
+        view._sticky_session_ids = [OTHER_SID]
+        row = _only_row(view, SID)
+        row.render()
+        assert row._slug_region is not None
+        app.clear_recorded_messages()
+
+        _click_row_offset(row, row._slug_region[0], shift=True, meta=True)
+        await pilot.pause()
+
+        assert [(request.session_id, request.computer) for request in app.kill_requests] == [(SID, "local")]
+        assert app.jump_requests == []
+        assert app.chip_requests == []
+        assert app.preview_requests == []
+        assert app.sticky_requests == []
+        assert app.focus_requests == []
+        assert view.preview_session_id == OTHER_SID
+        assert view._sticky_session_ids == [OTHER_SID]
+        assert view._last_click_time == 0.0
+        assert view._last_click_session is None
+
+
+@pytest.mark.asyncio
+async def test_option_shift_click_on_owner_chip_posts_kill_without_filtering_or_layout_messages(wire_people) -> None:
+    wire_people([ALICE, BOB])
+    app = _SessionsTestApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(
+            computers=[],
+            projects=[],
+            sessions=[
+                _owned_session(
+                    title="/next-work my-work-slug",
+                    working_slug="my-work-slug",
+                    human_email="alice@example.com",
+                ),
+                _session(OTHER_SID),
+            ],
+        )
+        await pilot.pause()
+        view.preview_session_id = OTHER_SID
+        view._sticky_session_ids = [OTHER_SID]
+        row = _only_row(view, SID)
+        row.render()
+        assert row._chip_region is not None
+        app.clear_recorded_messages()
+
+        _click_row_offset(row, row._chip_region[0], shift=True, meta=True)
+        await pilot.pause()
+
+        assert [(request.session_id, request.computer) for request in app.kill_requests] == [(SID, "local")]
+        assert app.jump_requests == []
+        assert app.chip_requests == []
+        assert app.preview_requests == []
+        assert app.sticky_requests == []
+        assert app.focus_requests == []
+        assert view.preview_session_id == OTHER_SID
+        assert view._sticky_session_ids == [OTHER_SID]
+
+
+@pytest.mark.asyncio
+async def test_plain_shift_click_still_previews_without_pane_focus() -> None:
+    app = _SessionsTestApp()
+    async with app.run_test(size=(100, 40)) as pilot:
+        view = app.query_one(SessionsView)
+        view.update_data(computers=[], projects=[], sessions=[_session(SID), _session(OTHER_SID)])
+        await pilot.pause()
+        row = _only_row(view, SID)
+        app.clear_recorded_messages()
+
+        _click_row_offset(row, 0, shift=True, meta=False)
+        await pilot.pause()
+
+        assert app.kill_requests == []
+        assert view.preview_session_id == SID
+        assert [(request.session_id, request.request_focus) for request in app.preview_requests] == [(SID, False)]
+        assert app.focus_requests == []
 
 
 @pytest.mark.asyncio

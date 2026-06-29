@@ -328,14 +328,17 @@ class SessionsViewActionsMixin:
         if result:
             self.post_message(result)  # type: ignore[attr-defined]
 
+    def _post_kill_session_request(self, row: SessionRow) -> None:
+        self.post_message(  # type: ignore[attr-defined]
+            KillSessionRequest(row.session_id, row.session.computer or "local")
+        )
+
     def action_kill_session(self) -> None:
         """k: kill selected session (with confirmation)."""
         row = self._current_session_row()  # type: ignore[attr-defined]
         if not row:
             return
 
-        session_id = row.session_id
-        computer = row.session.computer or "local"
         title = session_display_title(row.session, fallback="(untitled)")
 
         modal = ConfirmModal(
@@ -345,7 +348,7 @@ class SessionsViewActionsMixin:
 
         def on_confirm(confirmed: bool | None) -> None:
             if confirmed:
-                self.post_message(KillSessionRequest(session_id, computer))  # type: ignore[attr-defined]
+                self._post_kill_session_request(row)
 
         self.app.push_screen(modal, on_confirm)  # type: ignore[attr-defined]
 

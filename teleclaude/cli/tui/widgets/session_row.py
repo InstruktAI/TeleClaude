@@ -49,10 +49,11 @@ class SessionRow(TelecMixin, Widget):
     class Pressed(Message):
         """Posted when a session row is clicked."""
 
-        def __init__(self, session_row: SessionRow, *, shift: bool = False) -> None:
+        def __init__(self, session_row: SessionRow, *, shift: bool = False, meta: bool = False) -> None:
             super().__init__()
             self.session_row = session_row
             self.shift = shift
+            self.meta = meta
 
     DEFAULT_CSS = """
     SessionRow {
@@ -396,6 +397,9 @@ class SessionRow(TelecMixin, Widget):
         todo; any other click selects the row.
         """
         event.stop()
+        if event.meta and event.shift:
+            self.post_message(self.Pressed(self, shift=event.shift, meta=event.meta))
+            return
         offset = event.style.meta.get(_CLICK_OFFSET_META) if event.style else None
         if isinstance(offset, tuple) and len(offset) == 2:
             column, row = int(offset[0]), int(offset[1])
@@ -407,7 +411,7 @@ class SessionRow(TelecMixin, Widget):
                 if self._chip_email and self._chip_region and self._chip_region[0] <= column < self._chip_region[1]:
                     self.post_message(ChipFilterToggle(self._chip_email))
                     return
-        self.post_message(self.Pressed(self, shift=event.shift))
+        self.post_message(self.Pressed(self, shift=event.shift, meta=event.meta))
 
     def update_session(self, session: SessionDTO) -> None:
         """Update the underlying session data and trigger re-render."""
