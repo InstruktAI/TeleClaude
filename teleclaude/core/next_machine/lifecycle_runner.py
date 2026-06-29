@@ -30,7 +30,6 @@ from teleclaude.core.next_machine.lifecycle import (
 from teleclaude.core.next_machine.runner_order import dependency_first_order
 from teleclaude.core.next_machine.runner_types import (
     DispatchIntent,
-    DispatchOrigin,
     ManualLifecycleSessionResult,
     ManualLifecycleStatus,
     RunnerDecision,
@@ -188,8 +187,8 @@ def decide_dispatches(
 ) -> RunnerDecision:
     decision = RunnerDecision(evaluated=len(todos))
     # Manual mode is the operator's runaway brake: the runner performs no
-    # autonomous dispatch on any lane. The manual-start path
-    # (resolve_manual_dispatch_intent) never reaches here, so it stays ungated.
+    # autonomous dispatch on any lane. Inline lifecycle operations run their
+    # state machine in-process and never reach this autonomous dispatch path.
     if runner_mode is WorkflowRunnerMode.MANUAL:
         return decision
     active_claims = claimed or set()
@@ -484,15 +483,14 @@ async def dispatch_lifecycle_session(
     todos_db: TodosDb,
     project_path: str,
     intent: DispatchIntent,
-    origin: DispatchOrigin,
 ) -> str | None:
     """The single claim-guarded spawn primitive — the sole `active_runner` writer.
 
-    The runner loop, an operator START, and headless adoption all flow through
-    here so there is exactly one critical section and one writer of the driver
-    link. The sequence is: acquire the `(slug, lane)` dispatch claim that bridges
-    the boot gap, spawn the lifecycle session, then write `active_runner` paired
-    with `manually_started` (derived from ``origin``) as one mutation.
+    The autonomous runner flows through here so there is exactly one critical
+    section and one writer of the driver link. The sequence is: acquire the
+    `(slug, lane)` dispatch claim that bridges the boot gap, spawn the lifecycle
+    session, then write `active_runner` paired with `manually_started=False` as
+    one mutation.
 
     Returns the spawned session id, or ``None`` when the claim is already held by
     a concurrent pass (the caller treats this as a benign skip). On spawn failure
@@ -526,7 +524,7 @@ async def dispatch_lifecycle_session(
         intent.slug,
         response.session_id,
         lane=intent.lane,
-        manually_started=origin.manually_started,
+        manually_started=False,
     )
     return response.session_id
 
@@ -657,57 +655,6 @@ async def guard_driver_start(
         raise ClaimConflict(slug=slug, holder=holder)
 
 
-async def manual_start_lifecycle_session(
-    project_path: str | Path,
-    slug: str,
-    *,
-    lane: RunnerLane,
-    db: Db | None = None,
-    client_factory: Callable[[], SessionRunner] = default_session_runner,
-) -> ManualLifecycleSessionResult:
-    project_root = resolve_state_root(project_path)
-    runtime_db = db or await get_db()
-    todos_db = await get_todos_db(project_root)
-    _todo, reason, owner_session_id = await _target_for_manual_start(todos_db, runtime_db, slug, lane, project_root)
-    if reason is not None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.ALREADY_DRIVEN
-            if reason is RunnerSkipReason.ALREADY_DRIVEN
-            else ManualLifecycleStatus.SKIPPED,
-            session_id=owner_session_id if reason is RunnerSkipReason.ALREADY_DRIVEN else None,
-            reason=reason,
-        )
-
-    client = client_factory()
-    await client.connect()
-    try:
-        session_id = await dispatch_lifecycle_session(
-            client=client,
-            todos_db=todos_db,
-            project_path=str(project_root),
-            intent=_intent(slug, lane),
-            origin=DispatchOrigin.MANUAL,
-        )
-    finally:
-        await client.close()
-
-    if session_id is None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.SKIPPED,
-            reason=RunnerSkipReason.CLAIMED,
-        )
-    return ManualLifecycleSessionResult(
-        slug=slug,
-        lane=lane,
-        status=ManualLifecycleStatus.DISPATCHED,
-        session_id=session_id,
-    )
-
-
 async def adopt_manual_lifecycle_session(
     project_path: str | Path,
     slug: str,
@@ -800,68 +747,6 @@ async def adopt_manual_lifecycle_session(
     )
 
 
-async def resolve_manual_dispatch_intent(
-    todos_db: TodosDb,
-    slug: str,
-    *,
-    requested_lane: RunnerLane | None = None,
-) -> tuple[DispatchIntent | None, RunnerSkipReason | None]:
-    """Resolve the natural lifecycle lane for an operator-started todo.
-
-    An explicit ``requested_lane`` of PREPARE re-opens the prepare lane for a todo
-    whose natural lane has advanced to WORK (the drift re-preparation route). The
-    flip is asymmetric: it fires only on an already-resolved WORK lane, so a
-    kind-less todo remains undispatched and a naturally-PREPARE draft is
-    unaffected.
-    """
-    state = await todos_db.read_state(slug)
-    if state is None:
-        return None, RunnerSkipReason.MISSING_STATE
-    raw_kind = state.get("kind")
-    kind_value = raw_kind if isinstance(raw_kind, str) else None
-    try:
-        kind = canonical_kind(kind_value)
-    except ValueError:
-        return None, RunnerSkipReason.INVALID_KIND
-
-    deps = await todos_db.load_deps()
-    raw_phase = state.get("lifecycle_phase")
-    lifecycle_phase = raw_phase if isinstance(raw_phase, str) else None
-    task_approval = _approval_from_state(state, "task_approved")
-    todo = RunnerTodo(
-        slug=slug,
-        status="active",
-        kind=kind,
-        lifecycle_phase=lifecycle_phase,
-        hold=state.get("hold") is True,
-        active_runner=None,
-        after=tuple(deps.get(slug, [])),
-        schedule=await todos_db.get_schedule(slug),
-        task_plan_digest=_artifact_digest_from_state(state, "task_plan"),
-        task_approved=task_approval[0],
-        task_approved_digest=task_approval[1],
-    )
-    prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
-    delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
-    lane, skip_reason = _resolve_kinded_dispatch(
-        todo,
-        kind,
-        prepared_slugs=prepared_slugs,
-        delivered_slugs=delivered_slugs,
-        autostart={
-            KIND_FEATURE: True,
-            KIND_CHANGE: True,
-            KIND_BUG: True,
-            KIND_TASK: True,
-        },
-    )
-    if lane is None:
-        return None, skip_reason or RunnerSkipReason.INVALID_KIND
-    if requested_lane is RunnerLane.PREPARE and lane is RunnerLane.WORK:
-        lane = RunnerLane.PREPARE
-    return _intent(slug, lane), None
-
-
 def _manual_task_lane(todo: RunnerTodo) -> tuple[RunnerLane, RunnerSkipReason | None]:
     if not todo.task_plan_digest:
         return RunnerLane.TASK_PREPARE, None
@@ -934,7 +819,6 @@ async def run_lifecycle_runner(
                 todos_db=todos_db,
                 project_path=str(project_root),
                 intent=intent,
-                origin=DispatchOrigin.RUNNER,
             )
             if session_id is None:
                 decision.skip(RunnerSkipReason.CLAIMED, intent.slug)
@@ -975,7 +859,6 @@ def project_path_from_event_payload(payload: Mapping[str, object]) -> str | None
 
 __all__ = [
     "DispatchIntent",
-    "DispatchOrigin",
     "ManualLifecycleSessionResult",
     "ManualLifecycleStatus",
     "RunnerDecision",
@@ -988,8 +871,6 @@ __all__ = [
     "decide_dispatches",
     "default_session_runner",
     "dispatch_lifecycle_session",
-    "manual_start_lifecycle_session",
     "project_path_from_event_payload",
-    "resolve_manual_dispatch_intent",
     "run_lifecycle_runner",
 ]

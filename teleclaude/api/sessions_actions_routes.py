@@ -93,6 +93,7 @@ SLUG_INFERABLE_LIFECYCLE_COMMANDS.add("analyze-todo-input")
 SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
     command.value for command in NON_SLUG_BOUND_COMMANDS
 }
+WORKING_SLUG_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS | {SlashCommand.NEXT_PREPARE.value}
 
 _STATE = SimpleNamespace(client=None)
 
@@ -358,7 +359,7 @@ def _resolve_run_session_agent(request: RunSessionRequest) -> str:
 
 def _infer_working_slug(normalized_cmd: str, normalized_args: str) -> str | None:
     """Infer the todo slug owned by a lifecycle slash-command session."""
-    if normalized_cmd not in SLUG_INFERABLE_LIFECYCLE_COMMANDS:
+    if normalized_cmd not in WORKING_SLUG_LIFECYCLE_COMMANDS:
         return None
     slug, _, _rest = normalized_args.partition(" ")
     return slug.strip() or None

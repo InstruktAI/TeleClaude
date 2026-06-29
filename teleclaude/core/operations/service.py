@@ -26,15 +26,11 @@ from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.kinds import KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
-    DispatchOrigin,
     ManualLifecycleStatus,
-    RunnerLane,
     RunnerSkipReason,
     SessionRunner,
     adopt_manual_lifecycle_session,
     default_session_runner,
-    dispatch_lifecycle_session,
-    resolve_manual_dispatch_intent,
 )
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.remove import execute_todo_remove
@@ -758,21 +754,18 @@ class OperationsService:
     async def _run_todo_prepare(self, operation: Operation) -> str:
         return await self._run_todo_lifecycle_operation(
             operation,
-            lane=RunnerLane.PREPARE,
             state_machine=lambda op: next_prepare(self._db, op.slug, op.cwd),
         )
 
     async def _run_todo_work(self, operation: Operation) -> str:
         return await self._run_todo_lifecycle_operation(
             operation,
-            lane=RunnerLane.WORK,
             state_machine=lambda op: next_work(self._db, op.slug, op.cwd),
         )
 
     async def _run_task_run(self, operation: Operation) -> str:
         return await self._run_todo_lifecycle_operation(
             operation,
-            lane=RunnerLane.TASK_RUN,
             state_machine=self._continue_task_run_in_place,
         )
 
@@ -795,16 +788,12 @@ class OperationsService:
         self,
         operation: Operation,
         *,
-        lane: RunnerLane,
         state_machine: Callable[[Operation], Awaitable[str]],
     ) -> str:
         if operation.slug is None:
             return await state_machine(operation)
 
         slug = operation.slug
-        project_root = Path(operation.cwd).resolve()
-        todos_db = await get_todos_db(project_root)
-
         adoption = await adopt_manual_lifecycle_session(
             operation.cwd,
             slug,
@@ -819,25 +808,7 @@ class OperationsService:
             reason = self._format_manual_lifecycle_reason(adoption.reason)
             return f"RUNNER_NOT_DISPATCHED: {slug} {reason}"
 
-        intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug, requested_lane=lane)
-        if intent is None:
-            reason = skip_reason.value if skip_reason is not None else "invalid-kind"
-            return f"RUNNER_NOT_DISPATCHED: {slug} {reason}"
-        client = self._lifecycle_client_factory()
-        await client.connect()
-        try:
-            session_id = await dispatch_lifecycle_session(
-                client=client,
-                todos_db=todos_db,
-                project_path=str(project_root),
-                intent=intent,
-                origin=DispatchOrigin.MANUAL,
-            )
-        finally:
-            await client.close()
-        if session_id is None:
-            return f"RUNNER_NOT_DISPATCHED: {slug} claim-conflict"
-        return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
+        return await state_machine(operation)
 
     @staticmethod
     def _format_manual_lifecycle_reason(reason: RunnerSkipReason | str | None) -> str:

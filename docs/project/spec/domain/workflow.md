@@ -112,12 +112,12 @@ kind mutation is refused.
 : A long-running task tied to a todo (e.g., a worker session doing build). Tracked as `agent_runtime.operations` from workflow's perspective via the `operation.completed` event.
 
 **Lifecycle runner**
-: The project-scoped autonomous dispatcher for workflow lifecycle work. It is woken by workflow/config/session events, reloads the current todo list for the affected project, evaluates the full eligible set, acquires a dispatch claim for each selected `(project, slug, lane)`, and then starts the relevant `/analyze-todo-input`, `/next-prepare`, or `/next-work` session. It is stateless between events except for durable claims/leases used to prevent duplicate dispatch. Its autonomous evaluation is itself gated by the `workflow.runner` mode: under `autostart` it dispatches as described; under `manual` it performs no autonomous dispatch at all — every lane, prepare included, is frozen — and only manual start events (`telec todo work/prepare`, the TUI START, headless adoption) move a todo. The mode gates the autonomous path alone; a manual start is never gated by it.
+: The project-scoped autonomous dispatcher for workflow lifecycle work. It is woken by workflow/config/session events, reloads the current todo list for the affected project, evaluates the full eligible set, acquires a dispatch claim for each selected `(project, slug, lane)`, and then starts the relevant `/analyze-todo-input`, `/next-prepare`, or `/next-work` session. It is stateless between events except for durable claims/leases used to prevent duplicate dispatch. Its autonomous evaluation is itself gated by the `workflow.runner` mode: under `autostart` it dispatches as described; under `manual` it performs no autonomous dispatch at all — every lane, prepare included, is frozen. Explicit lifecycle operations (`telec todo work/prepare`, the TUI START, headless adoption) are separate from autonomous dispatch: a bindable live caller may claim the todo in-process, and an unbound caller runs the requested state machine in-process without writing an `active_runner` or spawning a session. The mode gates the autonomous path alone; a manual lifecycle operation is never gated by it.
 **Hold**
 
 : A durable manual brake on autonomous lifecycle dispatch. A todo is held exactly when its stored `hold` flag is true; the predicate is independent of kind, lifecycle phase, and autostart policy. Hold stops the lifecycle runner from autonomously dispatching analyze, prepare, work, task-prepare, or task-run sessions for the todo until the hold is released. It does not clear or replace the live `active_runner` claim: hold controls future autonomous dispatch, while session-close cleanup clears the claim when the claiming session ends.
 
-When a todo is held, the row renders the gate/lock icon and offers the unhold control that clears the flag through the same hold update path. A manual human close of a lifecycle-driving session sets hold through the existing hold audit before requesting close, in every lifecycle phase including prepare. A normal agent self-close, successful lifecycle completion, prepared cleanup, finalize cleanup, or ordinary session end does not write hold. An authorized `telec todo update <slug> --hold` request always persists the hold for any active todo kind. Manual lifecycle start is the release-and-start path: it first verifies that no other live holder owns the todo, then clears hold and adopts or dispatches; if a live holder exists, start is refused and hold remains.
+When a todo is held, the row renders the gate/lock icon and offers the unhold control that clears the flag through the same hold update path. A manual human close of a lifecycle-driving session sets hold through the existing hold audit before requesting close, in every lifecycle phase including prepare. A normal agent self-close, successful lifecycle completion, prepared cleanup, finalize cleanup, or ordinary session end does not write hold. An authorized `telec todo update <slug> --hold` request always persists the hold for any active todo kind. A bindable manual lifecycle start is the release-and-start path: it first verifies that no other live holder owns the todo, then clears hold and adopts the invoking session in-process; if a live holder exists, start is refused and hold remains. An unbound manual lifecycle operation is not a start: it runs the requested state machine in-process without clearing hold, claiming, or spawning a session.
 
 **Autostart policy**
 
@@ -130,7 +130,7 @@ When a todo is held, the row renders the gate/lock icon and offers the unhold co
 : The per-machine limit (`max_todo_dispatch`, daemon runtime config, default 5) on how many auto-dispatched lifecycle sessions run concurrently on the machine. The runner counts the live driver sessions that are not flagged `manually_started` and auto-dispatches a new candidate only while that count is below the cap; at the cap it skips the remaining eligible candidates, which dispatch on a later wake as capacity frees. Turning autostart from off to on applies the same gate — the runner dispatches nothing until the counted load is below the cap. When autostart is off the cap is inert (the runner is not dispatching). The cap never gates a manual start.
 
 **Manually-started**
-: A durable boolean field on a Todo marking that its current driver session was started by a human rather than auto-dispatched by the runner. It is set, paired with `active_runner`, whenever the driver is a manual operator START (`telec todo work/prepare`, the TUI START) or an adopted headless session, and cleared when the driver link is cleared. A `manually_started` driver session is excluded from the dispatch concurrency cap count: a human start is never counted toward `max_todo_dispatch` and is never refused by it.
+: A durable boolean field on a Todo marking that its current driver session was started by a human rather than auto-dispatched by the runner. It is set, paired with `active_runner`, whenever a bindable manual lifecycle operation adopts the invoking session (`telec todo work/prepare`, the TUI START) or an already-running headless session is adopted, and cleared when the driver link is cleared. A `manually_started` driver session is excluded from the dispatch concurrency cap count: a human start is never counted toward `max_todo_dispatch` and is never refused by it.
 
 **Headless session adoption**
 : Bringing an already-running session the runner did not spawn — a headless session — under runner tracking as a manual addition. While a session is headless the runner attempts no claim on it: it writes no `active_runner`, and the session is invisible to dispatch and dedup. Adoption is an explicit manual action that links the headless session to a todo as its driver — writing `active_runner` and setting `manually_started` together — after which it is tracked like any manually-started driver (excluded from the cap count, never auto-duplicated). The runner never auto-adopts or auto-claims a headless session.
@@ -148,7 +148,7 @@ When a todo is held, the row renders the gate/lock icon and offers the unhold co
 
 **Active runner**
 
-: The durable, single-valued workflow-owned field on a Todo holding the agent session id currently driving that todo's lifecycle — a link todo → session, with nothing else denormalized onto it. A non-null `active_runner` marks the todo as driven; lane, command, liveness, and project are resolved by dereferencing the session id against the agent-runtime session record. The lifecycle runner is the sole spawning authority: every lifecycle session — autonomous dispatch, a manual operator START, and headless adoption — flows through one runner-owned, claim-guarded dispatch primitive that writes `active_runner` (and `manually_started`) as one guarded operation with the spawn, so no concurrent runner pass can duplicate it. There are no side spawn paths; the state machine and the driven session never write `active_runner`. It is single-valued — one driver per todo — and a lane handoff is clear-on-close then write-on-next-dispatch, never a live overwrite. Sub-workers a driver dispatches (reviewers, drift analyzers, build/finalize workers) do not hold it; for `kind=task` the dispatched session is itself the driver. A link naming a non-live session is stale: the lifecycle runner clears it and dispatches. Session close is a runner wake-up, so a closed driver's link is cleared on the next evaluation.
+: The durable, single-valued workflow-owned field on a Todo holding the agent session id currently driving that todo's lifecycle — a link todo → session, with nothing else denormalized onto it. A non-null `active_runner` marks the todo as driven; lane, command, liveness, and project are resolved by dereferencing the session id against the agent-runtime session record. The lifecycle runner is the sole spawning authority: autonomous lifecycle sessions flow through the runner-owned, claim-guarded dispatch primitive that writes `active_runner` as one guarded operation with the spawn, so no concurrent runner pass can duplicate it. Bindable manual lifecycle operations may adopt the invoking live session in-process and write `active_runner` with `manually_started=true`; unbound manual lifecycle operations never write `active_runner`. There are no side spawn paths from inline lifecycle operations; the state machine never spawns or claims a separate orchestrator. It is single-valued — one driver per todo — and a lane handoff is clear-on-close then write-on-next-dispatch, never a live overwrite. Sub-workers a driver dispatches (reviewers, drift analyzers, build/finalize workers) do not hold it; for `kind=task` the dispatched session is itself the driver. A link naming a non-live session is stale: the lifecycle runner clears it and dispatches. Session close is a runner wake-up, so a closed driver's link is cleared on the next evaluation.
 
 Claim writes also repair the agent-runtime session metadata as a fallback, not as the primary source of truth. When the claim primitive writes `active_runner=session_id`, it backfills that session row's `working_slug` only when the field is empty; a pre-existing matching slug is accepted, and a different pre-existing slug is a hard conflict. Lifecycle state-machine invocations (`telec todo prepare`/`telec todo work`, TUI START, and headless adoption) additionally have lane intent and may repair a generic session title to the command shape they are taking on (`/next-prepare <slug>`, `/next-work <slug>`, or the task-lane command). Artifact writes that claim without state-machine lane intent do not infer or rewrite titles.
 
@@ -954,13 +954,13 @@ Given a wake-up whose carried project path points inside a git worktree (for exa
 When the lifecycle runner resolves the project root
 Then it normalizes the path to the owning main checkout and uses that single canonical root for both state resolution and session dispatch
 And every dispatched orchestrator runs in the main checkout, never inside the triggering worktree
-And the same canonical root is resolved whether the runner is woken by an event, an operator `telec todo work`/`telec todo prepare`, or headless adoption
+And the same canonical root is resolved whether the runner is woken by an event or a headless session is adopted
 ```
 
 ```gherkin
 Given a todo with no live holder is parked at a pending human-approval phase (its PRD human-approval gate, or a creative section awaiting its approval flag)
-When an operator manually starts its lifecycle — `telec todo prepare`/`telec todo work`, the TUI START, or headless adoption
-Then the manual start claims the slug in-process for the invoking session and runs the state machine, which parks at the human approval gate — an approval-pending phase never refuses a manual start
+When an operator invokes its lifecycle from a bindable live session — `telec todo prepare`/`telec todo work`, the TUI START, or headless adoption
+Then the manual operation claims the slug in-process for the invoking session and runs the state machine, which parks at the human approval gate — an approval-pending phase never refuses a bindable manual operation
 And the manual start is refused only when a different live session already holds the slug (a claim conflict / already-driven)
 And the autonomous runner still skips an approval-pending entry for its own dispatch — the manual path's claim-only authority and the autonomous approval gate are independent
 ```
@@ -1078,36 +1078,36 @@ And the lifecycle runner does not autonomously replace the closed session
 
 ```gherkin
 Given a held todo has no live holder
-When an operator triggers the TUI/manual lifecycle start path for that todo
+When an operator triggers the TUI/manual lifecycle start path for that todo from a bindable live session
 Then the operation first verifies that no live holder owns the todo
-And after that check succeeds, it clears hold and adopts or dispatches the lifecycle session
+And after that check succeeds, it clears hold and adopts the invoking session in-process
 And if a live holder exists, the operation is refused and hold remains intact
 ```
 
-#### UC-WFL-24: Operator-initiated lifecycle dispatch honors an explicit prepare request
+#### UC-WFL-24: Operator-initiated lifecycle operations run in-process
 
 ```gherkin
 Given an operator triggers a lifecycle operation on a todo whose caller session is not bound to that slug
 And the operation requests the prepare lane
-And the todo's natural lane resolves to work because its phase is prepared or later
-When the operation bridge resolves the dispatch intent
-Then it flips the resolved work lane to the prepare lane
-And it dispatches the prepare entrypoint `/next-prepare` for the todo
+And the todo is already prepared or later
+When the operation bridge runs
+Then it runs the prepare state machine in-process
+And it dispatches no orchestrator session for the todo
 And re-preparation is reachable for an already-prepared todo
 ```
 
 ```gherkin
 Given an operator triggers a lifecycle operation requesting the work lane on a prepared todo
-When the operation bridge resolves the dispatch intent
-Then it preserves the natural work lane
-And it dispatches the work entrypoint `/next-work` for the todo
+When the operation bridge runs
+Then it runs the work state machine in-process
+And it dispatches no orchestrator session for the todo
 ```
 
 ```gherkin
 Given an operator triggers a lifecycle operation requesting the prepare lane on a kind-less todo
-When the operation bridge resolves the dispatch intent
-Then no lane is resolved and the operation is not dispatched
-And kind discovery is not bypassed
+When the operation bridge runs
+Then it runs the prepare state machine in-process
+And it dispatches no orchestrator session for the todo
 ```
 
 #### UC-WFL-25: Grouped holders are never dispatched by the runner

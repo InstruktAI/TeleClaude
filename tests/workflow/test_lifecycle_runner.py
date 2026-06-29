@@ -37,7 +37,6 @@ from teleclaude.core.next_machine.dispatch_claims import list_dispatch_claims
 from teleclaude.core.next_machine.lifecycle import ApprovalGate, effective_hold, pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
     DispatchIntent,
-    DispatchOrigin,
     ManualLifecycleStatus,
     RunnerLane,
     RunnerSkipReason,
@@ -47,8 +46,6 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     decide_dispatches,
     dispatch_lifecycle_session,
     guard_driver_start,
-    manual_start_lifecycle_session,
-    resolve_manual_dispatch_intent,
     run_lifecycle_runner,
 )
 from teleclaude.core.next_machine.runtime.clock import SCHEDULER_TICK_MINUTE
@@ -1111,9 +1108,8 @@ def _operation(
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-def test_run_session_prepare_is_non_slug_bound_and_keeps_orchestrator_role(tmp_path: Path) -> None:
-    """`/next-prepare` is non-slug-bound: the prepare orchestrator selects its own work, so a
-    passed arg does not bind a working_slug, and the session keeps the orchestrator role."""
+def test_run_session_prepare_infers_working_slug_without_downgrading_orchestrator_role(tmp_path: Path) -> None:
+    """`/next-prepare` does not require a slug, but a supplied slug still tags the session."""
     request = RunSessionRequest(
         command="/next-prepare",
         args=_WORK_SLUG,
@@ -1123,7 +1119,7 @@ def test_run_session_prepare_is_non_slug_bound_and_keeps_orchestrator_role(tmp_p
 
     plan = _prepare_run_session(request, _caller_identity())
 
-    assert plan.working_slug is None
+    assert plan.working_slug == _WORK_SLUG
     assert plan.system_role == ROLE_ORCHESTRATOR
 
 
@@ -1251,103 +1247,6 @@ async def test_runner_clears_stale_active_runner_before_dispatching(tmp_path: Pa
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_start_dispatches_dedicated_runner_and_marks_manual_owner(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG)
-    client = _RunnerClient()
-
-    result = await manual_start_lifecycle_session(
-        project_root,
-        _WORK_SLUG,
-        lane=RunnerLane.WORK,
-        db=cast(Db, _FakeDb()),
-        client_factory=lambda: client,
-    )
-
-    assert result.status is ManualLifecycleStatus.DISPATCHED
-    assert result.session_id == _SPAWN_SESSION
-    assert client.requests[0]["command"] == _NEXT_WORK
-    state = await todos_db.read_state(_WORK_SLUG)
-    assert state is not None
-    assert state["active_runner"] == _SPAWN_SESSION
-    assert state["manually_started"] is True
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-23")
-async def test_manual_start_releases_held_todo_after_claim_check(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, hold=True)
-    client = _RunnerClient()
-
-    result = await manual_start_lifecycle_session(
-        project_root,
-        _WORK_SLUG,
-        lane=RunnerLane.WORK,
-        db=cast(Db, _FakeDb()),
-        client_factory=lambda: client,
-    )
-
-    assert result.status is ManualLifecycleStatus.DISPATCHED
-    assert result.reason is None
-    assert client.requests[0]["command"] == _NEXT_WORK
-    state = await todos_db.read_state(_WORK_SLUG)
-    assert state is not None
-    assert state["hold"] is False
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-23")
-async def test_manual_start_refuses_live_claimant(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, active_runner=_LIVE_SESSION, hold=True)
-    client = _RunnerClient()
-
-    result = await manual_start_lifecycle_session(
-        project_root,
-        _WORK_SLUG,
-        lane=RunnerLane.WORK,
-        db=cast(Db, _FakeDb({_LIVE_SESSION: _Session(session_id=_LIVE_SESSION)})),
-        client_factory=lambda: client,
-    )
-
-    assert result.status is ManualLifecycleStatus.ALREADY_DRIVEN
-    assert result.session_id == _LIVE_SESSION
-    assert client.requests == []
-    state = await todos_db.read_state(_WORK_SLUG)
-    assert state is not None
-    assert state["hold"] is True
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_dispatch_intent_routes_unplanned_task_to_task_prepare(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, "task-a", kind=_TASK, lifecycle_phase=LifecyclePhase.TASK_PLAN_DRAFTING.value)
-
-    intent, reason = await resolve_manual_dispatch_intent(todos_db, "task-a")
-
-    assert reason is None
-    assert intent is not None
-    assert (intent.slug, intent.lane, intent.command) == ("task-a", RunnerLane.TASK_PREPARE, _NEXT_PREPARE_TASK)
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_dispatch_intent_routes_authorized_task_to_task_run(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, "task-a", kind=_TASK, lifecycle_phase=LifecyclePhase.PREPARED.value)
-    await _authorize_task_plan(todos_db, "task-a")
-
-    intent, reason = await resolve_manual_dispatch_intent(todos_db, "task-a")
-
-    assert reason is None
-    assert intent is not None
-    assert (intent.slug, intent.lane, intent.command) == ("task-a", RunnerLane.TASK_RUN, _NEXT_RUN_TASK)
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
 async def test_manual_adoption_claims_unclaimed_slug_for_caller_bound_to_other_slug(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
@@ -1469,7 +1368,6 @@ async def test_operation_bridge_adopts_bound_caller_and_continues_in_place(tmp_p
 
     result = await service._run_todo_lifecycle_operation(
         operation,
-        lane=RunnerLane.WORK,
         state_machine=_continue_in_place,
     )
 
@@ -1481,7 +1379,8 @@ async def test_operation_bridge_adopts_bound_caller_and_continues_in_place(tmp_p
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_operation_bridge_unbound_caller_dispatches_dedicated_runner(tmp_path: Path) -> None:
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS11")
+async def test_operation_bridge_unbound_caller_runs_in_place_without_dispatch(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(todos_db, _WORK_SLUG)
@@ -1494,17 +1393,20 @@ async def test_operation_bridge_unbound_caller_dispatches_dedicated_runner(tmp_p
     operation = _operation()
     operation.cwd = str(project_root)
 
-    async def _unexpected_continue(_op: Operation) -> str:
-        raise AssertionError("unbound callers must not run the state machine in place")
+    async def _continue_in_place(op: Operation) -> str:
+        assert op is operation
+        return _CONTINUED
 
     result = await service._run_todo_lifecycle_operation(
         operation,
-        lane=RunnerLane.WORK,
-        state_machine=_unexpected_continue,
+        state_machine=_continue_in_place,
     )
 
-    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} work {_SPAWN_SESSION}"
-    assert client.requests[0]["command"] == _NEXT_WORK
+    assert result == _CONTINUED
+    assert client.requests == []
+    state = await todos_db.read_state(_WORK_SLUG)
+    assert state is not None
+    assert state.get("active_runner") != _SPAWN_SESSION
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1530,7 +1432,6 @@ async def test_operation_bridge_caller_bound_to_other_slug_claims_in_place_witho
 
     result = await service._run_todo_lifecycle_operation(
         operation,
-        lane=RunnerLane.WORK,
         state_machine=_continue_in_place,
     )
 
@@ -1699,32 +1600,6 @@ async def test_runner_does_not_block_same_slug_in_other_project(tmp_path: Path) 
 
     assert [intent.slug for intent in result.dispatched] == [_WORK_SLUG]
     assert RunnerSkipReason.ALREADY_DRIVEN not in result.skips
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_start_refused_by_registry_owner_without_active_runner(tmp_path: Path) -> None:
-    project_root = (tmp_path / "project").resolve()
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
-    client = _RunnerClient()
-    orchestrator = _Session(
-        session_id=_ORCH_SESSION,
-        working_slug=_WORK_SLUG,
-        system_role=ROLE_ORCHESTRATOR,
-        project_path=str(project_root),
-    )
-
-    result = await manual_start_lifecycle_session(
-        project_root,
-        _WORK_SLUG,
-        lane=RunnerLane.WORK,
-        db=cast(Db, _FakeDb({_ORCH_SESSION: orchestrator})),
-        client_factory=lambda: client,
-    )
-
-    assert result.status is ManualLifecycleStatus.ALREADY_DRIVEN
-    assert result.session_id == _ORCH_SESSION
-    assert client.requests == []
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -1951,7 +1826,6 @@ async def test_operation_bridge_refuses_live_driver_from_other_session(tmp_path:
     with pytest.raises(ClaimConflict) as exc:
         await service._run_todo_lifecycle_operation(
             operation,
-            lane=RunnerLane.WORK,
             state_machine=_never_continues,
         )
 
@@ -2500,7 +2374,6 @@ async def test_primitive_runner_origin_writes_active_runner_not_manual(tmp_path:
         todos_db=todos_db,
         project_path=str(project_root),
         intent=_work_intent(_WORK_SLUG),
-        origin=DispatchOrigin.RUNNER,
     )
 
     assert session_id == _SPAWN_SESSION
@@ -2511,29 +2384,8 @@ async def test_primitive_runner_origin_writes_active_runner_not_manual(tmp_path:
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_primitive_manual_origin_marks_manually_started(tmp_path: Path) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(todos_db, _WORK_SLUG, active_runner=None)
-    client = _RunnerClient()
-
-    session_id = await dispatch_lifecycle_session(
-        client=client,
-        todos_db=todos_db,
-        project_path=str(project_root),
-        intent=_work_intent(_WORK_SLUG),
-        origin=DispatchOrigin.MANUAL,
-    )
-
-    assert session_id == _SPAWN_SESSION
-    state = await todos_db.read_state(_WORK_SLUG)
-    assert state is not None
-    assert state["active_runner"] == _SPAWN_SESSION
-    assert state["manually_started"] is True
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_operation_bridge_dispatches_natural_prepare_lane_for_draft_operator_start(tmp_path: Path) -> None:
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS11")
+async def test_operation_bridge_runs_natural_prepare_lane_in_place_for_draft_operator_start(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(
@@ -2551,17 +2403,14 @@ async def test_operation_bridge_dispatches_natural_prepare_lane_for_draft_operat
 
     result = await service._run_todo_lifecycle_operation(
         _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.WORK,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+        state_machine=lambda _operation: asyncio.sleep(0, result=_CONTINUED),
     )
 
-    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} prepare {_SPAWN_SESSION}"
-    assert client.requests[0]["command"] == _NEXT_PREPARE
-    assert client.requests[0]["args"] == _WORK_SLUG
+    assert result == _CONTINUED
+    assert client.requests == []
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
-    assert state["active_runner"] == _SPAWN_SESSION
-    assert state["manually_started"] is True
+    assert state.get("active_runner") != _SPAWN_SESSION
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -2572,12 +2421,9 @@ async def test_operation_bridge_uses_live_recreated_slug_over_removed_history(
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     Repo.init(project_root)
-    row_ids = iter(
-        (
-            "ffffffff-ffff-4fff-8fff-ffffffffffff",
-            "00000000-0000-4000-8000-000000000000",
-        )
-    )
+    removed_row_id = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+    live_row_id = "00000000-0000-4000-8000-000000000000"
+    row_ids = iter((removed_row_id, live_row_id))
     monkeypatch.setattr("teleclaude.core.todos_db._todo._generate_id", lambda: next(row_ids))
     await _add_todo(
         todos_db,
@@ -2601,21 +2447,19 @@ async def test_operation_bridge_uses_live_recreated_slug_over_removed_history(
 
     result = await service._run_todo_lifecycle_operation(
         _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.PREPARE,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+        state_machine=lambda _operation: asyncio.sleep(0, result=_CONTINUED),
     )
 
-    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} prepare {_SPAWN_SESSION}"
-    assert client.requests[0]["command"] == _NEXT_PREPARE
-    assert client.requests[0]["args"] == _WORK_SLUG
-    state = await todos_db.read_state(_WORK_SLUG)
-    assert state is not None
-    assert state["active_runner"] == _SPAWN_SESSION
-    assert state["manually_started"] is True
+    # The slug resolves to the live recreated row, never the removed history,
+    # and the bridge runs the machine in place without dispatching a session.
+    assert await todos_db.resolve_id(_WORK_SLUG) == live_row_id
+    assert result == _CONTINUED
+    assert client.requests == []
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-24")
-async def test_operation_bridge_honors_explicit_prepare_lane_on_prepared_todo(tmp_path: Path, snapshot: object) -> None:
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS11")
+async def test_operation_bridge_prepared_todo_runs_in_place_without_dispatch(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(
@@ -2633,16 +2477,16 @@ async def test_operation_bridge_honors_explicit_prepare_lane_on_prepared_todo(tm
 
     result = await service._run_todo_lifecycle_operation(
         _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.PREPARE,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+        state_machine=lambda _operation: asyncio.sleep(0, result=_CONTINUED),
     )
 
-    assert result == snapshot
-    assert client.requests[0]["command"] == _NEXT_PREPARE
+    assert result == _CONTINUED
+    assert client.requests == []
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-24")
-async def test_operation_bridge_explicit_prepare_does_not_force_kindless(tmp_path: Path, snapshot: object) -> None:
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS11")
+async def test_operation_bridge_kindless_todo_runs_in_place_without_dispatch(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_kindless_todo(todos_db, _WORK_SLUG)
@@ -2655,39 +2499,11 @@ async def test_operation_bridge_explicit_prepare_does_not_force_kindless(tmp_pat
 
     result = await service._run_todo_lifecycle_operation(
         _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.PREPARE,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+        state_machine=lambda _operation: asyncio.sleep(0, result=_CONTINUED),
     )
 
-    assert result == snapshot
+    assert result == _CONTINUED
     assert client.requests == []
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-24")
-async def test_operation_bridge_work_lane_on_prepared_todo_stays_work(tmp_path: Path, snapshot: object) -> None:
-    project_root = tmp_path / "project"
-    todos_db = await _project_db(project_root)
-    await _add_todo(
-        todos_db,
-        _WORK_SLUG,
-        lifecycle_phase=LifecyclePhase.PREPARED.value,
-        active_runner=None,
-    )
-    client = _RunnerClient()
-    service = OperationsService(
-        db=cast(Db, _FakeDb()),
-        task_registry=TaskRegistry(),
-        lifecycle_client_factory=lambda: client,
-    )
-
-    result = await service._run_todo_lifecycle_operation(
-        _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.WORK,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
-    )
-
-    assert result == snapshot
-    assert client.requests[0]["command"] == _NEXT_WORK
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
@@ -2729,24 +2545,20 @@ async def test_operation_bridge_releases_held_todo_as_manual_forward_path(tmp_pa
 
     result = await service._run_todo_lifecycle_operation(
         _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.WORK,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+        state_machine=lambda _operation: asyncio.sleep(0, result=_CONTINUED),
     )
 
-    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} work {_SPAWN_SESSION}"
-    assert client.requests[0]["command"] == _NEXT_WORK
+    assert result == _CONTINUED
+    assert client.requests == []
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
-    assert state["active_runner"] == _SPAWN_SESSION
-    assert state["hold"] is False
+    assert state.get("active_runner") != _SPAWN_SESSION
+    assert state["hold"] is True
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_operation_bridge_claims_approval_pending_todo(tmp_path: Path) -> None:
-    # Claim-only manual start: an unclaimed todo parked at a pending human-approval
-    # phase is dispatched by the op door, not refused by the phase. The phase
-    # gate belongs to the autonomous runner alone
-    # (see test_pending_approval_gate_parks_runner_independently_of_hold).
+@pytest.mark.spec(_PREPARE_SPEC, "UC-WPS11")
+async def test_operation_bridge_runs_approval_pending_todo_in_place(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     todos_db = await _project_db(project_root)
     await _add_todo(
@@ -2764,15 +2576,14 @@ async def test_operation_bridge_claims_approval_pending_todo(tmp_path: Path) -> 
 
     result = await service._run_todo_lifecycle_operation(
         _operation(slug=_WORK_SLUG, cwd=project_root),
-        lane=RunnerLane.WORK,
-        state_machine=lambda _operation: asyncio.sleep(0, result="SHOULD_NOT_RUN"),
+        state_machine=lambda _operation: asyncio.sleep(0, result=_CONTINUED),
     )
 
-    assert result == f"RUNNER_DISPATCHED: {_WORK_SLUG} prepare {_SPAWN_SESSION}"
-    assert client.requests[0]["command"] == _NEXT_PREPARE
+    assert result == _CONTINUED
+    assert client.requests == []
     state = await todos_db.read_state(_WORK_SLUG)
     assert state is not None
-    assert state["active_runner"] == _SPAWN_SESSION
+    assert state.get("active_runner") != _SPAWN_SESSION
 
 
 @pytest.mark.spec(_SPEC, "UC-WFL-23")
@@ -3108,29 +2919,6 @@ async def test_runner_pickup_in_worktree_dispatches_orchestrator_on_main(tmp_pat
     )
 
     assert [intent.slug for intent in result.dispatched] == [_WORK_SLUG]
-    request = client.requests[0]
-    assert Path(request["project_path"]).resolve() == main_root
-    assert "subfolder" not in request
-
-
-@pytest.mark.spec(_SPEC, "UC-WFL-20")
-async def test_manual_start_in_worktree_dispatches_orchestrator_on_main(tmp_path: Path) -> None:
-    """An operator START invoked from inside a feature worktree dispatches the
-    orchestrator with the canonical main checkout as its cwd and no subfolder."""
-    main_root, worktree_path = _init_main_with_worktree(tmp_path)
-    todos_db = await _project_db(main_root)
-    await _add_todo(todos_db, _WORK_SLUG)
-    client = _RunnerClient()
-
-    result = await manual_start_lifecycle_session(
-        worktree_path,
-        _WORK_SLUG,
-        lane=RunnerLane.WORK,
-        db=cast(Db, _FakeDb()),
-        client_factory=lambda: client,
-    )
-
-    assert result.status is ManualLifecycleStatus.DISPATCHED
     request = client.requests[0]
     assert Path(request["project_path"]).resolve() == main_root
     assert "subfolder" not in request

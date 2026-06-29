@@ -121,14 +121,23 @@ And the machine never writes lifecycle state for the holder
 And if every direct child is already prepared or delivered, the instruction explains which terminal state the holder reached
 ```
 
-#### UC-WPS11: A manual invocation on an unclaimed slug claims it in-process and never spawns an orchestrator
+#### UC-WPS11: A manual invocation on an unclaimed slug runs in-process and never spawns an orchestrator
 
 ```gherkin
 Given a Todo with no live holder (active_runner is empty)
-And an operator invokes "telec todo prepare my-todo" from a session that is not already bound to my-todo
+And an operator invokes "telec todo prepare my-todo" from a bindable live session that is not already bound to my-todo
 When the lifecycle operation runs
 Then the invoking session claims my-todo as its live active-runner in-process
 And the prepare state machine runs in the invoking session
+And no separate orchestrator session is dispatched for my-todo
+```
+
+```gherkin
+Given a Todo with no live holder (active_runner is empty)
+And an operator invokes "telec todo prepare my-todo" from a caller that does not resolve to a bindable live session
+When the lifecycle operation runs
+Then the prepare state machine runs in-process and returns its instruction
+And no active-runner claim is written for my-todo
 And no separate orchestrator session is dispatched for my-todo
 ```
 
@@ -155,7 +164,7 @@ And the instruction tells the operator to inspect via "telec todo show my-featur
 ```gherkin
 Given a Todo with `hold=true`
 And no live holder owns the Todo
-When an operator invokes "telec todo prepare my-todo"
+When an operator invokes "telec todo prepare my-todo" from a bindable live session
 Then the lifecycle operation clears hold as part of the successful claim/start path
 And the invoking session claims my-todo as its live active-runner in-process
 ```

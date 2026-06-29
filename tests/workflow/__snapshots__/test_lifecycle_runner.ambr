@@ -6,12 +6,3 @@
   The human approved the pending gate for 'work-a'. Proceed with the lifecycle from where you parked.
   '''
 # ---
-# name: test_operation_bridge_explicit_prepare_does_not_force_kindless
-  'RUNNER_NOT_DISPATCHED: work-a invalid-kind'
-# ---
-# name: test_operation_bridge_honors_explicit_prepare_lane_on_prepared_todo
-  'RUNNER_DISPATCHED: work-a prepare spawn-1'
-# ---
-# name: test_operation_bridge_work_lane_on_prepared_todo_stays_work
-  'RUNNER_DISPATCHED: work-a work spawn-1'
-# ---
