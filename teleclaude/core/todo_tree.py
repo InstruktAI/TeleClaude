@@ -79,10 +79,27 @@ def _resolve_parent(
     todo: TodoDTO,
     visible: set[str],
     parent_map: dict[str, str | None],
+    group_of: dict[str, str | None],
 ) -> str | None:
-    """Visual parent: explicit group, else first cycle-free after entry, within the visible set."""
-    if todo.group and todo.group in visible and todo.group != todo.slug:
-        return todo.group
+    """Visual parent of a node, within the visible set.
+
+    A grouped node nests under the innermost same-group after-dependency when one
+    is visible — so an intra-group dependency renders as nesting, not a flat
+    sibling — and otherwise under its group holder. An after edge crossing into
+    another group does not re-home the node out of its group. An ungrouped node
+    nests under its first cycle-free after entry.
+    """
+    group = todo.group if todo.group and todo.group in visible and todo.group != todo.slug else None
+    if group is not None:
+        for candidate in todo.after:
+            if (
+                candidate in visible
+                and candidate != todo.slug
+                and group_of.get(candidate) == group
+                and not _has_cycle_to(parent_map, candidate, todo.slug)
+            ):
+                return candidate
+        return group
     for candidate in todo.after:
         if candidate in visible and candidate != todo.slug and not _has_cycle_to(parent_map, candidate, todo.slug):
             return candidate
@@ -143,11 +160,12 @@ def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) 
     # status suppression must NOT follow nesting. Self-references (group == slug)
     # are not holder relationships either — a todo cannot hold itself.
     holder_slugs = {t.group for t in todos if t.group and t.group in visible and t.group != t.slug}
+    group_of = {t.slug: t.group for t in todos}
 
     parent_map: dict[str, str | None] = {}
     children_map: dict[str, list[str]] = {}
     for todo in todos:
-        parent = _resolve_parent(todo, visible, parent_map)
+        parent = _resolve_parent(todo, visible, parent_map, group_of)
         parent_map[todo.slug] = parent
         if parent is not None:
             children_map.setdefault(parent, []).append(todo.slug)

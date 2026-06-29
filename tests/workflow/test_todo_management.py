@@ -14,6 +14,7 @@ from teleclaude.cli.telec.handlers import todo as todo_handlers
 from teleclaude.constants import TodoStatus
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.todo import assemble_todo_from_db
+from teleclaude.core.todo_tree import TodoNode, build_todo_sections
 from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
 from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
 
@@ -37,6 +38,13 @@ _STATE_KEY = "state"
 _CHILDREN_KEY = "children"
 _HOLD_SOURCE_MANUAL = "manual"
 _ACTIVE_RUNNER = "session-123"
+_EPIC = "epic"
+_BASE = "base"
+_FOLLOW_ON = "follow-on"
+_LEFT_EPIC = "left-epic"
+_LEFT_CHILD = "left-child"
+_RIGHT_EPIC = "right-epic"
+_RIGHT_ANCHOR = "right-anchor"
 _HOLDER_STRUCTURAL_KEYS = frozenset(
     {
         _SLUG_KEY,
@@ -66,6 +74,28 @@ _TODO_LIFECYCLE_PAYLOAD_KEYS = frozenset(
 
 def _is_todo_show_payload(payload: ShowPayload) -> TypeGuard[TodoShowPayload]:
     return payload.get(_STAGE_KEY) != _HOLDER_STAGE
+
+
+def _find_node(nodes: list[TodoNode], slug: str) -> TodoNode | None:
+    for node in nodes:
+        if node.todo.slug == slug:
+            return node
+        found = _find_node(node.children, slug)
+        if found is not None:
+            return found
+    return None
+
+
+def _child_slugs(node: TodoNode) -> set[str]:
+    return {child.todo.slug for child in node.children}
+
+
+_VISIBLE_STATE = {
+    "schema_version": 4,
+    "kind": "change",
+    "phase": "pending",
+    "lifecycle_phase": LifecyclePhase.PREPARED.value,
+}
 
 
 @pytest.fixture(autouse=True)
@@ -318,3 +348,51 @@ async def test_show_payload_resolves_stateless_group_holder(tmp_path: Path) -> N
     assert payload["roadmap"][_CHILDREN_KEY] == [_STRUCTURAL_CHILD]
     assert payload["artifacts"] == [_INPUT_ARTIFACT]
     assert payload["artifact_content"] == {_INPUT_ARTIFACT: _HOLDER_INPUT}
+
+
+@pytest.mark.spec(_SPEC, "UC-WM9")
+async def test_intra_group_dependency_nests_under_its_dependency(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_todo(_EPIC)
+    await todos_db.add_to_todo(_BASE, group_slug=_EPIC)
+    await todos_db.add_to_todo(_FOLLOW_ON, group_slug=_EPIC, after=[_BASE])
+    await todos_db.write_state(_BASE, dict(_VISIBLE_STATE))
+    await todos_db.write_state(_FOLLOW_ON, dict(_VISIBLE_STATE))
+
+    sections = build_todo_sections(assemble_todo_from_db(str(project_root)))
+    epic = _find_node(sections.active, _EPIC)
+    base = _find_node(sections.active, _BASE)
+
+    assert epic is not None
+    assert base is not None
+    # follow-on nests under base, not beside it under epic.
+    assert _child_slugs(epic) == {_BASE}
+    assert _child_slugs(base) == {_FOLLOW_ON}
+    # base keeps its own row state and is not promoted to a holder by the after-child.
+    assert base.is_holder is False
+    assert base.todo.lifecycle_phase is not None
+
+
+@pytest.mark.spec(_SPEC, "UC-WM10")
+async def test_cross_group_dependency_does_not_re_home_the_dependent(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    await close_todos_db_instances()
+    todos_db = await get_todos_db(project_root)
+    await todos_db.add_to_todo(_LEFT_EPIC)
+    await todos_db.add_to_todo(_RIGHT_EPIC)
+    await todos_db.add_to_todo(_LEFT_CHILD, group_slug=_LEFT_EPIC, after=[_RIGHT_ANCHOR])
+    await todos_db.add_to_todo(_RIGHT_ANCHOR, group_slug=_RIGHT_EPIC)
+    await todos_db.write_state(_LEFT_CHILD, dict(_VISIBLE_STATE))
+    await todos_db.write_state(_RIGHT_ANCHOR, dict(_VISIBLE_STATE))
+
+    sections = build_todo_sections(assemble_todo_from_db(str(project_root)))
+    left_epic = _find_node(sections.active, _LEFT_EPIC)
+    right_anchor = _find_node(sections.active, _RIGHT_ANCHOR)
+
+    assert left_epic is not None
+    assert right_anchor is not None
+    # The cross-group after-dependency does not move left-child out of its group.
+    assert _child_slugs(left_epic) == {_LEFT_CHILD}
+    assert _LEFT_CHILD not in _child_slugs(right_anchor)

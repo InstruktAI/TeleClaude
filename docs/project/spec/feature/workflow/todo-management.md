@@ -17,11 +17,7 @@ Todo management is the operator-facing surface for the per-project ordered todo 
 
 Each entry is tied to a Todo by durable identity and active slug. Creation goes through `telec todo create`, which requires substantive content and writes the entry, canonical state, and input artifact atomically. The default read path is `telec todo list`, which renders sectioned dependency trees for active todos and optionally includes delivered or iceboxed sections. Active order is derived from workflow state: Ready entries appear before In-prep entries, and each band sorts by its persisted timestamps and slug. Manual position, move, and add-before/add-after ordering are not part of this surface.
 
-<!-- planned:todo-tree-intra-group-dep-nesting -->
-
 Visual hierarchy within a section resolves each node to its **nearest enclosing structural container**: the innermost in-group `after`-dependency visible in the section, otherwise its group holder, otherwise the section root. Group membership and `after` edges compose rather than compete — an `after`-dependency on a sibling within the same group nests the dependent under that sibling, while an `after` edge crossing into another group orders the roots without re-homing the node out of its own group. Holder status stays group-derived: gaining an `after`-child never makes a node a holder, so a node keeps its own row state while nesting its dependents.
-
-<!-- /planned:todo-tree-intra-group-dep-nesting -->
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
@@ -86,8 +82,6 @@ And the projection includes only holder structure: slug, holder stage, roadmap f
 And the projection omits Todo lifecycle fields: current, state, approvals, reviews, drift, work, audit, events, next_commands, previous, and next
 ```
 
-<!-- planned:todo-tree-intra-group-dep-nesting -->
-
 #### UC-WM9: Intra-group dependency nests under its dependency
 
 ```gherkin
@@ -107,8 +101,6 @@ When the workflow projects the todo list
 Then "left-child" stays nested under "left-epic"
 And the cross-group dependency orders the section roots without moving "left-child" out of its group
 ```
-
-<!-- /planned:todo-tree-intra-group-dep-nesting -->
 
 #### UC-WM1: Show reads the caller's project
 
