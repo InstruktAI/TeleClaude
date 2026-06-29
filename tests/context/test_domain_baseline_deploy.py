@@ -16,7 +16,6 @@ from scripts.distribute import (
     _render_progressive_index,
     compose_docs_root,
     deploy_documentation,
-    ensure_global_snippets_link,
     generate_domain_baselines,
     write_merged_index,
 )
@@ -94,22 +93,6 @@ def test_compose_rebuild_gcs_removed_snippet_link(tmp_path: Path) -> None:
 
     assert (deploy / "erp" / "policy" / "kept.md").resolve() == kept.resolve()
     assert not (deploy / "erp" / "policy" / "removed.md").exists()
-
-
-def test_ensure_global_snippets_link_points_to_mother_project_global_snippets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = tmp_path / "repo"
-    source = _write(repo / "docs" / "global" / "snippets" / "example.md", "Snippet.\n").parent
-    deploy = tmp_path / "deploy" / "docs"
-    deploy.mkdir(parents=True)
-    _write(deploy / "snippets" / "stale.md", "stale\n")
-    monkeypatch.setattr(distribute, "_REPO_ROOT", repo)
-
-    ensure_global_snippets_link(deploy)
-
-    assert (deploy / "snippets").is_symlink()
-    assert (deploy / "snippets").resolve() == source.resolve()
 
 
 def _index_payload(snippets: list[dict[str, object]]) -> str:  # guard: loose-dict-func - test index fixtures

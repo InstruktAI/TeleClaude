@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -118,14 +119,12 @@ def test_only_commits_declared_subset_of_dirty_scope(
         monkeypatch,
         _scope(DirtyPath("docs.md", DirtyOp.MODIFIED), DirtyPath("tracked.py", DirtyOp.MODIFIED)),
     )
+    monkeypatch.setattr(code, "get_system_role", lambda: "builder")
+    monkeypatch.setattr(code, "resolve_invocation_cwd", lambda: tmp_path)
+    monkeypatch.setattr(code, "resolve_git_root", lambda _cwd: tmp_path)
+    monkeypatch.setattr(code, "main_branch_lock", nullcontext)
 
-    code._commit_under_lock(
-        message="test: commit subset",
-        includes=[],
-        project_root=tmp_path,
-        system_role=None,
-        only=["docs.md"],
-    )
+    code.handle_code_commit(["--approved", "test: commit subset", "--only", "docs.md"])
 
     assert {"records": records} == snapshot
 
